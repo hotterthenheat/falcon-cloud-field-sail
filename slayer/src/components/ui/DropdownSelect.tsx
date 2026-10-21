@@ -1,0 +1,177 @@
+/*
+==================================================
+  SLAYER TERMINAL - DROPDOWN SELECT
+  (components/ui/DropdownSelect.tsx)
+
+  One choice from a short list, as a DROPDOWN CARD
+  instead of a row of chips (Noah, 2026-09-05: "i
+  feel so clustered and claustrophobic, too many
+  choices on lines. we need more dropdown selection
+  cards that are nicely put together"). The trigger
+  is a small labelled control that prints the
+  current choice; the card lists every choice with
+  a check on the current one and, where it helps,
+  one line saying what the choice means.
+
+  Built on Radix DropdownMenu (the prebuilt-
+  libraries rule): keyboard navigation, focus
+  return, outside-click and Escape, typeahead,
+  portal and collision-aware placement all come
+  from the library; the house grammar is ours.
+==================================================
+*/
+
+import { Fragment, type CSSProperties } from 'react';
+import { FLAT_DOOR, FLAT_OPEN } from './flatDoor';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
+
+const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+
+export interface DropdownOption<T extends string | number> {
+  value: T;
+  label: string;
+  /** One line under the label — what picking this means */
+  hint?: string;
+  /** A choice that IS a direction — calls or puts, bullish or bearish, building or leaving — wears it under the pointer:
+      the row washes green or red and its word takes the ink (Noah, 2026-09-19, on the Weigher's Side card: "these cards
+      should turn red or green on hover for directional visual understanding"). Red and green are direction and nothing
+      else in this house, so only a choice that is one gets a tone; "Both" and "Every read" stay the plain wash. At rest
+      the row is unchanged — silver's check still says where you are. */
+  tone?: 'bull' | 'bear';
+  /** A choice that is the absence of one ("Not said") — the trigger prints it in the secondary ink, so a set choice
+      reads as set (the journal's tags, 2026-09-22) */
+  quiet?: boolean;
+  /** A SECTION'S NAME — the rows that share it stand under one small heading, in the order given; a row with none
+      stands above the first section (the partner's card, taken with the Map 2026-10-14) */
+  group?: string;
+  /** A row that belongs to the row above it — set in a step */
+  indent?: boolean;
+  /** Shown, never picked (the Legs card's "Both" on the calendar) — the keys pass over it */
+  disabled?: boolean;
+  /** The trigger's words when this row is chosen, where the row says more than the line of cards has room for (the
+      Strikes card: "±20" on the trigger, "20 each side" in the row) — defaults to the label */
+  short?: string;
+}
+
+/* whole class strings, so Tailwind sees them */
+const ROW_WASH = {
+  plain: 'data-[highlighted]:bg-ink/[0.06] data-[highlighted]:text-textPrimary',
+  bull: 'data-[highlighted]:bg-bull/[0.12] data-[highlighted]:text-bull',
+  bear: 'data-[highlighted]:bg-bear/[0.12] data-[highlighted]:text-bear',
+} as const;
+
+interface DropdownSelectProps<T extends string | number> {
+  /** The control's name, printed small before the current choice */
+  label: string;
+  value: T;
+  options: DropdownOption<T>[];
+  onChange: (v: T) => void;
+  /** A heading inside the card; defaults to the label */
+  title?: string;
+  align?: 'start' | 'end';
+  /** A glyph before the label, in the muted ink — gives a card its own face
+      on a line of four (Noah, 2026-09-11: the cards "show no importance or
+      uniqueness than the rest making them look overlooked") */
+  icon?: LucideIcon;
+  /** The glyph's own colour on hover and while open — the sidebar's rule, each
+      desk's icon wears its ink (Noah, 2026-09-11: "on hover the icon … turn a
+      colour like we have on our sidebar") */
+  ink?: string;
+  /** A data-* hook for probes */
+  testId?: string;
+  /** The trigger's height: 28 by rest; `sm` is 24 — for a card head's 32px line, where the
+      full size touched the borders (Noah, 2026-09-14) */
+  size?: 'md' | 'sm';
+  /** The card WITHOUT its printed name — for a line that measured itself too short for four named cards (the Weigher's
+      chain head on a laptop, 2026-09-20). The name stays in the tooltip, the aria-label and the open card's heading. */
+  bare?: boolean;
+  /** The name shown only from this breakpoint up — a tight head keeps the choice and its icon, the name in the title */
+  labelFrom?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  /** THE HOUSE'S FLAT CONTROL (ui/flatDoor.ts): tracked capitals, no edge, a wash under the pointer — the Map band's
+      and the Pinpoint head's grammar (the partner's, taken 2026-10-14) */
+  flat?: boolean;
+}
+
+const LABEL_FROM: Record<NonNullable<DropdownSelectProps<string>['labelFrom']>, string> = { sm: 'hidden sm:inline', md: 'hidden md:inline', lg: 'hidden lg:inline', xl: 'hidden xl:inline', '2xl': 'hidden 2xl:inline' };
+
+/** The card every dropdown on the terminal opens — one surface, one shadow, one radius */
+export const CARD = 'z-[90] rounded-lg border border-borderSubtle bg-chip shadow-[0_16px_48px_rgba(0,0,0,0.65)] animate-soft-in';
+
+const DropdownSelect = <T extends string | number>({ label, value, options, onChange, title, align = 'start', icon: Icon, ink, testId, size = 'md', bare = false, labelFrom, flat = false }: DropdownSelectProps<T>) => {
+  const current = options.find(o => o.value === value);
+  return (
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          data-dropdown={testId ?? label}
+          aria-label={`${label}: ${current?.short ?? current?.label ?? ''}`}
+          title={bare || labelFrom ? (title ? `${label} — ${title}` : label) : title}
+          className={
+            flat
+              ? `${FLAT_DOOR} ${FLAT_OPEN} group max-w-full text-left`
+              : `group inline-flex items-center gap-1.5 ${size === 'sm' ? 'h-6 px-2' : 'h-7 px-2.5'} rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none`
+          }
+          style={ink ? ({ '--ink': ink } as CSSProperties) : undefined}
+        >
+          {Icon && (
+            <Icon
+              className={`w-3 h-3 shrink-0 transition-colors duration-200 ${ink ? 'text-textMuted group-hover:text-[color:var(--ink)] group-data-[state=open]:text-[color:var(--ink)]' : 'text-textMuted'}`}
+              aria-hidden="true"
+              data-dropdown-icon
+            />
+          )}
+          {!bare && <span className={`shrink-0 ${flat ? 'text-[11px]' : 'text-[9px] uppercase tracking-widest'} text-textMuted ${labelFrom ? LABEL_FROM[labelFrom] : ''}`}>{label}</span>}
+          {/* min-w-0 + truncate: in a phone's two-column cards line the card is as wide as its cell, and a long value gives before the card does */}
+          {/* the trigger wears the choice's tone — a Yes reads green, a No red, the way its row did (2026-09-22) */}
+          <span className={`min-w-0 truncate text-[11px] font-semibold ${current?.tone === 'bull' ? 'text-bull' : current?.tone === 'bear' ? 'text-bear' : current?.quiet ? 'text-textSecondary' : 'text-textPrimary'}`} data-tone={current?.tone ?? (current?.quiet ? 'quiet' : undefined)}>
+            {current?.short ?? current?.label ?? '—'}
+          </span>
+          <ChevronDown className="w-3 h-3 shrink-0 text-textMuted" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        {/* a long list scrolls inside the card rather than running off a short screen */}
+        <DropdownMenu.Content align={align} sideOffset={6} collisionPadding={12} className={`${CARD} min-w-[220px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-1.5`} data-dropdown-card={testId ?? label}>
+          <DropdownMenu.Label className="px-2 pt-1 pb-1.5 font-mono text-[9px] uppercase tracking-widest text-textMuted">{title ?? label}</DropdownMenu.Label>
+          <DropdownMenu.RadioGroup
+            value={String(value)}
+            onValueChange={v => {
+              const hit = options.find(o => String(o.value) === v);
+              if (hit) onChange(hit.value);
+            }}
+          >
+            {options.map((o, i) => (
+              <Fragment key={String(o.value)}>
+                {o.group && o.group !== options[i - 1]?.group && (
+                  <DropdownMenu.Label className={`px-2 pt-2 pb-1 text-[11px] font-semibold text-textSecondary ${i > 0 ? 'mt-1 border-t border-borderSubtle' : ''}`} data-dropdown-group={o.group}>
+                    {o.group}
+                  </DropdownMenu.Label>
+                )}
+              <DropdownMenu.RadioItem
+                value={String(o.value)}
+                disabled={o.disabled}
+                data-tone={o.tone}
+                className={`group flex items-start gap-2 rounded-md px-2 py-1.5 outline-none text-textSecondary ${o.indent ? 'pl-5' : ''} ${o.disabled ? 'cursor-default text-textMuted' : `cursor-pointer ${ROW_WASH[o.tone ?? 'plain']}`} data-[state=checked]:text-textPrimary transition-colors`}
+              >
+                <span className="mt-[2px] w-3 h-3 shrink-0 flex items-center justify-center">
+                  <DropdownMenu.ItemIndicator>
+                    <Check className="w-3 h-3" style={{ color: SILVER }} />
+                  </DropdownMenu.ItemIndicator>
+                </span>
+                <span className="flex flex-col gap-[1px] min-w-0">
+                  <span className="font-mono text-[11px] leading-snug group-data-[state=checked]:font-semibold">{o.label}</span>
+                  {o.hint && <span className="font-mono text-[9px] leading-snug text-textMuted">{o.hint}</span>}
+                </span>
+              </DropdownMenu.RadioItem>
+              </Fragment>
+            ))}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+};
+
+export default DropdownSelect;

@@ -1,0 +1,520 @@
+# UnusualWhales API
+
+The official Unusual Whales API gives you 100+ endpoints for options flow, dark pool, congressional trading, Greek exposure, volatility, and more.
+
+## Quick Start
+
+**Base URL:** `https://api.unusualwhales.com`
+
+**Authentication:** Bearer token in header
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Authentication errors
+
+A request without a usable API token returns HTTP 401 and a `WWW-Authenticate` header carrying the `Bearer` challenge. A request whose token is restricted to other routes returns HTTP 403. Both bodies carry a `reason` field naming the specific failure. Branch on `reason`, not on `message`, whose wording can change.
+
+| Status | `reason` | What happened |
+|--------|----------|---------------|
+| 401 | `missing_token` | The request carried no API token. |
+| 401 | `malformed_token` | A token was supplied but is not a UUID. |
+| 401 | `unrecognized_token` | The token is a UUID that no active token matches. It was revoked or regenerated, or it belongs to a different account. |
+| 403 | `route_not_permitted` | The token is valid, and its route restrictions exclude this route. |
+
+API tokens are UUIDs, such as `123e4567-e89b-12d3-a456-426614174000`. Create and manage them at https://unusualwhales.com/dashboard/api.
+
+Every one of these responses carries `retryable: false`. Replaying the same request unchanged returns the same error. Retrying with a corrected token can succeed. Each response also carries a `request_id` matching the `x-request-id` response header. Quote it when you contact dev@unusualwhales.com.
+
+## Machine-readable docs
+
+The API publishes plain-text documentation for AI agents and developer tools:
+
+- **Full Markdown index:** `GET https://api.unusualwhales.com/docs.md` returns the API overview and endpoint index as Markdown.
+- **llms.txt index:** `GET https://api.unusualwhales.com/llms.txt` lists every documented API operation by tag, with a short description and a link to its Markdown reference page. It also links to the OpenAPI specification, Kafka streaming documentation, websocket documentation, the MCP server, and the agent skill file.
+- **Markdown operation pages:** Append `.md` to an operation URL, such as `https://api.unusualwhales.com/docs/operations/<operation_id>.md`, to get that operation's reference as Markdown. Requests to `/docs` and operation URLs without a `text/html` `Accept` header also return Markdown.
+
+```bash
+curl https://api.unusualwhales.com/llms.txt
+curl https://api.unusualwhales.com/docs.md
+curl https://api.unusualwhales.com/docs/operations/PublicApi.AlertsController.alerts.md
+```
+
+## Resources
+
+- **OpenAPI Spec:** https://api.unusualwhales.com/api/openapi
+- **Kafka Streaming:** https://unusualwhales.com/public-api/kafka
+- **WebSocket:** https://api.unusualwhales.com/docs/websocket
+- **MCP Server:** https://unusualwhales.com/public-api/mcp
+- **SKILL.md:** https://unusualwhales.com/skill.md
+- **Check API Usage:** https://unusualwhales.com/information/how-to-check-your-api-usage
+
+## Endpoints
+
+### Futures
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/futures/contracts` | Futures Contracts | `PublicApi.FuturesController.contracts` |
+| `GET` | `/api/futures/display_factors` | Futures Display Factors | `PublicApi.FuturesController.display_factors` |
+| `GET` | `/api/futures/display_factors/{security_id}` | Futures Display Factor | `PublicApi.FuturesController.display_factor` |
+| `GET` | `/api/futures/flow` | Futures Flow | `PublicApi.FuturesController.flow` |
+| `GET` | `/api/futures/{contract}/candles` | Futures Candles (OHLCV) | `PublicApi.FuturesController.candles` |
+| `GET` | `/api/futures/{contract}/stats` | Futures Session Stats | `PublicApi.FuturesController.stats` |
+| `GET` | `/api/futures/{contract}/trades` | Futures Trades (Time & Sales) | `PublicApi.FuturesController.trades` |
+
+
+### Gex/Greeks
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/stock/{ticker}/gex-levels` | GEX Levels | `PublicApi.TickerController.gex_levels` |
+| `GET` | `/api/stock/{ticker}/greek-exposure` | Greek Exposure | `PublicApi.TickerController.greek_exposure` |
+| `GET` | `/api/stock/{ticker}/greek-exposure/expiry` | Greek Exposure By Expiry | `PublicApi.TickerController.greek_exposure_by_expiry` |
+| `GET` | `/api/stock/{ticker}/greek-exposure/strike` | Greek Exposure By Strike | `PublicApi.TickerController.greek_exposure_by_strike` |
+| `GET` | `/api/stock/{ticker}/greek-exposure/strike-expiry` | Greek Exposure By Strike And Expiry | `PublicApi.TickerController.greek_exposure_by_strike_expiry` |
+| `GET` | `/api/stock/{ticker}/greek-flow` | Greek flow | `PublicApi.TickerController.greek_flow` |
+| `GET` | `/api/stock/{ticker}/greek-flow/{expiry}` | Greek flow by expiry | `PublicApi.TickerController.greek_flow_expiry` |
+| `GET` | `/api/stock/{ticker}/spot-exposures` | GEX exposures per 1min | `PublicApi.TickerController.spot_exposures_one_minute` |
+| `GET` | `/api/stock/{ticker}/spot-exposures/expiry-strike` | GEX exposures by strike & expiry | `PublicApi.TickerController.spot_exposures_by_strike_expiry_v2` |
+| `GET` | `/api/stock/{ticker}/spot-exposures/strike` | GEX exposures by strike | `PublicApi.TickerController.spot_exposures_by_strike` |
+| `GET` | `/api/stock/{ticker}/spot-exposures/{expiry}/strike` | GEX exposures by strike & expiry (Deprecated) | `PublicApi.TickerController.spot_exposures_by_strike_expiry` |
+
+
+### alerts
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/alerts` | Alerts | `PublicApi.AlertsController.alerts` |
+| `GET` | `/api/alerts/configuration` | Alert configurations | `PublicApi.AlertsController.configs` |
+| `POST` | `/api/alerts/configuration` | Create alert configuration | `PublicApi.AlertsController.create_config` |
+| `GET` | `/api/alerts/filters` | Alert filters | `PublicApi.AlertsController.filters` |
+| `GET` | `/api/alerts/query/grammar` | Query grammar | `PublicApi.AlertsController.dsl_grammar` |
+
+
+### commodities
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/commodities/{name}` | Commodity Series | `PublicApi.CommoditiesController.show` |
+
+
+### companies
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/companies/{ticker}/dividends` | Company Dividends | `PublicApi.CompaniesController.dividends` |
+| `GET` | `/api/companies/{ticker}/earnings-estimates` | Forward Earnings Estimates | `PublicApi.CompaniesController.earnings_estimates` |
+| `GET` | `/api/companies/{ticker}/profile` | Company Profile | `PublicApi.CompaniesController.profile` |
+| `GET` | `/api/companies/{ticker}/splits` | Company Stock Splits | `PublicApi.CompaniesController.splits` |
+| `GET` | `/api/companies/{ticker}/transcripts/{quarter}` | Earnings Call Transcript | `PublicApi.CompaniesController.transcript` |
+
+
+### congress
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/congress/congress-trader` | Recent Reports By Trader | `PublicApi.CongressController.congress_trader` |
+| `GET` | `/api/congress/late-reports` | Recent Late Reports | `PublicApi.CongressController.congress_late_reports` |
+| `GET` | `/api/congress/politicians` | List of Politicians with Trade Data | `PublicApi.CongressController.congress_politicians` |
+| `GET` | `/api/congress/recent-trades` | Recent Congress Trades | `PublicApi.CongressController.congress_recent_trades` |
+
+
+### crypto
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/crypto/candles/{interval}` | Get Crypto API OHLC Candles. | `PublicApi.CryptoController.get_candles` |
+| `GET` | `/api/crypto/list_tokens` | Get a list of tokens. | `PublicApi.CryptoController.list_tokens` |
+| `GET` | `/api/crypto/token/{token}` | Get token metadata. | `PublicApi.CryptoController.get_token` |
+| `GET` | `/api/crypto/trades` | Get a list of trades. | `PublicApi.CryptoController.list_trades` |
+| `GET` | `/api/crypto/whale-transactions` | Crypto Whale Transactions | `PublicApi.CryptoController.whale_transactions` |
+| `GET` | `/api/crypto/whales/recent` | Recent Crypto Whale Trades | `PublicApi.CryptoController.whales_recent` |
+| `GET` | `/api/crypto/{pair}/ohlc/{candle_size}` | Crypto OHLC Candles | `PublicApi.CryptoController.ohlc` |
+| `GET` | `/api/crypto/{pair}/state` | Crypto Pair State | `PublicApi.CryptoController.state` |
+
+
+### darkpool
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/darkpool/recent` | Recent Darkpool Trades | `PublicApi.DarkpoolController.darkpool_recent` |
+| `GET` | `/api/darkpool/{ticker}` | Ticker Darkpool Trades | `PublicApi.DarkpoolController.darkpool_ticker` |
+| `GET` | `/api/darkpool/{ticker}/price-levels` | Darkpool Price Levels | `PublicApi.DarkpoolController.darkpool_price_levels` |
+
+
+### digital_currencies
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/digital-currencies/history` | Digital Currency Historical Series | `PublicApi.DigitalCurrenciesController.history` |
+| `GET` | `/api/digital-currencies/intraday` | Digital Currency Intraday Series | `PublicApi.DigitalCurrenciesController.intraday` |
+
+
+### earnings
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/earnings/afterhours` | Afterhours | `PublicApi.EarningsController.afterhours` |
+| `GET` | `/api/earnings/premarket` | Premarket | `PublicApi.EarningsController.premarket` |
+| `GET` | `/api/earnings/{ticker}` | Historical Ticker Earnings | `PublicApi.EarningsController.ticker` |
+
+
+### economy
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/economy/{indicator}` | Economic Indicator | `PublicApi.EconomyController.show` |
+
+
+### etfs
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/etfs/{ticker}/exposure` | Exposure | `PublicApi.EtfController.exposure` |
+| `GET` | `/api/etfs/{ticker}/holdings` | Holdings | `PublicApi.EtfController.holdings` |
+| `GET` | `/api/etfs/{ticker}/in-outflow` | Inflow & Outflow | `PublicApi.EtfController.in_outflow` |
+| `GET` | `/api/etfs/{ticker}/info` | Information | `PublicApi.EtfController.info` |
+| `GET` | `/api/etfs/{ticker}/weights` | Sector & Country weights | `PublicApi.EtfController.weights` |
+
+
+### flex-options
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/flex-options` | FLEX option contracts | `PublicApi.FlexOptionsController.contracts` |
+| `GET` | `/api/flex-options/chain/{chain}` | FLEX option contract history | `PublicApi.FlexOptionsController.chain` |
+| `GET` | `/api/flex-options/market` | FLEX market overview | `PublicApi.FlexOptionsController.market` |
+| `GET` | `/api/flex-options/{ticker}` | FLEX ticker history | `PublicApi.FlexOptionsController.ticker` |
+
+
+### forex
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/forex/history` | FX Historical Series | `PublicApi.ForexController.history` |
+| `GET` | `/api/forex/intraday` | FX Intraday Series | `PublicApi.ForexController.intraday` |
+| `GET` | `/api/forex/rate` | FX Spot Rate | `PublicApi.ForexController.rate` |
+
+
+### group_flow
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/group-flow/{flow_group}/greek-flow` | Greek flow | `PublicApi.GroupFlowController.greek_flow` |
+| `GET` | `/api/group-flow/{flow_group}/greek-flow/{expiry}` | Greek flow by expiry | `PublicApi.GroupFlowController.greek_flow_expiry` |
+
+
+### insiders
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/insider/transactions` | Transactions | `PublicApi.InsiderController.transactions` |
+| `GET` | `/api/insider/{sector}/sector-flow` | Sector Flow | `PublicApi.InsiderController.sector_flow` |
+| `GET` | `/api/insider/{ticker}` | Insiders | `PublicApi.InsiderController.insiders` |
+| `GET` | `/api/insider/{ticker}/ticker-flow` | Ticker Flow | `PublicApi.InsiderController.ticker_flow` |
+
+
+### institution
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/institution/{name}/activity` | Institutional Activity (Deprecated) | `PublicApi.InstitutionController.activity` |
+| `GET` | `/api/institution/{name}/activity/v2` | Institutional Activity | `PublicApi.InstitutionController.activity_v2` |
+| `GET` | `/api/institution/{name}/holdings` | Institutional Holdings | `PublicApi.InstitutionController.holdings` |
+| `GET` | `/api/institution/{name}/sectors` | Sector Exposure | `PublicApi.InstitutionController.sectors` |
+| `GET` | `/api/institution/{ticker}/option-holders` | Institutional Option Holders | `PublicApi.InstitutionController.option_holders` |
+| `GET` | `/api/institution/{ticker}/ownership` | Institutional Ownership | `PublicApi.InstitutionController.ownership` |
+| `GET` | `/api/institutions` | List of Institutions | `PublicApi.InstitutionController.list` |
+| `GET` | `/api/institutions/latest_filings` | Latest Filings | `PublicApi.InstitutionController.latest_filings` |
+
+
+### intel
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/analytics/sliding` | Sliding-Window Analytics | `PublicApi.IntelController.analytics_sliding` |
+| `GET` | `/api/analytics/window` | Fixed-Window Analytics | `PublicApi.IntelController.analytics_window` |
+| `GET` | `/api/calendar/ipo` | IPO Calendar | `PublicApi.IntelController.ipo_calendar` |
+| `GET` | `/api/companies/listings` | Active or Delisted Securities | `PublicApi.IntelController.listings` |
+| `GET` | `/api/market/movers` | Top Movers | `PublicApi.IntelController.movers` |
+
+
+### lit-flow
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/lit-flow/recent` | Recent Lit Flow Trades | `PublicApi.LitFlowController.lit_flow_recent` |
+| `GET` | `/api/lit-flow/{ticker}` | Ticker Lit Flow Trades | `PublicApi.LitFlowController.lit_flow_ticker` |
+
+
+### market
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/market/correlations` | Correlations | `PublicApi.MarketController.correlations` |
+| `GET` | `/api/market/daily-report` | Daily Market Report | `PublicApi.MarketReportController.daily_report` |
+| `GET` | `/api/market/economic-calendar` | Economic calendar | `PublicApi.MarketController.events` |
+| `GET` | `/api/market/fda-calendar` | FDA Calendar | `PublicApi.MarketController.fda_calendar` |
+| `GET` | `/api/market/insider-buy-sells` | Total Insider Buy & Sells | `PublicApi.MarketController.insider_buy_sells` |
+| `GET` | `/api/market/market-tide` | Market Tide | `PublicApi.MarketController.market_tide` |
+| `GET` | `/api/market/oi-change` | OI Change | `PublicApi.MarketController.oi_change` |
+| `GET` | `/api/market/sector-etfs` | Sector Etfs | `PublicApi.MarketController.sector_etfs` |
+| `GET` | `/api/market/top-net-impact` | Top Net Impact | `PublicApi.MarketController.top_net_impact` |
+| `GET` | `/api/market/total-options-volume` | Total Options Volume | `PublicApi.MarketController.total_options_volume` |
+| `GET` | `/api/market/{sector}/sector-tide` | Sector Tide | `PublicApi.MarketController.sec_indst` |
+| `GET` | `/api/market/{ticker}/etf-tide` | ETF Tide | `PublicApi.MarketController.etf_tide` |
+| `GET` | `/api/net-flow/expiry` | Net Flow Expiry | `PublicApi.NetFlowController.expiry` |
+
+
+### news
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/news/headlines` | News Headlines | `PublicApi.NewsController.headlines` |
+
+
+### option-contract
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/option-contract/{id}/flow` | Flow Data | `PublicApi.OptionContractController.flow` |
+| `GET` | `/api/option-contract/{id}/historic` | Historic Data | `PublicApi.OptionContractController.history` |
+| `GET` | `/api/option-contract/{id}/intraday` | Intraday Data | `PublicApi.OptionContractController.intraday` |
+| `GET` | `/api/option-contract/{id}/volume-profile` | Volume Profile | `PublicApi.OptionContractController.volume_profile` |
+| `GET` | `/api/stock/{ticker}/expiry-breakdown` | Expiry Breakdown | `PublicApi.OptionContractController.expiry_breakdown` |
+| `GET` | `/api/stock/{ticker}/option-contracts` | Option contracts | `PublicApi.OptionContractController.option_contracts` |
+| `GET` | `/api/stock/{ticker}/option-stance` | Option Trade-Stance Ranking | `PublicApi.OptionContractController.option_stance` |
+
+
+### option-trade
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/option-trades` | Option Trades | `PublicApi.OptionTradeController.index` |
+| `GET` | `/api/option-trades/exchange-breakdown/{date}` | Exchange & Trade Code Breakdown | `PublicApi.OptionTradeController.exchange_breakdown` |
+| `GET` | `/api/option-trades/flow-alerts` | Flow Alerts | `PublicApi.OptionTradeController.flow_alerts` |
+| `GET` | `/api/option-trades/flow-alerts/{id}` | Flow Alert by ID | `PublicApi.OptionTradeController.flow_alert` |
+| `GET` | `/api/option-trades/full-tape/{date}` | Full Tape | `PublicApi.OptionTradeController.full_tape` |
+| `GET` | `/api/option-trades/multi-leg` | Multi-Leg Option Trades | `PublicApi.MultiLegController.index` |
+| `GET` | `/api/option-trades/multi-leg/{id}/legs` | Multi-Leg Trade Legs | `PublicApi.MultiLegController.legs` |
+| `GET` | `/api/option-trades/optionable-tickers` | Optionable Tickers | `PublicApi.OptionTradeController.optionable_tickers` |
+
+
+### options-pulse
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/options-pulse/sectors` | Options Pulse by Sector/Industry | `PublicApi.NasdaqPulseController.sectors` |
+| `GET` | `/api/options-pulse/top` | Options Pulse Scanner | `PublicApi.NasdaqPulseController.top` |
+| `GET` | `/api/options-pulse/total` | Market-wide Options Pulse | `PublicApi.NasdaqPulseController.total` |
+| `GET` | `/api/stock/{ticker}/options-pulse` | Options Pulse for a ticker | `PublicApi.NasdaqPulseController.ticker` |
+
+
+### politician_portfolios
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/politician-portfolios/disclosures` | Annual Disclosures List | `PublicApi.PoliticianPortfoliosController.disclosures` |
+| `GET` | `/api/politician-portfolios/holders/{ticker}` | Politician Portfolio Holders by Ticker | `PublicApi.PoliticianPortfoliosController.holds_ticker` |
+| `GET` | `/api/politician-portfolios/people` | Politicians List | `PublicApi.PoliticianPortfoliosController.people` |
+| `GET` | `/api/politician-portfolios/recent_trades` | Politician Trades | `PublicApi.PoliticianPortfoliosController.recent_trades` |
+| `GET` | `/api/politician-portfolios/{politician_id}` | Politician Portfolios | `PublicApi.PoliticianPortfoliosController.portfolios` |
+
+
+### politics
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/politics/fec/candidates` | Candidates with company-linked contributions | `PublicApi.PoliticsFecController.candidates` |
+| `GET` | `/api/politics/fec/companies` | Companies with political activity | `PublicApi.PoliticsFecController.companies` |
+| `GET` | `/api/politics/fec/company/{ticker}/lobbying` | Company lobbying totals and issues | `PublicApi.PoliticsFecController.lobbying` |
+| `GET` | `/api/politics/fec/company/{ticker}/people` | People associated with a company | `PublicApi.PoliticsFecController.people` |
+| `GET` | `/api/politics/fec/contributions` | Company political contributions | `PublicApi.PoliticsFecController.contributions` |
+| `GET` | `/api/politics/politician/trades` | Politician's trades | `PublicApi.PoliticsFecController.politician_trades` |
+
+
+### potus
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/potus/posts` | President's Posts | `PublicApi.PotusController.posts` |
+| `GET` | `/api/potus/schedule` | President's Schedule | `PublicApi.PotusController.schedule` |
+
+
+### predictions
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/predictions/insiders` | Prediction Market Insiders | `PublicApi.PredictionController.insiders` |
+| `GET` | `/api/predictions/market/{asset_id}` | Prediction Market Details | `PublicApi.PredictionController.market` |
+| `GET` | `/api/predictions/market/{asset_id}/liquidity` | Prediction Market Liquidity | `PublicApi.PredictionController.liquidity` |
+| `GET` | `/api/predictions/market/{asset_id}/positions` | Prediction Market Positions | `PublicApi.PredictionController.positions` |
+| `GET` | `/api/predictions/search-users` | Search Prediction Market Users | `PublicApi.PredictionController.search_users` |
+| `GET` | `/api/predictions/smart-money` | Prediction Smart Money | `PublicApi.PredictionController.smart_money` |
+| `GET` | `/api/predictions/unusual` | Unusual Prediction Markets | `PublicApi.PredictionController.unusual` |
+| `GET` | `/api/predictions/user/{user_id}` | Prediction Market User | `PublicApi.PredictionController.user` |
+| `GET` | `/api/predictions/whales` | Prediction Market Whales | `PublicApi.PredictionController.whales` |
+
+
+### private_markets
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/private-markets/companies` | List Private Markets Companies | `PublicApi.PrivateMarketsController.companies` |
+| `GET` | `/api/private-markets/companies/{npm_ticker}` | Private Markets Company Profile | `PublicApi.PrivateMarketsController.company_profile` |
+| `GET` | `/api/private-markets/companies/{npm_ticker}/funding` | Private Markets Funding Rounds | `PublicApi.PrivateMarketsController.funding` |
+| `GET` | `/api/private-markets/companies/{npm_ticker}/investors` | Private Markets Investors for Company | `PublicApi.PrivateMarketsController.investors` |
+| `GET` | `/api/private-markets/companies/{npm_ticker}/management` | Private Markets Management | `PublicApi.PrivateMarketsController.management` |
+| `GET` | `/api/private-markets/companies/{npm_ticker}/pricing` | Private Markets Pricing History | `PublicApi.PrivateMarketsController.pricing` |
+| `GET` | `/api/private-markets/investors` | Top Private Markets Investors | `PublicApi.PrivateMarketsController.top_investors` |
+| `GET` | `/api/private-markets/investors/{name}` | Private Markets Investor Profile | `PublicApi.PrivateMarketsController.investor_profile` |
+| `GET` | `/api/private-markets/search` | Search Private Markets | `PublicApi.PrivateMarketsController.search` |
+
+
+### screener
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/option-activity/unusual` | Unusual Options Activity | `PublicApi.ScreenerController.unusual_activity` |
+| `GET` | `/api/screener/analysts` | Analyst Rating | `PublicApi.ScreenerController.analyst_ratings` |
+| `GET` | `/api/screener/option-contracts` | Hottest Chains | `PublicApi.ScreenerController.contract_screener` |
+| `GET` | `/api/screener/stocks` | Stock Screener | `PublicApi.ScreenerController.stock_screener` |
+| `GET` | `/api/screener/stocks/dsl` | Stock screener query language | `PublicApi.ScreenerController.stock_screener_query_help` |
+
+
+### seasonality
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/seasonality/market` | Market Seasonality | `PublicApi.SeasonalityController.market_seasonality` |
+| `GET` | `/api/seasonality/{month}/performers` | Month Performers | `PublicApi.SeasonalityController.month_performers` |
+| `GET` | `/api/seasonality/{ticker}/monthly` | Average return per month | `PublicApi.SeasonalityController.monthly` |
+| `GET` | `/api/seasonality/{ticker}/year-month` | Price change per month per year | `PublicApi.SeasonalityController.year_month` |
+
+
+### short
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/short_screener` | Short Screener | `PublicApi.ShortController.short_screener` |
+| `GET` | `/api/shorts/{ticker}/data` | Short Data | `PublicApi.ShortController.short_data` |
+| `GET` | `/api/shorts/{ticker}/ftds` | Failures to Deliver | `PublicApi.ShortController.failures_to_deliver` |
+| `GET` | `/api/shorts/{ticker}/interest-float` | V1 Short Interest and Float (Deprecated) | `PublicApi.ShortController.short_interest_and_float` |
+| `GET` | `/api/shorts/{ticker}/interest-float/v2` | V2 Short Interest and Float | `PublicApi.ShortController.short_interest_and_float_v2` |
+| `GET` | `/api/shorts/{ticker}/volume-and-ratio` | Short Volume and Ratio | `PublicApi.ShortController.short_volume_and_ratio` |
+| `GET` | `/api/shorts/{ticker}/volumes-by-exchange` | Short Volume By Exchange | `PublicApi.ShortController.short_volume_by_exchange` |
+
+
+### stock
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/stock/{sector}/tickers` | Companies in Sector | `PublicApi.TickerController.companies_in_sector` |
+| `GET` | `/api/stock/{ticker}/atm-chains` | ATM Chains | `PublicApi.TickerController.atm_chains` |
+| `GET` | `/api/stock/{ticker}/balance-sheets` | Balance Sheets | `PublicApi.AvFundamentalController.balance_sheets` |
+| `GET` | `/api/stock/{ticker}/cash-flows` | Cash Flow Statements | `PublicApi.AvFundamentalController.cash_flows` |
+| `GET` | `/api/stock/{ticker}/earnings` | Earnings History | `PublicApi.AvFundamentalController.earnings` |
+| `GET` | `/api/stock/{ticker}/financials` | Full Financials | `PublicApi.AvFundamentalController.financials` |
+| `GET` | `/api/stock/{ticker}/flow-alerts` | Flow Alerts | `PublicApi.TickerController.flow_alerts` |
+| `GET` | `/api/stock/{ticker}/flow-per-expiry` | Flow per expiry | `PublicApi.TickerController.flow_per_expiry` |
+| `GET` | `/api/stock/{ticker}/flow-per-strike` | Flow per strike | `PublicApi.TickerController.flow_per_strike` |
+| `GET` | `/api/stock/{ticker}/flow-per-strike-intraday` | Flow per strike intraday | `PublicApi.TickerController.flow_per_strike_intraday` |
+| `GET` | `/api/stock/{ticker}/flow-recent` | Recent flows | `PublicApi.TickerController.flow_recent` |
+| `GET` | `/api/stock/{ticker}/fundamental-breakdown` | Fundamental Breakdown | `PublicApi.FundamentalController.show` |
+| `GET` | `/api/stock/{ticker}/greeks` | Greeks | `PublicApi.TickerController.greeks` |
+| `GET` | `/api/stock/{ticker}/historical-risk-reversal-skew` | Historical Risk Reversal Skew | `PublicApi.TickerController.historical_risk_reversal_skew` |
+| `GET` | `/api/stock/{ticker}/income-statements` | Income Statements | `PublicApi.AvFundamentalController.income_statements` |
+| `GET` | `/api/stock/{ticker}/info` | Information | `PublicApi.TickerController.info` |
+| `GET` | `/api/stock/{ticker}/insider-buy-sells` | Insider buy & sells | `PublicApi.TickerController.insider_buy_sell` |
+| `GET` | `/api/stock/{ticker}/interpolated-iv` | Interpolated IV | `PublicApi.TickerController.interpolated_iv` |
+| `GET` | `/api/stock/{ticker}/iv-rank` | IV Rank | `PublicApi.TickerController.iv_rank` |
+| `GET` | `/api/stock/{ticker}/max-pain` | Max Pain | `PublicApi.TickerController.max_pain` |
+| `GET` | `/api/stock/{ticker}/net-prem-ticks` | Call/Put Net/Vol Ticks | `PublicApi.TickerController.net_prem_ticks` |
+| `GET` | `/api/stock/{ticker}/nope` | Nope | `PublicApi.TickerController.nope` |
+| `GET` | `/api/stock/{ticker}/ohlc/{candle_size}` | OHLC | `PublicApi.TickerController.ohlc` |
+| `GET` | `/api/stock/{ticker}/oi-change` | OI Change | `PublicApi.TickerController.oi_change` |
+| `GET` | `/api/stock/{ticker}/oi-per-expiry` | OI per Expiry | `PublicApi.TickerController.oi_per_expiry` |
+| `GET` | `/api/stock/{ticker}/oi-per-strike` | OI per Strike | `PublicApi.TickerController.oi_per_strike` |
+| `GET` | `/api/stock/{ticker}/option-chains` | Option Chains | `PublicApi.TickerController.option_chains` |
+| `GET` | `/api/stock/{ticker}/option/stock-price-levels` | Option Price Levels | `PublicApi.TickerController.option_price_level` |
+| `GET` | `/api/stock/{ticker}/option/volume-oi-expiry` | Volume & OI per Expiry | `PublicApi.TickerController.vol_oi_per_expiry` |
+| `GET` | `/api/stock/{ticker}/options-volume` | Options Volume | `PublicApi.TickerController.options_volume` |
+| `GET` | `/api/stock/{ticker}/ownership` | Ownership | `PublicApi.TickerController.ownership` |
+| `GET` | `/api/stock/{ticker}/quote` | Stock Quote | `PublicApi.StockQuoteController.show` |
+| `GET` | `/api/stock/{ticker}/stock-state` | Stock State | `PublicApi.TickerController.last_stock_state` |
+| `GET` | `/api/stock/{ticker}/stock-volume-price-levels` | Off/Lit Price Levels | `PublicApi.TickerController.stock_volume_price_level` |
+| `GET` | `/api/stock/{ticker}/technical-indicator/{function}` | Technical Indicator | `PublicApi.AvFundamentalController.technical_indicator` |
+| `GET` | `/api/stock/{ticker}/unusualness` | Volume Unusualness | `PublicApi.TickerController.unusualness` |
+| `GET` | `/api/stock/{ticker}/volatility/realized` | Realized Volatility | `PublicApi.TickerController.realized_volatility` |
+| `GET` | `/api/stock/{ticker}/volatility/stats` | Volatility Statistics | `PublicApi.TickerController.volatility_stats` |
+| `GET` | `/api/stock/{ticker}/volatility/term-structure` | Implied Volatility Term Structure | `PublicApi.TickerController.implied_volatility_term_structure` |
+
+
+### stock-directory
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/stock-directory/ticker-exchanges` | Ticker Exchange Mapping | `PublicApi.StockDirectoryController.ticker_exchanges` |
+
+
+### unusual_trades
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/congress/unusual-trades` | Unusual Congressional Trades | `PublicApi.UnusualTradesController.recent` |
+| `GET` | `/api/congress/unusual-trades/by-tickers` | Unusual Trades by Ticker | `PublicApi.UnusualTradesController.by_tickers` |
+| `GET` | `/api/congress/unusual-trades/chart-data` | Unusual Trades Chart Data | `PublicApi.UnusualTradesController.chart_data` |
+| `GET` | `/api/congress/unusual-trades/stats` | Unusual Trades Aggregate Stats | `PublicApi.UnusualTradesController.stats` |
+
+
+### volatility
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/stock/{ticker}/interpolated-iv/distribution` | Interpolated IV Distribution | `PublicApi.VolatilityController.interpolated_iv_distribution` |
+| `GET` | `/api/stock/{ticker}/volatility/anomaly` | Volatility Anomaly Score | `PublicApi.VolatilityController.anomaly` |
+| `GET` | `/api/stock/{ticker}/volatility/character` | Volatility Character | `PublicApi.VolatilityController.character` |
+| `GET` | `/api/stock/{ticker}/volatility/context` | Volatility Context | `PublicApi.VolatilityController.context` |
+| `GET` | `/api/stock/{ticker}/volatility/option-sentiment` | Options Positioning Sentiment | `PublicApi.VolatilityController.option_sentiment` |
+| `GET` | `/api/stock/{ticker}/volatility/realized/windows` | Realized Volatility Windows | `PublicApi.VolatilityController.realized_volatility_windows` |
+| `GET` | `/api/stock/{ticker}/volatility/term-structure/distribution` | Implied Volatility Term Structure Distribution | `PublicApi.VolatilityController.term_structure_distribution` |
+| `GET` | `/api/stock/{ticker}/volatility/variance-risk-premium` | Variance Risk Premium | `PublicApi.VolatilityController.variance_risk_premium` |
+| `GET` | `/api/stock/{ticker}/volatility/variance-risk-premium/windows` | Variance Risk Premium Windows | `PublicApi.VolatilityController.variance_risk_premium_windows` |
+| `GET` | `/api/volatility/anomaly/top` | Top Volatility Anomalies | `PublicApi.VolatilityController.anomaly_top` |
+| `GET` | `/api/volatility/character/top` | Top Volatility Character | `PublicApi.VolatilityController.character_top` |
+| `GET` | `/api/volatility/option-sentiment/top` | Top Options Positioning Sentiment | `PublicApi.VolatilityController.option_sentiment_top` |
+| `GET` | `/api/volatility/vix-term-structure` | VIX Term Structure | `PublicApi.VolatilityController.vix_term_structure` |
+
+
+### watchlists
+
+| Method | Path | Description | Operation ID |
+|--------|------|-------------|--------------|
+| `GET` | `/api/watchlists/options` | Option watchlists | `PublicApi.WatchlistController.option_index` |
+| `POST` | `/api/watchlists/options` | Create option watchlist | `PublicApi.WatchlistController.option_create` |
+| `DELETE` | `/api/watchlists/options/{id}` | Delete option watchlist | `PublicApi.WatchlistController.option_delete` |
+| `PUT` | `/api/watchlists/options/{id}` | Update option watchlist | `PublicApi.WatchlistController.option_update` |
+| `GET` | `/api/watchlists/stocks` | Stock watchlists | `PublicApi.WatchlistController.stock_index` |
+| `POST` | `/api/watchlists/stocks` | Create stock watchlist | `PublicApi.WatchlistController.stock_create` |
+| `DELETE` | `/api/watchlists/stocks/{id}` | Delete stock watchlist | `PublicApi.WatchlistController.stock_delete` |
+| `PUT` | `/api/watchlists/stocks/{id}` | Update stock watchlist | `PublicApi.WatchlistController.stock_update` |
+| `POST` | `/api/watchlists/stocks/{id}/add-tickers` | Add tickers to stock watchlist | `PublicApi.WatchlistController.stock_add_tickers` |
+| `POST` | `/api/watchlists/stocks/{id}/remove-tickers` | Remove tickers from stock watchlist | `PublicApi.WatchlistController.stock_remove_tickers` |
+
+
+
+---
+
+For endpoint details, use the Operation ID from the table above:
+
+```
+curl -H "Accept: text/plain" https://api.unusualwhales.com/docs/operations/{operation_id}
+```
+
+Example:
+```bash
+curl -H "Accept: text/plain" https://api.unusualwhales.com/docs/operations/PublicApi.DarkpoolController.darkpool_ticker
+```
+
+For support: dev@unusualwhales.com

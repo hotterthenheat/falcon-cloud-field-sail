@@ -1,0 +1,87 @@
+/*
+  ThetaData v3, through this app. The browser calls /api/theta; the server
+  forwards to the local terminal at 127.0.0.1:25503/v3. A down terminal is
+  a 503 with code terminal_down — this file does not invent a greek, and it
+  does not hand the server's sentence to a cell.
+*/
+
+let inflight = 0;
+const waiters: (() => void)[] = [];
+const MAX = 2;
+
+function take(): Promise<void> {
+  if (inflight < MAX) {
+    inflight += 1;
+    return Promise.resolve();
+  }
+  return new Promise(resolve => waiters.push(resolve));
+}
+
+function release(): void {
+  inflight -= 1;
+  const next = waiters.shift();
+  if (next) {
+    inflight += 1;
+    next();
+  }
+}
+
+function unwrap(parsed: unknown): unknown {
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const o = parsed as Record<string, unknown>;
+    if (Array.isArray(o.response)) return o.response;
+    if (Array.isArray(o.data)) return o.data;
+  }
+  return parsed;
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2 || !lines[0].includes(',')) return [];
+  const head = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1, 80).map(line => {
+    const cols = line.split(',');
+    const row: Record<string, string> = {};
+    head.forEach((h, i) => {
+      row[h] = (cols[i] ?? '').trim();
+    });
+    return row;
+  });
+}
+
+/** A down terminal is the code, never the server's sentence. */
+function faultText(status: number, parsed: unknown, text: string): string {
+  const o = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  const code = o && typeof o.code === 'string' ? o.code : '';
+  const raw = o ? String(o.error || o.message || '') : typeof parsed === 'string' ? parsed : text;
+  if (code === 'terminal_down' || status === 503 || status === 0 || /not running|thetadata/i.test(raw)) return 'terminal_down';
+  const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
+  return msg || `unavailable ${status}`;
+}
+
+export async function thetaCall(path: string): Promise<{ status: number; data: unknown; error: string | null }> {
+  await take();
+  try {
+    const res = await fetch(`/api/theta${path}`);
+    const text = await res.text();
+    const type = res.headers.get('content-type') || '';
+    let parsed: unknown = null;
+    if (type.includes('json') || text.startsWith('{') || text.startsWith('[')) {
+      try {
+        parsed = text ? JSON.parse(text) : null;
+      } catch {
+        parsed = text;
+      }
+    } else {
+      const rows = parseCsv(text);
+      parsed = rows.length ? rows : text;
+    }
+    const data = unwrap(parsed);
+    if (!res.ok) return { status: res.status, data, error: faultText(res.status, parsed, text) };
+    return { status: res.status, data, error: null };
+  } catch {
+    return { status: 0, data: null, error: 'terminal_down' };
+  } finally {
+    release();
+  }
+}

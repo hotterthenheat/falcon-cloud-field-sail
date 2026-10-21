@@ -1,0 +1,356 @@
+# UnusualWhales API
+
+> The Unusual Whales API provides market data for options flow, dark pool trading, congressional trading, Greek exposure, volatility, and related datasets.
+
+API requests use the base URL `https://api.unusualwhales.com` and require a bearer token in the `Authorization` header. Create and manage API tokens at https://unusualwhales.com/dashboard/api.
+
+Each operation link below returns Markdown. The OpenAPI specification contains the complete machine-readable contract.
+
+## Futures
+
+- [Futures Contracts](https://api.unusualwhales.com/docs/operations/PublicApi.FuturesController.contracts.md): Active CME futures contracts with trading activity over the last days CME sessions (default 3, max 30), most active first. Available on the Advanced API tier, or with the futures add-on — contact oskar@unusualwhales.com...
+- [Futures Display Factors](https://api.unusualwhales.com/docs/operations/PublicApi.FuturesController.display_factors.md): CME per-instrument display factors, used to convert raw integer prices to their displayed decimal values. Filter by asset (e.g. HO, ES, CL) or subtype. Paginate with after_id + limit across the full ~158k contract table. Available on...
+- [Futures Display Factor](https://api.unusualwhales.com/docs/operations/PublicApi.FuturesController.display_factor.md): Display factor for a single CME contract identified by its numeric security_id. Available on the Advanced API tier, or with the futures add-on — contact oskar@unusualwhales.com, enterprise@unusualwhales.com or...
+- [Futures Flow](https://api.unusualwhales.com/docs/operations/PublicApi.FuturesController.flow.md): Newest-first trade prints across ALL contracts, block trades included by default. Each row carries is_block and is_spread. Optional server-side filters narrow the feed. For real time streaming of block trades, subscribe to the...
+- [Futures Candles (OHLCV)](https://api.unusualwhales.com/docs/operations/PublicApi.FuturesController.candles.md): OHLCV candles for a contract. Available on the Advanced API tier, or with the futures add-on — contact oskar@unusualwhales.com, enterprise@unusualwhales.com or nastja.petrovic@unusualwhales.com for access.
+- [Futures Session Stats](https://api.unusualwhales.com/docs/operations/PublicApi.FuturesController.stats.md): Latest session statistics for a contract: official settlement (day-change reference), settlement date, open interest and session volume. Available on the Advanced API tier, or with the futures add-on — contact oskar@unusualwhales.com...
+- [Futures Trades (Time & Sales)](https://api.unusualwhales.com/docs/operations/PublicApi.FuturesController.trades.md): Newest-first trade prints for a contract, cursor-paginated via older_than/newer_than. Response includes both regular and CME block trades by default; each row has is_block to distinguish them. Pass blocks_only=true to return only block...
+
+## Gex/Greeks
+
+- [GEX Levels](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.gex_levels.md): The key gamma-exposure (GEX) price levels for a ticker on a given market date, derived from per-strike net gamma exposure evaluated relative to spot:
+- [Greek Exposure](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.greek_exposure.md): Greek Exposure is the assumed greek exposure that market makers are exposed to.
+- [Greek Exposure By Expiry](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.greek_exposure_by_expiry.md): The greek exposure of a ticker grouped by expiry dates across all contracts on a given market date.
+- [Greek Exposure By Strike](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.greek_exposure_by_strike.md): The greek exposure of a ticker grouped by strike price across all contracts on a given market date.
+- [Greek Exposure By Strike And Expiry](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.greek_exposure_by_strike_expiry.md): The greek exposure of a ticker grouped by strike price for a specific expiry date.
+- [Greek flow](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.greek_flow.md): Returns the tickers greek flow (delta & vega flow) for the given market day broken down per minute. Date must be the current or a past date. If no date is given, returns data for the current/last market day.
+- [Greek flow by expiry](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.greek_flow_expiry.md): Returns the tickers greek flow (delta & vega flow) for the given market day broken down per minute & expiry. Date must be the current or a past date. If no date is given, returns data for the current/last market day.
+- [GEX exposures per 1min](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.spot_exposures_one_minute.md): Returns the GEX exposures for the given ticker per minute.
+- [GEX exposures by strike & expiry](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.spot_exposures_by_strike_expiry_v2.md): Returns the most recent GEX exposures across all strikes for the given ticker and expirations on a given date, one row per strike and expiry. Calculated either with open interest or with volume.
+- [GEX exposures by strike](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.spot_exposures_by_strike.md): Returns the most recent GEX exposures across all strikes for the given ticker on a given date. Calculated either with open interest or with volume.
+- [GEX exposures by strike & expiry (Deprecated)](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.spot_exposures_by_strike_expiry.md): This endpoint has been deprecated and will be removed, please migrate to the new endpoint
+
+## alerts
+
+- [Alerts](https://api.unusualwhales.com/docs/operations/PublicApi.AlertsController.alerts.md): Returns all the alerts that have been triggered for the user.
+- [Alert configurations](https://api.unusualwhales.com/docs/operations/PublicApi.AlertsController.configs.md): Returns all alert configurations of the user.
+- [Create alert configuration](https://api.unusualwhales.com/docs/operations/PublicApi.AlertsController.create_config.md): Creates a new alert configuration, or updates an existing one when id is given.
+- [Alert filters](https://api.unusualwhales.com/docs/operations/PublicApi.AlertsController.filters.md): Returns the available filters for creating alert configurations: - data: per alert type (noti_type) the filter fields that can be used in the config object, each with its accepted values - access: per alert type whether your account can...
+- [Query grammar](https://api.unusualwhales.com/docs/operations/PublicApi.AlertsController.dsl_grammar.md): Returns the grammar of the alert Query language: available targets, syntax, fields, functions, operators, scopes and example expressions.
+
+## commodities
+
+- [Commodity Series](https://api.unusualwhales.com/docs/operations/PublicApi.CommoditiesController.show.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Returns a long-running price series for a commodity.
+
+## companies
+
+- [Company Dividends](https://api.unusualwhales.com/docs/operations/PublicApi.CompaniesController.dividends.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Historical dividend events for a ticker (ex-date, declaration, record, payment, amount).
+- [Forward Earnings Estimates](https://api.unusualwhales.com/docs/operations/PublicApi.CompaniesController.earnings_estimates.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Analyst-driven forward earnings estimates by quarter/year.
+- [Company Profile](https://api.unusualwhales.com/docs/operations/PublicApi.CompaniesController.profile.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Returns a normalized company profile (sector, industry, description, market cap, P/E, dividend yield, etc.).
+- [Company Stock Splits](https://api.unusualwhales.com/docs/operations/PublicApi.CompaniesController.splits.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Historical stock split events for a ticker.
+- [Earnings Call Transcript](https://api.unusualwhales.com/docs/operations/PublicApi.CompaniesController.transcript.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Full earnings-call transcript for a ticker and quarter (e.g. 2024Q1). Returns speakers, sentiment, and statements.
+
+## congress
+
+- [Recent Reports By Trader](https://api.unusualwhales.com/docs/operations/PublicApi.CongressController.congress_trader.md): Returns the recent reports by the given congress member.
+- [Recent Late Reports](https://api.unusualwhales.com/docs/operations/PublicApi.CongressController.congress_late_reports.md): Returns the recent late reports by congress members. If a date is given, will only return recent late reports, which's report date is <= the given input date.
+- [List of Politicians with Trade Data](https://api.unusualwhales.com/docs/operations/PublicApi.CongressController.congress_politicians.md): Returns a distinct list of politicians for which trade data exists. Use last_traded_within_months to filter to only recently-active politicians (e.g. 13 for last 13 months). Each entry includes trade count, first/last trade date, party...
+- [Recent Congress Trades](https://api.unusualwhales.com/docs/operations/PublicApi.CongressController.congress_recent_trades.md): Returns the latest transacted trades by congress members. If a date is given, will only return reports, which's transaction date is <= the given input date.
+
+## crypto
+
+- [Get Crypto API OHLC Candles.](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.get_candles.md): Returns OHLC candles for a token.
+- [Get a list of tokens.](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.list_tokens.md): Returns a list of tokens meeting specified filter criteria.
+- [Get token metadata.](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.get_token.md): Returns token metadata for a given token address.
+- [Get a list of trades.](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.list_trades.md): Return a list of trades for a token pair.
+- [Crypto Whale Transactions](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.whale_transactions.md): Returns recent whale transactions.
+- [Recent Crypto Whale Trades](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.whales_recent.md): Returns recent large crypto trades (whale trades) across all pairs.
+- [Crypto OHLC Candles](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.ohlc.md): Returns OHLC candle data for a crypto pair. Available candle sizes: 1m, 5m, 10m, 15m, 30m, 1h, 4h, 1d, 1w
+- [Crypto Pair State](https://api.unusualwhales.com/docs/operations/PublicApi.CryptoController.state.md): Returns the current state for a crypto pair including 24h OHLCV data.
+
+## darkpool
+
+- [Recent Darkpool Trades](https://api.unusualwhales.com/docs/operations/PublicApi.DarkpoolController.darkpool_recent.md): Returns the latest darkpool trades.
+- [Ticker Darkpool Trades](https://api.unusualwhales.com/docs/operations/PublicApi.DarkpoolController.darkpool_ticker.md): Returns the darkpool trades for the given ticker on a given day. Date must be the current or a past date. If no date is given, returns data for the current/last market day.
+- [Darkpool Price Levels](https://api.unusualwhales.com/docs/operations/PublicApi.DarkpoolController.darkpool_price_levels.md): Returns rounded darkpool and regular stock volume concentration by price level for one ticker. Each price is grouped into a bucket to highlight areas where trading activity is concentrated. Date must be the current or a past date. If no...
+
+## digital_currencies
+
+- [Digital Currency Historical Series](https://api.unusualwhales.com/docs/operations/PublicApi.DigitalCurrenciesController.history.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Daily, weekly, or monthly OHLC bars for a digital asset.
+- [Digital Currency Intraday Series](https://api.unusualwhales.com/docs/operations/PublicApi.DigitalCurrenciesController.intraday.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Intraday OHLC bars for a digital asset against a fiat market.
+
+## earnings
+
+- [Afterhours](https://api.unusualwhales.com/docs/operations/PublicApi.EarningsController.afterhours.md): Returns the afterhours earnings for a given date.
+- [Premarket](https://api.unusualwhales.com/docs/operations/PublicApi.EarningsController.premarket.md): Returns the premarket earnings for a given date.
+- [Historical Ticker Earnings](https://api.unusualwhales.com/docs/operations/PublicApi.EarningsController.ticker.md): Returns the historical earnings for the given ticker.
+
+## economy
+
+- [Economic Indicator](https://api.unusualwhales.com/docs/operations/PublicApi.EconomyController.show.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Returns a long-running US economic indicator series.
+
+## etfs
+
+- [Exposure](https://api.unusualwhales.com/docs/operations/PublicApi.EtfController.exposure.md): Returns all ETFs in which the given ticker is a holding
+- [Holdings](https://api.unusualwhales.com/docs/operations/PublicApi.EtfController.holdings.md): Returns the holdings of the ETF
+- [Inflow & Outflow](https://api.unusualwhales.com/docs/operations/PublicApi.EtfController.in_outflow.md): Returns an ETF's inflow and outflow. Defaults to the last year of data. Maximum date range is 3 years.
+- [Information](https://api.unusualwhales.com/docs/operations/PublicApi.EtfController.info.md): Returns the information about the given ETF ticker.
+- [Sector & Country weights](https://api.unusualwhales.com/docs/operations/PublicApi.EtfController.weights.md): Returns the sector & country weights for the given ETF ticker.
+
+## flex-options
+
+- [FLEX option contracts](https://api.unusualwhales.com/docs/operations/PublicApi.FlexOptionsController.contracts.md): Returns the FLEX option contracts of date, together with each contract's open interest and mark on the previous trading day.
+- [FLEX option contract history](https://api.unusualwhales.com/docs/operations/PublicApi.FlexOptionsController.chain.md): Returns the daily open interest and mark of one FLEX option contract over the last two years, sorted by date ascending.
+- [FLEX market overview](https://api.unusualwhales.com/docs/operations/PublicApi.FlexOptionsController.market.md): Returns two lists:
+- [FLEX ticker history](https://api.unusualwhales.com/docs/operations/PublicApi.FlexOptionsController.ticker.md): Returns the daily FLEX open interest and number of FLEX option contracts of a ticker over the last two years, sorted by date ascending. Days without FLEX open interest for the ticker are omitted.
+
+## forex
+
+- [FX Historical Series](https://api.unusualwhales.com/docs/operations/PublicApi.ForexController.history.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Daily, weekly, or monthly OHLC bars for a currency pair.
+- [FX Intraday Series](https://api.unusualwhales.com/docs/operations/PublicApi.ForexController.intraday.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Intraday OHLC bars for a currency pair.
+- [FX Spot Rate](https://api.unusualwhales.com/docs/operations/PublicApi.ForexController.rate.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Realtime spot exchange rate between two currencies.
+
+## group_flow
+
+- [Greek flow](https://api.unusualwhales.com/docs/operations/PublicApi.GroupFlowController.greek_flow.md): Returns the group flow's greek flow (delta & vega flow) for the given market day broken down per minute. Date must be the current or a past date. If no date is given, returns data for the current/last market day.
+- [Greek flow by expiry](https://api.unusualwhales.com/docs/operations/PublicApi.GroupFlowController.greek_flow_expiry.md): Returns the group flow's greek flow (delta & vega flow) for the given market day broken down per minute & expiry. Date must be the current or a past date. If no date is given, returns data for the current/last market day.
+
+## insiders
+
+- [Transactions](https://api.unusualwhales.com/docs/operations/PublicApi.InsiderController.transactions.md): Returns the latest insider transactions.
+- [Sector Flow](https://api.unusualwhales.com/docs/operations/PublicApi.InsiderController.sector_flow.md): Returns an aggregated view of the insider flow for the given sector.
+- [Insiders](https://api.unusualwhales.com/docs/operations/PublicApi.InsiderController.insiders.md): Returns all insiders for the given ticker
+- [Ticker Flow](https://api.unusualwhales.com/docs/operations/PublicApi.InsiderController.ticker_flow.md): Returns an aggregated view of the insider flow for the given ticker.
+
+## institution
+
+- [Institutional Activity (Deprecated)](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.activity.md): The trading activities for a given institution.
+- [Institutional Activity](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.activity_v2.md): The trading activities for a given institution.
+- [Institutional Holdings](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.holdings.md): Returns the holdings for a given institution.
+- [Sector Exposure](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.sectors.md): The sector exposure for a given institution.
+- [Institutional Option Holders](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.option_holders.md): The institutions that reported call or put positions in a given ticker in their 13F filings.
+- [Institutional Ownership](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.ownership.md): The institutional ownership of a given ticker.
+- [List of Institutions](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.list.md): Returns a list of institutions.
+- [Latest Filings](https://api.unusualwhales.com/docs/operations/PublicApi.InstitutionController.latest_filings.md): The latest institutional filings.
+
+## intel
+
+- [Sliding-Window Analytics](https://api.unusualwhales.com/docs/operations/PublicApi.IntelController.analytics_sliding.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Sliding window statistical analytics across one or more tickers.
+- [Fixed-Window Analytics](https://api.unusualwhales.com/docs/operations/PublicApi.IntelController.analytics_window.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Statistical analytics over a fixed window across one or more tickers. Returns mean, stddev, correlation, etc.
+- [IPO Calendar](https://api.unusualwhales.com/docs/operations/PublicApi.IntelController.ipo_calendar.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Upcoming IPOs in the next 3 months.
+- [Active or Delisted Securities](https://api.unusualwhales.com/docs/operations/PublicApi.IntelController.listings.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). All US-traded securities, optionally filtered to delisted as of a given date.
+- [Top Movers](https://api.unusualwhales.com/docs/operations/PublicApi.IntelController.movers.md): Requires Advanced+ tier (Advanced, Enterprise, or Enterprise + Kafka). Top gainers, top losers, and most actively traded US tickers for the latest session.
+
+## lit-flow
+
+- [Recent Lit Flow Trades](https://api.unusualwhales.com/docs/operations/PublicApi.LitFlowController.lit_flow_recent.md): Returns the latest lit exchange trades.
+- [Ticker Lit Flow Trades](https://api.unusualwhales.com/docs/operations/PublicApi.LitFlowController.lit_flow_ticker.md): Returns the lit exchange trades for the given ticker on a given day.
+
+## market
+
+- [Correlations](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.correlations.md): Returns the correlations between a list of tickers. Date must be the current or a past date. If no date is given, returns data for the current/last market day.
+- [Daily Market Report](https://api.unusualwhales.com/docs/operations/PublicApi.MarketReportController.daily_report.md): A curated daily report: today's biggest up-moves in volatility and biggest moves in skew over the liquid options universe (reliably adjusted and cleaned for liquidity and outliers via the anomaly universe), plus the top net-premium...
+- [Economic calendar](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.events.md): Returns the economic calendar.
+- [FDA Calendar](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.fda_calendar.md): Returns FDA calendar data with filtering options.
+- [Total Insider Buy & Sells](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.insider_buy_sells.md): Returns the total amount of purchases & sells as well as notional values for insider transactions across the market
+- [Market Tide](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.market_tide.md): Market Tide is a proprietary tool that can be viewed from the Market Overview page. The Market Tide chart provides real time data based on a proprietary formula that examines market wide options activity and filters out 'noise'.
+- [OI Change](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.oi_change.md): Returns the non-Index/non-ETF contracts and OI (open interest) change data with the highest OI change (default: descending).
+- [Sector Etfs](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.sector_etfs.md): Returns the current trading days statistics for the SPDR sector etfs.
+- [Top Net Impact](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.top_net_impact.md): Returns the top tickers by net premium (half bullish, half bearish). Defaults to last market day.
+- [Total Options Volume](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.total_options_volume.md): Returns the total options volume and premium for all trade executions that happened on a given trading date.
+- [Sector Tide](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.sec_indst.md): The Sector tide is similar to the Market Tide. While the market tide is based on options activity of the whole market the sector tide is only based on the options activity of companies which are in that specific sector
+- [ETF Tide](https://api.unusualwhales.com/docs/operations/PublicApi.MarketController.etf_tide.md): The ETF tide is similar to the Market Tide. While the market tide is based on options activity of the whole market the ETF tide is only based on the options activity of the holdings of the specified ETF.
+- [Net Flow Expiry](https://api.unusualwhales.com/docs/operations/PublicApi.NetFlowController.expiry.md): Returns net premium flow by tide_type category, moneyness category, and expiration category, allowing you to create chart variations like https://unusualwhales.com/zero-dte:
+
+## news
+
+- [News Headlines](https://api.unusualwhales.com/docs/operations/PublicApi.NewsController.headlines.md): Returns the latest news headlines for financial markets.
+
+## option-contract
+
+- [Flow Data](https://api.unusualwhales.com/docs/operations/PublicApi.OptionContractController.flow.md): Returns the last 50 option trades for the given option chain. Optionally a min premium and a side can be supplied in the query for further filtering. If no date is specified data for the last trading day is being returned.
+- [Historic Data](https://api.unusualwhales.com/docs/operations/PublicApi.OptionContractController.history.md): Returns for every trading day historic data for the given option contract.
+- [Intraday Data](https://api.unusualwhales.com/docs/operations/PublicApi.OptionContractController.intraday.md): Returns 1 minute interval intraday data for the given option contract.
+- [Volume Profile](https://api.unusualwhales.com/docs/operations/PublicApi.OptionContractController.volume_profile.md): Returns the volume profile (volume - sweep, floor, cross, ask, bid, etc. - per fill price) for an option symbol on a given trading day. Date must be the current or a past date. If no date is given, returns data for the current/last...
+- [Expiry Breakdown](https://api.unusualwhales.com/docs/operations/PublicApi.OptionContractController.expiry_breakdown.md): Returns all expirations for the given trading day for a ticker.
+- [Option contracts](https://api.unusualwhales.com/docs/operations/PublicApi.OptionContractController.option_contracts.md): Returns all option contracts for the given ticker.
+- [Option Trade-Stance Ranking](https://api.unusualwhales.com/docs/operations/PublicApi.OptionContractController.option_stance.md): Ranks a ticker's option contracts by how well their mechanics fit a chosen trade stance, across all recent expiries and strikes. Returns a 0–5 fit_score plus named 0–1 sub-scores (iv_regime, greeks_fit, dte_fit, liquidity...
+
+## option-trade
+
+- [Option Trades](https://api.unusualwhales.com/docs/operations/PublicApi.OptionTradeController.index.md): Filter the full option trades tape.
+- [Exchange & Trade Code Breakdown](https://api.unusualwhales.com/docs/operations/PublicApi.OptionTradeController.exchange_breakdown.md): Aggregates the option tape for one or more tickers on a single trading date, grouped by the options exchange the prints executed on (e.g. AMXO, ARCO, BATO).
+- [Flow Alerts](https://api.unusualwhales.com/docs/operations/PublicApi.OptionTradeController.flow_alerts.md): Flow alerts are rule based aggregations on the full tape of option trades.
+- [Flow Alert by ID](https://api.unusualwhales.com/docs/operations/PublicApi.OptionTradeController.flow_alert.md): Returns the trades that made up the specific alert. For multi leg flow alert trades it will return all the related multi leg trades. For alerts such as RepeatedHits it will return all the transactions that made up that alert.
+- [Full Tape](https://api.unusualwhales.com/docs/operations/PublicApi.OptionTradeController.full_tape.md): Download all option transactions (the "full tape") for a given trading date.
+- [Multi-Leg Option Trades](https://api.unusualwhales.com/docs/operations/PublicApi.MultiLegController.index.md): A live feed of detected multi-leg option strategies — vertical spreads, iron condors, butterflies, calendars, diagonals and more — reconstructed from their individual legs, newest first. Each row summarizes the strategy (fill/net price...
+- [Multi-Leg Trade Legs](https://api.unusualwhales.com/docs/operations/PublicApi.MultiLegController.legs.md): Returns the individual option legs that make up a single multi-leg strategy, aggregated by contract with size-weighted greeks and prices. Pass the strategy id returned by the Multi-Leg Option Trades feed.
+- [Optionable Tickers](https://api.unusualwhales.com/docs/operations/PublicApi.OptionTradeController.optionable_tickers.md): Returns the current universe of underlying symbols that have listed options (sourced from the Nasdaq option-root locators), sorted alphabetically. Query this daily to track new listings and delistings.
+
+## options-pulse
+
+- [Options Pulse by Sector/Industry](https://api.unusualwhales.com/docs/operations/PublicApi.NasdaqPulseController.sectors.md): Latest Nasdaq Options Pulse sentiment for each sector and industry on a date.
+- [Options Pulse Scanner](https://api.unusualwhales.com/docs/operations/PublicApi.NasdaqPulseController.top.md): Cross-symbol scanner: the latest intraday sentiment per ticker on a date, ranked by sentiment. direction bullish ranks highest sentiment first, bearish lowest first. Filterable by ticker (prefix), min_score/max_score, and min_txn...
+- [Market-wide Options Pulse](https://api.unusualwhales.com/docs/operations/PublicApi.NasdaqPulseController.total.md): The market-wide Nasdaq Options Pulse gauge: latest snapshot + intraday series for a date.
+- [Options Pulse for a ticker](https://api.unusualwhales.com/docs/operations/PublicApi.NasdaqPulseController.ticker.md): The Nasdaq Options Pulse sentiment for a single ticker: the latest intraday snapshot plus the full intraday series (hr_min buckets) for the trade date. sntm_score is the running daily sentiment, intvl_sntm_score the per-bucket...
+
+## politician_portfolios
+
+- [Annual Disclosures List](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticianPortfoliosController.disclosures.md): Returns all annual disclosure file records for politicians. Can be filtered by politician_id and/or limited to latest per politician.
+- [Politician Portfolio Holders by Ticker](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticianPortfoliosController.holds_ticker.md): Returns all politician portfolio owner names, ID, and holdings for the specified ticker.
+- [Politicians List](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticianPortfoliosController.people.md): Returns all politician names and IDs.
+- [Politician Trades](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticianPortfoliosController.recent_trades.md): Returns the latest transacted trades by congress members. If a date is given, will only return reports, which's transaction date is <= the given input date.
+- [Politician Portfolios](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticianPortfoliosController.portfolios.md): Returns all portfolios and holdings for a politician.
+
+## politics
+
+- [Candidates with company-linked contributions](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticsFecController.candidates.md): Federal candidates ranked by company-linked money received in a cycle: PAC-tier totals, employee-tier estimates, number of distinct companies, and basic candidate info with the linked politician where known.
+- [Companies with political activity](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticsFecController.companies.md): Every public company with tracked political activity: confirmed corporate PAC count, PAC-tier contribution totals, employee-tier estimates (estimated contributions by self-reported employees, kept separate from PAC numbers), party...
+- [Company lobbying totals and issues](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticsFecController.lobbying.md): Lobbying spend per quarter for a company from Senate LDA filings, in-house expenses (self-filed reports), and outside income (hired-firm reports) as separate series, with the top issue codes per period. include_filings=true adds the...
+- [People associated with a company](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticsFecController.people.md): The people around a public company: candidates funded by its PAC and employees (with totals), politicians who traded the stock, and company insiders.
+- [Company political contributions](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticsFecController.contributions.md): The company-politics contribution feed. With aggregated=true (the default) rows are at the company × candidate × cycle × tier grain - filter by ticker for a company's candidates, or by candidate_id for a candidate's companies. With...
+- [Politician's trades](https://api.unusualwhales.com/docs/operations/PublicApi.PoliticsFecController.politician_trades.md): Trades reported by members of congress, with the politician linked where known. If a date is given, will only return trades whose transaction date is <= the given input date.
+
+## potus
+
+- [President's Posts](https://api.unusualwhales.com/docs/operations/PublicApi.PotusController.posts.md): Returns the President's short-form social media posts (currently Truth Social), newest first.
+- [President's Schedule](https://api.unusualwhales.com/docs/operations/PublicApi.PotusController.schedule.md): Returns the President's public schedule for a given date, newest first by start time.
+
+## predictions
+
+- [Prediction Market Insiders](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.insiders.md): Returns potential insider activity on prediction markets.
+- [Prediction Market Details](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.market.md): Returns prediction market details for a given asset ID.
+- [Prediction Market Liquidity](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.liquidity.md): Returns liquidity data for a given prediction market asset.
+- [Prediction Market Positions](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.positions.md): Returns positions for a given prediction market asset.
+- [Search Prediction Market Users](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.search_users.md): Search for prediction market users by query.
+- [Prediction Smart Money](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.smart_money.md): Returns profitable prediction market traders. Categories: Crypto, Culture, Finance, Politics, Science, Sports, Technology.
+- [Unusual Prediction Markets](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.unusual.md): Returns prediction markets with unusual activity. Categories: Crypto, Culture, Finance, Politics, Science, Sports, Technology.
+- [Prediction Market User](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.user.md): Returns a prediction market user profile by user/wallet ID.
+- [Prediction Market Whales](https://api.unusualwhales.com/docs/operations/PublicApi.PredictionController.whales.md): Returns large prediction market traders.
+
+## private_markets
+
+- [List Private Markets Companies](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.companies.md): Returns Nasdaq Private Markets companies, optionally filtered by sector or name. Sorted alphabetically.
+- [Private Markets Company Profile](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.company_profile.md): Returns a profile for a single private-markets company including the latest pricing tick, total funding raised across known rounds, and the count of disclosed investors.
+- [Private Markets Funding Rounds](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.funding.md): Returns the funding round history for a single private-markets company, ordered most-recent first.
+- [Private Markets Investors for Company](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.investors.md): Returns the disclosed investors for a single private-markets company, ordered alphabetically.
+- [Private Markets Management](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.management.md): Returns disclosed management/leadership for a single private-markets company.
+- [Private Markets Pricing History](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.pricing.md): Returns historical implied per-share pricing for a single private-markets company.
+- [Top Private Markets Investors](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.top_investors.md): Returns the most prolific investors across the private-markets dataset, ordered by distinct company count (descending).
+- [Private Markets Investor Profile](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.investor_profile.md): Returns the portfolio of companies for a specific investor (by name).
+- [Search Private Markets](https://api.unusualwhales.com/docs/operations/PublicApi.PrivateMarketsController.search.md): Substring-search across private-markets companies and investors.
+
+## screener
+
+- [Unusual Options Activity](https://api.unusualwhales.com/docs/operations/PublicApi.ScreenerController.unusual_activity.md): Returns option contracts flagged as unusual — the API equivalent of the live options flow "unusual" view.
+- [Analyst Rating](https://api.unusualwhales.com/docs/operations/PublicApi.ScreenerController.analyst_ratings.md): Returns the latest analyst ratings, optionally filtered by ticker, action, recommendation, or published timestamp.
+- [Hottest Chains](https://api.unusualwhales.com/docs/operations/PublicApi.ScreenerController.contract_screener.md): A contract screener endpoint to screen the market for contracts by a variety of filter options.
+- [Stock Screener](https://api.unusualwhales.com/docs/operations/PublicApi.ScreenerController.stock_screener.md): A complet stock market screener which can be used to screen for etfs in-/outflow, tickers by various volatility metrics such as steepness, IV rank, realized volatility, expected moves, companies where insiders bought shares over 3m, 6m...
+- [Stock screener query language](https://api.unusualwhales.com/docs/operations/PublicApi.ScreenerController.stock_screener_query_help.md): Returns an EBNF grammar, syntax notes, examples, function argument counts, supported fields, aliases, types, descriptions, keywords, operators, functions, scopes, and available watchlist names for the stock screener query parameter.
+
+## seasonality
+
+- [Market Seasonality](https://api.unusualwhales.com/docs/operations/PublicApi.SeasonalityController.market_seasonality.md): Returns the average return by month for the tickers SPY, QQQ, IWM, XLE, XLC, XLK, XLV, XLP, XLY, XLRE, XLF, XLI, XLB .
+- [Month Performers](https://api.unusualwhales.com/docs/operations/PublicApi.SeasonalityController.month_performers.md): Returns the tickers with the highest performance in terms of price change in the month over the years. Per default the result is ordered by 'positive_months_perc' descending, then 'median_change' descending, then 'marketcap' descending.
+- [Average return per month](https://api.unusualwhales.com/docs/operations/PublicApi.SeasonalityController.monthly.md): Returns the average return by month for the given ticker.
+- [Price change per month per year](https://api.unusualwhales.com/docs/operations/PublicApi.SeasonalityController.year_month.md): Returns the relative price change for all past months over multiple years.
+
+## short
+
+- [Short Screener](https://api.unusualwhales.com/docs/operations/PublicApi.ShortController.short_screener.md): Returns short interest and float data for percentage calculations based off search params. This endpoint provides information about the percentage of float that is shorted, the float size, and the days to cover metric.
+- [Short Data](https://api.unusualwhales.com/docs/operations/PublicApi.ShortController.short_data.md): Returns short data including rebate rate and short shares available for a ticker.
+- [Failures to Deliver](https://api.unusualwhales.com/docs/operations/PublicApi.ShortController.failures_to_deliver.md): Returns the short failures to deliver per day for the given ticker starting from the given date. If no date is given, returns the data for the current/last market day.
+- [V1 Short Interest and Float (Deprecated)](https://api.unusualwhales.com/docs/operations/PublicApi.ShortController.short_interest_and_float.md): Deprecated. Use /api/shorts/{ticker}/interest-float/v2.
+- [V2 Short Interest and Float](https://api.unusualwhales.com/docs/operations/PublicApi.ShortController.short_interest_and_float_v2.md): Returns short interest, float size, days-to-cover, and related percentage calculations for a given ticker.
+- [Short Volume and Ratio](https://api.unusualwhales.com/docs/operations/PublicApi.ShortController.short_volume_and_ratio.md): Returns short volume and short ratio data for a ticker.
+- [Short Volume By Exchange](https://api.unusualwhales.com/docs/operations/PublicApi.ShortController.short_volume_by_exchange.md): Returns short volume data broken down by exchange for a ticker.
+
+## stock
+
+- [Companies in Sector](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.companies_in_sector.md): Returns a list of tickers which are in the given sector.
+- [ATM Chains](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.atm_chains.md): Returns the ATM chains for the given expirations
+- [Balance Sheets](https://api.unusualwhales.com/docs/operations/PublicApi.AvFundamentalController.balance_sheets.md): Returns balance sheet data including assets, liabilities, equity, debt structure, intangibles, goodwill, receivables, inventory, and shares outstanding.
+- [Cash Flow Statements](https://api.unusualwhales.com/docs/operations/PublicApi.AvFundamentalController.cash_flows.md): Returns cash flow data including operating, investing, and financing cashflows, capital expenditures, dividend payouts, stock buybacks, and stock-based compensation.
+- [Earnings History](https://api.unusualwhales.com/docs/operations/PublicApi.AvFundamentalController.earnings.md): Returns earnings data including reported EPS, estimated EPS, surprise amount, surprise percentage, and report timing (pre/post market).
+- [Full Financials](https://api.unusualwhales.com/docs/operations/PublicApi.AvFundamentalController.financials.md): Returns full financial data for the given ticker, including income statements, balance sheets, cash flows, and earnings. Supports both annual and quarterly data.
+- [Flow Alerts](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.flow_alerts.md): Deprecated. Use /api/option-trades/flow-alerts, which supports the full filter set: https://api.unusualwhales.com/docs#/operations/PublicApi.OptionTradeController.flow_alerts
+- [Flow per expiry](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.flow_per_expiry.md): Returns the option flow per expiry for the last trading day
+- [Flow per strike](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.flow_per_strike.md): Returns the option flow per strike for a given trading day.
+- [Flow per strike intraday](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.flow_per_strike_intraday.md): Returns the options flow for a given date in one minute intervals (the one minute intervals are not aggregated with each other).
+- [Recent flows](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.flow_recent.md): Returns the latest flows for the given ticker. Optionally a min premium and a side can be supplied in the query for further filtering.
+- [Fundamental Breakdown](https://api.unusualwhales.com/docs/operations/PublicApi.FundamentalController.show.md): Returns the fundamental financial data for the given ticker, including earnings per share, revenue, dividends, share counts, RSU data, and revenue breakdowns by product and geography.
+- [Greeks](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.greeks.md): Returns the greeks for each strike for a single expiry date.
+- [Historical Risk Reversal Skew](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.historical_risk_reversal_skew.md): Returns the historical risk reversal skew (the difference between put and call volatility) at a delta of 25 or 10 (colloquial for 0.25 or 0.1) for a given expiry date.
+- [Income Statements](https://api.unusualwhales.com/docs/operations/PublicApi.AvFundamentalController.income_statements.md): Returns income statement data including revenue, gross profit, operating income, EBIT, EBITDA, net income, R&D, SG&A, depreciation, interest, and tax expenses.
+- [Information](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.info.md): Returns a information about the given ticker.
+- [Insider buy & sells](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.insider_buy_sell.md): Returns the total amount of purchases & sells as well as notional values for insider transactions for the given ticker
+- [Interpolated IV](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.interpolated_iv.md): Returns the Interpolated IV for a given trading day. If there is no expiration then the data is calcualted via linear interpolation with the next 2 closest expirations
+- [IV Rank](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.iv_rank.md): Returns the IV rank data for a ticker over a period of time. IV rank is a measure of where current implied volatility stands relative to its historical range.
+- [Max Pain](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.max_pain.md): Returns the max pain for all expirations for the given ticker for the last 120 days
+- [Call/Put Net/Vol Ticks](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.net_prem_ticks.md): Returns the net premium ticks for a given ticker which can be used to build the following chart: !Net Prem chart
+- [Nope](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.nope.md): Returns the tickers NOPE for the given market day broken down per minute.
+- [OHLC](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.ohlc.md): Returns the Open High Low Close (OHLC) candle data for a given ticker.
+- [OI Change](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.oi_change.md): Returns the tickers contracts' OI change data ordered by absolute OI change (default: descending). Date must be the current or a past date. If no date is given, returns data for the current/last market day.
+- [OI per Expiry](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.oi_per_expiry.md): Returns the total open interest for calls and puts for a specific expiry date.
+- [OI per Strike](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.oi_per_strike.md): Returns the total open interest for calls and puts for a specific strike.
+- [Option Chains](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.option_chains.md): Returns all option symbols for the given ticker that were present at the given day.
+- [Option Price Levels](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.option_price_level.md): Returns the call and put volume per price level for the given ticker.
+- [Volume & OI per Expiry](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.vol_oi_per_expiry.md): Returns the total volume and open interest per expiry for the given ticker.
+- [Options Volume](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.options_volume.md): Returns the options volume & premium for all trade executions that happened on a given trading date for the given ticker.
+- [Ownership](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.ownership.md): Returns the institutions, insider trades and politicians with the most shares.
+- [Stock Quote](https://api.unusualwhales.com/docs/operations/PublicApi.StockQuoteController.show.md): Returns the latest trade, national best bid and ask, derived quote values, and quote change statistics for each market session.
+- [Stock State](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.last_stock_state.md): Returns the last stock state for the given ticker.
+- [Off/Lit Price Levels](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.stock_volume_price_level.md): Returns the lit & off lit stock volume per price level for the given ticker.
+- [Technical Indicator](https://api.unusualwhales.com/docs/operations/PublicApi.AvFundamentalController.technical_indicator.md): Returns any technical indicator time series for a ticker. Supports international stocks and OTC.
+- [Volume Unusualness](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.unusualness.md): How unusual the ticker's volume is today vs its own trailing ~90 trading days, as a percentile (0-100) and decile (1-10) for both regular-session stock volume and total (call + put) option volume. This is outlier-robust and comparable...
+- [Realized Volatility](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.realized_volatility.md): Returns implied and realized volatility history for a ticker. days selects the realized volatility horizon in trading days. Each realized horizon uses its mapped implied volatility horizon. The default is 21 trading days of realized...
+- [Volatility Statistics](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.volatility_stats.md): Returns comprehensive volatility statistics for a ticker on a specific date, including implied volatility data, realized volatility data, and their respective high/low values for the past year.
+- [Implied Volatility Term Structure](https://api.unusualwhales.com/docs/operations/PublicApi.TickerController.implied_volatility_term_structure.md): The average of the latest volatilities for the at the money call and put contracts for every expiry date.
+
+## stock-directory
+
+- [Ticker Exchange Mapping](https://api.unusualwhales.com/docs/operations/PublicApi.StockDirectoryController.ticker_exchanges.md): Returns a mapping of all tickers to their exchanges.
+
+## unusual_trades
+
+- [Unusual Congressional Trades](https://api.unusualwhales.com/docs/operations/PublicApi.UnusualTradesController.recent.md): Returns congressional trades that have been flagged as unusual, optionally filtered by reason tags. Supported types values include committee_conflict, first_person_to_trade, low_marketcap, unusual_industry, unusually_large_trade, and...
+- [Unusual Trades by Ticker](https://api.unusualwhales.com/docs/operations/PublicApi.UnusualTradesController.by_tickers.md): Returns congressional trades filtered by one or more tickers, with optional date range, transaction type, and politician name filters. Includes price-at-trade and current-price context.
+- [Unusual Trades Chart Data](https://api.unusualwhales.com/docs/operations/PublicApi.UnusualTradesController.chart_data.md): Returns trade points (with price context) and SPY daily closes over the requested date range, suitable for plotting congressional trade activity against the broader market. Defaults to the last ~4 months when no range is supplied.
+- [Unusual Trades Aggregate Stats](https://api.unusualwhales.com/docs/operations/PublicApi.UnusualTradesController.stats.md): Returns the most recent cached overview statistics: top 30 politicians by unusual trade count, party/chamber breakdowns, committee and industry groupings, top tickers, biggest trades, and daily trade volume series with SPY benchmark.
+
+## volatility
+
+- [Interpolated IV Distribution](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.interpolated_iv_distribution.md): Returns one row per fixed maturity with the range of its interpolated implied volatility over the 365 calendar days ending on date. Each row holds the minimum, first quartile, median, third quartile and maximum of the daily values, the...
+- [Volatility Anomaly Score](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.anomaly.md): The volatility anomaly score (and recent history) for a ticker — a composite signal flagging unusually rich/cheap volatility.
+- [Volatility Character](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.character.md): The volatility character (Hurst exponent / mean-reversion half-life / entropy) and history for a ticker.
+- [Volatility Context](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.context.md): Returns the volatility context for a ticker on one date: 30-day implied volatility with its one-year rank and percentile, realized volatility, the term structure regime (contango, flat or backwardation), the 25-delta skew with a...
+- [Options Positioning Sentiment](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.option_sentiment.md): Per-ticker options positioning sentiment (and recent history): VWKS (volume-weighted strike-spot "center of volume mass") and AVAR (call vs put IV asymmetry), blended into a bullish/bearish score. Positive = bullish positioning (volume...
+- [Realized Volatility Windows](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.realized_volatility_windows.md): Returns every realized volatility horizon with a completion date in the requested calendar lookback. history_days defaults to 365 and cannot exceed 365. Rows are ordered by completion date from newest to oldest.
+- [Implied Volatility Term Structure Distribution](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.term_structure_distribution.md): Returns one row per expiry with the range of that expiry's at the money implied volatility over the 365 calendar days ending on date. Each row holds the minimum, first quartile, median, third quartile and maximum of the daily values...
+- [Variance Risk Premium](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.variance_risk_premium.md): Returns variance risk premium history for a ticker. days selects the realized volatility horizon in trading days. The default is 21 trading days paired with 30 calendar days of implied volatility.
+- [Variance Risk Premium Windows](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.variance_risk_premium_windows.md): Returns every variance risk premium horizon with an implied volatility observation date in the requested calendar lookback. history_days defaults to 365 and cannot exceed 365. Rows are ordered by observation date from newest to oldest...
+- [Top Volatility Anomalies](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.anomaly_top.md): Screener of the top volatility anomalies on a date, by direction (short_vol or long_vol). Supports the same filters as the website screener.
+- [Top Volatility Character](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.character_top.md): Screener of tickers by volatility character (mean-reverting / persistent / moderate) on a date.
+- [Top Options Positioning Sentiment](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.option_sentiment_top.md): Screener of the most bullish/bearish tickers by options positioning (VWKS + AVAR) on a date. Optional direction (bullish, bearish, neutral) and filters (min_score/max_score, min_vwks/max_vwks, min_avar/max_avar, min_sample_size...
+- [VIX Term Structure](https://api.unusualwhales.com/docs/operations/PublicApi.VolatilityController.vix_term_structure.md): The latest VIX futures term structure plus history. Requires the volatility API add-on.
+
+## watchlists
+
+- [Option watchlists](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.option_index.md): Returns the option watchlists of the user, newest first, with the option symbols on each watchlist.
+- [Create option watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.option_create.md): Creates an option watchlist with the given name, option symbols and color.
+- [Delete option watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.option_delete.md): Deletes an option watchlist of the user. The Bookmarks watchlist cannot be deleted.
+- [Update option watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.option_update.md): Replaces the name, option symbols and color of an option watchlist.
+- [Stock watchlists](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.stock_index.md): Returns the stock watchlists of the user, newest first, with the tickers on each watchlist.
+- [Create stock watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.stock_create.md): Creates a stock watchlist with the given name, tickers and color.
+- [Delete stock watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.stock_delete.md): Deletes a stock watchlist of the user. Default views provided by Unusual Whales cannot be deleted and return 404.
+- [Update stock watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.stock_update.md): Replaces the name, tickers and color of a stock watchlist.
+- [Add tickers to stock watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.stock_add_tickers.md): Adds tickers to a stock watchlist and keeps the tickers that are already on it. Tickers already on the watchlist are not added twice.
+- [Remove tickers from stock watchlist](https://api.unusualwhales.com/docs/operations/PublicApi.WatchlistController.stock_remove_tickers.md): Removes tickers from a stock watchlist and keeps all other tickers on it. Tickers that are not on the watchlist are ignored.
+
+## Resources
+
+- [OpenAPI specification](https://api.unusualwhales.com/api/openapi): Complete API paths, parameters, schemas, and responses.
+- [Kafka streaming documentation](https://api.unusualwhales.com/docs/kafka): Kafka topics, schemas, and connection details.
+- [WebSocket documentation](https://api.unusualwhales.com/docs/websocket.md): Websocket channels, connection details, and payload fields.
+- [MCP server](https://unusualwhales.com/public-api/mcp): Model Context Protocol integration.
+- [Agent skill](https://unusualwhales.com/skill.md): Instructions for agents using Unusual Whales tools.

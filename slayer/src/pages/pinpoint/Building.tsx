@@ -1,0 +1,314 @@
+/*
+==================================================
+  SLAYER TERMINAL - BUILDING
+  (pages/pinpoint/Building.tsx)
+
+  A FACE OF THE AGENDA since 2026-10-14 (Noah:
+  Building and Targets "on the same page put
+  interchangable" — pages/pinpoint/Agenda.tsx,
+  /pinpoint/agenda?view=building). ONE BOX since
+  the same day (Noah, with its picture: "remove
+  both of these from their designated sections and
+  add more strikes to fill their positions"): the
+  heading drawing is gone from this face — it lives
+  on as the Pulse desk's tile — and the ledger
+  opens on twenty strikes each side instead of
+  fifteen.
+
+  ONE TO FOUR NAMES, EACH ON ITS OWN EXPIRY (Noah,
+  2026-10-14: "for the building page i want to have
+  the ability to choose different tickers and
+  different exps from 1 to 4 tickers. you choose how
+  the layout should be"). THE LAYOUT, mine: one box.
+  Its head is the Agenda's switch, the guide door
+  and the line; under it ONE line of cards for every
+  pane — Show · Order · Strikes · the NAMES door
+  (the Map's own: "+ Names N", a name picked from
+  the whole listing, four at most) — and the key.
+  Then THE PANES SIDE BY SIDE, one a name: the first
+  follows the frame's name (its chip is linked, the
+  Map's grammar) and each added one holds its own;
+  every pane carries its EXPIRY card (the house's
+  expiries as dates, ladderControls) and its two
+  facts; beside other panes a pane goes COMPACT —
+  the strike, the wall, the change and the word's
+  chip, four columns a quarter of the screen can
+  hold — and alone it is the whole ledger. The panes
+  are kept on this machine (slayer_building_panes),
+  the Map's names the same way.
+
+  The fifth page of Pinpoint (2026-09-07). The Map
+  says where the hedging sits, Ahead what happens
+  from here to the close. Building says which of
+  the hedging arrived TODAY — the wall a day early
+  — read top to bottom in two boxes:
+
+    WHAT'S BEING BUILT   every strike: the hedging
+                         there now, what today added
+                         or took off (calls · puts),
+                         the day's shape, the word
+    WHERE THE WALLS      the four levels at the open,
+    ARE HEADING          now, and by the close at
+                         today's pace, with the
+                         strike growing fastest on
+                         each side
+
+  A COMPOSITION, like Ahead: the open interest is
+  the one every snapshot carries, the units are the
+  chain's own at the live spot, the levels are the
+  Map's, the clock is the shell's. data/building.ts
+  holds the arithmetic. IN THE SIMULATOR the open
+  interest is one book: a pane's expiry scales the
+  hedging the way the Map's does (data/exposure
+  EXPIRY_DECAY); on the feed each expiry has its own
+  open interest and the deltas follow.
+==================================================
+*/
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
+import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
+import { useTicker } from '../../context/MarketDataContext';
+import { useFocus } from '../../context/FocusContext';
+import ScopeChip from '../../components/ui/ScopeChip';
+import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
+import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
+import { Deferred } from '../../components/ui/Skeleton';
+import BuildingLedger, { BuildingControls, type BuildOrder, type BuildShow } from '../../components/gex/BuildingLedger';
+import NamesDoor from '../../components/gex/NamesDoor';
+import { BuildingGuide } from '../../components/gex/BuildingGuide';
+import { ladderExpiryOptions } from '../../components/gex/ladderControls';
+import { AgendaSwitch } from './Agenda';
+import { BuildingLedgerSkeleton, BuildingPageSkeleton } from '../../components/gex/buildingSkeletons';
+import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
+import { aheadClock } from '../../data/ahead';
+import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
+import { buildBuilding, type Building as BuildingData } from '../../data/building';
+import { useDistanceUnit } from '../../data/distanceUnits';
+import { readSessionClock } from '../../data/moc';
+import { MAX_PANES, PANE_COLS, newPaneKey, readPanes, writePanes, type Pane } from '../../data/panes';
+import { usePositions } from '../../data/positions';
+import { BuildingArrived } from '../../components/vendor/LiveDesk';
+import type { ExposureExpiry } from '../../types/gex';
+import type { MarketSnapshot } from '../../types/market';
+
+/** The open interest sweeps on its own cadence — a wall must not vibrate with every tick */
+const SCAN_INTERVAL_MS = 10_000;
+/* THE PANES (data/panes.ts since 2026-10-15 — Targets stands on the same store and door) */
+const PANES_KEY = 'slayer_building_panes';
+let panesMemory: Pane[] | null = null;
+
+/* The ledger's choices, held across route changes, reset on reload */
+let orderMemory: BuildOrder = 'strike';
+let windowMemory: StrikeWindow = 20;
+/* EVERY STRIKE BY DEFAULT (Noah, 2026-10-14: "always start of by showing the full expanded view and then the user can
+   collaspe to only see the one with actual significance") — Show · What moved folds the steady strikes away; the movers
+   alone had been the default since 2026-09-13 */
+let showMemory: BuildShow = 'all';
+
+const hhmmss = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+
+const Building = () => {
+  const { activeTicker, changeTicker } = useTicker();
+  const marketData = usePinpointFeed(activeTicker);
+  const bookRev = useBookRev();
+  const { focus, toggleFocus, clearFocus } = useFocus();
+  const [panes, setPanesState] = useState<Pane[]>(() => panesMemory ?? (panesMemory = readPanes(PANES_KEY)));
+  const setPanes = (next: Pane[]) => {
+    panesMemory = next;
+    writePanes(PANES_KEY, next);
+    setPanesState(next);
+  };
+  const patchPane = (key: string, patch: Partial<Pane>) => setPanes(panes.map(p => (p.key === key ? { ...p, ...patch } : p)));
+  const addPane = (ticker: string) => {
+    if (panes.length >= MAX_PANES) return;
+    const t = ticker.trim().toUpperCase();
+    if (!t) return;
+    ensureBook(t, 'full');
+    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: '0DTE' }]);
+  };
+  const removePane = (key: string) => {
+    if (panes.length <= 1) return;
+    setPanes(panes.filter(p => p.key !== key));
+  };
+  const [order, setOrderState] = useState<BuildOrder>(orderMemory);
+  const [window, setWindowState] = useState<StrikeWindow>(windowMemory);
+  const setOrder = (o: BuildOrder) => {
+    orderMemory = o;
+    setOrderState(o);
+  };
+  const setWindow = (w: StrikeWindow) => {
+    windowMemory = w;
+    setWindowState(w);
+  };
+  const [show, setShowState] = useState<BuildShow>(showMemory);
+  const setShow = (s: BuildShow) => {
+    showMemory = s;
+    setShowState(s);
+  };
+  const [guideOpen, setGuideOpen] = useState(false);
+  /* THE DISTANCE FROM SPOT under every strike, in the shell's own ruler */
+  const unit = useDistanceUnit();
+  /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
+  const expiryOptions = useMemo<DropdownOption<ExposureExpiry>[]>(() => ladderExpiryOptions().map(o => ({ value: o.value, label: o.label, hint: o.hint })), []);
+
+  /* THE CLOCK — New York time, re-read every 15s; the pace runs on it */
+  const [clockRaw, setClockRaw] = useState(() => readSessionClock());
+  useEffect(() => {
+    const id = globalThis.setInterval(() => setClockRaw(readSessionClock()), 15_000);
+    return () => globalThis.clearInterval(id);
+  }, []);
+  const clock = useMemo(() => aheadClock(clockRaw), [clockRaw]);
+
+  /* Scan-tier snapshot: the open interest sweeps every SCAN_INTERVAL_MS (a name change is immediate) */
+  const [scan, setScan] = useState<{ snap: MarketSnapshot; at: string; nonce: number } | null>(null);
+  const scanRef = useRef<MarketSnapshot | null>(null);
+  const scanAtRef = useRef(0);
+  useEffect(() => {
+    if (!marketData) return;
+    const now = Date.now();
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker;
+    if (due) {
+      scanRef.current = marketData;
+      scanAtRef.current = now;
+      setScan({ snap: marketData, at: hhmmss(new Date(now)), nonce: now });
+    }
+  }, [marketData]);
+
+  /* The own-name snapshots, one per name a pane holds — rebuilt on the scan's cadence, so the panes agree about the moment */
+  const pinnedKey = panes.map(p => p.ticker).filter(Boolean).join('|');
+  const ownSnaps = useMemo(() => {
+    const m = new Map<string, MarketSnapshot>();
+    if (!scan || !pinnedKey) return m;
+    for (const t of new Set(pinnedKey.split('|'))) {
+      if (t === scan.snap.ticker) continue;
+      try {
+        const live = snapshotOf(t, 'full');
+        if (live) m.set(t, live);
+      } catch {
+        /* a name the sim can't build — the pane stays on the frame's */
+      }
+    }
+    return m;
+  }, [scan, pinnedKey, bookRev]);
+  const snapFor = (p: Pane): MarketSnapshot | null => {
+    if (!scan) return null;
+    if (!p.ticker || p.ticker === scan.snap.ticker) return scan.snap;
+    return ownSnaps.get(p.ticker) ?? scan.snap;
+  };
+  const tickerFor = (p: Pane) => p.ticker ?? activeTicker;
+  const focusFor = (t: string) => (focus && focus.ticker === t ? focus.price : null);
+
+  /* THE ANSWERS, one a pane — the whole day's snapshots against the live chain, on the pane's expiry */
+  const nonce = scan?.nonce ?? 0;
+  const panesKey = panes.map(p => `${p.key}:${p.ticker ?? ''}:${p.expiry}`).join(',');
+  const builds = useMemo(() => {
+    const out = new Map<string, BuildingData>();
+    for (const p of panes) {
+      const snap = snapFor(p);
+      if (!snap) continue;
+      const t = snap.ticker;
+      const profile = buildExposureProfile(snap, p.expiry, window);
+      out.set(p.key, buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock));
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scan, ownSnaps, panesKey, window, clock, nonce, bookRev]);
+
+  /* Your strikes, for the rows — only on a pane that stands on the frame's name */
+  const positions = usePositions(activeTicker);
+  const yours = useMemo(() => new Set(positions.map(p => p.strike)), [positions]);
+
+  const rows = window * 2 + 1;
+  const first = builds.get(panes[0].key);
+  if (!scan || !first) return <BuildingPageSkeleton rows={rows} folded={show === 'moved'} />;
+
+  const compact = panes.length > 1;
+  let moved = 0;
+  let total = 0;
+  for (const b of builds.values()) {
+    moved += b.rows.filter(r => r.verdict !== 'steady').length;
+    total += b.rows.length;
+  }
+
+  /* THE NAMES DOOR — the Map's: "+ Names N", a name from the whole listing, four at most (NamesDoor, Targets' too) */
+  const namesDoor = <NamesDoor count={panes.length} onPick={addPane} testId="build" />;
+
+  return (
+    <div className="relative border border-borderSubtle rounded-md bg-panel" data-build data-build-panes={panes.length}>
+      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read what's being built" testId="build-guide" viewport>
+        <BuildingGuide data={first} clock={clock} />
+      </GuideFocus>
+      {/* THE BOX'S HEAD — the Agenda's switch as the title, the guide, the line */}
+      <div className="px-5 pt-4 pb-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <AgendaSwitch />
+          <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the bar, the chip and the line mean" testId="build-guide" />
+        </div>
+        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+          {clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · the hedging added or taken off since the open, so a wall shows up before it is the wall · every strike, the steady ones too — Show · What moved folds them away
+          {compact ? ' · one pane a name, each on its own expiry' : ''}
+        </p>
+      </div>
+      <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={moved} total={total} />
+
+      {/* THE PANES — side by side at desk width, a hairline between; stacked on a phone */}
+      <div className={`border-t border-borderSubtle grid grid-cols-1 ${PANE_COLS[panes.length] ?? ''} gap-px bg-borderSubtle/60`} data-build-grid>
+        {panes.map((p, i) => {
+          const data = builds.get(p.key);
+          const t = tickerFor(p);
+          const linked = p.ticker === undefined;
+          const iv = data ? peekIv(data.ticker) : null;
+          const scales = data && iv != null ? { atr: sessionAtr(bookCandles(data.ticker) ?? []), sigma: impliedDaySigma(data.spot, iv) } : null;
+          const distanceOf = (strike: number) => (data && scales ? fmtDistance(strike - data.spot, data.spot, unit, scales) : '');
+          const head = (
+            <>
+              <ScopeChip
+                ticker={t}
+                linked={i === 0 ? linked : undefined}
+                /* the quote is room beside other panes — the chip and the Expiry card share one row there */
+                quote={!compact}
+                onToggleLink={i === 0 ? () => patchPane(p.key, { ticker: linked ? t : undefined }) : undefined}
+                onPick={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
+              />
+              <DropdownSelect label="Expiry" value={p.expiry} options={expiryOptions} onChange={e => patchPane(p.key, { expiry: e })} title="Which expiry's hedging this pane reads" testId={`build-expiry-${i}`} size="sm" />
+              {panes.length > 1 && (
+                <button type="button" onClick={() => removePane(p.key)} title="Take this name off" aria-label={`Take ${t} off`} className="inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-build-remove={t}>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </>
+          );
+          return (
+            <div key={p.key} className="bg-panel min-w-0" data-build-pane-box={t} data-build-expiry={p.expiry}>
+              {data ? (
+                <Deferred fallback={<BuildingLedgerSkeleton rows={rows} bare folded={show === 'moved'} />} className="animate-fade-in">
+                  <BuildingLedger
+                    data={data}
+                    ticker={t}
+                    clock={clock}
+                    order={order}
+                    window={window}
+                    show={show}
+                    distanceOf={distanceOf}
+                    yours={t === activeTicker ? yours : undefined}
+                    focus={focusFor(t)}
+                    onPick={price => toggleFocus(price, t)}
+                    onClear={clearFocus}
+                    head={head}
+                    compact={compact}
+                  />
+                </Deferred>
+              ) : (
+                <BuildingLedgerSkeleton rows={rows} bare folded={show === 'moved'} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <BuildingArrived ticker={activeTicker} />
+    </div>
+  );
+};
+
+export default Building;

@@ -1,0 +1,583 @@
+/*
+  Institutions, shorts, ETFs, the stock screen and the day's option tide.
+  The browser asks /api/uw. Rows stay empty until the vendor answers.
+  Nothing here is filled from the house generator.
+*/
+
+import { useEffect, useSyncExternalStore } from 'react';
+import { houseSlug, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
+import { pickFromLive, type StockPick } from './stocks';
+import { UNIVERSE, type Sector } from './universe';
+import {
+  whalesEtfFlow,
+  whalesEtfHoldings,
+  whalesEtfInfo,
+  whalesHoldings,
+  whalesInstitutions,
+  whalesShorts,
+  whalesScreener,
+  whalesStock,
+  whalesTide,
+  type UwEtfFlow,
+  type UwEtfHolding,
+  type UwEtfInfo,
+  type UwHolding,
+  type UwInstitution,
+  type UwShort,
+  type UwTide,
+} from './whales';
+
+export type FileStatus = 'loading' | 'live' | 'error';
+
+export interface TidePrint {
+  call: number;
+  put: number;
+  net: number;
+  volume: number;
+}
+
+export interface StockCard {
+  ticker: string;
+  name: string;
+  sector: string;
+  description: string;
+  marketCap: number | null;
+  beta: number | null;
+  avgVolume: number | null;
+  nextEarnings: string | null;
+  hasDividend: boolean | null;
+  outstanding: number | null;
+}
+
+const ETF_LIST: { etf: string; kind: EtfKind }[] = [
+  { etf: 'SPY', kind: 'broad' },
+  { etf: 'QQQ', kind: 'broad' },
+  { etf: 'IWM', kind: 'broad' },
+  { etf: 'DIA', kind: 'broad' },
+  { etf: 'XLK', kind: 'sector' },
+  { etf: 'XLF', kind: 'sector' },
+  { etf: 'XLE', kind: 'sector' },
+  { etf: 'XLV', kind: 'sector' },
+  { etf: 'XLY', kind: 'sector' },
+  { etf: 'XLP', kind: 'sector' },
+  { etf: 'XLI', kind: 'sector' },
+  { etf: 'XLB', kind: 'sector' },
+  { etf: 'XLU', kind: 'sector' },
+  { etf: 'XLRE', kind: 'sector' },
+  { etf: 'SMH', kind: 'sector' },
+  { etf: 'TLT', kind: 'rates' },
+  { etf: 'HYG', kind: 'rates' },
+  { etf: 'GLD', kind: 'broad' },
+];
+
+const SECTORS = new Set<string>([
+  'Technology',
+  'Communication',
+  'Consumer Discretionary',
+  'Financials',
+  'Energy',
+  'Health Care',
+  'Industrials',
+  'Consumer Staples',
+  'Utilities',
+  'Materials',
+]);
+
+interface Snap {
+  instStatus: FileStatus;
+  institutions: InstitutionRow[];
+  shortStatus: FileStatus;
+  shorts: ShortRow[];
+  etfStatus: FileStatus;
+  etfs: EtfRow[];
+  holdings: Record<string, EtfHolding[]>;
+  stockStatus: FileStatus;
+  stocks: StockPick[];
+  tide: TidePrint | null;
+  cards: Record<string, StockCard | null>;
+}
+
+const empty: Snap = {
+  instStatus: 'loading',
+  institutions: [],
+  shortStatus: 'loading',
+  shorts: [],
+  etfStatus: 'loading',
+  etfs: [],
+  holdings: {},
+  stockStatus: 'loading',
+  stocks: [],
+  tide: null,
+  cards: {},
+};
+
+let snap: Snap = empty;
+const listeners = new Set<() => void>();
+let started = false;
+
+const emit = (next: Partial<Snap>) => {
+  snap = { ...snap, ...next };
+  listeners.forEach(fn => fn());
+};
+
+const num = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+const numOr = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+/** A vendor fraction (0.04) is a percent. A number already above 1.5 is left alone. */
+const asPct = (v: unknown): number => {
+  const n = num(v);
+  return Math.abs(n) <= 1.5 ? n * 100 : n;
+};
+const daysAgo = (iso?: string): number => {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return 999;
+  return Math.max(0, Math.round((Date.now() - t) / 86_400_000));
+};
+const quarterOf = (iso?: string): string => {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return '—';
+  const d = new Date(t);
+  return `${d.getUTCFullYear()} Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
+};
+const sectorOf = (ticker: string, raw?: string): string => {
+  const known = UNIVERSE.find(u => u.ticker === ticker)?.sector;
+  if (known) return known;
+  if (raw && SECTORS.has(raw)) return raw;
+  return raw && raw.trim() ? raw : '—';
+};
+const asSector = (ticker: string, raw?: string): Sector => {
+  const s = sectorOf(ticker, raw);
+  return (SECTORS.has(s) ? s : UNIVERSE.find(u => u.ticker === ticker)?.sector ?? 'Technology') as Sector;
+};
+
+const bookOf = (h: UwHolding): InstitutionRow['book'] => {
+  const pc = (h.put_call || '').toLowerCase();
+  const st = (h.security_type || '').toLowerCase();
+  if (pc.startsWith('c') || st.includes('call')) return 'calls';
+  if (pc.startsWith('p') || st.includes('put')) return 'puts';
+  return 'stock';
+};
+
+const statusOf = (units: number, change: number): PositionStatus => {
+  const prior = units - change;
+  if (prior <= 0 && units > 0) return 'new';
+  if (units <= 0 && prior > 0) return 'closed';
+  const pct = prior > 0 ? (change / prior) * 100 : 0;
+  if (pct >= 2) return 'added';
+  if (pct <= -2) return 'cut';
+  return 'held';
+};
+
+const quartersOf = (h: UwHolding, sharesM: number, report: string): InstitutionRow['quarters'] => {
+  const raw = h.historical_units;
+  if (Array.isArray(raw) && raw.length) {
+    const rows = raw
+      .map(item => {
+        if (item && typeof item === 'object') {
+          const o = item as Record<string, unknown>;
+          const units = numOr(o.units ?? o.close ?? o.value);
+          const period = typeof o.date === 'string' ? quarterOf(o.date) : typeof o.period === 'string' ? o.period : '';
+          return units == null ? null : { period: period || report, unitsM: units / 1e6 };
+        }
+        const units = numOr(item);
+        return units == null ? null : { period: report, unitsM: units / 1e6 };
+      })
+      .filter((x): x is { period: string; unitsM: number } => !!x);
+    if (rows.length) return rows.slice(-8);
+  }
+  return [{ period: report, unitsM: sharesM }];
+};
+
+function rowFromHolding(house: string, filed: string, h: UwHolding): InstitutionRow | null {
+  const ticker = (h.ticker || '').toUpperCase();
+  if (!/^[A-Z][A-Z0-9.]{0,5}$/.test(ticker)) return null;
+  const units = num(h.units);
+  const change = num(h.units_change);
+  const sharesM = units / 1e6;
+  const prior = Math.max(0, units - change) / 1e6;
+  const valueB = num(h.value) / 1e9;
+  const changePct = prior > 0 ? ((sharesM - prior) / prior) * 100 : sharesM > 0 ? 100 : 0;
+  const report = quarterOf(h.date);
+  const book = bookOf(h);
+  return {
+    id: `${house}-${ticker}-${book}`,
+    name: house,
+    ticker,
+    sector: sectorOf(ticker, h.sector),
+    sharesM,
+    priorSharesM: prior,
+    valueB,
+    changePct,
+    pctOfBook: asPct(h.perc_of_share_value),
+    pctOfShares: asPct(h.perc_of_total),
+    avgPrice: num(h.avg_price),
+    close: num(h.close),
+    firstPrice: num(h.price_first_buy),
+    unitsChangeM: change / 1e6,
+    firstBuy: h.first_buy || '—',
+    sharesOutM: num(h.shares_outstanding) / 1e6,
+    book,
+    status: statusOf(units, change),
+    report,
+    filedDaysAgo: daysAgo(filed),
+    quarters: quartersOf(h, sharesM, report),
+  };
+}
+
+async function pullInstitutions() {
+  try {
+    const houses = await whalesInstitutions(40);
+    if (!Array.isArray(houses) || houses.length === 0) throw new Error('shape');
+    const rows: InstitutionRow[] = [];
+    for (const house of houses as UwInstitution[]) {
+      const name = (house.name || house.short_name || '').trim();
+      if (!name) continue;
+      const filed = house.filing_date || house.date || '';
+      let holdings: UwHolding[] = [];
+      try {
+        const got = await whalesHoldings(name, 80);
+        holdings = Array.isArray(got) ? got : [];
+      } catch {
+        holdings = [];
+      }
+      for (const h of holdings) {
+        const row = rowFromHolding(name, filed, h);
+        if (row) rows.push(row);
+      }
+      emit({ instStatus: 'live', institutions: rows.slice().sort((a, b) => b.valueB - a.valueB) });
+    }
+    emit({ instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB) });
+  } catch {
+    if (snap.institutions.length === 0) emit({ instStatus: 'error' });
+  }
+}
+
+function shortFrom(r: UwShort): ShortRow | null {
+  const ticker = (r.symbol || '').toUpperCase();
+  const si = num(r.si_float);
+  const floatShares = num(r.total_float);
+  if (!/^[A-Z][A-Z0-9.]{0,5}$/.test(ticker)) return null;
+  if (!(floatShares > 1e6) || !(si > 0)) return null;
+  const interestPct = si * 100;
+  const shortSharesM = num(r.short_interest) / 1e6;
+  const available = numOr(r.short_shares_available);
+  return {
+    ticker,
+    sector: sectorOf(ticker),
+    interestPct,
+    shortSharesM,
+    daysToCover: num(r.days_to_cover),
+    floatM: floatShares / 1e6,
+    changePct: null,
+    shortVolM: null,
+    shortVolRatio: null,
+    ftdK: null,
+    feeRate: numOr(r.fee_rate),
+    rebateRate: numOr(r.rebate_rate),
+    availableM: available == null ? null : available / 1e6,
+    history: r.market_date ? [{ report: r.market_date, interestPct, sharesM: shortSharesM }] : [],
+    exchanges: [],
+    ftdDays: [],
+  };
+}
+
+/** The screener returns the same symbol more than once. One row per name, the later report facing, both dates kept. */
+function collapseShorts(rows: ShortRow[]): ShortRow[] {
+  const by = new Map<string, ShortRow>();
+  const day = (r: ShortRow) => r.history[0]?.report ?? '';
+  for (const r of rows) {
+    const prev = by.get(r.ticker);
+    if (!prev) {
+      by.set(r.ticker, r);
+      continue;
+    }
+    const face = day(r) >= day(prev) ? r : prev;
+    const other = face === r ? prev : r;
+    const seen = new Set(face.history.map(h => h.report));
+    by.set(r.ticker, {
+      ...face,
+      feeRate: face.feeRate ?? other.feeRate,
+      rebateRate: face.rebateRate ?? other.rebateRate,
+      availableM: face.availableM ?? other.availableM,
+      history: [...face.history, ...other.history.filter(h => !seen.has(h.report))],
+    });
+  }
+  return [...by.values()].sort((a, b) => b.interestPct - a.interestPct);
+}
+
+async function pullShorts() {
+  try {
+    const since = new Date(Date.now() - 50 * 86_400_000).toISOString().slice(0, 10);
+    const rows = await whalesShorts(since);
+    if (!Array.isArray(rows)) throw new Error('shape');
+    const out = collapseShorts(rows.map(shortFrom).filter((r): r is ShortRow => !!r));
+    emit({ shortStatus: 'live', shorts: out });
+  } catch {
+    if (snap.shorts.length === 0) emit({ shortStatus: 'error' });
+  }
+}
+
+const flow5 = (rows: UwEtfFlow[]): { flow5dM: number; flows: EtfRow['flows'] } => {
+  const sorted = [...rows].filter(r => r.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const last = sorted.slice(0, 5);
+  const flows = last.map(r => ({ day: String(r.date).slice(5), flowM: Math.round(num(r.change_prem) / 1e6) })).reverse();
+  return { flow5dM: flows.reduce((s, f) => s + f.flowM, 0), flows };
+};
+
+const holdingOf = (h: UwEtfHolding): EtfHolding | null => {
+  const ticker = (h.ticker || '').toUpperCase();
+  if (!ticker) return null;
+  const weight = num(h.weight);
+  return {
+    ticker,
+    weight,
+    sharesM: num(h.shares) / 1e6,
+    sector: h.sector || '—',
+    country: h.country_name || '—',
+  };
+};
+
+async function pullEtfs() {
+  try {
+    const rows: EtfRow[] = [];
+    const holdings: Record<string, EtfHolding[]> = {};
+    for (const e of ETF_LIST) {
+      const [infoR, holdR, flowR] = await Promise.all([
+        whalesEtfInfo(e.etf).catch(() => null as UwEtfInfo | null),
+        whalesEtfHoldings(e.etf).catch(() => [] as UwEtfHolding[]),
+        whalesEtfFlow(e.etf).catch(() => [] as UwEtfFlow[]),
+      ]);
+      const info = infoR && !Array.isArray(infoR) ? infoR : null;
+      const held = (Array.isArray(holdR) ? holdR : []).map(holdingOf).filter((h): h is EtfHolding => !!h).sort((a, b) => b.weight - a.weight);
+      holdings[e.etf] = held;
+      const top = held[0];
+      const flow = flow5(Array.isArray(flowR) ? flowR : []);
+      const equity = held.filter(h => !/bond|treasury|fixed/i.test(h.sector)).reduce((s, h) => s + h.weight, 0);
+      rows.push({
+        etf: e.etf,
+        name: info?.name || e.etf,
+        kind: e.kind,
+        aumB: num(info?.aum) / 1e9,
+        flow5dM: flow.flow5dM,
+        topHolding: top?.ticker ?? '—',
+        topWeight: top?.weight ?? 0,
+        equityPct: held.length ? Math.min(100, Math.round(equity)) : e.kind === 'rates' ? 0 : 0,
+        expensePct: numOr(info?.expense_ratio),
+        company: info?.etf_company || '—',
+        domicile: info?.domicile || '—',
+        holdingsCount: num(info?.holdings_count) || held.length,
+        inception: info?.inception_date || '—',
+        hasOptions: !!info?.has_options,
+        avgVolM: num(info?.avg30_volume) / 1e6,
+        callVol: numOr(info?.call_vol),
+        putVol: numOr(info?.put_vol),
+        flows: flow.flows,
+      });
+      emit({ etfStatus: 'live', etfs: rows.slice(), holdings: { ...holdings } });
+    }
+    emit({ etfStatus: 'live', etfs: rows, holdings });
+  } catch {
+    if (snap.etfs.length === 0) emit({ etfStatus: 'error' });
+  }
+}
+
+const frac = (v: unknown): number | null => {
+  const n = numOr(v);
+  if (n == null) return null;
+  return Math.abs(n) <= 1.5 ? n * 100 : n;
+};
+
+async function pullStocks() {
+  try {
+    const tickers = UNIVERSE.map(u => u.ticker);
+    const rows: Record<string, unknown>[] = [];
+    for (let i = 0; i < tickers.length; i += 12) {
+      const part = await whalesScreener(tickers.slice(i, i + 12));
+      if (Array.isArray(part)) rows.push(...part);
+    }
+    const picks: StockPick[] = [];
+    for (const row of rows) {
+      const ticker = String(row.ticker || '').toUpperCase();
+      const u = UNIVERSE.find(x => x.ticker === ticker);
+      const price = numOr(row.close);
+      if (!ticker || price == null || !(price > 0)) continue;
+      picks.push(
+        pickFromLive({
+          ticker,
+          name: u?.name || String(row.full_name || ticker),
+          sector: asSector(ticker, typeof row.sector === 'string' ? row.sector : undefined),
+          price,
+          changePct: frac(row.one_day_perc) ?? 0,
+          weekPct: frac(row.one_week_perc),
+          monthPct: frac(row.one_month_perc),
+          rsi: numOr(row.rsi_14),
+          epsGrowth: numOr(row.eps_growth_4q),
+          yearClose: numOr(row.one_year_close),
+          sixClose: numOr(row.six_month_close),
+          threeClose: numOr(row.three_month_close),
+          monthClose: numOr(row.one_month_close),
+          weekClose: numOr(row.one_week_close),
+          bullish: numOr(row.bullish_premium),
+          bearish: numOr(row.bearish_premium),
+        }),
+      );
+    }
+    picks.sort((a, b) => b.composite - a.composite);
+    emit({ stockStatus: picks.length ? 'live' : 'error', stocks: picks });
+  } catch {
+    if (snap.stocks.length === 0) emit({ stockStatus: 'error' });
+  }
+}
+
+async function pullTide() {
+  try {
+    const rows = await whalesTide();
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    const list = rows as UwTide[];
+    const dates = list.map(r => r.date).filter((d): d is string => !!d).sort();
+    const day = dates[dates.length - 1];
+    const today = list.filter(r => !day || r.date === day);
+    const call = today.reduce((s, r) => s + num(r.net_call_premium), 0);
+    const put = today.reduce((s, r) => s + num(r.net_put_premium), 0);
+    const volume = today.reduce((s, r) => s + num(r.net_volume), 0);
+    emit({ tide: { call, put, net: call + put, volume } });
+  } catch {
+    /* the tide line stays a dash */
+  }
+}
+
+const cardInflight = new Set<string>();
+
+export function ensureStockCard(ticker: string): void {
+  const t = ticker.toUpperCase();
+  if (!t || cardInflight.has(t) || t in snap.cards) return;
+  cardInflight.add(t);
+  whalesStock(t)
+    .then(info => {
+      if (!info || typeof info !== 'object') {
+        emit({ cards: { ...snap.cards, [t]: null } });
+        return;
+      }
+      const row = info as Record<string, unknown>;
+      emit({
+        cards: {
+          ...snap.cards,
+          [t]: {
+            ticker: t,
+            name: String(row.full_name || row.short_name || t),
+            sector: String(row.sector || '—'),
+            description: String(row.short_description || ''),
+            marketCap: numOr(row.marketcap),
+            beta: numOr(row.beta),
+            avgVolume: numOr(row.avg30_volume),
+            nextEarnings: typeof row.next_earnings_date === 'string' ? row.next_earnings_date : null,
+            hasDividend: typeof row.has_dividend === 'boolean' ? row.has_dividend : null,
+            outstanding: numOr(row.outstanding),
+          },
+        },
+      });
+    })
+    .catch(() => emit({ cards: { ...snap.cards, [t]: null } }))
+    .finally(() => cardInflight.delete(t));
+}
+
+function ensure() {
+  if (started || typeof window === 'undefined') return;
+  started = true;
+  void pullInstitutions();
+  void pullShorts();
+  void pullEtfs();
+  void pullStocks();
+  void pullTide();
+}
+
+function subscribe(fn: () => void): () => void {
+  listeners.add(fn);
+  ensure();
+  return () => listeners.delete(fn);
+}
+
+const peek = () => snap;
+
+export function useLiveFiles(): Snap {
+  return useSyncExternalStore(subscribe, peek, peek);
+}
+
+export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[] } {
+  const s = useLiveFiles();
+  const houses = [...new Set(s.institutions.map(r => r.name))];
+  return { status: s.instStatus, rows: s.institutions, houses };
+}
+
+export function houseNameFromSlug(slug: string): string | null {
+  const names = new Set(snap.institutions.map(r => r.name));
+  for (const name of names) if (houseSlug(name) === slug) return name;
+  return null;
+}
+
+export function useHouseBook(slug: string): { status: FileStatus; name: string | null; rows: InstitutionRow[] } {
+  const s = useLiveFiles();
+  const name = houseNameFromSlug(slug);
+  return { status: s.instStatus, name, rows: name ? s.institutions.filter(r => r.name === name) : [] };
+}
+
+export function useShorts(): { status: FileStatus; rows: ShortRow[] } {
+  const s = useLiveFiles();
+  return { status: s.shortStatus, rows: s.shorts };
+}
+
+export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow | null } {
+  const s = useLiveFiles();
+  const t = ticker.toUpperCase();
+  return { status: s.shortStatus, row: s.shorts.find(r => r.ticker === t) ?? null };
+}
+
+export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (etf: string) => EtfHolding[] } {
+  const s = useLiveFiles();
+  return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [] };
+}
+
+export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[] } {
+  const s = useLiveFiles();
+  const t = etf.toUpperCase();
+  return { status: s.etfStatus, row: s.etfs.find(r => r.etf === t) ?? null, holdings: s.holdings[t] ?? [] };
+}
+
+export function useFundsHolding(ticker: string): { etf: string; name: string; weight: number; sharesM: number }[] {
+  const s = useLiveFiles();
+  const t = ticker.toUpperCase();
+  return s.etfs.flatMap(e => {
+    const hit = (s.holdings[e.etf] ?? []).find(h => h.ticker === t);
+    return hit ? [{ etf: e.etf, name: e.name, weight: hit.weight, sharesM: hit.sharesM }] : [];
+  });
+}
+
+export function useHousesOn(ticker: string): InstitutionRow[] {
+  const s = useLiveFiles();
+  const t = ticker.toUpperCase();
+  return s.institutions.filter(r => r.ticker === t).sort((a, b) => b.valueB - a.valueB);
+}
+
+export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
+  const s = useLiveFiles();
+  return { status: s.stockStatus, picks: s.stocks };
+}
+
+export function useLiveTide(): TidePrint | null {
+  return useLiveFiles().tide;
+}
+
+export function useStockCard(ticker: string): StockCard | null | undefined {
+  const t = ticker.toUpperCase();
+  const s = useLiveFiles();
+  useEffect(() => {
+    ensureStockCard(t);
+  }, [t]);
+  return t in s.cards ? s.cards[t] : undefined;
+}
