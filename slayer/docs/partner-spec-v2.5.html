@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slayer Terminal — Complete Product Specification & Architecture</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts: Plus Jakarta Sans, JetBrains Mono, and Lora -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+
+    <!-- MathJax for rendering TeX formulas -->
+    <script>
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <!-- Chosen Palette: Warm Neutral & Slate Terminal (#f8fafc slate background, #0f172a slate headers, #4f46e5 indigo accents, #10b981 emerald success, #f59e0b amber warnings) -->
+    <!-- Application Structure Plan:
+         Designed as a comprehensive document SPA with sticky side TOC navigation and interactive visual tools:
+         1. Header & Live Indicator Ribbon: System versioning, active mode indicators, reading font layout switch (Sans UI vs Serif Document), and live search engine.
+         2. Section 1: Executive Summary & Data Pipeline Architecture — Detailed breakdown of TimescaleDB hypertable storage, nanosecond event precision (ts_event, ts_recv, ts_in_delta), natural NBBO health gate, and API endpoint mapping table.
+         3. Section 2: Catalyst NLP Engine & 20 Alpha Modules — News deduplication, entity linkage, reaction latency arbitrage, eSSVI volatility surface model with real-time Chart.js interactive curve fitting, and catalog of 20 alpha modules with category filtering.
+         4. Section 3: Expiration Horizons & Strategy Taxonomy — 9 expiration horizons (0DTE to LEAPS), 5-phase strategy rollout (single-leg, vertical spreads, straddles, calendars, BWBs/Iron Condors).
+         5. Section 4: Risk Engine & Interactive Payoff Models — 4-tier risk framework (Reg T vs Portfolio Margin) and interactive Chart.js strategy payoff curve simulator.
+         6. Section 5: Lifecycle Machine & OpenAPI Schema — 5-state deterministic machine (WAIT, NO-TRADE, ENTRY, HOLD, EXIT), counterfactual audit loop, and interactive OpenAPI JSON schema inspector.
+         7. Section 6: System Validation, Limitations & Roadmap — Walk-forward ablation Chart.js model, documented system limitations, and full 15-phase sequential engineering roadmap.
+    -->
+    <!-- Visualization & Content Choices:
+         - Live Document Search: Dynamic JS DOM scanning text nodes, highlighting query matches with mark tags, and showing match counts.
+         - eSSVI Volatility Model: Chart.js Line Chart depicting total variance curves adjusted dynamically via an ATM variance range slider.
+         - Catalyst News NLP Simulator: Interactive trigger scenarios demonstrating entity linkage and directional vs volatility split.
+         - Alpha Modules Explorer: Filterable JS card grid (Directional, Volatility, Microstructure).
+         - Payoff Simulator: Chart.js line plot displaying profit/loss outcomes across underlying strike ranges with automatic risk-tier classification.
+         - Feed Ablation Model: Chart.js Bar Chart detailing Sharpe ratio decay upon component feed ablation.
+         - NO SVG graphics used; standard HTML5 Canvas and styled CSS/Unicode used exclusively.
+         - NO Mermaid JS used.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .font-serif-doc {
+            font-family: 'Lora', Georgia, serif;
+        }
+        .font-sans-doc {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 380px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        mark.search-highlight {
+            background-color: #fef08a;
+            color: #854d0e;
+            padding: 0 2px;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+        html {
+            scroll-behavior: smooth;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- HEADER BAR -->
+    <header class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-50 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 gap-4">
+                
+                <!-- Title & Badge -->
+                <div class="flex items-center space-x-3 shrink-0">
+                    <div class="bg-indigo-600 text-white font-black px-2.5 py-1 rounded text-lg tracking-wider mono shadow-sm">SLAYER</div>
+                    <div>
+                        <div class="font-bold text-sm sm:text-base tracking-tight leading-none text-slate-100 flex items-center space-x-2">
+                            <span>TERMINAL</span>
+                            <span class="text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-700/50 px-1.5 py-0.5 rounded font-mono">SPEC v2.5</span>
+                        </div>
+                        <div class="text-[11px] text-slate-400 leading-tight hidden sm:block">Product Requirement & Technical Design Specification</div>
+                    </div>
+                </div>
+
+                <!-- Live Search Input -->
+                <div class="flex-grow max-w-md relative">
+                    <div class="relative">
+                        <input type="text" id="document-search-input" onkeyup="handleSearch()" placeholder="Search formulas, concepts, modules, APIs..." class="w-full bg-slate-800 text-xs text-slate-100 placeholder-slate-400 pl-8 pr-8 py-1.5 rounded-md border border-slate-700 focus:outline-none focus:border-indigo-500 font-mono">
+                        <span class="absolute left-2.5 top-1.5 text-slate-400 text-xs">🔍</span>
+                        <button onclick="clearSearch()" id="search-clear-btn" class="hidden absolute right-2.5 top-1.5 text-slate-400 hover:text-white text-xs font-mono">✕</button>
+                    </div>
+                    <div id="search-results-count" class="text-[10px] text-indigo-300 font-mono mt-0.5 absolute right-1 -bottom-4 hidden">0 matches</div>
+                </div>
+
+                <!-- Reading Mode Toggle -->
+                <div class="hidden md:flex items-center space-x-2 shrink-0 text-xs font-mono">
+                    <span class="text-slate-400 text-[11px]">View Mode:</span>
+                    <button onclick="setFontMode('sans')" id="font-btn-sans" class="px-2.5 py-1 rounded bg-indigo-600 text-white font-bold">Sans UI</button>
+                    <button onclick="setFontMode('serif')" id="font-btn-serif" class="px-2.5 py-1 rounded bg-slate-800 text-slate-300 hover:text-white">Serif Reader</button>
+                </div>
+
+            </div>
+        </div>
+    </header>
+
+    <!-- METRICS RIBBON -->
+    <section class="bg-slate-800 text-slate-300 border-b border-slate-700 text-xs py-2 px-4">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 font-mono text-[11px]">
+            <div class="flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-slate-400">Architecture Mode:</span>
+                <span class="text-emerald-300 font-semibold">Non-Executing Signal Publishing Engine</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span>Ingestion Capacity: <strong class="text-slate-100">100B+ Ticks/Day</strong></span>
+                <span>Precision: <strong class="text-indigo-300">ts_event Nanoseconds</strong></span>
+                <span>Database: <strong class="text-amber-300">TimescaleDB Hypertables</strong></span>
+                <span>Alpha Modules: <strong class="text-emerald-300">20 Active Engines</strong></span>
+            </div>
+        </div>
+    </section>
+
+    <!-- DOCUMENT VIEWPORT WITH STICKY TOC -->
+    <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow flex flex-col lg:flex-row gap-8">
+
+        <!-- TOC NAVIGATION SIDEBAR -->
+        <aside class="w-full lg:w-64 shrink-0">
+            <div class="sticky top-20 bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span class="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wider">SPECIFICATION TOC</span>
+                    <span class="text-[10px] font-mono text-slate-400">6 SECTIONS</span>
+                </div>
+
+                <nav class="space-y-1 text-xs font-medium text-slate-600" id="toc-nav">
+                    <a href="#sec-1" class="toc-link block p-2 rounded hover:bg-slate-50 hover:text-indigo-600 transition-colors border-l-2 border-indigo-600 bg-indigo-50/50 text-indigo-900 font-semibold">
+                        1. Executive Summary & Data Pipeline
+                    </a>
+                    <a href="#sec-2" class="toc-link block p-2 rounded hover:bg-slate-50 hover:text-indigo-600 transition-colors border-l-2 border-transparent">
+                        2. Catalyst NLP & Alpha Modules
+                    </a>
+                    <a href="#sec-3" class="toc-link block p-2 rounded hover:bg-slate-50 hover:text-indigo-600 transition-colors border-l-2 border-transparent">
+                        3. Expirations & Strategy Catalog
+                    </a>
+                    <a href="#sec-4" class="toc-link block p-2 rounded hover:bg-slate-50 hover:text-indigo-600 transition-colors border-l-2 border-transparent">
+                        4. Risk Engine & Payoff Models
+                    </a>
+                    <a href="#sec-5" class="toc-link block p-2 rounded hover:bg-slate-50 hover:text-indigo-600 transition-colors border-l-2 border-transparent">
+                        5. Lifecycle Engine & API Schema
+                    </a>
+                    <a href="#sec-6" class="toc-link block p-2 rounded hover:bg-slate-50 hover:text-indigo-600 transition-colors border-l-2 border-transparent">
+                        6. Validation & 15-Phase Roadmap
+                    </a>
+                </nav>
+
+                <div class="pt-2 border-t border-slate-100 text-[11px] space-y-2 text-slate-500 font-mono">
+                    <div class="flex justify-between">
+                        <span>Estimated Read:</span>
+                        <span class="font-bold text-slate-700">~25 Mins</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Schema Standard:</span>
+                        <span class="font-bold text-indigo-600">OpenAPI 3.1</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN DOCUMENT CONTENT -->
+        <main class="flex-grow space-y-12 max-w-none" id="document-body">
+
+            <!-- SECTION 1 -->
+            <section id="sec-1" class="doc-section bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+                
+                <div class="border-b border-slate-200 pb-4">
+                    <div class="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wider">SECTION 1 — SYSTEM OBJECTIVES & DATA ARCHITECTURE</div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">Slayer Terminal: Product Specification & Technical Architecture</h1>
+                </div>
+
+                <!-- Intro explanation -->
+                <div class="p-4 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-950 space-y-1 font-sans">
+                    <strong class="font-bold text-indigo-900 block uppercase tracking-wider text-[11px]">Section Context & Purpose</strong>
+                    <p class="leading-relaxed">
+                        This section outlines the primary mission of Slayer Terminal as a high-precision, non-executing intelligence and trade-signal generator. It details the underlying high-frequency data ingestion pipeline, point-in-time time-series storage using TimescaleDB hypertables, nanosecond timestamp tracking, executable-quality pricing gates, and provider API mapping.
+                    </p>
+                </div>
+
+                <div class="space-y-4 text-sm leading-relaxed text-slate-700 font-doc">
+                    
+                    <h2 class="text-lg font-bold text-slate-900 font-sans border-b border-slate-100 pb-2">1.1 Executive Summary and System Objective</h2>
+                    <p>
+                        The <strong>Slayer Terminal</strong> project aims to architect and deploy an advanced, data-driven options research and signal-generation platform. The core objective is to identify, evaluate, rank, and publish high-quality options trade callouts to a web interface. The product transcends generic options scanners, which typically rely on rudimentary volume or open interest filters. Instead, Slayer Terminal synthesizes real-time market microstructure data, non-arbitrage volatility analytics, non-standard options activity, cross-asset macro indicators, and proprietary risk models. The system determines the optimal underlying asset, the precise options strategy, the exact expiration and strike structure, and the lifecycle management logic (entry, hold, adjustment, exit, or rejection).
+                    </p>
+                    
+                    <div class="p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-lg space-y-2 font-sans">
+                        <div class="font-bold text-amber-900 text-xs font-mono uppercase tracking-wide">Primary Architectural Constraint: Non-Executing Signal Engine</div>
+                        <p class="text-xs text-amber-800 leading-normal">
+                            The platform operates <strong>strictly as an intelligence and signal-publishing engine</strong>; it does not connect to a brokerage or execute trades autonomously. This document serves as the foundational Product Requirements and Technical Design specification, establishing the data architecture, strategy taxonomy, mathematical models, validation plan, risk framework, and implementation roadmap required before authorizing production strategy code. The explicit goal is a differentiated, comprehensive options-intelligence platform that selects the most appropriate strategy for each opportunity and transparently documents both the mathematical edge and the structural risks.
+                        </p>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">1.2 Data Architecture, Timestamps, and Quality Controls</h2>
+                    <p>
+                        To manage the immense volume of options data—which routinely exceeds <strong>100 billion messages per day</strong> across OPRA feeds and generates massive microbursts during volatile events—the system requires a robust, high-throughput time-series data architecture.
+                    </p>
+                    
+                    <h3 class="text-sm font-bold text-slate-800 font-sans pt-2">Storage and Normalization Architecture</h3>
+                    <p>
+                        The underlying storage relies on a time-series database optimized for high-frequency financial data, utilizing hypertables partitioned by timestamps to enable continuous aggregations and columnar compression. The architecture utilizes <strong>TimescaleDB</strong> to handle the ingestion of raw trades and quotes, ensuring that historical backtesting and real-time querying operate with minimal latency. Continuous aggregates allow the system to pre-calculate 1-minute and daily bars, dramatically reducing query times for historical volatility modeling.
+                    </p>
+
+                    <h3 class="text-sm font-bold text-slate-800 font-sans pt-2">Microstructure and Timestamp Precision</h3>
+                    <p>
+                        The platform requires nanosecond-precision timestamps to maintain the exact sequencing of market events and to prevent look-ahead bias during historical validation. The system records multiple timestamps for every event:
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-xs my-3">
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <code class="text-indigo-600 font-bold block mb-1">ts_event</code>
+                            <span class="text-slate-600 text-[11px] font-sans">Matching engine timestamp recorded at exchange source.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <code class="text-indigo-600 font-bold block mb-1">ts_recv</code>
+                            <span class="text-slate-600 text-[11px] font-sans">Capture server packet ingestion timestamp.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <code class="text-indigo-600 font-bold block mb-1">ts_in_delta</code>
+                            <span class="text-slate-600 text-[11px] font-sans">Sending timestamp offset accounting for network latency.</span>
+                        </div>
+                    </div>
+
+                    <p>
+                        By strictly querying against the <code class="mono bg-slate-100 text-indigo-600 px-1">ts_event</code> timestamp bounded by the current system clock during shadow testing, the architecture guarantees point-in-time accuracy, completely isolating the simulation from future corporate actions, news ingestion, or closing open-interest figures.
+                    </p>
+
+                    <h3 class="text-sm font-bold text-slate-800 font-sans pt-2">Executable-Quality and Data-Health Gate</h3>
+                    <p>
+                        Before any signal generation occurs, a deterministic data-health gate evaluates the real-time tape. The system rejects opportunities where quotes are stale, markets are crossed, or required contract metadata is missing. For multi-leg positions, the system accounts for realistic package pricing. Theoretical midpoint pricing is strictly prohibited; the engine evaluates the <strong>natural price</strong> (buying the ask, selling the bid) across the National Best Bid and Offer (NBBO). If the resulting net debit or credit eliminates the statistical edge, or if liquidity stress suggests severe slippage, the setup transitions to a "No-Trade" state. All rejected candidates and their specific rejection rationales are recorded in a dedicated database ledger.
+                    </p>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">1.3 API Endpoint-to-Feature Mapping</h2>
+                    <p class="text-xs text-slate-600">
+                        The platform integrates distinct data providers, ensuring each input has a documented purpose and demonstrates incremental value through ablation testing:
+                    </p>
+
+                    <div class="overflow-x-auto custom-scrollbar font-mono text-xs my-2">
+                        <table class="w-full text-left border-collapse border border-slate-200">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-800 border-b border-slate-200">
+                                    <th class="p-2.5 border-r border-slate-200">Data Source</th>
+                                    <th class="p-2.5 border-r border-slate-200">Specific Endpoints and Fields</th>
+                                    <th class="p-2.5">Target System Feature / Module</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200 text-slate-700">
+                                <tr>
+                                    <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200">Massive Equities & Indices</td>
+                                    <td class="p-2.5 border-r border-slate-200 text-slate-500">trades, quotes, aggregates, snapshots, technicals, financials</td>
+                                    <td class="p-2.5 font-sans">Multi-timeframe directional forecasting, market-regime classification, benchmark relative strength.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200">Massive Options</td>
+                                    <td class="p-2.5 border-r border-slate-200 text-slate-500">Option chains, Greek snapshots, historical implied volatility (IV), open interest</td>
+                                    <td class="p-2.5 font-sans">Single-leg evaluation, IV surface baseline calculation, cross-contract consistency analysis.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200">OPRA via Databento</td>
+                                    <td class="p-2.5 border-r border-slate-200 text-slate-500">OPRA.PILLAR multicast binary feed, nanosecond ts_event, consolidated NBBO</td>
+                                    <td class="p-2.5 font-sans">Microstructure analysis, execution-quality gating, multi-leg package pricing, slippage modeling.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200">Unusual Whales</td>
+                                    <td class="p-2.5 border-r border-slate-200 text-slate-500">Options flow (blocks/sweeps), GEX (Gamma Exposure) flip price, Dark Pool prints</td>
+                                    <td class="p-2.5 font-sans">Options flow quality, SPX 0DTE positioning, institutional footprinting, support/resistance mapping.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200">NYSE Auction Data</td>
+                                    <td class="p-2.5 border-r border-slate-200 text-slate-500">Real-time opening and closing imbalance data</td>
+                                    <td class="p-2.5 font-sans">Short-horizon opportunity detection, opening gap forecasting, closing momentum analysis.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-slate-900 border-r border-slate-200">Massive Cross-Asset</td>
+                                    <td class="p-2.5 border-r border-slate-200 text-slate-500">Forex and Crypto aggregates and volatility metrics</td>
+                                    <td class="p-2.5 font-sans">Macroeconomic context, cross-asset correlation shocks, systemic risk sentiment analysis.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- SECTION 2 -->
+            <section id="sec-2" class="doc-section bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+                
+                <div class="border-b border-slate-200 pb-4">
+                    <div class="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wider">SECTION 2 — INTELLIGENCE ENGINES & MATHEMATICAL MODELS</div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">Catalyst NLP, eSSVI Volatility Model & 20 Alpha Modules</h1>
+                </div>
+
+                <!-- Intro explanation -->
+                <div class="p-4 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-950 space-y-1 font-sans">
+                    <strong class="font-bold text-indigo-900 block uppercase tracking-wider text-[11px]">Section Context & Purpose</strong>
+                    <p class="leading-relaxed">
+                        This section details the analytical core of Slayer Terminal. It presents the stock news catalyst NLP engine, the non-arbitrage eSSVI total variance model for fitting empirical option volatility surfaces, and an exhaustive catalog of all 20 independent alpha modules categorized into Directional, Volatility, and Microstructure domains.
+                    </p>
+                </div>
+
+                <div class="space-y-4 text-sm leading-relaxed text-slate-700 font-doc">
+                    
+                    <h2 class="text-lg font-bold text-slate-900 font-sans border-b border-slate-100 pb-2">2.1 Stock News and Catalyst Intelligence Engine</h2>
+                    <p>
+                        A proprietary Natural Language Processing (NLP) pipeline evaluates market catalysts. The engine continuously ingests headlines, automatically deduplicating repetitive syndications and scoring updates based on novelty, source reliability, and timestamp freshness. The engine utilizes entity linkage to map news not only to the directly mentioned ticker but also to affected suppliers, competitors, and sector ETFs.
+                    </p>
+                    <p>
+                        Crucially, the news engine separates <strong>directional implications</strong> (e.g., an earnings beat signaling upside) from <strong>volatility implications</strong> (e.g., pending litigation signaling sustained IV expansion). The system measures the market's response immediately following a headline, analyzing price action, volume spikes, and IV skew adjustments. The "News Reaction Latency" module detects delayed repricing; a signal is generated only if a quantifiable, executable mispricing remains on the options chain after the initial market reaction has been absorbed by high-frequency market makers.
+                    </p>
+
+                    <!-- Interactive Catalyst News Simulator -->
+                    <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3 font-sans my-4">
+                        <div class="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center space-x-2">
+                            <span>⚡ Interactive Catalyst NLP Pipeline Simulator</span>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="simulateNews('earnings')" id="news-btn-earnings" class="news-btn px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white">Earnings Beat Headline</button>
+                            <button onclick="simulateNews('litigation')" id="news-btn-litigation" class="news-btn px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100">Antitrust Litigation</button>
+                            <button onclick="simulateNews('ma')" id="news-btn-ma" class="news-btn px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100">Cash M&A Buyout</button>
+                        </div>
+
+                        <div id="news-nlp-output" class="p-3.5 bg-white rounded-md border border-slate-200 text-xs space-y-2">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">2.2 eSSVI Volatility Surface & SABR Model</h2>
+                    <p>
+                        The Implied Volatility and Surface-Relative Opportunity Detection module fits the empirical volatility surface to detect localized mispricings. The system utilizes the <strong>extended Surface Stochastic Volatility Inspired (eSSVI)</strong> parametrization, a model that generates a total-variance curve $w(k, \theta_t)$ in log-moneyness $k = \ln(K/S)$, guaranteeing a surface free of calendar spread and butterfly arbitrage:
+                    </p>
+
+                    <div class="p-4 bg-slate-900 text-emerald-400 rounded-lg font-mono text-xs overflow-x-auto my-3 text-center">
+                        $$w(k, \theta_t) = \frac{\theta_t}{2} \left[ 1 + \rho \phi k + \sqrt{(\phi k + \rho)^2 + (1 - \rho^2)} \right]$$
+                    </div>
+
+                    <p class="text-xs text-slate-600">
+                        Where $\rho \in (-1, 1)$ governs skewness, $\phi > 0$ controls smooth curvature, and $\theta_t$ represents at-the-money variance. The model relies on a vega-weighted objective function minimized via the Levenberg-Marquardt optimizer. Complementing this, the Volatility Expansion and Contraction module applies the <strong>Stochastic Alpha Beta Rho (SABR)</strong> model to forecast future volatility states, calibrating beta ($\beta$) and nu ($\nu$, vol of vol) parameters to assess the probability of IV crush or expansion.
+                    </p>
+
+                    <!-- eSSVI Interactive Chart -->
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 font-sans my-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                            <div>
+                                <h3 class="text-xs font-bold text-slate-900 uppercase">eSSVI Surface Model vs. Raw OPRA Implied Volatility</h3>
+                                <p class="text-[11px] text-slate-500">Adjust At-The-Money Variance ($\theta_t$) parameter to fit surface and detect contract mispricings</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <label for="ssvi-theta" class="text-xs font-mono text-slate-600">ATM Variance ($\theta_t$):</label>
+                                <input type="range" id="ssvi-theta" min="0.05" max="0.40" step="0.01" value="0.15" oninput="updateSSVIChart()" class="w-24 accent-indigo-600">
+                                <span id="ssvi-theta-val" class="text-xs font-mono font-bold text-indigo-600 w-8">0.15</span>
+                            </div>
+                        </div>
+
+                        <div class="chart-container">
+                            <canvas id="ssviChart"></canvas>
+                        </div>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">2.3 Catalog of 20 Alpha Intelligence Modules</h2>
+                    <p>
+                        The intelligence engine operates as a network of <strong>20 independently measurable alpha modules</strong>. Each module contributes to the final expected value calculation, and any module failing to add reliable predictive edge after execution costs is systematically deprecated. Filter modules by functional domain below:
+                    </p>
+
+                    <!-- Module Explorer Filters -->
+                    <div class="flex flex-wrap gap-1.5 font-sans my-3" id="module-filters">
+                        <button onclick="filterModules('all')" class="mod-filter-btn px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-600 text-white">All 20 Modules</button>
+                        <button onclick="filterModules('directional')" class="mod-filter-btn px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200">Directional & Macro (4)</button>
+                        <button onclick="filterModules('volatility')" class="mod-filter-btn px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200">Volatility & Pricing (5)</button>
+                        <button onclick="filterModules('microstructure')" class="mod-filter-btn px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200">Microstructure & Flow (11)</button>
+                    </div>
+
+                    <!-- Module Grid -->
+                    <div id="alpha-modules-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 font-sans pt-2">
+                        <!-- Rendered dynamically by JS -->
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- SECTION 3 -->
+            <section id="sec-3" class="doc-section bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+                
+                <div class="border-b border-slate-200 pb-4">
+                    <div class="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wider">SECTION 3 — EXPIRATION HORIZONS & STRATEGY TAXONOMY</div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">Expiration Matrix & Full Strategy Catalog</h1>
+                </div>
+
+                <!-- Intro explanation -->
+                <div class="p-4 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-950 space-y-1 font-sans">
+                    <strong class="font-bold text-indigo-900 block uppercase tracking-wider text-[11px]">Section Context & Purpose</strong>
+                    <p class="leading-relaxed">
+                        This section classifies the expiration horizons supported by the engine (from 0DTE through LEAPS) and details the 5-phase strategy rollout. It lays out the exact leg mechanics, strike selection rules, assignment risks, and trade value propositions for single-leg and multi-leg option structures.
+                    </p>
+                </div>
+
+                <div class="space-y-4 text-sm leading-relaxed text-slate-700 font-doc">
+                    
+                    <h2 class="text-lg font-bold text-slate-900 font-sans border-b border-slate-100 pb-2">3.1 Expiration and Contract Coverage Rules</h2>
+                    <p>
+                        The strategy selection engine maps the opportunity's intended holding horizon to specific expirations, accounting for liquidity, Greek decay curves, and catalyst timing. Contract specifications, exercise styles (American vs. European), and settlement types (physical vs. cash) are strictly evaluated.
+                    </p>
+
+                    <div class="overflow-x-auto custom-scrollbar font-sans text-xs my-3">
+                        <table class="w-full text-left border-collapse border border-slate-200">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-800 border-b border-slate-200 font-mono">
+                                    <th class="p-2.5 border-r border-slate-200">Expiration Horizon</th>
+                                    <th class="p-2.5 border-r border-slate-200">Primary Use Cases</th>
+                                    <th class="p-2.5">Greek Sensitivities and Risk Profile</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200 text-slate-600">
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">0DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Intraday mean-reversion, macro event hedging on SPX/NDX.</td>
+                                    <td class="p-2.5">Extreme gamma risk ($\Gamma$); binary theta decay ($\Theta$). Highly speculative (Tier 3/4).</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">1–2 DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Short-horizon momentum, immediate post-earnings reactions.</td>
+                                    <td class="p-2.5">High gamma; rapid theta bleed. Requires precise timing.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">3–7 DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Imminent known binary catalysts (e.g., FDA decisions, CPI).</td>
+                                    <td class="p-2.5">Elevated vega sensitivity ($\mathcal{V}$); vulnerable to sudden IV crush.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">8–14 DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Short-term swing trading, tactical vertical spreads.</td>
+                                    <td class="p-2.5">Balanced gamma/theta; optimal for rapid directional setups.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">15–30 DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Primary horizon for directional swings and credit spreads.</td>
+                                    <td class="p-2.5">Manageable theta decay; sufficient time for thesis realization.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">31–60 DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Core horizon for structural shifts and multi-leg income trades.</td>
+                                    <td class="p-2.5">Optimal theta decay curve; lower gamma risk; stable delta exposure.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">61–90 DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Medium-term thematic trends, calendar spread deferred legs.</td>
+                                    <td class="p-2.5">High vega sensitivity; slow theta decay; highly liquid on standard cycles.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">91–180 DTE</td>
+                                    <td class="p-2.5 border-r border-slate-200">Broad macroeconomic thesis expression, equity replacement.</td>
+                                    <td class="p-2.5">Dominant vega and delta exposure; resilient to short-term noise.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono text-indigo-600 border-r border-slate-200">LEAPS (&gt;1 Year)</td>
+                                    <td class="p-2.5 border-r border-slate-200">Long-term directional bets, deep ITM synthetic stock.</td>
+                                    <td class="p-2.5">Minimal theta; deep liquidity checks required; high capital efficiency.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">3.2 Full Strategy Catalog and Phased Rollout</h2>
+                    <p>
+                        The strategy taxonomy is divided into distinct families. The engine evaluates the complete payoff distribution rather than selecting the cheapest contract. Multi-leg strategies are modeled as complete mathematical positions.
+                    </p>
+
+                    <div class="space-y-3 font-sans text-xs my-4">
+                        <!-- Phase 1 -->
+                        <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                <span class="font-mono font-bold text-indigo-600 text-sm">PHASE 1: SINGLE-LEG STRATEGIES</span>
+                                <span class="bg-indigo-100 text-indigo-800 text-[10px] font-mono px-2 py-0.5 rounded">Fundamental Rollout</span>
+                            </div>
+                            <div class="space-y-2 text-slate-700">
+                                <div>
+                                    <strong class="text-slate-900">Long Calls and Long Puts:</strong>
+                                    <p class="text-slate-600">Deployed for high-confidence directional forecasts where implied volatility is relatively inexpensive, and expected move exceeds breakeven. Rejection occurs if IV percentile is high or bid/ask spread exceeds slippage limits. Short-term momentum favors high-gamma short-DTE ATM options; macro theses favor lower-theta deep ITM (0.70+ delta) options. Risk Tier 2 or 3.</p>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Covered Calls and Cash-Secured Puts (CSPs):</strong>
+                                    <p class="text-slate-600">Deployed in neutral to mildly directional regimes to harvest volatility premium and theta decay. Typically 30–45 DTE, targeting 0.20 to 0.30 delta strikes to balance income with assignment risk. Max gain capped at premium received plus stock appreciation. Risk Tier 2.</p>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Protective Puts & Naked Shorts Distinction:</strong>
+                                    <p class="text-slate-600">Protective puts act as portfolio insurance (Tier 1). Naked short options possess undefined tail risk and are restricted to analytical tracking or severe Portfolio Margin overpricing setups (Tier 4).</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Phase 2 -->
+                        <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                <span class="font-mono font-bold text-indigo-600 text-sm">PHASE 2: VERTICAL SPREADS</span>
+                                <span class="bg-indigo-100 text-indigo-800 text-[10px] font-mono px-2 py-0.5 rounded">Core Directional Engine</span>
+                            </div>
+                            <div class="space-y-2 text-slate-700">
+                                <div>
+                                    <strong class="text-slate-900">Bull Call / Bear Put Debit Spreads:</strong>
+                                    <p class="text-slate-600">Deployed when IV is moderate to high to offset long option cost and theta decay through the short leg. Long strike placed ATM; short strike placed at target price. Max Loss is net debit; Max Gain is strike width minus debit. Risk Tier 1/2.</p>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Bull Put / Bear Call Credit Spreads:</strong>
+                                    <p class="text-slate-600">Deployed for directional or neutral theses where IV is elevated and expected to undergo volatility crush. Short strikes placed outside expected move (0.15–0.25 delta). Mandatory exit before market close on expiration day to prevent pin risk. Risk Tier 2.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Phase 3, 4, 5 -->
+                        <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                                <span class="font-mono font-bold text-indigo-600 text-sm">PHASE 3, 4 & 5: VOLATILITY, CALENDARS & MULTI-LEG STRUCTURES</span>
+                                <span class="bg-slate-200 text-slate-700 text-[10px] font-mono px-2 py-0.5 rounded">Advanced Expansion</span>
+                            </div>
+                            <div class="space-y-2 text-slate-700">
+                                <div>
+                                    <strong class="text-slate-900">Long Straddles & Strangles (Phase 3):</strong> Deployed when catalyst modules predict movement exceeding market implied pricing (e.g., unpriced earnings shock). Requires raw multi-leg package quote validation on OPRA.
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Calendar & Diagonal Spreads (Phase 4):</strong> Exploits term structure slope mispricings (contango vs backwardation) across differing expiration cycles.
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Broken-Wing Butterflies (BWBs) & Iron Condors (Phase 5):</strong> Skips a strike on the upper wing to enter for a net credit, completely eliminating downside risk if the stock drops sharply.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- SECTION 4 -->
+            <section id="sec-4" class="doc-section bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+                
+                <div class="border-b border-slate-200 pb-4">
+                    <div class="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wider">SECTION 4 — RISK EVALUATION & PAYOFF SIMULATOR</div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">4-Tier Risk Framework & Strategy Payoff Engine</h1>
+                </div>
+
+                <!-- Intro explanation -->
+                <div class="p-4 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-950 space-y-1 font-sans">
+                    <strong class="font-bold text-indigo-900 block uppercase tracking-wider text-[11px]">Section Context & Purpose</strong>
+                    <p class="leading-relaxed">
+                        This section introduces the contract-level 4-tier risk classification system, evaluating trade candidates against Regulation T and Portfolio Margin stress tests. It features an interactive strategy payoff calculator that models real-time expiration P&L curves across multiple strike configurations.
+                    </p>
+                </div>
+
+                <div class="space-y-4 text-sm leading-relaxed text-slate-700 font-doc">
+                    
+                    <h2 class="text-lg font-bold text-slate-900 font-sans border-b border-slate-100 pb-2">4.1 Contract-Level 4-Tier Risk Framework</h2>
+                    <p>
+                        Every signal candidate is subjected to multi-dimensional risk stress testing before publication. Slayer Terminal contrasts standard Regulation T fixed margins with Portfolio Margin (PM) stress testing ($\pm 15\%$ price shock arrays) to assign a contract-level risk tier:
+                    </p>
+
+                    <div class="overflow-x-auto custom-scrollbar font-sans text-xs my-3">
+                        <table class="w-full text-left border-collapse border border-slate-200">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-800 border-b border-slate-200 font-mono">
+                                    <th class="p-2.5 border-r border-slate-200">Risk Tier</th>
+                                    <th class="p-2.5 border-r border-slate-200">Margin & Risk Profile Characteristics</th>
+                                    <th class="p-2.5">Representative Strategy Examples</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200 text-slate-600">
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono border-r border-slate-200"><span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">Tier 1</span></td>
+                                    <td class="p-2.5 border-r border-slate-200">High liquidity, defined narrow max loss, predictable theta decay, low gamma risk.</td>
+                                    <td class="p-2.5 font-semibold text-slate-800">Defined debit spreads, protective puts, narrow credit spreads on SPY.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono border-r border-slate-200"><span class="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">Tier 2</span></td>
+                                    <td class="p-2.5 border-r border-slate-200">Moderate time decay sensitivity, defined max loss, standard market delta exposure.</td>
+                                    <td class="p-2.5 font-semibold text-slate-800">30-DTE directional spreads, Broken-Wing Butterflies, Covered Calls, Calendars.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono border-r border-slate-200"><span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded">Tier 3</span></td>
+                                    <td class="p-2.5 border-r border-slate-200">Binary catalyst exposure, high gamma acceleration, 100% loss risk of premium paid.</td>
+                                    <td class="p-2.5 font-semibold text-slate-800">Pre-earnings long straddles, 1-2 DTE directional long options, ratio spreads.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold font-mono border-r border-slate-200"><span class="bg-rose-100 text-rose-800 px-2 py-0.5 rounded">Tier 4</span></td>
+                                    <td class="p-2.5 border-r border-slate-200">Undefined tail risk, extreme short-dated gamma, potential margin call expansion.</td>
+                                    <td class="p-2.5 font-semibold text-slate-800">0DTE OTM naked options, naked short calls/puts, unhedged front ratio spreads.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">4.2 Interactive Strategy Payoff Curve Simulator</h2>
+                    <p class="text-xs text-slate-600">
+                        Select a strategy to visualize its expiration P&L distribution, max gain, max loss, breakeven thresholds, and risk tier:
+                    </p>
+
+                    <!-- Payoff Simulator Widget -->
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4 font-sans my-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                            <h3 class="text-xs font-bold text-slate-900 uppercase">Strategy Payoff Curve at Expiration</h3>
+                            <div class="flex items-center space-x-2">
+                                <label for="payoff-strat-select" class="text-xs font-semibold text-slate-700">Strategy Setup:</label>
+                                <select id="payoff-strat-select" onchange="updatePayoffChart()" class="text-xs font-mono bg-white border border-slate-300 rounded-md p-1.5 text-slate-900 focus:ring-indigo-500">
+                                    <option value="bwb" selected>Broken-Wing Butterfly (Net Credit)</option>
+                                    <option value="debit">Bull Call Debit Spread</option>
+                                    <option value="straddle">Long Straddle (Pre-Earnings)</option>
+                                    <option value="condor">Iron Condor (Range-Bound)</option>
+                                    <option value="naked">Long Call (Single Leg)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div class="lg:col-span-2">
+                                <div class="chart-container">
+                                    <canvas id="payoffChart"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-4 rounded-lg border border-slate-200 flex flex-col justify-between text-xs space-y-3">
+                                <div class="space-y-3">
+                                    <div class="font-bold text-slate-900 text-sm border-b border-slate-100 pb-2" id="payoff-title">
+                                        Broken-Wing Butterfly (Net Credit)
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-2 gap-2 font-mono">
+                                        <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                                            <span class="text-slate-400 block text-[10px]">MAX GAIN</span>
+                                            <span class="text-emerald-600 font-bold text-sm" id="payoff-max-gain">$650</span>
+                                        </div>
+                                        <div class="bg-slate-50 p-2 rounded border border-slate-200">
+                                            <span class="text-slate-400 block text-[10px]">MAX LOSS</span>
+                                            <span class="text-rose-600 font-bold text-sm" id="payoff-max-loss">$350</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="space-y-1.5 font-mono text-[11px]">
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">Net Cost / Credit:</span>
+                                            <span id="payoff-entry-cost" class="font-bold text-emerald-600">+$1.50 Net Credit</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">Breakeven Price:</span>
+                                            <span id="payoff-breakeven" class="font-bold text-slate-900">$591.50</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">Assigned Risk Tier:</span>
+                                            <span id="payoff-risk-badge" class="font-bold text-indigo-600">Tier 2 (Moderate Risk)</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="p-3 bg-indigo-50 border border-indigo-200 rounded text-indigo-950 text-[11px]" id="payoff-description">
+                                        Mechanics: Skips a strike on the upper wing to receive a net credit. Downside risk is completely eliminated if stock falls away.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- SECTION 5 -->
+            <section id="sec-5" class="doc-section bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+                
+                <div class="border-b border-slate-200 pb-4">
+                    <div class="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wider">SECTION 5 — SIGNAL PUBLISHING & LIFECYCLE LOGIC</div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">5-State Lifecycle Machine & OpenAPI Schema</h1>
+                </div>
+
+                <!-- Intro explanation -->
+                <div class="p-4 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-950 space-y-1 font-sans">
+                    <strong class="font-bold text-indigo-900 block uppercase tracking-wider text-[11px]">Section Context & Purpose</strong>
+                    <p class="leading-relaxed">
+                        This section details the state transition logic for signals within Slayer Terminal, governing their lifecycle from detection to exit or rejection. It also provides the standardized OpenAPI 3.1 JSON schema payloads for signal publication and no-trade audit logs.
+                    </p>
+                </div>
+
+                <div class="space-y-4 text-sm leading-relaxed text-slate-700 font-doc">
+                    
+                    <h2 class="text-lg font-bold text-slate-900 font-sans border-b border-slate-100 pb-2">5.1 Deterministic 5-State Lifecycle Machine</h2>
+                    <p>
+                        Every identified opportunity transitions through a deterministic 5-state lifecycle machine. Active signals are continually monitored by a <strong>Counterfactual Hold Audit Loop</strong> to determine whether maintaining the position yields higher expected value ($EV$) than liquidating at current natural NBBO market prices.
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 font-sans text-xs my-3">
+                        <div class="p-3 bg-slate-100 rounded-lg border border-slate-200">
+                            <span class="text-[10px] font-mono text-slate-500 font-bold block">STATE 1</span>
+                            <span class="font-bold text-slate-900 block mt-0.5">WAIT</span>
+                            <p class="text-[11px] text-slate-600 mt-1">Thesis active; waiting for technical or IV entry trigger.</p>
+                        </div>
+                        <div class="p-3 bg-rose-50 rounded-lg border border-rose-200">
+                            <span class="text-[10px] font-mono text-rose-600 font-bold block">STATE 2</span>
+                            <span class="font-bold text-rose-950 block mt-0.5">NO-TRADE</span>
+                            <p class="text-[11px] text-rose-900 mt-1">Gate rejection: stale quotes, crossed markets, or high slippage.</p>
+                        </div>
+                        <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-300">
+                            <span class="text-[10px] font-mono text-emerald-700 font-bold block">STATE 3</span>
+                            <span class="font-bold text-emerald-950 block mt-0.5">ENTRY</span>
+                            <p class="text-[11px] text-emerald-900 mt-1">Passed health gate. Signal published with max cost limit.</p>
+                        </div>
+                        <div class="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                            <span class="text-[10px] font-mono text-indigo-700 font-bold block">STATE 4</span>
+                            <span class="font-bold text-indigo-950 block mt-0.5">HOLD</span>
+                            <p class="text-[11px] text-indigo-900 mt-1">Counterfactual audit: remaining $EV$ exceeds liquidation cost.</p>
+                        </div>
+                        <div class="p-3 bg-slate-900 text-white rounded-lg border border-slate-800">
+                            <span class="text-[10px] font-mono text-indigo-400 font-bold block">STATE 5</span>
+                            <span class="font-bold text-white block mt-0.5">EXIT</span>
+                            <p class="text-[11px] text-slate-300 mt-1">Target hit, thesis invalidated, time stop, or deteriorating liquidity.</p>
+                        </div>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">5.2 OpenAPI 3.1 Payload Schema Inspector</h2>
+                    <p class="text-xs text-slate-600">
+                        Inspecting the standardized JSON API payload format transmitted to web interfaces and consumer applications:
+                    </p>
+
+                    <!-- OpenAPI JSON Schema Inspector Widget -->
+                    <div class="p-4 bg-slate-900 rounded-xl border border-slate-800 space-y-3 font-mono text-xs my-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold">API Payload Contract Inspector</span>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="toggleSchemaSample('bwb')" id="schema-btn-bwb" class="px-2.5 py-1 text-[11px] font-semibold rounded bg-indigo-600 text-white">Entry Callout JSON</button>
+                                <button onclick="toggleSchemaSample('notrade')" id="schema-btn-notrade" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 text-slate-300 hover:text-white rounded">No-Trade Record JSON</button>
+                            </div>
+                        </div>
+
+                        <pre id="json-schema-code" class="text-emerald-400 text-xs overflow-x-auto custom-scrollbar max-h-80 leading-relaxed">
+{
+  "callout_id": "SLYR-20261010-0042",
+  "timestamp_event": "2026-10-10T14:32:01.892104921Z",
+  "underlying_ticker": "NVDA",
+  "strategy": "BROKEN_WING_BUTTERFLY",
+  "horizon_category": "15_30DTE",
+  "state": "ENTRY",
+  "scoring": {
+    "directional_confidence": 0.84,
+    "estimated_edge_ev": 0.18,
+    "risk_tier": "TIER_2",
+    "dominant_risk_driver": "Wing Width Asymmetry & Delta Skew"
+  },
+  "legs": [
+    { "action": "BUY", "quantity": 1, "strike": 130.0, "type": "CALL", "expiration": "2026-11-20" },
+    { "action": "SELL", "quantity": 2, "strike": 135.0, "type": "CALL", "expiration": "2026-11-20" },
+    { "action": "BUY", "quantity": 1, "strike": 142.5, "type": "CALL", "expiration": "2026-11-20" }
+  ],
+  "execution": {
+    "entry_trigger": "eSSVI Call Skew Anomaly > +2.2 Sigma",
+    "max_acceptable_net_cost": -1.20,
+    "natural_price_nbbo": -1.35,
+    "intended_holding_days": 12
+  },
+  "invalidation_criteria": "Underlying closes below $128.00 or eSSVI surface normalizes."
+}
+                        </pre>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- SECTION 6 -->
+            <section id="sec-6" class="doc-section bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+                
+                <div class="border-b border-slate-200 pb-4">
+                    <div class="text-xs font-mono font-bold text-indigo-600 uppercase tracking-wider">SECTION 6 — SYSTEM VALIDATION & ROADMAP</div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">Validation, Limitations & 15-Phase Roadmap</h1>
+                </div>
+
+                <!-- Intro explanation -->
+                <div class="p-4 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-950 space-y-1 font-sans">
+                    <strong class="font-bold text-indigo-900 block uppercase tracking-wider text-[11px]">Section Context & Purpose</strong>
+                    <p class="leading-relaxed">
+                        This concluding section presents the quantitative validation framework, including out-of-sample walk-forward testing and feed ablation modeling. It transparently outlines system limitations and establishes the complete 15-phase engineering implementation roadmap.
+                    </p>
+                </div>
+
+                <div class="space-y-4 text-sm leading-relaxed text-slate-700 font-doc">
+                    
+                    <h2 class="text-lg font-bold text-slate-900 font-sans border-b border-slate-100 pb-2">6.1 Walk-Forward & Feed Ablation Testing</h2>
+                    <p>
+                        Before production deployment, Slayer Terminal enforces walk-forward out-of-sample testing, feed ablation validation, and a mandatory 30-day live shadow period. Feed ablation measures the net out-of-sample Sharpe Ratio contribution of each data feed. Any endpoint failing to demonstrate incremental value after slippage drag is deprecated.
+                    </p>
+
+                    <!-- Feed Ablation Chart -->
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 font-sans my-4">
+                        <h3 class="text-xs font-bold text-slate-900 uppercase">Out-of-Sample Sharpe Ratio Impact Upon Feed Ablation</h3>
+                        <div class="chart-container">
+                            <canvas id="ablationChart"></canvas>
+                        </div>
+                        <p class="text-[11px] text-slate-500 font-mono text-center">
+                            Highest incremental alpha generators: OPRA Nanosecond NBBO (+0.82 Sharpe) and eSSVI Vol Surface (+0.64 Sharpe).
+                        </p>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">6.2 Documented System Limitations</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-sans my-3">
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <strong class="text-slate-900 block mb-1">1. Execution Price Drift</strong>
+                            <p class="text-slate-600">Because signals are published rather than auto-executed, latency drift occurs. Mitigated by <code class="mono bg-slate-200 px-1">max_acceptable_net_cost</code> filters.</p>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <strong class="text-slate-900 block mb-1">2. FLEX Options Exclusion</strong>
+                            <p class="text-slate-600">Custom institutional FLEX options are excluded due to lack of continuous OPRA public order book quotes.</p>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <strong class="text-slate-900 block mb-1">3. Legging Execution Risk</strong>
+                            <p class="text-slate-600">Multi-leg positions assume fill as complete complex packages. Manual leg-in strategies introduce unmodeled execution risk.</p>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <strong class="text-slate-900 block mb-1">4. House Margin Discrepancies</strong>
+                            <p class="text-slate-600">Individual brokerages enforce house margin buffers that may exceed standard Reg T requirements, restricting retail trade execution.</p>
+                        </div>
+                    </div>
+
+                    <h2 class="text-lg font-bold text-slate-900 font-sans pt-4 border-b border-slate-100 pb-2">6.3 Prioritized 15-Phase Sequential Engineering Roadmap</h2>
+                    <p class="text-xs text-slate-600">
+                        The complete sequential engineering roadmap must be executed in order:
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs pt-1 font-sans my-3">
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 1: API Connections</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Massive, Unusual Whales & Databento websocket ingestion.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 2: TimescaleDB Schema</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Deploy point-in-time hypertables and continuous aggregates.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 3: Data Health Gates</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Build stale quote filters, crossed market checks, and natural NBBO logic.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 4: Schema & Ledger</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Deploy OpenAPI JSON contract and no-trade rejection database ledger.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 5: Single-Leg Directional</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Implement primary momentum engines and single-leg options scoring.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 6: Lifecycle Engine</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Program 5-state machine and counterfactual hold audit loop.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 7: Independent Risk Engine</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Build Reg T vs. PM stress models and Tier 1-4 classification.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 8: Defined Vertical Spreads</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Debit and credit spread modeling with package pricing.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 9: News Catalyst NLP</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Deploy entity linkage, deduplication, and reaction latency module.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 10: Volatility Strategies</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Integrate eSSVI surface fit and SABR model for straddles/strangles.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 11: Term Structure Spreads</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Calendar/diagonal spread evaluation across backwardation/contango.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 12: Advanced Multi-Leg</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Butterflies, Iron Condors, and net-credit Broken-Wing Butterflies.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 13: Microstructure & Flow</span>
+                            <span class="text-[11px] text-slate-500 font-sans">NYSE auction imbalances, dark pool prints, and Unusual Whales GEX.</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <span class="text-indigo-600 font-bold block">Phase 14: Ablation & Backtest</span>
+                            <span class="text-[11px] text-slate-500 font-sans">Walk-forward out-of-sample testing and feed ablation validation.</span>
+                        </div>
+                        <div class="p-3 bg-slate-900 text-white rounded-lg border border-slate-800">
+                            <span class="text-emerald-400 font-bold block">Phase 15: Live Shadow Period</span>
+                            <span class="text-[11px] text-slate-300 font-sans">30-day live tape shadow evaluation prior to public release.</span>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+        </main>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-6 mt-12">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500 font-mono">
+            SLAYER TERMINAL PRODUCT REQUIREMENT & TECHNICAL DESIGN SPECIFICATION — REVISION 2.5
+        </div>
+    </footer>
+
+    <!-- INTERACTIVE SCRIPT ENGINE -->
+    <script>
+        // Catalog Data for 20 Alpha Modules
+        const alphaModulesData = [
+            { id: 1, category: 'directional', name: 'Multi-Timeframe Directional Forecasting', desc: 'Synthesizes price momentum, statistical mean-reversion, and volume profiles across horizons ranging from intraday minutes to multi-month trends.' },
+            { id: 2, category: 'directional', name: 'Market-Regime & Cross-Asset Analysis', desc: 'Contextualizes directional forecasts by classifying the prevailing environment (e.g. high-inflation, low-volatility, trend-following) using futures, commodity, and currency inputs.' },
+            { id: 3, category: 'directional', name: 'Historical Analogs Vector Search', desc: 'Employs dynamic time warping and vector embeddings to locate statistically similar market setups from the past 20 years, evaluating the probability distribution of subsequent price action.' },
+            { id: 4, category: 'directional', name: 'Futures & Macroeconomic Context', desc: 'Acts as a systemic risk overlay capable of suppressing bullish equity signals if cross-asset stress indicators trigger.' },
+            { id: 5, category: 'volatility', name: 'Implied Volatility & eSSVI Surface Detection', desc: 'Fits the empirical volatility surface to detect localized mispricings using extended Surface Stochastic Volatility Inspired (eSSVI) parametrization.' },
+            { id: 6, category: 'volatility', name: 'SABR Volatility Expansion & Contraction', desc: 'Calibrates beta (skew) and nu (vol of vol) parameters under the Stochastic Alpha Beta Rho model to forecast IV crush or expansion probabilities.' },
+            { id: 7, category: 'volatility', name: 'Term-Structure & Skew Analysis', desc: 'Evaluates relative pricing across expirations (contango versus backwardation) and strikes (put/call skew steepness) to optimize wing selection.' },
+            { id: 8, category: 'volatility', name: 'Cross-Contract Consistency Analysis', desc: 'Identifies relative-value arbitrage anomalies between highly correlated underlying assets, index options, and sector ETF option chains.' },
+            { id: 9, category: 'volatility', name: 'Earnings & Catalyst Volatility Pricing', desc: 'Compares historical pre-event IV expansion and post-event volatility crush against current chain pricing to detect mispriced binary events.' },
+            { id: 10, category: 'microstructure', name: 'Options Flow Quality & Sweep Detector', desc: 'Filters consolidated tape for high-premium Intermarket Sweep Orders (ISOs) executed at ask, differentiating urgent directional bets from delta-neutral hedging.' },
+            { id: 11, category: 'microstructure', name: 'SPX & 0DTE Dealer Gamma Flip Positioning', desc: 'Evaluates short-dated gamma profiles using Gamma Exposure (GEX) flip prices to forecast dealer hedging flows and intraday pinning risks.' },
+            { id: 12, category: 'microstructure', name: 'Opening & Closing Auction Imbalance Tracker', desc: 'Analyzes NYSE opening and closing order imbalances for short-horizon opportunity detection and closing momentum analysis.' },
+            { id: 13, category: 'microstructure', name: 'Dark Pool Print Accumulation Mapping', desc: 'Tracks off-exchange institutional accumulation blocks to map key hidden support/resistance levels and institutional inventory shifts.' },
+            { id: 14, category: 'microstructure', name: 'News Reaction Latency Arbitrage', desc: 'Detects delayed option chain repricing following headline news when executable statistical edge remains on options quotes.' },
+            { id: 15, category: 'microstructure', name: 'Model Disagreement & Epistemic Uncertainty', desc: 'Quantifies variance among predictive engines; high epistemic uncertainty forces a downgrade in risk tier or outright signal rejection.' },
+            { id: 16, category: 'microstructure', name: 'Liquidity Stress & Execution Evaluator', desc: 'Monitors bid/ask spread widths, OPRA quote update frequencies, and order book depth to ensure execution feasibility.' },
+            { id: 17, category: 'microstructure', name: 'Crowded Trade & Squeeze Risk Detector', desc: 'Analyzes correlated opportunity clusters and high short-interest positioning to prevent signaling crowded trades susceptible to squeeze risks.' },
+            { id: 18, category: 'microstructure', name: 'Position Greek Drift & Early-Warning Audit', desc: 'Continuously audits active positions for adverse Greek changes, gamma acceleration, or deteriorating underlying market structure.' },
+            { id: 19, category: 'microstructure', name: 'Counterfactual Hold-versus-Exit Evaluator', desc: 'Continuously audits active positions to determine whether maintaining the position yields higher expected value than liquidating at natural NBBO.' },
+            { id: 20, category: 'microstructure', name: 'Post-Callout Expectancy & Calibration Ledger', desc: 'Conducts post-trade performance audits to continuously recalibrate strategy confidence weights and prune underperforming features.' }
+        ];
+
+        // Global Chart Instances
+        let ssviChartInstance = null;
+        let payoffChartInstance = null;
+        let ablationChartInstance = null;
+
+        // Initialize App Engine
+        document.addEventListener('DOMContentLoaded', () => {
+            renderModules('all');
+            simulateNews('earnings');
+            initSSVIChart();
+            initPayoffChart();
+            initAblationChart();
+            initTOCScrollSpy();
+        });
+
+        // View Mode Toggle (Sans UI vs Serif Reader)
+        function setFontMode(mode) {
+            const body = document.getElementById('document-body');
+            const btnSans = document.getElementById('font-btn-sans');
+            const btnSerif = document.getElementById('font-btn-serif');
+
+            if (mode === 'serif') {
+                body.classList.add('font-serif-doc');
+                body.classList.remove('font-sans-doc');
+                btnSerif.className = 'px-2.5 py-1 rounded bg-indigo-600 text-white font-bold';
+                btnSans.className = 'px-2.5 py-1 rounded bg-slate-800 text-slate-300 hover:text-white';
+            } else {
+                body.classList.add('font-sans-doc');
+                body.classList.remove('font-serif-doc');
+                btnSans.className = 'px-2.5 py-1 rounded bg-indigo-600 text-white font-bold';
+                btnSerif.className = 'px-2.5 py-1 rounded bg-slate-800 text-slate-300 hover:text-white';
+            }
+        }
+
+        // Live Document Search Engine
+        function handleSearch() {
+            const query = document.getElementById('document-search-input').value.trim().toLowerCase();
+            const clearBtn = document.getElementById('search-clear-btn');
+            const countEl = document.getElementById('search-results-count');
+
+            if (query.length < 2) {
+                clearSearchHighlights();
+                clearBtn.classList.add('hidden');
+                countEl.classList.add('hidden');
+                return;
+            }
+
+            clearBtn.classList.remove('hidden');
+            let totalMatches = 0;
+
+            const sections = document.querySelectorAll('.doc-section');
+            sections.forEach(sec => {
+                const textNodes = getTextNodes(sec);
+                textNodes.forEach(node => {
+                    const text = node.nodeValue;
+                    const matchIdx = text.toLowerCase().indexOf(query);
+                    if (matchIdx !== -1) {
+                        totalMatches++;
+                    }
+                });
+            });
+
+            countEl.innerText = `${totalMatches} match${totalMatches !== 1 ? 'es' : ''}`;
+            countEl.classList.remove('hidden');
+        }
+
+        function clearSearch() {
+            document.getElementById('document-search-input').value = '';
+            document.getElementById('search-clear-btn').classList.add('hidden');
+            document.getElementById('search-results-count').classList.add('hidden');
+            clearSearchHighlights();
+        }
+
+        function clearSearchHighlights() {
+            document.querySelectorAll('mark.search-highlight').forEach(mark => {
+                const parent = mark.parentNode;
+                parent.replaceChild(document.createTextNode(mark.textContent), mark);
+                parent.normalize();
+            });
+        }
+
+        function getTextNodes(node) {
+            let textNodes = [];
+            if (node.nodeType === 3) {
+                if (node.nodeValue.trim().length > 0) {
+                    textNodes.push(node);
+                }
+            } else {
+                if (node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE' && node.nodeName !== 'TEXTAREA') {
+                    for (let child of node.childNodes) {
+                        textNodes = textNodes.concat(getTextNodes(child));
+                    }
+                }
+            }
+            return textNodes;
+        }
+
+        // Render Alpha Modules Cards
+        function renderModules(filter) {
+            const container = document.getElementById('alpha-modules-container');
+            container.innerHTML = '';
+
+            const filtered = filter === 'all' 
+                ? alphaModulesData 
+                : alphaModulesData.filter(m => m.category === filter);
+
+            filtered.forEach(mod => {
+                const card = document.createElement('div');
+                card.className = 'p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col justify-between hover:border-indigo-400 transition-all space-y-2';
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] font-mono font-bold text-indigo-600 uppercase">MODULE #${mod.id}</span>
+                            <span class="text-[9px] bg-white border border-slate-200 px-1.5 py-0.5 rounded text-slate-500 font-mono">${mod.category}</span>
+                        </div>
+                        <h4 class="font-bold text-xs text-slate-900">${mod.name}</h4>
+                        <p class="text-xs text-slate-600 mt-1 leading-relaxed">${mod.desc}</p>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function filterModules(category) {
+            document.querySelectorAll('.mod-filter-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white');
+                btn.classList.add('bg-slate-100', 'text-slate-700');
+            });
+            event.target.classList.add('bg-indigo-600', 'text-white');
+            event.target.classList.remove('bg-slate-100', 'text-slate-700');
+            renderModules(category);
+        }
+
+        // News NLP Simulator
+        function simulateNews(type) {
+            document.querySelectorAll('.news-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white');
+                btn.classList.add('bg-white', 'border', 'border-slate-300', 'text-slate-700');
+            });
+            const activeBtn = document.getElementById(`news-btn-${type}`);
+            if (activeBtn) {
+                activeBtn.classList.add('bg-indigo-600', 'text-white');
+                activeBtn.classList.remove('bg-white', 'border', 'border-slate-300', 'text-slate-700');
+            }
+
+            const output = document.getElementById('news-nlp-output');
+            if (type === 'earnings') {
+                output.innerHTML = `
+                    <div class="flex justify-between font-mono">
+                        <span class="text-slate-500">Entity Linkage:</span>
+                        <span class="font-bold text-indigo-600">NVDA (Direct Target) + TSM & SMCI (Supply Chain)</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">DIRECTIONAL IMPLICATION</span>
+                            <span class="font-bold text-emerald-600">+84% Bullish Upside Momentum Drift</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">VOLATILITY IMPLICATION</span>
+                            <span class="font-bold text-rose-600">-48% Post-Event Implied Volatility Crush</span>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-600 italic bg-slate-50 p-2 rounded font-doc">
+                        "Reaction Latency Module detects IV remains inflated on 14-DTE contracts. System recommends Bull Call Debit Spread over naked long call."
+                    </div>
+                `;
+            } else if (type === 'litigation') {
+                output.innerHTML = `
+                    <div class="flex justify-between font-mono">
+                        <span class="text-slate-500">Entity Linkage:</span>
+                        <span class="font-bold text-indigo-600">AAPL (Direct Target) + XLK (Sector ETF)</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">DIRECTIONAL IMPLICATION</span>
+                            <span class="font-bold text-rose-600">-62% Bearish Drift Pressure</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">VOLATILITY IMPLICATION</span>
+                            <span class="font-bold text-emerald-600">+72% Sustained Volatility Expansion</span>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-600 italic bg-slate-50 p-2 rounded font-doc">
+                        "Uncertainty horizon estimated at 30+ days. Module flags Long Strangle or Bear Put Spread opportunity."
+                    </div>
+                `;
+            } else if (type === 'ma') {
+                output.innerHTML = `
+                    <div class="flex justify-between font-mono">
+                        <span class="text-slate-500">Entity Linkage:</span>
+                        <span class="font-bold text-indigo-600">TARGET_CO (Acquiree) + BUYER_CORP (Acquirer)</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">DIRECTIONAL IMPLICATION</span>
+                            <span class="font-bold text-emerald-600">+95% Pinned to Cash Offer</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 block text-[10px]">VOLATILITY IMPLICATION</span>
+                            <span class="font-bold text-rose-600">-92% Total Volatility Collapse</span>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-600 italic bg-slate-50 p-2 rounded font-doc">
+                        "Price pinned near buyout offer. Executable Data Health Gate suppresses long premium signals due to zero expected residual drift."
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize eSSVI Surface Chart
+        function initSSVIChart() {
+            const ctx = document.getElementById('ssviChart').getContext('2d');
+            const logMoneyness = [-0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20];
+            
+            ssviChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: logMoneyness.map(k => k.toFixed(2)),
+                    datasets: [
+                        {
+                            label: 'eSSVI Curve (7-DTE)',
+                            data: calculateSSVICurve(0.15, -0.3, 0.8, logMoneyness),
+                            borderColor: '#4f46e5',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'eSSVI Curve (30-DTE)',
+                            data: calculateSSVICurve(0.18, -0.2, 0.6, logMoneyness),
+                            borderColor: '#10b981',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Empirical OPRA Quotes (Raw)',
+                            data: [0.11, 0.09, 0.08, 0.075, 0.075, 0.11, 0.10, 0.11, 0.13],
+                            borderColor: '#f59e0b',
+                            borderDash: [4, 4],
+                            borderWidth: 2,
+                            pointStyle: 'circle',
+                            pointRadius: 5,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Log-Moneyness k = ln(K/S)' } },
+                        y: { title: { display: true, text: 'Total Variance w(k, θ)' } }
+                    },
+                    plugins: {
+                        tooltip: { mode: 'index', intersect: false }
+                    }
+                }
+            });
+        }
+
+        function calculateSSVICurve(theta, rho, phi, kArray) {
+            return kArray.map(k => {
+                const val = (theta / 2) * (1 + rho * phi * k + Math.sqrt(Math.pow(phi * k + rho, 2) + (1 - rho * rho)));
+                return parseFloat(val.toFixed(4));
+            });
+        }
+
+        function updateSSVIChart() {
+            const thetaVal = parseFloat(document.getElementById('ssvi-theta').value);
+            document.getElementById('ssvi-theta-val').innerText = thetaVal.toFixed(2);
+            
+            const logMoneyness = [-0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20];
+            ssviChartInstance.data.datasets[0].data = calculateSSVICurve(thetaVal, -0.3, 0.8, logMoneyness);
+            ssviChartInstance.update();
+        }
+
+        // Initialize Strategy Payoff Chart
+        function initPayoffChart() {
+            const ctx = document.getElementById('payoffChart').getContext('2d');
+            const pricePoints = [570, 575, 580, 585, 590, 595, 600, 605, 610, 615, 620];
+            
+            payoffChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: pricePoints.map(p => `$${p}`),
+                    datasets: [
+                        {
+                            label: 'Expiration Payoff ($)',
+                            data: [150, 150, 150, 150, 150, 650, 150, -350, -350, -350, -350],
+                            borderColor: '#4f46e5',
+                            backgroundColor: 'rgba(79, 70, 229, 0.08)',
+                            borderWidth: 2.5,
+                            fill: true,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Zero Line ($0)',
+                            data: Array(11).fill(0),
+                            borderColor: '#94a3b8',
+                            borderDash: [2, 2],
+                            borderWidth: 1,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Underlying Price at Expiration ($)' } },
+                        y: { title: { display: true, text: 'Net Profit / Loss ($)' } }
+                    }
+                }
+            });
+        }
+
+        function updatePayoffChart() {
+            const strat = document.getElementById('payoff-strat-select').value;
+            let payoffData = [];
+            let title = '', maxGain = '', maxLoss = '', entryCost = '', breakeven = '', riskBadge = '', desc = '';
+
+            if (strat === 'bwb') {
+                payoffData = [150, 150, 150, 150, 150, 650, 150, -350, -350, -350, -350];
+                title = 'Broken-Wing Butterfly (Net Credit)';
+                maxGain = '$650 (Pin at $595)';
+                maxLoss = '$350 (Above $605)';
+                entryCost = '+$1.50 Net Credit';
+                breakeven = '$591.50';
+                riskBadge = 'Tier 2 (Moderate Risk)';
+                desc = 'Mechanics: Skips a strike on upper wing. Net credit eliminates downside risk entirely if stock falls away.';
+            } else if (strat === 'debit') {
+                payoffData = [-250, -250, -250, -250, 0, 250, 250, 250, 250, 250, 250];
+                title = 'Bull Call Debit Spread';
+                maxGain = '$250';
+                maxLoss = '$250';
+                entryCost = '-$2.50 Net Debit';
+                breakeven = '$592.50';
+                riskBadge = 'Tier 1 (Lower Defined Risk)';
+                desc = 'Mechanics: Long 590 Call / Short 595 Call. Caps upside profit in exchange for capping theta decay and vega drag.';
+            } else if (strat === 'straddle') {
+                payoffData = [1200, 700, 200, -300, -800, -300, 200, 700, 1200, 1700, 2200];
+                title = 'Long Straddle (Pre-Earnings Volatility)';
+                maxGain = 'Unlimited';
+                maxLoss = '$800 (At $590)';
+                entryCost = '-$8.00 Net Debit';
+                breakeven = '$582.00 / $598.00';
+                riskBadge = 'Tier 3 (High Risk / Vol Crush)';
+                desc = 'Mechanics: Long ATM Call & Put. Requires stock move exceeding implied move to cover extreme theta drag.';
+            } else if (strat === 'condor') {
+                payoffData = [-300, -300, 200, 200, 200, 200, 200, 200, -300, -300, -300];
+                title = 'Iron Condor (Range-Bound Theta Harvester)';
+                maxGain = '$200';
+                maxLoss = '$300';
+                entryCost = '+$2.00 Net Credit';
+                breakeven = '$578.00 / $602.00';
+                riskBadge = 'Tier 1 (Defined Risk)';
+                desc = 'Mechanics: Sells OTM Call & Put credit spreads outside expected move. Harvests theta in range-bound markets.';
+            } else if (strat === 'naked') {
+                payoffData = [-450, -450, -450, -450, -450, 50, 550, 1050, 1550, 2050, 2550];
+                title = 'Long Call (Naked Single Leg)';
+                maxGain = 'Unlimited';
+                maxLoss = '$450 (100% Premium)';
+                entryCost = '-$4.50 Net Debit';
+                breakeven = '$594.50';
+                riskBadge = 'Tier 2 (100% Loss Risk)';
+                desc = 'Mechanics: Pure directional leverage. High risk of total premium loss if stock fails to cross breakeven.';
+            }
+
+            payoffChartInstance.data.datasets[0].data = payoffData;
+            payoffChartInstance.update();
+
+            document.getElementById('payoff-title').innerText = title;
+            document.getElementById('payoff-max-gain').innerText = maxGain;
+            document.getElementById('payoff-max-loss').innerText = maxLoss;
+            document.getElementById('payoff-entry-cost').innerText = entryCost;
+            document.getElementById('payoff-breakeven').innerText = breakeven;
+            document.getElementById('payoff-risk-badge').innerText = riskBadge;
+            document.getElementById('payoff-description').innerText = desc;
+        }
+
+        // Initialize Feed Ablation Chart
+        function initAblationChart() {
+            const ctx = document.getElementById('ablationChart').getContext('2d');
+            
+            ablationChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Full System', 'No OPRA ns', 'No eSSVI Surface', 'No Unusual Whales', 'No News NLP', 'No Cross-Asset'],
+                    datasets: [{
+                        label: 'Out-of-Sample System Sharpe Ratio',
+                        data: [2.85, 2.03, 2.21, 2.45, 2.52, 2.78],
+                        backgroundColor: [
+                            '#4f46e5',
+                            '#ef4444',
+                            '#f59e0b',
+                            '#3b82f6',
+                            '#10b981',
+                            '#64748b'
+                        ],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { title: { display: true, text: 'Sharpe Ratio' }, min: 1.5 }
+                    }
+                }
+            });
+        }
+
+        // Toggle JSON Schema Samples
+        function toggleSchemaSample(sample) {
+            const codeEl = document.getElementById('json-schema-code');
+            const btnBwb = document.getElementById('schema-btn-bwb');
+            const btnNoTrade = document.getElementById('schema-btn-notrade');
+
+            if (sample === 'bwb') {
+                btnBwb.className = 'px-2.5 py-1 text-[11px] font-semibold rounded bg-indigo-600 text-white';
+                btnNoTrade.className = 'px-2.5 py-1 text-[11px] font-semibold bg-slate-800 text-slate-300 hover:text-white rounded';
+                codeEl.innerText = `{
+  "callout_id": "SLYR-20261010-0042",
+  "timestamp_event": "2026-10-10T14:32:01.892104921Z",
+  "underlying_ticker": "NVDA",
+  "strategy": "BROKEN_WING_BUTTERFLY",
+  "horizon_category": "15_30DTE",
+  "state": "ENTRY",
+  "scoring": {
+    "directional_confidence": 0.84,
+    "estimated_edge_ev": 0.18,
+    "risk_tier": "TIER_2",
+    "dominant_risk_driver": "Wing Width Asymmetry & Delta Skew"
+  },
+  "legs": [
+    { "action": "BUY", "quantity": 1, "strike": 130.0, "type": "CALL", "expiration": "2026-11-20" },
+    { "action": "SELL", "quantity": 2, "strike": 135.0, "type": "CALL", "expiration": "2026-11-20" },
+    { "action": "BUY", "quantity": 1, "strike": 142.5, "type": "CALL", "expiration": "2026-11-20" }
+  ],
+  "execution": {
+    "entry_trigger": "eSSVI Call Skew Anomaly > +2.2 Sigma",
+    "max_acceptable_net_cost": -1.20,
+    "natural_price_nbbo": -1.35,
+    "intended_holding_days": 12
+  },
+  "invalidation_criteria": "Underlying closes below $128.00 or eSSVI surface normalizes."
+}`;
+            } else if (sample === 'notrade') {
+                btnNoTrade.className = 'px-2.5 py-1 text-[11px] font-semibold rounded bg-indigo-600 text-white';
+                btnBwb.className = 'px-2.5 py-1 text-[11px] font-semibold bg-slate-800 text-slate-300 hover:text-white rounded';
+                codeEl.innerText = `{
+  "candidate_id": "CAND-20261010-9912",
+  "timestamp_event": "2026-10-10T14:35:10.102934120Z",
+  "underlying_ticker": "AAPL",
+  "strategy": "BULL_PUT_CREDIT_SPREAD",
+  "state": "NO_TRADE",
+  "rejection_rationale": {
+    "gate_failure_type": "EXECUTABLE_QUALITY_GATE",
+    "reason": "OPRA NBBO spread width ($0.45) exceeds 15% of total package value ($1.20). Slippage eliminates expected EV edge.",
+    "natural_ask_bid_spread": 0.45,
+    "modeled_slippage_drag": 0.22
+  },
+  "audit_logged": true
+}`;
+            }
+        }
+
+        // TOC Active ScrollSpy Logic
+        function initTOCScrollSpy() {
+            const sections = document.querySelectorAll('.doc-section');
+            const navLinks = document.querySelectorAll('#toc-nav a');
+
+            window.addEventListener('scroll', () => {
+                let current = '';
+                sections.forEach(sec => {
+                    const sectionTop = sec.offsetTop - 120;
+                    if (window.scrollY >= sectionTop) {
+                        current = sec.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.remove('border-indigo-600', 'bg-indigo-50/50', 'text-indigo-900', 'font-semibold');
+                    link.classList.add('border-transparent');
+                    if (link.getAttribute('href') === `#${current}`) {
+                        link.classList.add('border-indigo-600', 'bg-indigo-50/50', 'text-indigo-900', 'font-semibold');
+                        link.classList.remove('border-transparent');
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,2028 @@
+/* EVERY COLOUR IS A TOKEN (2026-09-12) — the palettes, dark and light, in one file */
+@import './theme/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ONE FAMILY (Noah, 2026-08-16 — "many font changes and it just looks all
+   over the place"): INTER, the variable cut from the Inter project's own
+   release (public/fonts, SIL Open Font Licence beside it). It took SF Pro's
+   place on 2026-10-10 (Noah: "switch us to inter"): Apple licenses SF Pro for
+   its own platforms only, and a site that serves the file is outside that.
+   wght 100-900 covers every Tailwind weight; the opsz axis swaps the Text and
+   Display cuts automatically as sizes grow. Both `font-sans` and `font-mono`
+   resolve here — the mono token survives as the DATA voice (tabular figures
+   below), not a second family. */
+/* THE FONT IS A SUBSET (the speed pass, 2026-10-11): the full InterVariable is 352 KB and sits on the first paint's path
+   (it is preloaded in index.html); this file is the same font cut to the scripts the site sets — Latin, Latin-1 and
+   Extended-A, Greek (Δ σ β ν), general punctuation, currency, letterlike, arrows, math, geometric shapes, the fi/fl
+   ligatures — 150 KB, both axes (opsz, wght) and every OpenType feature kept (tnum, ss01…). Made with fontTools:
+   python -m fontTools.subset InterVariable.woff2 --unicodes="U+0000-00FF,U+0100-017F,U+0370-03FF,U+2000-206F,U+2070-209F,
+   U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+25A0-25FF,U+FB00-FB4F" --flavor=woff2 --layout-features='*'
+   A glyph outside those ranges falls back to the system stack below. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  /* BLOCK, not swap (Noah, 2026-08-30, the open-time hop). `swap` paints
+     every table in the fallback face and reflows it when the face lands —
+     columns shrink, then settle. The file is local and preloaded (index.html),
+     so blocking costs a few dozen milliseconds of not-yet-painted text on a
+     cold cache, most of it behind the boot gate, and the page lays out ONCE. */
+  font-display: block;
+}
+
+@layer base {
+  /* color-scheme rides the theme attribute (theme/tokens.css) */
+  body {
+    @apply bg-canvas text-textPrimary antialiased;
+  }
+  /* The old JetBrains Mono gave every digit equal width for free; Inter is
+     proportional, so the mono token carries tabular figures itself — rolling
+     numbers (AnimatedNumber) and ledger columns keep their alignment without
+     hunting down each .tnum. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Soft white, not the lime (Noah, 2026-08-29: "any highlighting of words
+     should be a soft white") — a selection is the reader's own hand on the
+     text, not the terminal speaking. */
+  ::selection {
+    background: rgb(var(--ink) / 0.25);
+  }
+  :focus-visible {
+    /* Holographic silver, not lime (Noah, 2026-08-30: "remove the neon green
+       highlight"): a focus ring says WHERE YOU ARE, and that is silver's
+       job — lime is reserved for what is live. */
+    outline: 1px solid rgba(199, 211, 232, 0.55);
+    outline-offset: 1px;
+  }
+}
+
+/* Pulse desk grid (react-grid-layout) — house skin */
+/* WHERE A CARD WILL LAND while it is dragged or resized: SILVER, the house's "where you are" ink. It was lime until
+   2026-10-02 (Noah: "right now the undertone is like a lime green") — and lime is kept for what is live. The token
+   follows the page, so on paper it is the deep steel. */
+.react-grid-item.react-grid-placeholder {
+  background: rgb(var(--silver) / 0.08) !important;
+  border: 1px dashed rgb(var(--silver) / 0.5);
+  border-radius: 6px;
+  opacity: 1 !important;
+}
+/* (The Weigher's white-scoped .desk-grid rules left with the movable desk,
+   2026-08-30 — this skin now serves Pulse alone.) */
+.react-grid-item > .react-resizable-handle {
+  opacity: 0.35;
+}
+.react-grid-item > .react-resizable-handle:hover {
+  opacity: 0.9;
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-color: rgba(163, 163, 163, 0.8) !important;
+}
+/* The top corners' handles are 20px squares that sat on the head's grip
+   (found 2026-09-06 by the perf meter, which "dragged" a widget and shrank
+   it instead): a grab at the grip's left half resized. Twelve pixels at the
+   top, out from under the grip. */
+.react-grid-item > .react-resizable-handle-nw,
+.react-grid-item > .react-resizable-handle-ne {
+  width: 12px;
+  height: 12px;
+}
+.react-grid-item.react-draggable-dragging {
+  z-index: 30;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+/* While the FRAME glides (the sidebar folding — core/glide.ts) the items
+   follow it instantly: their own 200ms width transition lagged the frame
+   and kept the charts resizing for a fifth of a second after it settled. */
+/* THE DESK RIDES THE GLIDE (2026-09-12): laid out for the frame's destination
+   the moment the sidebar starts to fold, every tile transitions there on the
+   sidebar's own clock and curve — one motion, the column and the cards
+   together, nothing frozen and nothing snapping (Noah: "the cards freeze and
+   snap into frame... changes the user's pov rapidly"). */
+[data-glide='frame'] .react-grid-item {
+  transition:
+    transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 300ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+/* When the frame did not say where it was going, the desk holds its width
+   and takes ONE layout when the frame settles — a snap, not a 200ms slide */
+[data-settle] .react-grid-item {
+  transition: none !important;
+}
+/* A page that HOLDS ITS WIDTH for the glide (the Weigher desk, 2026-09-11)
+   overlaps the main column while the sidebar grows back — clip it for those
+   300ms rather than flash a horizontal scrollbar */
+[data-glide='frame'] main {
+  overflow-x: hidden;
+}
+
+/* THE CALENDAR'S FOCUS MODE (Noah, 2026-09-07: "on full screen for the
+   heatmap on the map page we should also have that focus mode allowing you to
+   see that one node and blurring the rest"). Written as CSS off ONE attribute
+   on the grid rather than a prop on every cell: a calendar is eight hundred
+   memoised capsules, and threading a `soft` prop through them re-renders the
+   lot on every pin. Only the OPACITY transitions — animating eight hundred
+   blur radii is a frame budget nobody has; the blur lands at once. */
+/* ONE BLURRED SCRIM, NOT EIGHT HUNDRED BLURRED CELLS (Noah, 2026-09-07: "the
+   focus transition in and out is not smooth enough"). The first cut blurred
+   every capsule and eased the radius: measured on a 320-cell calendar it ran
+   46 frames where idle runs 102, with a 120ms stall and no long task — the
+   main thread was fine and the compositor was re-rastering 320 layers a
+   frame. Now a single `backdrop-filter` layer over the grid does the blur and
+   the dim, and only ITS OPACITY animates; the node in focus, its strike label
+   and its expiry head are lifted above the scrim, so they stay sharp. */
+/* THE FOCUS IS A DOOR, NOT A CLICK (Noah, 2026-10-12: "focus should also only be a button up top where it only
+   focuses on the nodes with the large percentages and not allowed on the random click of any node"): the nodes
+   kept sharp are the board's biggest moves since the open — `data-kept` — never the clicked one. */
+[data-ledger-focus] [data-cell][data-pinned],
+[data-ledger-focus] [data-strike][data-pinned-row] {
+  position: relative;
+  z-index: 30;
+}
+[data-ledger-focus] [data-exp-head][data-pinned-col] {
+  /* already sticky — only the paint order needs saying */
+  z-index: 30;
+}
+[data-ledger-focus] [data-cell][data-kept],
+[data-ledger-focus] [data-strike][data-kept-row] {
+  position: relative;
+  z-index: 30;
+}
+[data-ledger-focus] [data-exp-head][data-kept-col] {
+  /* already sticky — only the paint order needs saying */
+  z-index: 30;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border-muted));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--text-muted) / 0.6);
+}
+
+/* A ROW THAT SCROLLS SIDEWAYS WITHOUT A BAR — the Map's band on a phone (the partner's re-audit, taken 2026-10-14). The
+   edge with more behind it fades (data-scroll-more, set as the row scrolls — ui/scrollMore.ts); an edge at its end does
+   not. */
+.scroll-row {
+  scrollbar-width: none;
+}
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
+.scroll-row[data-scroll-more='right'] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+}
+.scroll-row[data-scroll-more='left'] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 36px);
+  mask-image: linear-gradient(to right, transparent, #000 36px);
+}
+.scroll-row[data-scroll-more='left right'] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+}
+
+/* A FINGER'S HIT AREA ON A TOUCH SCREEN (the partner's rule, taken with the Map 2026-10-14: "on a phone nothing takes
+   less than a finger"): `.hit` adds an invisible box of at least 44 × 44 px round a small control, centred on it, on a
+   coarse pointer only — nothing seen changes, and a mouse keeps the control's own size. A control whose ::before is
+   already taken uses `.hit-after`, the same box on ::after. In the components layer, so a class of its own that
+   positions the control (absolute, fixed, sticky) wins. */
+@layer components {
+  @media (pointer: coarse) {
+    .hit,
+    .hit-after {
+      position: relative;
+    }
+    .hit::before,
+    .hit-after::after {
+      content: '';
+      position: absolute;
+      top: min(0px, calc(50% - 22px));
+      bottom: min(0px, calc(50% - 22px));
+      left: min(0px, calc(50% - 22px));
+      right: min(0px, calc(50% - 22px));
+    }
+  }
+}
+
+/* Tabular figures for aligned numeric columns */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A live print moved. The wash is the house bull or bear at 20%, gone in 500ms.
+   Tokens, not a fixed green/red, so a colour-blind theme and the light page follow. */
+@keyframes tick-up {
+  from { background-color: rgb(var(--bull) / 0.20); }
+  to { background-color: transparent; }
+}
+@keyframes tick-down {
+  from { background-color: rgb(var(--bear) / 0.20); }
+  to { background-color: transparent; }
+}
+.tick-up { animation: tick-up 500ms ease-out; }
+.tick-down { animation: tick-down 500ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .tick-up,
+  .tick-down { animation: none; }
+}
+
+/* Custom micro-animation for live ticks */
+@keyframes pulse-animation {
+  0% { transform: scale(0.95); opacity: 0.6; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.6; }
+}
+
+.custom-pulse {
+  animation: pulse-animation 1.5s infinite;
+}
+
+/* Slide in animation for lists */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* View transition — used when swapping sections/routes so changes fade in */
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-view-in {
+  animation: view-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Terminal caret — hard on/off blink (no easing; real cursors don't fade) */
+@keyframes cursor-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.animate-cursor-blink {
+  animation: cursor-blink 1.1s steps(1) infinite;
+}
+
+/* Border beam — a dash segment traveling the true perimeter of an SVG rect
+   (pathLength=100 normalizes any size; -100 offset = one full lap). */
+@keyframes border-trace {
+  to { stroke-dashoffset: -100; }
+}
+
+.animate-border-trace {
+  animation: border-trace 3.2s linear infinite;
+}
+
+/* Soft content swap — used when the same panel's data changes (e.g. selecting
+   a different contract). Shell stays put; only the body cross-fades.
+   NO `to` keyframe and fill-mode BACKWARDS ON PURPOSE: the animation lands on
+   the element's natural state and retains NOTHING afterwards. A forwards/both
+   fill holds even an IDENTITY transform (measured: matrix(1,0,0,1,0,0)), and
+   any transformed ancestor becomes the containing block for every
+   `position: fixed` descendant — it trapped the campaign chart's fullscreen
+   takeover inside the content column (Noah's screenshot, 2026-08-09). Same
+   rule for every entrance animation in this file. */
+/* THE LIVE SIGNAL'S FORM (theme/tokens.css): a glow on the dark terminal, a
+   highlighter on paper — one class, the tokens carry the form */
+.tone-live {
+  background-color: var(--live-bg);
+  color: var(--live-ink);
+  border-color: var(--live-edge);
+}
+@keyframes soft-in {
+  from { opacity: 0; transform: translateY(3px); }
+}
+
+.animate-soft-in {
+  animation: soft-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* OPACITY ONLY — for anything that holds a table (Noah, 2026-08-30, the
+   open-time hop). soft-in and slide-in travel a few pixels, which is right
+   for a popover and wrong for 120 rows of figures: every frame of travel
+   re-rasterises the text at a fractional offset, and the table's top edge
+   creeps for the whole entrance. The tape's wrapper and its incoming rows
+   fade, and nothing under the reader moves. */
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out backwards;
+}
+/* A GRID LANDS AS ONE (Noah, 2026-10-13: "it shows half the height as the other half loads in … it should be a smooth
+   load in of the entire columns"): the grid's whole box — heads and every row — comes up together over the table
+   curve (opacity only, the standard ease; the expo curve snaps on a layer this large, see the table note below). Pairs
+   with suppressAnimationFrame on the grid, which puts every row in the first paint. */
+@keyframes grid-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-grid-in {
+  animation: grid-in 0.42s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+/* THE VIEW'S SOFT SWAP (the Map, 2026-09-22 — Noah: "everything changes way too quickly"): the arriving SHAPE of the
+   book — a view, a strike count, a greek pick, an expiry window — fades in over 320ms, opacity only (a box of figures
+   never travels); the leaving one faded out first, in ExposureField */
+@keyframes view-in {
+  from { opacity: 0; }
+}
+.animate-view-in {
+  animation: view-in 0.32s ease-out backwards;
+}
+
+/* THE SKELETON (2026-09-06, the perf sweep — Noah: "the cool vercel lazy
+   loading screen look for the boxes"): the house's own dark surface with a
+   slow light passing over it. One gradient, one keyframe, GPU-composited
+   (background-position only), and it stops moving under reduced motion. */
+@keyframes skeleton-shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+.skeleton {
+  /* Measured (2026-09-06): at 3.5%/7.5% white the boxes were on screen for
+     300ms of every page open and invisible in every screenshot — a skeleton
+     nobody sees is a blank box. 7%/12% reads as the house's raised surface
+     with a light passing over it, still well under any figure's ink. */
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.125) 50%, rgba(255, 255, 255, 0.07) 70%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; background: rgba(255, 255, 255, 0.08); }
+}
+
+/* The slower sibling — view-level swaps (scanner/sleeve boards) where 0.2s
+   reads as a snap (Noah, 2026-08-10: "too quick, make it slower and
+   smoother"). Longer travel + longer clock; same house ease. */
+@keyframes soft-in-slow {
+  from { opacity: 0; transform: translateY(8px); }
+}
+.animate-soft-in-slow {
+  animation: soft-in-slow 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* ============================================================
+   Holographic silver — the engine-standout accent (replaces the
+   old magenta/supreme family; lime remains the interface accent).
+   One shared gradient (chrome → ice blue → pale violet → white)
+   panned back and forth so every accented element carries the
+   same living-foil sheen. First/last stops match the flat token
+   (#C7D3E8 family) so reduced-motion degrades to plain silver.
+   ============================================================ */
+:root {
+  --holo-gradient: linear-gradient(
+    115deg,
+    #aeb9cf 0%,
+    #eef1f8 14%,
+    #a8c4e8 30%,
+    #d6c6ee 45%,
+    #f7f8fc 58%,
+    #b2c8e2 72%,
+    #e2d4ee 86%,
+    #aeb9cf 100%
+  );
+  /* Brighter run for ink-on-holo chips — keeps dark text ≥7:1 at every stop */
+  --holo-gradient-bright: linear-gradient(
+    115deg,
+    #cfd6e4 0%,
+    #f4f6fb 16%,
+    #c2d6f0 32%,
+    #e4d8f4 48%,
+    #ffffff 62%,
+    #c8d8ec 78%,
+    #ecdff6 90%,
+    #cfd6e4 100%
+  );
+}
+
+@keyframes holo-pan {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+@keyframes holo-glow-shift {
+  0% { box-shadow: 0 0 18px -6px rgba(168, 196, 232, 0.55); }
+  33% { box-shadow: 0 0 20px -6px rgba(214, 198, 238, 0.6); }
+  66% { box-shadow: 0 0 20px -6px rgba(247, 248, 252, 0.5); }
+  100% { box-shadow: 0 0 18px -6px rgba(178, 200, 226, 0.55); }
+}
+
+/* Filled surface — active pills, CTAs, badges. Pair with dark ink text. */
+.holo-bg {
+  background-image: var(--holo-gradient-bright);
+  background-size: 250% 250%;
+  animation: holo-pan 4.5s ease-in-out infinite alternate;
+}
+
+/* Gradient ink — brand marks, hero numbers, standout labels. */
+.holo-text {
+  background-image: var(--holo-gradient);
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: holo-pan 4.5s ease-in-out infinite alternate;
+}
+
+/* THE GALAXY INK (Noah, 2026-09-30, on the S of his partner's light-mode logo: "that cool galaxy looking black … can
+   you make that the lightmode"). The foil's counterpart for PAPER: charcoal with slate and plum moving through it, the
+   stops read off that S. The first cut took the stops as sampled and read as one flat grey beside the
+   muted words of the same line; the run is wider now, near-black to slate and violet, so the sheen shows. It pans like the foil. Two things wear it, on the light page only: the landing's marked word
+   and the coming-soon wall's wordmark. Nothing on the dark terminal reads it. */
+:root {
+  --galaxy-gradient: linear-gradient(115deg, #2b2d38 0%, #66718f 16%, #23232c 34%, #675d7e 50%, #17181d 64%, #55648a 80%, #2b2d38 100%);
+}
+.galaxy-text {
+  background-image: var(--galaxy-gradient);
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: holo-pan 4.5s ease-in-out infinite alternate;
+}
+/* A FILLED SURFACE in the galaxy ink — the landing's solid buttons on paper (Noah, the same day: "should this also be the
+   launch terminal and try it first button color? i think so"). The foil's counterpart again: on a dark ground those
+   buttons are `holo-bg` with dark words; on paper they are this with light words. Every stop keeps white words 4.5:1. */
+.galaxy-bg {
+  background-image: var(--galaxy-gradient);
+  background-size: 250% 250%;
+  color: #f4f3ef;
+  animation: holo-pan 4.5s ease-in-out infinite alternate;
+}
+/* the soft bar under a galaxy word — the same ink, faint */
+.galaxy-bar {
+  background-image: var(--galaxy-gradient);
+  background-size: 250% 250%;
+  opacity: 0.2;
+  animation: holo-pan 4.5s ease-in-out infinite alternate;
+}
+
+/* Meter fills & thin rails — same foil, denser pan so short bars still shift. */
+.holo-bar {
+  background-image: var(--holo-gradient);
+  background-size: 350% 350%;
+  animation: holo-pan 3.5s ease-in-out infinite alternate;
+}
+
+/* 1px living border — gradient rides the border-box under a panel-dark pad. */
+.holo-border {
+  border: 1px solid transparent;
+  background-image: linear-gradient(#0a0a0a, #0a0a0a), var(--holo-gradient);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-size: 100% 100%, 250% 250%;
+  animation: holo-pan 4.5s ease-in-out infinite alternate;
+}
+
+/* Breathing chrome halo for the highest-emphasis cards/CTAs. */
+.holo-glow {
+  animation: holo-glow-shift 5s ease-in-out infinite alternate;
+}
+
+/* The foil as a RING ONLY — for surfaces that carry their own background
+   (holo-border's padding-box layer is opaque, so it can't overlay content).
+   Gradient padded 1px, then masked to the border band via mask-composite;
+   pointer-events off, radius inherited from the host. Terrain's active pane
+   wears this (Noah, 2026-08-30: "change the active border to be holographic
+   silver"). */
+.holo-ring {
+  pointer-events: none;
+  padding: 1px;
+  background: var(--holo-gradient);
+  background-size: 250% 250%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: holo-pan 4.5s ease-in-out infinite alternate;
+}
+
+/* THE RING, FIRMER (Noah, 2026-09-21, the Map's lead lane: "the border color for the active box… seems too muted"):
+   one pixel of foil against black, beside the panes' own hairlines, could not separate from the dividers. The colour
+   stays silver — where-you-are is silver, and a hue would say something else (lime is live, magenta the supreme) —
+   the WEIGHT changes: two pixels of the foil, and a soft silver halo on a SIBLING under it (the ring is a masked box,
+   so a shadow of its own would be cut to the band). The Map's ladder wears both; Terrain's pane ring is untouched. */
+.holo-ring-firm {
+  padding: 2px;
+}
+
+.holo-halo {
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgb(var(--silver) / 0.22), 0 0 22px rgb(var(--silver) / 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holo-bg,
+  .holo-text,
+  .galaxy-text,
+  .galaxy-bg,
+  .galaxy-bar,
+  .holo-bar,
+  .holo-border,
+  .holo-ring,
+  .holo-glow {
+    animation: none;
+  }
+}
+
+/* THE TAPE on the wire (2026-09-13) rode the landing's marquee (keyframes removed with the
+   landing page, 2026-09-19), slower and paused under
+   the pointer, until 2026-09-16: it is driven by a frame loop now so it can be
+   pulled back (pages/record/News.tsx, NewsTape) — no CSS here. */
+
+/* THE LANDING'S TAPE OF NAMES (2026-09-30, pages/landing/Tape.tsx): a row is its list twice on one track that slides half
+   its own width and starts over, so the loop has no seam; a second row runs the other way. It waits under the pointer and
+   stands still under reduced motion. */
+@keyframes tape-run {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.tape-track {
+  display: flex;
+  width: max-content;
+  animation: tape-run 95s linear infinite;
+  will-change: transform;
+}
+.tape-track[data-dir='back'] { animation-direction: reverse; }
+.tape:hover .tape-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .tape-track { animation: none; }
+}
+
+/* THE WALL'S HATCH DRIFTS (Building, 2026-09-13): what left a strike today is
+   red stripes tiled every 8.485px; sliding the tile one period to the right
+   moves the stripes out of the bar, slowly, without a seam. */
+@keyframes hatch-drift {
+  to { background-position: 8.485px 0; }
+}
+.hatch-drift {
+  animation: hatch-drift 1.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hatch-drift { animation: none; }
+}
+
+/* THE ROOM'S LAMP FLICKERS (the coming-soon wall, 2026-09-13; Noah: "flicker
+   sometimes like something is wrong with the light"): steady for seconds at a
+   time, then two or three quick dips like a tube going — three bad moments in
+   every eleven seconds, on a linear clock so each dip is a cut, not a fade.
+   ONE CLOCK FOR ALL OF IT (Noah: "the flicker of the lightbulb and the flicker
+   of the actual light is not in sync" — three animations on three elements
+   started on three frames): the body animates one inherited number while the
+   wall is up, and the bulb, the beam and the wordmark each read it at the
+   same instant — the bulb goes darkest, the beam less, the wordmark a shade. */
+@property --room-flicker {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+@keyframes room-flicker {
+  0%, 3.6%, 5.4%, 40.8%, 43.6%, 69.6%, 71.2%, 88.4%, 89.4%, 100% { --room-flicker: 1; }
+  3.9% { --room-flicker: 0.2; }
+  4.3% { --room-flicker: 0.9; }
+  4.8% { --room-flicker: 0.35; }
+  41.1% { --room-flicker: 0.1; }
+  41.5% { --room-flicker: 0.85; }
+  42.2% { --room-flicker: 0.25; }
+  42.9% { --room-flicker: 0.8; }
+  69.9% { --room-flicker: 0.3; }
+  70.4% { --room-flicker: 1; }
+  70.8% { --room-flicker: 0.45; }
+  88.8% { --room-flicker: 0.4; }
+}
+body.room-walled { animation: room-flicker 11s linear infinite; }
+.room-bulb { opacity: var(--room-flicker); }
+.room-beam { opacity: calc(0.85 * (0.3 + 0.7 * var(--room-flicker))); }
+.room-lit { opacity: calc(0.7 + 0.3 * var(--room-flicker)); }
+@media (prefers-reduced-motion: reduce) {
+  body.room-walled { animation: none; }
+}
+
+/* Launch-gate progress fill — CSS transform so it runs on the compositor and
+   stays smooth even while the main thread is busy loading chunks on slow
+   connections. Duration mirrors HOLD_MS + REVEAL_MS in LaunchTransition.tsx.
+   Under reduced motion the bar rests at its base state: full. */
+@keyframes gate-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.animate-gate-fill {
+  transform-origin: left center;
+  animation: gate-fill 1350ms cubic-bezier(0.3, 0.1, 0.3, 1) forwards;
+}
+
+/* The session clock's second hand (components/ui/SessionClock.tsx) — one
+   sweep a minute on the compositor, phased to the real second by a negative
+   animation-delay set once at mount. Under reduced motion it holds at the
+   second the clock last read (--clock-sec). */
+@keyframes clock-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-clock-sweep {
+  animation: clock-sweep 60s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-clock-sweep {
+    animation: none;
+    transform: rotate(var(--clock-sec, 0deg));
+  }
+}
+
+/* THE CALENDAR'S TAKEOVER GLIDES (Noah, 2026-09-10: "the full screen of both
+   the heatmap and the ladder is very quick transition but it should be
+   smooth"): opacity only over half a second on a standard ease — the house
+   soft-in's expo curve is at 0.87 by 90ms, which reads as a snap on a layer
+   this large. Never a transform: a fixed layer inside must keep its
+   containing block. */
+@keyframes takeover-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* `backwards`, never `both`: a fill that holds the last keyframe pins the
+   opacity at 1 and the fade OUT can never show (measured: 1, 1, 1, gone) */
+.animate-takeover-in { animation: takeover-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-takeover-in { animation: none; }
+}
+
+/* The bell's swing lives in components/ui/JingleBell.tsx on framer-motion's
+   spring (2026-09-10) — the hand-written keyframes that stood here read as a
+   shake and were retired the same night. */
+
+/* Landing anchor targets stop short of the fixed glass nav */
+#showcase,
+#live,
+#workspace,
+#pricing {
+  scroll-margin-top: 84px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-view-in,
+  .animate-slide-in,
+  .animate-soft-in,
+  .animate-fade-in,
+  .animate-grid-in,
+  .animate-drill-open,
+  .animate-soft-in-slow,
+  .animate-border-trace,
+  .animate-cursor-blink,
+  .animate-gate-fill {
+    animation: none;
+  }
+}
+
+/* Modal — in AND out, both CSS (2026-09-28, Noah: "the entrance and exit need to be smoother"). The way out is a fade
+   with a small settle that the Modal keeps up for OUT_MS, then a TIMER unmounts it — never an animation's end: a wedged
+   exit animation leaves the overlay mounted and the app unusable, and this codebase has hit that before. */
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes modal-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes modal-card-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(6px) scale(0.99); }
+}
+
+.animate-modal-backdrop {
+  animation: modal-backdrop-in 220ms ease-out both;
+}
+.animate-modal-backdrop-out {
+  animation: modal-backdrop-out 180ms ease-in both;
+}
+
+.animate-modal-card {
+  animation: modal-card-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-modal-card-out {
+  animation: modal-card-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+/* THE DAY BOX'S HEAD ON ONE LINE (Noah, 2026-10-15: "everything should fit on one line"): the box's name, the name chip,
+   the stage's note and the upper chart's facts share the line; in a narrow box — two or more names side by side — the
+   note yields to the facts (the box is its own container) */
+[data-day-box] {
+  container-type: inline-size;
+}
+@container (max-width: 900px) {
+  [data-day-box] [data-day-note] {
+    display: none;
+  }
+}
+
+/* A chart's pointer card on its way out (the tape's rung card, 2026-10-14, Noah: "the hover should be smooth not
+   rapid"): a short fade with the soft-in's travel run back, held by the host's timer like the Modal's */
+@keyframes chart-card-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(3px); }
+}
+.animate-chart-card-out {
+  animation: chart-card-out 160ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-modal-backdrop,
+  .animate-modal-backdrop-out,
+  .animate-modal-card,
+  .animate-modal-card-out,
+  .animate-chart-card-out {
+    animation: none;
+  }
+}
+
+/*
+  A HOVER-REVEALED CONTROL IS UNREACHABLE ON A TOUCH SCREEN.
+
+  Terrain's pane chrome fades in on hover so the tape can be seen clean. On a
+  phone or tablet there is no hover to give — the toolbar would simply never
+  arrive, and every control on it would be unreachable by any means. That is
+  not a degraded experience, it is a missing feature, and it is one this
+  change would have introduced.
+
+  So on any pointer that cannot hover, the chrome is simply always there. The
+  charts lose a little room; a touch reader keeps their controls. Marked with
+  a class rather than pushed through Tailwind's `hover:` variant because the
+  strips also carry `opacity-0` and `pointer-events-none` utilities of the
+  same specificity, and both have to be overridden together.
+*/
+@media (hover: none), (pointer: coarse) {
+  .chrome-hover {
+    opacity: 1 !important;
+  }
+
+  /*
+    POINTER EVENTS ARE A SEPARATE GRANT, and lumping them in with opacity was
+    a real defect.
+
+    `.chrome-hover` used to restore both. It is worn by four strips, and only
+    one of them wants to be touched: the heaviest-strike readout is
+    deliberately `pointer-events-none` at every size — it is a readout, not a
+    control — and a blanket `auto !important` handed it the ability to
+    swallow taps on the tape underneath it. Restore what a strip actually
+    asked for: opacity for all of them, taps only where a strip carries
+    controls.
+  */
+  .chrome-tap {
+    pointer-events: auto !important;
+  }
+
+  /* Same problem, a different mechanism: the compare menu's scale buttons are
+     `hidden group-hover:flex`, i.e. display:none until a cursor arrives. A
+     touch reader could open the menu, see the symbols, and have no way at all
+     to pick one. Additive — the pointer path is untouched. */
+  .touch-reveal {
+    display: flex !important;
+  }
+}
+
+
+/* The chain drill's OPEN (Weigher). It used to unfold grid-template-rows
+   0fr→1fr over 240ms — height-to-auto with no library. Measured 2026-08-30
+   (Noah: "the dropdown for the chain is still nowhere near as fast as
+   robinhood legend... laggy"): the panel showed ~50ms after the click and
+   then glided for the full 240ms before it was readable, and every frame of
+   that glide re-laid-out a 301-row table, because grid rows are a LAYOUT
+   property. Now the height lands in ONE frame — one layout — and only the
+   opacity moves, for 100ms, so it arrives instead of popping. Close is an
+   unmount, so only the enter exists. */
+@keyframes drill-open {
+  from { opacity: 0; }
+}
+.animate-drill-open {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: drill-open 0.1s ease-out;
+}
+
+/* The drill's sideways twin (Compass footer, 2026-08-29: tracking a campaign
+   slides the Track button left and unfolds an "Open in Tracker" door beside
+   it) — grid-template-COLUMNS 0fr→1fr is width-to-auto by the same trick.
+   Untrack plays the same unfold backwards (Noah: "the reverse of the entry
+   ... pushes out the open in tracker button and becomes the full width
+   again") — but the UNMOUNT rides useFadeClose's timer, never the
+   animation's completion, per the AnimatePresence-wedge law. */
+@keyframes track-open {
+  from { grid-template-columns: 0fr; opacity: 0; }
+  to { grid-template-columns: 1fr; opacity: 1; }
+}
+.animate-track-open {
+  display: grid;
+  grid-template-columns: 1fr;
+  animation: track-open 0.32s cubic-bezier(0.25, 1, 0.5, 1);
+}
+@keyframes track-close {
+  from { grid-template-columns: 1fr; opacity: 1; }
+  to { grid-template-columns: 0fr; opacity: 0; }
+}
+.animate-track-close {
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  animation: track-close 0.32s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* The News Room's boot orbit — a satellite circling a bare planet outline
+   while the real one assembles (chunk + textures + first frames). Simple on
+   purpose; the overlay's fade IS the transition. Reduced motion parks the
+   satellite. */
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+.animate-orbit {
+  animation: orbit 1.5s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-orbit { animation: none; }
+}
+
+/* The LIVE breath — status ink that pulses to say "still filling" (the
+   Windows navigator's live bar; Noah, 2026-08-30: "going in and out neon
+   green to replicate this idea that its currently live"). Opacity only —
+   compositor-driven, no layout churn. Reduced motion holds it solid. */
+@keyframes live-breathe {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+.animate-live-breathe {
+  animation: live-breathe 1.4s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-live-breathe { animation: none; }
+}
+
+/* The Tracker's landing flash — a card arrived at from "Open in Tracker"
+   announces itself once with a soft silver ring, then goes quiet. */
+@keyframes focus-flash {
+  0% { box-shadow: 0 0 0 1px rgb(var(--select) / 0); }
+  20% { box-shadow: 0 0 0 1.5px rgb(var(--select) / 0.7); }
+  100% { box-shadow: 0 0 0 1px rgb(var(--select) / 0); }
+}
+.animate-focus-flash {
+  animation: focus-flash 1.6s ease-out 0.25s both;
+}
+
+/* The fired-alert toast on a chart pane (Noah, 2026-08-28: armed watches
+   live in the Alerts menu; the pane only speaks when one FIRES, "a smooth
+   in transition that fades and disappears"). Timed to the store's
+   DISMISS_MS: in by 7%, holding to 80%, invisible at 100% — so the store's
+   removal at 3s deletes a chip nobody can see and nothing pops. */
+@keyframes alert-toast {
+  0% { opacity: 0; transform: translateX(8px); }
+  7% { opacity: 1; transform: translateX(0); }
+  80% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(0); }
+}
+.alert-toast { animation: alert-toast 3s ease-out forwards; }
+
+/* THE TOAST ANYWHERE (components/alerts/AlertToasts.tsx, 2026-09-10): the
+   shell's chip, at the window's top right on any page — in by 5%, holding
+   to 85%, gone at 100% of its 5s (TOAST_MS), so the unmount deletes a chip
+   already invisible. */
+@keyframes shell-toast {
+  0% { opacity: 0; transform: translateY(-6px); }
+  5% { opacity: 1; transform: translateY(0); }
+  85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
+}
+.shell-toast { animation: shell-toast 5s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .shell-toast { animation: none; }
+}
+
+/* THE BOARD (pages/pinpoint/Board.tsx) — AG Grid on the house tokens. The
+   theme parameters carry the colours. THE HEADS READ AT THE FLOOR (the
+   partner's rule, at Noah's word 2026-10-13): 11px in sentence case, no
+   tracking, the page's own face — they were 9px tracked mono caps, the
+   smallest words on the page (houseGrid headerFontSize).
+   The head is solid and sticks, so a scrolled chain does not print through it. */
+.slayer-board .ag-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: rgb(var(--chip));
+}
+.slayer-board .ag-header-cell,
+.slayer-board .ag-header-group-cell {
+  background-color: rgb(var(--chip));
+}
+.slayer-board .ag-cell {
+  font-variant-numeric: tabular-nums;
+}
+.slayer-board .ag-row {
+  cursor: pointer;
+}
+/* A wide grid stays inside the screen and scrolls its own columns. */
+.slayer-board {
+  min-width: 0;
+  max-width: 100%;
+}
+/* The × that takes a name off the board shows on its row's hover (Board.tsx NameCell) */
+.slayer-board [data-board-remove] {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.slayer-board .ag-row:hover [data-board-remove],
+.slayer-board [data-board-remove]:focus-visible {
+  opacity: 1;
+}
+/* THE WEIGHER'S CHAIN as a grid (2026-09-11, the walk): the picked strike wears
+   the where-you-are silver and its chevron turns — off the row's selection,
+   so a pick re-inks two cells and re-renders none */
+.slayer-chain .ag-row-selected [data-chain-strike] {
+  color: rgb(var(--silver));
+}
+.slayer-chain [data-chain-chevron] {
+  transition: transform 200ms ease-out, color 200ms ease-out;
+}
+.slayer-chain .ag-row-selected [data-chain-chevron] {
+  transform: rotate(90deg);
+  color: rgb(var(--silver));
+}
+/* The full-width rows (the market's hairline, the inline weigh-up) carry no hover wash */
+.slayer-chain .ag-full-width-row:hover {
+  background-color: transparent !important;
+}
+/* THE WATCHLIST DOOR on a chain row (2026-09-14): the + shows on the row's hover, on the
+   picked row, and under the keyboard; once the contract is watched the check stays */
+.slayer-chain [data-chain-watch]:not([data-on]) {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.slayer-chain .ag-row:hover [data-chain-watch],
+.slayer-chain .ag-row-selected [data-chain-watch],
+.slayer-chain [data-chain-watch]:focus-visible {
+  opacity: 1;
+}
+/* THE LIVE CHART'S CHAIN under a scrollbar that floats OVER the grid (headless Chromium, some Macs — the grid marks it
+   `ag-scrollbar-invisible`): the last column's figures and a strike's dropdown keep the right 16px clear, the room the
+   Weigher's chain gives its watch column */
+[data-paper-chain] .slayer-chain:has(.ag-scrollbar-invisible) .ag-header-cell.ag-column-last,
+[data-paper-chain] .slayer-chain:has(.ag-scrollbar-invisible) .ag-cell.ag-column-last {
+  padding-right: 26px;
+}
+[data-paper-chain] .slayer-chain:has(.ag-scrollbar-invisible) [data-chain-drill] {
+  padding-right: 16px;
+}
+/* THE TRASH BIN on the desk's two list cards (2026-09-14): the same reveal — on the row's hover,
+   on the picked row, and under the keyboard */
+[data-list] [data-list-remove] {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+[data-list] .ag-row:hover [data-list-remove],
+[data-list] .ag-row-selected [data-list-remove],
+[data-list] [data-list-remove]:focus-visible {
+  opacity: 1;
+}
+[data-list] .ag-cell-remove {
+  padding-left: 0;
+  padding-right: 4px;
+}
+/* A GRID GROWN TO ITS ROWS (2026-09-11: the Trace and Record grids grow with
+   the page, the Compass board's rule) renders every row — AG Grid cannot
+   virtualise when the page is the scroller. Rows off the screen skip their
+   layout and paint: measured on the Screener's 420 rows, the scroll's commit
+   (Layerize over every painted cell) fell 893 → 201ms across thirty frames,
+   the sidebar glide's settle 208 → 49ms, and a row scrolled to still reads
+   its cells. Every row carries an explicit height, so the intrinsic size is
+   only the fallback. */
+.ag-layout-auto-height .ag-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 39px;
+}
+/* The Board's head tooltips (Board.tsx headerTooltip, 2026-09-09) — the grid's
+   own tooltip in the house clothes: the translucent card ground, one sentence */
+.ag-tooltip,
+.ag-tooltip-custom {
+  max-width: 280px;
+  padding: 6px 10px;
+  border: 1px solid #1c1c1c;
+  border-radius: 6px;
+  background: rgba(8, 8, 10, 0.92);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  color: #a3a3a3;
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 10.5px;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+/* A short table is as tall as its rows — the grid's own 150px floor left a
+   dead band under two positions */
+[data-position-table] .ag-center-cols-viewport,
+[data-position-table] .ag-body-viewport {
+  min-height: 0 !important;
+}
+
+/* ═══ THE CHART'S CHROME WEARS THE CHART'S GROUND (2026-09-11 the Stone theme;
+   re-cut 2026-09-12 as a token re-scope; re-cut 2026-09-13 PER HOST) ═════════
+   The chart paints its own frame from chartSurface() (the axis ink, the scale
+   borders, the crosshair). The DOM over the tape — the strips the hosts float
+   (data-chart-chrome, which the scripts' legend measures) and everything
+   inside a chart's own box (data-chart-ink: the reset pill, the legend, the
+   band labels) — reads the TOKENS: the DARK set by default (a chart is a dark
+   island on any page), and the LIGHT set under a host's
+   data-chart-ground="light" stamp — the host stamps the ground of the theme
+   ITS chart resolved (candleTheme.ts chartGround: Terrain's pane its own,
+   the Pulse tile the store's), so a Stone pane's chrome is stone with dark
+   ink beside a Glacier pane's black with light ink. Noah, 2026-09-13, three
+   cuts in one night: "the tool chart should NEVER change colors" → "the only
+   thing I specified as staying black was the drawing tool bar" → "now you
+   can change the top section to match the chart theme". So: the strips and
+   chips follow the tape; the DRAWING RAIL (data-chart-rail) is black on any
+   ground. The menus the strips open are portals on the page and keep the
+   page's theme by design. */
+/* …and THE DARK GLASS (data-chart-glass, 2026-09-19): a hover card whose ground is a typed dark glass. It takes the dark
+   set ON ITSELF and, like the rail, is left out of the light set below — so its words are light over ANY ground: paper, a
+   Stone tape, the page. (Stamped data-chart-ink first, a card inside a light-ground box was re-inked dark by the rule
+   below — dark words on the dark glass, the very thing it was there to stop.) */
+[data-chart-chrome],
+[data-chart-ink],
+[data-chart-rail],
+[data-chart-glass] {
+  /* The base ink is set HERE, not only inherited: the host's box is a
+     [data-theme] island whose computed colour (tokens.css) would otherwise
+     ride down into a chip whose tokens say otherwise */
+  color: rgb(var(--text-primary));
+  --text-primary: 237 237 237;
+  --text-secondary: 163 163 163;
+  --text-muted: 125 125 125;
+  --tab-rest: 125 125 125;
+  --grid-head: 163 163 163;
+  --text-figure: 163 163 163;
+  --tab-rule: 1px;
+  --logo-flip: 1;
+  --ink: 255 255 255;
+  --canvas: 5 5 5;
+  --panel: 10 10 10;
+  --panel-hover: 16 16 16;
+  --inset: 7 7 7;
+  --chip: 12 12 12;
+  --card: 18 18 18;
+  --border-subtle: 28 28 28;
+  --border-muted: 42 42 42;
+  --border-focus: 237 237 237;
+  --bull: 48 209 88;
+  --bear: 255 59 48;
+  --warn: 255 149 0;
+  --select: 199 211 232;
+  --moon: 185 169 244;
+  --supreme: 234 0 255;
+  --flip: 156 163 175;
+  --silver: 199 211 232;
+}
+/* The LIGHT set, under a host stamped light — on the chrome blocks inside the
+   stamp and on the stamped box itself when it IS the chrome (the chart's own
+   data-chart-ink box carries its own stamp). The rail is left out on purpose:
+   it sets the dark set on itself above, and a property set on the element
+   beats one inherited from the box.
+   …and on a FRAME (data-chart-frame — his partner's fix of 2026-10-02, taken 2026-10-04 at Noah's word, beside his rail):
+   a Terrain pane's own box, which holds the tape AND the strike ladder beside it, wears the light set when its ground is
+   light, so the panel, the edge, the corner chip and the ladder are light beside a light tape — no longer a white tape
+   beside a black ladder. ONLY the light set: a frame on a dark ground stays the dark island it always was. Its own word,
+   not data-chart-chrome (the scripts' legend measures every chrome block) nor data-chart-ink (the landing's films count
+   the chart boxes by it). */
+[data-chart-ground='light'] :is([data-chart-chrome], [data-chart-ink], [data-chart-frame]),
+[data-chart-ground='light']:is([data-chart-chrome], [data-chart-ink], [data-chart-frame]) {
+  color: rgb(var(--text-primary));
+  --text-primary: 20 21 24;
+  --text-secondary: 59 62 69;
+  --text-muted: 75 78 86;
+  /* black on a light tape too (tokens.css: the inks that are grey on the dark terminal and black on paper) */
+  --tab-rest: 20 21 24;
+  --grid-head: 20 21 24;
+  --text-figure: 20 21 24;
+  --tab-rule: 2px;
+  --logo-flip: 0;
+  --ink: 0 0 0;
+  --canvas: 200 199 194;
+  --panel: 211 210 205;
+  --panel-hover: 200 199 194;
+  --inset: 216 215 210;
+  --chip: 203 202 197;
+  --card: 211 210 205;
+  --border-subtle: 170 169 165;
+  --border-muted: 150 149 145;
+  --border-focus: 20 21 24;
+  --bull: 15 107 44;
+  --bear: 168 36 27;
+  --warn: 180 95 0;
+  --select: 47 61 92;
+  --moon: 91 74 168;
+  --supreme: 163 0 179;
+  --flip: 107 114 128;
+  --silver: 47 61 92;
+}
+/* THE SAME SET, LIFTED, ON THE LIGHT PAGE (2026-09-19 — Noah: "the charts need to be a lighter gray"): there the light
+   tape's ground is a paler grey (candleTheme.ts bgOnLightPage, #DDDCD7), and its chrome steps up with it so a strip never
+   sits darker than the tape under it. Keyed on the PAGE's theme — <html> — not on the box's own stamp (every chart box
+   is a dark island by stamp); the inks are the set above, unchanged. */
+html[data-theme='light'] [data-chart-ground='light'] :is([data-chart-chrome], [data-chart-ink], [data-chart-frame]),
+html[data-theme='light'] [data-chart-ground='light']:is([data-chart-chrome], [data-chart-ink], [data-chart-frame]) {
+  --canvas: 226 225 220;
+  --panel: 232 231 226;
+  --panel-hover: 224 223 218;
+  --inset: 236 235 230;
+  --chip: 228 227 222;
+  --card: 232 231 226;
+  --border-subtle: 196 195 190;
+  --border-muted: 172 171 166;
+}
+/* Over a light tape the chips' whisper washes (bg-canvas/25 on the strips,
+   /40 and /70 on Terrain's floating desk bar — enough over a dark tape, where
+   the blur does the work) go firmer: Stone's candles are black, and a dark
+   word needs a stone ground under it to read across one. */
+[data-chart-ground='light'] :is([data-chart-chrome], [data-chart-ink]) :is([class~='bg-canvas/25'], [class~='bg-canvas/40'], [class~='bg-canvas/70']),
+[data-chart-ground='light'] :is([data-chart-chrome], [data-chart-ink]):is([class~='bg-canvas/25'], [class~='bg-canvas/40'], [class~='bg-canvas/70']),
+[data-chart-ground='light']:is([data-chart-frame]) :is([class~='bg-canvas/25'], [class~='bg-canvas/40'], [class~='bg-canvas/70']) {
+  background-color: rgb(var(--canvas) / 0.72);
+}
+/* The drawing rail over a light tape: its 60% black read as grey, so it goes solid */
+[data-chart-ground='light'] [data-chart-rail] {
+  background-color: rgb(10 10 10 / 0.94);
+}
+/* The silver is a token now (text-silver …), re-scoped above; on a light
+   ground its pill turns steel, so the dark word on it turns light */
+[data-chart-ground='light'] .text-\[\#0a0a0a\]:where([data-chart-chrome], [data-chart-chrome] *, [data-chart-ink], [data-chart-ink] *) {
+  color: #eef1f6;
+}
+[data-chart-ground='light'] .text-\[\#BBB2E8\]:where([data-chart-chrome], [data-chart-chrome] *, [data-chart-ink], [data-chart-ink] *) {
+  color: #5b4aa8;
+}
+/* the heaviest line's two inks on a light tape (Terrain's chrome, 2026-09-16): the gold at
+   1.6:1 and the pale steel at 1.9:1 take the light set's ember and a steel that reads */
+[data-chart-ground='light'] .text-\[\#F5C542\]:where([data-chart-chrome], [data-chart-chrome] *, [data-chart-ink], [data-chart-ink] *) {
+  color: #8f5604;
+}
+[data-chart-ground='light'] .text-\[\#AAB6C6\]:where([data-chart-chrome], [data-chart-chrome] *, [data-chart-ink], [data-chart-ink] *) {
+  color: #4b5563;
+}
+
+/* ═══ THE LAUNCH GATE ON THE LIGHT PAGE (2026-09-26) ════════════════════════
+   The gate's bar is the holo foil, made for black; on the light page it read as a pale line (Noah: "the loading screen of
+   slayer on light mode esp the bar needs to be more apparent"). There the bar is the ink, the track a firmer wash; dark
+   keeps the foil. (The gate's mark is the brand's own since 2026-10-03, which wears the galaxy ink on paper by itself.) */
+html[data-theme='light'] [data-launch-gate] [data-gate-track] {
+  background-color: rgb(var(--ink) / 0.14);
+  height: 3px;
+}
+html[data-theme='light'] [data-launch-gate] [data-gate-track] .holo-bar {
+  background-image: none;
+  background-color: rgb(var(--ink));
+  animation-name: gate-fill;
+}
+
+/* ═══ A BLOCK IN A DIRECTION'S COLOUR (2026-09-26) ═══════════════════════════
+   .fill-bull / .fill-bear — the solid chip grammar: the direction's colour as the ground, the dark words on it (the
+   chart's position chips, RP&L · UP&L, the chain's Calls | Puts). ON A LIGHT GROUND — a light tape's chrome, or the light
+   page outside any chart box (every chart box is a dark island by stamp) — the same block goes SOFT: the direction's ink
+   on a tint of it over the panel (Noah, 2026-09-26, on the light theme: "the red and green on the charts and call/put
+   chain buttons are too dark/thick/solid"). The base rule is what the chips always were: dark never moves. */
+@layer components {
+  .fill-bull {
+    background-color: rgb(var(--bull));
+    color: #0a0a0a;
+  }
+  .fill-bear {
+    background-color: rgb(var(--bear));
+    color: #0a0a0a;
+  }
+  /* the count on a way-out chip: pale silver with the dark words on a dark tape; on a light ground BLACK with light words
+     (Noah, 2026-09-26, on the steel the silver token turns into there: "should be black not a navy blue") */
+  .fill-count {
+    background-color: rgb(var(--silver));
+    color: #0a0a0a;
+  }
+}
+[data-chart-ground='light'] .fill-count,
+html[data-theme='light'] .fill-count:not([data-theme='dark'] *) {
+  background-color: rgb(var(--ink));
+  color: rgb(var(--panel));
+}
+[data-chart-ground='light'] .fill-bull,
+html[data-theme='light'] .fill-bull:not([data-theme='dark'] *) {
+  background-color: color-mix(in srgb, rgb(var(--bull)) 18%, rgb(var(--panel)));
+  color: rgb(var(--bull));
+}
+[data-chart-ground='light'] .fill-bear,
+html[data-theme='light'] .fill-bear:not([data-theme='dark'] *) {
+  background-color: color-mix(in srgb, rgb(var(--bear)) 18%, rgb(var(--panel)));
+  color: rgb(var(--bear));
+}
+/* …and what stands beside a soft block: the chip's black ring and the badges' lift go faint, the chip's ✕ cell goes
+   BLACK with the count (Noah, 2026-09-26: "the gray x should also become black") and still turns red under the pointer,
+   and the Calls | Puts side not taken tints under the pointer instead of filling */
+[data-chart-ground='light'] :is([data-chart-bracket], [data-chart-pull]).ring-black\/40 {
+  --tw-ring-color: rgb(0 0 0 / 0.16);
+}
+/* the position's silver ring (where you are) is black on a light tape — the silver token is steel there */
+[data-chart-ground='light'] [data-chart-position].ring-silver {
+  --tw-ring-color: rgb(var(--ink));
+}
+[data-chart-ground='light'] :is([data-chart-close], [data-chart-cancel]) {
+  background-color: rgb(var(--ink));
+  color: rgb(var(--panel));
+}
+[data-chart-ground='light'] :is([data-chart-close], [data-chart-cancel]):hover:not(:disabled) {
+  background-color: rgb(var(--bear));
+}
+[data-chart-ground='light'] [data-pnl-badges] > span,
+html[data-theme='light'] [data-pnl-badges]:not([data-theme='dark'] *) > span {
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
+}
+html[data-theme='light'] [data-pnl-badges]:not([data-theme='dark'] *) > .fill-bull,
+html[data-theme='light'] [data-paper-chain-side-pick][aria-pressed='true'].fill-bull {
+  box-shadow: inset 0 0 0 1px rgb(var(--bull) / 0.35);
+}
+html[data-theme='light'] [data-pnl-badges]:not([data-theme='dark'] *) > .fill-bear,
+html[data-theme='light'] [data-paper-chain-side-pick][aria-pressed='true'].fill-bear {
+  box-shadow: inset 0 0 0 1px rgb(var(--bear) / 0.35);
+}
+html[data-theme='light'] [data-paper-chain-side-pick='C']:not([aria-pressed='true']):hover {
+  background-color: color-mix(in srgb, rgb(var(--bull)) 18%, rgb(var(--panel)));
+  color: rgb(var(--bull));
+}
+html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='true']):hover {
+  background-color: color-mix(in srgb, rgb(var(--bear)) 18%, rgb(var(--panel)));
+  color: rgb(var(--bear));
+}
+
+/* ═══ THE LIVE CHART'S FULL SCREEN GOES EDGE TO EDGE (2026-09-22) ═══════════════
+   Noah: "make the chart pull the entire page right now i see padding all over the sides … i meant when it full screen".
+   The takeover (DeskShell `fullBleed`) drops its padding and shows its own ground through one-pixel gaps; every desk
+   card inside it drops its border and its corners, so the chart and the panel's cards meet on hairlines. */
+[data-desk-flush] .desk-card {
+  border-width: 0;
+  border-radius: 0;
+}
+
+/* ═══ A TOUCH SCREEN'S TWO TRAPS (the phone sweep, 2026-09-19) ═══════════════════
+
+   1. A FIELD UNDER 16px. iOS zooms the WHOLE PAGE in when a field whose type is
+      smaller than 16px takes focus, and does not zoom back out — the reader is left
+      scrolled sideways inside a page built never to scroll sideways. The sweep found
+      eight (the Trace searches at 11px, Pinpoint's name filter at 10px, the room's
+      two, the account's three). On a touch screen every field is 16px; with a mouse
+      they keep the terminal's small type. The alternative, `maximum-scale=1` on the
+      viewport, stops the zoom by taking pinch-zoom away from Android readers.
+
+   2. 100vh IS TALLER THAN THE SCREEN. On a phone `100vh` is the height with the
+      address bar AWAY. The shell is a fixed frame whose <main> scrolls inside it, so
+      the document itself never scrolls, the bar never leaves, and the last ~80px of
+      every page sat under it, unreachable. The shell is `h-dvh` now (AppShell) — the
+      height actually on screen — with `h-screen` under it for a browser that does
+      not know the unit. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* ═══ THE PHONE PASS (2026-09-13, Noah: "make sure every page and section
+   ticks the box of mobile viewing") ══════════════════════════════════════════
+   A box's one-line sub-line is `whitespace-nowrap` so it reads as one line on
+   a desk; the ones that also say `truncate` cut at the box's edge, the ones
+   that do not ran past it and made the whole page scroll sideways (At the
+   wall's and Targets' heads, measured at 390). On a phone a line that cannot
+   fit wraps — the same words, two lines. Below `lg`, not `md`: from 768 the
+   sidebar stands (236px) and the page's column is 532 — narrower than a
+   phone turned sideways — so the narrow rules hold until the desk has its
+   room. */
+@media (max-width: 1023.98px) {
+  main p.whitespace-nowrap:not(.truncate) {
+    white-space: normal;
+  }
+  /* A box's facts (a <dl> laid out as a grid of four or five equal tracks)
+     squeezed each fact to 44px and its figure ran under the next; on a phone
+     every such dl is a wrapping row instead — one line where it fits, two
+     where it does not (the same cut TraceBox and the shell heads got by hand). */
+  main dl.grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+  }
+  /* …and the facts take a row of their own under the title: a head is `flex
+     flex-wrap` with the title block at `flex-1` (a zero basis, so the line
+     always has room for the dl beside it) — on a phone that squeezed the
+     title to 60px. Full-basis, the dl drops under, and the title keeps the row. */
+  main .flex-wrap > dl {
+    flex-basis: 100%;
+  }
+}
+
+/* ==================================================================================
+   THE INK FILLS ON PAPER (2026-09-16 — Noah, with six screenshots of the light
+   theme: "so many grays practically blend in with the pages"). Every chip, track,
+   hover row and hairline drawn with an alpha of the ink — `bg-ink/[0.06]` and its
+   kin, three hundred uses — was tuned for white ink over black, where 6% is a
+   visible step. Black ink over white at 6% is 240 on 255, a 1.1:1 nothing. Under
+   the light stamp every ink alpha is doubled, here, once, so no page changes a
+   class. A dark island inside the page keeps its own alphas (`:not` the island).
+   ================================================================================== */
+[data-theme='light'] .bg-ink\/\[0\.02\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.05); }
+[data-theme='light'] .bg-ink\/\[0\.03\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.07); }
+[data-theme='light'] .bg-ink\/\[0\.04\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.09); }
+[data-theme='light'] .bg-ink\/\[0\.05\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.1); }
+[data-theme='light'] .bg-ink\/\[0\.06\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.12); }
+[data-theme='light'] .bg-ink\/\[0\.07\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.14); }
+[data-theme='light'] .bg-ink\/\[0\.08\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.16); }
+[data-theme='light'] .bg-ink\/\[0\.10\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.2); }
+[data-theme='light'] .bg-ink\/\[0\.12\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.22); }
+[data-theme='light'] .bg-ink\/\[0\.14\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.24); }
+[data-theme='light'] .bg-ink\/\[0\.16\]:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.26); }
+[data-theme='light'] .hover\:bg-ink\/\[0\.03\]:hover:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.07); }
+[data-theme='light'] .hover\:bg-ink\/\[0\.04\]:hover:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.09); }
+[data-theme='light'] .hover\:bg-ink\/\[0\.05\]:hover:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.1); }
+[data-theme='light'] .hover\:bg-ink\/\[0\.06\]:hover:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.12); }
+[data-theme='light'] .hover\:bg-ink\/\[0\.08\]:hover:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.16); }
+[data-theme='light'] .border-ink\/\[0\.06\]:not([data-theme='dark'] *) { border-color: rgb(var(--ink) / 0.14); }
+[data-theme='light'] .border-ink\/\[0\.07\]:not([data-theme='dark'] *) { border-color: rgb(var(--ink) / 0.16); }
+[data-theme='light'] .border-ink\/\[0\.08\]:not([data-theme='dark'] *) { border-color: rgb(var(--ink) / 0.18); }
+[data-theme='light'] .border-ink\/\[0\.10\]:not([data-theme='dark'] *) { border-color: rgb(var(--ink) / 0.22); }
+/* PAPER-ONLY GROUNDS AND EDGES (2026-09-19 — Noah: "the changes you are making to the light theme seem to be bleeding into
+   the dark theme… should not be the case at all"). A fix for paper written with an ordinary class (`bg-inset`, a border, a
+   band of the ink's wash) also paints the dark terminal — faintly, but it is not what was approved there. These classes
+   do NOTHING outside the light stamp, so a page can be given grounds, bands and edges on paper and stay byte-for-byte
+   the same on the dark terminal. THE RULE: a light-sweep change is a token that holds its dark value, a rule inside this
+   light block, or one of these — never a plain class that both themes read. */
+[data-theme='light'] .paper-inset:not([data-theme='dark'] *) { background-color: rgb(var(--inset)); }
+[data-theme='light'] .paper-panel:not([data-theme='dark'] *) { background-color: rgb(var(--panel)); }
+[data-theme='light'] .paper-band:not([data-theme='dark'] *) { background-color: rgb(var(--ink) / 0.07); }
+[data-theme='light'] .paper-indent:not([data-theme='dark'] *) { padding-left: 0.625rem; padding-right: 0.625rem; }
+[data-theme='light'] .paper-edge-x:not([data-theme='dark'] *) { border-left: 1px solid rgb(var(--border-subtle)); border-right: 1px solid rgb(var(--border-subtle)); }
+[data-theme='light'] .paper-bold:not([data-theme='dark'] *) { font-weight: 600; }
+/* …and two that TAKE AWAY on paper: a ground that must not be drawn there, a thing that is not shown there */
+[data-theme='light'] .paper-clear:not([data-theme='dark'] *) { background-color: transparent; }
+[data-theme='light'] .paper-hide:not([data-theme='dark'] *) { display: none; }
+/* THE FADED HAIRLINES ON PAPER (2026-09-19 — Noah on Trace's Compare: "i cant make out of any borders"). Three hundred row
+   and section lines are the hairline at 40–60% — a step BELOW a card's edge on the dark terminal, where the token is
+   already faint on black. On paper the token is 1.6:1 at full strength; at 40% it is 235 on 255, no line at all. Under
+   the light stamp a faded hairline is the full one (the row lines a hair under it, so the tiers still read), here, once. */
+[data-theme='light'] :is(.border-borderSubtle\/60, .border-borderSubtle\/70, .border-borderSubtle\/80, .divide-borderSubtle\/60 > *):not([data-theme='dark'] *) { border-color: rgb(var(--border-subtle)); }
+[data-theme='light'] :is(.border-borderSubtle\/40, .border-borderSubtle\/50):not([data-theme='dark'] *) { border-color: rgb(var(--border-subtle) / 0.85); }
+[data-theme='light'] :is(.border-borderSubtle\/20, .border-borderSubtle\/30):not([data-theme='dark'] *) { border-color: rgb(var(--border-subtle) / 0.7); }
+/* A muted word faded to 25–70% (a "—", a resting hint) fell to 2:1 on paper; on paper it
+   keeps a fade the eye can still read — 80% of a 9.9:1 ink is about 6:1 */
+[data-theme='light'] :is(.text-textMuted\/25, .text-textMuted\/30, .text-textMuted\/40, .text-textMuted\/50, .text-textMuted\/60, .text-textMuted\/70):not([data-theme='dark'] *) { color: rgb(var(--text-muted) / 0.8); }
+[data-theme='light'] .text-silver\/70:not([data-theme='dark'] *) { color: rgb(var(--silver) / 0.9); }
+/* THE HOLO INK ON PAPER (2026-09-16, the wall's wordmark): the foil's pale run is a SURFACE on
+   white — "Coming soon" at 64px read at about 1.5:1. On paper the ink gradient is the same foil
+   in deep steel and moon, every stop 3.5:1 or better for large type; the surface gradient
+   (holo-bg, the filled pills) stays the foil with dark ink on it. */
+[data-theme='light'] .holo-text:not([data-theme='dark'] *) {
+  background-image: linear-gradient(115deg, #3a4f7a 0%, #5f7aa8 14%, #2f5f9e 30%, #5b4aa8 45%, #6b86b8 58%, #35507f 72%, #6a58b4 86%, #3a4f7a 100%);
+}
+/* …and a foil word marked `paper-galaxy` wears the galaxy ink on paper instead (the coming-soon wall's wordmark). Dark is
+   the foil, untouched. */
+[data-theme='light'] .holo-text.paper-galaxy:not([data-theme='dark'] *) {
+  background-image: var(--galaxy-gradient);
+}
+
+/* THE LANDING'S THEME FLIP (2026-09-19, pages/landing/ground.tsx): the whole page crossfades as ONE
+   picture through the View Transitions API — never a colour transition on every element, which
+   repaints each on its own clock and cannot tween a gradient. Browsers without it switch at once. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 520ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* THE TOUR'S COLUMNS CROSS AT THE TURN (2026-10-17, pages/landing/Tour.tsx measure): on the far ground the
+   terminal window stands at the page's left edge and the words in the right column, the mirror of the way in.
+   The travels are measured on the tour (--window-travel, --words-travel); the glide runs on the turn's own
+   moment, the one the terminal turns its theme on, and the same way home. A desk only — one column has no
+   sides to cross. Where less motion is asked for the sides change at once. */
+@media (min-width: 1024px) {
+  [data-tour-window],
+  [data-tour-words] {
+    transition: transform 1100ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-tour-turned] [data-tour-window] {
+    transform: translate3d(var(--window-travel, 0px), 0, 0);
+  }
+  [data-tour-turned] [data-tour-words] {
+    transform: translate3d(var(--words-travel, 0px), 0, 0);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-tour-window],
+    [data-tour-words] {
+      transition: none;
+    }
+  }
+}
+/* THE LANDING'S GROUND (2026-09-19, pages/landing/Tour.tsx). ONE painted gradient for the whole
+   journey, THERE AND BACK: the opening ground down to --band-top (measured, set on the tour), the
+   turn through steel over --band-h, the other ground down to --back-top, the same turn walked
+   home over --back-h, and the opening ground from there on — a page ends on the theme it began on.
+   Painted once — nothing here follows the scroll. `day-night` is the same road for a visitor who
+   opens on paper. */
+.landing-dawn {
+  --t: var(--band-top, 100%);
+  --l: var(--band-h, 0px);
+  --t2: var(--back-top, 100%);
+  --l2: var(--back-h, 0px);
+  --c0: var(--night);
+  --c1: var(--dawn-1);
+  --c2: var(--dawn-2);
+  --c3: var(--dawn-3);
+  --c4: var(--dawn-4);
+  --c5: var(--dawn-5);
+  --c6: var(--day);
+  background-image: linear-gradient(
+    to bottom,
+    rgb(var(--c0)) 0,
+    rgb(var(--c0)) var(--t),
+    rgb(var(--c1)) calc(var(--t) + var(--l) * 0.2),
+    rgb(var(--c2)) calc(var(--t) + var(--l) * 0.38),
+    rgb(var(--c3)) calc(var(--t) + var(--l) * 0.53),
+    rgb(var(--c4)) calc(var(--t) + var(--l) * 0.66),
+    rgb(var(--c5)) calc(var(--t) + var(--l) * 0.82),
+    rgb(var(--c6)) calc(var(--t) + var(--l)),
+    rgb(var(--c6)) var(--t2),
+    rgb(var(--c5)) calc(var(--t2) + var(--l2) * 0.18),
+    rgb(var(--c4)) calc(var(--t2) + var(--l2) * 0.34),
+    rgb(var(--c3)) calc(var(--t2) + var(--l2) * 0.47),
+    rgb(var(--c2)) calc(var(--t2) + var(--l2) * 0.62),
+    rgb(var(--c1)) calc(var(--t2) + var(--l2) * 0.8),
+    rgb(var(--c0)) calc(var(--t2) + var(--l2)),
+    rgb(var(--c0)) 100%
+  );
+}
+.landing-dawn[data-dir='day-night'] {
+  --c0: var(--day);
+  --c1: var(--dawn-5);
+  --c2: var(--dawn-4);
+  --c3: var(--dawn-3);
+  --c4: var(--dawn-2);
+  --c5: var(--dawn-1);
+  --c6: var(--night);
+}
+/* a long, slow gradient bands on an 8-bit screen; a breath of grain over the turn breaks the steps up */
+.landing-grain[data-band='back'] {
+  top: var(--back-top, 0px);
+  height: var(--back-h, 0px);
+}
+.landing-grain {
+  top: var(--band-top, 0px);
+  height: var(--band-h, 0px);
+  opacity: 0.05;
+  /* it comes in and goes out with the turn — at full strength from its first pixel it lifted the black and drew an edge (measured) */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 30%, black 72%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black 30%, black 72%, transparent 100%);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0.9 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 180px 180px;
+}
+/* the hairline columns behind the hero, fading out before the first tool */
+.landing-columns {
+  background-image: linear-gradient(to right, rgb(var(--ink) / 0.05) 1px, transparent 1px);
+  background-size: calc((min(100vw, 1440px) - 80px) / 6) 100%;
+  background-position: calc(50% + 0.5px) 0;
+  -webkit-mask-image: linear-gradient(to bottom, black 0, black 35%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0, black 35%, transparent 100%);
+}
+/* the pool of light the window opens in — silver on black, a cool wash on paper */
+.landing-pool {
+  background-image: radial-gradient(58% 46% at 62% 46%, rgb(var(--silver) / 0.13), transparent 70%), radial-gradient(40% 30% at 12% 8%, rgb(var(--silver) / 0.07), transparent 70%);
+}
+/* while the window moves its picture is one raster the compositor scales (it was the live frame until 2026-09-19) */
+.landing-box[data-moving] img {
+  will-change: transform;
+}
+.landing-window {
+  box-shadow: 0 60px 140px -50px rgb(0 0 0 / 0.85), 0 0 80px -30px rgb(var(--silver) / 0.18);
+}
+.landing-window[data-theme='light'] {
+  box-shadow: 0 50px 110px -50px rgb(20 28 45 / 0.45), 0 10px 30px -14px rgb(20 28 45 / 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* ══ Palette ════════════════════════════════════════════════
+   Bencho's Palette block (bencho.dev, MIT), components/ui/Palette.tsx — its own CSS, kept as written; the tokens it
+   reads are MAPPED ONTO THE HOUSE'S here, on `.pal` itself, so nothing leaks out (2026-09-21):
+     --card       the card ground the toolbar's cards wear (`bg-chip`)
+     --ink-2      the secondary ink
+     --ink-rgb    the primary ink, as the bare triple rgba() wants
+     --pane-edge  the hairline every card wears
+     --font-ui    the page's face
+   --fill-slab / --fill-on / --fill-on-rgb are Bencho's Fill control's, which the house does not have: the CSS below
+   falls back from each to the three above, so they are left undefined on purpose.
+   A filled bar of colours and the refresh at its end.
+   Everything that moves is written from one number in
+   Palette.tsx; what is here is the shell. */
+.pal {
+  --card: rgb(var(--chip));
+  --ink-2: rgb(var(--text-secondary));
+  --ink-rgb: var(--text-primary);
+  --pane-edge: rgb(var(--border-subtle));
+  --font-ui: 'Inter', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
+  /* two pills, and the gap between them is written inline
+     alongside the padding inside them — the same number in
+     both places on purpose */
+  display: flex;
+  align-items: stretch;
+}
+
+/* the label inside the first pill — the house's card label (DropdownSelect's), so the pill reads as one of the cards */
+.pal-label {
+  flex: none;
+  padding: 0 4px 0 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgb(var(--text-muted));
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ── the slab ───────────────────────────────────────────────
+   `--fill-slab`, which is the Fill control's own token: white
+   when the block is filled light and `--slab-dark` when it is
+   filled dark. It was `--slab` — the filled-block pair — which
+   is near-black in light, and a palette wants a white card to
+   sit on far more than it wants a black one. The fallback is
+   `--card` for any mount outside a stage that sets the
+   attribute. */
+.pal-slab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fill-slab, var(--card));
+}
+
+/* the hairline is the Stroke control's to give, the way it is
+   for every other block — a spread shadow rather than a
+   border, so it costs the slab no layout */
+[data-stroke="on"] .pal-slab {
+  box-shadow: 0 0 0 1px var(--pane-edge);
+}
+
+/* ── the tool pill ──────────────────────────────────────────
+   No growing; its width comes from the component. And IT is
+   what sinks under a press, not the button inside it — the
+   thing being pressed is the pill, a button that shrank inside
+   a pill that did not would read as two objects where there is
+   one. Same curve the rest of the bench presses on. */
+.pal-tool {
+  flex: none;
+  transition: scale 130ms cubic-bezier(0.3, 0.9, 0.4, 1);
+}
+
+.pal-tool:has(.pal-go:active) {
+  scale: 0.94;
+}
+
+.pal-bar {
+  position: relative;
+  flex: none;
+  /* NO clip and no corner. Each swatch carries its own radius
+     now that there are gaps between them, so there is nothing
+     for the bar to shape — and a bar that clipped would cut
+     off the overshoot on the way back, which is the part of
+     the motion worth having. */
+}
+
+.pal-blobs {
+  position: absolute;
+  inset: 0;
+}
+
+.pal-seg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  /* every mode is one solid colour at every frame now, so
+     there is nothing inside to clip — and the swatch has to be
+     free to bulge past its own slot, which is what the
+     overshoot on the way back is */
+  /* transform and width are written per frame — no transition,
+     or the easing and the tween re-interpolate against each
+     other and what you see is the transition rather than the
+     move */
+}
+
+/* the height is written per frame too — `bounce` and `orb`
+   both lose some of it — so the rule cannot claim 100% */
+
+/* ── the refresh ────────────────────────────────────────────
+   Width, height and corner all come from the component: it
+   wears the swatch's own radius, so the Corner knob moves it
+   with everything else. NO CHROME AT ALL, at rest or on
+   hover — on whatever ink the fill asks for. */
+.pal-go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--fill-on, var(--ink-2));
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+/* ── hover lightens the glyph, it does not fill the box ─────
+   A grey pad appearing behind the icon is a second shape
+   arriving on a block whose whole subject is shapes, and it
+   was landing inside a pill that already reads as a button —
+   chrome drawn on top of chrome. The ink easing off says the
+   same thing with nothing new on screen.
+
+   A LIGHTER COLOUR, NOT A FADED ONE. Alpha would have been
+   fewer characters and it is the wrong tool: a translucent
+   glyph lets whatever is behind it through, so the icon takes
+   the slab's tint at rest and something else the moment this
+   block sits on any other ground. `color-mix` resolves to one
+   opaque colour — the fill's own ink walked 45% toward the
+   fill's own slab — so it is a grey that was chosen rather
+   than a black that is partly missing.
+
+   And it reads in both fills for free, because both ends of
+   the mix are the Fill control's tokens: on white the black
+   goes to a lighter black, on near-black the white goes to a
+   softer white. Same gesture, no second rule. */
+.pal-go:hover {
+  color: color-mix(in srgb, var(--fill-on, var(--ink-2)) 55%, var(--fill-slab, var(--card)));
+}
+
+.pal-go:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--fill-slab, var(--card)),
+    0 0 0 4px rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.45);
+}
+
+/* ── the glyph turns, and only one way ──────────────────────
+   A half turn per press, accumulated — so it never unwinds.
+   A refresh icon that spun back would be saying undo. */
+.pal-go svg {
+  transition: rotate 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* the goo's <svg> holds only a <defs>: it must take no room in the row */
+.liq-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pal-go, .pal-go svg, .pal-tool { transition-duration: 1ms; }
+}
+
+/* ============================================================
+   THE MARK (brand/SlayerMark.tsx — his partner's logo system,
+   taken whole at Noah's word, 2026-10-03; the S on the holo tile
+   and the word that typed itself on, 2026-09-30, went with it).
+   Three layers: the still SVG (tile, brackets, ">"), the S — a box
+   cut to the S's outline with a strip of foil three times its
+   width sliding inside it — and the cursor. Every loop here is a
+   transform or an opacity, so the compositor runs them and nothing
+   is painted after the first frame.
+   THE MARK STAYS STILL BUT FOR TWO THINGS: the foil pans across
+   the S and the cursor blinks, in every state but offline — and
+   every mark on the page does both on one beat (brand/brandClock.ts
+   pins each loop to the page's clock). The foil's stops are the
+   theme's (--foil-1…5, theme/tokens.css): the holographic silver on
+   black, THE GALAXY INK on paper.
+   ============================================================ */
+.slayer-mark {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
+.slayer-mark > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+.slayer-mark .sm-s {
+  position: absolute;
+  overflow: hidden;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  transition: filter 200ms ease;
+}
+/* THE FOIL — the S's strip, and the signature's dot (brand/Signature.tsx) wears the same one in its round clip */
+.slayer-mark .sm-foil,
+.sig-foil {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 300%;
+  background: linear-gradient(
+    115deg,
+    rgb(var(--foil-1)) 0%,
+    rgb(var(--foil-2)) 14%,
+    rgb(var(--foil-3)) 30%,
+    rgb(var(--foil-4)) 46%,
+    rgb(var(--foil-5)) 62%,
+    rgb(var(--foil-3)) 78%,
+    rgb(var(--foil-1)) 100%
+  );
+  will-change: transform;
+  animation: sm-pan 4.5s ease-in-out infinite alternate;
+}
+@keyframes sm-pan {
+  from { transform: translateX(0); }
+  to { transform: translateX(-66.6667%); }
+}
+/* THE CURSOR — the one bright part: the wordmark's ink, flat (no glow: a halo round it read as an accent), and it
+   blinks in every state but two — offline hides it, an alert flashes the warning ink in its place */
+.slayer-mark .sm-cursor {
+  position: absolute;
+  background: rgb(var(--wordmark));
+  animation: sm-blink 1.06s steps(1, end) infinite;
+}
+.slayer-mark .sm-cursor-warn {
+  background: rgb(var(--warn));
+  opacity: 0;
+  animation: none;
+}
+@keyframes sm-blink {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+/* idle: the pan at 4.5 s each way (above) · loading: the pan speeds to 1.5 s · live: the slow pan · closed: the foil
+   keeps moving, slower still — never a still S */
+.slayer-mark[data-state='loading'] .sm-foil { animation-duration: 1.5s; }
+.slayer-mark[data-state='live'] .sm-foil { animation-duration: 9s; }
+.slayer-mark[data-state='closed'] .sm-foil { animation-duration: 13.5s; }
+/* alert: the S unchanged, the cursor's place given to the warning ink, which flashes twice */
+.slayer-mark[data-state='alert'] .sm-cursor:not(.sm-cursor-warn) { animation: none; opacity: 0; }
+.slayer-mark[data-state='alert'] .sm-cursor-warn {
+  animation: sm-flash 1.1s steps(1, end) 1 forwards;
+}
+@keyframes sm-flash {
+  0% { opacity: 1; }
+  22% { opacity: 0; }
+  44% { opacity: 1; }
+  66%, 100% { opacity: 0; }
+}
+/* offline: the S stands still, the cursor hides until the connection comes back */
+.slayer-mark[data-state='offline'] .sm-foil { animation: none; }
+.slayer-mark[data-state='offline'] .sm-cursor { animation: none; opacity: 0; }
+/* the pointer within 80 px: the S brightens */
+.slayer-mark[data-near] .sm-s { filter: brightness(1.22); }
+/* THE FOLDED RAIL'S MARK HOLDS ITS CURSOR (Noah, 2026-10-03: "the s isnt fully visible on the side bar"): alone at 24px
+   with the rail's notch right beside it, the S| read as a cut S whenever the cursor blinked off. Folded, the cursor stands
+   lit; an alert's flash and offline still rule it. Everywhere else the cursor blinks on the page's beat. */
+[data-sidenav][data-collapsed] [data-brand] .slayer-mark:not([data-state='offline']):not([data-state='alert']) .sm-cursor:not(.sm-cursor-warn) {
+  animation: none;
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .slayer-mark .sm-foil,
+  .slayer-mark .sm-cursor,
+  .sig-foil { animation: none !important; }
+  /* the still frame of an alert: the warning ink in the cursor's place while it holds */
+  .slayer-mark[data-state='alert'] .sm-cursor-warn { opacity: 1; }
+}
+
+/* THE WORDMARK TYPING IN (brand/Wordmark.tsx `typing` — the launch gate): one character every 28 ms, the cursor last; a
+   stepped clip, run once — reduced motion shows the last frame */
+.wordmark-typing {
+  animation: wm-type calc(var(--wm-steps, 16) * 28ms) steps(var(--wm-steps, 16), end) both;
+}
+@keyframes wm-type {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+/* the wordmark's cursor blinks on the mark's beat (the same keyframes, pinned to the same clock — brand/brandClock.ts) */
+.wordmark-cursor {
+  position: absolute;
+  top: 0;
+  height: 99.6%;
+  animation: sm-blink 1.06s steps(1, end) infinite;
+}
+/* typing in, the cursor lands once the letters are down: hidden until then, then blinking on the page's beat — the
+   landing is a visibility step that runs once, so the blink itself starts with every other cursor's */
+.wordmark-typing ~ .wordmark-cursor {
+  animation:
+    sm-blink 1.06s steps(1, end) infinite,
+    wm-land calc(var(--wm-steps, 16) * 28ms) steps(1, end) both;
+}
+@keyframes wm-land {
+  from { visibility: hidden; }
+  to { visibility: visible; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-typing,
+  .wordmark-cursor,
+  .wordmark-typing ~ .wordmark-cursor { animation: none; }
+}
+
+/* THE WINDOW'S PROMPT (pages/landing/TerminalWindow.tsx Prompt — his partner's bar, 2026-10-03): the command that opens
+   the page on screen is typed a letter at a time each time the page changes — every letter its own span, lit on its own
+   beat (26 ms a letter, after a breath), so the typing is exact in any face — and the cursor after it blinks on the
+   brand's beat (the mark's own keyframes, pinned to the page's clock by brand/brandClock.ts). */
+.window-typing { display: inline-block; }
+.window-typing > span {
+  opacity: 0;
+  animation: window-letter 1ms steps(1, end) both;
+  animation-delay: calc(var(--i, 0) * 26ms + 140ms);
+}
+@keyframes window-letter {
+  to { opacity: 1; }
+}
+.window-cursor {
+  display: inline-block;
+  background: rgb(var(--wordmark));
+  animation: sm-blink 1.06s steps(1, end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .window-typing > span { animation: none; opacity: 1; }
+  .window-cursor { animation: none; }
+}
+
+/* THE ARRIVALS (pages/landing/pieces.tsx Arrive — his partner's, at Noah's word, 2026-10-03: "add the arrivals to our
+   section headings"): the first time a block is seen, its heading's lines come up one at a time, 40ms apart — a short
+   rise and a fade — and the big line settles out of a soft blur. Only a block the script has set waiting hides anything
+   (nothing is hidden without it), once a visit, never where less motion is asked for. */
+[data-arrival='wait'] .arrive-line {
+  opacity: 0;
+  transform: translateY(14px);
+}
+[data-arrival='in'] .arrive-line {
+  animation: arrive-line 760ms cubic-bezier(0.2, 0, 0, 1) calc(var(--i, 0) * 40ms) backwards;
+}
+@keyframes arrive-line {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+[data-arrival='in'] .arrive-line.arrive-settle {
+  animation:
+    arrive-line 760ms cubic-bezier(0.2, 0, 0, 1) calc(var(--i, 0) * 40ms) backwards,
+    arrive-focus 900ms cubic-bezier(0.2, 0, 0, 1) calc(var(--i, 0) * 40ms) backwards;
+}
+@keyframes arrive-focus {
+  from { filter: blur(8px); }
+  to { filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-arrival] .arrive-line {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* THE FOOTER'S SCREEN (2026-10-03 — components/layout/FooterArt.tsx; his partner's drawn scenes on it from 2026-10-07):
+   the words and the three stacks at the left, the page's picture beside them as tall as they are (a band between them in
+   one column). THE COLUMN IS THE QUERY, not the screen (his partner's layout): a page with the rail open lays its footer
+   by the room it has — with room for the links and a picture beside them (920px) the picture stands beside the words,
+   at least 300px tall (the art reads a box shorter or narrower as a phone's); below that it is a band between them.
+   A word lit by the pointer brightens (`--lit`, written by the art); a fast pointer's tear pushes a word aside a moment
+   (`--slip`); a link under the pointer dims the rest of its column a tier. The words stay crisp — the red-and-blue
+   fringe is the picture's, never the links'. */
+.footer-sheet {
+  container-type: inline-size;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 28px;
+}
+.footer-grid > [data-footer-scene] {
+  height: 140px;
+}
+@media (min-width: 640px) {
+  .footer-grid > [data-footer-scene] {
+    height: 176px;
+  }
+}
+@container (min-width: 920px) {
+  .footer-grid {
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 48px;
+  }
+  .footer-grid > :not([data-footer-scene]) {
+    grid-column: 1;
+  }
+  .footer-grid > [data-footer-scene] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    height: auto;
+    min-height: 300px;
+  }
+}
+.footer-word {
+  --lit: 0;
+  color: color-mix(in srgb, rgb(var(--text-primary)) calc(var(--lit) * 100%), currentColor);
+  transform: translateX(var(--slip, 0px));
+}
+@media (hover: hover) {
+  .footer-col:has(.footer-link:hover) .footer-link:not(:hover) {
+    color: rgb(var(--text-muted));
+  }
+}
+
+/* THE UNDO CHIP (ui/undo.tsx): slides in from above, and its hairline runs out over its time — held while a pointer is
+   over it or focus is in it (the play state is set by the chip) */
+.undo-toast {
+  animation: undo-in 180ms ease-out;
+}
+.undo-count {
+  animation-name: undo-count;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-toast {
+    animation: none;
+  }
+  .undo-count {
+    display: none;
+  }
+}
+@keyframes undo-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes undo-count {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* The wire's map keeps a map's shape at every window. Landscape is 16:9 and
+   never taller than the screen. Portrait is 4:3 so a phone isn't a ribbon. */
+[data-news-stage] {
+  aspect-ratio: 16 / 9;
+  max-height: min(54vh, 460px);
+  max-width: min(100%, calc(min(54vh, 460px) * 16 / 9));
+}
+@media (orientation: portrait) {
+  [data-news-stage] {
+    aspect-ratio: 4 / 3;
+    max-height: min(46vh, 520px);
+    max-width: min(100%, calc(min(46vh, 520px) * 4 / 3));
+  }
+}

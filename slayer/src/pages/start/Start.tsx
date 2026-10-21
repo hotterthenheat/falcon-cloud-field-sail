@@ -1,0 +1,159 @@
+/*
+==================================================
+  SLAYER TERMINAL - THE START PAGE (pages/start/Start.tsx)
+
+  Noah (2026-10-03): "i want there to be a nice
+  little page when the user launches the website for
+  the first time that basically has an image of each
+  page and they can decide which page they want to go
+  to, a brief description of that page and simple to
+  manuever instead of being ploped into the pulse
+  page first thing."
+
+  So: inside the terminal, the rail at its left,
+  every page of the rail as a card in the rail's own
+  order — the page as the film maker photographed it
+  (the landing's stills, in both themes), its room,
+  its glyph and name, and one plain line — and every
+  card a door. The landing's launch door lands here
+  every time (pages/landing/pieces.tsx doorTo; his
+  word the same night: "make it be the first thing i
+  see even right now") unless Settings › The desk ›
+  Opens on › Page names another page. Stills, not
+  films, until the recordings are re-cut with the
+  new mark.
+==================================================
+*/
+
+import { useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
+import SlayerMark from '../../brand/SlayerMark';
+import { NAV_ITEMS } from '../../components/layout/nav';
+import PageGlyph from '../../components/ui/PageGlyph';
+import { Lock } from 'lucide-react';
+import { settleAfterPurchase, useAccount } from '../../data/account';
+import { planFor, useAccess } from '../../data/access';
+import { planOf } from '../../data/billing';
+import { useResolvedTheme } from '../../theme/theme';
+import { stillFor } from '../landing/films';
+import { START_GRID, START_PICTURE } from './startSkeleton';
+
+/* THE STILL'S PAGE: three rails lead to a section whose first page the photographer named */
+const STILL_PATH: Record<string, string> = {
+  '/trace': '/trace/live-tape',
+  '/dossier': '/dossier/news',
+  '/pinpoint': '/pinpoint/map',
+};
+
+/* ONE LINE A PAGE, in plain words — the rail's tooltips and the landing's lines, said shorter. A rail page without a
+   line here (Community, behind its wall; Settings) has no card. */
+const LINES: Record<string, string> = {
+  '/pulse': 'The live desk. Tiles you add, drag and size, each holding one thing and one read, on a desk that saves as you go.',
+  '/terrain': 'Charts and nothing in the way. One to four side by side, on one set of controls, the book beside any of them.',
+  '/trace': 'The options tape and the dark pool, print by print: who is buying what, and where the money is leaning.',
+  '/dossier': 'The file on a name: its news, who reports when, what insiders filed, what Congress disclosed, how it screens.',
+  '/pinpoint': 'The dealer book as a matrix or a calendar: the walls, the flip, and what they mean for the day ahead.',
+  '/compass': 'The contracts that fit today’s levels, 0DTE to long-dated, each card with its case and its marks on the chart.',
+  '/weigher': 'One desk for a contract: the chain, the book at a strike, your positions and your watchlist.',
+  '/practice/paper': 'Trade today’s prices with pretend money, options and futures, on a practice account or an evaluation.',
+  '/practice/backtest': 'Replay a past market minute by minute and trade it with pretend money, to test an edge.',
+  '/practice/journal': 'Every trade you closed, paper or backtest, on its day, with your own words on it.',
+};
+
+const CARDS = NAV_ITEMS.filter(item => item.glyph && LINES[item.path]);
+
+const Start = () => {
+  const theme = useResolvedTheme();
+  const account = useAccount();
+  const access = useAccess();
+  const [params, setParams] = useSearchParams();
+  /* PAID, AND LANDED HERE (2026-10-10 — the checkout page sends a person here, "the 8 page layout where the user can
+     choose where they want to go"): the plan is named in the head's line, and the row is read again behind the page
+     until Stripe's word lands; the mark in the address goes once the plan shows */
+  const paid = params.get('checkout') === 'success';
+  const plan = account.profile && account.profile.plan !== 'none' && ['active', 'trialing', 'past_due'].includes(account.profile.planStatus) ? planOf(account.profile.plan) : null;
+  useEffect(() => {
+    if (paid) settleAfterPurchase();
+  }, [paid]);
+  useEffect(() => {
+    if (paid && plan) setParams({}, { replace: true });
+  }, [paid, plan, setParams]);
+  return (
+    <div className="flex flex-col gap-5" data-start-page>
+      <header className="flex items-start gap-6 flex-wrap pb-3 border-b border-borderSubtle" data-shell>
+        <div className="min-w-0 flex-1">
+          <div className="h-6 flex items-center gap-2.5" data-shell-page>
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle shrink-0" aria-hidden="true">
+              <SlayerMark size={13} bare label="" />
+            </span>
+            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">Start</h1>
+            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">· where to begin</span>
+          </div>
+          <p className="mt-0.5 text-[11px] text-textMuted" data-start-line={paid ? 'paid' : undefined}>
+            {paid
+              ? plan
+                ? `Thank you — ${plan.name} is yours. Every page of the terminal, one picture and one line each: pick where to begin.`
+                : 'Thank you. Stripe is confirming the payment; your plan lands in a moment. Every page of the terminal, one picture and one line each: pick where to begin.'
+              : 'Every page of the terminal, one picture and one line each. Pick one; the rest stay one press away on the rail, or the menu on a phone.'}
+          </p>
+        </div>
+      </header>
+
+      <ul className={START_GRID} data-start-cards>
+        {CARDS.map((card, i) => (
+          <li key={card.path} className="min-w-0">
+            <Link
+              to={card.path}
+              title={`Open ${card.label}`}
+              className="group block h-full rounded-lg border border-borderSubtle bg-panel overflow-hidden transition-colors hover:border-borderMuted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-silver/60"
+              data-start-card={card.path}
+            >
+              {/* THE PICTURE: the real page, in the theme the reader is on; the first row comes with the page, the rest as
+                  they scroll into view */}
+              <div className={START_PICTURE}>
+                <img
+                  key={theme}
+                  src={stillFor(STILL_PATH[card.path] ?? card.path, theme, 'desk')}
+                  alt={`${card.label}, as it looks`}
+                  draggable={false}
+                  loading={i < 4 ? 'eager' : 'lazy'}
+                  decoding="async"
+                  className="absolute inset-0 w-full h-full object-cover object-left-top select-none"
+                />
+              </div>
+              <div className="px-3.5 pt-3 pb-3.5 border-t border-borderSubtle/60">
+                <p className="flex items-center font-mono text-[9px] uppercase tracking-widest text-textMuted">
+                  {card.group}
+                  {/* a room outside the plan held says which plan it is part of (2026-10-10) — the card still opens, onto the wall */}
+                  {access.on && !access.can(card.path) && (
+                    <span className="ml-auto inline-flex items-center gap-1" data-start-locked={planFor(card.path) ?? ''}>
+                      <Lock className="w-2.5 h-2.5" aria-hidden="true" />
+                      {planOf(planFor(card.path) ?? 'desk').name}
+                    </span>
+                  )}
+                </p>
+                <p className="mt-1.5 flex items-center gap-2 text-[14px] font-semibold leading-tight text-textPrimary">
+                  <PageGlyph name={card.glyph!} size={17} className="shrink-0" />
+                  {card.label}
+                  <ArrowRight className="ml-auto w-3.5 h-3.5 shrink-0 text-textMuted transition-[transform,color] group-hover:translate-x-0.5 group-hover:text-textPrimary" aria-hidden="true" />
+                </p>
+                <p className="mt-1.5 text-[12.5px] leading-snug text-textSecondary">{LINES[card.path]}</p>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      <p className="text-[11px] text-textMuted" data-start-foot>
+        Community opens after launch. Where the terminal opens next time is yours to set in{' '}
+        <Link to="/settings/desk" className="text-textSecondary hover:text-textPrimary transition-colors underline-offset-2 hover:underline">
+          Settings
+        </Link>
+        .
+      </p>
+    </div>
+  );
+};
+
+export default Start;

@@ -1,0 +1,315 @@
+/*
+==================================================
+  SLAYER TERMINAL - PULSE · THE WIDGETS
+  (pages/workspace/registry.tsx)
+
+  Every widget the desk can hold, in the rail's own
+  groups (REBUILT 2026-09-30 — tile.ts says what a
+  tile is and why the twelve before these went):
+
+    MARKET     Chart · News · Earnings · Stocks ·
+               Insiders & Congress
+    THE BOOK   The book · Key levels · The range ·
+               Where it closes · At the wall ·
+               Targets · Where the walls are heading ·
+               Head to head
+    TRADE      Compass setups · Tracker · The chain ·
+               Positions & watchlist
+    PRACTICE   Paper account · Journal
+    YOU        Alerts · Session clock
+
+  Each names its size and the floor and ceiling it
+  reads at, its settings and the cards they are
+  picked from, and THE PAGE ITS DOOR OPENS — the real
+  page, on the tile's name, carrying what the tile
+  showed and the way back to Pulse. The session clock
+  alone has no door: it is not a copy of a page.
+
+  Nothing from Trace is here: order flow left the
+  desk at Noah's word (2026-09-20).
+==================================================
+*/
+
+import { BookOpenText, Briefcase, CalendarClock, CandlestickChart, Clock, Compass, GitCompareArrows, Grid3x3, Landmark, LineChart, Milestone, Newspaper, Rows3, TableProperties, Target } from 'lucide-react';
+import { writeLedgerView } from '../../components/gex/ledgerView';
+import { isoDate, expiryFor } from '../../core/calendar';
+import { ChartTileSkeleton, FigureTileSkeleton, RowsTileSkeleton } from './pulseSkeletons';
+import type { WidgetDef } from './tile';
+import ChartTile, { chartTf } from './tiles/ChartTile';
+import { BookTile, HeadingTile, LevelsTile, PairTile, TargetsTile, bookControls, bookViewOf, levelsControls, pairAgainst, pairControls, targetsControls } from './tiles/book';
+import { EarningsTile, FilingsTile, NewsTile, StocksTile, earningsControls, filingsControls, filingsPath, newsControls, stocksControls } from './tiles/market';
+import { ChainTile, PositionsTile, SetupsTile, chainControls, chainDteOf, positionsControls, setupsControls } from './tiles/trade';
+import { ClockTile } from './tiles/you';
+
+const rows = (n?: number, heads = true) => () => <RowsTileSkeleton rows={n} heads={heads} />;
+const figure = () => <FigureTileSkeleton />;
+
+export const WIDGETS: WidgetDef[] = [
+  /* ---------------------------------------------------------------- MARKET */
+  {
+    key: 'chart',
+    title: 'Live chart',
+    group: 'Market',
+    icon: CandlestickChart,
+    says: 'Price, with the hedging at every strike behind it',
+    w: 6,
+    h: 5,
+    minW: 4,
+    minH: 3,
+    maxH: 10,
+    named: true,
+    /* its interval, overlays and theme are on its own taskbar, over the tape — and the head's button lifts its own
+       fullscreen, where the indicators are (2026-10-02, the chart as it was). Terrain is in its menu. */
+    fullscreen: true,
+    page: { path: '/terrain', label: 'Terrain', state: (state, ctx) => ({ chart: { ticker: ctx.ticker, timeframe: chartTf(state) } }) },
+    Body: ChartTile,
+    skeleton: () => <ChartTileSkeleton />,
+  },
+  {
+    key: 'news',
+    title: 'News',
+    group: 'Market',
+    icon: Newspaper,
+    says: 'The wire, newest first, with the move the model reads for the next session',
+    w: 4,
+    h: 5,
+    minW: 3,
+    minH: 3,
+    maxH: 9,
+    named: false,
+    defaults: { beat: 'all' },
+    controls: newsControls,
+    page: { path: '/dossier/news', label: 'News' },
+    Body: NewsTile,
+    skeleton: rows(9, false),
+  },
+  {
+    key: 'earnings',
+    title: 'Earnings',
+    group: 'Market',
+    icon: CalendarClock,
+    says: 'Who reports in the next two weeks, and the move the market is charging',
+    w: 4,
+    h: 4,
+    minW: 3,
+    minH: 3,
+    maxH: 8,
+    named: false,
+    defaults: { priced: 'all' },
+    controls: earningsControls,
+    page: { path: '/dossier/earnings', label: 'Earnings' },
+    Body: EarningsTile,
+    skeleton: rows(7),
+  },
+  {
+    key: 'stocks',
+    title: 'Stocks',
+    group: 'Market',
+    icon: LineChart,
+    says: 'The board’s names: today, thirty days, and the screen’s one word',
+    w: 4,
+    h: 5,
+    minW: 3,
+    minH: 3,
+    maxH: 9,
+    named: false,
+    defaults: { screen: 'all' },
+    controls: stocksControls,
+    page: { path: '/dossier/stocks', label: 'Stocks' },
+    Body: StocksTile,
+    skeleton: rows(9),
+  },
+  {
+    key: 'filings',
+    title: 'Insiders & Congress',
+    group: 'Market',
+    icon: Landmark,
+    says: 'The latest trades insiders and members of Congress reported',
+    w: 4,
+    h: 4,
+    minW: 3,
+    minH: 3,
+    maxH: 8,
+    named: false,
+    defaults: { who: 'insiders' },
+    controls: filingsControls,
+    page: { path: state => filingsPath(state.who), label: 'the filings' },
+    Body: FilingsTile,
+    skeleton: rows(8),
+  },
+
+  /* ---------------------------------------------------------------- THE BOOK */
+  {
+    key: 'book',
+    title: 'The book',
+    group: 'The book',
+    icon: Grid3x3,
+    says: 'Dealer hedging at every strike — as a matrix, or across the calendar',
+    w: 6,
+    h: 5,
+    minW: 4,
+    minH: 4,
+    maxH: 9,
+    named: true,
+    defaults: { view: 'matrix', greek: 'gex', expiry: '0DTE', span: 'week', strikes: '10', read: false },
+    resolve: state => ({ ...state, view: bookViewOf(state.view) }),
+    controls: bookControls,
+    toggles: [{ id: 'read', label: 'The read', icon: BookOpenText, title: 'The book’s read — the net, the levels, the heaviest strikes and the strike under the pointer' }],
+    /* the Map keeps its own view (gex/ledgerView.ts): it opens on what the tile showed */
+    page: { path: '/pinpoint/map', label: 'the Map', prepare: state => writeLedgerView('map', bookViewOf(state.view)) },
+    Body: BookTile,
+    skeleton: rows(12),
+  },
+  {
+    key: 'levels',
+    title: 'Key levels',
+    group: 'The book',
+    icon: Rows3,
+    says: 'The walls, the flip, the supreme and spot — how far each is, and how much is parked there',
+    w: 4,
+    h: 4,
+    minW: 4,
+    minH: 3,
+    maxH: 5,
+    named: true,
+    defaults: { lens: 'etf' },
+    controls: levelsControls,
+    page: { path: '/pinpoint/map', label: 'the Map' },
+    Body: LevelsTile,
+    skeleton: rows(6),
+  },
+  /* THE RANGE, WHERE IT CLOSES and AT THE WALL left here on 2026-10-17 (Noah: "everything in the pulse widgets section
+     that was deleted because of the pinpoint page deletions should also be removed") — the Ahead and At-the-wall pages
+     went on 2026-10-14 and their bands went with them; a desk saved with one of the three drops it (desks.ts sanitize) */
+  {
+    key: 'targets',
+    title: 'Targets',
+    group: 'The book',
+    icon: Target,
+    says: 'Every strike in the order it matters today',
+    w: 4,
+    h: 4,
+    minW: 4,
+    minH: 3,
+    maxH: 8,
+    named: true,
+    defaults: { order: 'matters' },
+    controls: targetsControls,
+    page: { path: '/pinpoint/agenda', label: 'the Agenda' },
+    Body: TargetsTile,
+    skeleton: rows(8),
+  },
+  {
+    key: 'heading',
+    title: 'Where the walls are heading',
+    group: 'The book',
+    icon: Milestone,
+    says: 'The four levels at the open, now, and by the close at today’s pace',
+    w: 6,
+    h: 4,
+    minW: 4,
+    minH: 3,
+    maxH: 5,
+    named: true,
+    page: { path: '/pinpoint/agenda?view=building', label: 'the Agenda' },
+    Body: HeadingTile,
+    skeleton: figure,
+  },
+  {
+    key: 'pair',
+    title: 'Head to head',
+    group: 'The book',
+    icon: GitCompareArrows,
+    says: 'This name against another: today, the move left, the walls, the flip',
+    w: 4,
+    h: 4,
+    minW: 4,
+    minH: 3,
+    maxH: 5,
+    named: true,
+    controls: pairControls,
+    page: { path: '/pinpoint/compare', label: 'Compare', state: (state, ctx) => ({ pair: pairAgainst(ctx, state) }) },
+    Body: PairTile,
+    skeleton: rows(7),
+  },
+
+  /* ---------------------------------------------------------------- TRADE */
+  {
+    key: 'setups',
+    title: 'Compass setups',
+    group: 'Trade',
+    icon: Compass,
+    says: 'The scan’s cards, ranked — a card opens that setup’s own page',
+    w: 6,
+    h: 5,
+    minW: 4,
+    minH: 3,
+    maxH: 9,
+    named: true,
+    defaults: { sleeve: 'weekly', scan: 'top-setups' },
+    controls: setupsControls,
+    page: { path: '/compass', label: 'Compass' },
+    Body: SetupsTile,
+    skeleton: figure,
+  },
+  {
+    key: 'chain',
+    title: 'The chain',
+    group: 'Trade',
+    icon: TableProperties,
+    says: 'Every strike’s contract; press one for its weigh-up',
+    w: 6,
+    h: 5,
+    minW: 4,
+    minH: 4,
+    maxH: 9,
+    named: true,
+    defaults: { right: 'C' },
+    resolve: state => ({ ...state, dte: String(chainDteOf(state)) }),
+    controls: chainControls,
+    page: { path: '/weigher', label: 'the Weigher', state: (state, ctx) => ({ weigh: { ticker: ctx.ticker, right: state.right === 'P' ? 'P' : 'C', expiry: isoDate(expiryFor(chainDteOf(state)).date) } }) },
+    Body: ChainTile,
+    skeleton: rows(12),
+  },
+  {
+    key: 'positions',
+    title: 'Positions & watchlist',
+    group: 'Trade',
+    icon: Briefcase,
+    says: 'What you hold and what you watch, priced as the session moves',
+    w: 6,
+    h: 4,
+    minW: 6,
+    minH: 3,
+    maxH: 7,
+    named: false,
+    defaults: { show: 'both' },
+    controls: positionsControls,
+    page: { path: '/weigher', label: 'the Weigher' },
+    Body: PositionsTile,
+    skeleton: rows(6),
+  },
+
+  /* PAPER AND JOURNAL ARE NOT PULSE TILES, AS OF NOW (Noah, 2026-10-03: "i dont think paper or journal should be apart of
+     the pulse section as of now") — the tiles' code stays in tiles/you.tsx; a desk saved with either drops it (desks.ts
+     drops a tile whose widget left the registry). */
+
+  /* ---------------------------------------------------------------- THE DAY (the clock stands under Market) */
+  {
+    key: 'clock',
+    title: 'Session clock',
+    group: 'Market',
+    icon: Clock,
+    says: 'New York’s time, where the session is, and what this part of it does',
+    w: 4,
+    h: 3,
+    minW: 3,
+    minH: 2,
+    maxH: 4,
+    named: true,
+    Body: ClockTile,
+    skeleton: figure,
+  },
+];
+
+export const widgetByKey = (key: string): WidgetDef | undefined => WIDGETS.find(w => w.key === key);

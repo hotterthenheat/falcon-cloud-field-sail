@@ -1,0 +1,144 @@
+/*
+==================================================
+  SLAYER TERMINAL - SETTINGS, THE PIECES (pages/settings/pieces.tsx)
+
+  The grammar every Settings page is built from —
+  a box of rows, a row, a door, a tag, a field, and
+  the line that says what went wrong — moved out of
+  Settings.tsx on 2026-10-10 so the People room
+  (People.tsx) is built of the same pieces without
+  the two files importing each other.
+==================================================
+*/
+
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { MorphingInfinity, useBusy, useWorking } from '../../components/ui/Working';
+
+/** A box of rows: the head, then the rows under hairlines */
+export const Section = ({ id, title, line, aside, children }: { id: string; title: string; line: string; aside?: ReactNode; children: ReactNode }) => (
+  <section id={id} className="border border-borderSubtle rounded-md bg-panel overflow-clip scroll-mt-5" data-settings-section={id}>
+    {/* on a phone the tag goes UNDER the words, the Row's own rule (the phone sweep, 2026-09-19): beside them, "preview ·
+        sample account" took half the width and the section's one line ran to seven */}
+    <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-x-6 gap-y-2 max-sm:flex-col">
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-semibold leading-tight text-textPrimary">{title}</h2>
+        <p className="mt-0.5 text-[11px] text-textMuted">{line}</p>
+      </div>
+      {aside && <div className="shrink-0 pt-0.5">{aside}</div>}
+    </div>
+    {children}
+  </section>
+);
+
+/** One setting: the name and its line at the left, the control at the right */
+export const Row = ({ name, line, children, testId }: { name: string; line: string; children?: ReactNode; testId: string }) => (
+  /* On a phone the control goes UNDER its words (the phone pass, 2026-09-13):
+     side by side, a wide control (the desk's Name + Timeframe cards) squeezed
+     the words into a one-word-a-line column */
+  <div className="px-5 py-3 border-t border-borderSubtle/60 flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3" data-settings-row={testId}>
+    <div className="min-w-0">
+      <div className="text-[12px] text-textPrimary">{name}</div>
+      <div className="text-[11px] text-textMuted">{line}</div>
+    </div>
+    <div className="shrink-0 flex items-center gap-2 max-sm:flex-wrap">{children}</div>
+  </div>
+);
+
+/** A door: the house's small bordered button, a link when it has somewhere to go */
+/* A DOOR WHOSE ACTION IS IN FLIGHT (ui/Working.tsx): a handler that returns a promise holds the door busy until it settles — the mark
+   appears if that lasts. The sample's handlers are instant and never show it; at launch the same doors return Stripe's and the server's requests. */
+export const Door = ({ children, onClick, to, href, title, tone = 'plain', testId, disabled = false }: { children: ReactNode; onClick?: () => void | Promise<unknown>; to?: string; href?: string; title?: string; tone?: 'plain' | 'bear' | 'silver'; testId: string; disabled?: boolean }) => {
+  const [busy, run] = useBusy();
+  const working = useWorking(busy);
+  const cls = `inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-[10px] uppercase tracking-wider transition-colors whitespace-nowrap ${
+    tone === 'bear' ? 'border-bear/40 text-bear hover:bg-bear/10' : tone === 'silver' ? 'border-silver/50 bg-silver/[0.08] text-silver hover:bg-silver/[0.14]' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'
+  }`;
+  if (to)
+    return (
+      <Link to={to} className={cls} title={title} data-settings-door={testId}>
+        {children}
+      </Link>
+    );
+  if (href)
+    return (
+      <a href={href} className={cls} title={title} data-settings-door={testId}>
+        {children}
+      </a>
+    );
+  return (
+    <button type="button" onClick={onClick ? () => run(onClick) : undefined} disabled={busy || disabled} aria-busy={busy || undefined} className={`${cls} disabled:cursor-progress disabled:opacity-50`} title={title} data-settings-door={testId}>
+      {children}
+      {working && <MorphingInfinity viewBox="4 4 16 16" className="w-3 h-3" />}
+    </button>
+  );
+};
+
+/** A small mono word in a pill — a state, never a control */
+export const Tag = ({ children, tone = 'plain' }: { children: ReactNode; tone?: 'plain' | 'silver' }) => (
+  <span className={`font-mono text-[9px] uppercase tracking-widest rounded px-2 py-0.5 whitespace-nowrap border ${tone === 'silver' ? 'bg-silverFill border-silverFill text-[#0a0a0a]' : 'border-borderSubtle text-textMuted'}`}>
+    {children}
+  </span>
+);
+
+/** A text field in a row — the chip ground; saves on blur or Enter, Esc puts the value back */
+/* A FIELD SAYS WHY IT DID NOT SAVE (2026-09-19). It used to fail in silence: an empty name snapped back without a word, and
+   "abc" was kept as an email address. `check` returns the reason a value cannot be kept, or null; the reason shows under the
+   field in the alert ink, the field keeps what was typed so it can be fixed, and nothing is saved until it passes. */
+export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testId, check }: { value: string; onSave: (v: string) => void; prefix?: string; width?: number; type?: 'text' | 'email'; testId: string; check?: (v: string) => string | null }) => {
+  const [v, setV] = useState(value);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => setV(value), [value]);
+  const errId = `field-${testId}-problem`;
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      <span className={`inline-flex items-center h-7 rounded-md border bg-chip transition-colors ${problem ? 'border-warn/70' : 'border-borderSubtle focus-within:border-borderMuted'}`} style={{ width }}>
+        {prefix && <span className="pl-2 font-mono text-[11px] text-textMuted select-none">{prefix}</span>}
+        <input
+          value={v}
+          type={type}
+          spellCheck={false}
+          aria-invalid={problem ? true : undefined}
+          aria-describedby={problem ? errId : undefined}
+          onChange={e => {
+            setV(e.target.value);
+            if (problem) setProblem(null);
+          }}
+          onBlur={() => {
+            const next = v.trim();
+            if (next === value) return setV(value);
+            const why = !next ? 'This cannot be empty' : (check?.(next) ?? null);
+            if (why) return setProblem(why);
+            onSave(next);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') {
+              setV(value);
+              setProblem(null);
+            }
+          }}
+          className={`min-w-0 flex-1 h-full bg-transparent ${prefix ? 'pl-0.5 pr-2' : 'px-2'} font-mono text-[11px] text-textPrimary outline-none`}
+          data-settings-field={testId}
+        />
+      </span>
+      {problem && (
+        <span id={errId} role="alert" className="font-mono text-[10px] text-warn" data-settings-problem={testId}>
+          {problem}
+        </span>
+      )}
+    </span>
+  );
+};
+
+/** What went wrong, in the alert ink — or what happened, in the quiet one */
+export const Said = ({ problem, note }: { problem: string | null; note: string | null }) =>
+  problem ? (
+    <p role="alert" className="font-mono text-[10px] text-warn" data-account-problem>
+      {problem}
+    </p>
+  ) : note ? (
+    <p className="font-mono text-[10px] text-textMuted" data-account-note>
+      {note}
+    </p>
+  ) : null;

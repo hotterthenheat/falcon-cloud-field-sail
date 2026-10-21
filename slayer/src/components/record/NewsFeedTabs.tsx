@@ -1,0 +1,300 @@
+/*
+==================================================
+  SLAYER TERMINAL - ALL NEWS
+  (components/record/NewsFeedTabs.tsx)
+
+  Every headline on the wire, as one feed with
+  tabs — the partner's box, ported 2026-09-13
+  (Noah, with his screenshot: "i love it. i want
+  that as well but it needs to match our type
+  design and our already existing code"):
+
+    ALL FINANCE   every story, newest first
+    FOLLOWING     the names you follow — pick them
+                  here, ring the bell on any of them
+    EARNINGS      prints and guidance
+    DATA          the macro stories, and today's
+                  prints as they land
+    ANALYST       upgrades, downgrades, targets
+    DEALS         M&A, product, regulatory
+
+  A row is the wire's row, in the wire's grammar
+  (time · name · kind · reads · headline with its
+  impact square · 1-day · sure); a click opens the
+  story beside the map above and glides the map to
+  its city. The bell on a followed name is the
+  shell's own news alert (data/newsFollows.ts →
+  alertStore.armNews) — the same one the story's
+  "Alert me" door sets — so it wears the armed
+  silver, never a colour of its own.
+==================================================
+*/
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, BellOff, Plus, X } from 'lucide-react';
+import { freshnessOf, type EconEvent, type GeoNewsEvent, type NewsGrade } from '../../data/newsroom';
+import { followName, setFollowAlerts, unfollowName, useFollows } from '../../data/newsFollows';
+import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from '../../pages/record/recordSkeletons';
+import CatTag from '../news/CatTag';
+import CardTabs from '../ui/CardTabs';
+import CompanyLogo from '../ui/CompanyLogo';
+import TickerLookup from '../ui/TickerLookup';
+import { ImpactLegend, ImpactMark, tierOf } from './impactMark';
+/* `GRADE_INK` here is the story's LEAN (positive · negative); the four words' inks come in under another name */
+import { GRADE_INK as READ_INK } from '../ui/GradeMeter';
+import { gradeOfNewsConfidence } from '../../data/news';
+
+export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals';
+export const FEED_TABS = [
+  { value: 'all', label: 'All finance news' },
+  { value: 'following', label: 'Following' },
+  { value: 'earnings', label: 'Earnings news' },
+  { value: 'data', label: 'Data news' },
+  { value: 'analyst', label: 'Analyst' },
+  { value: 'deals', label: 'Deals & product' },
+] as const;
+const GRADE_INK: Record<NewsGrade, string> = { THREAT: 'text-bear', ALLY: 'text-bull', WATCH: 'text-textSecondary' };
+const GRADE_WORD: Record<NewsGrade, string> = { THREAT: 'negative', ALLY: 'positive', WATCH: 'neutral' };
+/** The wire's columns — the same seven the rows under the map wear */
+export const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
+const signed = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
+/** The tab in hand outlives the page — back from a story's page, the reader lands on the tab they left */
+let tabMemory: FeedTab = 'all';
+
+/** Scroll a window so the row it names is in view — the window alone, never the page (scrollIntoView would move both) */
+export function keepInWindow(box: HTMLElement | null, rowSelector: string | null): void {
+  if (!box || !rowSelector) return;
+  const row = box.querySelector<HTMLElement>(rowSelector);
+  if (!row) return;
+  const top = row.offsetTop;
+  const bottom = top + row.offsetHeight;
+  const head = 22;
+  if (top < box.scrollTop + head) box.scrollTop = Math.max(0, top - head);
+  else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
+}
+
+interface Props {
+  events: GeoNewsEvent[];
+  calendar: EconEvent[];
+  selectedId: string | null;
+  onPick: (e: GeoNewsEvent) => void;
+}
+
+const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
+  const [tab, setTabState] = useState<FeedTab>(tabMemory);
+  const setTab = (t: FeedTab) => {
+    tabMemory = t;
+    setTabState(t);
+  };
+  const follows = useFollows();
+  const ringing = useMemo(() => new Set(follows.filter(f => f.alerts).map(f => f.ticker)), [follows]);
+  const followed = useMemo(() => new Set(follows.map(f => f.ticker)), [follows]);
+  const [adding, setAdding] = useState(false);
+  /* the open row stays in the window; a tab change starts the window at its head */
+  const windowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    keepInWindow(windowRef.current, selectedId ? `[data-news-feed-row="${selectedId}"]` : null);
+  }, [selectedId, tab]);
+  const addRef = useRef<HTMLDivElement | null>(null);
+  /* the add menu closes on a click outside it or Escape, the way every picker menu does */
+  useEffect(() => {
+    if (!adding) return;
+    const away = (ev: MouseEvent) => {
+      if (addRef.current && !addRef.current.contains(ev.target as Node)) setAdding(false);
+    };
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setAdding(false);
+    };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', key);
+    };
+  }, [adding]);
+
+  const rows = useMemo(() => {
+    const newest = [...events].sort((a, b) => a.item.minutesAgo - b.item.minutesAgo);
+    switch (tab) {
+      case 'following':
+        return newest.filter(e => e.item.ticker && followed.has(e.item.ticker));
+      case 'earnings':
+        return newest.filter(e => e.item.category === 'Earnings' || e.item.category === 'Guidance');
+      case 'data':
+        return newest.filter(e => e.item.category === 'Macro');
+      case 'analyst':
+        return newest.filter(e => e.item.category === 'Analyst');
+      case 'deals':
+        return newest.filter(e => e.item.category === 'M&A' || e.item.category === 'Product' || e.item.category === 'Regulatory');
+      default:
+        return newest;
+    }
+  }, [events, tab, followed]);
+  /* the prints that already landed today, on the Data tab, the latest first */
+  const printed = useMemo(() => (tab === 'data' ? calendar.filter(c => c.inMinutes < 0).sort((a, b) => b.inMinutes - a.inMinutes) : []), [calendar, tab]);
+  const counts = useMemo(() => {
+    const c = { all: events.length, following: 0, earnings: 0, data: 0, analyst: 0, deals: 0 };
+    for (const e of events) {
+      if (e.item.ticker && followed.has(e.item.ticker)) c.following++;
+      const k = e.item.category;
+      if (k === 'Earnings' || k === 'Guidance') c.earnings++;
+      else if (k === 'Macro') c.data++;
+      else if (k === 'Analyst') c.analyst++;
+      else c.deals++;
+    }
+    return c;
+  }, [events, followed]);
+  const tabOptions = useMemo(() => FEED_TABS.map(t => ({ value: t.value, label: `${t.label} · ${counts[t.value]}` })), [counts]);
+
+  return (
+    <div data-news-feed={tab}>
+      {/* THE TABS — the child tier, a hairline gliding between them */}
+      <div className="px-5 h-[38px] border-b border-borderSubtle flex items-center gap-4 flex-wrap" data-news-feed-tabs>
+        <CardTabs options={tabOptions} value={tab} onChange={setTab} ariaLabel="Which news" />
+      </div>
+
+      {/* THE NAMES YOU FOLLOW — on the Following tab: a chip per name with its bell, and the door to add one */}
+      {tab === 'following' && (
+        <div className="px-5 h-[44px] border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap" data-news-follows={follows.length}>
+          <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted mr-1">Following</span>
+          {follows.length === 0 && <span className="text-[11px] text-textSecondary">no names yet — add one and its stories gather here</span>}
+          {follows.map(f => (
+            <span key={f.ticker} className="inline-flex items-center gap-1 h-7 pl-2 pr-1 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] font-semibold text-textPrimary" data-follow={f.ticker} data-alerts={f.alerts || undefined}>
+              <CompanyLogo ticker={f.ticker} size={12} />
+              {f.ticker}
+              <button
+                type="button"
+                onClick={() => setFollowAlerts(f.ticker, !f.alerts)}
+                title={f.alerts ? `The bell rings when a headline lands on ${f.ticker} · click to take it off` : `Ring the bell when a headline lands on ${f.ticker}`}
+                aria-pressed={f.alerts}
+                className={`ml-1 inline-flex items-center justify-center w-5 h-5 rounded transition-colors ${f.alerts ? 'text-silver bg-silver/[0.12]' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.06]'}`}
+                data-follow-bell={f.alerts ? 'set' : 'off'}
+              >
+                {f.alerts ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
+              </button>
+              <button type="button" onClick={() => unfollowName(f.ticker)} title={`Stop following ${f.ticker}`} aria-label={`Stop following ${f.ticker}`} className="inline-flex items-center justify-center w-5 h-5 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-follow-remove>
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          <div ref={addRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setAdding(v => !v)}
+              aria-expanded={adding}
+              className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border bg-chip transition-colors font-mono select-none ${adding ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
+              data-follow-add
+            >
+              <Plus className="w-3 h-3 text-textMuted" />
+              <span className="text-[11px] font-semibold text-textPrimary">Follow a name</span>
+            </button>
+            {adding && (
+              <div role="dialog" aria-label="Follow a name" className="absolute left-0 top-full mt-1 z-[60] w-72 max-h-[320px] border border-borderMuted bg-panel/95 backdrop-blur-xl rounded-md shadow-2xl shadow-black/60 overflow-y-auto overscroll-contain animate-slide-in" data-follow-menu>
+                <div className="px-2.5 py-1.5 border-b border-borderSubtle text-[10px] text-textSecondary">Its stories gather on this tab — ring the bell to be told of each one</div>
+                <TickerLookup
+                  onPick={sym => {
+                    followName(sym);
+                    setAdding(false);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+          <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted">the bell rings in the alerts drawer when a headline lands</span>
+        </div>
+      )}
+
+      {/* THE ROWS — the wire's grammar; below lg they scroll sideways inside the box at a readable width (the phone pass, 2026-09-13) */}
+      {/* THE FEED SCROLLS INSIDE ITS BOX past twenty rows (Noah, 2026-10-13) — the same window as the rows under the map */}
+      <div ref={windowRef} className="relative overflow-y-auto overscroll-contain max-lg:overflow-x-auto" style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined}>
+      <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[640px]" style={{ gridTemplateColumns: FEED_COLS }}>
+        <span>Time</span>
+        <span>Name</span>
+        <span>Kind</span>
+        <span>Reads</span>
+        <span className="flex items-center gap-4">
+          <span>Headline</span>
+          <span className="max-lg:hidden">
+            <ImpactLegend />
+          </span>
+        </span>
+        <span className="text-right">1-day</span>
+        <span className="text-right">Sure</span>
+      </div>
+      {printed.map(p => (
+        <div key={p.id} className="px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 max-lg:min-w-[640px]" style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: FEED_COLS }} data-news-print-row={p.id}>
+          <span className="font-mono text-[10px] tnum text-textSecondary">{p.timeLabel}</span>
+          <span className="font-mono text-[11px] font-bold text-textSecondary">{p.region}</span>
+          <span className="font-mono text-[9px] uppercase tracking-widest text-textSecondary">print</span>
+          <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-textSecondary">landed</span>
+          <span className="min-w-0 flex items-center gap-2">
+            <ImpactMark tier={p.impact} />
+            <span className="min-w-0 break-words whitespace-normal leading-relaxed text-[12px] text-textPrimary">{p.title}</span>
+            {p.forecast && (
+              <span className="font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">
+                fcst <span className="text-textPrimary">{p.forecast}</span>
+                {p.previous ? (
+                  <>
+                    {' '}
+                    · prev <span className="text-textPrimary">{p.previous}</span>
+                  </>
+                ) : null}
+              </span>
+            )}
+          </span>
+          <span />
+          <span />
+        </div>
+      ))}
+      {rows.length === 0 && printed.length === 0 && (
+        <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted" data-news-feed-empty>
+          {tab === 'following' ? 'Nothing yet on the names you follow' : 'Nothing on the wire here today'}
+        </div>
+      )}
+      {rows.map(e => {
+        const open = e.id === selectedId;
+        const faded = freshnessOf(e) === 'faded';
+        return (
+          <button
+            key={e.id}
+            type="button"
+            onClick={() => onPick(e)}
+            className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[640px] ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+            style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: FEED_COLS }}
+            data-news-feed-row={e.id}
+            data-open={open || undefined}
+          >
+            <span className="font-mono text-[10px] tnum text-textSecondary">{e.item.time}</span>
+            <span className="min-w-0 inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-textPrimary">
+              {e.item.ticker ? (
+                <>
+                  <CompanyLogo ticker={e.item.ticker} size={14} />
+                  {e.item.ticker}
+                  {ringing.has(e.item.ticker) && <Bell className="w-2.5 h-2.5 text-silver" aria-label="the bell rings on this name" data-feed-bell />}
+                </>
+              ) : (
+                <span className="text-textSecondary">MACRO</span>
+              )}
+            </span>
+            <span className="min-w-0">
+              <CatTag category={e.item.category} size={9} />
+            </span>
+            <span className={`font-mono text-[9px] font-semibold uppercase tracking-widest ${GRADE_INK[e.grade]}`}>{GRADE_WORD[e.grade]}</span>
+            <span className="min-w-0 flex items-center gap-2">
+              <ImpactMark tier={tierOf(e.severity)} />
+              <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+              <span className="font-mono text-[9px] text-textMuted whitespace-nowrap">{e.item.source}</span>
+            </span>
+            <span className={`text-right font-mono text-[11px] font-semibold tnum ${e.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear'}`}>{signed(e.item.prediction.expMove1dPct)}</span>
+            <span className={`text-right font-mono text-[10px] font-semibold ${READ_INK[gradeOfNewsConfidence(e.item.prediction.confidencePct)]}`} data-news-row-sure>
+              {gradeOfNewsConfidence(e.item.prediction.confidencePct)}
+            </span>
+          </button>
+        );
+      })}
+      </div>
+    </div>
+  );
+};
+
+export default NewsFeedTabs;
