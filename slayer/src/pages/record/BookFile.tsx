@@ -28,7 +28,10 @@ import {
 } from '../../data/fileBooks';
 import { useEtfFile, useHouseBook, useShortRow } from '../../data/liveFiles';
 import { tickerName } from '../../data/tickers';
-import { MEMBERS, STOCK_ACT_DEADLINE_DAYS, bracketLabel } from '../../data/congress';
+import { AssetCell, assetKey, assetLine } from './Congress';
+import { moneyB, signedM as moneyFlow } from './money';
+import { usePagedGrid } from '../../components/record/pagedGrid';
+import { MEMBERS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/congress';
 import { useCongressFeed, useLiveRecord } from '../../data/liveRecord';
 import { congressFromWhales } from '../../data/whalesMap';
 import { congressBookKey, useVendor, useVendorRow } from '../../data/vendorFeed';
@@ -37,9 +40,7 @@ import type { UwCongress } from '../../data/whales';
 import type { CongressTrade, ReportOwner } from '../../types/record';
 
 const KNOW = (on: boolean) => `group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`;
-const moneyFlow = (n: number) => `${n > 0 ? '+' : ''}${n.toLocaleString('en-US')}M`;
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
-const moneyB = (b: number) => (b >= 1 ? `$${b.toFixed(2)}B` : `$${(b * 1000).toFixed(0)}M`);
 const defaultColDef = { sortable: true, resizable: true, suppressMovable: true };
 
 const Page = ({ testId, children }: { testId: string; children: ReactNode }) => (
@@ -128,11 +129,11 @@ export const HouseFile = () => {
       { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M` },
       { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : ''}{data.unitsChangeM.toFixed(1)}M</span> : null) },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)) },
-      { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => Number(p.value).toFixed(2) },
+      { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—') },
       { headerName: '% of book', field: 'pctOfBook', width: 100, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%` },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(2)}%` },
       { headerName: 'First buy', field: 'firstBuy', width: 110 },
-      { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => Number(p.value).toFixed(2), headerTooltip: 'The close on the day of the first buy. Not a strike.' },
+      { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'The close on the day of the first buy. Not a strike.' },
     ],
     [],
   );
@@ -182,7 +183,7 @@ export const HouseFile = () => {
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-house-sentence>
         {house} reported {moneyB(value)} across {feed.length} lines. Calls {moneyB(callValue)}, puts {moneyB(putValue)}. {changed.length} lines changed size versus the prior quarter.
         {line ? <> The line you opened is {line}.</> : null}
-        {focused ? <> Eight quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units then and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : null}
+        {focused ? (focused.quarters.length > 1 ? <> {focused.quarters.length} quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units in {focused.quarters[0]?.period} and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : <> One quarter of {focused.ticker} is on file, {focused.quarters[0]?.unitsM.toFixed(1)}M units.</>) : null}
       </p>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="house-know">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
@@ -223,7 +224,7 @@ export const HouseFile = () => {
       </div>
       {focused && (
         <Board
-          title={`Eight quarters · ${focused.ticker}`}
+          title={`${focused.quarters.length === 8 ? 'Eight' : focused.quarters.length} quarters · ${focused.ticker}`}
           rest="Units reported, oldest to newest. The last row is this filing."
           testId="house-quarters"
           rows={focused.quarters.map(q => ({ id: q.period, period: q.period, unitsM: q.unitsM }))}
@@ -275,7 +276,7 @@ export const ShortFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What interest, days to cover and the fee mean" testId="short-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {tickerName(t)} · {row.sector} · the latest short-interest print
+            {[row.name || (tickerName(t) !== t ? tickerName(t) : ''), row.sector && row.sector !== '—' ? row.sector : ''].filter(Boolean).concat('the latest short-interest print').join(' · ')}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
@@ -374,6 +375,7 @@ export const FundFile = () => {
   const [guideOpen, setGuideOpen] = useState(false);
   const [sector, setSector] = useState('all');
   const [picks, setPicks] = useState<string[]>([]);
+  const fundPaged = usePagedGrid<EtfHolding>();
   const holdings = fundLive.holdings;
   const sectors = useMemo(() => shareOf(weightSlices(holdings.map(h => ({ name: h.sector, weight: h.weight })))), [holdings]);
   const countries = useMemo(() => shareOf(weightSlices(holdings.map(h => ({ name: h.country, weight: h.weight })))), [holdings]);
@@ -458,7 +460,7 @@ export const FundFile = () => {
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(fund.flow5dM)}`}>{moneyFlow(fund.flow5dM)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Calls · puts</dt>
+            <dt className="text-[10px] text-textMuted" title="Option contracts traded today">Call · put volume</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap">
               <span className="text-bull">{fund.callVol == null ? '—' : fund.callVol.toLocaleString('en-US')}</span>
               <span className="text-textMuted"> · </span>
@@ -503,6 +505,7 @@ export const FundFile = () => {
       <div className="slayer-board border-t border-borderSubtle" data-fund-holdings>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<EtfHolding>
+            {...fundPaged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -514,6 +517,7 @@ export const FundFile = () => {
             animateRows={false}
           />
         </AgGridProvider>
+        {fundPaged.bar(rows.length, 'fund-holdings')}
       </div>
       <Board title="Sectors" rest="The book by sector, the weights adding to the whole" testId="fund-sectors" rows={sectors.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={SECTOR_COLS} />
       <Board title="Countries" rest="The book by country" testId="fund-countries" rows={countries.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={COUNTRY_COLS} />
@@ -547,7 +551,7 @@ const EX_COLS: ColDef<{ id: string; exchange: string; shortM: number; totalM: nu
 const FTD_COLS: ColDef<{ id: string; date: string; quantity: number; price: number }>[] = [
   { headerName: 'Day', field: 'date', flex: 1, minWidth: 120 },
   { headerName: 'Shares', field: 'quantity', width: 120, type: 'rightAligned', valueFormatter: p => Number(p.value).toLocaleString('en-US') },
-  { headerName: 'Close', field: 'price', width: 100, type: 'rightAligned', valueFormatter: p => Number(p.value).toFixed(2) },
+  { headerName: 'Close', field: 'price', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—') },
 ];
 const QUARTER_COLS: ColDef<{ id: string; period: string; unitsM: number }>[] = [
   { headerName: 'Quarter', field: 'period', flex: 1, minWidth: 120 },
@@ -639,12 +643,13 @@ export const MemberFile = () => {
     () => trades.filter(t => (kind === 'any' || typeOf(t) === kind) && (owner === 'any' || t.owner === owner)),
     [trades, kind, owner],
   );
-  const rows = useMemo(() => (picks.length === 0 ? cut : cut.filter(t => picks.includes(t.ticker))), [cut, picks]);
+  const rows = useMemo(() => (picks.length === 0 ? cut : cut.filter(t => picks.includes(assetKey(t)))), [cut, picks]);
   const toKnow = useMemo(() => {
     const by = new Map<string, CongressTrade>();
     for (const t of cut) {
-      const have = by.get(t.ticker);
-      if (!have || (t.bracket ?? -1) > (have.bracket ?? -1)) by.set(t.ticker, t);
+      const k = assetKey(t);
+      const have = by.get(k);
+      if (!have || (t.bracket ?? -1) > (have.bracket ?? -1)) by.set(k, t);
     }
     return [...by.values()].sort((a, b) => (b.bracket ?? -1) - (a.bracket ?? -1)).slice(0, 6);
   }, [cut]);
@@ -652,7 +657,7 @@ export const MemberFile = () => {
     const ordered = [...trades].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
     const open = new Map<string, CongressTrade>();
     for (const t of ordered) {
-      const key = `${t.ticker}|${t.owner}`;
+      const key = `${assetKey(t)}|${t.owner}`;
       if (t.type === 'Purchase' || t.type === 'Exchange') open.set(key, t);
       if (t.type === 'Sale (Full)') open.delete(key);
     }
@@ -666,14 +671,7 @@ export const MemberFile = () => {
         field: 'ticker',
         flex: 1.3,
         minWidth: 160,
-        cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) =>
-          data ? (
-            <span className="inline-flex items-center gap-2 min-w-0">
-              <CompanyLogo ticker={data.ticker} size={16} />
-              <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-              <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
-            </span>
-          ) : null,
+        cellRenderer: AssetCell,
       },
       { headerName: 'Type', field: 'type', width: 130, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] ${data.type === 'Purchase' ? 'text-bull' : data.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{data.type}</span> : null) },
       { headerName: 'Owner', field: 'owner', width: 110 },
@@ -711,7 +709,7 @@ export const MemberFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a report, a bracket and a lag mean" testId="member-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {member.party}-{member.state || '—'}
+            {seatLabel(member) || '—'}
             {member.district ? ` · ${member.district}` : ''} · {member.chamber}
             {member.committees.length > 0 ? ` · ${member.committees.join(' · ')}` : ''}
           </p>
@@ -751,15 +749,19 @@ export const MemberFile = () => {
           <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No report on this cut</div>
         ) : (
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            {toKnow.map(t => (
-              <button key={t.ticker} type="button" onClick={() => toggle(t.ticker)} aria-pressed={picks.includes(t.ticker)} className={KNOW(picks.includes(t.ticker))} data-member-know={t.ticker}>
+            {toKnow.map(t => {
+              const k = assetKey(t);
+              const line = assetLine(t);
+              return (
+              <button key={k} type="button" onClick={() => toggle(k)} aria-pressed={picks.includes(k)} className={KNOW(picks.includes(k))} data-member-know={k} title={line.sub ? `${line.title} · ${line.sub}` : line.title}>
                 <span className="flex items-center gap-2 min-w-0">
-                  <CompanyLogo ticker={t.ticker} size={18} />
-                  <span className="font-mono text-[12px] font-bold text-textPrimary">{t.ticker}</span>
+                  {line.sym ? <CompanyLogo ticker={line.sym} size={18} /> : null}
+                  <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.sym || k}</span>
                 </span>
                 <span className="mt-1.5 block font-mono text-[10px] tnum text-textSecondary truncate">{bracketLabel(t.bracket)}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -782,7 +784,7 @@ export const MemberFile = () => {
         title="What they still hold"
         rest="The annual disclosure. The range, never a midpoint. No strike on an option."
         testId="member-held"
-        rows={held.map(t => ({ id: `${t.ticker}-${t.owner}`, ticker: t.ticker, owner: t.owner, amount: bracketLabel(t.bracket) }))}
+        rows={held.map(t => ({ id: `${assetKey(t)}-${t.owner}`, ticker: assetLine(t).sym || assetKey(t), owner: t.owner, amount: bracketLabel(t.bracket) }))}
         cols={HELD_COLS}
       />
     </Page>

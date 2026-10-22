@@ -18,7 +18,7 @@ import SignalBadge from '../ui/SignalBadge';
 import RichRead from '../ui/RichRead';
 import type { DropdownOption } from '../ui/DropdownSelect';
 import type { ExpiryChoice } from '../ui/ExpiryCard';
-import { expiryFor, today } from '../../core/calendar';
+import { bookToday, expiryFor, isoDate, today } from '../../core/calendar';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import type { Tone } from '../ui/tones';
 import type { ExposureExpiry, HeatPatternRead } from '../../types/gex';
@@ -62,12 +62,14 @@ const monthlyExpiry = (from: Date): Date => {
     resolve to on the market calendar, with one plain line each. One list for
     the Map's Expiry card and the desk's ladder. */
 export function ladderExpiryOptions(): ExpiryChoice<ExposureExpiry>[] {
-  const base = today();
+  const base = bookToday();
   const day = (dte: number) => expiryFor(dte, base);
   const t0 = day(0);
-  const isToday = t0.dte === 0;
-  /* each choice carries its real day — the calendar card lights those days (2026-09-12) */
-  return [
+  const isToday = t0.dte === 0 && isoDate(t0.date) === isoDate(today());
+  /* each choice carries its real day — the calendar card lights those days (2026-09-12) — and a day is offered once:
+     from a Thursday "1D" and "2D" both land on Friday (the weekend walks back), and the list read "Oct 23 · Fri" twice */
+  const seen = new Set<string>();
+  return ([
     { value: '0DTE', label: isToday ? `Today · ${fmtDay(t0.date)}` : `Next session · ${fmtDay(t0.date)}`, hint: 'The contracts that expire at the bell — the sharpest hedging', date: t0.date },
     { value: '1D', label: `${fmtDay(day(1).date)} · ${day(1).weekday}`, hint: 'The next expiry out', date: day(1).date },
     { value: '2D', label: `${fmtDay(day(2).date)} · ${day(2).weekday}`, hint: 'Two sessions out', date: day(2).date },
@@ -75,7 +77,13 @@ export function ladderExpiryOptions(): ExpiryChoice<ExposureExpiry>[] {
     { value: '7D', label: `${fmtDay(day(7).date)} · ${day(7).weekday}`, hint: 'A week out', date: day(7).date },
     { value: 'OPEX', label: `${fmtDay(monthlyExpiry(base))} · monthly`, hint: 'The monthly expiration — the heaviest structure', date: monthlyExpiry(base) },
     { value: 'ALL', label: 'Every expiry', hint: 'Every expiry, weighed together', date: null },
-  ];
+  ] as ExpiryChoice<ExposureExpiry>[]).filter(o => {
+    if (!o.date) return true;
+    const k = isoDate(o.date);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 /** ±10 for the day's fight, ±30 for the whole book — the tail hedges live out there */

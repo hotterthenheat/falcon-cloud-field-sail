@@ -27,7 +27,7 @@ import { useDeskSession } from '../../data/deskSession';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { alpha, resolveInk } from './paletteInk';
-import { fmtClockLocal, localTickMarks } from './chartTime';
+import { fmtClockLocal, nyTickMarks } from './chartTime';
 import { TAPES_H, TAPES_READ_H } from './compareSkeletons';
 
 const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
@@ -115,12 +115,13 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
     const chart = createChart(host, {
       autoSize: true,
       layout: { background: { color: surface.bg === 'transparent' ? readToken('--panel', undefined, host) : surface.bg }, textColor: surface.text, fontFamily: "'Inter', sans-serif", fontSize: 10, attributionLogo: true },
-      localization: { timeFormatter: fmtClockLocal },
+      /* New York's clock, like every other Pinpoint chart — on a UTC machine the axis read 15:00 → 19:55 */
+      localization: { timeFormatter: (t: Time) => fmtClockLocal(t, 'ny') },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
       /* Room above the lines: at 0.08 the leader's live chip sat over the top axis
          figure and hid half of it (the lock walk, 2026-09-09) */
       rightPriceScale: { borderColor: surface.line, scaleMargins: { top: 0.16, bottom: 0.28 } },
-      timeScale: { borderColor: surface.line, timeVisible: true, secondsVisible: false, rightOffset: 4, tickMarkFormatter: localTickMarks },
+      timeScale: { borderColor: surface.line, timeVisible: true, secondsVisible: false, rightOffset: 4, tickMarkFormatter: nyTickMarks },
       crosshair: {
         vertLine: { color: surface.crosshair, labelBackgroundColor: surface.label },
         horzLine: { color: surface.crosshair, labelBackgroundColor: surface.label },

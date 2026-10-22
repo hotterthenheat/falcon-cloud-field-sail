@@ -188,7 +188,11 @@ const Compare = () => {
      want to compare and not handicap them to 1 or 4") — the lanes drawn are
      the greeks ticked; the reach sums and the Supreme row follow the first */
   const [greekPick, setGreekPick] = useState<string[]>(['gex']);
-  const greeks = useMemo(() => pickGreeks(greekPick), [greekPick]);
+  /* the vendor's books carry no vega — never a $0 VEX lane */
+  const greeks = useMemo(() => {
+    const g = pickGreeks(greekPick).filter(x => x !== 'vex');
+    return g.length ? g : pickGreeks(['gex']);
+  }, [greekPick]);
   const greek: Greek = greeks[0] ?? 'gex';
   /* THE RULER FULLSCREEN (Noah, 2026-09-09): the same box moved to the whole
      viewport, the Map's way — one body, one drawing, nothing remounts. Esc
@@ -264,7 +268,8 @@ const Compare = () => {
         </div>
         {/* THE SENTENCE — what the two say against each other, once, under the ruler (the old table's verdicts) */}
         <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
-          <p className="min-w-0 flex-1 text-[12px] leading-relaxed text-textSecondary">{cmp.sentence}</p>
+          {/* a floor, so on a phone the doors wrap under the sentence instead of squeezing it to two words a line */}
+          <p className="min-w-[min(18rem,100%)] flex-1 text-[12px] leading-relaxed text-textSecondary">{cmp.sentence}</p>
           <span className="shrink-0 flex items-center gap-3">
             <button type="button" onClick={onSwap} className="font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors" title="Swap the two names" data-compare-swap>
               swap

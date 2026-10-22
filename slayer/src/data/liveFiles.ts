@@ -185,11 +185,25 @@ const quartersOf = (h: UwHolding, sharesM: number, report: string): InstitutionR
           const period = typeof o.date === 'string' ? quarterOf(o.date) : typeof o.period === 'string' ? o.period : '';
           return units == null ? null : { period: period || report, unitsM: units / 1e6 };
         }
-        const units = numOr(item);
-        return units == null ? null : { period: report, unitsM: units / 1e6 };
+        return null;
       })
       .filter((x): x is { period: string; unitsM: number } => !!x);
     if (rows.length) return rows.slice(-8);
+    /* A bare list of unit counts, NEWEST FIRST (the vendor's historical_units: [this filing, the quarter before, …]).
+       Each one was stamped with this filing's quarter, so eight quarters collapsed into one row and the sentence read
+       "1009.8M then, 945.7M now" — backwards. Each count now gets its own quarter, oldest to newest. */
+    const counts = raw.map(numOr).filter((n): n is number => n != null);
+    const base = Date.parse(h.date ?? '');
+    if (counts.length && Number.isFinite(base)) {
+      const d0 = new Date(base);
+      return counts
+        .slice(0, 8)
+        .map((units, i) => {
+          const d = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() - 3 * i, 15));
+          return { period: quarterOf(d.toISOString()), unitsM: units / 1e6 };
+        })
+        .reverse();
+    }
   }
   return [{ period: report, unitsM: sharesM }];
 };
@@ -226,6 +240,7 @@ function rowFromHolding(house: string, filed: string, h: UwHolding): Institution
     status: statusOf(units, change),
     report,
     filedDaysAgo: daysAgo(filed),
+    company: typeof h.full_name === 'string' && h.full_name.trim() ? titleName(h.full_name) : undefined,
     quarters: quartersOf(h, sharesM, report),
   };
 }

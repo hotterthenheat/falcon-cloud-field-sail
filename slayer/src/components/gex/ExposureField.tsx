@@ -342,7 +342,19 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     onGreeks?.(settled);
   };
   /* The greeks drawn — a stable array per pick, so the grid and the ladder memo on it */
-  const greeks = useMemo(() => pickGreeks(pick), [pick]);
+  /* A LIVE BOOK HAS NO VEGA: the vendor's per-strike exposure carries gamma, delta, vanna and charm only, and VEX drew
+     a column of $0 down every strike (the Pinpoint sweep, 2026-10-22). On a live book it is not offered, not drawn. */
+  const noVex = !!snapshot?.liveBook;
+  const greeks = useMemo(() => {
+    const g = pickGreeks(pick);
+    if (!noVex) return g;
+    const kept = g.filter(x => x !== 'vex');
+    return kept.length ? kept : (['gex'] as Greek[]);
+  }, [pick, noVex]);
+  const greekGroups = useMemo(
+    () => (noVex ? [{ title: GREEK_GROUPS[0].title, options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm side by side — the feed carries no vega' } : o)) }] : GREEK_GROUPS),
+    [noVex]
+  );
   /* THE WINDOW OF EXPIRIES (Noah, 2026-09-22: "it forces you to start from the current date and goes through to the
      date you choose… there should be some sort of max, 7 being the max when you are choosing all 5 greeks"): From and
      Through, as indices into the book's expiries, nearest first. THE CEILING is by how many greeks stand side by side —
@@ -723,16 +735,21 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      since the last one, when six seconds have passed, or when the name
      changes. The head's price and change stay live off the snapshot, and
      the ledger's spot rule reads the live spot too. */
-  const builtRef = useRef<{ surface: ExposureSurface; spot: number; at: number } | null>(null);
+  const builtRef = useRef<{ surface: ExposureSurface; spot: number; at: number; dates: number } | null>(null);
+  /* how many expiries have their own chain — they land seconds after the whole book. Not in the reuse test, a surface
+     built off the whole book alone was kept through a quiet tape (after the bell spot never moves): the card read
+     "Today" over a single all-dates column and the matrix crowned the book's supreme, not the window's (2026-10-22) */
+  const datesIn = snapshot?.uwByDate ? Object.values(snapshot.uwByDate).filter(c => c?.length).length : 0;
   const surface = useMemo(() => {
     if (!snapshot) return null;
     const b = builtRef.current;
     const now = Date.now();
-    if (!fresh && b && b.surface.ticker === snapshot.ticker && Math.abs(snapshot.spot - b.spot) / b.spot < 0.001 && now - b.at < 6000) return b.surface;
+    if (!fresh && b && b.surface.ticker === snapshot.ticker && b.dates === datesIn && Math.abs(snapshot.spot - b.spot) / b.spot < 0.001 && now - b.at < 6000) return b.surface;
     const next = buildExposureSurface(snapshot, WHOLE_BOOK, CALENDAR_DTES);
-    builtRef.current = { surface: next, spot: snapshot.spot, at: now };
+    builtRef.current = { surface: next, spot: snapshot.spot, at: now, dates: datesIn };
     return next;
-  }, [snapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot, datesIn]);
 
   /* THE NAMES BESIDE THE HOST'S — kept on this machine; a name the host
      already shows is never doubled. Their books are the simulator's pure read,
@@ -1057,8 +1074,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* The SUPREME is the heaviest STRIKE of the whole book — the one the chart
      wears in magenta — shown with the date carrying most of it. The heaviest
      single cell is the grid's star, a different fact with its own plain name. */
-  const supreme = surface.supreme[supremeGreek];
-  const supremeEx = surface.expiries[supreme.e];
+  /* the door crowns what the matrix crowns: the WINDOW's supreme (scoped to the Expiries card), not the front book's —
+     the two disagreed (775 on the door, 760 in magenta on the grid) once the per-date chains landed (2026-10-22) */
+  const crowned = scoped(surface, snapshot);
+  const supreme = crowned.supreme[supremeGreek];
+  const supremeEx = crowned.expiries[supreme.e];
   const liveChange = snapshot.changePercent;
   const up = liveChange >= 0;
   /* the expiries drawn for the host's book: the window, the ceiling, what fits (see `windowFor`) */
@@ -1161,7 +1181,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           so), so the card steps aside there rather than read "All five" over a chart it does not govern (the re-audit's M2) */}
       {view !== 'profile' && (
         <Fold open={!many} gap={8} testId="data-band-greek">
-          <DropdownMulti label="Greek" values={pick} groups={GREEK_GROUPS} onChange={setPick} emptyWord="All" clearWord="Clear · all five" title="One, some, or all five" testId="ledger-greek" align="start" bare={stripsBare || panel} flat={toolbar === 'band'} />
+          <DropdownMulti label="Greek" values={pick} groups={greekGroups} onChange={setPick} emptyWord="All" clearWord={noVex ? 'Clear · all four' : 'Clear · all five'} title={noVex ? 'One, some, or all four' : 'One, some, or all five'} testId="ledger-greek" align="start" bare={stripsBare || panel} flat={toolbar === 'band'} />
         </Fold>
       )}
       {/* the profile draws the net alone — the card steps aside there */}
@@ -1199,7 +1219,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const supremeDoor = (
     <button
       onClick={() => onSelectStrike?.(supreme.strike)}
-      title={`The heaviest strike of the whole book by ${GREEK_LABEL[supremeGreek]} — every expiry, not only today's — the one the chart wears in magenta — most of it on ${supremeEx?.date ?? ''}. The Agenda, the Board and Compare crown today's contracts (the Levels card), so theirs can differ · click to keep the strike`}
+      title={`The heaviest strike by ${GREEK_LABEL[supremeGreek]} over the expiries the Expiries card holds — the one the chart wears in magenta — most of it on ${supremeEx?.date ?? ''}. The Agenda, the Board and Compare crown today's contracts (the Levels card), so theirs can differ · click to keep the strike`}
       /* the cards' 28px (it stood 32 on a 28px row), sentence case like them, and a button's hover edge (the audit's M2, M3, L10) */
       /* A QUIET CHIP WITH A MAGENTA MARK (the owner, 2026-10-14: "the loudest thing on the screen is the magenta Supreme
          pill, which is a secondary fact"): the chip is the band's, the dot is the supreme's — the one place magenta stands
@@ -1208,9 +1228,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       data-ledger-supreme={doorCompact('supreme') ? 'compact' : 'full'}
     >
       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
-      {/* "all dates": the whole book's supreme, said on the door — the Agenda and the Board crown today's (the UI sweep,
-          2026-10-22: 760 here beside their 775 read as a contradiction) */}
-      <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && <span className="text-textMuted/70"> · all dates</span>}</span>
+      {/* the window it is crowned over, said on the door — the Agenda and the Board crown the Levels card's (today's), so
+          a wider window here can name another strike (the UI sweep, 2026-10-22) */}
+      <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && chosenDates.length > 1 && <span className="text-textMuted/70"> · {chosenDates.length} dates</span>}</span>
       <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
         {fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}
@@ -1576,7 +1596,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           /* ONE GREEK PER NAME when names stand side by side (Noah, 2026-09-12) — the host's too:
              a multi pick made before a name arrived kept five greeks in a third of the band
              (2026-09-14), the widest way to empty the capsules */
-          const colGreeks = same(`g:${c.ticker}`, c.host ? (many ? d.greeks.slice(0, 1) : d.greeks) : pickGreeks(colPick));
+          const colGreeks = same(`g:${c.ticker}`, c.host ? (many ? d.greeks.slice(0, 1) : d.greeks) : (noVex ? pickGreeks(colPick).filter(g => g !== 'vex') : pickGreeks(colPick)));
           const colGreek: Greek = c.host ? leadGreek : colGreeks[0] ?? 'gex';
           const read = readOf(c.ticker);
           /* the host's chip is the band's own, stepped down — in the own-name chip's
@@ -1766,7 +1786,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     <DropdownSelect<string>
                       label="Greek"
                       value={colGreeks[0] ?? 'gex'}
-                      options={SINGLE_GREEK_OPTIONS}
+                      options={noVex ? SINGLE_GREEK_OPTIONS.filter(o => o.value !== 'vex') : SINGLE_GREEK_OPTIONS}
                       onChange={g => (c.host ? setPick([g]) : setGreeksOf(c.ticker, [g]))}
                       title={`What ${c.ticker}'s cells measure`}
                       testId={`ledger-greek-${c.ticker}`}

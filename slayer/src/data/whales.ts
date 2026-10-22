@@ -291,6 +291,7 @@ export interface UwHolding {
   perc_of_total?: string | number;
   historical_units?: unknown;
   date?: string;
+  full_name?: string;
 }
 
 export interface UwShort {

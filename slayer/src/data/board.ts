@@ -27,7 +27,7 @@ import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge } from './flipGauge';
 import { getBoardNames } from './boardNames';
-import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf } from './uwBook';
+import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange } from './uwBook';
 import { readLevelsScope } from './levelsScope';
 import { LEVELS_WINDOW } from './roomLevels';
 import { readSessionClock } from './moc';
@@ -85,7 +85,9 @@ export function watchOf(snapshot: MarketSnapshot, today: ExposureProfileData, su
     const t = snapshot.ticker;
     const iv = peekIv(t);
     if (iv == null) return null;
-    const building = buildBuilding(snapshot, bookHistory(t) ?? [], bookCandles(t) ?? [], today, clock);
+    /* the same open-interest change the Agenda reads, so the Board's watch-first is the Agenda's */
+    ensureOiChange(t);
+    const building = buildBuilding(snapshot, bookHistory(t) ?? [], bookCandles(t) ?? [], today, clock, peekOiChange(t));
     const lead = buildAgenda(snapshot, today, building, surface, bars, clock, iv).first[0];
     return lead ? { strike: lead.strike, role: lead.role, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake } : null;
   } catch {

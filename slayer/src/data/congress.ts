@@ -224,3 +224,7 @@ export function congressSentence(f: CongressFeed): string {
   if (f.unknownAmounts > 0) parts.push(`${f.unknownAmounts} carried no amount the filing could be read for.`);
   return parts.join(' ');
 }
+
+/** A member's seat as one short tag — "R-AR", "D-TX-35", "R" — joining only what the roster knows ("I-" and "-AR" never) */
+export const seatLabel = (m: { party: string; state?: string; district?: string | null }): string =>
+  [m.party, m.district || m.state].filter(Boolean).join('-');

@@ -319,7 +319,7 @@ export const ordinal = (n: number): string => {
 const pct = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
 export const fmtMoney = (v: number): string => {
   const a = Math.abs(v);
-  const s = a >= 1e9 ? `$${(a / 1e9).toFixed(1)}B` : a >= 1e6 ? `$${(a / 1e6).toFixed(0)}M` : a >= 1e3 ? `$${(a / 1e3).toFixed(0)}K` : `$${a.toFixed(0)}`;
+  const s = a >= 1e12 ? `$${(a / 1e12).toFixed(2)}T` : a >= 1e9 ? `$${(a / 1e9).toFixed(1)}B` : a >= 1e6 ? `$${(a / 1e6).toFixed(0)}M` : a >= 1e3 ? `$${(a / 1e3).toFixed(0)}K` : `$${a.toFixed(0)}`;
   return v < 0 ? `−${s}` : s;
 };
 const fmtCount = (v: number): string => (v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${Math.round(v)}`);
@@ -552,14 +552,15 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     posture,
     /* the note is the READ, not the rule: it is quoted inside the Why-now lines, where the bare definition ("A print
        under the price counts as buying…") landed mid-sentence and read as the finding (the dossier sweep, 2026-10-22).
-       The house rule stands — a block printed under the market is a buyer working patiently, over it a seller. */
+       The house rule stands — a block printed under the market is a buyer working patiently, over it a seller. Kept to
+       the verdict alone: the factor's own label and value already say where the money printed. */
     postureNote: !file.dark.length
       ? ''
       : posture === 'ACCUMULATING'
-        ? 'more of the off-exchange money printed under the price than over it, which reads as buying'
+        ? 'which reads as buying'
         : posture === 'DISTRIBUTING'
-          ? 'more of the off-exchange money printed over the price than under it, which reads as selling'
-          : 'the off-exchange money printed on both sides of the price',
+          ? 'which reads as selling'
+          : 'on both sides of the price',
     totalNotional: darkNotional,
     levels: [],
     prints: file.dark,
@@ -699,6 +700,9 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   const window = past.slice(0, 8);
   const epsActual = last ? nOr(last.actual_eps) : null;
   const epsEstimate = last ? nOr(last.street_mean_est) : null;
+  /* against a cent-sized estimate the percent explodes (−0.10 against −0.03 read −233%) — under five cents it is said in
+     cents instead, and the lean is read off the cents */
+  const tinyEst = epsEstimate != null && Math.abs(epsEstimate) < 0.05;
   const epsSurprisePct = epsActual != null && epsEstimate != null && epsEstimate !== 0 ? ((epsActual - epsEstimate) / Math.abs(epsEstimate)) * 100 : null;
   const beats = window.filter(r => (nOr(r.actual_eps) ?? 0) >= (nOr(r.street_mean_est) ?? 0)).length;
   const growth = nOr(file.screen?.eps_growth_4q);
@@ -710,8 +714,8 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
     factors.push({
       key: 'surprise',
       label: 'EPS against the estimate',
-      value: `${epsActual!.toFixed(2)} vs ${epsEstimate!.toFixed(2)} · ${pct(epsSurprisePct)}`,
-      lean: clamp(epsSurprisePct / 8),
+      value: tinyEst ? `${epsActual!.toFixed(2)} vs ${epsEstimate!.toFixed(2)} · ${epsActual! - epsEstimate! >= 0 ? '+' : '−'}${Math.round(Math.abs(epsActual! - epsEstimate!) * 100)}¢` : `${epsActual!.toFixed(2)} vs ${epsEstimate!.toFixed(2)} · ${pct(epsSurprisePct)}`,
+      lean: tinyEst ? clamp(((epsActual! - epsEstimate!) * 100) / 8) : clamp(epsSurprisePct / 8),
       weight: 0.4,
       note: epsSurprisePct >= 0 ? 'the last print beat' : 'the last print missed',
     });
@@ -831,10 +835,13 @@ const agreementOf = (pillars: Pillar[], composite: number, news: NewsRead): Agre
     const p = against[0];
     const f = [...p.factors].sort((a, b) => Math.abs(b.lean) * b.weight - Math.abs(a.lean) * a.weight)[0];
     risk = f ? `If ${p.name.toLowerCase()} is right — ${f.label.toLowerCase()} ${f.value}, ${f.note} — the ${lean} read fails there first.` : `If ${p.name.toLowerCase()} is right, the ${lean} read fails there first.`;
-  } else if (news.nextEarnings) {
-    risk = `Every pillar agrees; the risk is the print on ${news.nextEarnings.label}, ±${news.nextEarnings.impliedMovePct.toFixed(1)}% priced.`;
   } else {
-    risk = 'Every pillar agrees; the risk is a headline the wire has not seen yet.';
+    /* nothing argues — but a pillar that sits in the middle does not AGREE either (SOUN: "1 of 4 agree" over "Every pillar
+       agrees"); the line says which it is */
+    const all = pillars.every(p => leanOf(p.score) === lean);
+    const head = all ? 'Every pillar agrees' : 'No pillar argues against it';
+    const priced = news.nextEarnings && news.nextEarnings.impliedMovePct > 0 ? `, ±${news.nextEarnings.impliedMovePct.toFixed(1)}% priced` : '';
+    risk = news.nextEarnings ? `${head}; the risk is the print on ${news.nextEarnings.label}${priced}.` : `${head}; the risk is a headline the wire has not seen yet.`;
   }
   return { lean, pillars: rows, aligned: rows.filter(r => r.agrees).length, risk };
 };
@@ -945,7 +952,9 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const timeline: TimelineEntry[] = [];
   news.read.stories.slice(0, 3).forEach(s => timeline.push({ key: `news:${s.id}`, when: s.item.time, kind: 'news', text: s.item.headline, time: null, score: pillars[0].score }));
   const n = blocks.length;
-  for (let i = n - 1; i >= Math.max(1, n - 10); i--) {
+  /* every session on hand, not the last ten — the box says "what happened on the 87 sessions on hand" and drew its lanes
+     across all of them, so a scan of ten read as "none on hand" (the Dossier sweep, 2026-10-22) */
+  for (let i = n - 1; i >= 1; i--) {
     const b = blocks[i];
     const prev = blocks[i - 1];
     const back = n - 1 - i;

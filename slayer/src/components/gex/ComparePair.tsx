@@ -41,7 +41,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, LineStyle, createChart, createSeriesMarkers, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from 'lightweight-charts';
-import { buildPair, pairPlace, type Pair } from '../../data/compare';
+import { buildPair, pairPlace, type DailyClose, type Pair } from '../../data/compare';
+import { whalesDaily, type UwDaily } from '../../data/whales';
 import { GuideDoor } from '../ui/GuideFocus';
 import { CardRow, PointerFollowCard } from '../ui/PointerCard';
 import { PlotNotesPrimitive } from '../record/plotNotesPrimitive';
@@ -78,7 +79,24 @@ interface Day {
 
 const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Props) => {
   const paper = useResolvedTheme() === 'light';
-  const pair: Pair = useMemo(() => buildPair(a, b), [a, b, nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* the months of sessions behind the range — the vendor's daily bars, regular session only */
+  const [daily, setDaily] = useState<{ a: string; b: string; da: DailyClose[]; db: DailyClose[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    const closes = (rows: UwDaily[]) =>
+      (Array.isArray(rows) ? rows : [])
+        .filter(r => !r.market_time || r.market_time === 'r')
+        .map(r => ({ date: String(r.date ?? '').slice(0, 10), close: Number(r.close) }))
+        .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.close > 0);
+    Promise.all([whalesDaily(a).catch(() => [] as UwDaily[]), whalesDaily(b).catch(() => [] as UwDaily[])]).then(([ra, rb]) => {
+      if (live) setDaily({ a, b, da: closes(ra), db: closes(rb) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [a, b]);
+  const fit = daily && daily.a === a && daily.b === b ? daily : null;
+  const pair: Pair = useMemo(() => buildPair(a, b, fit?.da, fit?.db), [a, b, nonce, fit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* every completed session, and today's point one step past the last */
   const done = pair.sessions.length > 1 ? pair.sessions.slice(0, -1) : pair.sessions;
@@ -113,6 +131,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
   const [hover, setHover] = useState<number | null>(null);
   const pointerAt = useRef({ x: 0, y: 0 });
   const [made, setMade] = useState(0);
+  const drawn = points.length > 1;
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -171,8 +190,10 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
       marksRef.current = null;
       linesRef.current = [];
     };
+    /* `drawn`: the host only mounts once there are points — the daily sessions land after the first paint, and a chart
+       made only on the theme left the box blank under a full read line */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paper, aInk, bInk]);
+  }, [paper, aInk, bInk, drawn]);
 
   /* THE DATA: the points on the baseline, the usual range as a band named at the left, the average as the library's
      dashed line with its figure on the scale, the marks on the line */

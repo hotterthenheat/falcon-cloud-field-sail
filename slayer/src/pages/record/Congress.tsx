@@ -38,7 +38,7 @@ import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
-import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, congressSentence, summariseCongress } from '../../data/congress';
+import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, congressSentence, seatLabel, summariseCongress } from '../../data/congress';
 import { useCongressFeed, useCongressStatus } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
@@ -77,7 +77,7 @@ const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'sales', label: 'Sales', hint: 'Sales only, full or partial', tone: 'bear' },
 ];
 
-const seat = (t: CongressTrade) => `${t.member.party}-${t.member.district ?? t.member.state}`;
+const seat = (t: CongressTrade) => seatLabel(t.member);
 const typeWord = (t: CongressTrade) => (t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : 'Sale');
 const typeInk = (t: CongressTrade) => (t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear');
 
@@ -103,17 +103,32 @@ const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
   ) : null;
 
 const SYMBOL = /^[A-Z][A-Z.]{0,5}$/;
-const assetLine = (t: CongressTrade) => {
+/* an all-caps filing phrase ("US TREASURY BILLS") reads in sentence case, so it never shouts across a card */
+const readable = (s: string) => (s.length > 6 && s === s.toUpperCase() && /[A-Z]{3}/.test(s) ? s.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/\bUs\b/g, 'US') : s);
+
+export const assetLine = (t: CongressTrade) => {
   const sym = t.ticker.trim().toUpperCase();
-  const named = SYMBOL.test(sym);
-  const described = t.assetDescription && t.assetDescription !== 'Stock' && t.assetDescription !== 'Undisclosed' && t.assetDescription.toUpperCase() !== sym ? t.assetDescription : '';
+  /* "None" / "N/A" ride in the ticker field on some filings — they are not symbols */
+  const named = SYMBOL.test(sym) && !/^(NONE|NA|N\/A)$/.test(sym);
+  const rawDesc = t.assetDescription && t.assetDescription !== 'Stock' && t.assetDescription !== 'Undisclosed' && t.assetDescription.toUpperCase() !== sym ? t.assetDescription : '';
+  const fallback = !named && sym && !/^(NONE|NA|N\/A)$/.test(sym) ? sym : '';
+  const described = readable(rawDesc || fallback);
   if (named) return { sym, title: sym, sub: described || (t.assetKind === 'Stock' ? tickerName(sym) : t.assetKind) };
-  const title = described || (t.assetKind === 'Stock' ? 'Not named on the filing' : t.assetKind);
+  const title = described || (t.assetKind === 'Stock' || t.assetKind === 'Other' ? 'Not named on the filing' : t.assetKind);
   const sub = described && t.assetKind !== 'Stock' && t.assetKind !== 'Other' ? t.assetKind : '';
   return { sym: '', title, sub };
 };
 
-const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
+/** One key per asset for the names-to-know cards: a named stock by its symbol, anything else by its plain name with
+    the filing's own parenthetical dropped ("Treasury Bill (6-Week, Matures 12/3/2026)" → "Treasury Bill") */
+export const assetKey = (t: CongressTrade) => {
+  const line = assetLine(t);
+  if (line.sym) return line.sym;
+  const plain = line.title.replace(/\s*\(.*$/, '').replace(/\s*\[.*$/, '').trim() || line.title;
+  return /^(us |u\.s\. )?treasury bills?$/i.test(plain) ? 'Treasury Bill' : plain;
+};
+
+export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   if (!data) return null;
   const line = assetLine(data);
   return (
@@ -189,8 +204,9 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
       return (
         <span className="flex items-center gap-2 min-w-0">
           {line.sym ? <CompanyLogo ticker={line.sym} size={18} /> : null}
-          <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.title}</span>
-          <span className="text-[10px] text-textSecondary truncate">
+          {/* the symbol never gives way — the member's name is what truncates ("AP…" read as nothing) */}
+          <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono shrink-0' : ''}`}>{line.title}</span>
+          <span className="min-w-0 text-[10px] text-textSecondary truncate">
             {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
           </span>
         </span>
@@ -232,18 +248,21 @@ const Congress = () => {
   const waiting = status === 'loading';
   const quiet = failed || waiting;
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut';
+  /* committee seats are not on the feed yet: without them the "own committee" pick could only ever empty the page */
+  const seats = useMemo(() => feed.trades.some(t => t.committeeOverlap), [feed.trades]);
+  const showOptions = useMemo(() => (seats ? SHOW_OPTIONS : SHOW_OPTIONS.filter(o => o.value !== 'committee')), [seats]);
   const cut = useMemo(
     () =>
       feed.trades.filter(t => {
         if (chamber !== 'both' && t.member.chamber !== chamber) return false;
         if (owner !== 'any' && t.owner !== owner) return false;
-        if (show === 'committee' && !t.committeeOverlap) return false;
+        if (show === 'committee' && seats && !t.committeeOverlap) return false;
         if (show === 'late' && !t.late) return false;
         if (show === 'purchases' && t.type !== 'Purchase') return false;
         if (show === 'sales' && (t.type === 'Purchase' || t.type === 'Exchange')) return false;
         return true;
       }),
-    [feed, chamber, owner, show]
+    [feed, chamber, owner, show, seats]
   );
 
   /* THE FILTER reads the names, members and committees on the cut; any pick matching keeps the row */
@@ -287,13 +306,15 @@ const Congress = () => {
   const stats = useMemo(() => summariseCongress(rows, window), [rows, window]);
 
   /* THE REPORTS TO KNOW: own-committee trades on the cut, the biggest bracket first, the latest first among equals */
+  /* The feed carries no committee seats yet, so the own-committee strip was empty on every cut (the Dossier sweep,
+     2026-10-22). Without seats on file the strip shows the biggest brackets on the cut instead, and says so. */
   const toKnow = useMemo(
     () =>
       cut
-        .filter(t => t.committeeOverlap)
+        .filter(t => !seats || t.committeeOverlap)
         .sort((a, b) => (b.bracket ?? -1) - (a.bracket ?? -1) || a.filedDaysAgo - b.filedDaysAgo)
         .slice(0, REPORTS_TO_KNOW),
-    [cut]
+    [cut, seats]
   );
 
   const columnDefs = useMemo<ColDef<CongressTrade>[]>(
@@ -359,7 +380,7 @@ const Congress = () => {
           <div>
             <dt className="text-[10px] text-textMuted">In own committee</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-overlap>
-              {quiet ? '—' : stats.overlaps}
+              {quiet || !seats ? '—' : stats.overlaps}
             </dd>
           </div>
         </dl>
@@ -369,7 +390,7 @@ const Congress = () => {
         <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the reports run" testId="congress-window" />
         <DropdownSelect label="Chamber" value={chamber} options={CHAMBER_OPTIONS} onChange={setChamber} title="Which chamber" testId="congress-chamber" />
         <DropdownSelect label="Owner" value={owner} options={OWNER_OPTIONS} onChange={setOwner} title="Whose holding" testId="congress-owner" />
-        <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
+        <DropdownSelect label="Show" value={show === 'committee' && !seats ? 'all' : show} options={showOptions} onChange={setShow} title="Which reports" testId="congress-show" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, members and committees on the page right now — tick any number; only those stay" testId="congress-filter" />
       </div>
       {failed ? (
@@ -384,10 +405,10 @@ const Congress = () => {
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The reports to know</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">trades in a sector the member's own committee oversees, the biggest bracket first · click one to keep the grid to that member</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">{seats ? "trades in a sector the member's own committee oversees, the biggest bracket first" : 'the biggest brackets on this cut — committee seats are not on the feed'} · click one to keep the grid to that member</span>
         </div>
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : "No trade in a member's own committee on this cut"}</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>
         ) : (
           <div
             /* every report across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,

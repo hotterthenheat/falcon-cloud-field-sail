@@ -155,7 +155,10 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         return best;
       };
       opts.localization = { timeFormatter: fmt };
-      opts.timeScale = { ...opts.timeScale, tickMarkFormatter: fmt };
+      /* the chart spaces its ticks for its own short clock labels — a categorical label ("2021-06-15") is wider, so the
+         first ticks ran into each other ("2021-06-152021-10-29"); tell it how wide ours are */
+      const widest = Math.max(...[...labels.values()].map(v => v.length));
+      opts.timeScale = { ...opts.timeScale, tickMarkFormatter: fmt, tickMarkMaxCharacterLength: widest + 1 };
     }
     const chart: IChartApi = createChart(host, opts);
     const formatter = (p: number) => (format === 'pct' ? `${p.toFixed(1)}%` : format === 'num' ? (Math.abs(p) >= 100 ? p.toFixed(0) : p.toFixed(2)) : compact(p));
@@ -722,7 +725,7 @@ export function StockFacts({ ticker }: { ticker: string }) {
   if (!last) return null;
   const money = ['total_revenue', 'gross_profit', 'net_income']
     .filter(k => last[k] != null && last[k] !== '')
-    .map(k => ({ label: k === 'total_revenue' ? 'Revenue' : k === 'gross_profit' ? 'Gross profit' : 'Net income', value: num(last[k]) != null ? compact(num(last[k])!) : String(last[k]) }));
+    .map(k => ({ label: k === 'total_revenue' ? 'Revenue' : k === 'gross_profit' ? 'Gross profit' : 'Net income', value: num(last[k]) != null ? `${num(last[k])! < 0 ? '−' : ''}$${compact(Math.abs(num(last[k])!))}` : String(last[k]) }));
   if (money.length === 0) return null;
   return (
     <>
@@ -761,7 +764,8 @@ export function ShortHistory({ ticker }: { ticker: string }) {
       };
     })
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .reverse();
+    /* sorted, not reversed: the vendor's order is not fixed, and the head promises newest first */
+    .sort((a, b) => b.market_date.localeCompare(a.market_date));
   const [page, setPage] = useState(0);
   useEffect(() => setPage(0), [ticker]);
   const pages = Math.max(1, Math.ceil(reports.length / CONTRACT_PAGE));

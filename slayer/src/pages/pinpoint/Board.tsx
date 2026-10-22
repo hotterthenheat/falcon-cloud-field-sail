@@ -363,7 +363,7 @@ const Board = () => {
         headerTooltip: 'The closest strike whose hedging pushes back on price, and how far it is',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: 'Supreme', field: 'supreme', flex: 0.8, minWidth: 96, cellRenderer: SupremeCell, headerTooltip: 'The heaviest strike on the contracts the Levels card reads (today\'s by default) — the same one the Agenda and Compare crown; the Map\'s band crowns the whole book\'s' },
+      { headerName: 'Supreme', field: 'supreme', flex: 0.8, minWidth: 96, cellRenderer: SupremeCell, headerTooltip: 'The heaviest strike on the contracts the Levels card reads (today\'s by default) — the same one the Agenda and Compare crown; the Map crowns the window its Expiries card holds' },
       { headerName: 'Net GEX today', field: 'netGex', flex: 1.1, minWidth: 120, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'All the hedging on the name added up, per 1% move: positive absorbs moves, negative amplifies them' },
       { headerName: 'Expires today', field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: "The share of the name's hedging sitting in contracts that expire at 4:00 today — it is gone at the close, and the walls it made go with it" },
       { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: 'How many times price has crossed the flip today — the more it has, the less either side of it means' },

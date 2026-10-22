@@ -130,7 +130,7 @@ const NameDoor = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) 
   <button
     type="button"
     onClick={() => onOpen(e.ticker)}
-    title={`${e.name} — options price ±${e.impliedMovePct.toFixed(1)}%, ${slotWord(e)} · open its page`}
+    title={`${e.name} — options price ${moveText(e)}, ${slotWord(e)} · open its page`}
     className={`group flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 hover:border-borderSubtle hover:bg-silver/[0.05] transition-colors text-left ${askedRing(!!asked)}`}
     data-earnings-door={e.ticker}
     data-known={e.known || undefined}
@@ -140,7 +140,7 @@ const NameDoor = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) 
     <span className="flex flex-col leading-tight">
       <span className="flex items-center gap-1.5">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{e.ticker}</span>
-        <span className={`font-mono text-[11px] tnum ${priceInk(e)}`}>±{e.impliedMovePct.toFixed(1)}%</span>
+        <span className={`font-mono text-[11px] tnum ${e.impliedMovePct > 0 ? priceInk(e) : 'text-textMuted'}`}>{moveText(e)}</span>
         <SlotMark slot={e.slot} />
       </span>
       <span className="text-[10px] text-textMuted truncate max-w-[180px]">{e.name}</span>
@@ -160,14 +160,14 @@ const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => v
   <button
     type="button"
     onClick={() => onOpen(e.ticker)}
-    title={`${e.name} — options price ±${e.impliedMovePct.toFixed(1)}%, ${slotWord(e)} · open its page`}
+    title={`${e.name} — options price ${moveText(e)}, ${slotWord(e)} · open its page`}
     className={`group relative flex flex-col items-center gap-1.5 rounded-md border border-borderSubtle bg-chip px-2 pt-3 pb-2.5 transition-colors hover:border-borderMuted hover:bg-silver/[0.05] ${askedRing(!!asked)}`}
     data-earnings-card={e.ticker}
     data-asked={asked || undefined}
   >
     <CompanyLogo ticker={e.ticker} size={28} />
     <span className="font-mono text-[12px] font-bold text-textPrimary leading-none mt-0.5">{e.ticker}</span>
-    <span className={`font-mono text-[11px] tnum leading-none ${pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{pricedKnown(e) ? `±${e.impliedMovePct.toFixed(1)}%` : '—'}</span>
+    <span className={`font-mono text-[11px] tnum leading-none ${pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{pricedKnown(e) ? moveText(e) : '—'}</span>
     <SetTag confirmed={e.confirmed} />
   </button>
 );
@@ -222,7 +222,7 @@ const Answer = ({ next, onOpen, onClear }: { next: NextReport; onOpen: (t: strin
       <span className="text-textMuted">·</span>
       <span>
         reports <span className="font-mono tnum text-textPrimary">{next.dateLabel}</span>
-        <span className="text-textMuted">{next.daysOut === 0 ? ' · today' : ` · in ${next.daysOut}d`}</span>
+        <span className="text-textMuted">{next.daysOut === 0 ? ' · today' : next.daysOut < 0 ? ` · ${-next.daysOut}d ago` : ` · in ${next.daysOut}d`}</span>
       </span>
       <span className="inline-flex items-center gap-1.5">
         <SlotMark slot={next.slot} className="w-2.5 h-2.5" />
@@ -273,7 +273,7 @@ const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
     <span className="flex flex-col leading-tight">
       <span className="font-mono text-[11px] tnum text-textPrimary">
-        {data.dateLabel} <span className="text-textMuted">· {data.daysOut === 0 ? 'today' : `in ${data.daysOut}d`}</span>
+        {data.dateLabel} <span className="text-textMuted">· {data.daysOut === 0 ? 'today' : data.daysOut < 0 ? `${-data.daysOut}d ago` : `in ${data.daysOut}d`}</span>
       </span>
       <span className="inline-flex items-center gap-1.5 text-[10px]">
         <SlotMark slot={data.slot} className="w-2.5 h-2.5" />
@@ -283,7 +283,10 @@ const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
     </span>
   ) : null;
 
-const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? <span className="font-mono text-[11px] tnum font-semibold text-textPrimary">±{data.impliedMovePct.toFixed(1)}%</span> : null);
+const IvCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? pricedKnown(data) && data.ivRank > 0 ? <span className={`font-mono text-[11px] tnum ${data.ivRank >= 80 ? 'text-warn' : 'text-textPrimary'}`}>{data.ivRank}</span> : <span className="font-mono text-[11px] text-textMuted">—</span> : null);
+/* a report with no straddle on the row (KARO's ±0.0%) is not priced — it says so */
+const moveText = (e: EarningsEvent) => (e.impliedMovePct > 0 ? `±${e.impliedMovePct.toFixed(1)}%` : '—');
+const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? <span className={`font-mono text-[11px] tnum font-semibold ${data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`}>{moveText(data)}</span> : null);
 const UsualCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{pricedKnown(data) ? `±${data.histAvgMovePct.toFixed(1)}%` : '—'}</span> : null);
 const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!data) return null;
@@ -302,16 +305,6 @@ const BeatCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   const beats = Math.round((data.beatRate8q / 100) * n);
   return <span className="font-mono text-[11px] tnum text-textPrimary">{beats} of {n}</span>;
 };
-const EstCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
-  data ? (
-    pricedKnown(data) ? (
-    <span className={`font-mono text-[11px] ${data.revisionTrend > 0.15 ? 'text-bull' : data.revisionTrend < -0.15 ? 'text-bear' : 'text-textMuted'}`}>
-      {data.revisionTrend > 0.15 ? 'rising' : data.revisionTrend < -0.15 ? 'falling' : 'flat'}
-    </span>
-    ) : <span className="font-mono text-[11px] text-textMuted">—</span>
-  ) : null;
-const IvCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? pricedKnown(data) && data.ivRank > 0 ? <span className={`font-mono text-[11px] tnum ${data.ivRank >= 80 ? 'text-warn' : 'text-textPrimary'}`}>{data.ivRank}</span> : <span className="font-mono text-[11px] text-textMuted">—</span> : null);
-
 /* ---- the page ----------------------------------------------------------------------- */
 
 const Earnings = () => {
@@ -375,7 +368,6 @@ const Earnings = () => {
       { headerName: 'Usually moves', field: 'histAvgMovePct', width: 124, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move on the last eight prints' },
       { headerName: 'Priced', field: 'richness', width: 124, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
       { headerName: 'Beat', field: 'beatRate8q', width: 96, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'How many of the last eight quarters beat the estimate' },
-      { headerName: 'Estimates', field: 'revisionTrend', width: 104, cellRenderer: EstCell, headerTooltip: 'Which way analyst estimates have drifted into the print' },
       { headerName: 'IV rank', field: 'ivRank', width: 92, cellRenderer: IvCell, type: 'rightAligned', headerTooltip: 'Where implied volatility sits against its own past year, 0 to 100 — 80 and up is dear' },
     ],
     []
@@ -528,7 +520,7 @@ const Earnings = () => {
             data-earnings-board
           >
             {weeks.map(weekIdx => (
-              <div key={weekIdx} className="grid grid-cols-5 gap-px bg-borderSubtle/60 border-b border-borderSubtle/60 last:border-0 max-lg:min-w-[640px]">
+              <div key={weekIdx} className="grid grid-cols-5 gap-px bg-borderSubtle/60 border-b border-borderSubtle/60 last:border-0 max-lg:min-w-[1000px]">
                 {WEEKDAYS.map(wd => {
                   const { label, isToday } = weekDayLabel(weekIdx, wd);
                   const dayAll = shown.filter(e => e.weekIdx === weekIdx && e.weekday === wd);

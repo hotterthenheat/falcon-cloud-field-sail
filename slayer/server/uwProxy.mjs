@@ -149,10 +149,25 @@ async function load(path, key) {
   const running = inflight.get(path);
   if (running) return running;
   const job = (async () => {
-    const upstream = await fetch(`https://api.unusualwhales.com/api${path}`, {
-      headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(12_000),
-    });
+    /* THE VENDOR'S RATE LIMIT IS ANSWERED HERE, NOT IN THE BROWSER (the Pinpoint sweep, 2026-10-22): a 20-name Board
+       asks ~275 routes in its first half-minute and the vendor answers some of them 429. The browser's one retry still
+       left red "Failed to load resource" lines and empty cells; the proxy now waits the vendor out (its Retry-After, or
+       0.8s, 1.6s, 3.2s) and only then gives up — handing back the last good print for the path when it has one. */
+    let upstream;
+    for (let attempt = 0; ; attempt++) {
+      upstream = await fetch(`https://api.unusualwhales.com/api${path}`, {
+        headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (upstream.status !== 429 || attempt >= 3) break;
+      const after = Number(upstream.headers.get('retry-after'));
+      await upstream.arrayBuffer().catch(() => null);
+      await new Promise(r => setTimeout(r, Number.isFinite(after) && after > 0 && after <= 5 ? after * 1000 : 800 * 2 ** attempt));
+    }
+    if (upstream.status === 429) {
+      const stale = cache.get(path);
+      if (stale) return { status: stale.status, body: stale.body, type: stale.type };
+    }
     const buf = Buffer.from(await upstream.arrayBuffer());
     const type = upstream.headers.get('content-type') || 'application/json';
     if (upstream.status === 200) {

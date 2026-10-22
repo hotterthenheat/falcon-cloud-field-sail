@@ -345,7 +345,17 @@ export interface Pair {
 }
 
 /** The ratio of the two names' closes, session by session and today minute by minute */
-export function buildPair(a: string, b: string): Pair {
+/** One session's close, from the vendor's daily bars */
+export interface DailyClose {
+  /** New York calendar date, YYYY-MM-DD */
+  date: string;
+  close: number;
+}
+
+/* THE SESSIONS COME FROM THE DAILY BARS WHEN THEY ARE IN (the Pinpoint sweep, 2026-10-22): the book's own candles hold
+   a session or two of 5-minute bars, so "the pair" sat on "not enough sessions on the tape yet" on every name. The
+   vendor's daily bars carry months; the minute bars still draw today. */
+export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] | null, dailyB?: readonly DailyClose[] | null): Pair {
   const ba = bookCandles(a) ?? [];
   const bb = bookCandles(b) ?? [];
   const sessionsOf = (bars: readonly Candle[]) => {
@@ -364,6 +374,21 @@ export function buildPair(a: string, b: string): Pair {
     const last = s[s.length - 1];
     const cb = closeB.get(dayOf(last.time));
     if (cb) sessions.push({ time: last.time, ratio: last.close / cb, closeA: last.close, closeB: cb });
+  }
+  if (dailyA?.length && dailyB?.length) {
+    const closeOn = new Map(dailyB.map(d => [d.date, d.close]));
+    const lastIntraday = sessions[sessions.length - 1];
+    const lastDay = lastIntraday ? new Date((lastIntraday.time - 4 * 3600) * 1000).toISOString().slice(0, 10) : null;
+    const fromDaily: PairPoint[] = [];
+    for (const d of [...dailyA].sort((x, y) => x.date.localeCompare(y.date))) {
+      const cb = closeOn.get(d.date);
+      if (!(cb && cb > 0 && d.close > 0) || d.date === lastDay) continue;
+      fromDaily.push({ time: Math.floor(Date.parse(`${d.date}T20:00:00Z`) / 1000), ratio: d.close / cb, closeA: d.close, closeB: cb });
+    }
+    if (fromDaily.length >= 5) {
+      const tail = fromDaily.slice(-120);
+      sessions.splice(0, sessions.length, ...tail, ...(lastIntraday ? [lastIntraday] : []));
+    }
   }
   /* The still-forming session is today's, off the average */
   const done = sessions.slice(0, -1);
