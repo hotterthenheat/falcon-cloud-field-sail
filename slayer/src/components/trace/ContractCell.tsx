@@ -22,6 +22,7 @@
 
 import { DOOR, DOOR_GROUP_TEXT } from './door';
 import { expiryLabel, pctSigned } from '../../core/format';
+import { indexRoot } from '../../data/traceLive';
 
 /* The COLUMN is right-aligned (header included), so header and endings share
    one edge and read as one parent — the cell itself just hugs its content.
@@ -37,7 +38,10 @@ const ContractCell = ({
   dte,
   spot,
   otmPct,
+  ticker,
 }: {
+  /** The underlying's symbol — an index's level is whole points (its spot-exposure minutes), so it prints as one */
+  ticker?: string;
   strike: number;
   right: 'C' | 'P';
   expiry: string;
@@ -66,7 +70,7 @@ const ContractCell = ({
       <span className={`font-mono text-[11px] font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>
         {right === 'C' ? 'call' : 'put'}
       </span>
-      <span className={`font-mono text-[11px] text-textMuted tnum ${DOOR_GROUP_TEXT}`}>{context ? expiryLabel(expiry) : expiry}</span>
+      <span className={`font-mono text-[11px] text-textMuted tnum ${DOOR_GROUP_TEXT}`}>{expiryLabel(expiry)}</span>
     </span>
   );
   /* Without context the cell is EXACTLY what it always was — one line, one
@@ -84,7 +88,7 @@ const ContractCell = ({
       <span className="inline-flex items-baseline gap-1 font-mono text-[11px] leading-none tnum text-textSecondary whitespace-nowrap">
         {dte !== undefined && <span>{dte}d</span>}
         {dte !== undefined && (spot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
-        {spot !== undefined && <span>spot ${spot.toFixed(2)}</span>}
+        {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points, from its spot-exposure minutes' : undefined}>{ticker && indexRoot(ticker) ? `index ${Math.round(spot).toLocaleString('en-US')}` : `spot $${spot.toFixed(2)}`}</span>}
         {spot !== undefined && otmPct !== undefined && <span aria-hidden>·</span>}
         {otmPct !== undefined && <span>{pctSigned(otmPct, 1)}</span>}
       </span>

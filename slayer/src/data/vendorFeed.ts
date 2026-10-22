@@ -13,6 +13,7 @@ import { setLiveCatalysts, setLiveFda, setLivePosts, setLiveSchedule, type CalEv
 import { setFlexBook } from './oiHeat';
 import { thetaCall } from './theta';
 import { uwCall } from './whales';
+import { nyIsoDaysBack } from './nyDate';
 
 export type VendorState = 'loading' | 'live' | 'empty' | 'error';
 
@@ -686,7 +687,9 @@ async function after(key: string, ticker: string, pathname: string, got: Map<str
     const who = politician(got.get('people'), member);
     const name = who?.name || decodeURIComponent(member).replace(/-/g, ' ');
     if (books.get(key)?.rows.some(r => r.id === 'member-reports')) {
-      await runJob(key, { id: 'member-reports', label: "This member's reports", path: `/congress/congress-trader?name=${enc(name)}&limit=40`, kind: 'uw' });
+      /* the trades made in the last year, the first page of the member page's own read (data/liveRecord.ts
+         memberReportsPath) — the same address, so the proxy answers both with one call */
+      await runJob(key, { id: 'member-reports', label: "This member's reports", path: `/congress/congress-trader?name=${enc(name)}&date_from=${nyIsoDaysBack(365)}&limit=200`, kind: 'uw' });
     }
   }
 }

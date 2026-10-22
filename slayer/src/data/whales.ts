@@ -229,6 +229,7 @@ export interface UwContract {
   volume?: string | number;
   vega?: string | number;
   implied_volatility?: string | number;
+  gamma?: string | number;
   last_price?: string | number;
   nbbo_bid?: string | number;
   nbbo_ask?: string | number;
@@ -259,6 +260,10 @@ export interface UwDaily {
 }
 
 export const whalesDaily = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(ticker)}/ohlc/1d?limit=260`, true);
+/* THE DOSSIER'S DAILY SESSIONS (the data audit, 2026-10-22): a daily row comes three times a day — pre-market, regular
+   and post (market_time pr · r · po) — so limit=260 was 87 sessions and the trend card could never draw its 200-day
+   average. Two years of rows (timeframe=2Y; the route caps the default at one) at 900 rows is about 300 sessions. */
+export const whalesDailyLong = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(ticker)}/ohlc/1d?limit=900&timeframe=2Y`, true);
 export const whalesDarkTicker = (ticker: string) => uw<Record<string, unknown>[]>(`/darkpool/${enc(ticker)}?limit=80`, true);
 export const whalesFlowTicker = (ticker: string) =>
   uw<Record<string, unknown>[]>(`/option-trades/flow-alerts?ticker_symbol=${enc(ticker)}&limit=40`, true);

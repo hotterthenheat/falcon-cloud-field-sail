@@ -182,10 +182,12 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const low: CorridorEdge = lowWall ? { price: Math.max(putWall, Math.min(centreEnd - sigma, spot)), why: 'the put wall' } : { price: centreEnd - sigma, why: 'the expected move' };
   const outer = { low: spot - 2 * sigma, high: spot + 2 * sigma };
 
-  /* The flip inside the corridor splits it: spot above the flip = dealers absorb
-     (moves slow), so the fast side is below it; and the other way round */
-  const flipInside = flip > outer.low && flip < outer.high ? flip : null;
-  const fastSide: Corridor['fastSide'] = flipInside == null ? null : spot >= flipInside ? 'below' : 'above';
+  /* The flip inside the corridor splits it. THE SIDE THAT IS FAST IS WHERE DEALERS ARE SHORT GAMMA, read off the net at
+     spot (data/flipLevel.ts), never off which side of the flip spot sits: long gamma here means the far side of the flip
+     is the fast one; short gamma here means this side is. No flip within ±10% splits nothing. */
+  const flipInside = profile.levels.flipFound !== false && flip > outer.low && flip < outer.high ? flip : null;
+  const longHere = profile.levels.net != null ? profile.levels.net < 0 : spot >= flip;
+  const fastSide: Corridor['fastSide'] = flipInside == null ? null : longHere === flipInside > spot ? 'above' : 'below';
 
   /* The cone, five minutes at a time, from now (or the open) to the close:
      the expected move for the minutes elapsed, around the centre the strikes

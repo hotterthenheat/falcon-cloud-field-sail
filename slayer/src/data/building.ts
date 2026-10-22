@@ -43,7 +43,13 @@
 */
 
 import { sessionStarts } from './indicators';
-import { pickFlip, pickWalls } from '../core/walls';
+import { pickWalls } from '../core/walls';
+import { DEFAULT_R } from '../core/carry';
+import { dollarGammaPerContract } from '../core/gammaFlip';
+import { bookToday, isoDate } from '../core/calendar';
+import { datesOf, yearsTo } from './flipLevel';
+import { peekEntry, type OiChange } from './uwBook';
+import { shownGamma } from '../components/gex/retailSign';
 import { CLOSE_MIN, OPEN_MIN, SESSION_MIN, fmtDollars, fmtStrike, hhmm, type AheadClock } from './ahead';
 import type { ExposureProfileData } from '../types/gex';
 import type { Candle, GexSnapshot, MarketSnapshot } from '../types/market';
@@ -122,6 +128,86 @@ export interface Building {
   sentence: string;
   /** False when the snapshots carry no open interest at all */
   hasOi: boolean;
+  /** True when the change is the vendor's overnight open-interest count (yesterday's trading), contract by contract —
+      false when it is the day's volume walked onto the book (a book with no such count) */
+  overnight: boolean;
+  /** The open-interest dates the overnight change runs between, when it is the vendor's */
+  oiDates: { from: string; to: string } | null;
+}
+
+/** The change's time words: the vendor's count is set overnight from yesterday's trading — never "today" */
+export const changeWhen = (b: Pick<Building, 'overnight' | 'inSession'>): { short: string; long: string; head: string } =>
+  b.overnight
+    ? { short: 'overnight', long: "in yesterday's trading (the overnight open-interest count)", head: 'Built overnight' }
+    : b.inSession
+      ? { short: 'today', long: 'today', head: 'Built today' }
+      : { short: 'last session', long: 'in the last session', head: 'Built last session' };
+
+/** Net gamma in the retail sign a reader knows: "+$1.2B" / "−$245M" */
+const retail = (house: number) => {
+  const v = shownGamma(house);
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtDollars(Math.abs(v))}`;
+};
+
+/* ---- the overnight change, valued contract by contract --------------------------------------------------------- */
+
+interface Valued {
+  dCall: number;
+  dPut: number;
+  /** House-signed dollars the change added: calls negative, puts positive */
+  call: number;
+  put: number;
+}
+
+/**
+ * The vendor's open-interest change for the contracts in `chain` (one expiry, a sum of several, or every live one),
+ * each contract valued at its OWN gamma: the vendor's per-contract gamma where its contract rows are in, else the
+ * chain's own exposure per contract, else Black-Scholes at that contract's vol (or the expiry's at-the-money vol).
+ * Expired contracts and dates outside the scope are left out.
+ */
+export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike: number }[], change: OiChange): Map<number, Valued> {
+  const out = new Map<number, Valued>();
+  const spot = snapshot.spot;
+  const floor = isoDate(bookToday());
+  const scope = snapshot.liveBook ? datesOf(snapshot, chain as MarketSnapshot['chain']) : null;
+  const inScope = (d: string) => d >= floor && (scope == null || scope === 'ALL' || scope.includes(d));
+  const by = snapshot.uwByDate ?? {};
+  const entry = peekEntry(snapshot.ticker);
+  const nodeAt = new Map<string, Map<number, MarketSnapshot['chain'][number]>>();
+  const node = (d: string, k: number) => {
+    let m = nodeAt.get(d);
+    if (!m) {
+      m = new Map((by[d] ?? []).map(n => [n.strike, n]));
+      nodeAt.set(d, m);
+    }
+    return m.get(k);
+  };
+  const per1 = spot * spot * 0.01 * 100;
+  for (const r of change.rows) {
+    if (!inScope(r.expiry)) continue;
+    const n = node(r.expiry, r.strike);
+    const call = r.right === 'C';
+    const vendorGamma = call ? n?.callGamma : n?.putGamma;
+    const oi = call ? n?.callOI : n?.putOI;
+    const gex = call ? n?.callGex : n?.putGex;
+    let dg = 0;
+    if (vendorGamma && vendorGamma > 0) dg = vendorGamma * per1;
+    else if (oi && oi > 0 && gex) dg = Math.abs(gex) / oi;
+    else {
+      const iv = (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || entry?.iv || 0;
+      dg = dollarGammaPerContract(spot, r.strike, yearsTo(r.expiry), iv, DEFAULT_R);
+    }
+    const cell = out.get(r.strike) ?? { dCall: 0, dPut: 0, call: 0, put: 0 };
+    if (call) {
+      cell.dCall += r.diff;
+      cell.call += -r.diff * dg;
+    } else {
+      cell.dPut += r.diff;
+      cell.put += r.diff * dg;
+    }
+    out.set(r.strike, cell);
+  }
+  return out;
 }
 
 /** A size change smaller than this share of the biggest wall reads as steady */
@@ -148,13 +234,17 @@ export function buildBuilding(
   bars: readonly Candle[],
   profile: ExposureProfileData,
   clock: AheadClock,
-  /** The vendor's open-interest change over the last session, by strike (uwBook's peekOiChange). When it is in, it is
-      what was built — the day's volume walked onto the book is only the fallback, and only the shape of the day. */
-  oiChange?: ReadonlyMap<number, { c: number; p: number }> | null
+  /** The vendor's open-interest change over the last session, contract by contract (uwBook's peekOiChange). When it is
+      in, it is what was built — the day's volume walked onto the book is only the fallback, and only the shape of the day. */
+  oiChange?: OiChange | null
 ): Building {
   const { ticker, spot } = snapshot;
   const today = todaySnapshots(snaps, bars);
-  const real = !!oiChange && oiChange.size > 0;
+  /* the contracts this book reads — the profile's own expiry, so a pane on another expiry than the Levels card values
+     its own contracts */
+  const chain = (snapshot.liveBook && snapshot.uwChains?.[profile.expiry]?.length ? snapshot.uwChains[profile.expiry] : snapshot.chain) ?? snapshot.chain;
+  const valued = oiChange && oiChange.rows.length ? valueOiChange(snapshot, chain, oiChange) : null;
+  const real = !!valued;
   const hasOi = real || (today.length >= 2 && today.some(s => s.levels.some(l => l.callOI !== undefined)));
   const first = today[0];
   const last = today[today.length - 1];
@@ -163,7 +253,7 @@ export function buildBuilding(
 
   /* Per-contract hedging at today's spot — the chain's own units */
   const unit = new Map<number, { call: number; put: number; net: number }>();
-  for (const n of snapshot.chain) unit.set(n.strike, { call: n.callOI ? n.callGex / n.callOI : 0, put: n.putOI ? n.putGex / n.putOI : 0, net: n.netGex });
+  for (const n of chain) unit.set(n.strike, { call: n.callOI ? n.callGex / n.callOI : 0, put: n.putOI ? n.putGex / n.putOI : 0, net: n.netGex });
 
   const openAt = new Map<number, { c: number; p: number }>();
   if (hasOi) for (const l of first.levels) openAt.set(l.strike, { c: l.callOI ?? 0, p: l.putOI ?? 0 });
@@ -186,17 +276,18 @@ export function buildBuilding(
     const now = u.net;
     const o = openAt.get(K);
     const n = nowAt.get(K) ?? { c: 0, p: 0 };
-    const oc = real ? oiChange!.get(K) : undefined;
+    const oc = real ? valued!.get(K) : undefined;
     const isNew = !real && hasOi && !o;
-    const dCall = real ? (oc?.c ?? 0) : hasOi ? n.c - (o?.c ?? 0) : 0;
-    const dPut = real ? (oc?.p ?? 0) : hasOi ? n.p - (o?.p ?? 0) : 0;
-    /* Dollars in the house sign — call units are negative, so "calls added" is |dCall · unit| */
-    const callAddedSigned = dCall * u.call;
-    const putAddedSigned = dPut * u.put;
+    const dCall = real ? (oc?.dCall ?? 0) : hasOi ? n.c - (o?.c ?? 0) : 0;
+    const dPut = real ? (oc?.dPut ?? 0) : hasOi ? n.p - (o?.p ?? 0) : 0;
+    /* Dollars in the house sign — call units are negative, so "calls added" is |dCall · unit|. The overnight count is
+       valued contract by contract, each at its own gamma (valueOiChange) */
+    const callAddedSigned = real ? (oc?.call ?? 0) : dCall * u.call;
+    const putAddedSigned = real ? (oc?.put ?? 0) : dPut * u.put;
     const added = callAddedSigned + putAddedSigned;
     const open = now - added;
-    const callAdded = dCall * Math.abs(u.call);
-    const putAdded = dPut * Math.abs(u.put);
+    const callAdded = real ? -(oc?.call ?? 0) : dCall * Math.abs(u.call);
+    const putAdded = real ? (oc?.put ?? 0) : dPut * Math.abs(u.put);
     const sizeChange = Math.abs(now) - Math.abs(open);
 
     /* The shape: the wall's size through the day at today's units */
@@ -240,9 +331,12 @@ export function buildBuilding(
      then what stands there (Noah, 2026-09-13: "easily understandable…
      word wise as well"); the strike itself is printed by the surface */
   const whenWords = (w: BuildRow['when']) => (w === 'early' ? 'mostly early in the day' : w === 'middle' ? 'mostly through the middle of the day' : w === 'late' ? 'mostly late in the day' : '');
-  const day = clock.inSession && !real ? 'today' : 'in the last session';
+  const when = changeWhen({ overnight: real, inSession: clock.inSession });
+  const day = when.short;
   for (const r of rows) {
-    const stand = `now ${fmtDollars(r.now)}, ${sideWords(r.now)}`;
+    /* NET GAMMA IN THE RETAIL SIGN, as every other page prints it (the retail test: "now $245M, put-heavy" here against
+       −$245M elsewhere) */
+    const stand = `now ${retail(r.now)}, ${sideWords(r.now)}`;
     if (!hasOi) {
       r.words = `No open interest on this feed yet — ${stand}.`;
       continue;
@@ -259,10 +353,10 @@ export function buildBuilding(
         r.words = `Draining, ${dominant}. ${change}${when} — ${stand}.${pace}`;
         break;
       case 'switched':
-        r.words = `Changed sides, now ${r.now < 0 ? 'calls' : 'puts'}; it was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${real ? 'the session before' : 'at the open'}. ${change} — ${stand}.${pace}`;
+        r.words = `Changed sides, now ${r.now < 0 ? 'calls' : 'puts'}; it was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${real ? 'before yesterday’s trading' : 'at the open'}. ${change} — ${stand}.${pace}`;
         break;
       case 'new':
-        r.words = `New ${day}: nothing sat here at the open. ${change} — ${stand}.${pace}`;
+        r.words = `New ${day}: nothing sat here ${real ? 'before yesterday’s trading' : 'at the open'}. ${change} — ${stand}.${pace}`;
         break;
       default:
         r.words = `Steady. ${change} — ${stand}.`;
@@ -279,7 +373,8 @@ export function buildBuilding(
   /* WHERE THE WALLS ARE HEADING — the levels re-picked on the open's book and on the projected one */
   const openPts = rows.map(r => ({ strike: r.strike, v: r.open }));
   const nowPts = rows.map(r => ({ strike: r.strike, v: r.now }));
-  const closePts = rows.map(r => ({ strike: r.strike, v: r.now + ((r.now - r.open) / elapsedMin) * minutesLeft }));
+  /* the overnight count is one step between two sessions, not a pace through the day — nothing is projected off it */
+  const closePts = real ? nowPts : rows.map(r => ({ strike: r.strike, v: r.now + ((r.now - r.open) / elapsedMin) * minutesLeft }));
   const walls = (pts: { strike: number; v: number }[]) => pickWalls(pts, spot, p => p.v);
   const supremeOf = (pts: { strike: number; v: number }[]) => pts.reduce<{ strike: number; v: number } | null>((b, p) => (!b || Math.abs(p.v) > Math.abs(b.v) ? p : b), null)?.strike ?? null;
   const wOpen = walls(openPts);
@@ -298,7 +393,7 @@ export function buildBuilding(
     if (needs <= 0) return null;
     const rate = (c.sizeChange - w.sizeChange) / elapsedMin;
     let by: string | null = null;
-    if (rate > 0 && clock.inSession && clock.nowMin != null) {
+    if (!real && rate > 0 && clock.inSession && clock.nowMin != null) {
       const t = needs / rate;
       if (t <= minutesLeft) by = hhmm(Math.min(CLOSE_MIN, Math.round(clock.nowMin + t)));
     }
@@ -306,9 +401,18 @@ export function buildBuilding(
   };
 
   const levelWords = (name: string, open: number | null, now: number | null, close: number | null, ch: Challenger | null): string => {
-    const moved = open != null && now != null && open !== now ? `moved from ${fmtStrike(open)} to ${fmtStrike(now)} today` : now != null ? `at ${fmtStrike(now)} since the open` : `none ${name === 'Call wall' ? 'overhead' : 'underneath'}`;
-    const ahead = close == null || now == null ? '' : close === now ? ` · holds ${horizon}` : ` · ${horizon} it moves to ${fmtStrike(close)}`;
-    const chal = ch ? ` · ${fmtStrike(ch.strike)} is growing fastest ${name === 'Call wall' ? 'above' : 'below'}, ${fmtDollars(ch.needs)} short${ch.by ? `, there by ${ch.by} at today's pace` : ch.outrun ? ', but the wall is growing faster' : ''}` : '';
+    const moved =
+      open != null && now != null && open !== now
+        ? `moved from ${fmtStrike(open)} to ${fmtStrike(now)} ${real ? 'overnight' : 'today'}`
+        : now != null
+          ? real
+            ? `at ${fmtStrike(now)}, where it was before yesterday's trading`
+            : `at ${fmtStrike(now)} since the open`
+          : name === 'Flip'
+            ? 'no flip within ±10%'
+            : `none ${name === 'Call wall' ? 'overhead' : 'underneath'}`;
+    const ahead = real || close == null || now == null ? '' : close === now ? ` · holds ${horizon}` : ` · ${horizon} it moves to ${fmtStrike(close)}`;
+    const chal = ch ? ` · ${fmtStrike(ch.strike)} grew most ${name === 'Call wall' ? 'above' : 'below'}${real ? ' overnight' : ''}, ${fmtDollars(ch.needs)} short${ch.by ? `, there by ${ch.by} at today's pace` : !real && ch.outrun ? ', but the wall is growing faster' : ''}` : '';
     return `${moved}${ahead}${chal}`;
   };
 
@@ -317,9 +421,11 @@ export function buildBuilding(
   const supOpen = supremeOf(openPts);
   const supNow = supremeOf(nowPts);
   const supClose = supremeOf(closePts);
-  const flipOpen = pickFlip(openPts, spot, p => p.v);
-  const flipNow = pickFlip(nowPts, spot, p => p.v);
-  const flipClose = pickFlip(closePts, spot, p => p.v);
+  /* THE ONE FLIP (data/flipLevel.ts) — the book's zero crossing, re-priced at each price. No past book is on the feed to
+     re-price, so the flip is today's alone */
+  const flipNow = levels.flipFound === false ? null : levels.flip;
+  const flipOpen = flipNow;
+  const flipClose = flipNow;
 
   const heading: WallHeading[] = [
     { name: 'Call wall', open: wOpen.callWall, now: wNow.callWall, close: wClose.callWall, words: levelWords('Call wall', wOpen.callWall, wNow.callWall, wClose.callWall, callCh), challenger: callCh },
@@ -333,7 +439,13 @@ export function buildBuilding(
   if (!hasOi) sentence = 'Open interest is not on this feed yet, so nothing can be read as built or drained.';
   else {
     const parts: string[] = [];
-    if (clock.inSession) {
+    if (real) {
+      /* THE OVERNIGHT COUNT, SAID AS ONE (the Pinpoint audit, 2026-10-22: "new hedging today" over a change that was set
+         overnight from yesterday's trading) */
+      if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} grew most overnight: ${fmtDollars(fastestUp.sizeChange)} of hedging added in yesterday's trading${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
+      if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} shrank most, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
+      if (!parts.length) parts.push('Nothing was built or drained in the overnight open-interest count.');
+    } else if (clock.inSession) {
       if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} is being built: ${fmtDollars(fastestUp.sizeChange)} of new hedging today${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
       if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} is draining, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
       if (!parts.length) parts.push('Nothing has been built or drained today.');
@@ -342,10 +454,11 @@ export function buildBuilding(
       if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} drained, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
       if (!parts.length) parts.push('Nothing was built or drained in the last session.');
     }
-    const ch = callCh?.by ? `At today's pace ${fmtStrike(callCh.strike)} overtakes ${fmtStrike(wNow.callWall!)} as the call wall by ${callCh.by}.` : putCh?.by ? `At today's pace ${fmtStrike(putCh.strike)} overtakes ${fmtStrike(wNow.putWall!)} as the put wall by ${putCh.by}.` : wNow.callWall != null && wClose.callWall === wNow.callWall && wNow.putWall != null && wClose.putWall === wNow.putWall ? `Both walls hold ${horizon}.` : '';
+    const ch = real ? '' : callCh?.by ? `At today's pace ${fmtStrike(callCh.strike)} overtakes ${fmtStrike(wNow.callWall!)} as the call wall by ${callCh.by}.` : putCh?.by ? `At today's pace ${fmtStrike(putCh.strike)} overtakes ${fmtStrike(wNow.putWall!)} as the put wall by ${putCh.by}.` : wNow.callWall != null && wClose.callWall === wNow.callWall && wNow.putWall != null && wClose.putWall === wNow.putWall ? `Both walls hold ${horizon}.` : '';
     if (ch) parts.push(ch);
     sentence = parts.join(' ');
   }
 
-  return { ticker, spot, rows, maxAbs, maxChange, built, drained, fastestUp, fastestDown, spotAfter, elapsedMin, minutesLeft, inSession: clock.inSession, heading, sentence, hasOi };
+  const oiDates = real && oiChange?.lastDate && oiChange.currDate ? { from: oiChange.lastDate, to: oiChange.currDate } : null;
+  return { ticker, spot, rows, maxAbs, maxChange, built, drained, fastestUp, fastestDown, spotAfter, elapsedMin, minutesLeft, inSession: clock.inSession, heading, sentence, hasOi, overnight: real, oiDates };
 }

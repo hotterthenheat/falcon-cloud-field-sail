@@ -53,6 +53,7 @@
 ==================================================
 */
 
+import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
@@ -124,7 +125,7 @@ export const PHASES: Phase[] = [
     to: 11 * 60 + 30,
     name: 'The morning',
     weight: 0.5,
-    words: f => `the trend hour — ${f.flip != null ? `above ${fmtStrike(f.flip)} dips get bought, below it moves get chased` : 'the flip decides which way hedging leans'}`,
+    words: f => `the trend hour — ${f.flip != null ? `${fmtStrike(f.flip)} is the flip, where dealer hedging switches between absorbing and chasing moves` : 'no flip within reach, so the hedging leans one way all day'}`,
   },
   {
     key: 'lunch',
@@ -375,9 +376,9 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       /* the same levels the tape and the report read — the book's window, not a tighter slice */
       const levels = roomLevels(snapshot, '0DTE');
       if (levels) {
-        pinStrike = levels.pin;
+        pinStrike = levels.pinFound === false ? null : levels.pin;
         supreme = levels.supreme;
-        flip = levels.flip;
+        flip = levels.flipFound === false ? null : levels.flip;
       }
     } catch {
       /* no chain yet */
@@ -539,9 +540,9 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
             <span
               className="tnum"
               data-clock-bell
-              title={facts.bellShare != null ? `${facts.bellShare}% of ${snapshot.ticker}'s gamma sits in contracts that expire at 4:00 today` : bellNone ? `Nothing on ${snapshot.ticker} expires today` : 'Still reading the expiry list'}
+              title={facts.bellShare != null ? `${facts.bellShare}% of ${snapshot.ticker}'s gamma sits in contracts that expire at 4:00 today` : bellNone ? BELL_NONE_TITLE(snapshot.ticker) : 'Still reading the expiry list'}
             >
-              {facts.bellShare != null ? `${facts.bellShare}%` : '—'}
+              {facts.bellShare != null ? `${facts.bellShare}%` : bellNone ? BELL_NONE : '…'}
             </span>
             {facts.bellShare != null && <span className="ml-1.5 font-normal text-textSecondary">of gamma</span>}
           </ClockFact>

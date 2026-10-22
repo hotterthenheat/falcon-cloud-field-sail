@@ -8,6 +8,7 @@ import type { Sector } from './universe';
 import { lookup } from './universe';
 import { decide, isKnownName, type ActiveContract, type EarningsDossier, type EarningsEvent, type EarningsQuarter, type NextReport, type ReportSlot } from './earnings';
 import { tickerName } from './tickers';
+import { MARKET_HOLIDAYS } from '../core/calendar';
 import { uwCall, whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
 
 interface SlotRow {
@@ -28,6 +29,8 @@ interface SlotRow {
   post_earnings_move_1d?: string | number | null;
   ending_fiscal_quarter?: string | null;
   long_straddle_1d?: string | number | null;
+  /** The 1-day move after the report, a fraction (the spec's `reaction`) */
+  reaction?: string | number | null;
 }
 
 const num = (v: unknown): number => {
@@ -36,6 +39,10 @@ const num = (v: unknown): number => {
 };
 
 const nyToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+const nyMinutesNow = (): number => {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  return Number(p.find(x => x.type === 'hour')?.value ?? 0) * 60 + Number(p.find(x => x.type === 'minute')?.value ?? 0);
+};
 
 const parseIso = (iso: string): Date => {
   const [y, m, d] = iso.split('-').map(Number);
@@ -59,15 +66,18 @@ const mondayOf = (iso: string): string => {
 
 const weekdayOf = (iso: string): number => parseIso(iso).getUTCDay();
 
+/* NYSE SESSIONS BETWEEN TWO DAYS (the data audit, 2026-10-22): the count gave up after 40 calendar days, so TSLA's
+   01/27 report read "in 28 trading days" for about 66 sessions, and it counted Thanksgiving and Christmas as sessions.
+   It walks the whole span now, skipping weekends and the exchange holidays (core/calendar.ts). Bounded by the span. */
 const tradingBetween = (from: string, to: string): number => {
   if (from === to) return 0;
   const sign = to > from ? 1 : -1;
   let n = 0;
   let cur = from;
-  for (let i = 0; i < 40 && cur !== to; i++) {
+  for (let i = 0; i < 4000 && cur !== to; i++) {
     cur = addDays(cur, sign);
     const day = weekdayOf(cur);
-    if (day !== 0 && day !== 6) n += sign;
+    if (day !== 0 && day !== 6 && !MARKET_HOLIDAYS.has(cur)) n += sign;
   }
   return n;
 };
@@ -108,10 +118,13 @@ const sectorOf = (raw: string | undefined, ticker: string): Sector =>
 
 const titleName = (s: string): string => s.toLowerCase().replace(/\b[a-z]/g, m => m.toUpperCase());
 
+/* THE EXPECTED MOVE'S UNIT (the data audit, 2026-10-22): the spec types `expected_move_perc` as a fraction of the price
+   ("0.08" is 8%), every row. The old "1.5 and over is already a percent" guess printed FSP's 4.08 (a 408% straddle on a
+   $0.44 stock) as ±4.1%. It is read as the fraction it is, always. */
 const impliedPct = (raw: unknown): number => {
   const n = Math.abs(num(raw));
   if (!(n > 0)) return 0;
-  return n < 1.5 ? n * 100 : n;
+  return n * 100;
 };
 
 const priceOf = (r: SlotRow): number => {
@@ -121,7 +134,7 @@ const priceOf = (r: SlotRow): number => {
   if (post > 0) return post;
   const move = num(r.expected_move);
   const pct = num(r.expected_move_perc);
-  if (move > 0 && pct > 0) return move / (Math.abs(pct) < 1.5 ? Math.abs(pct) : Math.abs(pct) / 100);
+  if (move > 0 && pct > 0) return move / Math.abs(pct);
   return 0;
 };
 
@@ -152,6 +165,10 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   if (weekIdx == null) return null;
   const implied = Number(impliedPct(row.expected_move_perc).toFixed(2));
   const price = Number(priceOf(row).toFixed(2));
+  const reaction = row.reaction == null || row.reaction === '' ? null : Number(row.reaction);
+  /* OUT ONCE IT IS OUT (the retail pass, 2026-10-22): Monday's to Wednesday's names, and this morning's before-open
+     ones, still showed the "±" the options had priced instead of the move the stock made */
+  const reported = iso < today || (iso === today && slotOf(row.report_time) === 'BMO' && nyMinutesNow() >= 9 * 60 + 30) || reaction != null;
   const known = isKnownName(ticker, { sp500: !!row.is_s_p_500, marketCap: num(row.marketcap) || null });
   const partial = {
     ticker,
@@ -177,6 +194,8 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
     flowLean: 0,
     iso,
     history: false as boolean,
+    reported,
+    actualMovePct: reaction != null && Number.isFinite(reaction) ? Number((reaction * 100).toFixed(2)) : null,
   };
   return {
     ...partial,
@@ -262,8 +281,8 @@ function crushOf(rows: SlotRow[]): number | null {
     const loss = Math.max(0, -ret);
     any.push(loss);
     const move = Math.abs(num(r.post_earnings_move_1d));
-    const exp = Math.abs(num(r.expected_move_perc));
-    const expPct = exp > 0 && exp < 1.5 ? exp : exp / 100;
+    /* a fraction of the price, per the spec */
+    const expPct = Math.abs(num(r.expected_move_perc));
     if (expPct > 0 && move < expPct * 0.5) quiet.push(loss);
   }
   const bag = quiet.length >= 2 ? quiet : any.length >= 3 ? any : null;
@@ -329,7 +348,10 @@ async function pullIv(ticker: string, priority = false): Promise<void> {
   if (ivRank.has(ticker)) return;
   try {
     const rows = await whalesIvRank(ticker, priority);
-    const raw = num(rows?.[0]?.iv_rank_1y);
+    /* the LATEST day, by its date — the series comes oldest first, so rows[0] was six sessions old (NVDA 33 against
+       today's 55.9, the data audit 2026-10-22) */
+    const latest = (Array.isArray(rows) ? rows : []).filter(r => r?.date).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+    const raw = num(latest?.iv_rank_1y);
     ivRank.set(ticker, raw > 0 ? Math.round(Math.min(100, raw)) : 0);
   } catch {
     ivRank.set(ticker, 0);
@@ -373,6 +395,13 @@ export function untilWords(days: number): string {
 
 /** The day the next report is due, "Mon 11/02", for a calendar date */
 export const reportDayLabel = (iso: string): string => labelFor(iso.slice(0, 10));
+
+/** A past report's day in the same style, with the year when it is not this one: "Thu 07/30", "Thu 10/30/25" */
+export const reportDayLabelYear = (iso: string): string => {
+  const day = iso.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return iso;
+  return day.slice(0, 4) === nyToday().slice(0, 4) ? labelFor(day) : `${labelFor(day)}/${day.slice(2, 4)}`;
+};
 
 export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | null {
   const today = nyToday();
@@ -455,6 +484,9 @@ interface Feed {
 }
 
 let feed: Feed = { status: 'loading', events: [] };
+/** Day-slots (a day's before-open or after-close list) that did not answer after a retry */
+let missedSlots = 0;
+const SLOTS_ASKED = () => fortnight().length * 2;
 const history = new Map<string, SlotRow[] | 'miss'>();
 const listeners = new Set<() => void>();
 let rev = 0;
@@ -477,7 +509,12 @@ async function pullHistory(ticker: string, priority = false): Promise<SlotRow[] 
   if (had && had !== 'miss') return had;
   if (had === 'miss') return null;
   try {
-    const rows = await whalesEarnings(sym, priority);
+    /* a refused or failed read is asked once more before the name is counted as having no history — the priced counts
+       moved between loads as the shared key's three slots turned names away */
+    const rows = await whalesEarnings(sym, priority).catch(async () => {
+      await new Promise(r => setTimeout(r, 1500));
+      return whalesEarnings(sym, priority);
+    });
     if (!Array.isArray(rows) || !rows.length) {
       history.set(sym, 'miss');
       return null;
@@ -558,14 +595,25 @@ export function ensureEarnings(): void {
       const batches = await Promise.all(
         days.flatMap(date =>
           (['premarket', 'afterhours'] as const).map(async slot => {
+            /* STABLE COUNTS (the retail pass, 2026-10-22: 966 reports, then 983, ten minutes apart): a slot that fails
+               is asked again before it is counted missing, a full page is followed until it runs out, and the
+               slots that still did not answer are counted and said on the page — never a quiet hole in the total */
+            const read = async (page: number): Promise<SlotRow[]> => {
+              try {
+                const got = await whalesEarningsSlot(slot, date, page);
+                return Array.isArray(got) ? (got as SlotRow[]) : [];
+              } catch {
+                await new Promise(r => setTimeout(r, 1200));
+                const got = await whalesEarningsSlot(slot, date, page);
+                return Array.isArray(got) ? (got as SlotRow[]) : [];
+              }
+            };
             try {
-              const page0 = await whalesEarningsSlot(slot, date, 0);
-              const first = Array.isArray(page0) ? (page0 as SlotRow[]) : [];
-              if (first.length < 100) return first;
-              const page1 = await whalesEarningsSlot(slot, date, 1).catch(() => [] as Record<string, unknown>[]);
-              const more = Array.isArray(page1) ? (page1 as SlotRow[]) : [];
-              return more.length ? first.concat(more) : first;
+              let all = await read(0);
+              for (let page = 1; page < 5 && all.length === page * 100; page++) all = all.concat(await read(page));
+              return all;
             } catch {
+              missedSlots += 1;
               return [] as SlotRow[];
             }
           })
@@ -608,45 +656,64 @@ export function useEarningsFailed(): boolean {
   return useMemo(() => feed.status === 'sim', [version]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+/** How much of the fortnight answered: the day-slots asked, the ones that did not answer, and the histories still out */
+export function useEarningsCoverage(): { slots: number; missed: number; historiesPending: number } {
+  const version = useSyncExternalStore(subscribe, () => rev, () => rev);
+  return useMemo(
+    () => ({ slots: SLOTS_ASKED(), missed: missedSlots, historiesPending: feed.events.filter(e => e.known && e.history === false && history.get(e.ticker) !== 'miss').length }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version],
+  );
+}
+
 /** True only while the fortnight has not answered. An empty live list is not pending. */
 export function useEarningsPending(): boolean {
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);
   return useMemo(() => feed.status === 'loading', [version]);
 }
 
+/* THE NAME'S NEXT REPORT (the data audit, 2026-10-22): the board's own fortnight row came first, and the fortnight runs
+   from Monday — so TSLA, which reported Wednesday, read "reports Wed 10/21 · 1 trading day ago" while its own pages
+   said 01/27. The answer is the ONE rule every page uses: the name's own earnings rows, the first report dated today
+   or later (nextReportRow). The board's row is used only when it is that same report. */
 export function useNextReport(ticker: string | null): NextReport | null {
   const events = useEveryReport();
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);
   const sym = ticker?.trim().toUpperCase() || '';
   useEffect(() => {
-    if (!sym || events.some(e => e.ticker === sym)) return;
+    if (!sym || history.has(sym)) return;
     let dead = false;
-    void pullHistory(sym).then(() => {
+    void pullHistory(sym, true).then(() => {
       if (!dead) emit();
     });
     return () => {
       dead = true;
     };
-  }, [sym, events]);
+  }, [sym]);
   return useMemo(() => {
     if (!sym) return null;
-    const hit = events.find(e => e.ticker === sym);
-    if (hit?.iso) {
-      return { ticker: sym, name: hit.name, daysOut: hit.daysOut, dateLabel: hit.dateLabel, iso: hit.iso, slot: hit.slot, confirmed: hit.confirmed, event: hit };
-    }
     const rows = history.get(sym);
-    if (rows && rows !== 'miss') {
-      const file = dossierFromRows(sym, rows);
-      if (file?.event.iso) {
-        const e = file.event;
-        const iso = e.iso ?? file.event.iso;
-        return { ticker: sym, name: e.name, daysOut: e.daysOut, dateLabel: e.dateLabel, iso, slot: e.slot, confirmed: e.confirmed, event: e };
-      }
-    }
-    return null;
+    if (!rows || rows === 'miss') return null;
+    const next = nextReportRow(rows.map(r => ({ ...r, symbol: r.symbol || sym })));
+    if (!next?.report_date) return null;
+    const iso = next.report_date.slice(0, 10);
+    const hit = events.find(e => e.ticker === sym && e.iso === iso);
+    if (hit) return { ticker: sym, name: hit.name, daysOut: hit.daysOut, dateLabel: hit.dateLabel, iso, slot: hit.slot, confirmed: hit.confirmed, event: hit };
+    const file = dossierFromRows(sym, rows);
+    if (!file) return null;
+    const e = file.event;
+    return { ticker: sym, name: e.name, daysOut: tradingBetween(nyToday(), iso), dateLabel: labelFor(iso), iso, slot: slotOf(next.report_time), confirmed: (next.source || '').toLowerCase() === 'company', event: e };
     // version bumps when a history file lands
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sym, events, version]);
+}
+
+/** True while a name's own earnings rows are still being read */
+export function useNextReportPending(ticker: string | null): boolean {
+  const version = useSyncExternalStore(subscribe, () => rev, () => rev);
+  const sym = ticker?.trim().toUpperCase() || '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => !!sym && !history.has(sym), [sym, version]);
 }
 
 export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | 'sim'; dossier: EarningsDossier | null } {
@@ -661,7 +728,7 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
     void pullHistory(sym, true).then(rows => {
       if (dead) return;
       emit();
-      const upcoming = (rows ? nextReportRow(rows) : null) ?? rows?.[0];
+      const upcoming = (rows ? nextReportRow(rows) : null) ?? rows?.slice().sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''))[0];
       /* the contracts' "from spot" and breakevens read the stock's LAST price — the calendar row's price is the one
          the print was priced against, stale once it is out (TSLA's cards measured from $386.55 after a $373.63 close) */
       return uwCall(`/stock/${encodeURIComponent(sym)}/stock-state`, true)

@@ -51,6 +51,16 @@ export interface FlowPrint {
   epoch?: number;
   /** Vendor trade id, for dedupe. Not drawn. */
   vendorId?: string;
+  /** Milliseconds of the fill — the tape's lossless cursor. Not drawn. */
+  epochMs?: number;
+  /** The vendor's OCC option symbol — the door to the contract's own tape (Trace's card) */
+  occ?: string;
+  /** A flow alert's prints — an alert is an aggregate of this many trades */
+  trades?: number;
+  /** A flow alert's premium by side, dollars */
+  alertSides?: { ask: number; bid: number; other: number };
+  /** The vendor's name for the alert's rule (RepeatedHits, Sweeps…) */
+  alertRule?: string;
 }
 
 // ---- the day book (data/flowBook.ts) ----------------------------------------

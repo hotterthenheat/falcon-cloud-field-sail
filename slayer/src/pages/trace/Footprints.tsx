@@ -196,7 +196,8 @@ const Footprints = () => {
     if (builds.length === 0 && unwinds.length === 0) return <RichRead text="Nothing changed hands overnight." />;
     /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
-    const base = `Open interest grew by ${num(added)} contracts overnight — ${builds.length} contracts added interest, ${unwinds.length} contracts shed ${num(Math.abs(removed))}.`;
+    /* WHAT IT COVERS (the audit, 2026-10-22: "Open interest grew by 297,774 overnight" summed only the book's contracts) */
+    const base = `Across the ${num(book.length)} contracts on the book (today's heaviest premium), open interest rose ${num(added)} overnight on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.`;
     if (!loudestBuild) return <RichRead text={base} />;
     return (
       <>
@@ -436,7 +437,7 @@ const Footprints = () => {
         guide={{ title: 'How to read the footprints', door: 'What open interest, a build and a streak mean', body: <FootprintsGuide />, testId: 'footprints-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Overnight" testId="overnight">
+            <Fact label="Overnight · on the book" testId="overnight" title={`Open interest added and shed since the last session, summed over the ${num(book.length)} contracts on the book — the vendor's contracts with the most premium today, plus the terminal's name — not the whole market`}>
               <span className="text-bull">+{num(facts.added)}</span> <span className="text-textSecondary">added ·</span> <span className="text-bear">−{num(facts.shed)}</span> <span className="text-textSecondary">shed</span>
             </Fact>
             <Fact label="Contracts" testId="contracts">

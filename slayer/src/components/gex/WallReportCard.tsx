@@ -38,8 +38,10 @@ import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type
 import { roomLevels } from '../../data/roomLevels';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
-import { buildLevelRead, sessionBars } from '../../data/levelview';
-import { deskBars, bookHistory, peekIv } from '../../data/uwBook';
+import { sessionBars } from '../../data/levelview';
+import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev } from '../../data/uwBook';
+import { valueOiChange } from '../../data/building';
+import { fmtDollars as fmtUsdShort } from '../../data/ahead';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { nyClock, nyMinutes } from '../../core/nyTime';
 import { baseRates, levelTicks, sessionRecords, type RecordLevel, type Tick } from '../../data/levelRecord';
@@ -181,6 +183,14 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
      (ExposureField: a dated book is read '0DTE'). The desk's Levels card lives on the Board; read here it re-cut the
      window to the whole book under a head that still named the window (the ship pass, 2026-10-22). */
   const levelsScope = '0DTE' as const;
+  /* the overnight open-interest change on these contracts, strike by strike (data/building.ts valueOiChange) */
+  const bookRev = useBookRev();
+  const oiAt = useMemo(() => {
+    ensureOiChange(snapshot.ticker);
+    const ch = peekOiChange(snapshot.ticker);
+    return ch && ch.rows.length ? valueOiChange(snapshot, snapshot.chain, ch) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot, bookRev]);
   const rows = useMemo<Row[]>(() => {
     /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the pin here is the pin
        the band tags (the re-audit's H6) */
@@ -191,45 +201,29 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       const broke = ticks.filter(t => t.kind === 'broke').length;
       const tests = ticks.length;
       const held = tests - broke;
-      const cash = session === 'rth';
-      const read = cash ? buildLevelRead(snapshot.ticker, price) : null;
-      const pct = read?.changePct ?? null;
-      const size = pct == null ? '' : Math.abs(pct) >= 300 ? ` · ${(1 + pct / 100).toFixed(0)}× the open` : ` ${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`;
-      let trend = !read || read.trend === 'FLAT' ? 'flat since the open' : read.trend === 'NEW' ? 'new since the open' : `${read.trend === 'BUILDING' ? 'growing' : 'shrinking'}${size}`;
-      let trendFig = !read || read.trend === 'FLAT' || read.trend === 'NEW' || pct == null ? '' : Math.abs(pct) >= 300 ? `${(1 + pct / 100).toFixed(0)}×` : `${pct > 0 ? '+' : '−'}${Math.abs(pct).toFixed(0)}%`;
-      let trendWord = !read || read.trend === 'FLAT' ? 'flat' : read.trend === 'NEW' ? 'new today' : read.trend === 'BUILDING' ? 'growing' : 'shrinking';
-      let lastTouch = read?.lastTouch ?? null;
-      if (!cash) {
-        const snaps = bookHistory(snapshot.ticker);
-        const valAt = (t: number) => {
-          if (!snaps?.length) return null;
-          let s = snaps[0];
-          for (const x of snaps) {
-            if (x.time <= t) s = x;
-            else break;
-          }
-          return s.levels.find(l => l.strike === price)?.value ?? null;
-        };
-        const g0 = bars.length ? valAt(bars[0].time) : null;
-        const g1 = bars.length ? valAt(bars[bars.length - 1].time) : null;
-        trend = 'flat through this window';
-        trendFig = '';
-        trendWord = 'flat';
-        if (g0 != null && g1 != null && Math.abs(g0) > 1) {
-          const move = ((g1 - g0) / Math.abs(g0)) * 100;
-          if (move >= 15) {
-            trendWord = 'growing';
-            trendFig = `+${move.toFixed(0)}%`;
-            trend = `growing ${trendFig}`;
-          } else if (move <= -15) {
-            trendWord = 'shrinking';
-            trendFig = `−${Math.abs(move).toFixed(0)}%`;
-            trend = `shrinking ${trendFig}`;
-          }
+      /* THE OVERNIGHT OPEN-INTEREST CHANGE AT THE LEVEL, NOT "GAMMA SINCE OPEN" (the Pinpoint audit, 2026-10-22: SPY 760
+         read "39× growing", 764 "new today" and the flip — not a strike — "new today", off a history that walked today's
+         volume onto the open interest; volume is not open interest). The vendor's count, contract by contract, on the
+         Levels card's contracts only (Building's valueOiChange), as the change in the hedging's size at the strike. */
+      let trend = 'not a strike';
+      let trendFig = '';
+      let trendWord = key === 'flip' ? 'not a strike' : '…';
+      const v = key === 'flip' ? null : oiAt?.get(price);
+      const node = snapshot.chain.find(n => Math.abs(n.strike - price) < 1e-9);
+      if (key !== 'flip' && oiAt && node) {
+        const now = node.netGex;
+        const added = (v?.call ?? 0) + (v?.put ?? 0);
+        const size = Math.abs(now) - Math.abs(now - added);
+        if (Math.abs(size) < 0.05 * Math.max(1, Math.abs(now))) {
+          trendWord = 'steady overnight';
+          trend = 'about where it was before yesterday’s trading';
+        } else {
+          trendFig = `${size > 0 ? '+' : '−'}${fmtUsdShort(Math.abs(size))}`;
+          trendWord = size > 0 ? 'added overnight' : 'taken off overnight';
+          trend = `${trendFig} ${trendWord}`;
         }
-        /* the tick's time is epoch seconds — the column prints New York's clock, never the raw number */
-        lastTouch = ticks.length ? nyClock(ticks[ticks.length - 1].time * 1000) : null;
       }
+      const lastTouch = ticks.length ? nyClock(ticks[ticks.length - 1].time * 1000) : null;
       const grade: Row['grade'] =
         tests === 0 ? { words: 'untested', tone: 'quiet' } : broke === 0 ? { words: `held every test`, tone: 'good' } : held === 0 ? { words: 'broke every test', tone: 'bad' } : { words: `broke ${broke} of ${tests}`, tone: broke * 2 >= tests ? 'bad' : 'quiet' };
       return { key, label, ink, labels: [{ label, ink }], price, side, ticks, tests, held, broke, last: lastTouch, trend, trendFig, trendWord, grade, rate: RATE_OF[key] ?? null };
@@ -237,9 +231,11 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     const spot = levels.spot;
     const out: Row[] = [
       mk('call', 'Call wall', CALL_WALL, levels.callWall, 'call'),
-      mk('flip', 'Gamma flip', FLIP, levels.flip, levels.flip >= spot ? 'call' : 'put'),
+      /* no crossing within ±10% is no flip, and no row — the card's foot says so */
+      ...(levels.flipFound === false ? [] : [mk('flip', 'Gamma flip', FLIP, levels.flip, levels.flip >= spot ? 'call' : 'put')]),
       mk('put', 'Put wall', PUT_WALL, levels.putWall, 'put'),
-      mk('pin', 'Gamma pin', 'rgb(var(--text-primary))', levels.pin, levels.pin >= spot ? 'call' : 'put'),
+      /* a pin only where dealers are long gamma and price is near it (data/exposure.ts) */
+      ...(levels.pinFound === false ? [] : [mk('pin', 'Gamma pin', 'rgb(var(--text-primary))', levels.pin, levels.pin >= spot ? 'call' : 'put')]),
       mk('supreme', 'Supreme', SUPREME, levels.supreme, levels.supreme >= spot ? 'call' : 'put'),
     ];
     // Highest price first — the section reads like the ladder above it
@@ -258,7 +254,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       } else merged.push(r);
     }
     return merged;
-  }, [snapshot, bars, levelsScope, session]);
+  }, [snapshot, bars, levelsScope, session, oiAt]);
   /* THE BASE RATES (data/levelRecord.ts): the sessions on hand before today, each level as it stood at its open, graded
      by the report's own rule — read, not stored; a machine on the vendor's two years grades two years */
   const rates = useMemo(() => baseRates(sessionRecords(snapshot.ticker, peekIv(snapshot.ticker))), [snapshot.ticker]);
@@ -312,7 +308,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
             <span role="columnheader" className="text-right" title="Tests where the bar closed back on the near side — the level held">Held</span>
             <span role="columnheader" className="text-right" title="Tests where the bar closed through the level">Broke</span>
             <span role="columnheader" className="text-right" title="The time price last reached the level">Last</span>
-            <span role="columnheader" className={desk} title="How the hedging at the level has changed since the open: growing, shrinking, flat or new today">Gamma since open</span>
+            <span role="columnheader" className={desk} title="How the hedging at the level changed in the overnight open-interest count — yesterday's trading, on the Levels card's contracts, valued at today's price. The flip is a price, not a strike, so it has none">Built overnight</span>
             <span role="columnheader" className={`${desk} text-right whitespace-nowrap`} title={rates.sessions > 0 ? `How often the level's first test held, over the ${rates.sessions} sessions before today — each read off its own open, never a later book` : 'No sessions before today on hand'}>
               Before today
             </span>

@@ -67,7 +67,7 @@ export const agendaFaceOf = (search: string): AgendaFace => (new URLSearchParams
 /** What the shell's line says under the name, a face at a time */
 export const AGENDA_LINES: Record<AgendaFace, string> = {
   targets: 'Every strike, in the order it matters today',
-  building: 'What today added to every strike — walls forming before they are the wall, draining before they break, and where the levels are heading',
+  building: "What yesterday's trading added to every strike (the overnight open-interest count) — walls forming before they are the wall, draining before they break",
 };
 /** The other face is mounted, unseen, this long after the page lands — past the shell's crossfade (200ms) and the
     first box's own fade (420ms), so its build never sits on the first paint */

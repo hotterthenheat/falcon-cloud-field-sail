@@ -68,6 +68,9 @@ export interface CongressTrade {
   late: boolean;
   /** The committee of the member's with jurisdiction over this sector, if any */
   committeeOverlap: string | null;
+  /** The trade and filing days as the vendor wrote them (New York calendar days, "YYYY-MM-DD") */
+  tradedOn?: string;
+  filedOn?: string;
 }
 
 export interface CongressFeed {
@@ -83,11 +86,13 @@ export interface CongressFeed {
   overlaps: number;
   medianLag: number;
   windowDays: number;
+  /** Rows whose type could not be read at all, counted rather than dropped silently */
+  unreadTypes?: number;
 }
 
 /* ---- Insiders ------------------------------------------------------------------ */
 
-export type InsiderRole = 'CEO' | 'CFO' | 'COO' | 'Director' | 'EVP' | 'Chief Legal Officer' | '10% owner';
+export type InsiderRole = 'CEO' | 'CFO' | 'COO' | 'Director' | 'EVP' | 'Chief Legal Officer' | 'Officer' | '10% owner' | 'Other';
 export type InsiderKind = 'BUY' | 'SELL';
 /** The Form 4 transaction codes this desk models — the row's identity, not metadata */
 export type TxCode = 'P' | 'S' | 'A' | 'M' | 'F' | 'G' | 'D';
@@ -128,6 +133,17 @@ export interface InsiderTrade {
   stakePct: number;
   /** Percent the name has moved since, signed */
   sincePct: number;
+  /** The live feed's own facts, when it sent them */
+  company?: string;
+  /** The vendor's sector word ("Healthcare", "Financial Services") */
+  sector?: string;
+  marketCap?: number | null;
+  /** The reporting owner's SEC CIK — one insider across companies and filings */
+  cik?: string;
+  /** The officer title as filed */
+  title?: string;
+  /** The trade day as filed, "YYYY-MM-DD" */
+  tradedOn?: string;
 }
 
 export interface InsiderFlow {

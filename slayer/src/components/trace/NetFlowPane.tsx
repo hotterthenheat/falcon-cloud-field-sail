@@ -39,19 +39,19 @@ import {
   type LineWidth,
   type MouseEventParams,
   type Time,
+  type TickMarkType,
   type UTCTimestamp,
   LineStyle,
 } from 'lightweight-charts';
 import { bookCandles, dayBars, ensureBook, useBookRev } from '../../data/uwBook';
 import { bookSession } from '../../data/flowBook';
-import { usePaneFlow } from '../../data/traceLive';
-import { nyClock, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
+import { indexRoot, usePaneFlow } from '../../data/traceLive';
+import { nyClock, nyParts, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
 import { getResolvedTheme, readToken, useColourVision, useResolvedTheme } from '../../theme/theme';
 import { earnMarks, weightInk, type InkMarks } from './earnedInk';
 import ResetViewControl from '../gex/ResetViewControl';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import {
-  buildNetFlowView,
   MONEYNESS,
   NET_SEGMENTS,
   segmentLabel,
@@ -135,7 +135,7 @@ export function paneTimes(_ref?: string): number[] {
   return Array.from({ length: n }, (_, i) => first + i * 60);
 }
 
-const SegPick = ({ seg, onSeg }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegment) => void }) => {
+const SegPick = ({ seg, onSeg, allowed }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegment) => void; allowed?: (s: NetFlowSegment) => boolean }) => {
   const [open, setOpen] = useState(false);
   /* The room the pane leaves below the pill — the menu scrolls inside it
      rather than being sliced at the pane's floor (see ui/menuRoom). */
@@ -166,7 +166,7 @@ const SegPick = ({ seg, onSeg }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegmen
   }, [open]);
 
   const label = segmentLabel(seg);
-  const groups = ['The book', 'Sectors'] as const;
+  const groups = (['The book', 'Sectors'] as const).filter(g => NET_SEGMENTS.some(x => x.group === g && (!allowed || allowed(x.key))));
   return (
     <div ref={wrapRef} className="relative shrink-0">
       <button
@@ -188,7 +188,7 @@ const SegPick = ({ seg, onSeg }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegmen
           {groups.map((g, gi) => (
             <div key={g} className={gi > 0 ? 'mt-1 pt-1 border-t border-borderSubtle' : ''}>
               <div className="px-2 pt-1 pb-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-textMuted">{g}</div>
-              {NET_SEGMENTS.filter(s => s.group === g).map(s => (
+              {NET_SEGMENTS.filter(s => s.group === g && (!allowed || allowed(s.key))).map(s => (
                 <button
                   key={s.key}
                   onClick={() => {
@@ -240,6 +240,8 @@ interface NetFlowPaneProps {
   dteMax?: number;
   /** Live tide points, epoch seconds. When set, the pane draws these and does not read the simulator. */
   live?: { time: number; callPrem: number; putPrem: number; vol: number; price: number }[] | null;
+  /** Which cuts the pane's picker offers — the same-day desk offers only those the vendor has same-day minutes for */
+  segments?: (s: NetFlowSegment) => boolean;
   /** The Money and Clock cards in the head — off when the host's own line carries the cut
       for more than one pane (Compare, 2026-09-13: two panes on ONE cut, one pair of cards) */
   cutCards?: boolean;
@@ -266,6 +268,7 @@ const NetFlowPane = ({
   live = null,
   cutCards = true,
   sharedNote,
+  segments,
 }: NetFlowPaneProps) => {
   /* the page's theme, and the inks cut for it (see paneInks) — read again when the page flips */
   const appTheme = useResolvedTheme();
@@ -303,12 +306,8 @@ const NetFlowPane = ({
   /* The spot ribbon: the picked name's own tape, or SPY's under a cut of the book. */
   const ref = ticker ?? 'SPY';
   const bookRev = useBookRev();
-  ensureBook(ref, 'board');
+  if (!indexRoot(ref)) ensureBook(ref, 'board');
   const times = useMemo(() => paneTimes(ref), [ref, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const view = useMemo(
-    () => buildNetFlowView(book, seg, mny, times, dteMax, ticker ?? null, tenor),
-    [book, seg, mny, times, dteMax, ticker, tenor]
-  );
   /* THE VENDOR'S MINUTES (traceLive's usePaneFlow): the lines and the head's figures read the same series — a host that
      hands its own `live` keeps that path */
   const own = usePaneFlow({ ticker: ticker ?? null, seg, mny, zeroDte: dteMax <= 1, enabled: live == null });
@@ -371,7 +370,12 @@ const NetFlowPane = ({
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 14,
-        tickMarkFormatter: nyTickMarks,
+        /* the twenty lead minutes before the bell carry no label — at the pane's edge "09:10" was cut to ":10" (the audit,
+           2026-10-22) */
+        tickMarkFormatter: (t: Time, type: TickMarkType) => {
+          const p = nyParts((t as number) * 1000);
+          return typeof t === 'number' && p.hour * 60 + p.minute < SESSION_OPEN_MIN ? '' : nyTickMarks(t, type, 'en-US');
+        },
       },
       crosshair: {
         vertLine: { color: k0.cross, labelBackgroundColor: k0.label },
@@ -634,9 +638,7 @@ const NetFlowPane = ({
       const at = (i: number) => tail[Math.min(i, tail.length - 1)]?.close ?? 0;
       spotData = times.map((t, i) => ({ time: t as UTCTimestamp, value: at(i) })).filter(p => p.value > 0);
     }
-    const drawn = series.length
-      ? series.map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.vol }))
-      : view.points;
+    const drawn = series.map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.vol }));
     const callData = drawn.map(p => ({ time: p.time as UTCTimestamp, value: p.callPrem }));
     const putData = drawn.map(p => ({ time: p.time as UTCTimestamp, value: p.putPrem }));
     if (series.length) {
@@ -683,7 +685,7 @@ const NetFlowPane = ({
       chart.timeScale().fitContent();
     }
     loadedRef.current = { id, length: drawn.length };
-  }, [view, times, seg, mny, ref, tenor, dteMax, appTheme, series, bookRev]);
+  }, [times, seg, mny, ref, tenor, dteMax, appTheme, series, bookRev]);
 
   /* THE PAGE FLIPPED: the chart that is up is re-inked in place */
   useEffect(() => {
@@ -716,7 +718,7 @@ const NetFlowPane = ({
             {!onTicker && <span className="font-mono text-[11px] font-bold text-textPrimary">{ticker}</span>}
           </span>
         ) : (
-          <SegPick seg={seg} onSeg={onSeg} />
+          <SegPick seg={seg} onSeg={onSeg} allowed={segments} />
         )}
         {/* The two controls are two questions: the cut asks WHICH PART of the
             book, the search asks WHICH NAME. A picked name replaces the cut
@@ -746,8 +748,8 @@ const NetFlowPane = ({
           {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
               series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}
           {ticker && dteMax <= 1 && live == null && (
-            <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The vendor has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry">
-              all expiries
+            <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The vendor has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry, from the bell">
+              every expiry
             </span>
           )}
           <span>

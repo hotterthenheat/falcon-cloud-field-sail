@@ -58,7 +58,8 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { untilWords, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport } from '../../data/earningsFeed';
+import { untilWords, useEarningsCoverage, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending } from '../../data/earningsFeed';
+import { nyTodayIso } from '../../data/nyDate';
 import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
 import { statHelp } from '../../components/record/statHelp';
@@ -81,7 +82,7 @@ const WEEK_OPTIONS: DropdownOption<WeekPick>[] = [
   { value: 'both', label: 'Both weeks', hint: 'The whole fortnight, one week under the other' },
 ];
 const SHOW_OPTIONS: DropdownOption<ShowPick>[] = [
-  { value: 'all', label: 'Every report', hint: 'Whatever the options charge' },
+  { value: 'all', label: 'Every report', short: 'All', hint: 'Whatever the options charge' },
   { value: 'RICH', label: 'Priced rich', hint: 'Options charge more than 1.3× what the name usually moves' },
   { value: 'INLINE', label: 'Priced fair', hint: 'The charge is close to the usual move' },
   { value: 'CHEAP', label: 'Priced cheap', hint: 'Options charge less than 0.85× the usual move' },
@@ -142,7 +143,7 @@ const NameDoor = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) 
     <span className="flex flex-col leading-tight">
       <span className="flex items-center gap-1.5">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{e.ticker}</span>
-        <span className={`font-mono text-[11px] tnum ${e.impliedMovePct > 0 ? priceInk(e) : 'text-textMuted'}`}>{moveText(e)}</span>
+        <span className={`font-mono text-[11px] tnum ${e.reported ? moveInk(e) : e.impliedMovePct > 0 ? priceInk(e) : 'text-textMuted'}`}>{moveText(e)}</span>
         <SlotMark slot={e.slot} />
       </span>
       <span className="text-[10px] text-textMuted truncate max-w-[180px]">{e.name}</span>
@@ -169,7 +170,7 @@ const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => v
   >
     <CompanyLogo ticker={e.ticker} size={28} />
     <span className="font-mono text-[12px] font-bold text-textPrimary leading-none mt-0.5">{e.ticker}</span>
-    <span className={`font-mono text-[11px] tnum leading-none ${pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{/* the move the options charge is known before the history lands; only rich/cheap waits on it */}{moveText(e)}</span>
+    <span className={`font-mono text-[11px] tnum leading-none ${e.reported ? moveInk(e) : pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{/* the move the options charge is known before the history lands; only rich/cheap waits on it */}{moveText(e)}</span>
     <SetTag confirmed={e.confirmed} />
   </button>
 );
@@ -213,7 +214,7 @@ const NameAsk = ({ asked, onAsk }: { asked: string | null; onAsk: (t: string) =>
 };
 
 /** THE ANSWER: the name, the date, the slot, set or estimated, the options price when the fortnight holds it */
-const Answer = ({ next, onOpen, onClear }: { next: NextReport; onOpen: (t: string) => void; onClear: () => void }) => {
+const Answer = ({ next, inWindow, onOpen, onClear }: { next: NextReport; inWindow: boolean; onOpen: (t: string) => void; onClear: () => void }) => {
   const navigate = useNavigate();
   const door = 'font-semibold text-textPrimary hover:text-silver transition-colors';
   return (
@@ -231,11 +232,25 @@ const Answer = ({ next, onOpen, onClear }: { next: NextReport; onOpen: (t: strin
         {slotWord(next)}
       </span>
       <SetTag confirmed={next.confirmed} />
-      {next.event ? (
+      {!inWindow ? (
+        <>
+          <span className="text-warn">— outside this window, the board is not cut to it</span>
+          <span className="text-textMuted">·</span>
+          <button type="button" onClick={() => onOpen(next.ticker)} className={door} data-earnings-answer-door>
+            Its earnings page
+          </button>
+        </>
+      ) : next.event ? (
         <>
           <span className="text-textMuted">·</span>
           <span>
-            the options price <span className={`font-mono tnum ${priceInk(next.event)}`}>±{next.event.impliedMovePct.toFixed(1)}%</span>
+            {next.event.impliedMovePct > 0 ? (
+              <>
+                the options price <span className={`font-mono tnum ${priceInk(next.event)}`}>±{next.event.impliedMovePct.toFixed(1)}%</span>
+              </>
+            ) : (
+              <span className="text-textMuted">no options price on the row yet</span>
+            )}
           </span>
           <span className="text-textMuted">·</span>
           <button type="button" onClick={() => onOpen(next.ticker)} className={door} data-earnings-answer-door>
@@ -286,9 +301,17 @@ const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   ) : null;
 
 const IvCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? pricedKnown(data) && data.ivRank > 0 ? <span className={`font-mono text-[11px] tnum ${data.ivRank >= 80 ? 'text-warn' : 'text-textPrimary'}`}>{data.ivRank}</span> : <span className="font-mono text-[11px] text-textMuted">—</span> : null);
-/* a report with no straddle on the row (KARO's ±0.0%) is not priced — it says so */
-const moveText = (e: EarningsEvent) => (e.impliedMovePct > 0 ? `±${e.impliedMovePct.toFixed(1)}%` : '—');
-const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? <span className={`font-mono text-[11px] tnum font-semibold ${data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`}>{moveText(data)}</span> : null);
+/* a report with no straddle on the row (KARO's ±0.0%) is not priced — it says so; a report that is out shows the move the
+   stock made, not the one the options had priced */
+const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}%`;
+const moveText = (e: EarningsEvent) => (e.reported ? (e.actualMovePct != null ? `moved ${signedPct(e.actualMovePct)}` : 'reported') : e.impliedMovePct > 0 ? `±${e.impliedMovePct.toFixed(1)}%` : '—');
+const moveInk = (e: EarningsEvent) => (e.reported ? (e.actualMovePct == null ? 'text-textMuted' : e.actualMovePct > 0 ? 'text-bull' : e.actualMovePct < 0 ? 'text-bear' : 'text-textPrimary') : '');
+const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
+  data ? (
+    <span className={`font-mono text-[11px] tnum font-semibold ${data.reported ? moveInk(data) : data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`} title={data.reported ? `Reported — the options had priced ±${data.impliedMovePct.toFixed(1)}%` : undefined}>
+      {moveText(data)}
+    </span>
+  ) : null;
 const UsualCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{pricedKnown(data) ? `±${data.histAvgMovePct.toFixed(1)}%` : '—'}</span> : null);
 const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!data) return null;
@@ -333,19 +356,32 @@ const Earnings = () => {
   /* THE NAME ASKED FOR, and its answer */
   const [asked, setAsked] = useState<string | null>(null);
   const next = useNextReport(asked);
+  const nextPending = useNextReportPending(asked);
 
-  const shown = useMemo(() => (show === 'all' ? events : events.filter(e => pricedKnown(e) && stateOf(e) === show)), [events, show]);
+  /* THE NAME FILTERS THE BOARD (the retail pass: NAME = AAPL did nothing visible) — a name in the fortnight keeps the
+     board, the list and the grid to it; a name outside it says so under the line, with its page */
+  /* in the window only when its NEXT report is (TSLA reported on Wednesday; its next is 01/27, outside) */
+  const askedIn = asked != null && !!next && events.some(e => e.ticker === asked && e.iso === next.iso);
+  const shown = useMemo(() => {
+    const cut = show === 'all' ? events : events.filter(e => !e.reported && pricedKnown(e) && stateOf(e) === show);
+    const named = askedIn ? cut.filter(e => e.ticker === asked) : cut;
+    /* still to report first, soonest first; the reports already out follow, newest first */
+    return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut));
+  }, [events, show, askedIn, asked]);
   const reportPages = Math.max(1, Math.ceil(shown.length / REPORT_PAGE));
   const reportAt = Math.min(reportPage, reportPages - 1);
   const reportRows = shown.slice(reportAt * REPORT_PAGE, (reportAt + 1) * REPORT_PAGE);
-  /* the pricing facts are told over the known names whose usual move is in */
-  const scored = knownEvents.filter(pricedKnown);
+  /* the pricing facts are told over the known names still to report whose usual move is in — a print that is out is
+     not priced any more, and a count that grows as histories land says how many are in */
+  const ahead = knownEvents.filter(e => !e.reported);
+  const scored = ahead.filter(pricedKnown);
+  const cover = useEarningsCoverage();
   const rich = scored.filter(e => stateOf(e) === 'RICH').length;
   const cheap = scored.filter(e => stateOf(e) === 'CHEAP').length;
   const fair = scored.length - rich - cheap;
-  const biggest = knownEvents.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
-  const today = rankEvents(knownEvents.filter(e => e.daysOut === 0));
-  const todayMore = events.filter(e => e.daysOut === 0).length - today.length;
+  const biggest = ahead.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
+  const today = rankEvents(knownEvents.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
+  const todayMore = events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()).length - today.length;
 
   const weeks: (0 | 1)[] = week === 'both' ? [0, 1] : [Number(week) as 0 | 1];
   const open = (t: string) => navigate(`/dossier/earnings/${t}`);
@@ -357,17 +393,21 @@ const Earnings = () => {
   };
 
   const sentence = useMemo(() => {
-    const parts = [`${events.length} reports over two weeks, ${knownEvents.length} of them known names`, `among those ${rich} priced rich, ${fair} fair, ${cheap} cheap`];
+    const parts = [
+      `${events.length} reports over two weeks, ${knownEvents.length} of them known names, ${ahead.length} of those still to report`,
+      `of the ${scored.length} whose last eight prints are read${cover.historiesPending ? ` (${cover.historiesPending} still reading)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
+    ];
     if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
     parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
+    if (cover.missed) parts.push(`${cover.missed} of the ${cover.slots} day lists did not answer, so the count is short`);
     return parts.join(' · ') + '.';
-  }, [events.length, knownEvents.length, rich, fair, cheap, biggest, today, todayMore]);
+  }, [events.length, knownEvents.length, ahead.length, scored.length, cover, rich, fair, cheap, biggest, today, todayMore]);
 
   const columnDefs = useMemo<ColDef<EarningsEvent>[]>(
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 180, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open its page' },
-      { headerName: 'Reports', field: 'daysOut', width: 210, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
-      { headerName: 'Options price', field: 'impliedMovePct', width: 124, cellRenderer: MoveCell, type: 'rightAligned', headerTooltip: 'The move the options charge for the print — the at-the-money straddle as a percent of the stock' },
+      { headerName: 'Reports', field: 'daysOut', width: 210, cellRenderer: WhenCell, headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
+      { headerName: 'Options price', field: 'impliedMovePct', width: 124, cellRenderer: MoveCell, type: 'rightAligned', headerTooltip: 'The move the options charge for the print — the at-the-money straddle as a percent of the stock. Once the report is out, the move the stock made the session after' },
       { headerName: 'Usually moves', field: 'histAvgMovePct', width: 124, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move on the last eight prints' },
       { headerName: 'Priced', field: 'richness', width: 124, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
       { headerName: 'Beat', field: 'beatRate8q', width: 96, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'How many of the last eight quarters beat the estimate' },
@@ -406,9 +446,10 @@ const Earnings = () => {
               ) : scored.length === 0 ? (
                 <span className="text-textMuted">reading the usual moves</span>
               ) : (
-                <>
+                <span title={`Known names still to report whose last eight prints are read: ${scored.length} of ${ahead.length}`}>
                   <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
-                </>
+                  <span className="text-textMuted"> · of {scored.length}{cover.historiesPending ? ` (${cover.historiesPending} reading)` : ''}</span>
+                </span>
               )}
             </Fact>
             <Fact label="Biggest move" testId="biggest">
@@ -445,7 +486,12 @@ const Earnings = () => {
           <DropdownSelect label="Layout" value={layout} options={LAYOUT_OPTIONS} onChange={setLayout} title="The week as a board of the known names, or a list of every report" testId="earnings-layout" />
           <NameAsk asked={asked} onAsk={ask} />
         </div>
-        {next && <Answer next={next} onOpen={open} onClear={() => setAsked(null)} />}
+        {next && <Answer next={next} inWindow={askedIn} onOpen={open} onClear={() => setAsked(null)} />}
+        {asked && !next && (
+          <p className="px-5 pb-2 text-[12px] text-textSecondary" data-earnings-answer-pending>
+            {nextPending ? `Reading when ${asked} reports…` : `${asked} has no report dated today or later on file.`}
+          </p>
+        )}
         {failed ? (
           <FeedFallback />
         ) : (
@@ -603,7 +649,7 @@ const Earnings = () => {
         <div className="px-5 pt-4 pb-3">
           <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Every report</h3>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            Both weeks · {show === 'all' ? 'every report, the known names and the rest' : `the reports priced ${PRICED_WORD[show]}`} · soonest first · click a row for the name's page
+            Both weeks · {show === 'all' ? 'every report, the known names and the rest' : `the reports still to come priced ${PRICED_WORD[show]}`} · still to report first, soonest first, then the ones already out with their move · click a row for the name's page
           </p>
         </div>
         <div className="slayer-board border-t border-borderSubtle">

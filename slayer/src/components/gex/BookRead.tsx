@@ -34,10 +34,11 @@ import { shownGreek } from './retailSign';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
-import { GREEK_LABEL } from '../../data/compare';
+import { GREEK_EXPLAIN, GREEK_LABEL } from '../../data/compare';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { todayColumn, GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
-import { fmtUsd, readHeatPattern } from '../../data/gex';
+import { fmtUsd } from '../../data/gex';
+import { readRegime } from '../../data/flipLevel';
 import { YEAR_MINUTES } from '../../data/measure';
 import { readSessionClock } from '../../data/moc';
 import { replayRange, snapshotAt } from '../../data/replay';
@@ -89,8 +90,10 @@ interface BookReadProps {
   onClose: () => void;
 }
 
-const Head = ({ children }: { children: ReactNode }) => (
-  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-textMuted">{children}</div>
+const Head = ({ children, title }: { children: ReactNode; title?: string }) => (
+  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-textMuted" title={title}>
+    {children}
+  </div>
 );
 
 /** THE READ's door — beside the guide's on every book; lit while the card is up.
@@ -164,19 +167,20 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   /* the printed figures in the reader's sign (retailSign.ts); the inks read the kept value */
   const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const { levels } = surface;
-  const verdict = readHeatPattern(levels);
+  const verdict = readRegime(levels);
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
   const roleOf = (strike: number): { word: string; ink: string } | null =>
     strike === levels.supreme ? { word: 'supreme', ink: SUPREME }
     : strike === levels.callWall ? { word: 'call wall', ink: CALL_WALL }
     : strike === levels.putWall ? { word: 'put wall', ink: PUT_WALL }
-    : strike === levels.flip ? { word: 'flip', ink: FLIP }
+    : levels.flipFound !== false && strike === levels.flip ? { word: 'flip', ink: FLIP }
     : strike === pinStrike ? { word: 'pin', ink: MUTED }
     : null;
   const levelRows = [
     { word: 'put wall', strike: levels.putWall, ink: PUT_WALL },
     { word: 'call wall', strike: levels.callWall, ink: CALL_WALL },
-    { word: 'flip', strike: levels.flip, ink: FLIP },
+    /* no crossing within ±10% is no flip — no row at a placeholder */
+    ...(levels.flipFound === false ? [] : [{ word: 'flip', strike: levels.flip, ink: FLIP }]),
     { word: 'supreme', strike: levels.supreme, ink: SUPREME },
   ];
 
@@ -383,14 +387,14 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
             <div className="grid grid-cols-5 gap-x-2 text-[11px]">
               {GREEKS.map(g => (
                 <span key={g} className="flex flex-col">
-                  <span className="text-[11px] uppercase tracking-wider text-textMuted">{GREEK_LABEL[g]}</span>
+                  <span className="text-[11px] uppercase tracking-wider text-textMuted cursor-help" title={GREEK_EXPLAIN[g]}>{GREEK_LABEL[g]}</span>
                   <span className={g === greek ? 'font-semibold' : ''} style={{ color: rampInk(g, at(g, sIdx, 'net')) }}>{fmtUsd(shownGreek(g, at(g, sIdx, 'net')))}</span>
                 </span>
               ))}
             </div>
           )}
           <div className="flex flex-col gap-1">
-            <Head>Today's contracts · {label} · over each window</Head>
+            <Head title="Open interest is set once overnight, so the contracts are the same all day; each window's figure is those contracts re-priced at that minute's price and clock (vol held)">Today's contracts · {label} · re-priced over each window</Head>
             <div className="grid grid-cols-7 gap-x-1 text-[11px]">
               {WINDOWS.map((w, i) => (
                 <span key={w.key} className="flex flex-col">

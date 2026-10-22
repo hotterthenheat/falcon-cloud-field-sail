@@ -165,11 +165,12 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     let kept = pool.filter(m => m.min >= lo && m.min <= hi && m.min <= endMin);
     if (kept.length < 2) kept = pool.filter(m => m.min <= endMin);
     if (kept.length >= 2 && !isRamp(kept.map(m => m.net))) {
-      const raw = kept[kept.length - 1].net;
-      const scale = bookNet !== 0 && raw !== 0 ? bookNet / raw : 1;
-      /* IN THE RETAIL SIGN (the ship pass, 2026-10-22): the book is kept call-dominant NEGATIVE (core/walls.ts); the
-         reader sees the vendor's sign — positive = dealers long gamma = absorbs, the Board's and Compare's net GEX */
-      return kept.map(m => ({ time: m.time, min: m.min, net: -(m.net * scale), spot: m.spot ?? priceAt.get(m.time) ?? null }));
+      /* THE VENDOR'S OWN SERIES, AS PRINTED (the Pinpoint audit, 2026-10-22): it was scaled by book net ÷ last minute so
+         its last print met the open-interest net — when the two differed in sign the scale went negative and the whole
+         day drew inverted (TSLA: the vendor read +$480M, long, then −$586M; the morning drew red). The line is the
+         vendor's volume-based dealer gamma per 1% (spot-exposures), in the retail sign — positive = dealers long gamma =
+         absorbs — and is labelled as that; the open-interest book's net is its own figure beside it. */
+      return kept.map(m => ({ time: m.time, min: m.min, net: -m.net, spot: m.spot ?? priceAt.get(m.time) ?? null }));
     }
     return [];
   }, [bars, vendor, at, bookNet]);
@@ -433,8 +434,8 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {part ? (
               /* NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "'the book' … give me informative names as to what they do"):
                  the dealers' hedging through the day — amplifying or absorbing, as the figure beside it says */
-              <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-through-part-word>
-                Dealer hedging
+              <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-through-part-word title="The vendor's dealer gamma per 1% move from today's trades (volume-based, minute by minute) — not the open-interest book the levels are read from">
+                Dealer hedging · today's trades
               </span>
             ) : (
               <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">The book through the day</h3>
@@ -445,11 +446,16 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
         </div>
             {part && last && (
           <>
-            {bookWords && <PartFact label="Book" title="The contracts this hedging is read from — the Levels card at the top of the page">{bookWords}</PartFact>}
-            <PartFact label="Net now · every strike" title="Net GEX on every strike of these contracts. Positive (green): dealers are long gamma and their hedging tends to absorb moves. Negative (red): it tends to amplify them">
+            <PartFact label="Line now · vendor" title="The line's last print: the vendor's volume-based dealer gamma per 1% move from today's trades (spot-exposures), in the retail sign. Positive (green): dealers long gamma, their hedging absorbs. Negative (red): it amplifies">
               <span style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
                 {last.net > 0 ? '+' : ''}
                 {fmtUsd(last.net)} · {last.net >= 0 ? 'absorbs' : 'amplifies'}
+              </span>
+            </PartFact>
+            <PartFact label={`Net GEX${bookWords ? ` · ${bookWords}` : ''}`} title="Net GEX on every strike of the contracts the Levels card reads (open interest) — the Board's, the Agenda's and Compare's figure. It can differ in sign from the line, which is today's trades alone">
+              <span style={{ color: -bookNet >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-book={Math.round(-bookNet)}>
+                {-bookNet > 0 ? '+' : ''}
+                {fmtUsd(-bookNet)}
               </span>
             </PartFact>
             <PartFact label="Changed sign" title="How many times today the net flipped between absorbing and amplifying">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>

@@ -73,7 +73,7 @@ import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { bracketLabel, seatLabel } from '../../data/congress';
-import { useCongressFeed, useInsiderFlow, useLiveRecord } from '../../data/liveRecord';
+import { useInsiderFlow, useLiveRecord, useTickerCongress } from '../../data/liveRecord';
 import { useStockFile } from '../../data/stockFile';
 import type { BookContract, FlowPrint } from '../../types/trace';
 import { StockNameSkeleton } from './recordSkeletons';
@@ -327,7 +327,7 @@ const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number;
           <span className="block text-textMuted">{LEVEL_WORDS[hotMark.key]}</span>
         </ScaleCard>
       )}
-      <svg width="100%" height={54} className="block overflow-visible" role="img" aria-label={`The book on a price scale: put wall ${putWall}, flip ${flip}, spot ${spot.toFixed(2)}, call wall ${callWall}, supreme ${supreme}`} data-stock-scale={hot ?? 'rest'}>
+      <svg width="100%" height={54} className="block overflow-visible" role="img" aria-label={`The book on a price scale: put wall ${putWall}, flip ${flip.toFixed(2)}, spot ${spot.toFixed(2)}, call wall ${callWall}, supreme ${supreme}`} data-stock-scale={hot ?? 'rest'}>
         <line x1="0%" x2="100%" y1={27} y2={27} stroke="rgb(var(--ink))" strokeOpacity={0.14} />
         {/* the likely range between the walls, faint */}
         <rect x={`${x(putWall)}%`} y={24} width={`${Math.max(0, x(callWall) - x(putWall))}%`} height={6} fill={SILVER} fillOpacity={0.1} />
@@ -341,7 +341,8 @@ const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number;
               <rect x={`calc(${x(m.price)}% - 12px)`} y={0} width={24} height={54} fill="transparent" />
               <line x1={`${x(m.price)}%`} x2={`${x(m.price)}%`} y1={isSpot ? 18 : 22} y2={isSpot ? 36 : 32} stroke={m.ink} strokeWidth={isSpot || on ? 2 : 1.25} strokeDasharray={m.key === 'flip' ? '2 2' : undefined} />
               <text x={`${x(m.price)}%`} y={up ? 12 : 46} textAnchor="middle" fontSize={9} fontFamily="ui-monospace, Menlo, monospace" fill={m.ink} fontWeight={isSpot || on ? 700 : 500}>
-                {isSpot ? m.price.toFixed(2) : m.price}
+                {/* a strike prints as written; an interpolated level (the flip) to the cent, never fifteen decimals */}
+                {isSpot || !Number.isInteger(m.price * 2) ? m.price.toFixed(2) : m.price}
               </text>
               <text x={`${x(m.price)}%`} y={up ? 4 : 54} textAnchor="middle" fontSize={7.5} fontFamily="ui-monospace, Menlo, monospace" letterSpacing={0.6} fill={m.ink} fillOpacity={on ? 1 : 0.75}>
                 {m.word.toUpperCase()}
@@ -440,8 +441,10 @@ const StockName = () => {
   const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, record.news, bookRev, file]);
   const insiders = useInsiderFlow(T, 90);
   const marketInsiders = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket).slice(0, 5), [insiders]);
-  const congressFeed = useCongressFeed(180);
-  const congress = useMemo(() => congressFeed.trades.filter(t => t.ticker === T).sort((a, b) => a.filedDaysAgo - b.filedDaysAgo).slice(0, 5), [congressFeed, T]);
+  /* the name's own Congress reports, not the market book's latest few weeks */
+  const congressBook = useTickerCongress(T, 180);
+  const congressAll = useMemo(() => [...congressBook.trades].sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressBook]);
+  const congress = useMemo(() => congressAll.slice(0, 5), [congressAll]);
   const [guideOpen, setGuideOpen] = useState(false);
   const [methodOpen, setMethodOpen] = useState(false);
   /* THE KEPT PRINT on today's tape — a click on a bar keeps it; another name lets it go */
@@ -455,7 +458,8 @@ const StockName = () => {
         <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 ease-out group-hover:-translate-x-0.5" /> The board
       </Link>
       {view && (
-        <nav className="ml-auto flex items-center gap-1 flex-wrap font-mono text-[9px] uppercase tracking-widest" aria-label="Sections of the page" data-stock-jumps>
+        /* on a phone the chips are one row that scrolls sideways — wrapped, they stood three lines tall over the page */
+        <nav className="ml-auto flex items-center gap-1 flex-wrap font-mono text-[9px] uppercase tracking-widest max-sm:ml-0 max-sm:w-full max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden max-sm:[&>button]:shrink-0" aria-label="Sections of the page" data-stock-jumps>
           {JUMPS.map(([id, label]) => (
             <button key={id} type="button" onClick={() => jump(id)} className="inline-flex items-center h-6 px-2 rounded-md text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-stock-jump={id}>
               {label}
@@ -1353,9 +1357,9 @@ const StockName = () => {
             {insiderTotal > 0 && <ShareBar left={(100 * insiders.bought) / insiderTotal} />}
           </div>
         </Box>
-        <Box title="What Congress reported" sub="STOCK Act reports naming this stock in the last 180 days" testId="congress">
+        <Box title="What Congress reported" sub={`STOCK Act reports of trades in this stock made in the last 180 days${congressBook.complete ? '' : ' — the latest 200 reports only'} · the newest five filed`} testId="congress">
           {congress.length === 0 ? (
-            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the record in 180 days</div>
+            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{congressBook.status === 'loading' ? 'Reading the reports' : congressBook.status === 'sim' ? 'This read did not land' : 'No trade in this stock reported in 180 days'}</div>
           ) : (
             <>
               {/* On a phone: filed, member, type — the amount and the lag go (the phone pass, 2026-09-13) */}
@@ -1385,9 +1389,9 @@ const StockName = () => {
             </>
           )}
           <div className="mt-auto px-5 py-2.5 border-t border-borderSubtle/40 flex items-center gap-4 font-mono text-[10px] tnum" data-name-foot="congress">
-            {congress.length > 0 && (
+            {congressAll.length > 0 && (
               <span className="text-textSecondary">
-                {congress.filter(t => t.type === 'Purchase').length} purchases · {congress.filter(t => t.type !== 'Purchase' && t.type !== 'Exchange').length} sales
+                {congressAll.length} {congressAll.length === 1 ? 'report' : 'reports'} in 180 days · {congressAll.filter(t => t.type === 'Purchase').length} purchases · {congressAll.filter(t => t.type !== 'Purchase' && t.type !== 'Exchange').length} sales
               </span>
             )}
             <Link to="/dossier/congress" className="ml-auto inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">

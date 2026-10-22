@@ -77,16 +77,17 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
 /** the print reads "18,479 @ $1.12" — 118 cut it to "@ $..."; the reason wraps to two lines, so it gives the room */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 150, clipprem: 92, sideCol: 64, otm: 76, earn: 92 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 104, clipprem: 100, sideCol: 72, otm: 76, earn: 92 };
 const FLEXES: Record<string, number> = { reason: 3 };
 const PIN_LEFT = ['time', 'ticker', 'contract'];
 const PIN_RIGHT = ['clipprem'];
 const WATCHER_CUTS = createViewStore('slayer_watchers_cuts_v1');
 const TOOLTIPS: Record<string, string> = {
   reason: "Why the contract is in front of you — the desk's watchers, or one you wrote (the hollow ring)",
-  clip: 'The print that tripped the reason — its size and fill',
-  clipprem: "That print's money",
-  sideCol: 'At the ask, the contract being bought; on the bid, sold',
+  time: "When the contract last printed today, New York",
+  clip: "The contract's last fill today",
+  clipprem: "The contract's premium today — every print, not one",
+  sideCol: "Where its day's volume leaned: at least 55% at the ask, or on the bid; else even",
   voloi: 'Volume over open interest — above 1.5 the positions were built today',
 };
 
@@ -118,12 +119,10 @@ const phoneRow = (a: Catch) => (
     aside={a.time}
     figures={[
       <span key="p" className="font-semibold text-textPrimary">
-        {fmtUsd(a.clipPremium)}
+        {fmtUsd(a.premium)} today
       </span>,
-      <span key="s">
-        {a.side === 'ASK' ? 'ask' : 'bid'} ${a.clipFill.toFixed(2)}
-      </span>,
-      <span key="z">{num(a.clipSize)} contracts</span>,
+      <span key="s">last ${a.last.toFixed(2)}</span>,
+      <span key="z">{num(a.row.volume)} vol · {a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : 'even'}</span>,
     ]}
   />
 );
@@ -158,6 +157,7 @@ const Watchers = () => {
   const keyOf = useCallback((a: { id: string }) => a.id, []);
   const openRow = useCallback((a: { row: { key: string } }) => setOpenKey(a.row.key), []);
   const catches = useMemo(() => buildCatches(book, myReasons), [book, myReasons]);
+  const bookSize = book.length;
 
   /* One lookup for both shelves — the column, the chips and the header hint
      all resolve a reason's words through this, so a row and its filter chip
@@ -198,22 +198,13 @@ const Watchers = () => {
      in magenta is this feed's own LARGEST PRINT, the tape chart's grammar. */
   const marks = useMemo(
     () => ({
-      prem: earnMarks(shown, a => a.clipPremium),
+      prem: earnMarks(shown, a => a.premium),
       vol: earnMarks(shown, a => a.row.volume),
       oi: earnMarks(shown, a => a.row.oi),
     }),
     [shown]
   );
 
-  // The drilldown anchors on the EXACT print the rule fired on.
-  const clipMap = useMemo(() => {
-    const m = new Map<string, { size: number; fill: number; side: 'ASK' | 'BID'; time: string }>();
-    for (const a of shown) {
-      if (!m.has(a.row.key)) m.set(a.row.key, { size: a.clipSize, fill: a.clipFill, side: a.side, time: a.time });
-    }
-    return m;
-  }, [shown]);
-  const clipFor = useMemo(() => (row: BookContract) => clipMap.get(row.key), [clipMap]);
   /* The read's "Latest:" door must open even when a filter has hidden that
      row — the drill list quietly carries it up front then. */
   const drillList = useMemo(() => {
@@ -242,15 +233,15 @@ const Watchers = () => {
     const names = new Set(catches.map(a => a.row.ticker)).size;
     return (
       <>
-        <RichRead text={`${catches.length} caught today on ${names} names — [[${loud[1]}]] because ${why}.${yours} Newest: `} />
+        <RichRead text={`${catches.length} ${catches.length === 1 ? 'catch' : 'catches'} on ${names} names among the book's ${num(bookSize)} contracts — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
         <ReadDoor onOpen={() => setOpenKey(latest.row.key)}>
           {latest.row.ticker} {latest.row.strike}
           {latest.row.right}
         </ReadDoor>
-        <RichRead text={`, ${num(latest.clipSize)} on the ${latest.side === 'ASK' ? 'ask' : 'bid'} at $${latest.clipFill.toFixed(2)} (${latest.time}).`} />
+        <RichRead text={`, last at $${latest.last.toFixed(2)} (${latest.time} ET), ${fmtUsd(latest.premium)} today.`} />
       </>
     );
-  }, [catches, reasonOf]);
+  }, [catches, reasonOf, bookSize]);
 
   const activeRule = rule === 'ALL' ? null : reasonOf(rule);
   /* The Reason card: every reason, the desk's then yours */
@@ -329,29 +320,25 @@ const Watchers = () => {
       },
       {
         key: 'clip',
-        header: 'The print',
+        header: 'Last fill',
         align: 'right',
-        sortValue: a => a.clipSize,
-        render: a => (
-          <span className="text-textPrimary">
-            {num(a.clipSize)} <span className="text-[11px] text-textSecondary">@ ${a.clipFill.toFixed(2)}</span>
-          </span>
-        ),
+        sortValue: a => a.last,
+        render: a => <span className="text-textPrimary">${a.last.toFixed(2)}</span>,
       },
       {
         key: 'clipprem',
-        header: 'Print $',
+        header: 'Day $',
         align: 'right',
-        sortValue: a => a.clipPremium,
-        render: a => <span className={weightInk(a.clipPremium, marks.prem)}>{fmtUsd(a.clipPremium)}</span>,
+        sortValue: a => a.premium,
+        render: a => <span className={weightInk(a.premium, marks.prem)}>{fmtUsd(a.premium)}</span>,
       },
       {
         key: 'sideCol',
-        header: 'Side',
+        header: 'Day lean',
         align: 'right',
-        sortValue: a => a.side,
-        // The tape's rule: at the ask = the contract being bought — the side in one ink
-        render: a => <span className="text-[11px] text-textPrimary">{a.side === 'ASK' ? 'ask' : 'bid'}</span>,
+        sortValue: a => a.row.askPct,
+        // The tape's rule: the side in one ink
+        render: a => <span className={`text-[11px] ${a.side === 'EVEN' ? 'text-textMuted' : 'text-textPrimary'}`}>{a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : 'even'}</span>,
       },
       {
         key: 'vol',
@@ -398,7 +385,7 @@ const Watchers = () => {
      strip — facts left, champions as pills right — and the column chooser.
      The side champions wear the plain ink: a side is not a direction. */
   const champs = useMemo(() => {
-    const by = (pick: (a: Catch) => boolean) => shown.filter(pick).reduce<Catch | null>((a, x) => (a === null || x.clipPremium > a.clipPremium ? x : a), null);
+    const by = (pick: (a: Catch) => boolean) => shown.filter(pick).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
     return { ask: by(a => a.side === 'ASK'), bid: by(a => a.side === 'BID'), all: by(() => true) };
   }, [shown]);
   const facts = useMemo(() => {
@@ -411,7 +398,7 @@ const Watchers = () => {
     const loud = [...byRule.entries()].sort((a, b) => b[1] - a[1])[0];
     return { total: catches.length, loudName: loud ? (reasonOf(loud[0])?.label ?? '') : '', loudCount: loud ? loud[1] : 0, mine };
   }, [catches, reasonOf]);
-  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} · ${fmtUsd(a.clipPremium)}`;
+  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} · ${fmtUsd(a.premium)} today`;
 
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_flowalerts_cols');
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
@@ -421,14 +408,14 @@ const Watchers = () => {
     <>
       <TraceBox
         title="The desk watching the tape"
-        sub={`${activeRule ? `${activeRule.label} — ${activeRule.phrase} · newest first` : "Every reason a contract is flagged — the desk's and yours, newest first"} · a row opens the contract's card`}
+        sub={`${activeRule ? `${activeRule.label} — ${activeRule.phrase}` : "Every contract on the book a reason flags — the desk's and yours"} · newest last print first · a row opens the contract's card`}
         testId="watchers"
         data={{ rule, rows: rows.length, expiry: expiry ?? 'all' }}
         guide={{ title: 'How to read the watchers', door: 'What a reason, the print and the side mean', body: <WatchersGuide />, testId: 'watchers-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
             {/* the most frequent reason, named, its count after — never a reason read as a noun */}
-            <Fact label="Caught today" testId="caught">
+            <Fact label="Caught" testId="caught" title={`Contracts on the live book (the ${num(bookSize)} with the most premium today, plus the terminal's name) that meet a reason`}>
               {num(facts.total)}
               {facts.loudName && (
                 <span className="text-textSecondary">
@@ -441,17 +428,17 @@ const Watchers = () => {
               <span className={facts.mine > 0 ? 'text-textPrimary' : 'text-textSecondary'}>{facts.mine}</span>
             </Fact>
             {champs.ask && champs.ask !== champs.all && (
-              <Champion label="Top at the ask" ink="plain" onOpen={() => setOpenKey(champs.ask!.row.key)} testId="top-ask">
+              <Champion label="Most money · ask-leaning" ink="plain" onOpen={() => setOpenKey(champs.ask!.row.key)} testId="top-ask">
                 {pill(champs.ask)}
               </Champion>
             )}
             {champs.bid && champs.bid !== champs.all && (
-              <Champion label="Top on the bid" ink="plain" onOpen={() => setOpenKey(champs.bid!.row.key)} testId="top-bid">
+              <Champion label="Most money · bid-leaning" ink="plain" onOpen={() => setOpenKey(champs.bid!.row.key)} testId="top-bid">
                 {pill(champs.bid)}
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Largest print" ink="supreme" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
+              <Champion label="Most money today" ink="supreme" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
                 {pill(champs.all)}
               </Champion>
             )}
@@ -483,10 +470,10 @@ const Watchers = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText="Nothing flagged yet — the desk is watching, and a clip that clears the bar lands here the moment it prints" testId="watchers" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText="Nothing on the book meets a reason yet — the desk is watching" testId="watchers" />
       </TraceBox>
 
-      <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} clipFor={clipFor} tick={tick} />
+      <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} tick={tick} />
     </>
   );
 };

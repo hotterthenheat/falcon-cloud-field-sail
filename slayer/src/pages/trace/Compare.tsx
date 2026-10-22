@@ -27,7 +27,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { SPREAD_KINDS, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
-import { useLiveBook, useNameSpreads, useNameTape, usePaneFlow, type PaneFlowPoint } from '../../data/traceLive';
+import { tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, type PaneFlowPoint } from '../../data/traceLive';
 import { fmtUsd } from '../../data/gex';
 import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
@@ -42,7 +42,7 @@ import ContractCell from '../../components/trace/ContractCell';
 import LeanCell from '../../components/trace/LeanCell';
 import { PointerFollowCard } from '../../components/ui/PointerCard';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
-import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS, paneTimes } from '../../components/trace/NetFlowPane';
+import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS } from '../../components/trace/NetFlowPane';
 
 /** Each name's last prints and structures the card reads */
 const TAPE_N = 300;
@@ -68,6 +68,8 @@ const Fig = ({ children, lit, ink }: { children: ReactNode; lit: boolean; ink?: 
 );
 const Sub = ({ children }: { children: ReactNode }) => <span className="text-[10.5px] text-textSecondary whitespace-nowrap">{children}</span>;
 const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textMuted');
+/** ONE COLOUR RULE: net puts BOUGHT lean bearish (red), net puts sold bullish (green) — the chart head's rule */
+const putDirInk = (v: number) => dirInk(-v);
 
 /*
   THE CARD IN THE RULER'S GRAMMAR (Noah, 2026-10-18, with Pinpoint's "two books on one ruler" beside this
@@ -315,8 +317,6 @@ const Compare = () => {
   const twin = TWINS[aTicker];
   const bTicker = onBook(bPick) && bPick !== aTicker ? bPick : onBook(twin) && twin !== aTicker ? twin : names.find(t => t !== aTicker) ?? (twin ?? (aTicker === 'QQQ' ? 'SPY' : 'QQQ'));
 
-  /* Both names read at the tape's last bar — the same instant, the leaders board's rule */
-  const sampleAt = useMemo(() => paneTimes('SPY').slice(-1), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* EACH NAME'S OWN TAPE AND STRUCTURES (2026-10-22): the market-wide windows are the market's latest prints — after the
      close almost all index — and read "0 prints" for SPY beside a full book. Each name's own last prints instead, cut to
@@ -341,7 +341,10 @@ const Compare = () => {
      16 contracts where its own book held $946.3M across 80. */
   const bookA = useLiveBook(aTicker).rows;
   const bookB = useLiveBook(bTicker).rows;
-  const liveSides = useMemo(() => ({ ...liveNames, bookA: bookA.length ? bookA : book, bookB: bookB.length ? bookB : book }), [liveNames, bookA, bookB, book]);
+  /* each name's day by expiry — the vendor's own net and volume (/stock/{t}/flow-per-expiry) */
+  const fpeA = useFlowPerExpiry(aTicker).rows;
+  const fpeB = useFlowPerExpiry(bTicker).rows;
+  const liveSides = useMemo(() => ({ ...liveNames, bookA: bookA.length ? bookA : book, bookB: bookB.length ? bookB : book, fpeA, fpeB }), [liveNames, bookA, bookB, book, fpeA, fpeB]);
   const frozen = useRef(liveSides);
   if (!hold.paused) frozen.current = liveSides;
   const { tape, spreads, since: tapeSince } = frozen.current;
@@ -353,13 +356,17 @@ const Compare = () => {
      card keeps the book's own figures and says so. */
   const flowA = usePaneFlow({ ticker: aTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
   const flowB = usePaneFlow({ ticker: bTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
-  const uncut = tenor === 'all' && mny === 'all';
+  /* every expiry: the card takes the pane's own running totals; a clock: the vendor's flow for the expiries on it */
+  const uncut = tenor === 'all';
   const withTicks = (side: TraceSide, rows: PaneFlowPoint[]): TraceSide => {
     const lastPt = rows.length ? rows[rows.length - 1] : null;
     return uncut && lastPt ? { ...side, net: lastPt.callPrem - lastPt.putPrem, netCall: lastPt.callPrem, netPut: lastPt.putPrem } : side;
   };
-  const sideA = useMemo(() => withTicks(buildTraceSide(sideBookA, spreads, tape, aTicker, tenor, mny, sampleAt), flowA), [sideBookA, spreads, tape, aTicker, tenor, mny, sampleAt, flowA, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sideB = useMemo(() => withTicks(buildTraceSide(sideBookB, spreads, tape, bTicker, tenor, mny, sampleAt), flowB), [sideBookB, spreads, tape, bTicker, tenor, mny, sampleAt, flowB, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
+  const todayIso = tapeSessionIso();
+  const heldFpeA = frozen.current.fpeA;
+  const heldFpeB = frozen.current.fpeB;
+  const sideA = useMemo(() => withTicks(buildTraceSide(sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso), flowA), [sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso, flowA, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideB = useMemo(() => withTicks(buildTraceSide(sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso), flowB), [sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso, flowB, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
   const cmp = useMemo(() => buildTraceCompare(sideA, sideB), [sideA, sideB]);
   const { a, b } = cmp;
 
@@ -401,7 +408,7 @@ const Compare = () => {
 
   const sections: { title: string; rows: Row[] }[] = [
     {
-      title: uncut ? 'Net flow · every expiry' : 'Net flow · on this cut, from the book',
+      title: `${uncut ? 'Net flow · every expiry, from the bell' : "Net flow · the clock's expiries, the whole day"}${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''}`,
       rows: [
         {
           key: 'net',
@@ -425,12 +432,12 @@ const Compare = () => {
           note: the(louder(s => s.netPut), 'the louder on puts'),
           lead: louder(s => s.netPut),
           bars: s => [{ v: s.netPut, text: signedUsd(s.netPut), ink: putInk(s.netPut) }],
-          cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>,
+          cell: (s, lit) => <Fig lit={lit} ink={putDirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>,
         },
       ],
     },
     {
-      title: 'Same-day money',
+      title: 'Same-day money · contracts expiring today, every strike',
       rows: [
         {
           key: 'odte',
@@ -443,17 +450,17 @@ const Compare = () => {
         {
           key: 'odteSides',
           label: 'Same-day calls · puts',
-          note: 'expiring today or tomorrow',
+          note: 'net calls · net puts, expiring today',
           lead: null,
           bars: s => [
-            { v: s.odte.calls, text: signedUsd(s.odte.calls), ink: barInk(s.odte.calls), name: 'Same-day calls', desc: 'expiring today or tomorrow' },
-            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: putInk(s.odte.puts), name: 'Same-day puts', desc: 'expiring today or tomorrow' },
+            { v: s.odte.calls, text: signedUsd(s.odte.calls), ink: barInk(s.odte.calls), name: 'Same-day net calls', desc: 'at the ask less on the bid, expiring today' },
+            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: putInk(s.odte.puts), name: 'Same-day net puts', desc: 'bought lean bearish — expiring today' },
           ],
           cell: s => (
             <>
               <Fig lit={false} ink={dirInk(s.odte.calls)}>{signedUsd(s.odte.calls)}</Fig>
               <Sub>·</Sub>
-              <Fig lit={false} ink={dirInk(s.odte.puts)}>{signedUsd(s.odte.puts)}</Fig>
+              <Fig lit={false} ink={putDirInk(s.odte.puts)}>{signedUsd(s.odte.puts)}</Fig>
             </>
           ),
         },
@@ -462,22 +469,22 @@ const Compare = () => {
           label: 'Same-day volume',
           note: the(higher(s => s.odte.vol), 'the busier today'),
           lead: higher(s => s.odte.vol),
-          bars: s => [{ v: s.odte.vol, text: num(s.odte.vol), ink: 'silver', after: `${s.odte.count} contracts` }],
+          bars: s => [{ v: s.odte.vol, text: num(s.odte.vol), ink: 'silver', after: `${num(s.odte.trades)} prints` }],
           cell: (s, lit) => (
             <>
               <Fig lit={lit}>{num(s.odte.vol)}</Fig>
-              <Sub>· {s.odte.count} contracts</Sub>
+              <Sub>· {num(s.odte.trades)} prints</Sub>
             </>
           ),
         },
       ],
     },
     {
-      title: 'The book',
+      title: "The book · each name's contracts with the most premium (up to 80)",
       rows: [
         {
           key: 'count',
-          label: 'Contracts traded',
+          label: 'Contracts on the book',
           note: the(higher(s => s.book.count), 'spread over more contracts'),
           lead: higher(s => s.book.count),
           bars: s => [{ v: s.book.count, text: num(s.book.count), ink: 'silver' }],
@@ -545,21 +552,21 @@ const Compare = () => {
         },
         {
           key: 'built',
-          label: 'Built today',
-          note: a.book.builtToday === 0 && b.book.builtToday === 0 ? 'nothing built past its interest' : the(higher(s => s.book.builtToday), 'built the more'),
+          label: 'Vol ≥ 1.5× OI',
+          note: a.book.builtToday === 0 && b.book.builtToday === 0 ? 'none at 1.5× its interest' : the(higher(s => s.book.builtToday), 'the more'),
           lead: higher(s => s.book.builtToday),
-          bars: s => [{ v: s.book.builtToday, text: num(s.book.builtToday), ink: 'silver', after: 'past their interest' }],
+          bars: s => [{ v: s.book.builtToday, text: num(s.book.builtToday), ink: 'silver', after: 'contracts' }],
           cell: (s, lit) => (
             <>
               <Fig lit={lit}>{num(s.book.builtToday)}</Fig>
-              <Sub>past their interest</Sub>
+              <Sub>contracts</Sub>
             </>
           ),
         },
       ],
     },
     {
-      title: 'Footprints',
+      title: 'Footprints · open interest on those contracts since the last session',
       rows: [
         {
           key: 'added',
@@ -627,7 +634,7 @@ const Compare = () => {
     },
     {
       /* both names over the same reach of their own tapes — the title says from when */
-      title: tapeSince ? `The tape · since ${nyClock(tapeSince * 1000)}` : 'The tape',
+      title: tapeSince ? `The tape · each name's prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both tapes cover` : `The tape · each name's last ${TAPE_N} prints`,
       rows: [
         {
           key: 'prints',
@@ -774,7 +781,7 @@ const Compare = () => {
   return (
     <TraceBox
       title="Two names, side by side"
-      sub="Net flow, the same-day money, the book, the footprints, the structures and the tape — the first name against the second, on the same cut every other Trace page reads · pick either name, swap them, cut them to one clock"
+      sub="Net flow, the money expiring today, the book, the footprints, the structures and the tape — the first name against the second · pick either name, swap them, cut them to one clock"
       testId="compare"
       data={{ a: aTicker, b: bTicker, clock: tenor, money: mny }}
       guide={{ title: 'How to read the card', door: 'What the rows, the panes and the lists mean', body: <CompareGuide />, testId: 'compare-guide', open: guideOpen, onOpen: setGuideOpen }}
@@ -796,8 +803,8 @@ const Compare = () => {
           <Fact label={`${b.ticker} net`} testId="b-net">
             <span className={dirInk(b.net)}>{signedUsd(b.net)}</span>
           </Fact>
-          <Fact label="Same-day money" testId="same-day">
-            <span className={dirInk(a.odte.net)}>{signedUsd(a.odte.net)}</span> <span className="text-textMuted">·</span> <span className={dirInk(b.odte.net)}>{signedUsd(b.odte.net)}</span>
+          <Fact label="Expiring today · net" testId="same-day" title="Net call premium less net put premium on each name's contracts expiring today — the vendor's flow by expiry">
+            <span className={dirInk(a.odte.net)}>{a.odte.has ? signedUsd(a.odte.net) : '—'}</span> <span className="text-textMuted">·</span> <span className={dirInk(b.odte.net)}>{b.odte.has ? signedUsd(b.odte.net) : '—'}</span>
           </Fact>
           <Champion label={`Leans ${leansWords}`} ink={cmp.bullish.net >= 0 ? 'bull' : 'bear'} onOpen={() => toNetFlow(cmp.bullish.ticker)} testId="bullish">
             {cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}
@@ -805,9 +812,9 @@ const Compare = () => {
           <Champion label="Heavier book" ink="supreme" onOpen={() => toNetFlow(cmp.heavier.ticker)} testId="heavier">
             {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
           </Champion>
-          <Fact label="Busier tape" testId="busier">
+          <Fact label="Busier tape" testId="busier" title={tapeSince ? `Prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `Each name's last ${TAPE_N} prints`}>
             {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
-            {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints</>}
+            {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{tapeSince ? ` since ${nyClock(tapeSince * 1000)}` : ''}</>}
           </Fact>
         </>
         )

@@ -43,7 +43,7 @@
 
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
-import { buildWallContext, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
+import { PUT_WALL_WORDS, buildWallContext, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
 import type { Building, BuildVerdict } from './building';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
@@ -89,8 +89,10 @@ export interface Target {
   breakFlow: number;
   pocket: boolean;
   holdTo: number | null;
-  /** Today's change in the hedging here, dollars, and Building's word for it */
+  /** The latest change in the hedging here, dollars, and Building's word for it */
   build: number;
+  /** The change is the vendor's overnight open-interest count (yesterday's trading) — never "today" */
+  buildOvernight: boolean;
   verdict: BuildVerdict;
   /** Odds the close lands on this strike, percent — 0 outside the band the close can reach */
   closes: number;
@@ -138,7 +140,7 @@ export interface Agenda {
 
 /* ---- helpers --------------------------------------------------------------------- */
 
-const pct = (v: number) => `${Math.round(v * 100)}%`;
+const pct = chanceLabel;
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 /** A wall in reach is one the day can plausibly get to */
 const IN_REACH = 0.15;
@@ -155,7 +157,7 @@ function whyOf(t: Target, order: AgendaOrder, marketPer1Pct: number): string {
     case 'reached':
       return `${pct(t.reach)} reached · ${t.distanceSigma.toFixed(1)}× the expected move away`;
     case 'weakest':
-      return t.isShelf ? `${holdLabel(t.hold)} · ${pct(t.reach)} reached` : t.isWall ? 'too thin to be a wall' : 'a trapdoor — pushes the move along';
+      return t.isShelf ? `${holdLabel(t.hold)} · ${pct(t.reach)} reached` : t.isWall ? 'too thin to be a wall' : t.role === 'put wall' ? 'the put wall — short gamma, so a break can accelerate' : 'a trapdoor — pushes the move along';
     case 'biggest':
       return `${fmtDollars(Math.abs(t.weight))} here + ${fmtDollars(Math.abs(t.breakFlow))} on the way through · ${ratio.toFixed(1)}× the market`;
   }
@@ -180,7 +182,13 @@ function wordsOf(o: WallOdds, shelf: boolean): string {
   const dir = o.side === 'call' ? 'above' : 'below';
   const to = o.breakPath.to;
   const run = to == null ? `no shelf behind it on the strikes shown` : `runs to ${fmtStrike(to)}${o.breakPath.pocket ? ' with almost nothing in between' : ''}${flowWords(o.breakPath.flow)}`;
-  return shelf ? `${holdLabel(o.hold)}; a break ${dir} ${run}` : o.weight > 0 ? `too thin to be a wall; a move ${dir} ${run}` : `a trapdoor — a move ${dir} through it ${run}`;
+  return shelf
+    ? `${holdLabel(o.hold)}; a break ${dir} ${run}`
+    : o.weight > 0
+      ? `too thin to be a wall; a move ${dir} ${run}`
+      : o.role === 'put wall'
+        ? `put wall: ${PUT_WALL_WORDS}; a break ${dir} ${run}`
+        : `a trapdoor (dealers short gamma) — a move ${dir} through it ${run}`;
 }
 
 /* ---- the build ----------------------------------------------------------------- */
@@ -234,6 +242,7 @@ export function buildAgenda(
         pocket: !!o.breakPath.pocket,
         holdTo: o.holdPath.to,
         build: brow?.sizeChange ?? 0,
+        buildOvernight: building.overnight,
         verdict: brow?.verdict ?? 'steady',
         closes: closesAt.get(s.strike) ?? 0,
         stake,
@@ -266,6 +275,8 @@ export function buildAgenda(
   };
   const ordered = [...targets].sort(sorters[order]).map((t, i) => ({ ...t, rank: i + 1, why: whyOf(t, order, marketPer1Pct) }));
 
+  /* THE WATCH-FIRST THREE ARE ALWAYS "MATTERS MOST" — the day's sentence and the Board's watch-first; the podium on the
+     page shows the chosen order's own first three (TargetsBoard) */
   const first = byMatters.slice(0, 3).map(t => ordered.find(x => x.strike === t.strike) ?? t);
   const mostReached = ordered.length ? ordered.reduce((a, b) => (b.reach > a.reach ? b : a)) : null;
   const wallsInReach = ordered.filter(t => t.isShelf && t.reach >= IN_REACH);
@@ -274,7 +285,7 @@ export function buildAgenda(
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall ? 'too thin to be a wall' : 'a trapdoor'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';
@@ -282,6 +293,18 @@ export function buildAgenda(
   return { ticker, spot, marketPer1Pct, sigmaLeft, inSession: clock.inSession, order, targets: ordered, first, mostReached, weakestWall, closesNear, sentence };
 }
 
+/** The agenda as the page lists it: the strikes within `half` of spot either side, numbered in the chosen order. The
+    watch-first three, the sentence and the head's facts stay the desk's own (board.ts deskAgenda), so the page and the
+    Board name the same strike. */
+export function trimAgenda(agenda: Agenda, half: number): Agenda {
+  const asc = [...new Set(agenda.targets.map(t => t.strike))].sort((a, b) => a - b);
+  const above = asc.filter(k => k > agenda.spot).slice(0, half);
+  const below = asc.filter(k => k < agenda.spot).slice(-half);
+  const keep = new Set([...above, ...below]);
+  const targets = agenda.targets.filter(t => keep.has(t.strike)).map((t, i) => ({ ...t, rank: i + 1 }));
+  return { ...agenda, targets };
+}
+
 /** Building's word for today's change at a strike, for the row */
 export const buildWords = (t: Target, inSession: boolean): string =>
-  t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} ${signed(t.build)}${inSession ? '' : ' last session'}`;
+  t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} ${signed(t.build)}${t.buildOvernight ? ' overnight' : inSession ? '' : ' last session'}`;

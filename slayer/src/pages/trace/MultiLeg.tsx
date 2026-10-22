@@ -26,9 +26,9 @@ import { useCallback, useDeferredValue, useMemo, useState, type ReactNode } from
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useSpreadLegs, useSpreads } from '../../data/traceLive';
+import { indexRoot, payoffRange, positionTheta, useSpreadLegs, useSpreads } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
-import { spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadTrade } from '../../data/flowBook';
+import { spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
 import { fmtUsd } from '../../data/gex';
 import BookDrill from '../../components/trace/BookDrill';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
@@ -55,6 +55,8 @@ import Modal from '../../components/ui/Modal';
 import { expiryLabel } from '../../core/format';
 
 const num = (v: number) => v.toLocaleString('en-US');
+/** The structures the page holds — the vendor's newest */
+const SPREADS_N = 200;
 
 /* THE CARDS (the walk, 2026-09-09) */
 const SHAPE_OPTIONS: DropdownOption<SpreadKind | 'ALL'>[] = [{ value: 'ALL', label: 'Every shape', hint: 'Every structure on the tape' }, ...SPREAD_KINDS.map(k => ({ value: k.key, label: k.label, hint: k.read }))];
@@ -63,7 +65,7 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
   { value: 'DEBIT', label: 'Paid', hint: 'Structures that cost money to put on' },
   { value: 'CREDIT', label: 'Collected', hint: 'Structures that paid the trader to put on' },
 ];
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, strategy: 124, strikes: 204, exp: 130, size: 80, net: 100, legs: 64, kind: 108, theta: 96, maxloss: 108, maxprofit: 108 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, strikes: 170, exp: 110, size: 72, net: 116, prem: 104, legs: 64, kind: 168, maxloss: 108, maxprofit: 108 };
 /* the structure's who on the left; its risk at the right, always on screen (Max loss and Max profit stood off a 1280
    screen) */
 const PIN_LEFT = ['time', 'ticker'];
@@ -71,8 +73,10 @@ const PIN_RIGHT = ['maxloss', 'maxprofit'];
 const ML_CUTS = createViewStore('slayer_multileg_cuts_v1');
 const TOOLTIPS: Record<string, string> = {
   strategy: 'The shape — its dot is its kind, never a verdict',
-  strikes: 'Every strike the structure prints, in order; a strike is the door to that leg',
-  net: 'What the structure cost to put on — paid, or collected',
+  kind: "The vendor's name for the shape — its dot is its kind, never a verdict",
+  strikes: 'Every strike the structure prints, in order — the row opens the structure and its legs',
+  net: 'The net price per structure — paid (debit) or collected (credit)',
+  prem: "The structure's net premium — paid (+) or collected (−) across every lot; the gross of every leg is on the hover",
   maxloss: 'The most it can lose at expiry',
   maxprofit: 'The most it can make at expiry',
   legs: 'How many legs the structure has',
@@ -87,7 +91,10 @@ const KIND_DOT: Record<SpreadKind, string> = {
   straddle: 'rgb(var(--cat-macro))',
   strangle: 'rgb(var(--cat-ma))',
   calendar: 'rgb(var(--cat-regulatory))',
+  diagonal: 'rgb(var(--cat-regulatory))',
   ratio: 'rgb(var(--cat-product))',
+  synthetic: 'rgb(var(--cat-guidance))',
+  riskReversal: 'rgb(var(--cat-macro))',
   custom: 'rgb(var(--text-muted))',
 };
 
@@ -103,8 +110,17 @@ const doorBtn = 'inline-flex items-center gap-1 font-mono text-[11px] uppercase 
 
 /** One structure opened up — the legs, the risk box, and the plain-English
     line saying what the shape does. */
-const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => void }) => {
+const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: () => void; onLeg: (legs: SpreadLeg[], i: number) => void }) => {
   const navigate = useNavigate();
+  /* THE STRUCTURE'S OWN LEGS, always (the audit, 2026-10-22): they merged only while the structure was among the newest
+     rows, and the card fell back to placeholders — "Buy ×1 93 put — · 0d @ $0.00" */
+  const legPack = useSpreadLegs(trade);
+  const legs = legPack.rows;
+  const settled = legs.length > 0 && legs.every(l => l.side != null);
+  const theta = positionTheta(legs);
+  const range = payoffRange(legs, trade.netPremium);
+  const maxLoss = range ? range.maxLoss : trade.maxLoss;
+  const maxProfit = range ? range.maxProfit : trade.maxProfit;
 
   const go = (fn: () => void) => {
     onClose();
@@ -140,14 +156,14 @@ const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => voi
           <span className="font-mono text-sm font-bold text-textPrimary">{trade.ticker}</span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[11px] font-semibold text-textPrimary whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: KIND_DOT[trade.kind] }} />
-            {KIND_META[trade.kind].label}
+            {trade.shape === 'unnamed' ? KIND_META[trade.kind].label : trade.shape}
           </span>
         </span>
       }
       headerActions={
         <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap">
           {trade.time}
-          {trade.spot > 0 ? ` · spot $${trade.spot.toFixed(2)}` : ''}
+          {trade.spot > 0 ? (indexRoot(trade.ticker) ? ` · index ${Math.round(trade.spot).toLocaleString('en-US')}` : ` · spot $${trade.spot.toFixed(2)}`) : ''}
         </span>
       }
     >
@@ -156,22 +172,36 @@ const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => voi
           <RichRead text={KIND_META[trade.kind].read} />
         </div>
 
-        {/* The legs — each line one fill */}
-        <div className="border border-borderSubtle rounded mb-3 overflow-hidden">
-          {trade.legs.map((l, i) => (
-            <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 border-b border-borderSubtle/60 last:border-0 font-mono text-[11px]">
-              {/* a leg's side in one ink (2026-10-13): a put sold is not bearish */}
-              <span className="font-bold text-textPrimary">{l.side === 'BUY' ? 'Buy' : 'Sell'}</span>
-              <span className="text-textSecondary">×{l.ratio}</span>
-              <span className="font-bold text-textPrimary tnum">{l.strike}</span>
-              <span className={`font-semibold ${l.right === 'C' ? 'text-bull' : 'text-bear'}`}>{l.right === 'C' ? 'call' : 'put'}</span>
-              <span className="text-[11px] text-textSecondary">
-                {expiryLabel(l.expiry)} · {l.dte}d
-              </span>
-              <span className="ml-auto tnum text-textPrimary">@ ${l.fill.toFixed(2)}</span>
-            </div>
-          ))}
+        {/* The legs — each line one fill, its direction settled by the structure's own net premium; a leg is the door to
+            its contract's card */}
+        <div className="border border-borderSubtle rounded mb-3 overflow-hidden" data-spread-legs>
+          {legs.length === 0 ? (
+            <div className="px-2.5 py-3 font-mono text-[11px] text-textMuted">{legPack.waiting ? 'Reading the legs…' : legPack.fault ? 'The legs did not load' : 'No legs on the record'}</div>
+          ) : (
+            legs.map((l, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onLeg(legs, i)}
+                title="Open this leg's contract card"
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 border-b border-borderSubtle/60 last:border-0 font-mono text-[11px] text-left hover:bg-ink/[0.04]"
+              >
+                {/* a leg's side in one ink (2026-10-13): a put sold is not bearish */}
+                <span className="font-bold text-textPrimary w-8">{l.side === 'BUY' ? 'Buy' : l.side === 'SELL' ? 'Sell' : 'Leg'}</span>
+                <span className="text-textSecondary">{num(l.contracts ?? trade.size * l.ratio)}×</span>
+                <span className="font-bold text-textPrimary tnum">{l.strike}</span>
+                <span className={`font-semibold ${l.right === 'C' ? 'text-bull' : 'text-bear'}`}>{l.right === 'C' ? 'call' : 'put'}</span>
+                <span className="text-[11px] text-textSecondary">
+                  {expiryLabel(l.expiry)} · {l.dte}d
+                </span>
+                <span className="ml-auto tnum text-textPrimary">@ ${l.fill.toFixed(2)}</span>
+              </button>
+            ))
+          )}
         </div>
+        {legs.length > 0 && !settled && (
+          <p className="-mt-2 mb-3 font-mono text-[11px] text-textMuted">No single set of buys and sells adds up to this structure's net, so its legs carry no direction here — and no theta or payoff.</p>
+        )}
 
         <div className="grid grid-cols-2 gap-x-6 mb-3">
           <div>
@@ -182,34 +212,25 @@ const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => voi
               </>
             )}
             {fact('Size', `${num(trade.size)}×`)}
-            {fact('Premium', fmtUsd(trade.premium))}
-            {fact('IV', `${trade.iv.toFixed(1)}%`)}
+            {fact(trade.netPremium >= 0 ? 'Net paid' : 'Net collected', trade.netPremium === 0 ? '—' : fmtUsd(Math.abs(trade.netPremium)))}
+            {fact('Gross of the legs', fmtUsd(trade.premium))}
+            {fact('IV', trade.iv > 0 ? `${trade.iv.toFixed(1)}%` : '—')}
           </div>
           <div>
-            {fact('Max loss', riskCell(trade.maxLoss, 'loss'))}
-            {fact('Max profit', riskCell(trade.maxProfit, 'profit'))}
-            {fact(
-              'Delta',
-              /* the vendor sends no greeks on some structures — a missing figure, not a flat 0.00 */
-              trade.delta === 0 && trade.theta === 0 ? (
-                <span className="text-textMuted">—</span>
-              ) : (
-                <span className={trade.delta >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}>
-                  {trade.delta >= 0 ? '+' : ''}
-                  {trade.delta.toFixed(2)}
-                </span>
-              )
-            )}
+            {fact('Max loss', riskCell(maxLoss, 'loss'))}
+            {fact('Max profit', riskCell(maxProfit, 'profit'))}
             {fact(
               'Theta',
-              trade.delta === 0 && trade.theta === 0 ? (
+              /* per POSITION: Σ ± theta × contracts × 100 over the settled legs — dollars a day to time */
+              theta == null ? (
                 <span className="text-textMuted">—</span>
               ) : (
-                <span className="text-textSecondary">
-                  {trade.theta >= 0 ? '+' : '−'}${Math.abs(trade.theta).toFixed(2)} a day
+                <span className="text-textSecondary" title="Dollars a day the whole position gains (+) or loses (−) to time: each leg's theta × its contracts × 100, bought plus, sold minus">
+                  {theta >= 0 ? '+' : '−'}${Math.abs(theta).toFixed(2)} a day
                 </span>
               )
             )}
+            {fact('Legs', String(legs.length || trade.legCount || '—'))}
           </div>
         </div>
 
@@ -230,18 +251,6 @@ const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => voi
   );
 };
 
-/** The strikes a structure prints, each paired with the leg that owns it — a
-    calendar has two legs on one strike, and the label shows that strike once. */
-const distinctStrikes = (t: SpreadTrade): { strike: number; legIdx: number }[] => {
-  const seen = new Set<number>();
-  const out: { strike: number; legIdx: number }[] = [];
-  t.legs.forEach((l, legIdx) => {
-    if (seen.has(l.strike)) return;
-    seen.add(l.strike);
-    out.push({ strike: l.strike, legIdx });
-  });
-  return out.sort((a, b) => a.strike - b.strike);
-};
 
 /** A structure on a phone */
 const phoneRow = (t: SpreadTrade) => (
@@ -250,19 +259,19 @@ const phoneRow = (t: SpreadTrade) => (
     title={
       <>
         <span className="font-bold">{t.ticker}</span>
-        <span>{KIND_META[t.kind].label}</span>
+        <span>{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
         <span className="font-bold tnum">{t.strikesLabel}</span>
       </>
     }
     aside={t.time}
     figures={[
       <span key="p" className="font-semibold text-textPrimary">
-        {fmtUsd(t.premium)}
+        {t.netPremium === 0 ? fmtUsd(t.premium) : `${fmtUsd(Math.abs(t.netPremium))} ${t.netPremium > 0 ? 'paid' : 'collected'}`}
       </span>,
       <span key="n">
         {t.net === 0 ? 'net not printed' : `$${Math.abs(t.net).toFixed(2)} ${t.net > 0 ? 'debit' : 'credit'}`}
       </span>,
-      <span key="l">max loss {t.maxLoss === 'uncapped' ? 'uncapped' : t.maxLoss == null ? '—' : fmtUsd(t.maxLoss)}</span>,
+      <span key="l">max loss {t.maxLoss === 'uncapped' ? 'uncapped' : t.maxLoss == null ? 'on the card' : fmtUsd(t.maxLoss)}</span>,
     ]}
   />
 );
@@ -292,12 +301,11 @@ const MultiLeg = () => {
   const [legKey, setLegKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const pack = useSpreads(80);
+  const pack = useSpreads(SPREADS_N);
   /* NOT YET / NOT AT ALL is not "no structures": before the tape lands, and when it fails, the page had read "No
      multi-leg trades on the tape yet today" over 0 · 0 (the ship pass, 2026-10-22) */
   const tapeState: 'reading' | 'down' | 'in' = pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
-  const legs = useSpreadLegs(drill?.id ?? null);
-  const liveTrades = useMemo(() => pack.rows.map(t => (drill && t.id === drill.id && legs.rows.length ? { ...t, legs: legs.rows } : t)), [pack.rows, drill, legs.rows]);
+  const liveTrades = pack.rows;
   // The shared hold (see LiveHold): structures and tick freeze together while paused.
   const hold = useHold(useMemo(() => ({ trades: liveTrades, tick: marketData }), [liveTrades, marketData]), activeTicker);
   const { trades: heldTrades, tick } = hold.value;
@@ -305,6 +313,11 @@ const MultiLeg = () => {
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldTrades, t => t.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
   const trades = useMemo(() => cutExpiry(heldTrades), [heldTrades, cutExpiry]);
   const keyOf = useCallback((t: { id: string }) => t.id, []);
+  /* the window the structures cover — the first and last in hand */
+  const windowSpan = useMemo(() => {
+    const ts = heldTrades.map(t => t.time).sort();
+    return ts.length ? `${ts[0]}–${ts[ts.length - 1]}` : '—';
+  }, [heldTrades]);
   const openRow = useCallback((t: SpreadTrade) => setDrill(t), []);
 
   const rows = useMemo(() => {
@@ -329,7 +342,7 @@ const MultiLeg = () => {
   const marks = useMemo(
     () => ({
       size: earnMarks(shown, t => t.size),
-      prem: earnMarks(shown, t => t.premium),
+      prem: earnMarks(shown, t => Math.abs(t.netPremium)),
     }),
     [shown]
   );
@@ -353,24 +366,25 @@ const MultiLeg = () => {
     for (const t of trades) {
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
       names.add(t.ticker);
-      prem += t.premium;
+      prem += Math.abs(t.netPremium);
       /* a structure whose net the vendor left out is neither — it was counted as paid */
       if (t.net > 0) paid++;
       else if (t.net < 0) collected++;
     }
     const unpriced = trades.length - paid - collected;
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
-    const big = [...trades].sort((a, b) => b.premium - a.premium)[0];
+    /* THE BIGGEST BY ITS NET (the audit, 2026-10-22: "$1.3M collected" was the gross of every leg; the net was ~$830K) */
+    const big = [...trades].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
     return (
       <>
-        <RichRead text={`${fmtUsd(prem)} across ${trades.length} multi-leg trades on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
+        <RichRead text={`In the newest ${trades.length} multi-leg trades (${windowSpan} ET): ${fmtUsd(prem)} of net premium on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
         <ReadDoor onOpen={() => setDrill(big)}>
-          {big.ticker} {KIND_META[big.kind].label.toLowerCase()}
+          {big.ticker} {big.shape === 'unnamed' ? KIND_META[big.kind].label.toLowerCase() : big.shape}
         </ReadDoor>
-        <RichRead text={`, ${num(big.size)} of them for [[${fmtUsd(big.premium)}]]${big.net > 0 ? ' paid' : big.net < 0 ? ' collected' : ''}.`} />
+        <RichRead text={`, ${num(big.size)} of them for [[${fmtUsd(Math.abs(big.netPremium))}]] net${big.netPremium > 0 ? ' paid' : big.netPremium < 0 ? ' collected' : ''} (${fmtUsd(big.premium)} across every leg).`} />
       </>
     );
-  }, [trades, tapeState]);
+  }, [trades, tapeState, windowSpan]);
 
   const activeKind = kind === 'ALL' ? null : KIND_META[kind];
 
@@ -404,46 +418,17 @@ const MultiLeg = () => {
         header: 'Strategy',
         sortValue: t => t.kind,
         render: t => (
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-textPrimary">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap" title={KIND_META[t.kind].read}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
-            {KIND_META[t.kind].label}
+            {t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}
           </span>
         ),
       },
       {
         key: 'strikes',
         header: 'Strikes',
-        sortValue: t => t.legs[0]?.strike ?? 0,
-        /* Every strike is its own door to the tape, silver under the pointer like the
-           contract cell on every other flow page (Noah, 2026-08-30). The ROW
-           still opens the structure card — that is this page's own fact — so
-           each strike stops the click from reaching it. One button per DISTINCT
-           strike, which is exactly what strikesLabel prints. */
-        render: t => (
-          /* leading-none + align-middle: the cell inherits the table's 36px
-             line height, which makes this one line taller than the row and
-             clips the strikes' own underlines — the doors' whole affordance.
-             The same trap the contract cell was in. */
-          <span className="inline-flex items-baseline gap-1 font-mono tnum leading-none align-middle">
-            {distinctStrikes(t).map(({ strike, legIdx }, n) => (
-              <span key={legIdx} className="inline-flex items-baseline">
-                {n > 0 && <span className="text-textSecondary mx-1">/</span>}
-                <button
-                  onClick={e => {
-                    e.stopPropagation();
-                    setLegTrade(t);
-                    setLegKey(`${t.id}-l${legIdx}`);
-                  }}
-                  title="Open this contract's card"
-                  aria-label={`Open the ${strike} leg's card`}
-                  className={`font-bold text-textPrimary pb-[2px] ${DOOR} ${DOOR_HOVER_TEXT}`}
-                >
-                  {strike}
-                </button>
-              </span>
-            ))}
-          </span>
-        ),
+        sortValue: t => Number(t.strikesLabel.split(' / ')[0]) || 0,
+        render: t => <span className="font-mono tnum font-bold text-textPrimary whitespace-nowrap">{t.strikesLabel}</span>,
       },
       {
         key: 'exp',
@@ -482,8 +467,12 @@ const MultiLeg = () => {
         key: 'prem',
         header: 'Premium',
         align: 'right',
-        sortValue: t => t.premium,
-        render: t => <span className={weightInk(t.premium, marks.prem)}><TickFigure value={t.premium}>{fmtUsd(t.premium)}</TickFigure></span>,
+        sortValue: t => Math.abs(t.netPremium),
+        render: t => (
+          <span className={weightInk(Math.abs(t.netPremium), marks.prem)} title={`${fmtUsd(t.premium)} across every leg`}>
+            {t.netPremium === 0 ? <span className="text-textMuted">—</span> : <TickFigure value={t.netPremium}>{`${t.netPremium > 0 ? '+' : '−'}${fmtUsd(Math.abs(t.netPremium))}`}</TickFigure>}
+          </span>
+        ),
       },
       {
         key: 'maxloss',
@@ -507,47 +496,18 @@ const MultiLeg = () => {
         render: t => <span className="text-textPrimary">{t.iv.toFixed(0)}%</span>,
       },
       {
-        key: 'delta',
-        header: 'Delta',
-        align: 'right',
-        sortValue: t => t.delta,
-        render: t =>
-          t.delta === 0 && t.theta === 0 ? (
-            <span className="text-textMuted">—</span>
-          ) : (
-            <span className={t.delta >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}>
-              {t.delta >= 0 ? '+' : ''}
-              {t.delta.toFixed(2)}
-            </span>
-          ),
-      },
-      {
-        key: 'theta',
-        header: 'Theta',
-        align: 'right',
-        sortValue: t => t.theta,
-        render: t =>
-          t.delta === 0 && t.theta === 0 ? (
-            <span className="text-textMuted">—</span>
-          ) : (
-            <span className="text-textPrimary" title="Dollars a day the structure gains (+) or loses (−) to time, a structure">
-              {t.theta >= 0 ? '+' : '−'}${Math.abs(t.theta).toFixed(2)}/day
-            </span>
-          ),
-      },
-      {
         key: 'stock',
         header: 'Stock',
         align: 'right',
         sortValue: t => t.spot,
-        render: t => (t.spot > 0 ? <span className="text-textPrimary">${t.spot.toFixed(2)}</span> : <span className="text-textMuted">—</span>),
+        render: t => (t.spot > 0 ? <span className="text-textPrimary">{indexRoot(t.ticker) ? Math.round(t.spot).toLocaleString('en-US') : `$${t.spot.toFixed(2)}`}</span> : <span className="text-textMuted">—</span>),
       },
       {
         key: 'legs',
         header: 'Legs',
         align: 'right',
-        sortValue: t => t.legs.length,
-        render: t => <span className="text-textPrimary">×{t.legs.length}</span>,
+        sortValue: t => t.legCount ?? 0,
+        render: t => <span className="text-textPrimary">{t.legCount ?? '—'}</span>,
       },
     ],
     []
@@ -557,7 +517,7 @@ const MultiLeg = () => {
      strip — facts left, champions as pills right — and the column chooser.
      The bull/bear pills only show when they are not the magenta one. */
   const champs = useMemo(() => {
-    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(pick).reduce<SpreadTrade | null>((a, t) => (a === null || t.premium > a.premium ? t : a), null);
+    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(pick).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
     return { paid: by(t => t.net > 0), collected: by(t => t.net < 0), all: by(() => true) };
   }, [shown]);
   const facts = useMemo(() => {
@@ -572,22 +532,23 @@ const MultiLeg = () => {
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
     return { paid, collected, loudKind: loud ? KIND_META[loud[0]].label : '', loudCount: loud ? loud[1] : 0 };
   }, [trades]);
-  const pill = (t: SpreadTrade) => `${t.ticker} ${KIND_META[t.kind].label.toLowerCase()} · ${fmtUsd(t.premium)}`;
-  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_multileg_cols');
+  const pill = (t: SpreadTrade) => `${t.ticker} ${t.shape === 'unnamed' ? KIND_META[t.kind].label.toLowerCase() : t.shape} · ${fmtUsd(Math.abs(t.netPremium))} net`;
+  /* the IV and the stock open folded — one click away in Columns (sixteen columns did not fit at 1440) */
+  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_multileg_cols_v2', ['iv', 'stock']);
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
 
   return (
     <>
       <TraceBox
         title="The tape as structures"
-        sub={`${activeKind ? `${activeKind.label} — ${activeKind.read}` : 'Every structure on the tape today, newest first'} · a row opens the structure with each leg`}
+        sub={`${activeKind ? `${activeKind.label} — ${activeKind.read}` : `The newest ${SPREADS_N} structures on the tape, newest first`} · a row opens the structure with each leg`}
         testId="multi-leg"
         data={{ kind, rows: rows.length, expiry: expiry ?? 'all' }}
         guide={{ title: 'How to read the structures', door: 'What a shape, its strikes and its risk mean', body: <StructureGuide />, testId: 'multi-leg-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Structures today" testId="structures">
-              {tapeState !== 'in' ? <span className="text-textMuted">—</span> : num(trades.length)}
+            <Fact label="Structures" testId="structures" title={`The vendor's newest ${SPREADS_N} multi-leg trades — not the whole day`}>
+              {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{num(trades.length)} <span className="text-textSecondary">· {windowSpan} ET</span></>}
               {tapeState === 'in' && facts.loudKind && (
                 <span className="text-textSecondary">
                   {' '}
@@ -647,7 +608,16 @@ const MultiLeg = () => {
         {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
 
-      {drill && <SpreadCard trade={liveTrades.find(t => t.id === drill.id) ?? drill} onClose={() => setDrill(null)} />}
+      {drill && (
+        <SpreadCard
+          trade={drill}
+          onClose={() => setDrill(null)}
+          onLeg={(legs, i) => {
+            setLegTrade({ ...drill, legs });
+            setLegKey(`${drill.id}-l${i}`);
+          }}
+        />
+      )}
 
       {/* The same contract card the rest of Trace opens — the legs of whichever
           structure the reader reached in through. */}

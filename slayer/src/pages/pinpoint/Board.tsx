@@ -27,7 +27,7 @@
 ==================================================
 */
 
-import { holdLabel } from '../../data/wall';
+import { holdShort as holdShortOf } from '../../data/wall';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +49,10 @@ import { REGIME_WORDS } from '../../data/flipGauge';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CALL_WALL, FLIP, LONG_GAMMA, PUT_WALL, SHORT_GAMMA, SUPREME, THERMAL_WARM } from '../../components/gex/paletteInk';
 import { fmtDollars } from '../../data/ahead';
+import { chanceLabel } from '../../data/wall';
+import { nyClock } from '../../core/nyTime';
+import { useLevelsScope } from '../../data/levelsScope';
+import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { BOARD_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -131,13 +135,13 @@ const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
 const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
   if (data.pending) return <Pending data={data} />;
-  if (!data.regime) return <span className="font-mono text-[10px] text-textMuted">one-sided — no flip</span>;
+  if (!data.regime) return <span className="font-mono text-[10px] text-textMuted">balanced</span>;
   const w = REGIME_WORDS[data.regime];
   /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
   if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="font-mono text-[11px] text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
   /* The shell's words, not "LONG GAMMA" (2026-09-09): plain English on Pinpoint */
   return (
-    <span className="font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}`}>
+    <span className="font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
       {data.regime === 'SHORT' ? 'amplifying moves' : 'absorbing moves'}
     </span>
   );
@@ -153,9 +157,11 @@ const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
       </span>
       {data.flipDistPct != null && <span className="text-[10px] text-textSecondary">{fmtPct(data.flipDistPct)}</span>}
     </TickFigure>
-  ) : (
-    <span className="font-mono text-[10px] text-textMuted">—</span>
-  );
+  ) : data ? (
+    <span className="font-mono text-[10px] text-textMuted" title={`No flip within ±10%: dealers are ${data.regime === 'LONG' ? 'long' : 'short'} gamma across the whole range`}>
+      none nearby
+    </span>
+  ) : null;
 
 const WallCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data?.pending ? (
@@ -178,19 +184,27 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!w) return <span className="font-mono text-[10px] text-textMuted">—</span>;
   const kind = w.role ?? (w.isShelf ? 'shelf' : w.isWall ? null : 'trapdoor');
   const ink = w.role ? ROLE_INK[w.role] : w.isShelf ? 'rgb(var(--text-muted))' : w.isWall ? undefined : WARM;
+  /* TWO LINES, so nothing truncates ("$8(" at 1440): the strike and its kind, then the chance, the size and the dollars */
   return (
-    <span className="inline-flex items-baseline gap-2 font-mono tnum tabular-nums">
-      <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(w.strike)}</span>
-      {kind && (
-        <span className="text-[8px] uppercase tracking-widest" style={{ color: ink }}>
-          {kind}
-        </span>
-      )}
-      <span className="text-[10px] text-textSecondary">
-        {Math.round(w.reach * 100)}% reached{w.isShelf ? ' · ' : ''}
-        {w.isShelf && <span style={{ color: SILVER }}>{holdLabel(w.hold)}</span>}
+    <span className="flex flex-col justify-center leading-[14px] font-mono tnum tabular-nums min-w-0">
+      <span className="inline-flex items-baseline gap-2">
+        <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(w.strike)}</span>
+        {kind && (
+          <span className="text-[8px] uppercase tracking-widest" style={{ color: ink }}>
+            {kind}
+          </span>
+        )}
       </span>
-      <span className="text-[10px] text-textMuted">{fmtDollars(w.stake)}</span>
+      <span className="text-[10px] text-textSecondary whitespace-nowrap">
+        {chanceLabel(w.reach)} reached
+        {w.isShelf && (
+          <>
+            {' · '}
+            <span style={{ color: SILVER }}>{holdShortOf(w.hold)} wall</span>
+          </>
+        )}
+        <span className="text-textMuted"> · {fmtDollars(w.stake)}</span>
+      </span>
     </span>
   );
 };
@@ -219,7 +233,7 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
   ) : null;
 
 const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data && data.bellShare != null ? (
+  !data ? null : data.bellShare != null ? (
     <span className="inline-flex items-center gap-2 font-mono tnum tabular-nums w-full" title={`${data.bellShare}% of ${data.ticker}'s gamma sits in contracts that expire at 4:00 today`}>
       <span className="text-[11px] text-textPrimary w-8 text-right">{data.bellShare}%</span>
       <span className="flex-1 h-[3px] rounded-full bg-ink/[0.06] overflow-hidden">
@@ -227,9 +241,13 @@ const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
       </span>
     </span>
   ) : (
-    <span className="font-mono text-[10px] text-textMuted" title={data?.bellWhy === 'none' ? `Nothing on ${data.ticker} expires today` : 'Still reading the expiry list'}>
-      {data?.bellWhy === 'none' ? '— none today' : '—'}
-    </span>
+    data.bellWhy === 'none' ? (
+      <span className="font-mono text-[10px] text-textMuted" title={BELL_NONE_TITLE(data.ticker)}>
+        {BELL_NONE}
+      </span>
+    ) : (
+      <Pending data={data} />
+    )
   );
 
 const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
@@ -277,7 +295,8 @@ const Board = () => {
     const step = () => {
       if (run !== runRef.current) return;
       if (i >= list.length) {
-        setScanAt(new Date().toLocaleTimeString('en-GB'));
+        /* New York's clock, said as such — the machine's own zone printed 18:xx on a 14:xx market */
+        setScanAt(nyClock(Date.now(), { seconds: true, zone: true }));
         return;
       }
       const row = buildBoardRow(list[i++]);
@@ -361,22 +380,13 @@ const Board = () => {
      the nearest wall and how far, the flip, the supreme, net GEX — come straight after it; the long ones (watch first,
      the day's path, crossings, positions) leave the grid there. Anything past the screen scrolls inside the grid. */
   const phone = useIsPhone();
+  const levelsScope = useLevelsScope();
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
       { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 130, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
-      { headerName: 'Price', field: 'spot', flex: 1.2, minWidth: 140, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: "The last price and today's change" },
-      {
-        headerName: 'Watch first',
-        field: 'watch',
-        flex: 2.2,
-        minWidth: 290,
-        cellRenderer: WatchCell,
-        cellDataType: false,
-        headerTooltip: 'The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there today; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there',
-        // The name whose first target matters most, first
-        comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
-      },
-      { headerName: 'Hedging today', field: 'regime', flex: 1.1, minWidth: 130, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing near the current price: absorbing moves (price above the flip) or amplifying them (price below it)' },
+      { headerName: 'Price', field: 'spot', flex: 1.1, minWidth: 130, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: "The last price and today's change" },
+      { headerName: 'Hedging today', field: 'regime', flex: 1.1, minWidth: 130, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
+      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : 'Net GEX · today', field: 'netGex', flex: 1.1, minWidth: 150, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
@@ -384,22 +394,32 @@ const Board = () => {
         minWidth: 140,
         cellRenderer: FlipCell,
         sort: 'asc',
-        headerTooltip: 'The flip: the price where dealer hedging switches from absorbing moves to amplifying them, and how far it is from the current price. Names closest to their flip come first',
+        headerTooltip: "The flip: the price where the name's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves — and how far it is from the current price. Names closest to their flip come first; \"none nearby\" means no crossing within 10%, and those come last",
         // Closest to flipping first — the names that can change character next
         comparator: (a: number | null, b: number | null) => Math.abs(a ?? 1e9) - Math.abs(b ?? 1e9),
       },
       {
         headerName: 'Nearest wall',
         field: 'nearest',
-        flex: 1.4,
-        minWidth: 190,
+        flex: 1.3,
+        minWidth: 170,
         cellRenderer: WallCell,
         cellDataType: false,
         headerTooltip: 'The nearest wall: a strike with a lot of hedging that tends to slow price down. Call walls sit above price, put walls below. Shows how far away it is',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: 'Supreme', field: 'supreme', flex: 0.8, minWidth: 96, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
-      { headerName: 'Net GEX today', field: 'netGex', flex: 1.1, minWidth: 120, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
+      { headerName: 'Supreme', field: 'supreme', flex: 0.7, minWidth: 84, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
+      {
+        headerName: 'Watch first',
+        field: 'watch',
+        flex: 1.6,
+        minWidth: 220,
+        cellRenderer: WatchCell,
+        cellDataType: false,
+        headerTooltip: 'The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there today; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there',
+        // The name whose first target matters most, first
+        comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
+      },
       { headerName: 'Expires today', field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: "The share of the name's hedging in contracts that expire at 4:00 today. It is gone after the close, and the walls it made go with it. A dash means nothing on the name expires today" },
       { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: 'How many times price has crossed the flip today. The more crossings, the less either side of it means' },
       { headerName: 'Today so far', field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: 'The price path since the open' },
@@ -415,9 +435,9 @@ const Board = () => {
       },
     ];
     if (!phone) return cols;
-    const order = ['ticker', 'spot', 'nearest', 'flipDistPct', 'supreme', 'netGex', 'bellShare', 'regime'];
+    const order = ['ticker', 'spot', 'regime', 'netGex', 'flipDistPct', 'nearest', 'supreme', 'bellShare'];
     return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
-  }, [phone]);
+  }, [phone, levelsScope]);
   const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip' }), []);
 
   const open = (e: RowClickedEvent<BoardRow>) => {
@@ -518,6 +538,11 @@ const Board = () => {
             rowData={rows}
             onRowDataUpdated={e => {
               if (e.api.getDisplayedRowCount() > 0) e.api.hideOverlay();
+              /* EVERY CELL REDRAWS WHEN A ROW LANDS (the audit's B1: the renderers read `pending` and the bell's reason, so
+                 a cell whose own field had not changed kept its "…" forever), and the sort is re-applied, so "closest to
+                 its flip first" stays true as flips arrive */
+              e.api.refreshCells({ force: true });
+              e.api.onSortChanged();
             }}
             overlayNoRowsTemplate='<span class="font-mono text-[11px] text-textSecondary">Still reading the book</span>'
             columnDefs={columnDefs}
@@ -529,7 +554,7 @@ const Board = () => {
             doesExternalFilterPass={doesExternalFilterPass}
             rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
             suppressCellFocus
-            animateRows
+            animateRows={!phone}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
             alwaysShowHorizontalScroll

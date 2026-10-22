@@ -25,7 +25,7 @@
 */
 
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -38,7 +38,8 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
 import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, congressSentence, seatLabel, summariseCongress } from '../../data/congress';
-import { useCongressFeed, useCongressStatus } from '../../data/liveRecord';
+import { useCongressCoverage, useCongressFeed, useCongressStatus, wantCongressWindow, type CongressCoverage } from '../../data/liveRecord';
+import { nyIsoDaysBack } from '../../data/nyDate';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
 import type { Chamber, CongressTrade, ReportOwner } from '../../types/record';
@@ -52,9 +53,9 @@ type OwnerPick = 'any' | ReportOwner;
 type Show = 'all' | 'late' | 'purchases' | 'sales';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
-  { value: 30, label: '30 days', hint: 'Reports filed in the last month' },
-  { value: 90, label: '90 days', hint: 'The last quarter' },
-  { value: 180, label: '180 days', hint: 'The last half year' },
+  { value: 30, label: '30 days', hint: 'Trades made in the last month' },
+  { value: 90, label: '90 days', hint: 'Trades made in the last quarter' },
+  { value: 180, label: '180 days', hint: 'Trades made in the last half year' },
 ];
 const CHAMBER_OPTIONS: DropdownOption<ChamberPick>[] = [
   { value: 'both', label: 'Both', hint: 'House and Senate' },
@@ -69,7 +70,7 @@ const OWNER_OPTIONS: DropdownOption<OwnerPick>[] = [
   { value: 'Dependent', label: 'Dependent', hint: "A dependent child's holding" },
 ];
 const SHOW_OPTIONS: DropdownOption<Show>[] = [
-  { value: 'all', label: 'All reports', hint: 'Every report in the window' },
+  { value: 'all', label: 'All reports', short: 'All', hint: 'Every report in the window' },
   { value: 'late', label: 'Late only', hint: 'Filed past the 45-day deadline' },
   { value: 'purchases', label: 'Purchases', hint: 'Purchases only', tone: 'bull' },
   { value: 'sales', label: 'Sales', hint: 'Sales only, full or partial', tone: 'bear' },
@@ -216,6 +217,31 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
   </button>
 );
 
+/* ---- what the window covers ------------------------------------------------------- */
+
+const shortDay = (iso: string): string => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+};
+
+/** One honest line: the trade days the reports cover, whether the read is still going back, and the days it could not finish */
+const CongressCoverageLine = ({ coverage, window, unread }: { coverage: CongressCoverage; window: number; unread: number }) => {
+  const start = nyIsoDaysBack(window);
+  const covered = !!coverage.since && coverage.since <= start;
+  const partial = coverage.partialDays.filter(d => d >= start);
+  return (
+    <p className="px-5 pb-2 text-[11px] leading-relaxed text-textMuted" data-congress-coverage title="Unusual Whales sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
+      {covered
+        ? `Every report of a trade made since ${shortDay(start)}`
+        : coverage.since
+          ? `Reports of trades made since ${shortDay(coverage.since)}${coverage.reading ? ' — reading further back' : coverage.capped ? ` — the read stops there, short of ${window} days` : ''}`
+          : 'Reading'}
+      {partial.length ? ` · ${partial.length} ${partial.length === 1 ? 'day' : 'days'} with more than 200 reports (${partial.map(shortDay).join(', ')}) may be incomplete` : ''}
+      {unread ? ` · ${unread} ${unread === 1 ? 'report' : 'reports'} with an unreadable type left out` : ''}
+    </p>
+  );
+};
+
 /* ---- the page ------------------------------------------------------------------ */
 
 const Congress = () => {
@@ -226,8 +252,10 @@ const Congress = () => {
   const [show, setShow] = useState<Show>('all');
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* The feed is the live record when it answers, otherwise the session's book */
+  /* The feed is the live record when it answers; the reports are paged back by trade day until the window is covered */
   const feed = useCongressFeed(window);
+  useEffect(() => wantCongressWindow(window), [window]);
+  const coverage = useCongressCoverage();
   /* a failed read is not a quiet quarter — the figures go to dashes and the page says the read did not land */
   const status = useCongressStatus();
   const failed = status === 'sim';
@@ -296,7 +324,7 @@ const Congress = () => {
 
   const columnDefs = useMemo<ColDef<CongressTrade>[]>(
     () => [
-      { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: FiledCell, sort: 'asc', headerTooltip: 'The day the report was filed, and how far back that is — newest first' },
+      { headerName: 'Filed', field: 'filedDaysAgo', width: 146, cellRenderer: FiledCell, sort: 'asc', headerTooltip: 'The day the report was filed, and how far back that is — newest first' },
       { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.7, minWidth: 220, cellRenderer: MemberCell, comparator: (a: CongressTrade['member'], b: CongressTrade['member']) => a.name.localeCompare(b.name), headerTooltip: 'A row opens this member’s book' },
       { headerName: 'Asset', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: AssetCell, headerTooltip: 'The stock the report names' },
       { headerName: 'Type', field: 'type', flex: 0.8, minWidth: 110, cellRenderer: TypeCell, headerTooltip: 'Purchase, sale (full or partial), or an exchange' },
@@ -310,7 +338,7 @@ const Congress = () => {
         comparator: (a: number | null, b: number | null) => (a ?? -1) - (b ?? -1),
         headerTooltip: 'The bracket the member disclosed, as a rung on the ten-rung ladder — never a midpoint; some scanned filings carry none',
       },
-      { headerName: 'Traded', field: 'tradedDaysAgo', width: 126, cellRenderer: TradedCell, headerTooltip: 'The day the trade itself happened, and how far back that is' },
+      { headerName: 'Traded', field: 'tradedDaysAgo', width: 146, cellRenderer: TradedCell, headerTooltip: 'The day the trade itself happened, and how far back that is' },
       { headerName: 'Lag', field: 'lagDays', width: 100, cellRenderer: LagCell, headerTooltip: `Days from the trade to the filing — past ${STOCK_ACT_DEADLINE_DAYS} it is late` },
     ],
     []
@@ -333,7 +361,7 @@ const Congress = () => {
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What Congress reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every report in the window, newest filing first · a row opens that member’s book</p>
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every report of a trade made in the window, newest filing first · a row opens that member’s book</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
@@ -349,9 +377,10 @@ const Congress = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Reports filed more than 45 days after the trade, the STOCK Act's limit">Past the deadline</dt>
+            {/* a trade made under 45 days ago cannot be late yet — on the 30-day window the count is structurally nil, and says so */}
+            <dt className="text-[10px] text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among trades made in the last ${window} days`}>Past the deadline</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${stats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
-              {quiet ? '—' : stats.lateFilings}
+              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS ? <span className="text-textMuted">none can be yet</span> : stats.lateFilings}
             </dd>
           </div>
         </dl>
@@ -364,11 +393,12 @@ const Congress = () => {
         <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
       </div>
+      {!failed && !waiting && <CongressCoverageLine coverage={coverage} window={window} unread={feed.unreadTypes ?? 0} />}
       {failed ? (
         <FeedFallback />
       ) : (
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
-          {waiting ? 'Reading the reports.' : congressSentence(stats)}
+          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among trades made in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : congressSentence(stats)}
         </p>
       )}
       {/* THE REPORTS TO KNOW */}

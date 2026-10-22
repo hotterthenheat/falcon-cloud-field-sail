@@ -44,7 +44,8 @@ import Term from '../ui/Term';
 import { LEDGER_COLUMNS, LEDGER_COMPACT_COLUMNS, LEDGER_FOLD_H, LEDGER_ROW_H } from './buildingSkeletons';
 import { BULL, CALL_WALL, PUT_WALL, SUPREME, alpha } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
-import { sideWords, type BuildRow, type Building } from '../../data/building';
+import { shownGamma } from './retailSign';
+import { changeWhen, sideWords, type BuildRow, type Building } from '../../data/building';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -61,8 +62,8 @@ export type BuildOrder = 'strike' | 'built' | 'drained';
 export type BuildShow = 'moved' | 'all';
 export const ORDER_OPTIONS: DropdownOption<BuildOrder>[] = [
   { value: 'strike', label: 'By strike', hint: 'Highest first, spot marked between' },
-  { value: 'built', label: 'Most built first', hint: 'The strikes gaining the most hedging today' },
-  { value: 'drained', label: 'Most drained first', hint: 'The strikes losing the most hedging today' },
+  { value: 'built', label: 'Most built first', hint: 'The strikes that gained the most hedging in the latest open-interest count' },
+  { value: 'drained', label: 'Most drained first', hint: 'The strikes that lost the most hedging in the latest open-interest count' },
 ];
 export const WINDOW_OPTIONS: DropdownOption<StrikeWindow>[] = STRIKE_WINDOWS.map(w => ({ value: w, label: `±${w}`, hint: w === 30 ? 'Every strike' : `${w} strikes each side of spot` }));
 export const SHOW_OPTIONS: DropdownOption<BuildShow>[] = [
@@ -95,7 +96,7 @@ const verdictOf = (r: BuildRow, compact = false): { chip: string; tone: Tone; wo
     case 'switched':
       return { chip: compact ? 'Switched' : 'Changed sides', tone: 'silver', words: `now ${r.now < 0 ? 'calls' : 'puts'}` };
     case 'new':
-      return { chip: compact ? 'New' : 'New today', tone: 'silver', words: dominant };
+      return { chip: 'New', tone: 'silver', words: dominant };
     default:
       return { chip: 'Steady', tone: 'quiet', words: '' };
   }
@@ -176,6 +177,11 @@ const Shape = ({ shape, live, verdict }: { shape: number[]; live: boolean; verdi
     paper — one state. The bars' lengths still say which wall is the biggest;
     the key drops its "track" entry there. Paper-only (index.css `paper-clear`,
     `paper-hide`): the dark terminal is what it was. */
+const signedGamma = (house: number) => {
+  const v = shownGamma(house);
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtDollars(Math.abs(v))}`;
+};
+
 const Wall = ({ row, max, compact = false }: { row: BuildRow; max: number; compact?: boolean }) => {
   const now = Math.abs(row.now);
   const open = Math.abs(row.open);
@@ -194,9 +200,10 @@ const Wall = ({ row, max, compact = false }: { row: BuildRow; max: number; compa
       )}
       {/* the figure sits past the drawn end, the hatch included — the amount, its unit (Noah, 2026-09-13: "$123M… of what?"), the open's */}
       <span className="absolute -top-px font-mono text-[10px] font-semibold tnum whitespace-nowrap leading-[14px] text-textPrimary" style={{ left: `calc(${end.toFixed(2)}% + 8px)`, transition }} data-wall-figure>
-        {fmtDollars(now)}
+        {/* in the retail sign every page prints: call-heavy (dealers long gamma) +, put-heavy − */}
+        {signedGamma(row.now)}
         {!compact && <span className="font-sans font-normal text-[9px] text-textMuted"> net gamma</span>}
-        {!compact && moved && <span className="font-normal text-textMuted"> · was {fmtDollars(open)}</span>}
+        {!compact && moved && <span className="font-normal text-textMuted"> · was {signedGamma(row.open)}</span>}
       </span>
     </div>
   );
@@ -235,13 +242,13 @@ export const BuildingControls = ({ clock, order, onOrder, window, onWindow, show
         <span className="w-4 h-[6px] rounded-full shrink-0 bg-ink/[0.06] ring-1 ring-inset ring-ink/[0.12]" data-key-swatch="track" /> the track · the biggest wall shown
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="w-4 h-[6px] rounded-full shrink-0" style={{ background: SILVER, opacity: 0.32 }} data-key-swatch="base" /> there at the open
+        <span className="w-4 h-[6px] rounded-full shrink-0" style={{ background: SILVER, opacity: 0.32 }} data-key-swatch="base" /> there before the change
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="w-4 h-[6px] rounded-full shrink-0" style={{ background: BULL }} data-key-swatch="added" /> arrived {clock.inSession ? 'today' : 'last session'}
+        <span className="w-4 h-[6px] rounded-full shrink-0" style={{ background: BULL }} data-key-swatch="added" /> added
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="w-4 h-[6px] rounded-full shrink-0 hatch-drift" style={{ background: HATCH, backgroundSize: HATCH_TILE }} data-key-swatch="gone" /> left {clock.inSession ? 'today' : 'last session'}
+        <span className="w-4 h-[6px] rounded-full shrink-0 hatch-drift" style={{ background: HATCH, backgroundSize: HATCH_TILE }} data-key-swatch="gone" /> taken off
       </span>
     </span>
     <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" data-build-updated>
@@ -352,13 +359,13 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
         <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">{head}</div>
         <dl className={`flex flex-wrap gap-y-2 ${compact ? 'gap-x-4' : 'gap-x-6'}`} data-build-facts>
           <div>
-            <dt className="text-[10px] text-textMuted whitespace-nowrap">{clock.inSession ? 'Built today' : 'Built last session'}</dt>
+            <dt className="text-[10px] text-textMuted whitespace-nowrap" title={data.overnight ? "Hedging added in yesterday's trading — the overnight open-interest count, valued at today's price" : undefined}>{changeWhen(data).head}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-built>
               {counted ? `+${fmtDollars(data.built)}` : '—'}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted whitespace-nowrap">{clock.inSession ? 'Drained today' : 'Drained last session'}</dt>
+            <dt className="text-[10px] text-textMuted whitespace-nowrap">{changeWhen(data).head.replace('Built', 'Drained')}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-drained>
               {counted ? `−${fmtDollars(data.drained)}` : '—'}
             </dd>
@@ -366,13 +373,13 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
           {!compact && (
             <>
               <div>
-                <dt className="text-[10px] text-textMuted whitespace-nowrap">Growing fastest</dt>
+                <dt className="text-[10px] text-textMuted whitespace-nowrap">{data.overnight ? 'Grew most overnight' : 'Growing fastest'}</dt>
                 <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: SILVER }} data-build-up>
                   {data.fastestUp ? `${fmtStrike(data.fastestUp.strike)} · ${signed(data.fastestUp.sizeChange)}` : '—'}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] text-textMuted whitespace-nowrap">Fading fastest</dt>
+                <dt className="text-[10px] text-textMuted whitespace-nowrap">{data.overnight ? 'Shrank most overnight' : 'Fading fastest'}</dt>
                 <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-down>
                   {data.fastestDown ? `${fmtStrike(data.fastestDown.strike)} · ${signed(data.fastestDown.sizeChange)}` : '—'}
                 </dd>
@@ -410,7 +417,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from call contracts">Calls</div>}
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from put contracts">Puts</div>}
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The wall's size through today's session">The day</div>}
-          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The verdict: building, draining, changed sides, or new today">What's happening</div>
+          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The verdict on the latest open-interest change: building, draining, changed sides, or new">What's happening</div>
 
           {items.map((it, idx) => {
             if (it.kind === 'spot')
@@ -486,7 +493,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                   <Wall row={r} max={maxAbs} compact={compact} />
                   {/* the lean takes the bar's reserved right room too — inside it "call-heavy · dealers push back…" was cut to "dealers p…" */}
                   <div className={`mt-[6px] text-[10px] text-textMuted whitespace-nowrap truncate ${compact ? '-mr-[48px]' : '-mr-[168px]'}`} data-build-lean>
-                    {r.verdict === 'switched' ? `${r.now < 0 ? 'call-heavy' : 'put-heavy'} now · was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} at the open` : sideWords(r.now).replace(', so ', ' · ')}
+                    {r.verdict === 'switched' ? `${r.now < 0 ? 'call-heavy' : 'put-heavy'} now · was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${data.overnight ? 'before the change' : 'at the open'}` : sideWords(r.now).replace(', so ', ' · ')}
                   </div>
                 </div>
                 <div className={`px-2 text-right font-mono text-[12px] tnum ${r.verdict === 'steady' ? 'text-textMuted' : 'text-textPrimary font-semibold'}`} data-build-change>
@@ -496,7 +503,8 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                 {!compact && <div className="px-2 text-right font-mono text-[10px] tnum text-textSecondary">{contracts(r.dPut)}</div>}
                 {!compact && (
                   <div className="px-2">
-                    <Shape shape={r.shape} live={clock.inSession} verdict={r.verdict} />
+                    {/* the overnight count is one step — no shape through the day is on the feed, so none is drawn */}
+                    {data.overnight ? <span className="font-mono text-[10px] text-textMuted" title="The open-interest count is set once, overnight — there is no path through the day to draw">—</span> : <Shape shape={r.shape} live={clock.inSession} verdict={r.verdict} />}
                   </div>
                 )}
                 <div className="px-2 flex items-center gap-2 min-w-0" data-build-word={r.verdict}>

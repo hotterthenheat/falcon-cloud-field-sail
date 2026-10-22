@@ -21,21 +21,21 @@
 */
 
 import Simulator from '../core/simulator';
-import { buildAgenda } from './agenda';
+import { buildAgenda, type Agenda, type AgendaOrder } from './agenda';
 import { aheadClock, type AheadClock } from './ahead';
 import { buildBuilding } from './building';
 import { buildExposureProfile } from './exposure';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge } from './flipGauge';
 import { getBoardNames } from './boardNames';
-import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare } from './uwBook';
+import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, ensureScopeDates, scopeDatesPending } from './uwBook';
 import { readLevelsScope } from './levelsScope';
 import { levelsBook } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
 import { readSessionClock } from './moc';
 import { getPositions } from './positions';
 import type { WallRole } from './wall';
-import type { ExposureProfileData } from '../types/gex';
+import type { ExposureExpiry } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
 
 export interface BoardRow {
@@ -89,8 +89,8 @@ export function netGexOf(chain: readonly { netGex: number }[]): number {
 /** The net GEX hover, in words — and, where the book's net and the side of the flip disagree, why both are true */
 export const netGexTitle = (net: number, regime: 'LONG' | 'SHORT' | null): string => {
   const base = net > 0 ? 'Net positive: dealers are long gamma overall, so their hedging tends to absorb moves' : net < 0 ? 'Net negative: dealers are short gamma overall, so their hedging tends to amplify moves' : 'Balanced';
-  if (net > 0 && regime === 'SHORT') return `${base}. But price is below the flip, so the hedging nearest price amplifies moves for now.`;
-  if (net < 0 && regime === 'LONG') return `${base}. But price is above the flip, so the hedging nearest price absorbs moves for now.`;
+  /* the regime IS this sign (data/flipLevel.ts), so the two can no longer disagree */
+  void regime;
   return `${base}.`;
 };
 
@@ -109,20 +109,30 @@ export function bellShareOf(surface: ExposureSurface): number | null {
   return total > 0 ? Math.round((100 * dies) / total) : null;
 }
 
-/** The agenda's #1 for a name — what to watch first — off the profile already built (the Board and Compare read it) */
-export function watchOf(snapshot: MarketSnapshot, today: ExposureProfileData, surface: ExposureSurface | null, bars: readonly Candle[], clock: AheadClock): BoardRow['watch'] {
+/**
+ * THE DESK'S AGENDA FOR A NAME — ONE BUILD FOR EVERY PAGE (the retail test, 2026-10-22: "Watch first" read 765 on the
+ * Agenda and 764 on the Board within 25s — the Agenda ranked its Strikes window, the Board thirty strikes, off two
+ * different reads). The Agenda page, the Board and Compare all call this, with the same window, the same open-interest
+ * change, the same vol and the same bars; the Agenda's Strikes card only trims what it lists (data/agenda.ts trimAgenda).
+ */
+export function deskAgenda(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock, order: AgendaOrder = 'matters', surface: ExposureSurface | null = null): Agenda | null {
   try {
     const t = snapshot.ticker;
-    const iv = peekIv(t);
-    if (iv == null) return null;
-    /* the same open-interest change the Agenda reads, so the Board's watch-first is the Agenda's */
+    const iv = peekIv(t) ?? 0;
     ensureOiChange(t);
-    const building = buildBuilding(snapshot, bookHistory(t) ?? [], bookCandles(t) ?? [], today, clock, peekOiChange(t));
-    const lead = buildAgenda(snapshot, today, building, surface, bars, clock, iv).first[0];
-    return lead ? { strike: lead.strike, role: lead.role, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake } : null;
+    const profile = buildExposureProfile(snapshot, expiry, LEVELS_WINDOW);
+    const bars = bookCandles(t) ?? [];
+    const building = buildBuilding(snapshot, bookHistory(t) ?? [], bars, profile, clock, peekOiChange(t));
+    return buildAgenda(snapshot, profile, building, surface, bars, clock, iv, order);
   } catch {
     return null;
   }
+}
+
+/** The agenda's #1 for a name — what to watch first (the Board and Compare read it) — the Agenda page's own */
+export function watchOf(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock): BoardRow['watch'] {
+  const lead = deskAgenda(snapshot, expiry, clock)?.first[0];
+  return lead ? { strike: lead.strike, role: lead.role, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake } : null;
 }
 
 /** Thin a series to at most n points, keeping the ends */
@@ -166,9 +176,16 @@ export function buildBoardRow(ticker: string): BoardRow | null {
 
   /* WHAT TO WATCH FIRST — the agenda's #1 for this name, so the board is the
      morning list across every name (2026-09-08). ~2ms a name. */
-  const watch = watchOf(snapshot, today, surface, bars, aheadClock(readSessionClock()));
+  const watch = watchOf(snapshot, readLevelsScope(), aheadClock(readSessionClock()));
 
-  const pending = !!snapshot.liveBook && readLevelsScope() === '0DTE' && !snapshot.uwChains?.['0DTE']?.length;
+  /* PENDING UNTIL THE SCOPE'S CONTRACTS ARE IN: "Today" needs the front date's strikes and its contract rows (the flip
+     re-prices each with its own vol); "All expiries" needs every live date's strikes */
+  const scope = readLevelsScope();
+  if (scope === 'ALL') ensureScopeDates(ticker);
+  const entry = peekEntry(ticker);
+  const pending =
+    !!snapshot.liveBook &&
+    (scope === '0DTE' ? !snapshot.uwChains?.['0DTE']?.length || (!entry?.full && !entry?.frontFacts) : scopeDatesPending(ticker));
 
   return {
     pending,
@@ -177,10 +194,10 @@ export function buildBoardRow(ticker: string): BoardRow | null {
     ticker: snapshot.ticker,
     spot,
     changePct: peekChange(snapshot.ticker) ?? 0,
-    regime: gauge.regime,
-    flip: gauge.flip,
-    flipDistPct: gauge.distPct,
-    crossings: gauge.crossings,
+    regime: pending ? null : gauge.regime,
+    flip: pending ? null : gauge.flip,
+    flipDistPct: pending ? null : gauge.distPct,
+    crossings: pending ? null : gauge.crossings,
     callWall,
     putWall,
     nearest,

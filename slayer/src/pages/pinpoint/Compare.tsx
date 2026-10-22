@@ -29,6 +29,7 @@
 ==================================================
 */
 
+import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -62,7 +63,8 @@ const SCAN_INTERVAL_MS = 10_000;
 const A_INK = 'rgb(var(--text-primary))';
 const B_INK = '#5B9CF6';
 
-const hhmmss = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
 /* WHICH SIDES STAND OPEN beside the ruler (the partner's cut, 2026-10-18): both by rest; remembered, carried */
 const SIDES_KEY = 'slayer_compare_sides';

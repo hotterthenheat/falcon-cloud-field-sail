@@ -53,6 +53,8 @@ const ALLOWED = [
   /^\/screener\/option-contracts(?:\?|$)/,
   /* one contract's last trades — the contract card's anchor print */
   /^\/option-contract\/[A-Z0-9]{1,30}\/flow(?:\?|$)/,
+  /* one contract's daily history, minute bars and fill-price profile — the Trace contract card's tape */
+  /^\/option-contract\/[A-Z0-9]{1,30}\/(?:historic|intraday|volume-profile)(?:\?|$)/,
   /^\/screener\/analysts(?:\?|$)/,
   /^\/institutions(?:\?|$)/,
   /^\/institutions\/latest_filings(?:\?|$)/,
@@ -150,6 +152,9 @@ const retryable = status => status === 429 || status === 500 || status === 502 |
 
 const ttlFor = (path) => {
   const p = path.split('?')[0];
+  /* one contract's prints and minutes move with the tape; its daily history only once a session */
+  if (/^\/option-contract\/[^/]+\/(?:flow|intraday)$/.test(p)) return 10_000;
+  if (/^\/option-contract\/[^/]+\/(?:historic|volume-profile)$/.test(p)) return 60_000;
   if (/\/(option-trades|flow-alerts|market-tide|sector-tide|etf-tide|top-net-impact|net-flow|greek-flow|stock-state|quote|flow-per-strike-intraday|net-prem-ticks|nope|spot-exposures)(\/|$)/.test(p)) return 3_000;
   if (/\/(greek-exposure|gex-levels|flow-per-|oi-|option-contracts|atm-chains|interpolated-iv|ohlc\/(?:1m|2m|3m|5m|15m|1h)|darkpool|lit-flow|options-volume|stock-price-levels|stock-volume-price-levels)(\/|$)/.test(p)) return 15_000;
   return 300_000;

@@ -222,7 +222,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     strike === levels.supreme ? { word: 'supreme', ink: SUPREME }
     : strike === levels.callWall ? { word: 'call wall', ink: CALL_WALL }
     : strike === levels.putWall ? { word: 'put wall', ink: PUT_WALL }
-    : strike === levels.flip ? { word: 'flip', ink: FLIP }
+    : levels.flipFound !== false && strike === levels.flip ? { word: 'flip', ink: FLIP }
     : strike === pinStrike ? { word: 'pin', ink: 'rgb(var(--text-muted))' }
     : null;
 
@@ -485,7 +485,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     const on = keptStrike === r.strike;
     const lit = hoverStrike === r.strike || hovered === r.strike;
     const walked = keyRow != null && Math.abs(keyRow - r.strike) < 1e-9;
-    const role = strikeRole(r.strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flip, pin: pinStrike, owned: !!marks?.has(r.strike) });
+    const role = strikeRole(r.strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? Number.NaN : levels.flip, pin: pinStrike, owned: !!marks?.has(r.strike) });
     const tag = tagFor(r.strike);
     const you = marks?.get(r.strike);
     return (

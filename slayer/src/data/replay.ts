@@ -39,6 +39,12 @@ import { OPEN_MIN, hhmm } from './ahead';
 import { sessionBars } from './levelview';
 import { sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { nyDay, nyMinutes } from '../core/nyTime';
+import { DEFAULT_R } from '../core/carry';
+import { dollarGammaPerContract } from '../core/gammaFlip';
+import { bookToday, isoDate } from '../core/calendar';
+import { yearsTo } from './flipLevel';
+import { registerChainDates } from './chainDates';
+import { peekEntry } from './uwBook';
 import type { Candle, GexLevel, GexSnapshot, MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The book is read every five seconds of session time */
@@ -222,10 +228,96 @@ function legsOf(net: number, callEst: number, putEst: number): { call: number; p
   return { call: callEst + (rest * Math.abs(callEst)) / size, put: putEst + (rest * Math.abs(putEst)) / size };
 }
 
+/*
+  A PAST MINUTE OF THE VENDOR'S BOOK IS TODAY'S CONTRACTS RE-PRICED (the Pinpoint audit, 2026-10-22: "Each window" and the
+  HEAVIEST change column always read "steady" — the rewound snapshot spread `...live` and kept the live per-expiry chains,
+  which the profile prefers, so every past window WAS the live book; and the chain it built instead walked today's volume
+  onto the open interest, which volume is not). Open interest is counted once, overnight — the contracts at 10:00 are the
+  contracts now. What changed is the price and the clock, so each leg's dollar gamma is re-priced with Black-Scholes at
+  that minute's spot and time to expiry, at its own vol (data/flipLevel.ts's inputs), vol held where it is now. Every
+  per-expiry chain and the whole book move together, so the levels, the matrix and the windows all read the same moment.
+*/
+const RATIO_CAP = 25;
+function repriceDate(chain: readonly StrikeNode[], date: string, s0: number, s1: number, t0: number, t1: number, atmIv: number): StrikeNode[] {
+  const T0 = yearsTo(date, t0);
+  const T1 = yearsTo(date, t1);
+  const ratio = (K: number, iv: number) => {
+    if (!(iv > 0)) return 1;
+    const a = dollarGammaPerContract(s0, K, T0, iv, DEFAULT_R);
+    if (!(a > 0)) return 1;
+    return Math.min(RATIO_CAP, dollarGammaPerContract(s1, K, T1, iv, DEFAULT_R) / a);
+  };
+  return chain.map(n => {
+    const callGex = n.callGex * ratio(n.strike, n.callIv && n.callIv > 0 ? n.callIv : atmIv);
+    const putGex = n.putGex * ratio(n.strike, n.putIv && n.putIv > 0 ? n.putIv : atmIv);
+    return { ...n, callGex, putGex, netGex: callGex + putGex };
+  });
+}
+
+/** The live vendor book re-priced at a past minute — null when the snapshot is not the vendor's */
+function liveBookAt(live: MarketSnapshot, spot: number, atMs: number): Pick<MarketSnapshot, 'chain' | 'uwChains' | 'uwByDate'> | null {
+  const by = live.uwByDate;
+  const chains = live.uwChains;
+  if (!live.liveBook || !by || !chains || !(live.spot > 0)) return null;
+  const entry = peekEntry(live.ticker);
+  const now = Date.now();
+  const floor = isoDate(bookToday());
+  const swap = new Map<readonly StrikeNode[], StrikeNode[]>();
+  const byAt: Record<string, StrikeNode[]> = {};
+  const sums = new Map<number, { c0: number; p0: number; c1: number; p1: number }>();
+  for (const d of Object.keys(by)) {
+    const src = by[d];
+    if (!src?.length || d < floor) {
+      byAt[d] = src;
+      continue;
+    }
+    const out = repriceDate(src, d, live.spot, spot, now, atMs, entry?.termIv?.[d] ?? entry?.iv ?? 0);
+    byAt[d] = out;
+    swap.set(src, out);
+    src.forEach((n, i) => {
+      const m = sums.get(n.strike) ?? { c0: 0, p0: 0, c1: 0, p1: 0 };
+      m.c0 += n.callGex;
+      m.p0 += n.putGex;
+      m.c1 += out[i].callGex;
+      m.p1 += out[i].putGex;
+      sums.set(n.strike, m);
+    });
+  }
+  /* the whole book: each strike's legs move as its dated legs did; a strike no loaded date carries stays as it is */
+  const reAll = (all: readonly StrikeNode[]): StrikeNode[] => {
+    const out = all.map(n => {
+      const m = sums.get(n.strike);
+      if (!m) return n;
+      const callGex = m.c0 ? n.callGex * (m.c1 / m.c0) : n.callGex;
+      const putGex = m.p0 ? n.putGex * (m.p1 / m.p0) : n.putGex;
+      return { ...n, callGex, putGex, netGex: callGex + putGex };
+    });
+    registerChainDates(out, 'ALL');
+    return out;
+  };
+  const uwChains: NonNullable<MarketSnapshot['uwChains']> = {};
+  for (const [k, c] of Object.entries(chains)) {
+    if (!c) continue;
+    let next = swap.get(c);
+    if (!next) {
+      next = k === 'ALL' || c === chains.ALL ? reAll(c) : c;
+      swap.set(c, next);
+    }
+    uwChains[k] = next;
+  }
+  const chain = swap.get(live.chain) ?? live.chain;
+  return { chain, uwChains, uwByDate: byAt };
+}
+
 /** The market as it stood at a position — the live snapshot's shape, the book of that moment */
 export function snapshotAt(live: MarketSnapshot, range: ReplayRange, pos: number): MarketSnapshot {
   const bars = barsAt(range, pos);
   const spot = spotAt(range, pos);
+  const open0 = range.bars[0].open;
+  const vendor = liveBookAt(live, spot, (bars[bars.length - 1]?.time ?? range.bars[0].time) * 1000);
+  if (vendor) {
+    return { ...live, spot, changePercent: open0 > 0 ? ((spot - open0) / open0) * 100 : 0, priceHistory: bars.map(b => b.close), ...vendor, tape: [] };
+  }
   const template = new Map(live.chain.map(n => [n.strike, n]));
   const chain: StrikeNode[] = levelsAt(range, pos).map(l => {
     const t = template.get(l.strike);

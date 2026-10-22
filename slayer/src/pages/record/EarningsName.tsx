@@ -49,7 +49,7 @@ import { BULL } from '../../components/gex/paletteInk';
 import { useTicker } from '../../context/MarketDataContext';
 import { fmtDollars } from '../../data/ahead';
 import { bracketLabel, seatLabel } from '../../data/congress';
-import { useCongressFeed, useInsiderFlow } from '../../data/liveRecord';
+import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
 import { useLiveDossier } from '../../data/earningsFeed';
 import { type ActiveContract, type EarningsDossier } from '../../data/earnings';
@@ -291,8 +291,8 @@ const EarningsName = () => {
     navigate('/weigher', { state: { weigh: { ticker: T, strike: c.strike, right: c.right === 'CALL' ? 'C' : 'P', expiry: c.expiry }, wayBack: location.pathname } });
   /* ON THE RECORD — the other two pages read for this one name */
   const insiders = useInsiderFlow(T, 90);
-  const congressFeed = useCongressFeed(180);
-  const congress = useMemo(() => congressFeed.trades.filter(t => t.ticker === T).sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressFeed, T]);
+  const congressBook = useTickerCongress(T, 180);
+  const congress = useMemo(() => [...congressBook.trades].sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressBook]);
   /* the stock now, read before any early return (hooks keep their order) */
   const quote = useLiveQuote(T);
 
@@ -620,9 +620,9 @@ const EarningsName = () => {
             </>
           )}
         </Box>
-        <Box title="What Congress reported" sub="STOCK Act reports naming this stock in the last 180 days" testId="congress">
+        <Box title="What Congress reported" sub={`STOCK Act reports of trades in this stock made in the last 180 days${congressBook.complete ? '' : ' — the latest 200 reports only'}`} testId="congress">
           {congress.length === 0 ? (
-            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the record in 180 days</div>
+            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{congressBook.status === 'loading' ? 'Reading the reports' : congressBook.status === 'sim' ? 'This read did not land' : 'No trade in this stock reported in 180 days'}</div>
           ) : (
             <>
               {/* On a phone: filed, member, type — the amount and the lag go (the phone pass, 2026-09-13) */}

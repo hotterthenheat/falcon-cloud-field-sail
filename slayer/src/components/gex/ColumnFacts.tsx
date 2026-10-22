@@ -60,8 +60,10 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const bookRev = useBookRev();
   ensureBook(ticker, 'board');
   const levels = roomLevels(snapshot, scope);
-  const flip = levels && levels.flip != null && Number.isFinite(levels.flip) ? levels.flip : null;
-  const absorb = flip != null && spot >= flip;
+  const flip = levels && levels.flipFound !== false && levels.flip != null && Number.isFinite(levels.flip) ? levels.flip : null;
+  /* THE REGIME IS THE SIGN OF NET GAMMA AT SPOT (data/flipLevel.ts) — never the side of the flip */
+  const absorb = levels?.net != null ? levels.net < 0 : flip != null && spot >= flip;
+  const hasRegime = !!levels && (levels.net != null || flip != null);
   /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
   const onFlip = flip != null && (Math.abs(spot - flip) / Math.max(spot, 1)) * 100 < 0.05;
   /* the ATR of finished sessions moves once a day; read it only when the Ruler asks for it */
@@ -94,14 +96,14 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const changeW = 6 + ch(`${change > 0 ? '+' : ''}${change.toFixed(2)}%`, 11);
   const flipW = GROUP + ch('Flip', 11, true) + 6 + ch(flip != null ? fmt(flip) : 'none', 12);
   const distW = flip != null && lead ? 6 + ch(atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`, 11) : 0;
-  const dealersLabelW = flip != null ? ch('Dealers', 11, true) + 6 : 0;
-  const dealersW = flip != null ? GROUP + ch(onFlip ? 'either way' : absorb ? 'absorb' : 'amplify', 11, true) : 0;
+  const dealersLabelW = hasRegime ? ch('Dealers', 11, true) + 6 : 0;
+  const dealersW = hasRegime ? GROUP + ch(onFlip ? 'either way' : absorb ? 'absorb' : 'amplify', 11, true) : 0;
   const heldW = heldWords ? GROUP + ch('Flip today', 11, true) + 6 + ch(heldWords, 12) : 0;
   const room = (width > 0 ? width : 9999) - 24 - 16;
   const base = priceW + flipW + dealersW;
   /* the last step: the dealers' word goes and the flip's figure wears its ink — ember amplifies, glacier absorbs */
   const shed = base + changeW + distW + dealersLabelW + heldW <= room ? 0 : base + changeW + distW + dealersLabelW <= room ? 1 : base + changeW + distW <= room ? 2 : base + changeW <= room ? 3 : base <= room ? 4 : 5;
-  const regimeInk = flip == null ? undefined : absorb ? ABSORB : AMPLIFY;
+  const regimeInk = !hasRegime ? undefined : absorb ? ABSORB : AMPLIFY;
 
   return (
     <div className="shrink-0 flex items-baseline gap-x-2.5 px-3 h-8 pt-2 border-b border-borderSubtle/60 font-mono whitespace-nowrap overflow-hidden" data-field-column-facts={ticker} data-facts-shed={shed || undefined}>
@@ -114,15 +116,15 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
           {change.toFixed(2)}%
         </span>
       )}
-      <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title="The gamma flip — above it dealer hedging absorbs moves, below it amplifies them">
+      <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={flip != null ? `The gamma flip: the price where the book's net gamma crosses zero — dealers ${absorb ? 'are long gamma on this side and turn short' : 'are short gamma on this side and turn long'} past it` : "No flip within ±10%: the book's net gamma keeps one sign across the whole range"}>
         <span className="text-[11px] uppercase tracking-wider text-textMuted">Flip</span>
         <span className="text-[12px] font-semibold tnum" style={{ color: flip != null ? (shed >= 5 ? regimeInk : FLIP) : undefined }}>
-          {flip != null ? fmt(flip) : 'none'}
+          {flip != null ? fmt(flip) : 'none nearby'}
         </span>
         {flip != null && shed < 3 && lead && <span className="text-[11px] tnum text-textMuted">{atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`}</span>}
       </span>
-      {flip != null && shed < 5 && (
-        <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={onFlip ? 'Price is on the flip — dealer hedging can tip either way' : absorb ? 'Price above the flip — dealer hedging absorbs a move' : 'Price below the flip — dealer hedging amplifies a move'}>
+      {hasRegime && shed < 5 && (
+        <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={onFlip ? 'Price is on the flip — dealer hedging can tip either way' : absorb ? 'Net gamma is positive here: dealers are long gamma, so their hedging absorbs a move' : 'Net gamma is negative here: dealers are short gamma, so their hedging amplifies a move'}>
           {shed < 2 && <span className="text-[11px] uppercase tracking-wider text-textMuted">Dealers</span>}
           <span className={`text-[11px] font-semibold uppercase tracking-wider ${onFlip ? 'text-textSecondary' : ''}`} style={onFlip ? undefined : { color: absorb ? ABSORB : AMPLIFY }}>
             {onFlip ? 'either way' : absorb ? 'absorb' : 'amplify'}

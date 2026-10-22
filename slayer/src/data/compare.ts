@@ -30,7 +30,7 @@ import { netGexOf, retailNet, watchOf, type BoardRow } from './board';
 import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from './exposureSurface';
 import { buildFlipGauge, type GammaRegime } from './flipGauge';
-import { readHeatPattern } from './gex';
+import { readRegime } from './flipLevel';
 import { sessionBars } from './levelview';
 import type { ExposureExpiry, ExposureLevels, ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, GexLevel, MarketSnapshot } from '../types/market';
@@ -70,6 +70,16 @@ export const GREEK_WORDS: Record<Greek, GreekWords> = {
   charm: { pos: 'sells as the clock runs', neg: 'buys as the clock runs', posBoth: 'both sell as the clock runs', negBoth: 'both buy as the clock runs', posWhy: 'each passing day makes dealers sell stock there', negWhy: 'each passing day makes dealers buy stock there' },
 };
 export const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'VEX', vanna: 'VANNA', charm: 'CHARM' };
+
+/** EACH GREEK IN ONE PLAIN SENTENCE (the retail test, 2026-10-22: "VEX −$14.6K next to VANNA $3.9M with no explanation") —
+    the hover on every label that prints them side by side */
+export const GREEK_EXPLAIN: Record<Greek, string> = {
+  gex: 'GEX (gamma): the stock dealers must trade for a 1% move — positive, they absorb moves; negative, they amplify them',
+  dex: 'DEX (delta): the stock dealers already hold against their options — which way their hedging leans',
+  vex: "VEX (vega): the dollars dealers' option book gains or loses if implied volatility moves one point — their volatility risk, not stock they must trade",
+  vanna: 'VANNA: the stock dealers must buy or sell if implied volatility moves one point — their hedges shifting with vol. Not VEX: VEX is the dollars their book gains or loses; VANNA is the stock it makes them trade',
+  charm: 'CHARM: the stock dealers must buy or sell as a day passes, with price and vol unchanged — the clock pulling on their hedges',
+};
 
 export interface CompareLevel {
   strike: number;
@@ -206,7 +216,8 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   const at = (k: number): CompareLevel => ({
     strike: k,
     distPct: ((k - spot) / spot) * 100,
-    weight: Math.abs(rows.gex.find(r => Math.abs(r.strike - k) < 1e-9)?.value ?? 0),
+    /* off the drawn window the level still weighs what its strike carries on these contracts */
+    weight: Math.abs(rows.gex.find(r => Math.abs(r.strike - k) < 1e-9)?.value ?? lens.chain.find(n => Math.abs(n.strike - k) < 1e-9)?.netGex ?? 0),
   });
 
   let surface: ExposureSurface | null = null;
@@ -217,7 +228,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     /* no surface for this name yet */
   }
   const bars = sessionBars(ticker) ?? [];
-  const watch = watchOf(snapshot, profile, surface, bars, clock);
+  const watch = watchOf(snapshot, expiry, clock);
   const close = buildCloseOdds(profile, spot, sigmaLeft, clock);
   const top = close.top[0];
 
@@ -246,7 +257,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     snapshot,
     strikes: profile.strikes,
     maxAbs: profile.maxAbs,
-    read: readHeatPattern(profile.levels).read,
+    read: readRegime(profile.levels).read,
     expiryCount: surface?.expiries.length ?? 1,
     expiry,
   };

@@ -4,20 +4,21 @@
   Nothing here is filled from the house generator.
 */
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { houseSlug, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
+import { nyDaysAgo } from './nyDate';
 import {
   whalesEtfFlow,
   whalesEtfHoldings,
   whalesEtfInfo,
   whalesHoldings,
   whalesInstitutions,
-  whalesShorts,
   whalesScreener,
   whalesStock,
   whalesTide,
+  uwCall,
   type UwEtfFlow,
   type UwEtfHolding,
   type UwEtfInfo,
@@ -47,6 +48,8 @@ export interface StockCard {
   nextEarnings: string | null;
   hasDividend: boolean | null;
   outstanding: number | null;
+  /** The vendor's issue type ("Common Stock", "ETF") */
+  issueType: string | null;
 }
 
 const ETF_LIST: { etf: string; kind: EtfKind }[] = [
@@ -66,8 +69,9 @@ const ETF_LIST: { etf: string; kind: EtfKind }[] = [
   { etf: 'XLRE', kind: 'sector' },
   { etf: 'SMH', kind: 'sector' },
   { etf: 'TLT', kind: 'rates' },
-  { etf: 'HYG', kind: 'rates' },
-  { etf: 'GLD', kind: 'broad' },
+  /* a high-yield corporate bond fund is credit, not rates; a gold trust holds bullion, not an index (the data audit) */
+  { etf: 'HYG', kind: 'credit' },
+  { etf: 'GLD', kind: 'commodity' },
 ];
 
 const SECTORS = new Set<string>([
@@ -93,6 +97,10 @@ interface Snap {
   etfStatus: FileStatus;
   etfs: EtfRow[];
   holdings: Record<string, EtfHolding[]>;
+  /** Each fund's file as read: the lines on it, and the fund's own count of holdings */
+  holdingsCover: Record<string, { lines: number; weight: number; fundCount: number | null }>;
+  /** Each house's whole 13F value as Unusual Whales totals it, dollars — the grid shows the top lines only */
+  houseTotals: Record<string, number>;
   stockStatus: FileStatus;
   stocks: StockPick[];
   tide: TidePrint | null;
@@ -108,6 +116,8 @@ const empty: Snap = {
   etfStatus: 'loading',
   etfs: [],
   holdings: {},
+  holdingsCover: {},
+  houseTotals: {},
   stockStatus: 'loading',
   stocks: [],
   tide: null,
@@ -137,11 +147,8 @@ const asPct = (v: unknown): number => {
   const n = num(v);
   return Math.abs(n) <= 1.5 ? n * 100 : n;
 };
-const daysAgo = (iso?: string): number => {
-  const t = iso ? Date.parse(iso) : NaN;
-  if (!Number.isFinite(t)) return 999;
-  return Math.max(0, Math.round((Date.now() - t) / 86_400_000));
-};
+/* a filing day is a New York calendar day, counted in calendar days (data/nyDate.ts) — never UTC midnight rounded */
+const daysAgo = (iso?: string): number => nyDaysAgo(iso, 999);
 const quarterOf = (iso?: string): string => {
   const t = iso ? Date.parse(iso) : NaN;
   if (!Number.isFinite(t)) return '—';
@@ -260,6 +267,9 @@ async function inBatches<T>(items: readonly T[], size: number, job: (item: T) =>
   }
 }
 
+/** The lines read per house — the largest by value; the house's whole book is far longer */
+const HOUSE_LINES = 80;
+
 async function pullInstitutions() {
   try {
     const houses = await whalesInstitutions(40);
@@ -268,6 +278,13 @@ async function pullInstitutions() {
     /* ten houses at a time, the book published once whole — one by one, the head counted "6 houses · 0 calls" for the
        half-minute the rest took (the ship pass, 2026-10-22) */
     const list = houses as UwInstitution[];
+    const totals: Record<string, number> = {};
+    for (const h of list) {
+      const name = (h.name || h.short_name || '').trim();
+      const v = num(h.total_value);
+      if (name && v > 0) totals[name] = v;
+    }
+    emit({ houseTotals: totals });
     let done = 0;
     await inBatches(list, 10, async house => {
       done += 1;
@@ -275,7 +292,7 @@ async function pullInstitutions() {
       if (!name) return;
       const filed = house.filing_date || house.date || '';
       /* by the filer's CIK when it has one: a few long names ("UBS AM, A DISTINCT BUSINESS UNIT OF …") 404 by name */
-      const got = await whalesHoldings(house.cik?.trim() || name, 80).catch(() => [] as UwHolding[]);
+      const got = await whalesHoldings(house.cik?.trim() || name, HOUSE_LINES).catch(() => [] as UwHolding[]);
       for (const h of Array.isArray(got) ? got : []) {
         const row = rowFromHolding(name, filed, h);
         if (row) rows.push(row);
@@ -430,35 +447,67 @@ function collapseShorts(rows: ShortRow[]): ShortRow[] {
   return [...by.values()].sort((a, b) => b.interestPct - a.interestPct);
 }
 
+/* THE SHORT BOOK AS A SCREEN (the data audit, 2026-10-22). It was /short_screener ordered by shares short — the
+   largest 40 positions by share count — so "HYG is the heaviest short" and "28 names at 8%+" described that slice and
+   GME (8.46% of its float) was not on it. It is now the screen the page names: the latest settlement's names ordered
+   by short interest as a share of the float, the SHORTS_SCREEN heaviest, among floats of SHORTS_MIN_FLOAT shares or
+   more (below that the vendor's ratios run past 100% on a few thousand shares), and none over 100% of the float. The
+   prior settlement is read for the same names (the change since), and the stock screener names each one's sector and
+   whether it is a fund. Every row is one settlement, so none carries an older figure under a newer date. */
+export const SHORTS_SCREEN = 200;
+export const SHORTS_MIN_FLOAT = 20_000_000;
+let shortsSettlement: string | null = null;
+export const shortsSettlementDay = () => shortsSettlement;
+
+export const FUND_TYPES = /\b(?:etf|etn|fund|trust|closed[- ]end)\b/i;
+
 async function pullShorts() {
   try {
-    const since = new Date(Date.now() - 50 * 86_400_000).toISOString().slice(0, 10);
-    const rows = await whalesShorts(since);
-    if (!Array.isArray(rows)) throw new Error('shape');
-    const out = collapseShorts(rows.map(shortFrom).filter((r): r is ShortRow => !!r));
+    /* the latest settlement on file */
+    const head = await uwCall('/short_screener?order_by=market_date&order_direction=desc&limit=1');
+    const newest = Array.isArray(head.data) ? String((head.data as UwShort[])[0]?.market_date ?? '').slice(0, 10) : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newest)) throw new Error(head.error || 'no settlement');
+    shortsSettlement = newest;
+    const rows = await uwCall(`/short_screener?order_by=si_float&order_direction=desc&limit=${SHORTS_SCREEN}&min_market_date=${newest}&max_si_float=1&min_total_float=${SHORTS_MIN_FLOAT}`);
+    if (rows.error || !Array.isArray(rows.data)) throw new Error(rows.error || 'shape');
+    const face = (rows.data as UwShort[]).map(shortFrom).filter((r): r is ShortRow => !!r).map(r => ({ ...r, borrowAsOf: newest }));
+    let out = collapseShorts(face);
+    const tickers = out.map(r => r.ticker);
+    /* sector and issue type, forty names a call, BEFORE the book is shown: until a name is known to be a fund or a
+       stock, the head would call an ETF "the heaviest stock short" (KBE, the ship check) */
+    const facts = new Map<string, Record<string, unknown>>();
+    await inBatches(
+      Array.from({ length: Math.ceil(tickers.length / 40) }, (_, i) => tickers.slice(i * 40, i * 40 + 40)),
+      2,
+      async part => {
+        const got = await whalesScreener(part).catch(() => null);
+        for (const r of Array.isArray(got) ? got : []) facts.set(String(r.ticker || '').toUpperCase(), r);
+      },
+    );
+    out = out.map(r => {
+      const f = facts.get(r.ticker);
+      if (!f) return r;
+      const rawSector = typeof f.sector === 'string' ? f.sector.trim() : '';
+      const fund = FUND_TYPES.test(String(f.issue_type ?? ''));
+      return { ...r, sector: uwSector(rawSector) ?? (rawSector || (fund ? 'Fund' : r.sector)), fund };
+    });
     emit({ shortStatus: 'live', shorts: out });
-    /* THE SHORT BOOK RUNS PAST THE UNIVERSE (the dossier sweep, 2026-10-22: every row's sector read "—"). The heavy
-       shorts are small caps the universe does not file, so each such name's sector and name are asked of its own file,
-       once a session, and the book is re-emitted as they land. */
-    /* in parallel, eight at a time — one by one, the first screen of the page still read "—" ten seconds in */
-    let filled = 0;
-    const want = out.map((r, i) => i).filter(i => out[i].sector === '—' || !out[i].name);
-    await inBatches(want, 8, async i => {
-      const r = out[i];
-      /* a transient miss (a 503 on /stock/QS/info in the ship pass) is asked once more before the row keeps its dash */
-      const info =
-        (await whalesStock(r.ticker).catch(() => null)) ??
-        (await new Promise(res => setTimeout(res, 1500)).then(() => whalesStock(r.ticker).catch(() => null)));
-      if (!info) return;
-      const rawSector = typeof info.sector === 'string' ? info.sector.trim() : '';
-      /* a sector the house list does not carry (Real Estate) keeps the vendor's own word rather than a dash */
-      const sector = uwSector(rawSector) ?? (rawSector || null);
-      const name = typeof info.full_name === 'string' && info.full_name.trim() ? titleName(info.full_name) : undefined;
-      if (!sector && !name) return;
-      out[i] = { ...out[i], sector: sector ?? out[i].sector, name: out[i].name ?? name };
-      filled += 1;
-    }, () => emit({ shorts: out.slice() }));
-    if (filled) emit({ shorts: out.slice() });
+    /* the settlement before, for the same names — the change in shares short; forty names a call (the proxy takes
+       paths under 400 characters) */
+    const prior = new Date(Date.parse(`${newest}T12:00:00Z`) - 25 * 86_400_000).toISOString().slice(0, 10);
+    const before = new Date(Date.parse(`${newest}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    const older: ShortRow[] = [];
+    for (let i = 0; i < tickers.length; i += 40) {
+      const back = await uwCall(`/short_screener?tickers=${tickers.slice(i, i + 40).map(encodeURIComponent).join(',')}&min_market_date=${prior}&max_market_date=${before}&limit=200`).catch(() => null);
+      if (back && !back.error && Array.isArray(back.data)) older.push(...(back.data as UwShort[]).map(shortFrom).filter((r): r is ShortRow => !!r));
+    }
+    if (older.length) {
+      /* the face row keeps its facts; the older settlement only adds history and the change */
+      const merged = collapseShorts([...out, ...older]);
+      const byT = new Map(out.map(r => [r.ticker, r]));
+      out = merged.map(r => ({ ...r, sector: byT.get(r.ticker)?.sector ?? r.sector, fund: byT.get(r.ticker)?.fund, borrowAsOf: newest }));
+      emit({ shorts: out.slice() });
+    }
   } catch {
     if (snap.shorts.length === 0) emit({ shortStatus: 'error' });
   }
@@ -467,13 +516,21 @@ async function pullShorts() {
 const flow5 = (rows: UwEtfFlow[]): { flow5dM: number; flows: EtfRow['flows'] } => {
   const sorted = [...rows].filter(r => r.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const last = sorted.slice(0, 5);
-  const flows = last.map(r => ({ day: String(r.date).slice(5), flowM: Math.round(num(r.change_prem) / 1e6) })).reverse();
+  const flows = last.map(r => ({ day: String(r.date).slice(5, 10).replace('-', '/'), flowM: Math.round(num(r.change_prem) / 1e6) })).reverse();
   return { flow5dM: flows.reduce((s, f) => s + f.flowM, 0), flows };
 };
 
 /* A BOND FUND'S LINES CARRY NO SYMBOL (the ship pass, 2026-10-22: TLT's 47 Treasury lines and HYG's 250 issues were
    all dropped, and the fund read "no holding on file"). They keep their name and face amount, keyed by position. */
-const titleIssue = (raw: string) => raw.trim().toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase());
+/* an issue name in title case, with the short capitals that are names kept ("1261229 BC LTD SR SECURED 144A" →
+   "1261229 BC Ltd Sr Secured 144A" — 1261229 B.C. Ltd. is a real issuer, Bausch Health's) */
+const KEEP_CAPS = new Set(['BC', 'US', 'USA', 'LP', 'LLC', 'PLC', 'NV', 'SA', 'AG', 'SE', 'AB', 'ASA', 'REIT', 'II', 'III', 'IV', 'UK', 'MLP', 'CO2']);
+const titleIssue = (raw: string) =>
+  raw
+    .trim()
+    .split(/\s+/)
+    .map(w => (KEEP_CAPS.has(w.toUpperCase()) || /\d/.test(w) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join(' ');
 const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
   const ticker = (h.ticker || '').toUpperCase();
   const weight = num(h.weight);
@@ -535,7 +592,8 @@ async function pullEtfs() {
         expensePct: numOr(info?.expense_ratio),
         company: info?.etf_company || '—',
         domicile: info?.domicile || '—',
-        holdingsCount: num(info?.holdings_count) || held.length,
+        /* the fund's own count; a dash-free 0 for a trust that holds no securities (GLD holds bullion) */
+        holdingsCount: info?.holdings_count != null ? num(info.holdings_count) : held.length,
         inception: info?.inception_date || '—',
         hasOptions: !!info?.has_options,
         avgVolM: num(info?.avg30_volume) / 1e6,
@@ -546,7 +604,13 @@ async function pullEtfs() {
       });
     }
     if (rows.length === 0) throw new Error('no fund landed');
-    emit({ etfStatus: 'live', etfs: rows, holdings });
+    /* what each fund's file covers: the lines read (the route sends the largest 250), their weight, the fund's own count */
+    const holdingsCover: Snap['holdingsCover'] = {};
+    for (const r of rows) {
+      const held = holdings[r.etf] ?? [];
+      holdingsCover[r.etf] = { lines: held.length, weight: held.reduce((a, h) => a + h.weight, 0), fundCount: r.holdingsCount > 0 ? r.holdingsCount : null };
+    }
+    emit({ etfStatus: 'live', etfs: rows, holdings, holdingsCover });
   } catch {
     if (snap.etfs.length === 0) emit({ etfStatus: 'error' });
   }
@@ -644,6 +708,7 @@ export function ensureStockCard(ticker: string): void {
             nextEarnings: typeof row.next_earnings_date === 'string' ? row.next_earnings_date : null,
             hasDividend: typeof row.has_dividend === 'boolean' ? row.has_dividend : null,
             outstanding: numOr(row.outstanding),
+            issueType: typeof row.issue_type === 'string' ? row.issue_type : null,
           },
         },
       });
@@ -686,10 +751,13 @@ export function houseNameFromSlug(slug: string): string | null {
   return null;
 }
 
-export function useHouseBook(slug: string): { status: FileStatus; name: string | null; rows: InstitutionRow[] } {
+export function useHouseBook(slug: string): { status: FileStatus; name: string | null; rows: InstitutionRow[]; totalB: number | null; linesRead: number } {
   const s = useLiveFiles();
   const name = houseNameFromSlug(slug);
-  return { status: s.instStatus, name, rows: name ? s.institutions.filter(r => r.name === name) : [] };
+  const total = name ? s.houseTotals[name] : undefined;
+  /* still landing while houses are being read — a house not read yet is not "missing" */
+  const status: FileStatus = !name && s.instProgress ? 'loading' : s.instStatus;
+  return { status, name, rows: name ? s.institutions.filter(r => r.name === name) : [], totalB: total ? total / 1e9 : null, linesRead: HOUSE_LINES };
 }
 
 export function useShorts(): { status: FileStatus; rows: ShortRow[] } {
@@ -703,15 +771,41 @@ export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow
   return { status: s.shortStatus, row: s.shorts.find(r => r.ticker === t) ?? null };
 }
 
-export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (etf: string) => EtfHolding[] } {
+export type HoldingsCover = { lines: number; weight: number; fundCount: number | null };
+export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (etf: string) => EtfHolding[]; coverOf: (etf: string) => HoldingsCover | null } {
   const s = useLiveFiles();
-  return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [] };
+  return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [], coverOf: etf => s.holdingsCover[etf.toUpperCase()] ?? null };
 }
 
-export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[] } {
+export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null } {
   const s = useLiveFiles();
   const t = etf.toUpperCase();
-  return { status: s.etfStatus, row: s.etfs.find(r => r.etf === t) ?? null, holdings: s.holdings[t] ?? [] };
+  return { status: s.etfStatus, row: s.etfs.find(r => r.etf === t) ?? null, holdings: s.holdings[t] ?? [], cover: s.holdingsCover[t] ?? null };
+}
+
+/** A fund's whole-book sector and country weights (/etfs/{t}/weights) — the fund's own split, not the lines read */
+export function useEtfWeights(etf: string): { status: FileStatus; sectors: { name: string; weight: number }[]; countries: { name: string; weight: number }[] } {
+  const t = etf.toUpperCase();
+  const [got, setGot] = useState<{ status: FileStatus; sectors: { name: string; weight: number }[]; countries: { name: string; weight: number }[] }>({ status: 'loading', sectors: [], countries: [] });
+  useEffect(() => {
+    if (!t) return;
+    let dead = false;
+    void uwCall(`/etfs/${encodeURIComponent(t)}/weights`).then(res => {
+      if (dead) return;
+      const d = (res.data && typeof res.data === 'object' ? res.data : {}) as { sector?: { sector?: string; weight?: string }[]; country?: { country?: string; weight?: string }[] };
+      const list = (rows: { name?: string; weight?: string }[]) =>
+        rows.map(r => ({ name: String(r.name || '—'), weight: num(r.weight) * 100 })).filter(r => r.weight >= 0.05).sort((a, b) => b.weight - a.weight);
+      setGot({
+        status: res.error ? 'error' : 'live',
+        sectors: list((d.sector ?? []).map(r => ({ name: r.sector, weight: r.weight }))),
+        countries: list((d.country ?? []).map(r => ({ name: r.country, weight: r.weight }))),
+      });
+    });
+    return () => {
+      dead = true;
+    };
+  }, [t]);
+  return got;
 }
 
 export function useFundsHolding(ticker: string): { etf: string; name: string; weight: number; sharesM: number }[] {

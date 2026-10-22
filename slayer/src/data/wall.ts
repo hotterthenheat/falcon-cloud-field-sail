@@ -174,7 +174,10 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 export const holdLabel = (v: number): string => `${holdShort(v)} of the top wall`;
 /** The same reading for a cell under a "Wall size" heading */
 /* rounded DOWN to 5%, so only the top wall itself reads 100% (a neighbour at 98% of it read "100%" beside it) */
-export const holdShort = (v: number): string => `${v >= 0.999 ? 100 : Math.max(5, Math.floor(v * 20) * 5)}%`;
+/* under 5% prints "<5%" — a floor of "5%" claimed a size the wall does not have */
+export const holdShort = (v: number): string => (v >= 0.999 ? '100%' : v < 0.05 ? '<5%' : `${Math.floor(v * 20) * 5}%`);
+/** A chance as printed: "<1%" for the tiny ones (a floor of 2% made strikes five expected moves out read "2% reached") */
+export const chanceLabel = (v: number): string => (v < 0.005 ? '<1%' : v > 0.995 ? '>99%' : `${Math.round(v * 100)}%`);
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 
 /** Tests of a level as VISITS, not bars: a test begins when a bar's range
@@ -287,17 +290,24 @@ function roleOf(K: number, levels: ExposureProfileData['levels']): WallRole {
   return null;
 }
 
-/** THE WEIGHT: the strike and its close neighbours, absorbing counted for, amplifying against */
+/** THE WEIGHT: the strike and its close neighbours, absorbing counted for, amplifying against.
+    ONE RULE BOTH SIDES OF SPOT, THE MAP'S COLOURS' (the Pinpoint audit, 2026-10-22): a strike absorbs where dealers are
+    LONG gamma there (house sign negative — the Map's cool "pushes back"), and pushes a move along where they are SHORT
+    gamma (positive — the warm "pushes a move along"), above spot or below. The old rule counted put-dominant gamma below
+    spot as absorbing, so SPY 760/761/762 read "PUT WALL 100% / SHELF 95%" on strikes the Map coloured as pushing a move
+    along, while the identical sign at 765 above spot read TRAPDOOR. */
 function wallWeight(K: number, spot: number, strikes: readonly StrikeExposure[]): number {
-  const absorbsSign = K >= spot ? -1 : 1; // call-dominant above spot pushes back on a rise; put-dominant below on a drop
   let weight = 0;
   for (const s of strikes) {
     if (Math.abs(s.strike - K) > spot * NEIGHBOUR_PCT) continue;
     const near = s.strike === K ? 1 : 0.5;
-    weight += Math.sign(s.gex.net) === absorbsSign ? Math.abs(s.gex.net) * near : -Math.abs(s.gex.net) * near;
+    weight += s.gex.net < 0 ? Math.abs(s.gex.net) * near : -Math.abs(s.gex.net) * near;
   }
   return weight;
 }
+
+/** The put wall in plain words — the most put hedging, and what a short-gamma floor does when it gives */
+export const PUT_WALL_WORDS = 'the most put hedging; dealers buy dips into it while it holds, but they are short gamma here, so a break can accelerate';
 
 function wallOdds(K: number, ctx: Ctx): WallOdds {
   const { spot, strikes, levels, clock } = ctx;
@@ -357,7 +367,8 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
 
   const distance = Math.abs(K - spot);
   const distanceSigma = ctx.sigmaLeft > 0 ? distance / ctx.sigmaLeft : 99;
-  const reach = clamp(2 * (1 - phi(distanceSigma)), 0.02, 0.98);
+  /* no floor: a strike five expected moves out is reached well under 1% of the time, and says so */
+  const reach = clamp(2 * (1 - phi(distanceSigma)), 0, 1);
 
   /* THE PATHS */
   const beyond = side === 'call' ? strikes.filter(s => s.strike > K).sort((a, b) => a.strike - b.strike) : strikes.filter(s => s.strike < K).sort((a, b) => b.strike - a.strike);
@@ -366,7 +377,9 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const rungAt = (k: number | null) => (k == null ? null : (ctx.ladder.rungs.find(r => Math.abs(r.strike - k) < 1e-9) ?? null));
   const breakTo = nextShelf?.strike ?? (pocket ? (side === 'call' ? pocket.ceiling : pocket.floor) : null);
   const breakRung = rungAt(breakTo);
-  const breakFlow = breakRung?.flow ?? 0;
+  /* THE FLOW OF THE BREAK ITSELF — from this strike to where it runs, not from spot (the ladder's flow is cumulative
+     from spot, so a far strike's "at stake" grew with its distance and far, unlikely strikes outranked near ones) */
+  const breakFlow = breakRung ? breakRung.flow - (rungAt(K)?.flow ?? 0) : 0;
   const breakPath: WallPath = {
     to: breakTo,
     pocket,
@@ -403,7 +416,9 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
               : ratio >= 0.5
                 ? 'lighter than a typical wall on this name'
                 : 'thin for this name'
-          : 'pushes moves along rather than back — a trapdoor, not a wall',
+          : role === 'put wall'
+            ? PUT_WALL_WORDS
+            : 'pushes moves along rather than back — dealers are short gamma here: a trapdoor, not a wall',
     },
     {
       key: 'tests',
@@ -463,8 +478,10 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const sentence =
     weight > 0
-      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time; it is ${holdLabel(hold)} on this chain. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
-      : `${who} is not a wall: the hedging there pushes moves along rather than back. ${cap(breakPath.words)}.`;
+      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${chanceLabel(reach)} of the time; it is ${holdLabel(hold)} on this chain. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
+      : role === 'put wall'
+        ? `${who}: ${PUT_WALL_WORDS}. ${cap(breakPath.words)}.`
+        : `${who} is not a wall: dealers are short gamma there, so the hedging pushes moves along rather than back. ${cap(breakPath.words)}.`;
 
   return { strike: K, side, role, weight, weightEff, expiresToday, touches, breaks, build, speed, prints, distanceSigma, reach, hold, factors, breakPath, holdPath, sentence };
 }

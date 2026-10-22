@@ -1,0 +1,211 @@
+/*
+==================================================
+  SLAYER TERMINAL - THE GAMMA FLIP, AS A TRADER MEANS IT
+  (core/gammaFlip.ts)
+
+  The flip is the PRICE where dealers switch from long
+  to short gamma: the spot S* at which the whole book's
+  net gamma, re-priced at S*, is zero.
+
+  The old rule (core/walls.ts pickFlip) named the
+  midpoint of the per-strike sign change nearest spot —
+  a fact about two neighbouring strikes, not about the
+  book (the Pinpoint audit, 2026-10-22: SPY Today read
+  770.50 between 770 and 771 while the book's total
+  never crossed zero; TSLA 376.25 against 385).
+
+  HOW. Each leg (strike × expiry × call/put) carries its
+  dollar gamma at today's spot, G₀ (the vendor's own
+  greek-exposure rows, in the house sign). At a
+  hypothetical spot S its gamma is re-priced with
+  Black-Scholes at that leg's own implied vol and time
+  to expiry:
+
+      G(S) = G₀ · [S·φ(d₁(S))] / [S₀·φ(d₁(S₀))]
+
+  (dollar gamma per 1% is Γ·S²·0.01, and Γ·S² =
+  S·φ(d₁)/(σ√T) — the σ√T cancels). When the leg's open
+  interest is known its gamma is computed outright from
+  it, OI·100·Γ(S)·S²·0.01, and whatever the vendor's
+  figure differs from the model's at S₀ rides along
+  unre-priced, so G(S₀) is ALWAYS exactly the book's net
+  at spot — the flip can never contradict the net GEX
+  sign it sits beside. Legs with no vol are carried flat.
+
+  The crossing nearest spot inside ±10% is the flip;
+  none there is a real state ("no flip nearby"), never a
+  level invented at spot.
+==================================================
+*/
+
+/** One leg of the book: its dollar gamma at today's spot (house sign), and what re-prices it */
+export interface GammaLeg {
+  strike: number;
+  /** Dollar gamma per 1% at today's spot — house sign (call legs negative, put legs positive) */
+  g0: number;
+  /** Implied vol, annualised fraction — 0 when unknown (the leg is carried flat) */
+  iv: number;
+  /** Years to expiry */
+  t: number;
+  /** Open interest in contracts, when known — the leg is then priced outright */
+  oi?: number;
+  /** +1 call, −1 put — only the house sign of an outright-priced leg needs it */
+  side?: 1 | -1;
+}
+
+export interface FlipRead {
+  /** The price where net gamma crosses zero, nearest spot inside the range — null when it does not cross there */
+  flip: number | null;
+  /** Net gamma at spot, house sign (negative = dealers long gamma = absorbs) — the book's own net */
+  netAtSpot: number;
+  /** The sign of net gamma between spot and the flip's far side: what the book becomes beyond the flip */
+  beyond: 'long' | 'short' | null;
+  /** The range searched, as a fraction of spot either side */
+  range: number;
+  /** How the flip was found — 'repriced' (Black-Scholes at each leg's vol) or 'cumulative' (strike-ordered running net) */
+  method: 'repriced' | 'cumulative';
+}
+
+const RANGE = 0.1;
+const STEPS = 240;
+const SQRT2PI = Math.sqrt(2 * Math.PI);
+/** A leg's Black-Scholes d₁ */
+const d1Of = (S: number, K: number, t: number, iv: number, r: number): number => (Math.log(S / K) + (r + (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
+
+/** Dollar gamma per 1% of one contract at spot S: Γ·S²·0.01·100 */
+export const dollarGammaPerContract = (S: number, K: number, t: number, iv: number, r: number): number => {
+  if (!(S > 0 && K > 0 && t > 0 && iv > 0)) return 0;
+  const d1 = d1Of(S, K, t, iv, r);
+  const pdf = Math.exp(-(d1 * d1) / 2) / SQRT2PI;
+  return (pdf / (S * iv * Math.sqrt(t))) * S * S * 0.01 * 100;
+};
+
+/** The book's net gamma at hypothetical spot S, house sign */
+export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: number): number {
+  let sum = 0;
+  for (const l of legs) {
+    if (!l.g0 && !(l.oi && l.oi > 0)) continue;
+    if (!(l.iv > 0) || !(l.t > 0)) {
+      sum += l.g0;
+      continue;
+    }
+    if (l.oi && l.oi > 0 && l.side) {
+      /* outright: the model at S, plus the vendor-vs-model gap at S₀ carried flat */
+      const sign = l.side === 1 ? -1 : 1;
+      const at0 = sign * l.oi * dollarGammaPerContract(S0, l.strike, l.t, l.iv, r);
+      const atS = sign * l.oi * dollarGammaPerContract(S, l.strike, l.t, l.iv, r);
+      sum += atS + (l.g0 - at0);
+      continue;
+    }
+    /* re-priced off the leg's own gamma at S₀: the ratio of S·φ(d₁), in logs so a far wing cannot underflow */
+    const a = d1Of(S0, l.strike, l.t, l.iv, r);
+    const b = d1Of(S, l.strike, l.t, l.iv, r);
+    const ln = Math.log(S / S0) - (b * b) / 2 + (a * a) / 2;
+    /* a ratio beyond 25× means the model thinks the vendor's gamma at spot was ~0 — the leg's vol is not its own; carry it flat */
+    const ratio = ln > Math.log(25) ? 1 : Math.exp(ln);
+    sum += l.g0 * ratio;
+  }
+  return sum;
+}
+
+/** The flip off re-priced legs: the zero of net gamma across hypothetical spots, nearest spot inside ±10% */
+export function repricedFlip(legs: readonly GammaLeg[], spot: number, r: number, range: number = RANGE): FlipRead {
+  const net0 = legs.reduce((a, l) => a + l.g0, 0);
+  if (!(spot > 0) || !legs.length) return { flip: null, netAtSpot: net0, beyond: null, range, method: 'repriced' };
+  const lo = spot * (1 - range);
+  const hi = spot * (1 + range);
+  /* TWO GRIDS (a contract minutes from expiry has a gamma bump well under a dollar wide on a $700 name, while a LEAP's
+     barely bends across the whole range): the broad legs are priced on a 240-step grid and read between its points; the
+     narrow ones — wider than a few coarse steps they are not — are priced exactly on a grid finer than half the
+     narrowest material one, σ·√T·S. Spot is a point of both, so the sign at spot is the book's own net. */
+  const coarseStep = (hi - lo) / STEPS;
+  const broad: GammaLeg[] = [];
+  const narrow: GammaLeg[] = [];
+  for (const l of legs) {
+    const w = l.iv > 0 && l.t > 0 ? l.iv * Math.sqrt(l.t) * spot : Infinity;
+    (w >= 4 * coarseStep ? broad : narrow).push(l);
+  }
+  const cx: number[] = [];
+  for (let i = 0; i <= STEPS; i++) cx.push(lo + coarseStep * i);
+  cx.push(spot);
+  cx.sort((a, b) => a - b);
+  const cy = cx.map(S => netGammaAt(broad, spot, S, r));
+  const broadAt = (S: number): number => {
+    let i = 1;
+    let j = cx.length - 1;
+    if (S <= cx[0]) return cy[0];
+    if (S >= cx[j]) return cy[j];
+    while (j - i > 1) {
+      const m = (i + j) >> 1;
+      if (cx[m] >= S) j = m;
+      else i = m;
+    }
+    const k = cx[i] >= S ? i : j;
+    const x0 = cx[k - 1];
+    const x1 = cx[k];
+    const u = x1 > x0 ? (S - x0) / (x1 - x0) : 0;
+    return cy[k - 1] + (cy[k] - cy[k - 1]) * u;
+  };
+  const at = (S: number) => (S === spot ? net0 : broadAt(S) + netGammaAt(narrow, spot, S, r));
+  const maxG = narrow.reduce((m, l) => Math.max(m, Math.abs(l.g0)), 0);
+  let width = Infinity;
+  for (const l of narrow) if (Math.abs(l.g0) >= 0.01 * maxG) width = Math.min(width, l.iv * Math.sqrt(l.t) * spot);
+  const steps = Math.max(STEPS, Math.min(8000, Math.ceil((hi - lo) / Math.max(1e-9, width / 2))));
+  const xs: number[] = [];
+  for (let i = 0; i <= steps; i++) xs.push(lo + ((hi - lo) * i) / steps);
+  xs.push(spot);
+  xs.sort((a, b) => a - b);
+  const ys = xs.map(at);
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (let i = 1; i < xs.length; i++) {
+    const y0 = ys[i - 1];
+    const y1 = ys[i];
+    if (y0 === 0 || y1 === 0 || Math.sign(y0) === Math.sign(y1)) continue;
+    /* bisection inside the bracket */
+    let a = xs[i - 1];
+    let b = xs[i];
+    let fa = y0;
+    for (let k = 0; k < 28; k++) {
+      const m = (a + b) / 2;
+      const fm = at(m);
+      if (Math.sign(fm) === Math.sign(fa)) {
+        a = m;
+        fa = fm;
+      } else b = m;
+    }
+    const x = (a + b) / 2;
+    const d = Math.abs(x - spot);
+    if (d < bestD) {
+      bestD = d;
+      best = x;
+    }
+  }
+  return { flip: best, netAtSpot: net0, beyond: best == null ? null : net0 < 0 ? 'short' : 'long', range, method: 'repriced' };
+}
+
+/** The fallback when no vol is on hand: the price where the strike-ordered running net (from the lowest strike up)
+    crosses zero, nearest spot inside the range */
+export function cumulativeFlip(points: readonly { strike: number; net: number }[], spot: number, range: number = RANGE): FlipRead {
+  const asc = [...points].sort((a, b) => a.strike - b.strike);
+  const net0 = asc.reduce((a, p) => a + p.net, 0);
+  let cum = 0;
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (let i = 0; i < asc.length; i++) {
+    const prev = cum;
+    cum += asc[i].net;
+    if (i === 0 || prev === 0 || cum === 0 || Math.sign(prev) === Math.sign(cum)) continue;
+    /* linear inside the strike that tipped it */
+    const k0 = asc[i - 1].strike;
+    const k1 = asc[i].strike;
+    const x = k0 + ((k1 - k0) * Math.abs(prev)) / (Math.abs(prev) + Math.abs(cum));
+    if (Math.abs(x - spot) > spot * range) continue;
+    const d = Math.abs(x - spot);
+    if (d < bestD) {
+      bestD = d;
+      best = x;
+    }
+  }
+  return { flip: best, netAtSpot: net0, beyond: best == null ? null : net0 < 0 ? 'short' : 'long', range, method: 'cumulative' };
+}

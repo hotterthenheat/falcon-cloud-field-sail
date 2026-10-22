@@ -137,8 +137,17 @@ export interface ExposureLevels {
   spot: number;
   callWall: number;
   putWall: number;
+  /** The strike with the most open interest in the window. Only a PIN when `pinFound`: dealers are long gamma there
+      (their hedging pulls price back to it) and price is within 1% of it — otherwise no surface calls it a pin */
   pin: number;
+  pinFound?: boolean;
+  /** The gamma flip (data/flipLevel.ts). When `flipFound` is false there is no crossing within ±10% and this holds
+      spot only as a placeholder — print "no flip nearby", never this number */
   flip: number;
+  flipFound?: boolean;
+  /** Net gamma of every strike of these contracts at spot, HOUSE sign (negative = dealers long gamma = absorbs). The
+      regime is this sign — never the side of the flip */
+  net?: number;
   /** Largest |net gamma| strike on the FULL book — may sit outside the
       rendered window, in which case the map crowns nothing rather than
       promoting a runner-up. */

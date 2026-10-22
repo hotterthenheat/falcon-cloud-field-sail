@@ -47,6 +47,10 @@ import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, 
 import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
+import { useStockCard } from '../../data/liveFiles';
+import { nyIsoDaysBack } from '../../data/nyDate';
+
+const titleCase = (raw: string) => raw.trim().split(/\s+/).map(w => (w.length <= 3 && /^[A-Z&.]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(' ');
 import type { InsiderFlow, InsiderRole, InsiderTrade } from '../../types/record';
 import { NAMES_TO_KNOW } from './recordSkeletons';
 import { InsiderSectorFlow } from '../../components/record/ExtraFaces';
@@ -64,20 +68,22 @@ const WINDOW_OPTIONS: DropdownOption<Window>[] = [
 ];
 const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'market', label: 'Open-market trades', hint: 'Purchases and sales someone made in the market — the rows that are trades' },
-  { value: 'all', label: 'Every filing', hint: 'With the grants, conversions, withholdings and gifts — compensation plumbing, marked for what it is' },
+  { value: 'all', label: 'Every filing', short: 'All', hint: 'With the grants, conversions, withholdings and gifts — compensation plumbing, marked for what it is' },
 ];
 const ROLE_OPTIONS: DropdownOption<RolePick>[] = [
-  { value: 'any', label: 'Any role', hint: 'Officers, directors and holders of a tenth' },
+  { value: 'any', label: 'Any role', short: 'All', hint: 'Officers, directors and holders of a tenth' },
   { value: 'CEO', label: 'CEO', hint: 'The chief executive' },
   { value: 'CFO', label: 'CFO', hint: 'The chief financial officer' },
   { value: 'COO', label: 'COO', hint: 'The chief operating officer' },
   { value: 'Director', label: 'Director', hint: 'Board members' },
   { value: 'EVP', label: 'EVP', hint: 'Executive vice presidents' },
   { value: 'Chief Legal Officer', label: 'Chief Legal Officer', hint: 'The general counsel' },
+  { value: 'Officer', label: 'Other officer', hint: 'Presidents, CTOs, controllers and every other officer title' },
   { value: '10% owner', label: '10% owner', hint: 'Holders of a tenth of the company' },
+  { value: 'Other', label: 'Not stated', hint: 'The filing ticked no role and gave no title' },
 ];
 const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
-  { value: 'all', label: 'Every name', hint: 'Every company the terminal files' },
+  { value: 'all', label: 'Every name', short: 'All', hint: 'Every company the terminal files' },
   { value: 'board', label: 'Your board', hint: 'The names on your Board' },
 ];
 
@@ -96,13 +102,19 @@ const fmtInt = (n: number) => Math.round(n).toLocaleString('en-US');
 /* the date, then how far back (the partner's review: never "9d ago" alone) */
 const WhenCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <When days={data.daysAgo} /> : null);
 
+/** The company's name: the house listing's, else the feed's own; never the ticker said twice */
+const companyOf = (t: { ticker: string; company?: string }): string => {
+  const n = tickerName(t.ticker);
+  return n !== t.ticker ? n : t.company ?? '';
+};
+
 const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
+        {companyOf(data) ? <span className="text-[10px] text-textMuted truncate">{companyOf(data)}</span> : null}
       </span>
     </span>
   ) : null;
@@ -111,7 +123,7 @@ const WhoCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="flex flex-col leading-tight min-w-0 text-left" data-open-person={personSlug(data.person)}>
       <span className="text-[12px] font-semibold text-textPrimary truncate">{data.person}</span>
-      <span className="text-[10px] text-textMuted truncate">{data.role}</span>
+      <span className="text-[10px] text-textMuted truncate" title={data.title ? `Filed as: ${data.title}` : undefined}>{data.role === 'Officer' && data.title ? data.title : data.role === 'Other' ? 'Role not stated' : data.role}</span>
     </span>
   ) : null;
 
@@ -135,14 +147,31 @@ const TradeCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
 const SharesCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{fmtInt(data.shares)}</span> : null);
 const PriceCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">${data.price.toFixed(2)}</span> : null);
 const ValueCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum font-semibold text-textPrimary">{fmtDollars(data.value)}</span> : null);
-const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{data.stakePct < 0 ? '—' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}</span> : null);
+/** What the stake figure means for this row, in words — 100% on a buy is a first position, 100% on a sale an exit */
+const stakeWords = (t: InsiderTrade): string => {
+  if (t.stakePct < 0) return 'The filing gave no holding before or after, so the share of the stake cannot be read';
+  const shares = Math.round(t.shares).toLocaleString('en-US');
+  if (t.kind === 'BUY') {
+    const after = Math.round(t.heldAfter).toLocaleString('en-US');
+    if (t.stakePct >= 99.95) return `${shares} shares bought, and ${after} held after — these are the first shares this filer reports holding`;
+    return `${shares} shares bought against ${after} held after the trade: the buy is ${t.stakePct.toFixed(1)}% of what they now hold${t.stakePct >= 49.95 ? ' (at 50% they doubled the position)' : ''}`;
+  }
+  if (t.stakePct >= 99.95) return `${shares} shares sold — everything this filer reported holding before the sale`;
+  return `${shares} shares sold out of the holding before the sale: ${t.stakePct.toFixed(1)}% of it`;
+};
+const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
+  data ? (
+    <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={stakeWords(data)}>
+      {data.stakePct < 0 ? '—' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
+    </span>
+  ) : null;
 
 /** Chosen, planned or unstated — the flag the whole page turns on */
 const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!data) return null;
   if (!TX_CODES[data.code].openMarket) return <span className="font-mono text-[10px] text-textMuted">—</span>;
   if (data.plan === 'plan') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Ran off a 10b5-1 plan adopted months earlier — no view on the day">planned</span>;
-  if (data.plan === 'unknown') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way">unstated</span>;
+  if (data.plan === 'unknown') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way — not counted as chosen buying in the sums above">unstated</span>;
   const loud = isChosenBuy(data);
   return (
     <span className={`font-mono text-[8px] uppercase tracking-widest ${loud ? 'text-textPrimary font-bold' : 'text-textSecondary'}`} title={loud ? 'A purchase the insider chose to make with their own money — the loudest row here' : 'A trade the insider chose to make'}>
@@ -166,6 +195,10 @@ const OthersCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
 /** One name where someone chose to buy: the mark, the dollars, the filers, the engine's word. A click keeps the grid to it. */
 const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: () => void }) => {
   const s = SIGNAL_WORD[f.signal];
+  /* the feed carries no company name; a name the house list does not file is asked of its own stock card */
+  const card = useStockCard(f.ticker);
+  const listed = tickerName(f.ticker);
+  const company = listed !== f.ticker ? listed : card?.name && card.name.toUpperCase() !== f.ticker ? titleCase(card.name) : '';
   /* the distinct people who chose to buy in the window (the engine's cluster counts thirty days only) */
   const buyers = new Set(f.trades.filter(t => isChosenBuy(t)).map(t => t.person)).size;
   return (
@@ -183,7 +216,7 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
       <span className="flex items-center gap-2 min-w-0">
         <CompanyLogo ticker={f.ticker} size={18} />
         <span className="font-mono text-[12px] font-bold text-textPrimary">{f.ticker}</span>
-        <span className="text-[10px] text-textSecondary truncate">{tickerName(f.ticker)}</span>
+        {company ? <span className="text-[10px] text-textSecondary truncate">{company}</span> : null}
       </span>
       <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
         <span className="text-[13px] font-bold text-bull">{fmtDollars(f.openMarketBuys)}</span>
@@ -205,19 +238,31 @@ const shortDay = (iso: string | null): string => {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
-/** One honest line: purchases are complete for the window (or since the date the pages reached), the rest is the latest
-    filings the feed sent, with their filing dates */
+/** One honest line: what each of the three reads covers FOR THIS WINDOW — complete, still reading, or stopped at the
+    page cap short of it (the data audit, 2026-10-22: it said "reading further back" after the reading had stopped, and
+    kept saying it after the window was cut back to 30 days) */
 const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window: number }) => {
-  const since = new Date(Date.now() - window * 86_400_000).toISOString().slice(0, 10);
+  const since = nyIsoDaysBack(window);
+  /* complete from the day after the oldest filing read — so the window is covered when that day is on or before its first */
+  const covers = (from: string | null, ranOut: boolean) => ranOut || (!!from && from <= nyIsoDaysBack(window - 1));
   const restShort = coverage.restSince != null && coverage.restSince > since;
   const big = `$${(coverage.bigSale / 1e6).toFixed(0)}M`;
-  const paged = (complete: boolean, from: string | null, what: string) =>
-    complete ? `every ${what} filed in the last ${window} days` : from ? `every ${what} filed since ${shortDay(from)} (reading further back)` : 'reading';
+  const paged = (from: string | null, ranOut: boolean, reading: boolean, capped: boolean, what: string) =>
+    covers(from, ranOut)
+      ? `every ${what} filed in the last ${window} days`
+      : !from
+        ? 'reading'
+        : reading
+          ? `every ${what} filed since ${shortDay(from)} (reading further back)`
+          : capped
+            ? `every ${what} filed since ${shortDay(from)} — the read stops there, short of ${window} days`
+            : `every ${what} filed since ${shortDay(from)}`;
+  const setAside = coverage.notShares + coverage.implausible;
   return (
     <p className="px-5 pb-2 text-[11px] leading-relaxed text-textMuted" data-insiders-coverage title="Unusual Whales sends at most 500 filings a request, newest filed first">
-      <span className="text-textSecondary">Purchases:</span> {paged(coverage.buysComplete, coverage.buysSince, 'open-market buy')}
+      <span className="text-textSecondary">Purchases:</span> {paged(coverage.buysSince, coverage.buysRanOut, coverage.buysReading, coverage.buysCapped, 'open-market buy')}
       {' · '}
-      <span className="text-textSecondary">Sales:</span> {paged(coverage.bigSalesComplete, coverage.bigSalesSince, `open-market sale of ${big} or more`)}
+      <span className="text-textSecondary">Sales:</span> {paged(coverage.bigSalesSince, coverage.bigSalesRanOut, coverage.bigSalesReading, coverage.bigSalesCapped, `open-market sale of ${big} or more`)}
       {' · '}
       <span className="text-textSecondary">Smaller sales and other filings:</span>{' '}
       {coverage.restCount === 0
@@ -225,6 +270,12 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
         : restShort
           ? `the latest ${coverage.restCount.toLocaleString()} filed, ${shortDay(coverage.restSince)} – ${shortDay(coverage.restNewest)}`
           : `every one filed in the last ${window} days`}
+      {setAside > 0 ? (
+        <span title="Swaps, preferreds and other non-share securities on an open-market row, and rows whose filed price is ten times the stock's own or whose value is over a quarter of the company — a unit mix-up, not a trade">
+          {' · '}
+          {setAside.toLocaleString()} {setAside === 1 ? 'row' : 'rows'} set aside ({coverage.notShares} not common shares, {coverage.implausible} impossible for the company's size)
+        </span>
+      ) : null}
     </p>
   );
 };
@@ -308,7 +359,7 @@ const Insiders = () => {
 
   const columnDefs = useMemo<ColDef<InsiderTrade>[]>(
     () => [
-      { headerName: 'When', field: 'daysAgo', width: 126, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day the trade happened, and how far back that is — newest first' },
+      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day the trade happened, and how far back that is — newest first' },
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: NameCell, headerTooltip: 'The company' },
       { headerName: 'Who', field: 'person', flex: 1.4, minWidth: 180, cellRenderer: WhoCell, headerTooltip: 'A row opens this person’s book' },
       { headerName: 'Trade', field: 'code', flex: 0.9, minWidth: 120, cellRenderer: TradeCell, headerTooltip: 'Bought or sold in the market; with Every filing on, the grants, conversions and withholdings are named for what they are' },
@@ -438,7 +489,7 @@ const Insiders = () => {
         </AgGridProvider>
         {paged.bar(rows.length, 'insiders-grid')}
       </div>
-      <InsiderSectorFlow />
+      <InsiderSectorFlow trades={rows} windowDays={window} />
     </div>
   );
 };
@@ -456,7 +507,7 @@ export const InsiderFile = () => {
   const planned = rows.filter(t => t.plan === 'plan').length;
   const cols = useMemo<ColDef<InsiderTrade>[]>(
     () => [
-      { headerName: 'When', field: 'daysAgo', width: 126, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day of the trade, and how long ago' },
+      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day of the trade, and how long ago' },
       {
         headerName: 'Name',
         headerTooltip: 'The company',
@@ -468,7 +519,7 @@ export const InsiderFile = () => {
             <span className="inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={data.ticker} size={16} />
               <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-              <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
+              {companyOf(data) ? <span className="text-[10px] text-textMuted truncate">{companyOf(data)}</span> : null}
             </span>
           ) : null,
       },
@@ -510,8 +561,14 @@ export const InsiderFile = () => {
           <div className="min-w-0 flex-1">
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{book.person}</h3>
             <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-              {book.role} · {book.ticker} · every filing in the last 90 days, the grants included
+              {book.role} · {book.ticker} ·{' '}
+              {book.windowDays > 0
+                ? `${book.by === 'cik' ? 'every filing under their SEC id' : 'every filing under this name'} with a trade in the last year, the grants included${book.capped ? ' — the latest 500 only' : ''}`
+                : 'their filings in the market feed this page read — their own file did not answer'}
             </p>
+            {book.by === 'name' && book.filers > 1 ? (
+              <p className="mt-0.5 text-[10px] text-warn">{book.filers} SEC filers share this name; the rows may be more than one person.</p>
+            ) : null}
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <div>
@@ -537,7 +594,7 @@ export const InsiderFile = () => {
             label="Show"
             value={show}
             options={[
-              { value: 'all', label: 'Every filing', hint: 'Trades, grants, conversions and tax' },
+              { value: 'all', label: 'Every filing', short: 'All', hint: 'Trades, grants, conversions and tax' },
               { value: 'market', label: 'Trades only', hint: 'Bought or sold in the market' },
             ]}
             onChange={setShow}
@@ -546,7 +603,10 @@ export const InsiderFile = () => {
           />
         </div>
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insider-sentence>
-          {book.person} filed {book.trades.length} {book.trades.length === 1 ? 'time' : 'times'} at {book.ticker}.{' '}
+          {(() => {
+            const names = [...new Set(book.trades.map(t => t.ticker))];
+            return `${book.person} filed ${book.trades.length} ${book.trades.length === 1 ? 'row' : 'rows'}${book.windowDays > 0 ? ' in the last year' : ''}, at ${names.length === 1 ? names[0] : `${names.length} companies (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''})`}.`;
+          })()}{' '}
           {(() => {
             /* "0 of them never reached the market" read as a double negative — say how many were grants, awards or
                withholdings only when there were some */

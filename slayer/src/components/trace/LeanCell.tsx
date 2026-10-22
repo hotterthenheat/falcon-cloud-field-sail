@@ -10,13 +10,24 @@
    direction inks on a fact about SIDE, the reading the tape's own quote cell refuses: a put bought at the ask is not
    bullish. The label and the bar's reach carry the side; the bar is the ask share in the primary ink over the bid's
    quiet track. */
-const LeanCell = ({ askPct }: { askPct: number }) => {
+const LeanCell = ({ askPct: raw }: { askPct: number }) => {
+  /* no side figure (a flow alert, a row the vendor sent no side volume for): a dash, never "ASK 100%" */
+  if (!Number.isFinite(raw)) {
+    return (
+      <span className="inline-flex flex-col items-end gap-[3px] w-16" title="No side volume on this row">
+        <span className="font-mono text-[11px] uppercase tnum leading-[14px] text-textMuted">—</span>
+      </span>
+    );
+  }
+  /* whole percents — a raw share printed "ASK 98.97826700536268%" */
+  const askPct = Math.round(Math.max(0, Math.min(100, raw)));
   const bidPct = 100 - askPct;
-  const mid = Math.abs(askPct - 50) < 6;
-  const label = mid ? 'MID' : bidPct >= 50 ? `BID ${bidPct}%` : `ASK ${askPct}%`;
-  const tone = mid ? 'text-textMuted' : 'text-textPrimary';
+  /* near-even is EVEN, not "MID": the mid volume is not in this split at all */
+  const even = Math.abs(askPct - 50) < 6;
+  const label = even ? 'EVEN' : bidPct >= 50 ? `BID ${bidPct}%` : `ASK ${askPct}%`;
+  const tone = even ? 'text-textMuted' : 'text-textPrimary';
   return (
-    <span className="inline-flex flex-col items-end gap-[3px] w-16" title={`${askPct}% of the volume at the ask, ${bidPct}% on the bid`}>
+    <span className="inline-flex flex-col items-end gap-[3px] w-16" title={`Of the volume that traded at the bid or the ask: ${askPct}% at the ask, ${bidPct}% on the bid (mid prints are not in this split)`}>
       <span className={`font-mono text-[11px] font-semibold uppercase tnum leading-[14px] ${tone}`}>{label}</span>
       <span className="flex w-16 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]">
         <span className="h-full bg-textPrimary/80 ml-auto" style={{ width: `${askPct}%` }} />
