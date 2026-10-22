@@ -398,7 +398,9 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
          flip's chip always stands in it, and a wall's chip finds room beside even the longest capsule instead of being
          pushed inside it. Not on the compact lanes (they print no flip chip) nor on a lane too narrow to spare it. */
       const laneW = laneA.from - laneA.to;
-      const GUTTER = compact || laneW < 420 ? 0 : 88;
+      /* …and a narrower lane keeps a narrower gutter rather than none (the UI sweep, 2026-10-22): the ruler in Compare's
+         middle column gives each lane ~200px, under the old 420 floor, so the flip's chip lay across the capsules */
+      const GUTTER = compact ? 0 : laneW >= 420 ? 88 : laneW >= 170 ? 76 : 0;
       const span = Math.max(1, laneW - 10 - GUTTER);
       const yOf = (d: number) => PAD + ((off + L.R - d) / (2 * L.R)) * (H - 2 * PAD);
       /* ONE CAPSULE HEIGHT FOR BOTH SIDES, the smaller, from the drawing's own height */

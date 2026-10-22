@@ -80,6 +80,7 @@ import { BuildingGuide } from '../../components/gex/BuildingGuide';
 import { ladderExpiryOptions } from '../../components/gex/ladderControls';
 import { AgendaSwitch } from './Agenda';
 import { BuildingLedgerSkeleton, BuildingPageSkeleton } from '../../components/gex/buildingSkeletons';
+import { BookOrSkeleton } from './BookDown';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { aheadClock } from '../../data/ahead';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
@@ -167,7 +168,12 @@ const Building = () => {
   useEffect(() => {
     if (!marketData) return;
     const now = Date.now();
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker;
+    /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
+       so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
+       the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
+       at once */
+    const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;
@@ -221,7 +227,7 @@ const Building = () => {
 
   const rows = window * 2 + 1;
   const first = builds.get(panes[0].key);
-  if (!scan || !first) return <BuildingPageSkeleton rows={rows} folded={show === 'moved'} />;
+  if (!scan || !first) return <BookOrSkeleton tickers={[activeTicker]}><BuildingPageSkeleton rows={rows} folded={show === 'moved'} /></BookOrSkeleton>;
 
   const compact = panes.length > 1;
   let moved = 0;
