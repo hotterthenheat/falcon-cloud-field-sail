@@ -53,6 +53,7 @@ import { useDistanceUnit } from '../../data/distanceUnits';
 import { readSessionClock } from '../../data/moc';
 import type { MarketSnapshot } from '../../types/market';
 import type { ExposureExpiry } from '../../types/gex';
+import { LEVELS_OPTIONS, useLevelsScope } from '../../data/levelsScope';
 import { BOOK_TTL_MS, StaleMark } from '../../components/ui/liveRead';
 
 /** The reads sweep on their own cadence — a comparison must not vibrate with every tick */
@@ -149,8 +150,15 @@ const Compare = () => {
     }
   };
   /* Which contracts both books weigh — the Map's Expiry card, on the ruler's
-     head (Noah, 2026-09-10: "missing some top buttons") */
-  const [expiry, setExpiry] = useState<ExposureExpiry>('0DTE');
+     head (Noah, 2026-09-10: "missing some top buttons"). IT FOLLOWS THE LEVELS CARD (the ship pass, 2026-10-22: the
+     card said "Today" or "All expiries" while this page sat on its own pick, so QQQ's net GEX here was not the Board's)
+     until the reader picks another expiry here; a change of the Levels card brings it back. Off the card, the page
+     says so under the ruler. */
+  const levelsScope = useLevelsScope();
+  const [expiryPick, setExpiryPick] = useState<ExposureExpiry | null>(null);
+  useEffect(() => setExpiryPick(null), [levelsScope]);
+  const expiry: ExposureExpiry = expiryPick ?? levelsScope;
+  const setExpiry = (e: ExposureExpiry) => setExpiryPick(e === levelsScope ? null : e);
   const sideA = useMemo(() => {
     const s = snapOf(aTicker);
     return s ? buildCompareSide(s, clock, expiry) : null;
@@ -266,6 +274,16 @@ const Compare = () => {
           </div>
           {!belowLg && <CompareSidePanel side="b" s={cmp.b} cmp={cmp} unit={unit} greek={greek} greeks={greeks} chip={chipB} focus={focusB} onPick={onPick} open={sides.b} onToggle={() => toggleSide('b')} full={rulerFull} />}
         </div>
+        {expiry !== levelsScope && (
+          <div className="shrink-0 px-5 py-2 border-t border-borderSubtle/60 flex items-center gap-3 flex-wrap text-[11px] text-textSecondary" data-compare-off-scope>
+            <span>
+              This page is reading a different expiry from the Levels card ({LEVELS_OPTIONS.find(o => o.value === levelsScope)?.label}), so its walls, flip, supreme and net GEX can differ from the Board and the Map.
+            </span>
+            <button type="button" onClick={() => setExpiryPick(null)} className="min-h-10 px-2 font-mono text-[10px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors">
+              Back to the Levels card
+            </button>
+          </div>
+        )}
         {/* THE SENTENCE — what the two say against each other, once, under the ruler (the old table's verdicts) */}
         <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
           {/* a floor, so on a phone the doors wrap under the sentence instead of squeezing it to two words a line */}

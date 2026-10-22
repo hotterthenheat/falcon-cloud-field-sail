@@ -107,6 +107,7 @@ export function newsFromWhales(rows: UwNews[]): NewsItem[] {
       category: categoryOf(headline, r.tags, !!ticker),
       sentiment: sent,
       magnitude: major ? 0.8 : 0.45,
+      major,
       prediction: {
         probUpPct: 50,
         expMove1dPct: move,
@@ -366,6 +367,9 @@ export function insidersFromWhales(rows: { amount?: number; filing_date?: string
     const shares = Math.abs(Number(r.amount) || 0);
     const price = Number(r.price) || 0;
     const spot = Number(r.stock_price) || 0;
+    /* a "price" ten times the stock's own, or a tenth of it, is a note's face or a unit mix-up, not a share price — a
+       SAFE filed at $2,000,000 "a share" read as $15.7 trillion of buying (the retail pass, 2026-10-22) */
+    if (meta.openMarket && spot > 0 && price > 0 && (price > spot * 10 || price * 10 < spot)) continue;
     const held = Number(r.shares_owned_after) || 0;
     const before = Number(r.shares_owned_before) || 0;
     const plan = r.is_10b5_1 === true ? 'plan' : r.is_10b5_1 === false ? 'discretionary' : 'unknown';

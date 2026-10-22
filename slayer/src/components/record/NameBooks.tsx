@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { uwCall } from '../../data/whales';
 import { useNavigate } from 'react-router-dom';
 import { houseSlug } from '../../data/fileBooks';
 import { useShortRow } from '../../data/liveFiles';
 import { stockBookKey, useVendor, useVendorRow } from '../../data/vendorFeed';
 import { FILE_TTL_MS, FeedFallback, StaleMark, TickFigure, quietText, type FeedFault } from '../ui/liveRead';
+import { statHelp } from './statHelp';
 
 /*
   Who is in the name. One box on the name's page: the largest house,
@@ -14,7 +16,7 @@ import { FILE_TTL_MS, FeedFallback, StaleMark, TickFigure, quietText, type FeedF
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="min-w-0">
-    <dt className="text-[10px] text-textMuted">{label}</dt>
+    <dt className="text-[10px] text-textMuted cursor-help" title={statHelp(label)}>{label}</dt>
     <dd className="mt-0.5 font-mono text-[12px] tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
   </div>
 );
@@ -46,6 +48,52 @@ const Row = ({ onClick, testId, cells }: { onClick: () => void; testId: string; 
   </button>
 );
 
+/* THE FUND'S OWN WEIGHT (the retail pass, 2026-10-22). /etfs/{t}/exposure — "which funds hold the name" — carries a
+   weight that lags: SPY's AAPL read 5.80% there while SPY's own holdings file said 7.45% (updated 2026-10-20), and
+   179.2M shares × $345.80 over SPY's $823B is 7.5%. So each fund listed here reads its weight off that fund's own
+   holdings file (/etfs/{etf}/holdings), with the file's date; the exposure figure is only the fallback, marked as such. */
+const fundWeights = new Map<string, Promise<Map<string, { weight: number; asOf: string | null }>>>();
+const weightsOf = (etf: string) => {
+  let hit = fundWeights.get(etf);
+  if (!hit) {
+    hit = uwCall(`/etfs/${encodeURIComponent(etf)}/holdings`).then(res => {
+      const out = new Map<string, { weight: number; asOf: string | null }>();
+      if (Array.isArray(res.data))
+        for (const r of res.data as Record<string, unknown>[]) {
+          const t = String(r.ticker || '').toUpperCase();
+          const w = Number(r.weight);
+          if (t && Number.isFinite(w)) out.set(t, { weight: w, asOf: r.updated ? String(r.updated).slice(0, 10) : null });
+        }
+      return out;
+    });
+    fundWeights.set(etf, hit);
+  }
+  return hit;
+};
+const shortDay = (iso: string | null) => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+};
+function useOwnWeights(ticker: string, etfs: string[]): Record<string, { weight: number; asOf: string | null } | null> {
+  const key = etfs.join(',');
+  const [got, setGot] = useState<Record<string, { weight: number; asOf: string | null } | null>>({});
+  useEffect(() => {
+    let dead = false;
+    const sym = ticker.toUpperCase();
+    etfs.forEach(etf =>
+      void weightsOf(etf).then(m => {
+        if (!dead) setGot(g => ({ ...g, [etf]: m.get(sym) ?? null }));
+      })
+    );
+    return () => {
+      dead = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, key]);
+  return got;
+}
+
 const NameBooks = ({ ticker }: { ticker: string }) => {
   const navigate = useNavigate();
   useVendor('dossier', ticker, `/dossier/stocks/${ticker}`);
@@ -55,6 +103,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
   const short = shortLive.row;
   const houses = people(own?.state === 'live' ? own.data : null);
   const funds = people(held?.state === 'live' ? held.data : null);
+  const own_ = useOwnWeights(ticker, funds.map(f => f.etf).filter(Boolean));
   const largest = houses[0];
   const fund = funds[0];
   const fault: FeedFault | null = own?.fault ?? held?.fault ?? (shortLive.status === 'error' ? 'failed' : null);
@@ -102,9 +151,19 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
       {funds.length > 0 && (
         <>
           <Head cols={['Funds', 'Weight', 'Fund']} />
-          {funds.map(f => (
-            <Row key={f.name} testId={f.name} onClick={() => navigate(`/dossier/etfs/${f.etf || f.name}`)} cells={[f.name, f.weight, f.etf]} />
-          ))}
+          {funds.map(f => {
+            const mine = own_[f.etf];
+            const cell = mine ? (
+              <span title={`From ${f.etf}'s own holdings file${mine.asOf ? `, ${mine.asOf}` : ''}`}>
+                {mine.weight.toFixed(2)}%{mine.asOf ? <span className="text-textMuted"> · {shortDay(mine.asOf)}</span> : null}
+              </span>
+            ) : mine === undefined ? (
+              '…'
+            ) : (
+              <span title={`${f.etf}'s holdings file does not list this name in its top lines — Unusual Whales' exposure figure, which can lag`}>{f.weight} <span className="text-textMuted">est.</span></span>
+            );
+            return <Row key={f.name} testId={f.name} onClick={() => navigate(`/dossier/etfs/${f.etf || f.name}`)} cells={[f.name, cell, f.etf]} />;
+          })}
         </>
       )}
       <div className="h-3" />

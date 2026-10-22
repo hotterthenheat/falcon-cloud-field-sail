@@ -76,7 +76,7 @@ const BoardDayFigure = () => (
 
 /* A day on the list: the date rail, two doors, a macro chip */
 const DayFigure = () => (
-  <Figure label="One day of the list: the date on the left in silver as today, two name doors with their options price and slot mark, a CPI chip" h={62}>
+  <Figure label="One day of the list: the date on the left in silver as today, two name doors with their options price and slot mark, an FOMC chip" h={62}>
     <rect x={0} y={0} width={420} height={62} fill={SILVER} fillOpacity={0.04} />
     <rect x={0} y={0} width={2} height={62} fill={SILVER} fillOpacity={0.7} />
     <text x={14} y={28} fontSize={13} fontWeight={700} fill={SILVER} fontFamily={MONO}>
@@ -116,7 +116,7 @@ const DayFigure = () => (
     ))}
     <rect x={352} y={13} width={40} height={18} rx={4} fill="#0c0c0c" stroke="#1c1c1c" />
     <text x={372} y={25} textAnchor="middle" fontSize={6.5} letterSpacing={1} fill="#a3a3a3" fontFamily={MONO}>
-      CPI
+      FOMC
     </text>
   </Figure>
 );
@@ -213,7 +213,7 @@ const RecordFigure = () => (
       Sen. M. Ashford
     </text>
     <text x={220} y={42} fontSize={6.5} fill={MUTED} fontFamily={SANS}>
-      D-VT · Finance · own committee
+      D-VT · Senate
     </text>
     <text x={318} y={32} fontSize={7.5} fill={BEAR} fontFamily={MONO}>
       Sale
@@ -230,21 +230,21 @@ const RecordFigure = () => (
 export const EarningsGuide = () => (
   <div data-earnings-guide>
     <Section title="A day on the board">
-      <p>Five days across, today's head in silver; every name is a card with the move its options charge, on the shelf for before the open or after the close. The macro calendar's dates — CPI, FOMC, payrolls — sit under the day's head. Click a card for the name's page.</p>
+      <p>Five days across, today's head in silver; every name is a card with the move its options charge, on the shelf for before the open or after the close. The Fed's FOMC decision days and the payrolls Friday sit under the day's head. Click a card for the name's page.</p>
       <BoardDayFigure />
     </Section>
     <Section title="The same day as a list">
-      <p>The Layout card turns the week into a list: dates down the left, today on the silver rail, every name a door, the macro calendar's dates beside them.</p>
+      <p>The Layout card turns the week into a list: dates down the left, today on the silver rail, every name a door, the FOMC and payrolls dates beside them.</p>
       <DayFigure />
     </Section>
     <Section title="The board holds the known names">
       <p>A day can carry dozens of reports. The board shows the names the room would recognise — the large caps, the S&amp;P, and whatever is on your own board — and says how many more the day holds; the list and the grid below hold every report.</p>
     </Section>
     <Section title="Ask for a name">
-      <p>The Name card takes any ticker and answers with its next report: the date, before the open or after the close, and whether the company has set it or it is still an analyst's estimate. Inside the fortnight the answer carries the options price and opens the name's page.</p>
+      <p>The Name card takes any ticker and answers with its next report: the date, before the open or after the close, and whether the company has set it or it is still Unusual Whales' estimate. Inside the fortnight the answer carries the options price and opens the name's page. Every next-earnings date in the Dossier — this card, the stock page, the company card and the News calendar — is the same one: the name's own Unusual Whales earnings file, the first report dated today or later. "In 7 trading days" counts weekdays.</p>
     </Section>
     <Section title="Priced">
-      <p>The options price over what the name usually moves: rich above 1.3×, cheap below 0.85×, fair between.</p>
+      <p>The move the options charge for the print (the straddle's price as a % of the stock) over what the name usually moved the day after its last eight reports: rich above 1.3×, cheap below 0.85×, fair between.</p>
       <PricedFigure />
     </Section>
     <Section title="Today's price, replayed">

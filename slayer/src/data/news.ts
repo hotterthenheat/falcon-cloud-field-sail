@@ -64,6 +64,8 @@ export interface NewsItem {
   sentiment: number;
   /** 0…1 — how market-moving the item is */
   magnitude: number;
+  /** Unusual Whales flags the headline as major (is_major) */
+  major?: boolean;
   prediction: NewsPrediction;
 }
 

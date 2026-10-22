@@ -84,16 +84,39 @@ function nearMoney(data: unknown[]): unknown[] {
   return keep.sort((a, b) => a.i - b.i).map(s => s.row);
 }
 
+/** A row's date or time, from the first field that carries one — to tell which end of a list is newest */
+const STAMP_KEYS = ['date', 'market_date', 'timestamp', 'executed_at', 'created_at', 'filing_date', 'transaction_date', 'time', 'start_time', 'report_date'];
+function stampOf(row: unknown): number | null {
+  if (!row || typeof row !== 'object') return null;
+  for (const k of STAMP_KEYS) {
+    const v = (row as Record<string, unknown>)[k];
+    if (typeof v === 'string' || typeof v === 'number') {
+      const t = typeof v === 'number' ? v : Date.parse(v);
+      if (Number.isFinite(t)) return t;
+    }
+  }
+  return null;
+}
+
+/** Keep the newest `cap` rows. Some vendor routes answer oldest-first, others newest-first (shorts data, FTDs,
+ *  short volume), so cutting from the tail kept the oldest rows on those. */
+function keepNewest<T>(rows: T[], cap: number): T[] {
+  if (rows.length <= cap) return rows;
+  const a = stampOf(rows[0]);
+  const b = stampOf(rows[rows.length - 1]);
+  return a != null && b != null && a > b ? rows.slice(0, cap) : rows.slice(rows.length - cap);
+}
+
 function clip(data: unknown, kind: Job['kind']): unknown {
   if (kind === 'theta' && Array.isArray(data) && data.some(r => !!r && typeof r === 'object' && 'contract' in (r as object))) {
     return nearMoney(data);
   }
   const cap = kind === 'theta' ? 400 : 600;
-  if (Array.isArray(data)) return data.length > cap ? data.slice(data.length - cap) : data;
+  if (Array.isArray(data)) return keepNewest(data, cap);
   if (data && typeof data === 'object') {
     const next: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      next[k] = Array.isArray(v) ? (v.length > 24 ? v.slice(v.length - 24) : v) : v;
+      next[k] = Array.isArray(v) ? keepNewest(v, 24) : v;
     }
     return next;
   }

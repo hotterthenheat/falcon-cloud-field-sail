@@ -10,14 +10,12 @@
     THE HEAD      four facts
     THE CARDS     Window · Chamber · Owner · Show, and
                   the Filter as a card that reads the
-                  names, members and committees on
-                  the page
+                  names and members on the page
     THE SENTENCE
-    THE REPORTS   trades in a sector the member's
-    TO KNOW       own committee oversees, the biggest
-                  bracket first — the reading this
-                  data is for; a card keeps the grid
-                  to its member
+    THE REPORTS   the biggest disclosed brackets on
+    TO KNOW       the cut, the latest first among
+                  equals; a card keeps the grid to
+                  its member
     THE GRID      in a window a screen tall that
                   scrolls inside itself, its head
                   pinned
@@ -31,7 +29,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { usePagedGrid } from '../../components/record/pagedGrid';
+import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
@@ -51,7 +49,7 @@ const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the l
 type Window = 30 | 90 | 180;
 type ChamberPick = 'both' | Chamber;
 type OwnerPick = 'any' | ReportOwner;
-type Show = 'all' | 'committee' | 'late' | 'purchases' | 'sales';
+type Show = 'all' | 'late' | 'purchases' | 'sales';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
   { value: 30, label: '30 days', hint: 'Reports filed in the last month' },
@@ -72,7 +70,6 @@ const OWNER_OPTIONS: DropdownOption<OwnerPick>[] = [
 ];
 const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'all', label: 'All reports', hint: 'Every report in the window' },
-  { value: 'committee', label: 'Own committee', hint: "Trades in a sector the member's own committee oversees — the reading this data is for" },
   { value: 'late', label: 'Late only', hint: 'Filed past the 45-day deadline' },
   { value: 'purchases', label: 'Purchases', hint: 'Purchases only', tone: 'bull' },
   { value: 'sales', label: 'Sales', hint: 'Sales only, full or partial', tone: 'bear' },
@@ -93,13 +90,7 @@ const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
       <span className="text-[12px] font-semibold text-textPrimary truncate">
         {data.member.name} <span className="font-mono text-[10px] font-normal text-textMuted">{seat(data)}</span>
       </span>
-      {data.committeeOverlap ? (
-        <span className="text-[10px] text-textSecondary truncate" title="A trade in a sector this committee oversees">
-          {data.committeeOverlap} · <span className="text-textPrimary">own committee</span>
-        </span>
-      ) : (
-        <span className="text-[10px] text-textMuted truncate">{data.member.chamber}</span>
-      )}
+      <span className="text-[10px] text-textMuted truncate">{data.member.chamber}</span>
     </span>
   ) : null;
 
@@ -189,7 +180,7 @@ const LagCell = ({ data }: ICellRendererParams<CongressTrade>) => {
 
 /* ---- the reports to know ------------------------------------------------------- */
 
-/** One own-committee trade: the stock, the member, the bracket, the committee. A click keeps the grid to the member. */
+/** One big report: the stock, the member, the bracket, the chamber. A click keeps the grid to the member. */
 const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onToggle: () => void }) => (
   <button
     type="button"
@@ -220,13 +211,7 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
       {t.late && <span className="ml-auto text-[8px] uppercase tracking-widest text-bear">late</span>}
     </span>
     <span className="mt-1 block font-mono text-[8px] uppercase tracking-widest text-textSecondary truncate">
-      {t.committeeOverlap ? (
-        <>
-          {t.committeeOverlap} <span className="text-silver">· own committee</span>
-        </>
-      ) : (
-        <span className="text-textMuted">{t.member.chamber}</span>
-      )}
+      <span className="text-textMuted">{t.member.chamber}</span>
     </span>
   </button>
 );
@@ -249,24 +234,20 @@ const Congress = () => {
   const waiting = status === 'loading';
   const quiet = failed || waiting;
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut';
-  /* committee seats are not on the feed yet: without them the "own committee" pick could only ever empty the page */
-  const seats = useMemo(() => feed.trades.some(t => t.committeeOverlap), [feed.trades]);
-  const showOptions = useMemo(() => (seats ? SHOW_OPTIONS : SHOW_OPTIONS.filter(o => o.value !== 'committee')), [seats]);
   const cut = useMemo(
     () =>
       feed.trades.filter(t => {
         if (chamber !== 'both' && t.member.chamber !== chamber) return false;
         if (owner !== 'any' && t.owner !== owner) return false;
-        if (show === 'committee' && seats && !t.committeeOverlap) return false;
         if (show === 'late' && !t.late) return false;
         if (show === 'purchases' && t.type !== 'Purchase') return false;
         if (show === 'sales' && (t.type === 'Purchase' || t.type === 'Exchange')) return false;
         return true;
       }),
-    [feed, chamber, owner, show, seats]
+    [feed, chamber, owner, show]
   );
 
-  /* THE FILTER reads the names, members and committees on the cut; any pick matching keeps the row */
+  /* THE FILTER reads the names and members on the cut; any pick matching keeps the row */
   const [picks, setPicks] = useState<string[]>([]);
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const count = (key: (t: CongressTrade) => string | null) => {
@@ -279,13 +260,11 @@ const Congress = () => {
     };
     const byNames = count(t => t.ticker);
     const byMembers = count(t => t.member.name);
-    const byCommittees = count(t => t.committeeOverlap);
     picks.forEach(p => {
       const [kind, ...rest] = p.split(':');
       const key = rest.join(':');
       if (kind === 'name' && !byNames.has(key)) byNames.set(key, 0);
       if (kind === 'member' && !byMembers.has(key)) byMembers.set(key, 0);
-      if (kind === 'committee' && !byCommittees.has(key)) byCommittees.set(key, 0);
     });
     const order = (a: [string, number], b: [string, number]) => b[1] - a[1] || a[0].localeCompare(b[0]);
     const seatOf = (name: string) => {
@@ -295,28 +274,24 @@ const Congress = () => {
     return [
       { title: 'Names', options: [...byNames.entries()].sort(order).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: tickerName(n), count: c })) },
       { title: 'Members', options: [...byMembers.entries()].sort(order).map(([m, c]) => ({ value: `member:${m}`, label: m, hint: seatOf(m), count: c })) },
-      { title: 'Own committee', options: [...byCommittees.entries()].sort(order).map(([k, c]) => ({ value: `committee:${k}`, label: k, count: c })) },
     ];
   }, [cut, picks]);
   const paged = usePagedGrid<CongressTrade>();
   const rows = useMemo(() => {
     if (picks.length === 0) return cut;
     const picked = new Set(picks);
-    return cut.filter(t => picked.has(`name:${t.ticker}`) || picked.has(`member:${t.member.name}`) || (t.committeeOverlap ? picked.has(`committee:${t.committeeOverlap}`) : false));
+    return cut.filter(t => picked.has(`name:${t.ticker}`) || picked.has(`member:${t.member.name}`));
   }, [cut, picks]);
   const toggleMember = (name: string) => setPicks(p => (p.includes(`member:${name}`) ? p.filter(x => x !== `member:${name}`) : [...p, `member:${name}`]));
   const stats = useMemo(() => summariseCongress(rows, window), [rows, window]);
 
-  /* THE REPORTS TO KNOW: own-committee trades on the cut, the biggest bracket first, the latest first among equals */
-  /* The feed carries no committee seats yet, so the own-committee strip was empty on every cut (the Dossier sweep,
-     2026-10-22). Without seats on file the strip shows the biggest brackets on the cut instead, and says so. */
+  /* THE REPORTS TO KNOW: the biggest disclosed brackets on the cut, the latest first among equals */
   const toKnow = useMemo(
     () =>
-      cut
-        .filter(t => !seats || t.committeeOverlap)
+      [...cut]
         .sort((a, b) => (b.bracket ?? -1) - (a.bracket ?? -1) || a.filedDaysAgo - b.filedDaysAgo)
         .slice(0, REPORTS_TO_KNOW),
-    [cut, seats]
+    [cut]
   );
 
   const columnDefs = useMemo<ColDef<CongressTrade>[]>(
@@ -362,27 +337,21 @@ const Congress = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Reports</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="STOCK Act reports on the grid right now, after the cards">Reports</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-count>
               {quiet ? '—' : <>{stats.trades.length} <span className="text-textMuted">· {stats.purchases} bought · {stats.sales} sold</span></>}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Median lag</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The middle number of days between a trade and its report — half filed faster, half slower">Median lag</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-lag>
               {quiet || stats.trades.length === 0 ? '—' : `${stats.medianLag}d`}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Past the deadline</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Reports filed more than 45 days after the trade, the STOCK Act's limit">Past the deadline</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${stats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
               {quiet ? '—' : stats.lateFilings}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[10px] text-textMuted">In own committee</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-overlap>
-              {quiet || !seats ? '—' : stats.overlaps}
             </dd>
           </div>
         </dl>
@@ -392,8 +361,8 @@ const Congress = () => {
         <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the reports run" testId="congress-window" />
         <DropdownSelect label="Chamber" value={chamber} options={CHAMBER_OPTIONS} onChange={setChamber} title="Which chamber" testId="congress-chamber" />
         <DropdownSelect label="Owner" value={owner} options={OWNER_OPTIONS} onChange={setOwner} title="Whose holding" testId="congress-owner" />
-        <DropdownSelect label="Show" value={show === 'committee' && !seats ? 'all' : show} options={showOptions} onChange={setShow} title="Which reports" testId="congress-show" />
-        <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, members and committees on the page right now — tick any number; only those stay" testId="congress-filter" />
+        <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
+        <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
       </div>
       {failed ? (
         <FeedFallback />
@@ -407,7 +376,7 @@ const Congress = () => {
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The reports to know</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">{seats ? "trades in a sector the member's own committee oversees, the biggest bracket first" : 'the biggest brackets on this cut — committee seats are not on the feed'} · click one to keep the grid to that member</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the biggest disclosed amounts on this cut, the latest first among equals · click one to keep the grid to that member</span>
         </div>
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>
@@ -428,6 +397,7 @@ const Congress = () => {
       <div className="slayer-board border-t border-borderSubtle" data-congress-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<CongressTrade>
+            {...phonePin}
             {...paged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"

@@ -74,6 +74,10 @@ interface Entry {
   history: GexSnapshot[];
   /** When the per-expiry chains last landed. The aggregate refreshes without them. */
   expiriesAt?: number;
+  /** The vendor's gamma per expiry (greek-exposure/expiry): gross dollars a date, for the share that expires today */
+  totals?: { date: string; gross: number }[];
+  /** When `totals` (and, on a board-only name, the front date's chain) last landed */
+  totalsAt?: number;
 }
 
 const cache = new Map<string, Entry>();
@@ -814,6 +818,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     byDate: prevEntry?.byDate ?? {},
     expiries: prevEntry?.expiries ?? [],
     expiriesAt: prevEntry?.expiriesAt,
+    totals: prevEntry?.totals,
+    totalsAt: prevEntry?.totalsAt,
     flow: flowMap(Array.isArray(flowRows) ? flowRows : []),
     candles: split.cash,
     tape: split.tape,
@@ -839,6 +845,86 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   if (typeof requestIdleCallback === 'function') requestIdleCallback(buildHist, { timeout: 700 });
   else window.setTimeout(buildHist, 32);
   if (entry.wantFull) await loadExpiries(entry, token);
+  else await loadFront(entry, token);
+}
+
+/** The vendor's expiry listing, nearest first */
+function listingOf(rows: unknown): { date: string; dte: number }[] {
+  if (!Array.isArray(rows)) return [];
+  return (rows as UwGreekStrike[])
+    .map(r => ({ date: String(r.expiry || ''), dte: num(r.dte) }))
+    .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Gamma per expiry, gross (calls and puts both counted) — what each date's hedging weighs */
+function keepTotals(entry: Entry, rows: unknown): void {
+  if (!Array.isArray(rows)) return;
+  const totals = (rows as UwGreekStrike[])
+    .map(r => ({ date: String(r.expiry || ''), gross: Math.abs(num(r.call_gex)) + Math.abs(num(r.put_gex)) }))
+    .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date));
+  if (!totals.length) return;
+  entry.totals = totals;
+  entry.totalsAt = Date.now();
+  const cur = cache.get(entry.ticker);
+  if (cur && cur !== entry) {
+    cur.totals = totals;
+    cur.totalsAt = entry.totalsAt;
+  }
+}
+
+const FRONT_MS = 180_000;
+
+/*
+  A BOARD NAME'S FRONT DATE (the ship pass, 2026-10-22). A name read for the Board alone used to carry no per-expiry
+  chain at all, so its "Today" levels silently fell back to the whole book (QQQ's net GEX on the Board was the whole
+  book's while Compare read today's) and its "Expires today" read "—". Two calls a name, kept three minutes: the
+  listing with each date's gamma (the share that expires today comes straight off it) and the first live date's own
+  strikes (the "Today" levels). The full book still loads every date for the name on screen.
+*/
+async function loadFront(entry: Entry, token: number): Promise<void> {
+  const still = () => gen.get(entry.ticker) === token;
+  const today = isoDate(bookToday());
+  const haveFront = Object.keys(entry.byDate).some(d => d >= today && entry.byDate[d]?.length);
+  if (entry.totalsAt && Date.now() - entry.totalsAt < FRONT_MS && haveFront) return;
+  let listed: { date: string; dte: number }[] = [];
+  try {
+    const rows = await whalesGreekExpiry(entry.ticker);
+    listed = listingOf(rows);
+    keepTotals(entry, rows);
+  } catch {
+    return;
+  }
+  if (!still() || !listed.length) return;
+  const front = closestDate(isoDate(expiryFor(0, bookToday()).date), listed.map(r => r.date));
+  if (!front) return;
+  let chain: StrikeNode[] = [];
+  try {
+    const rows = await whalesGreekStrikeExpiry(entry.ticker, front);
+    chain = Array.isArray(rows) ? chainFrom(rows, entry.spot, new Map()) : [];
+  } catch {
+    chain = [];
+  }
+  if (!still()) return;
+  const current = cache.get(entry.ticker);
+  if (!current || current.full) return;
+  if (chain.length) current.byDate = { ...current.byDate, [front]: chain };
+  if (!current.expiries.length) current.expiries = listed;
+  cache.set(entry.ticker, current);
+  emit();
+}
+
+/** Share of the book's gamma that expires today, percent. `none`: nothing on this name expires today. `wait`: the
+    listing is not in yet. One number for the Board, Compare, the Agenda and the Trader's Clock. */
+export function peekBellShare(ticker: string): { share: number } | { share: null; why: 'none' | 'wait' } {
+  const e = peekEntry(ticker);
+  if (!e || e.status !== 'live' || !e.totals?.length) return { share: null, why: 'wait' };
+  const today = isoDate(bookToday());
+  const live = e.totals.filter(t => t.date >= today);
+  const dies = live.filter(t => t.date === today).reduce((a, t) => a + t.gross, 0);
+  if (!live.some(t => t.date === today)) return { share: null, why: 'none' };
+  const total = live.reduce((a, t) => a + t.gross, 0);
+  return total > 0 ? { share: Math.round((100 * dies) / total) } : { share: null, why: 'wait' };
 }
 
 async function loadExpiries(entry: Entry, token: number): Promise<void> {
@@ -851,12 +937,8 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
   let listed: { date: string; dte: number }[] = [];
   try {
     const rows = await whalesGreekExpiry(entry.ticker);
-    if (Array.isArray(rows)) {
-      listed = rows
-        .map(r => ({ date: String(r.expiry || ''), dte: num(r.dte) }))
-        .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date))
-        .sort((a, b) => a.date.localeCompare(b.date));
-    }
+    listed = listingOf(rows);
+    keepTotals(entry, rows);
   } catch {
     listed = [];
   }

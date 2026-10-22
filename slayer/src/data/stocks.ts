@@ -198,15 +198,15 @@ export function buildStockBoard(): StockPick[] {
 }
 
 export function buildSectorBoard(picks: StockPick[]): SectorRow[] {
-  const day = dayKey();
   const benchW = avg(picks.map(p => p.weekPct).filter((n): n is number => n != null));
   const benchM = avg(picks.map(p => p.monthPct).filter((n): n is number => n != null));
   const liveRs = picks.some(p => p.weekPct != null && p.monthPct != null);
   return SECTORS.map(sector => {
     const members = picks.filter(p => p.sector === sector);
     const score = Math.round(members.reduce((a, p) => a + p.composite, 0) / Math.max(members.length, 1));
-    const rs1w = liveRs ? avg(members.map(p => p.weekPct ?? 0)) - benchW : hGauss(`${sector}-${day}-rs1w`) * 1.2 + (score - 55) * 0.05;
-    const rs1m = liveRs ? avg(members.map(p => p.monthPct ?? 0)) - benchM : hGauss(`${sector}-${day}-rs1m`) * 2.2 + (score - 55) * 0.09;
+    /* no week or month returns on the feed: relative strength is unknown (0), never a seeded figure */
+    const rs1w = liveRs ? avg(members.map(p => p.weekPct ?? 0)) - benchW : 0;
+    const rs1m = liveRs ? avg(members.map(p => p.monthPct ?? 0)) - benchM : 0;
     const scored = members.filter(p => !p.quiet.includes('momentum'));
     const breadthPct = Math.round((scored.filter(p => p.sleeves.momentum > 50).length / Math.max(scored.length, 1)) * 100);
     const phase: RotationPhase =

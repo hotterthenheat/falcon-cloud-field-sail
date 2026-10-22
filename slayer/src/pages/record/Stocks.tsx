@@ -62,6 +62,8 @@ import { peekQuote, useLiveQuote } from '../../data/liveQuote';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
 import { SECTORS, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
+import { statHelp } from '../../components/record/statHelp';
+import { phonePin } from '../../components/record/pagedGrid';
 
 type ScreenPick = 'all' | Grade;
 type SectorPick = 'all' | Sector;
@@ -347,19 +349,19 @@ const Stocks = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Names</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Names")}>Names</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-stocks-names>
               {quiet ? '—' : <>{facts.names} <span className="text-textMuted">·</span> <span className="text-bull font-semibold">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-bull">{facts.good} good</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.mixed} caution</span> <span className="text-textMuted">·</span> <span className="text-bear">{facts.weak} poor</span></>}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Above their trend</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Above their trend")}>Above their trend</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
               {quiet ? '—' : `${facts.breadth}%`}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Leading sector</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Leading sector")}>Leading sector</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-leader>
               {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="font-mono text-[12px] tnum text-supreme font-semibold hover:underline underline-offset-2">
                 {top.sector}
@@ -367,7 +369,7 @@ const Stocks = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Trailing sector</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Trailing sector")}>Trailing sector</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
               {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-[12px] tnum text-bear hover:underline underline-offset-2">
                 {bottom.sector}
@@ -415,6 +417,7 @@ const Stocks = () => {
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-stocks-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<StockPick>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}

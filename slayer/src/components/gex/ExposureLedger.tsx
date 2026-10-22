@@ -50,6 +50,7 @@ import { HEAT_MODE, heatLaneColor, type HeatMode } from './heatmap';
 import RoomSpotRule from './RoomSpotRule';
 import { useRoomSpotRead } from '../../pages/pinpoint/useRoomSpot';
 import { fmtUsd } from '../../data/gex';
+import { shownGreek } from './retailSign';
 import { todayColumn, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { LONG_GAMMA, SHORT_GAMMA, SUPREME } from './paletteInk';
 import { strikeRole, underlineClass } from './strikeRole';
@@ -242,7 +243,7 @@ const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, r
     data-cell
     data-cell-key={`${g}|${e}|${strike}`}
     id={`${idBase}-${g}-${e}-${strike}`.replace(/\./g, '_')}
-    aria-label={`${fmtStrike(strike)} on ${date} · ${fmtUsd(v)}${since ? ` · ${since} since the open` : ''}`}
+    aria-label={`${fmtStrike(strike)} on ${date} · ${fmtUsd(shownGreek(g, v))}${since ? ` · ${since} since the open` : ''}`}
     data-pinned={pinned ? '' : undefined}
     data-kept={kept ? '' : undefined}
     className={`relative min-w-0 px-[3px] py-[2px] cursor-default select-none tabular-nums ${first ? 'border-l border-borderSubtle/60 pl-[2px]' : ''} ${wash}`}
@@ -267,7 +268,7 @@ const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, r
       dotBeside={dotBeside}
       title={undefined}
     >
-      {figure === 'full' ? fmtUsd(v) : figure === 'short' ? fmtShortUsd(v) : ''}
+      {figure === 'full' ? fmtUsd(shownGreek(g, v)) : figure === 'short' ? fmtShortUsd(shownGreek(g, v)) : ''}
     </HeatPill>
     {flash.dir && <span key={flash.gen} aria-hidden className={`pointer-events-none absolute inset-[2px] rounded-full ${flash.dir === 'up' ? 'tick-up' : 'tick-down'}`} />}
   </div>
@@ -841,7 +842,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   const figureFor = (v: number, star: boolean, lane: 'figure' | 'dot' | 'none', chip: string | null): Figure => {
     if (figure !== 'full') return figure;
     const company = (star ? fontSize * 0.9 + 4 : 0) + (lane === 'dot' && dotBeside ? 8 : 0) + (lane === 'figure' && chip ? chip.length * 6.8 + 12 : 0);
-    return fmtUsd(v).length * fontSize * GLYPH + company + 16 + 6 <= cellW ? 'full' : 'short';
+    return fmtUsd(-Math.abs(v)).length * fontSize * GLYPH + company + 16 + 6 <= cellW ? 'full' : 'short';
   };
   /* THE CARD'S WORDS — the kept cell's; nothing at rest or under a mere hover */
   const cardAside = `${ex?.date ?? ''} · ${focus.e === todayIdx ? 'today' : (ex?.short ?? '')} · ${distPct >= 0 ? '+' : '−'}${Math.abs(distPct).toFixed(2)}%`;
@@ -864,9 +865,9 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
       {/* THE TAGS WRAP BY TAG (Noah, 2026-10-17: "i found heaviest bleeding again" — PUT WALL · SUPREME · ★ HEAVIEST CELL
           ran past the card's edge on one line): each tag is whole, the line breaks between them */}
       {cardTags.length > 0 && <span className="col-span-2 -mt-0.5 mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] uppercase tracking-widest">{cardTags}</span>}
-      <CardRow k="Put" v={fmtUsd(putV)} sub={pct(putV)} ink={PUT_INK} />
-      <CardRow k="Call" v={fmtUsd(callV)} sub={pct(callV)} ink={CALL_INK} />
-      <CardRow k={`Net · ${GREEK_LABEL[focus.greek]}`} v={fmtUsd(netV)} sub={empty ? 'nothing' : netV >= 0 ? 'put-heavy' : 'call-heavy'} ink={empty ? 'rgb(var(--text-muted))' : heatLaneColor(netV, surface.maxAbs[focus.greek], mode ?? HEAT_MODE, 0.35, paper)} />
+      <CardRow k="Put" v={fmtUsd(shownGreek(focus.greek, putV))} sub={pct(putV)} ink={PUT_INK} />
+      <CardRow k="Call" v={fmtUsd(shownGreek(focus.greek, callV))} sub={pct(callV)} ink={CALL_INK} />
+      <CardRow k={`Net · ${GREEK_LABEL[focus.greek]}`} v={fmtUsd(shownGreek(focus.greek, netV))} sub={empty ? 'nothing' : netV >= 0 ? 'put-heavy' : 'call-heavy'} ink={empty ? 'rgb(var(--text-muted))' : heatLaneColor(netV, surface.maxAbs[focus.greek], mode ?? HEAT_MODE, 0.35, paper)} />
       {oi > 0 && <CardRow k="Open interest" v={oi.toLocaleString('en-US')} sub="contracts" />}
       {sinceHere && <CardRow k="Since the open" v={sinceHere.figure ?? sinceHere.words} sub={sinceHere.figure ? sinceHere.words : undefined} ink={sinceInk(sinceHere.dir)} />}
     </>

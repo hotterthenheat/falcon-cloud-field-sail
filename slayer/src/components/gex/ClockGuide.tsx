@@ -188,7 +188,7 @@ const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: Cl
         <li className="text-[11.5px] leading-relaxed text-textSecondary">{line}</li>
         {bellShare != null && (
           <li className="text-[11.5px] leading-relaxed text-textSecondary">
-            <span className="font-mono tnum text-textPrimary">{bellShare}%</span> of today's hedging expires at the close, which is why it is the loudest block.
+            <span className="font-mono tnum text-textPrimary">{bellShare}%</span> of all the name's hedging, every expiry counted, sits in contracts that expire at today's close — the same figure as the Board's "Expires today".
           </li>
         )}
         {(pin != null || supreme != null) && (
@@ -200,7 +200,7 @@ const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: Cl
             )}
             {supreme != null && (
               <>
-                The heaviest strike of the day is <span className="font-mono tnum text-textPrimary">{fmtStrike(supreme)}</span>.
+                The supreme, the strike with the most hedging, is <span className="font-mono tnum text-textPrimary">{fmtStrike(supreme)}</span>.
               </>
             )}
             {charmStrike != null && (

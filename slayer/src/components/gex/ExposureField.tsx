@@ -66,7 +66,8 @@ import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useLevelsScope } from '../../data/levelsScope';
 import ColumnFacts from './ColumnFacts';
 import { roomLevels } from '../../data/roomLevels';
-import { bookForDates } from '../../data/bookWindow';
+import { expirySpan, levelsBook } from '../../data/bookWindow';
+import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from '../../data/exposureSurface';
@@ -434,8 +435,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   };
   /* THE DATA DOOR (components/gex/BookProvenance.tsx): where the figures come from and how they are computed */
   const [dataOpen, setDataOpen] = useState(false);
-  /* THE LEVELS ARE THE WINDOW (the book's Expiries card), not a second choice. Today-only is today's chain. A span is
-     those dates summed. All of them is the whole book. The Levels toggle still applies when the book has no dates. */
+  /* THE LEVELS ARE THE LEVELS CARD'S (the ship pass, 2026-10-22 — they were the Expiries window's, so the Map named a
+     supreme of eight dates beside the Board's supreme of today). The Expiries card picks the matrix's columns; the named
+     levels (supreme, walls, flip) are the Levels card's, the same on every Pinpoint page. */
   const levelsScope = useLevelsScope();
   const listedDates = useMemo(() => {
     return (snapshot?.uwExpiries ?? [])
@@ -472,7 +474,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     const key = `${levelsScope}|${dates.join(',')}`;
     const hit = scopedCache.current.get(surf);
     if (hit?.key === key) return hit.out;
-    const levels = dates.length ? roomLevels(bookForDates(snap, dates), '0DTE') : levelsScope === 'ALL' ? roomLevels(snap, 'ALL') : null;
+    /* THE LEVELS ARE THE LEVELS CARD'S (the ship pass, 2026-10-22): the matrix draws the Expiries card's dates, but the
+       supreme, the walls and the flip it names are read off the Levels card's contracts — the Board's, the Agenda's and
+       Compare's book — so SPY's supreme is one strike on every page. The magenta row is that strike. */
+    const lvBook = levelsBook(snap, levelsScope);
+    const levels = roomLevels(lvBook, '0DTE');
     if (!levels) return surf;
     let out = surf;
     const si = surf.strikes.indexOf(levels.supreme);
@@ -491,7 +497,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           e = i;
         }
       }
-      supreme = { ...surf.supreme, gex: { strike: levels.supreme, e, value, total } };
+      /* the door's amount is the strike's net on the Levels card's contracts, not the window's sum */
+      const node = lvBook.chain.find(n => n.strike === levels.supreme);
+      supreme = { ...surf.supreme, gex: { strike: levels.supreme, e, value, total: node ? node.callGex + node.putGex : total } };
     }
     out = { ...surf, levels, supreme };
     scopedCache.current.set(surf, { key, out });
@@ -1039,6 +1047,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   }, [adding]);
 
   const supremeGreek: Greek = greeks[0] ?? 'gex';
+  /* the Levels card's contracts, in a word, for the supreme door */
+  const levelsLabel = levelsScope === 'ALL' ? 'all expiries' : 'today';
   /* the book's strikes either side of spot — the Strikes menu's counts */
   const bookAbove = surface ? surface.strikes.filter(k => k >= surface.spot).length : WHOLE_BOOK;
   const bookBelow = surface ? surface.strikes.filter(k => k < surface.spot).length : WHOLE_BOOK;
@@ -1219,7 +1229,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const supremeDoor = (
     <button
       onClick={() => onSelectStrike?.(supreme.strike)}
-      title={`The heaviest strike by ${GREEK_LABEL[supremeGreek]} over the expiries the Expiries card holds — the one the chart wears in magenta — most of it on ${supremeEx?.date ?? ''}. The Agenda, the Board and Compare crown today's contracts (the Levels card), so theirs can differ · click to keep the strike`}
+      title={supremeGreek === 'gex' ? `The supreme: the strike with the most hedging on it, read off the Levels card's contracts (${levelsLabel}) — the same strike the Board, the Agenda and Compare show. Click to keep the strike` : `The strike with the most ${GREEK_LABEL[supremeGreek]} on the front expiry. Click to keep the strike`}
       /* the cards' 28px (it stood 32 on a 28px row), sentence case like them, and a button's hover edge (the audit's M2, M3, L10) */
       /* A QUIET CHIP WITH A MAGENTA MARK (the owner, 2026-10-14: "the loudest thing on the screen is the magenta Supreme
          pill, which is a secondary fact"): the chip is the band's, the dot is the supreme's — the one place magenta stands
@@ -1230,7 +1240,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
       {/* the window it is crowned over, said on the door — the Agenda and the Board crown the Levels card's (today's), so
           a wider window here can name another strike (the UI sweep, 2026-10-22) */}
-      <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && chosenDates.length > 1 && <span className="text-textMuted/70"> · {chosenDates.length} dates</span>}</span>
+      <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && supremeGreek === 'gex' && <span className="text-textMuted/70"> · {levelsLabel}</span>}</span>
       <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
         {fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}
@@ -1239,7 +1249,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
             {' '}
             {/* the amount, not the date (the band's one row at 1920): the date is in the title and on the strike's card */}
             <span data-door-words>
-              <span className="text-textMuted font-normal">·</span> {fmtUsd(supreme.total)}
+              <span className="text-textMuted font-normal">·</span> {fmtUsd(shownGreek(supremeGreek, supreme.total))}
             </span>
           </>
         )}
@@ -1746,7 +1756,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                       {!tight && (
                         <>
                           {' '}
-                          <span className="text-textMuted font-normal">·</span> {fmtUsd(sup.total)}
+                          <span className="text-textMuted font-normal">·</span> {fmtUsd(shownGreek(colGreeks[0] ?? 'gex', sup.total))}
                         </>
                       )}
                     </span>
@@ -1802,7 +1812,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
               </Fold>
               {/* EACH NAME'S OWN FACTS OVER ITS OWN COLUMN, one name or four (the owner, 2026-10-14: the head printed the
                   room's name alone above a book of four) — ColumnFacts.tsx */}
-              {!panel && <ColumnFacts ticker={c.ticker} snapshot={dates.length ? bookForDates(book.snapshot, dates) : book.snapshot} scope={dates.length ? '0DTE' : levelsScope} width={tileW} fresh={fresh} />}
+              {!panel && <ColumnFacts ticker={c.ticker} snapshot={levelsBook(book.snapshot, levelsScope)} scope="0DTE" width={tileW} fresh={fresh} />}
               <div className="relative flex-1 min-h-0" data-ledger-body={c.ticker}>
                 {/* the arriving view fades in — opacity only, the way a box of figures is allowed to */}
                 {/* the shape on screen: out on the old, in on the new (the soft swap above) */}
@@ -1877,6 +1887,13 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
             <span aria-hidden className="h-[3px] w-4 rounded-full bg-silver" />
             kept
           </span>
+          {/* WHICH CONTRACTS, SAID (the ship pass, 2026-10-22): the figures are the Expiries card's dates summed; the
+              supreme and the walls marked on them are the Levels card's — the Board's — so the two can differ */}
+          {chosenDates.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-textMuted/80" title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show." data-legend-scope>
+              figures: {expirySpan(chosenDates)} · levels: {levelsLabel}
+            </span>
+          )}
           {/* the calendar's pills, named (2026-10-14 — a bare "−96%" on a cell said neither what fell nor since when) */}
           {view === 'calendar' && (
             <span className="inline-flex items-center gap-1.5" data-legend-since>
@@ -1892,7 +1909,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           own pane the card was cut to ~330px and its 400px drawings clipped mid-word — "it looks broken in the one place
           that's meant to teach") */}
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title={guideTitle(view)} testId="ledger-guide" viewport>
-        <LedgerGuide surface={surface} greek={supremeGreek} view={view} mode={palette === 'thermal' ? 'thermal-yellow' : undefined} paper={paper} />
+        <LedgerGuide surface={scoped(surface, snapshot)} greek={supremeGreek} view={view} mode={palette === 'thermal' ? 'thermal-yellow' : undefined} paper={paper} />
       </GuideFocus>
       {/* WHERE THIS BOOK COMES FROM — the source, the freshness, the formula, the sign, the levels (BookProvenance.tsx) */}
       <GuideFocus open={dataOpen} onClose={() => setDataOpen(false)} title="Where this book comes from" testId="ledger-data" width={480}>

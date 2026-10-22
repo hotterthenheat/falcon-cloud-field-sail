@@ -81,7 +81,7 @@ import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface'
 import { aheadClock, type AheadClock } from '../../data/ahead';
 import { buildBuilding } from '../../data/building';
 import { readSessionClock } from '../../data/moc';
-import { MAX_PANES, PANE_COLS, newPaneKey, readPanes, writePanes, type Pane } from '../../data/panes';
+import { MAX_PANES, OFF_SCOPE_TITLE, PANE_COLS, newPaneKey, readPanes, usePanesFollowScope, writePanes, type Pane } from '../../data/panes';
 import { contractWords, usePositions } from '../../data/positions';
 import type { ExposureExpiry } from '../../types/gex';
 import type { MarketSnapshot } from '../../types/market';
@@ -112,6 +112,8 @@ interface PaneProps {
   onToggleLink: () => void;
   onPickName: (t: string) => void;
   onExpiry: (e: ExposureExpiry) => void;
+  /** The pane reads another expiry than the Levels card */
+  offScope?: boolean;
   onRemove: () => void;
   yours?: ReadonlyMap<number, string>;
   focus: number | null;
@@ -119,7 +121,7 @@ interface PaneProps {
 }
 
 /** A pane: its own alerts, its own watch menu, its own door off — the board under its line */
-const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count, expiryOptions, linked, onToggleLink, onPickName, onExpiry, onRemove, yours, focus, onPick }: PaneProps) => {
+const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count, expiryOptions, linked, onToggleLink, onPickName, onExpiry, onRemove, yours, focus, onPick, offScope }: PaneProps) => {
   const navigate = useNavigate();
   const { focusOn } = useFocus();
   const alerts = useAlerts(ticker);
@@ -136,7 +138,16 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
   };
   const levels = useMemo(() => buildExposureProfile(snap, pane.expiry, 20).levels, [snap, pane.expiry]);
   const chip = <ScopeChip ticker={ticker} linked={index === 0 ? linked : undefined} quote={density === 'full'} onToggleLink={index === 0 ? onToggleLink : undefined} onPick={onPickName} />;
-  const expiry = <DropdownSelect label="Expiry" value={pane.expiry} options={expiryOptions} onChange={onExpiry} title="Which expiry's hedging this pane ranks" testId={`targets-expiry-${index}`} size="sm" />;
+  const expiry = (
+    <>
+      <DropdownSelect label="Expiry" value={pane.expiry} options={expiryOptions} onChange={onExpiry} title="Which expiry's hedging this pane ranks — it follows the Levels card at the top until you pick another" testId={`targets-expiry-${index}`} size="sm" />
+      {offScope && (
+            <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
+              own expiry
+            </span>
+          )}
+    </>
+  );
   const watch = <WatchMenu ticker={ticker} spot={agenda.spot} levels={levels} />;
   const off = count > 1 && (
     <button type="button" onClick={onRemove} title="Take this name off" aria-label={`Take ${ticker} off`} className="inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-targets-remove={ticker}>
@@ -184,12 +195,13 @@ const RankedTargets = () => {
     setPanesState(next);
   };
   const patchPane = (key: string, patch: Partial<Pane>) => setPanes(panes.map(p => (p.key === key ? { ...p, ...patch } : p)));
+  const levelsScope = usePanesFollowScope(panes, setPanes);
   const addPane = (ticker: string) => {
     if (panes.length >= MAX_PANES) return;
     const t = ticker.trim().toUpperCase();
     if (!t) return;
     ensureBook(t, 'full');
-    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: '0DTE' }]);
+    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: levelsScope }]);
   };
   const removePane = (key: string) => {
     if (panes.length <= 1) return;
@@ -366,6 +378,7 @@ const RankedTargets = () => {
                     onToggleLink={() => patchPane(p.key, { ticker: linked ? t : undefined })}
                     onPickName={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
                     onExpiry={e => patchPane(p.key, { expiry: e })}
+                    offScope={p.expiry !== levelsScope}
                     onRemove={() => removePane(p.key)}
                     yours={t === activeTicker ? yours : undefined}
                     focus={focusFor(t)}

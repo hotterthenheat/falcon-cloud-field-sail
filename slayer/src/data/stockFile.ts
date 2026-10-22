@@ -15,6 +15,9 @@ export interface EarnRow {
   street_mean_est?: string | number | null;
   post_earnings_move_1d?: string | number | null;
   expected_move_perc?: string | number | null;
+  /** 'company' when the company set the date; 'estimation' while it is the vendor's estimate */
+  source?: string | null;
+  report_time?: string | null;
 }
 
 export interface StockFile {
@@ -92,8 +95,17 @@ function daysFrom(rows: UwDaily[]): Candle[] {
     .filter(c => c.time > 0);
 }
 
+/** New York's calendar day — a contract expiring before it is dead and is never listed as busy */
+const nyToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+
 function flowsFrom(rows: Record<string, unknown>[], spot: number): FlowPrint[] {
-  return rows.slice(0, 40).map((row, i) => {
+  const today = nyToday();
+  /* the flow alerts reach back over days; an alert on a contract that has since expired is not "busy" any more */
+  const live = rows.filter(row => {
+    const exp = String(row.expiry || '').slice(0, 10);
+    return !/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp >= today;
+  });
+  return live.slice(0, 40).map((row, i) => {
     const prem = num(row.total_premium);
     const ask = num(row.total_ask_side_prem);
     const bid = num(row.total_bid_side_prem);

@@ -51,6 +51,8 @@ import { GREEKS, GREEK_UNIT } from '../../data/exposureSurface';
 import { distanceIn, fmtShared, sharedUnit, GREEK_LABEL, WINDOW, type Compare, type CompareSide, type Greek } from '../../data/compare';
 import type { DistanceUnit } from '../../data/atr';
 import { fmtUsd } from '../../data/gex';
+import { netGexTitle } from '../../data/board';
+import { shownGreek } from './retailSign';
 import { replayRange, snapshotAt } from '../../data/replay';
 import type { ExposureProfileData, StrikeExposure } from '../../types/gex';
 import { Change, READ_WINDOWS } from './ChangeMark';
@@ -60,6 +62,14 @@ import Fact from '../ui/Fact';
 /** The panel's width open, and its tab's width folded */
 export const SIDE_W = 320;
 export const SIDE_TAB_W = 28;
+
+/** Each level in one plain line — its hover */
+const SIDE_TIPS: Record<string, string> = {
+  'put wall': 'Put wall: the strike below price with the most put hedging; it tends to slow a fall',
+  'call wall': 'Call wall: the strike above price with the most call hedging; it tends to slow a rise',
+  flip: 'Flip: where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them',
+  supreme: 'Supreme: the single strike with the most dealer hedging on it',
+};
 
 const SILVER = 'rgb(var(--silver))';
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
@@ -120,7 +130,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     return READ_WINDOWS.map(w => {
       const back = w.min === Infinity ? range.length : w.min * 60;
       if (back > range.length && w.min !== Infinity) return null;
-      return buildExposureProfile(snapshotAt(s.snapshot, range, Math.max(0, range.length - back)), '0DTE', WINDOW);
+      return buildExposureProfile(snapshotAt(s.snapshot, range, Math.max(0, range.length - back)), s.expiry, WINDOW);
     });
   }, [s]);
   const thenAt = (i: number, strike: number): number | null => hist?.[i]?.strikes.find(r => r.strike === strike)?.[greek].net ?? null;
@@ -129,10 +139,13 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     const d = distanceIn(price - s.spot, s.spot, U, s.scales);
     return d == null ? '—' : fmtShared(d, U);
   };
-  const net = s.rows[greek].reduce((acc, r) => acc + r.value, 0);
+  /* NET GEX IN THE RETAIL SIGN (the ship pass, 2026-10-22) — the Board's figure for the same contracts: positive =
+     dealers long gamma = absorbs (green), negative = amplifies (red). The other greeks keep the ladder's own sign. */
+  const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
+  const net = greek === 'gex' ? s.netGex : s.rows[greek].reduce((acc, r) => acc + r.value, 0);
   const flipAt = s.flip;
   const regimeWord =
-    flipAt == null || !(flipAt > 0) ? (net >= 0 ? 'amplifies' : 'absorbs') : Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.spot > flipAt ? 'absorbs' : 'amplifies';
+    flipAt == null || !(flipAt > 0) ? (s.netGex >= 0 ? 'absorbs' : 'amplifies') : Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.spot > flipAt ? 'absorbs' : 'amplifies';
   const rowOf = (strike: number): StrikeExposure | undefined => s.strikes.find(r => r.strike === strike);
   const valueAt = (strike: number | null, g: Greek = greek): number | null => (strike == null ? null : rowOf(strike)?.[g].net ?? null);
   const roleOf = (strike: number): { word: string; tone: Tone } | null =>
@@ -150,11 +163,17 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const others = GREEKS.filter(g => g !== greek);
 
   /* EVERY FIGURE IN THE PRIMARY INK — a missing one muted; no ramp, no family colour on a number */
-  const Money = ({ v, bold = false, size = 11 }: { v: number | null; bold?: boolean; size?: number }) => (
-    <span className={`font-mono tnum tabular-nums ${bold ? 'font-bold' : ''} ${v == null ? 'text-textMuted' : 'text-textPrimary'}`} style={{ fontSize: size }}>
-      {v == null ? '—' : fmtUsd(v)}
-    </span>
-  );
+  /* GAMMA IN THE READER'S SIGN AND INK (the ship pass, 2026-10-22, retailSign.ts): positive absorbs, green; negative
+     amplifies, red — the Board's net GEX convention, strike by strike. The other greeks stay in the primary ink. */
+  const Money = ({ v, bold = false, size = 11, g: mg = greek }: { v: number | null; bold?: boolean; size?: number; g?: Greek }) => {
+    const shown = v == null ? null : shownGreek(mg, v);
+    const ink = shown == null ? 'text-textMuted' : mg === 'gex' && shown > 0 ? 'text-bull' : mg === 'gex' && shown < 0 ? 'text-bear' : 'text-textPrimary';
+    return (
+      <span className={`font-mono tnum tabular-nums ${bold ? 'font-bold' : ''} ${ink}`} style={{ fontSize: size }}>
+        {shown == null ? '—' : `${mg === 'gex' && shown > 0 ? '+' : ''}${fmtUsd(shown)}`}
+      </span>
+    );
+  };
   const Door = ({ k }: { k: number }) => (
     <button
       type="button"
@@ -169,7 +188,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     </button>
   );
   const Level = ({ word, tone, k, g = greek }: { word: string; tone: Tone; k: number | null; g?: Greek }) => (
-    <div className={LEVEL_COLS} data-side-level={word}>
+    <div className={LEVEL_COLS} data-side-level={word} title={SIDE_TIPS[word] ?? `The strike with the most ${word} on these contracts`}>
       <Tag tone={tone}>{word}</Tag>
       {k == null ? (
         <span className="col-span-3 font-mono text-[11px] text-textMuted">none</span>
@@ -177,7 +196,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         <>
           <Door k={k} />
           <span className="font-mono text-[10px] tnum tabular-nums text-textMuted text-right">{dist(k)}</span>
-          <span className="text-right"><Money v={valueAt(k, g)} /></span>
+          <span className="text-right"><Money v={valueAt(k, g)} g={g} /></span>
         </>
       )}
     </div>
@@ -213,7 +232,12 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         The book · {L} · per {GREEK_UNIT[greek]}
       </Cap>
       <div className="pt-2 flex items-center gap-2 min-w-0">
-        <span className="font-mono text-[17px] font-bold tnum tabular-nums text-textPrimary" data-side-net>
+        <span
+          className={`font-mono text-[17px] font-bold tnum tabular-nums ${greek !== 'gex' ? 'text-textPrimary' : net > 0 ? 'text-bull' : net < 0 ? 'text-bear' : 'text-textPrimary'}`}
+          title={greek === 'gex' ? netGexTitle(net, s.regime) : undefined}
+          data-side-net
+        >
+          {greek === 'gex' && net > 0 ? '+' : ''}
           {fmtUsd(net)}
         </span>
         <span className="text-[11px] text-textMuted whitespace-nowrap">net {L}</span>
@@ -256,7 +280,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
               </span>
               <span className="text-right"><Money v={r[greek].net} /></span>
               <span className="font-mono text-[10px] tnum tabular-nums text-right text-textPrimary whitespace-nowrap">
-                <Change now={r[greek].net} then={thenAt(winIdx, r.strike)} quiet />
+                <Change now={shownGreek(greek, r[greek].net)} then={shownThen(thenAt(winIdx, r.strike))} quiet />
               </span>
             </div>
           );
@@ -271,19 +295,19 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         <div className="pt-1.5 flex items-baseline gap-2 font-mono text-[11px] tnum tabular-nums whitespace-nowrap text-textPrimary" data-side-legs>
           <span className="text-[9px] uppercase tracking-wider text-textMuted">{L}</span>
           <span>
-            <span className="text-textMuted">puts</span> {fmtUsd(front[greek].put)}
+            <span className="text-textMuted">puts</span> {fmtUsd(shownGreek(greek, front[greek].put))}
           </span>
           <span>
-            <span className="text-textMuted">calls</span> {fmtUsd(front[greek].call)}
+            <span className="text-textMuted">calls</span> {fmtUsd(shownGreek(greek, front[greek].call))}
           </span>
-          <span className="ml-auto font-bold text-[12px]">{fmtUsd(front[greek].net)}</span>
+          <span className={`ml-auto font-bold text-[12px] ${greek === 'gex' ? (shownGreek(greek, front[greek].net) > 0 ? 'text-bull' : 'text-bear') : ''}`}>{fmtUsd(shownGreek(greek, front[greek].net))}</span>
         </div>
       ) : (
         <p className="pt-1.5 text-[11px] text-textMuted">Off the book's window.</p>
       )}
       <div className="pt-1 grid grid-cols-2 gap-x-3 gap-y-0.5" data-side-greeks>
         {others.map(g => (
-          <Fact key={g} label={GREEK_LABEL[g]} value={<Money v={valueAt(strike, g)} />} />
+          <Fact key={g} label={GREEK_LABEL[g]} value={<Money v={valueAt(strike, g)} g={g} />} />
         ))}
       </div>
 
@@ -293,7 +317,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         {READ_WINDOWS.map((w, i) => (
           <span key={w.key} className="flex flex-col leading-tight min-w-0">
             <span className="text-[9px] text-textMuted">{w.key}</span>
-            <span className="text-[10px] text-textPrimary whitespace-nowrap">{front ? <Change now={front[greek].net} then={thenAt(i, strike)} quiet /> : <span className="text-textMuted">—</span>}</span>
+            <span className="text-[10px] text-textPrimary whitespace-nowrap">{front ? <Change now={shownGreek(greek, front[greek].net)} then={shownThen(thenAt(i, strike))} quiet /> : <span className="text-textMuted">—</span>}</span>
           </span>
         ))}
       </div>
@@ -338,7 +362,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             )
           }
         />
-        <Fact label="Expires at the bell" value={s.bellShare != null ? <span>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : '—'} />
+        <Fact label="Expires at the bell" value={s.bellShare != null ? <span title={`${s.bellShare}% of ${s.ticker}'s gamma sits in contracts that expire at 4:00 today`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? `Nothing on ${s.ticker} expires today` : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? '— nothing today' : '—'}</span>} />
       </div>
       <div className="pt-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-side-foot>
         {s.strikes.length} strikes · {s.expiryCount} {s.expiryCount === 1 ? 'expiry' : 'expiries'}

@@ -284,9 +284,12 @@ function occOf(symbol: string): { expiry: string; right: 'CALL' | 'PUT'; strike:
 function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: number): { calls: ActiveContract[]; puts: ActiveContract[] } {
   const calls: ActiveContract[] = [];
   const puts: ActiveContract[] = [];
+  const today = nyToday();
   for (const row of rows) {
     const parsed = occOf(String(row.option_symbol || ''));
     if (!parsed) continue;
+    /* an expired contract is never one of the busiest (expiry before New York's today) */
+    if (parsed.expiry < today) continue;
     const volume = num(row.volume);
     if (!(volume > 0)) continue;
     const bid = num(row.nbbo_bid);
@@ -343,13 +346,39 @@ async function pullContracts(ticker: string, spot: number, priority = false): Pr
   }
 }
 
+/** THE ONE NEXT-EARNINGS RULE for the Dossier: the ticker's own Unusual Whales earnings rows (/earnings/{t}), the
+    first report dated today or later on New York's calendar. The stock page, the earnings file, the calendar and the
+    company card all read this, so a name carries one date everywhere. */
+export function nextReportRow<R extends { report_date?: string | null }>(rows: readonly R[]): R | null {
+  const today = nyToday();
+  return (
+    rows
+      .filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.report_date || '') && (r.report_date || '').slice(0, 10) >= today)
+      .sort((a, b) => (a.report_date || '').localeCompare(b.report_date || ''))[0] ?? null
+  );
+}
+
+/** Trading days (weekdays) from New York's today to the date — the count every "in N trading days" reads */
+export function tradingDaysUntil(iso: string): number {
+  return tradingBetween(nyToday(), iso.slice(0, 10));
+}
+
+/** "today" · "in 7 trading days" · "3 trading days ago" — one wording everywhere a report's distance is shown */
+export function untilWords(days: number): string {
+  if (days === 0) return 'today';
+  const n = Math.abs(days);
+  const unit = n === 1 ? 'trading day' : 'trading days';
+  return days > 0 ? `in ${n} ${unit}` : `${n} ${unit} ago`;
+}
+
+/** The day the next report is due, "Mon 11/02", for a calendar date */
+export const reportDayLabel = (iso: string): string => labelFor(iso.slice(0, 10));
+
 export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | null {
   const today = nyToday();
   const sym = ticker.toUpperCase();
   const stamped = rows.map(r => ({ ...r, symbol: r.symbol || sym }));
-  const upcoming = stamped
-    .filter(r => (r.report_date || '') >= today)
-    .sort((a, b) => (a.report_date || '').localeCompare(b.report_date || ''))[0];
+  const upcoming = nextReportRow(stamped);
   const latest = stamped.slice().sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''))[0];
   const row = upcoming ?? latest;
   if (!row) return null;
@@ -632,7 +661,7 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
     void pullHistory(sym, true).then(rows => {
       if (dead) return;
       emit();
-      const upcoming = rows?.find(r => (r.report_date || '') >= nyToday()) ?? rows?.[0];
+      const upcoming = (rows ? nextReportRow(rows) : null) ?? rows?.[0];
       /* the contracts' "from spot" and breakevens read the stock's LAST price — the calendar row's price is the one
          the print was priced against, stale once it is out (TSLA's cards measured from $386.55 after a $373.63 close) */
       return uwCall(`/stock/${encodeURIComponent(sym)}/stock-state`, true)

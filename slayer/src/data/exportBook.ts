@@ -29,10 +29,12 @@ export function bookCsv(surface: ExposureSurface, greeks: Greek[], expiries: num
   const rows: string[] = [head.join(',')];
   for (const g of greeks)
     for (const e of expiries) {
+      /* gamma in the vendor's sign, as every page prints it (call +, put −; components/gex/retailSign.ts) */
+      const sgn = g === 'gex' ? -1 : 1;
       const ex = surface.expiries[e];
       if (!ex) continue;
       surface.strikes.forEach((k, s) => {
-        rows.push([surface.ticker, surface.spot.toFixed(2), at, g, ex.date, ex.dte, k, Math.round(surface.put[g][e]?.[s] ?? 0), Math.round(surface.call[g][e]?.[s] ?? 0), Math.round(surface.net[g][e]?.[s] ?? 0), Math.round(surface.oi[e]?.[s] ?? 0)].map(cell).join(','));
+        rows.push([surface.ticker, surface.spot.toFixed(2), at, g, ex.date, ex.dte, k, Math.round(sgn * (surface.put[g][e]?.[s] ?? 0)), Math.round(sgn * (surface.call[g][e]?.[s] ?? 0)), Math.round(sgn * (surface.net[g][e]?.[s] ?? 0)), Math.round(surface.oi[e]?.[s] ?? 0)].map(cell).join(','));
       });
     }
   return rows.join('\n') + '\n';
@@ -51,7 +53,7 @@ export function levelsJson(surface: ExposureSurface, scope: LevelsScope, source:
       source,
       levelsReadOff: scope === 'ALL' ? 'all listed expiries' : "today's contracts (0DTE)",
       levels: { callWall: num(l.callWall), putWall: num(l.putWall), flip: num(l.flip), pin: num(l.pin), supreme: num(l.supreme) },
-      supremeByGreek: Object.fromEntries(Object.entries(surface.supreme).map(([g, s]) => [g, { strike: s.strike, total: Math.round(s.total), heaviestDate: surface.expiries[s.e]?.date ?? null }])),
+      supremeByGreek: Object.fromEntries(Object.entries(surface.supreme).map(([g, s]) => [g, { strike: s.strike, total: Math.round(g === 'gex' ? -s.total : s.total), heaviestDate: surface.expiries[s.e]?.date ?? null }])),
       expiries: surface.expiries.map(e => ({ date: e.date, dte: e.dte, atmIv: e.iv })),
     },
     null,

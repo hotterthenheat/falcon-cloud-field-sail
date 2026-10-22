@@ -221,12 +221,11 @@ export function summariseCongress(trades: CongressTrade[], windowDays: number): 
 
 const fmtMoney = (v: number) => `$${v.toLocaleString('en-US')}`;
 
-/** The feed's sentence — the brackets summed, the overlap named, the late ones counted */
+/** The feed's sentence — the brackets summed, the late ones counted */
 export function congressSentence(f: CongressFeed): string {
   if (f.trades.length === 0) return `No reports filed in the last ${f.windowDays} days.`;
   const range = f.totalHigh === null ? `at least ${fmtMoney(f.totalLow)}` : `between ${fmtMoney(f.totalLow)} and ${fmtMoney(f.totalHigh)}`;
   const parts = [`${f.trades.length} reports covering ${range} — the brackets summed, not a point estimate.`];
-  if (f.overlaps > 0) parts.push(`${f.overlaps} sit inside the member's own committee jurisdiction, which is the reading this data is for.`);
   if (f.lateFilings > 0) parts.push(`${f.lateFilings} missed the 45-day deadline.`);
   if (f.unknownAmounts > 0) parts.push(`${f.unknownAmounts} carried no amount the filing could be read for.`);
   return parts.join(' ');

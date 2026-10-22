@@ -317,6 +317,8 @@ export interface UwEtfHolding {
   shares?: string | number;
   sector?: string;
   country_name?: string;
+  /** the day the weight was taken */
+  updated?: string;
 }
 
 export interface UwEtfFlow {

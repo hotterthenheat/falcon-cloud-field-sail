@@ -390,7 +390,7 @@ const COLS: Record<TargetsDensity, { template: string; min: number; span: string
   /* # · strike · from spot · reached · holds · at stake · actions */
   compact: { template: '32px 140px 64px 64px 96px 120px 120px', min: 712, span: 'col-span-7' },
   /* strike · reached · holds · actions */
-  tight: { template: '120px 56px 92px minmax(64px,1fr)', min: 360, span: 'col-span-4' },
+  tight: { template: 'minmax(92px,120px) 48px 84px minmax(52px,1fr)', min: 300, span: 'col-span-4' },
 };
 
 interface Props {
@@ -463,7 +463,12 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   const full = density === 'full';
   const wide = density !== 'tight';
   const pad = wide ? 'px-5' : 'px-3';
-  const headCell = (words: ReactNode, right = false, extra = '') => <div className={`h-[14px] text-[9px] uppercase tracking-widest text-textMuted ${right ? 'text-right' : ''} ${extra}`}>{words}</div>;
+  /* EVERY HEAD EXPLAINS ITSELF ON HOVER (the ship pass, 2026-10-22) — one plain sentence each */
+  const headCell = (words: ReactNode, right = false, extra = '', tip?: string) => (
+    <div className={`h-[14px] text-[9px] uppercase tracking-widest text-textMuted ${right ? 'text-right' : ''} ${tip ? 'cursor-help' : ''} ${extra}`} title={tip}>
+      {words}
+    </div>
+  );
 
   return (
     /* FIVE ROWS OF THE HOST'S SUBGRID — the head, the sentence, the podium, the list, the foot — so panes side by side
@@ -475,23 +480,23 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
         {/* beside other panes the facts take a row of their own — the same row in every pane, whatever its line holds */}
         <dl className={`flex flex-wrap gap-x-5 gap-y-2 ${full ? 'ml-auto' : 'basis-full'}`}>
           <div>
-            <dt className="text-[10px] text-textMuted">Watch first</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The one strike to watch first: likely to be reached, with the most at stake">Watch first</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: lead?.role ? ROLE_INK[lead.role] : 'rgb(var(--text-primary))' }} data-watch-first>
               {lead ? fmtStrike(lead.strike) : '—'} {lead?.role && <span className="text-[9px] uppercase tracking-widest">{lead.role}</span>}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Most likely reached</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The strike price is most likely to touch, and the chance">Most likely reached</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Smallest wall in reach</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The smallest wall price is likely to reach, sized against the biggest wall on this ticker">Smallest wall in reach</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: SILVER }}>
               {agenda.weakestWall ? `${fmtStrike(agenda.weakestWall.strike)} · ${holdLabel(agenda.weakestWall.hold)}` : '—'}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">The close leans to</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The strike the close is most likely to land on, and the chance">The close leans to</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.closesNear ? `${fmtStrike(agenda.closesNear.strike)} · ${agenda.closesNear.odds.toFixed(0)}%` : '—'}</dd>
           </div>
         </dl>
@@ -532,16 +537,16 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       {/* THE LIST — the columns a density keeps */}
       <div className={`${pad} pb-2 overflow-x-auto`} data-targets-rows onPointerLeave={() => setHover(null)}>
         <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: cols.template, minWidth: cols.min }}>
-          {wide && headCell('#')}
-          {headCell('Strike')}
-          {wide && headCell('From spot', true)}
-          {headCell(clock.inSession ? 'Reached' : 'Reached next', true, 'whitespace-nowrap')}
-          {headCell('Wall size', true)}
-          {full && headCell('If it breaks')}
-          {full && headCell(clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap')}
-          {wide && headCell('At stake')}
-          {full && headCell('Why it ranks here')}
-          {headCell('Actions', true)}
+          {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
+          {headCell('Strike', false, '', 'The option strike price, with its role: call wall, put wall, supreme, shelf (a wall that slows price) or trapdoor (a strike that speeds a move up)')}
+          {wide && headCell('From spot', true, '', 'How far the strike is from the current price')}
+          {headCell(clock.inSession ? 'Reached' : 'Reached next', true, 'whitespace-nowrap', clock.inSession ? 'The chance price touches this strike before the close' : 'The chance price touches this strike next session')}
+          {headCell('Wall size', true, '', "How big the hedging here is next to the biggest wall on this ticker's own chain (that one is 100%). A dash: too thin to be a wall. It is size, not the chance price turns here")}
+          {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
+          {full && headCell(clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', 'Hedging added (building) or taken off (draining) at this strike in the latest open-interest count')}
+          {wide && headCell('At stake', false, '', 'The dollars of dealer hedging that come into play if price reaches this strike')}
+          {full && headCell('Why it ranks here', false, '', 'The two numbers behind its place: the chance it is reached times what is at stake')}
+          {headCell(wide ? 'Actions' : '', true, '', 'Open the strike on the Map, or set a price alert on it')}
           {rest.map(t => {
             const kept = focus != null && Math.abs(focus - t.strike) < 1e-9;
             const wash = kept || hover === t.strike ? 'bg-silver/[0.05]' : '';

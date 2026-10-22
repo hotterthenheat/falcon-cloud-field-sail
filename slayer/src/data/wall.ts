@@ -441,7 +441,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
       label: 'The market’s speed',
       fact: ctx.speed == null ? '—' : `${speed.toFixed(2)}× the pace priced`,
       push: clamp(zSpeed / Math.abs(A_SPEED), -1, 1),
-      words: !clock.inSession ? 'the pace price arrives at counts once the session opens' : speed > 1.3 ? 'running faster than its options priced — fast arrivals turned back more often in the back-test' : speed < 0.7 ? 'a quiet market — slow arrivals pushed through more often in the back-test' : 'about the pace the options priced',
+      words: !clock.inSession ? 'the pace price arrives at counts once the session opens' : speed > 1.3 ? 'running faster than its options priced — fast arrivals tend to turn back more often' : speed < 0.7 ? 'a quiet market — slow arrivals tend to push through more often' : 'about the pace the options priced',
     },
     {
       key: 'prints',

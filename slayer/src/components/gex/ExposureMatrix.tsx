@@ -45,6 +45,7 @@ import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/Point
 
 const letGo = letGoWords();
 import { fmtUsd } from '../../data/gex';
+import { shownGreek } from './retailSign';
 import { GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { ABSORB, AMPLIFY, CALL_WALL, EMBER, FLIP, GLACIER, PUT_WALL, SUPREME } from './paletteInk';
 import { strikeRole, underlineClass } from './strikeRole';
@@ -127,7 +128,7 @@ interface Row {
 const groupSkin = (gi: number, first: boolean, last: boolean, paper: boolean) =>
   `${first ? `border-l ${paper ? 'border-borderSubtle' : 'border-borderMuted'} pl-3` : ''} ${last ? 'pr-3' : ''} ${gi % 2 === 1 ? (paper ? 'bg-ink/[0.02]' : 'bg-ink/[0.045]') : ''}`;
 
-const Cell = ({ value, leg, cap, mode, paper, gi, first, last, rowH = ROW_H, heavy = true }: { value: number; leg: Leg; cap: number; mode: HeatMode; paper: boolean; gi: number; first: boolean; last: boolean; /** the row's height — the figure and its track centred in it */ rowH?: number; /** one of the column's three heaviest bars: full ink; the rest a step quieter, so the walls pop */ heavy?: boolean }) => {
+const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW_H, heavy = true }: { value: number; /** the figure printed — the kept value in the reader's sign (retailSign.ts); the ink reads the kept value */ shown: number; leg: Leg; cap: number; mode: HeatMode; paper: boolean; gi: number; first: boolean; last: boolean; /** the row's height — the figure and its track centred in it */ rowH?: number; /** one of the column's three heaviest bars: full ink; the rest a step quieter, so the walls pop */ heavy?: boolean }) => {
   const pct = Math.min(100, (Math.abs(value) / Math.max(1, cap)) * 100);
   const ink = value === 0 ? 'transparent' : heatLadderColor(value, cap, mode, paper);
   return (
@@ -138,7 +139,7 @@ const Cell = ({ value, leg, cap, mode, paper, gi, first, last, rowH = ROW_H, hea
               just be the color of the strike and show on the hover card but not on the actual matrix view") — the words
               that stood here since 2026-10-14 are the strike's ink and the card's; the spacer keeps the figure at the right */}
           <span aria-hidden />
-          <span className={`font-mono text-[12px] tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'}`}>{fmtUsd(value)}</span>
+          <span className={`font-mono text-[12px] tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'}`}>{fmtUsd(shown)}</span>
         </div>
         {/* the track under every figure, the bar on it — the width with the data, the ink with the Colours switch */}
         <span className={`relative block w-full h-[3px] mt-[5px] rounded-full ${paper ? 'bg-ink/[0.1]' : 'bg-ink/[0.08]'}`} data-matrix-track>
@@ -330,9 +331,9 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     const verdictInk = empty ? 'rgb(var(--text-muted))' : l.net >= 0 ? AMPLIFY : ABSORB;
     const body = (
       <>
-        <CardRow k="Put" v={fmtUsd(l.put)} sub={pct(l.put, caps[lead].put)} ink={PUT_INK} />
-        <CardRow k="Call" v={fmtUsd(l.call)} sub={pct(l.call, caps[lead].call)} ink={CALL_INK} />
-        <CardRow k={`Net · ${GREEK_LABEL[lead]}`} v={fmtUsd(l.net)} sub={empty ? 'nothing' : l.net >= 0 ? 'put-heavy' : 'call-heavy'} ink={empty ? 'rgb(var(--text-muted))' : ink} />
+        <CardRow k="Put" v={fmtUsd(shownGreek(lead, l.put))} sub={pct(l.put, caps[lead].put)} ink={PUT_INK} />
+        <CardRow k="Call" v={fmtUsd(shownGreek(lead, l.call))} sub={pct(l.call, caps[lead].call)} ink={CALL_INK} />
+        <CardRow k={`Net · ${GREEK_LABEL[lead]}`} v={fmtUsd(shownGreek(lead, l.net))} sub={empty ? 'nothing' : l.net >= 0 ? 'put-heavy' : 'call-heavy'} ink={empty ? 'rgb(var(--text-muted))' : ink} />
         {oi > 0 && <CardRow k="Open interest" v={Math.round(oi).toLocaleString()} sub="contracts" />}
       </>
     );
@@ -491,7 +492,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       <tr
         key={r.strike}
         id={rowId(r.strike)}
-        aria-label={`${fmtStrike(r.strike)}${tag ? ` · ${tag.word}` : ''}${you ? ' · you own' : ''} · net ${GREEK_LABEL[lead]} ${fmtUsd(r.legs[lead].net)}`}
+        aria-label={`${fmtStrike(r.strike)}${tag ? ` · ${tag.word}` : ''}${you ? ' · you own' : ''} · net ${GREEK_LABEL[lead]} ${fmtUsd(shownGreek(lead, r.legs[lead].net))}`}
         onPointerEnter={ev => {
           if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
           leaveTimer.current = 0;
@@ -540,7 +541,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         </td>
         {shownGreeks.map((g, gi) =>
           LEGS.map((leg, li) => (
-            <Cell key={`${g}-${leg}`} value={r.legs[g][leg]} leg={leg} cap={caps[g][leg]} mode={mode} paper={paper} gi={gi} first={li === 0} last={li === LEGS.length - 1} rowH={rowH + plus} heavy={heavyBy[`${g}|${leg}`]?.has(r.strike) ?? true} />
+            <Cell key={`${g}-${leg}`} value={r.legs[g][leg]} shown={shownGreek(g, r.legs[g][leg])} leg={leg} cap={caps[g][leg]} mode={mode} paper={paper} gi={gi} first={li === 0} last={li === LEGS.length - 1} rowH={rowH + plus} heavy={heavyBy[`${g}|${leg}`]?.has(r.strike) ?? true} />
           ))
         )}
       </tr>

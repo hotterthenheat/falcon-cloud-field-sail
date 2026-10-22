@@ -8,6 +8,7 @@ import { tickerName } from '../../data/tickers';
 import { lookup } from '../../data/universe';
 import { buildHoldings, type HoldingRow, type SectorFlowRow } from '../../data/fileBooks';
 import { useLiveRecord } from '../../data/liveRecord';
+import { phonePin } from './pagedGrid';
 
 /*
   The second face under the grid Congress and Insiders already own.
@@ -69,6 +70,7 @@ export const CongressHoldings = () => {
       <div className="slayer-board border-t border-borderSubtle">
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<HoldingRow>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -132,6 +134,7 @@ export const InsiderSectorFlow = () => {
       <div className="slayer-board border-t border-borderSubtle">
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<SectorFlowRow>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}

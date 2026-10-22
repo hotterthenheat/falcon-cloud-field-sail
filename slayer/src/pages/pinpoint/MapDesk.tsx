@@ -77,7 +77,8 @@ import { readSessionClock } from '../../data/moc';
 import { setReplayLabel } from './replayState';
 import { readPosition, usePositions } from '../../data/positions';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
-import { bookForDates, expirySpan } from '../../data/bookWindow';
+import { levelsBook, levelsDate, levelsWords } from '../../data/bookWindow';
+import { useLevelsScope } from '../../data/levelsScope';
 import type { ExposureExpiry } from '../../types/gex';
 import type { Candle, MarketSnapshot } from '../../types/market';
 import { useOnScreen } from '../../components/ui/useOnScreen';
@@ -174,6 +175,7 @@ const MapDesk = () => {
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
   const { focus, toggleFocus, focusOn } = useFocus();
+  const levelsScope = useLevelsScope();
 
   /* TYPE A STRIKE TO KEEP IT (idea 8, 2026-10-13): `/` opens a small prompt; Enter keeps the nearest strike the chain
      has, everywhere on the page; Esc closes. Caught before the command line, which `/` opens on pages with no search. */
@@ -543,6 +545,15 @@ const MapDesk = () => {
   const bookStyleW = bookW > 0 ? (bookFits ? bookW : topRowW || bookW) : undefined;
   const dayBeside = !split && !!bookStyleW && topRowW > 0 && topRowW - bookStyleW - 16 >= DAY_MIN;
   const datesFor = (t: string): string[] | null => (nameDates[t]?.length ? nameDates[t] : bookDates);
+  /* THE LEVELS ARE THE LEVELS CARD'S, NOT THE MATRIX'S WINDOW (the ship pass, 2026-10-22): the tape's lines, the clock,
+     the report and the hedging path read their supreme, walls, flip and net off the Levels card's contracts — the same
+     book the Board, the Agenda and Compare read — while the matrix above may show more dates. */
+  const lv = (snap: MarketSnapshot): MarketSnapshot => levelsBook(snap, levelsScope);
+  const lvDates = (snap: MarketSnapshot): string[] | null => {
+    const d = levelsDate(snap, levelsScope);
+    return d ? [d] : null;
+  };
+  const lvWords = (snap: MarketSnapshot): string => levelsWords(snap, levelsScope);
 
   return (
     <>
@@ -643,8 +654,8 @@ const MapDesk = () => {
       {!dayNames && (
       <div ref={tapeRef} id="map-session" className={`flex-[1_1_420px] min-w-0 flex flex-col border border-borderSubtle rounded-md bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12`} style={dayBeside ? { height: bookH } : { minHeight: 520 }} data-session data-scope-ticker={tapeTicker} data-on-screen={tapeOn}>
         <DayBox scope={chipFor('tape', tapeTicker)}>
-          <TapeBox part snapshot={bookForDates(tapeSnap ?? scan, datesFor(tapeTicker))} bars={playing && tapeTicker === ticker ? reportBars : undefined} focus={focusFor(tapeTicker)} onPick={price => toggleFocus(price, tapeTicker)} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} />
-          <BookThroughDay part snapshot={bookForDates(tapeSnap ?? scan, datesFor(tapeTicker))} bars={playing && tapeTicker === ticker ? reportBars : undefined} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} dates={datesFor(tapeTicker)} />
+          <TapeBox part snapshot={lv(tapeSnap ?? scan)} bars={playing && tapeTicker === ticker ? reportBars : undefined} focus={focusFor(tapeTicker)} onPick={price => toggleFocus(price, tapeTicker)} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} />
+          <BookThroughDay part snapshot={lv(tapeSnap ?? scan)} bars={playing && tapeTicker === ticker ? reportBars : undefined} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} dates={lvDates(tapeSnap ?? scan)} bookLabel={lvWords(tapeSnap ?? scan)} />
         </DayBox>
       </div>
       )}
@@ -654,7 +665,7 @@ const MapDesk = () => {
           {dayNames.map((t, i) => {
             const host = i === 0;
             const raw = host ? tapeSnap ?? scan : columnSnap(t);
-            const snap = raw ? bookForDates(raw, datesFor(t)) : null;
+            const snap = raw ? lv(raw) : null;
             if (!snap) {
               return (
                 <div key={t} className="min-w-0 flex flex-col border border-borderSubtle rounded-md bg-panel px-4 py-6 font-mono text-[11px] text-textMuted" data-session-box={t}>
@@ -668,7 +679,7 @@ const MapDesk = () => {
               <div key={t} className="min-w-0 flex flex-col border border-borderSubtle rounded-md bg-panel" data-session-box={t} data-scope-ticker={t}>
                 <DayBox scope={<NameMark t={t} />}>
                   <TapeBox part snapshot={snap} bars={bars} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} at={at} />
-                  <BookThroughDay part snapshot={snap} bars={bars} at={at} dates={datesFor(t)} />
+                  <BookThroughDay part snapshot={snap} bars={bars} at={at} dates={lvDates(snap)} bookLabel={lvWords(snap)} />
                 </DayBox>
               </div>
             );
@@ -703,7 +714,7 @@ const MapDesk = () => {
               }
               return (
                 <div key={t} ref={host ? dayRef : undefined} id={host ? 'map-clock' : undefined} className="min-w-0 flex flex-col border border-borderSubtle rounded-md bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-day data-scope-ticker={t} data-on-screen={host ? dayOn : undefined}>
-                  <TraderClock snapshot={bookForDates(base, datesFor(t))} scope={<NameMark t={t} />} dates={datesFor(t)} at={playing ? replayMinute(framePos, range) : undefined} onSeek={playing && range ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
+                  <TraderClock snapshot={lv(base)} scope={<NameMark t={t} />} dates={lvDates(base)} at={playing ? replayMinute(framePos, range) : undefined} onSeek={playing && range ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
                 </div>
               );
             })}
@@ -715,7 +726,7 @@ const MapDesk = () => {
               if (!base) return null;
               return (
                 <div key={t} ref={host ? reportRef : undefined} id={host ? 'map-report' : undefined} className="min-w-0 border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={t} data-on-screen={host ? reportOn : undefined}>
-                  <WallReportCard tight snapshot={bookForDates(base, datesFor(t))} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} span={expirySpan(datesFor(t))} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
+                  <WallReportCard tight snapshot={lv(base)} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} span={lvWords(base)} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
                 </div>
               );
             })}
@@ -724,10 +735,10 @@ const MapDesk = () => {
       ) : (
       <div className="contents min-[1880px]:grid min-[1880px]:grid-cols-[580px_minmax(0,1fr)] min-[1880px]:gap-4 min-[1880px]:items-stretch" data-map-wide-row>
       <div ref={dayRef} id="map-clock" className="flex flex-col border border-borderSubtle rounded-md bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-day data-scope-ticker={dayTicker} data-on-screen={dayOn}>
-        <TraderClock snapshot={bookForDates(daySnap ?? scan, datesFor(dayTicker))} scope={chipFor('day', dayTicker)} dates={datesFor(dayTicker)} at={playing && dayTicker === ticker ? replayMinute(framePos, range) : undefined} onSeek={playing && range && dayTicker === ticker ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
+        <TraderClock snapshot={lv(daySnap ?? scan)} scope={chipFor('day', dayTicker)} dates={lvDates(daySnap ?? scan)} at={playing && dayTicker === ticker ? replayMinute(framePos, range) : undefined} onSeek={playing && range && dayTicker === ticker ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
       </div>
       <div ref={reportRef} id="map-report" className="border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={reportTicker} data-on-screen={reportOn}>
-        <WallReportCard snapshot={bookForDates(reportSnap ?? scan, datesFor(reportTicker))} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={expirySpan(datesFor(reportTicker))} bars={playing && reportTicker === ticker ? reportBars : undefined} />
+        <WallReportCard snapshot={lv(reportSnap ?? scan)} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={lvWords(reportSnap ?? scan)} bars={playing && reportTicker === ticker ? reportBars : undefined} />
       </div>
       </div>
       )}
