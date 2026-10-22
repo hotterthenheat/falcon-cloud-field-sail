@@ -78,8 +78,9 @@ const PIN_RIGHT = ['prem'];
 
 /** The day's side in words */
 const leanWords = (r: BookContract) => {
-  const bid = 100 - r.askPct;
-  return Math.abs(r.askPct - bid) < 10 ? 'mid' : r.askPct > bid ? `ask ${r.askPct}%` : `bid ${bid}%`;
+  const ask = Math.round(r.askPct);
+  const bid = 100 - ask;
+  return Math.abs(ask - bid) < 10 ? 'mid' : ask > bid ? `ask ${ask}%` : `bid ${bid}%`;
 };
 
 /** A contract's day on a phone */
@@ -133,7 +134,7 @@ const MONEY_OPTIONS: DropdownOption<'any' | 'otm'>[] = [
 const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ? s : best), 0);
 
 /** The grid's own widths where flex would starve a cell */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, otm: 76, last: 118, doi: 150, prem: 92, iv: 100, sector: 176, lean: 96 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, otm: 76, last: 118, doi: 124, prem: 92, iv: 124, sector: 176, lean: 96 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
@@ -293,10 +294,10 @@ const OptionsScreener = () => {
         key: 'last',
         header: 'Fill · Chg',
         align: 'right',
-        sortValue: r => r.chgPct,
+        sortValue: r => (Number.isFinite(r.chgPct) ? r.chgPct : -Infinity),
         render: r => (
           <span className="text-textPrimary">
-            ${r.last.toFixed(2)} <span className={`text-[11px] ${r.chgPct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>{pctSigned(r.chgPct, 1)}</span>
+            ${r.last.toFixed(2)} {Number.isFinite(r.chgPct) ? <span className={`text-[11px] ${r.chgPct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>{pctSigned(r.chgPct, 1)}</span> : <span className="text-[11px] text-textMuted">new</span>}
           </span>
         ),
       },
@@ -336,7 +337,7 @@ const OptionsScreener = () => {
               {r.iv.toFixed(0)}%{' '}
               <span className={`text-[11px] ${r.ivChg >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
                 {r.ivChg >= 0 ? '+' : ''}
-                {r.ivChg.toFixed(1)}
+                {r.ivChg.toFixed(Math.abs(r.ivChg) >= 100 ? 0 : 1)}
               </span>
             </span>
           ) : (

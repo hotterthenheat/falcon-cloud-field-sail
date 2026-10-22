@@ -33,9 +33,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useNetExpiry, useTide, useTopNet, useLiveBook, type TideKind } from '../../data/traceLive';
+import { useTopNet, useLiveBook } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { type MoneynessKey } from '../../data/flowBook';
 import { fmtUsd } from '../../data/gex';
@@ -50,9 +49,6 @@ import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
 import TraceBox, { Champion, Fact } from '../../components/trace/TraceBox';
 import { NetFlowGuide } from '../../components/trace/TraceGuide';
-import ExpiryCalendar, { expiryWords } from '../../components/ui/ExpiryCalendar';
-import { useExpiryCut } from '../../components/trace/bookExpiry';
-import { isoDate } from '../../core/calendar';
 
 const num = (v: number) => v.toLocaleString('en-US');
 // Signed on purpose — a champion's figure keeps its sign (2026-08-30).
@@ -79,17 +75,12 @@ const NetFlow = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   const top = useTopNet(40);
-  const [tideKind, setTideKind] = useState<TideKind>('market');
-  const tide = useTide(tideKind, tideKind === 'sector' ? 'technology' : tideKind === 'etf' ? picked || 'SPY' : '');
-  const expiryFlow = useNetExpiry(mny, tenor === 'odte' ? 'zero_dte' : 'weekly');
   const liveBook = useLiveBook(picked || activeTicker).rows;
   // The shared hold (see LiveHold): the board's book and the pane's tick freeze together while paused
   const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
   const { book: heldBook, tick } = hold.value;
-  /* THE EXPIRY CUT — the dates on the book, as a calendar; the board and the pane both read the cut book, so they
-     cannot disagree */
-  const { expiry, setExpiry: setExpiryRaw, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry);
-  const book = useMemo(() => cutExpiry(heldBook), [heldBook, cutExpiry]);
+  /* the pane draws the picked name's own minutes (usePaneFlow); the book only feeds the search's suggestions */
+  const book = heldBook;
   /* Sampled at the chart tape's last bar — the pane draws to the SIM tape's now; the expiry names the cut the rows came
      through, so the same minute on another cut is another board */
   const leaders = useMemo(
@@ -116,12 +107,6 @@ const NetFlow = () => {
   const unknown = query !== '' && !known.has(query) && ![...known].some(t => t.startsWith(query));
 
   const sel = picked ?? leaders[0]?.ticker ?? 'SPY';
-  /* AN EXPIRY KEEPS THE NAME ON THE PANE: with no name picked the pane followed the board's leader, so a new expiry
-     swapped one name for another unasked — the name on the pane is held as the cut changes */
-  const setExpiry = (iso: string | null) => {
-    setPicked(p => p ?? sel);
-    setExpiryRaw(iso);
-  };
   const maxAbs = useMemo(() => Math.max(...leaders.map(l => Math.abs(l.net)), 1), [leaders]);
   const netMarks = useMemo(() => earnMarks(leaders, l => l.net), [leaders]);
 
@@ -153,7 +138,7 @@ const NetFlow = () => {
     const crown = (v: number, champ: boolean) => (champ ? <span className="font-semibold tnum text-supreme">{signed(v)}</span> : <Lean v={v} />);
     return (
       <>
-        <RichRead text={`${chosen ? `On ${expiryWords(chosen)}, the` : 'The'} board's money leans ${total >= 0 ? 'bullish' : 'bearish'} — `} />
+        <RichRead text={`The board's money leans ${total >= 0 ? 'bullish' : 'bearish'} — `} />
         <Lean v={total} /> net across {leaders.length} names: bullish names <Lean v={facts.calls} /> against bearish names <Lean v={facts.puts} put />.{' '}
         <ReadDoor onOpen={() => onQuery(top.ticker)} title={`Put ${top.ticker} on the pane`}>
           {top.ticker}
@@ -168,7 +153,7 @@ const NetFlow = () => {
       </>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facts, leaders.length, chosen]);
+  }, [facts, leaders.length]);
 
   /* The search PICKS a name (it is a board, not a filter); the board scrolls the picked row into view */
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -185,7 +170,7 @@ const NetFlow = () => {
       sub="Every name ranked most bullish to most bearish by net premium — net calls less net puts · click a name and its session goes on the pane"
       testId="net-flow"
       className="md:flex-1 md:min-h-0"
-      data={{ picked: sel, names: leaders.length, expiry: expiry ?? 'all' }}
+      data={{ picked: sel, names: leaders.length }}
       guide={{ title: 'How to read the board', door: 'What the board, the lines and the floor mean', body: <NetFlowGuide />, testId: 'net-flow-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
         <>
@@ -229,14 +214,6 @@ const NetFlow = () => {
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
           <StaleMark at={top.at} ttlMs={FLOW_TTL_MS} fault={top.fault} />
-          <span className="inline-flex rounded-xs border border-borderSubtle overflow-hidden" data-tide-kind>
-            {(['market', 'sector', 'etf'] as const).map(k => (
-              <button key={k} type="button" aria-pressed={tideKind === k} onClick={() => setTideKind(k)} className={`relative px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${tideKind === k ? 'bg-chip text-textPrimary' : 'text-textSecondary'}`}>
-                {tideKind === k && <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-silver/70" />}
-                {k}
-              </button>
-            ))}
-          </span>
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
             {unknown && (
@@ -245,7 +222,6 @@ const NetFlow = () => {
               </span>
             )}
           </span>
-          <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="Only contracts on one expiry — or every expiry" testId="net-flow-expiry" />
         </>
       }
       sentence={read}
@@ -310,7 +286,6 @@ const NetFlow = () => {
             tenor={tenor}
             onTenor={setTenor}
             dteMax={Infinity}
-            live={(expiryFlow.rows.length ? expiryFlow.rows : tide.rows).map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.volume, price: p.price }))}
           />
           {top.fault && leaders.length === 0 ? <FeedFallback fault={top.fault} /> : null}
         </div>

@@ -19,6 +19,7 @@
 
 import { useMemo } from 'react';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
+import { useContractLast } from '../../data/traceLive';
 import PrintDrilldown from './PrintDrilldown';
 import { bookRowToPrint } from '../../data/tape';
 import { contractKey, useWatch, watchContract } from '../../context/WatchContext';
@@ -44,7 +45,10 @@ const BookDrill = ({ list, openKey, onOpen, clipFor, tick }: BookDrillProps) => 
   const idx = openKey === null ? -1 : list.findIndex(r => r.key === openKey);
   const row = idx >= 0 ? list[idx] : null;
 
-  const print = useMemo(() => (row ? bookRowToPrint(row, clipFor?.(row)) : null), [row, clipFor]);
+  /* The anchor is a REAL print: the host's exact clip (a flow alert's), else the contract's own last trade off the
+     vendor — never an invented one (data/tape bookRowToPrint) */
+  const last = useContractLast(row && !clipFor?.(row) ? row.optionSymbol : null).rows;
+  const print = useMemo(() => (row ? bookRowToPrint(row, clipFor?.(row) ?? last ?? undefined) : null), [row, clipFor, last]);
 
   const bookRev = useBookRev();
   const snapshot = useMemo(

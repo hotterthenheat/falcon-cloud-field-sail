@@ -44,6 +44,7 @@ import {
 } from 'lightweight-charts';
 import { bookCandles, dayBars, ensureBook, useBookRev } from '../../data/uwBook';
 import { bookSession } from '../../data/flowBook';
+import { usePaneFlow } from '../../data/traceLive';
 import { nyClock, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
 import { getResolvedTheme, readToken, useColourVision, useResolvedTheme } from '../../theme/theme';
 import { earnMarks, weightInk, type InkMarks } from './earnedInk';
@@ -308,6 +309,16 @@ const NetFlowPane = ({
     () => buildNetFlowView(book, seg, mny, times, dteMax, ticker ?? null, tenor),
     [book, seg, mny, times, dteMax, ticker, tenor]
   );
+  /* THE VENDOR'S MINUTES (traceLive's usePaneFlow): the lines and the head's figures read the same series — a host that
+     hands its own `live` keeps that path */
+  const own = usePaneFlow({ ticker: ticker ?? null, seg, mny, zeroDte: dteMax <= 1, enabled: live == null });
+  const series = live ?? own.rows;
+  const tail = series.length ? series[series.length - 1] : null;
+  /* a name's minutes carry gross contracts; a cut's only the net, so a cut prints no volume figure */
+  const headVol = ticker ? series.reduce((a, p) => a + p.vol, 0) : null;
+  const ncp = tail ? tail.callPrem : 0;
+  const npp = tail ? tail.putPrem : 0;
+  const emptyNote = series.length ? null : own.waiting ? 'Reading the minutes…' : own.fault ? 'This read did not land — the line fills when the feed answers' : 'No flow on this cut yet';
   /* The names the search can offer: only those with contracts inside the
      pane's own DTE ceiling — a 0DTE pane lists same-day names alone. */
   const searchRows = useMemo(
@@ -580,15 +591,41 @@ const NetFlowPane = ({
     const calls = callRef.current;
     const puts = putRef.current;
     const vol = volRef.current;
-    if (!chart || !spot || !calls || !puts || !vol || (times.length === 0 && !(live && live.length))) return;
+    if (!chart || !spot || !calls || !puts || !vol) return;
+    if (!series.length) {
+      spot.setData([]);
+      calls.setData([]);
+      puts.setData([]);
+      vol.setData([]);
+      return;
+    }
 
-    const bars = live ? [] : (bookCandles(ref) ?? dayBars(ref) ?? []);
+    const bars = series.length ? [] : (bookCandles(ref) ?? dayBars(ref) ?? []);
     const byTime = new Map<number, number>();
     for (const b of bars) byTime.set(b.time as number, b.close);
 
     const id = `${seg}-${mny}-${ref}-${tenor}-${dteMax}`;
     const loaded = loadedRef.current;
     let spotData = times.map(t => ({ time: t as UTCTimestamp, value: byTime.get(t) ?? 0 })).filter(p => p.value > 0);
+    /* REAL BARS OFF THE MINUTE GRID (Trace › Compare, 2026-10-22): the vendor's candles do not always sit on the pane's
+       minutes (five-minute bars, or a stamp a few seconds in), and the index fallback below then laid ~80 bars over 390
+       minutes and repeated the last close — the price drew FLAT from mid-morning. Read each minute AS OF the latest bar
+       at or before it, whenever the bars cover the session's own minutes. */
+    if (spotData.length < times.length / 2 && bars.length > 0 && times.length > 0) {
+      const sorted = [...bars].sort((x, y) => (x.time as number) - (y.time as number));
+      const first = sorted[0].time as number;
+      const last = sorted[sorted.length - 1].time as number;
+      if (first <= times[times.length - 1] && last >= times[0]) {
+        let j = -1;
+        spotData = times
+          .map(t => {
+            while (j + 1 < sorted.length && (sorted[j + 1].time as number) <= t) j += 1;
+            /* nothing after the last bar: the price is not drawn past the data */
+            return { time: t as UTCTimestamp, value: j >= 0 && t <= last + 300 ? sorted[j].close : 0 };
+          })
+          .filter(p => p.value > 0);
+      }
+    }
     /* THE SIMULATOR'S CLOCK RUNS AHEAD OF THE WALL'S (~15×, one bar per four ticks), so its bars rarely sit on the
        session's minutes: its last session (SESSION_BARS of them, one simulated day) is laid over the session's minutes
        by index — bar k at 09:30 + k. Real one-minute bars land on the minutes themselves and take the first path. */
@@ -597,13 +634,13 @@ const NetFlowPane = ({
       const at = (i: number) => tail[Math.min(i, tail.length - 1)]?.close ?? 0;
       spotData = times.map((t, i) => ({ time: t as UTCTimestamp, value: at(i) })).filter(p => p.value > 0);
     }
-    const drawn = live && live.length
-      ? live.map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.vol }))
+    const drawn = series.length
+      ? series.map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.vol }))
       : view.points;
     const callData = drawn.map(p => ({ time: p.time as UTCTimestamp, value: p.callPrem }));
     const putData = drawn.map(p => ({ time: p.time as UTCTimestamp, value: p.putPrem }));
-    if (live && live.length) {
-      spotData = live.filter(p => p.price > 0).map(p => ({ time: p.time as UTCTimestamp, value: p.price }));
+    if (series.length) {
+      spotData = series.filter(p => p.price > 0).map(p => ({ time: p.time as UTCTimestamp, value: p.price }));
     }
 
     /* The volume floor — one bar per minute, each in its EARNED ink: the marks
@@ -646,7 +683,7 @@ const NetFlowPane = ({
       chart.timeScale().fitContent();
     }
     loadedRef.current = { id, length: drawn.length };
-  }, [view, times, seg, mny, ref, tenor, dteMax, appTheme, live, bookRev]);
+  }, [view, times, seg, mny, ref, tenor, dteMax, appTheme, series, bookRev]);
 
   /* THE PAGE FLIPPED: the chart that is up is re-inked in place */
   useEffect(() => {
@@ -696,23 +733,32 @@ const NetFlowPane = ({
           />
         )}
         {/* The two cuts as labelled cards (the walk, 2026-09-09 — never chip rows) */}
-        {cutCards && <DropdownSelect label="Moneyness" value={mny} options={MONEY_OPTIONS} onChange={onMny} title={sharedNote ? `Which strikes against the stock — ${sharedNote}` : 'Which strikes against the stock'} testId="pane-money" />}
-        {cutCards && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
+        {/* the cards show only where the vendor's minutes can be cut by them: moneyness on a market cut (net-flow/expiry
+            takes it), never on a name's ticks or a sector's tide, and no tenor — a name's ticks span every expiry */}
+        {cutCards && (live != null || (!ticker && !seg.startsWith('sector:'))) && <DropdownSelect label="Moneyness" value={mny} options={MONEY_OPTIONS} onChange={onMny} title={sharedNote ? `Which strikes against the stock — ${sharedNote}` : 'Which strikes against the stock'} testId="pane-money" />}
+        {cutCards && live != null && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
         {/* the figures wrap on a phone rather than run off the pane (the device sweep, 2026-10-18: the volume cut at 360) */}
         <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-[11px] tnum [&>span]:whitespace-nowrap">
           {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
           <span style={{ color: inksNow.spot }} title={ticker ? undefined : `The white line is ${ref}'s price — the cut's money is every name in it`}>
             {ticker ? ref : `${ref} price`}
           </span>
+          {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
+              series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}
+          {ticker && dteMax <= 1 && live == null && (
+            <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The vendor has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry">
+              all expiries
+            </span>
+          )}
           <span>
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
-            <span className={view.ncp >= 0 ? 'text-bull' : 'text-bear'}>{fmtUsd(view.ncp)}</span>
+            <span className={ncp >= 0 ? 'text-bull' : 'text-bear'}>{tail ? fmtUsd(ncp) : '—'}</span>
           </span>
           <span>
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net puts</span>
-            <span className={view.npp >= 0 ? 'text-bear' : 'text-bull'}>{fmtUsd(view.npp)}</span>
+            <span className={npp >= 0 ? 'text-bear' : 'text-bull'}>{tail ? fmtUsd(npp) : '—'}</span>
           </span>
-          <span className="text-textSecondary">{view.vol.toLocaleString('en-US')} vol</span>
+          {headVol != null && tail && <span className="text-textSecondary">{headVol.toLocaleString('en-US')} vol</span>}
         </span>
         {onExpand && (
           <button
@@ -727,6 +773,11 @@ const NetFlowPane = ({
       </div>
       <div className="relative flex-1 min-h-0" onDoubleClick={resetView}>
         <div ref={containerRef} className="absolute inset-0" />
+        {emptyNote && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted" data-pane-empty>{emptyNote}</span>
+          </div>
+        )}
         {/* The glide readout — pinned top-left past the price axis, glass
             enough to whisper over the lines it summarizes */}
         <div

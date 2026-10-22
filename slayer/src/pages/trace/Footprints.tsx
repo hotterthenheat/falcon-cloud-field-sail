@@ -79,7 +79,8 @@ const FASTEST_MIN_PREV_OI = 500;
 /** Which side built it, in words */
 const builtWords = (r: BookContract) => {
   const bid = 100 - r.prevAskPct;
-  if (!Number.isFinite(r.prevAskPct)) return 'built —';
+  /* the live book carries no prior-session side (prevVolume 0): no side to name, never a default "on the bid" */
+  if (!Number.isFinite(r.prevAskPct) || !(r.prevVolume > 0)) return null;
   return r.prevAskPct - bid >= 16 ? 'built at the ask' : bid - r.prevAskPct >= 16 ? 'built on the bid' : 'built at the mid';
 };
 
@@ -102,7 +103,7 @@ const phoneRow = (r: BookContract) => (
         {num(r.deltaOI)} OI
       </span>,
       <span key="o">{num(r.oi)} standing</span>,
-      <span key="b">{builtWords(r)}</span>,
+      ...(builtWords(r) ? [<span key="b">{builtWords(r)}</span>] : []),
     ]}
   />
 );
@@ -113,6 +114,7 @@ const TOOLTIPS: Record<string, string> = {
   doi: 'What changed overnight — positions built or unwound',
   doipct: 'The change as a share of what stood before',
   builton: 'Which side did the building yesterday — at the ask, buyers; on the bid, sellers',
+  prevavg: "The contract's close the session before",
   streak: 'Sessions in a row the interest has grown',
   spark: "Yesterday's volume, quarter hour by quarter hour",
   earn: "The name's next report, if it sits inside the position's runway",
@@ -147,7 +149,7 @@ const Footprints = () => {
     q: { def: '', valid: isQuery },
     exp: { def: '', valid: isIsoDay },
   });
-  const screen = addr.cut.screen as FootprintScreenKey;
+  const screenAsked = addr.cut.screen as FootprintScreenKey;
   const setScreen = (v: FootprintScreenKey) => addr.set({ screen: v });
   const side = addr.cut.side as 'ALL' | 'C' | 'P';
   const setSide = (v: 'ALL' | 'C' | 'P') => addr.set({ side: v });
@@ -164,6 +166,13 @@ const Footprints = () => {
   /* THE EXPIRY CUT: the dates on the book, as a calendar */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
   const book = useMemo(() => cutExpiry(heldBook), [heldBook, cutExpiry]);
+  /* THE SCREENS THE FEED CAN ANSWER (the ship pass, 2026-10-22): bought/sold to open and carryover read the PREVIOUS
+     session's side and volume, which the live book does not carry — "Sold to open" passed every build (a side of 0 is
+     ≤ 42%) and the other two never matched. Without that data they are not offered, and a link that asks for one
+     lands on the biggest builds. */
+  const hasPrevSide = useMemo(() => heldBook.some(r => r.prevVolume > 0), [heldBook]);
+  const PREV_ONLY: FootprintScreenKey[] = ['bought', 'sold', 'carryover'];
+  const screen: FootprintScreenKey = !hasPrevSide && PREV_ONLY.includes(screenAsked) ? 'builds' : screenAsked;
   const keyOf = useCallback((r: { key: string }) => r.key, []);
   const openRow = useCallback((r: { key: string }) => setOpenKey(r.key), []);
 
@@ -202,7 +211,7 @@ const Footprints = () => {
   }, [book, loudestBuild]);
 
   const activeScreen = FOOTPRINT_SCREENS.find(s => s.key === screen) ?? FOOTPRINT_SCREENS[0];
-  const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.map(s => ({ value: s.key, label: s.label, hint: s.hint })), []);
+  const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.filter(s => hasPrevSide || !['bought', 'sold', 'carryover'].includes(s.key)).map(s => ({ value: s.key, label: s.label, hint: s.hint })), [hasPrevSide]);
 
   /*
     INK IS EARNED, COLUMN BY COLUMN (Noah, 2026-08-30: "shoudnt the green be
@@ -347,7 +356,7 @@ const Footprints = () => {
       },
       {
         key: 'prevavg',
-        header: 'Prev avg',
+        header: 'Prev close',
         align: 'right',
         sortValue: r => r.prevAvgFill,
         render: r => <span className={weightInk(r.prevAvgFill, marks.prevAvg)}>${r.prevAvgFill.toFixed(2)}</span>,

@@ -104,9 +104,13 @@ const leanWord = (askPct: number) => {
 
 const Dash = () => <span className="text-textSecondary">—</span>;
 
+/** Index option roots — the vendor has no stock state or bars for them (/stock/SPXW/stock-state answers 422), so the
+    Tracker neither seeds a book for them nor draws a spot: an index mark's spot reads "—", never "$0.00" */
+const INDEX_ROOTS = new Set(['SPX', 'SPXW', 'XSP', 'NDX', 'NDXP', 'XND', 'RUT', 'RUTW', 'MRUT', 'VIX', 'VIXW', 'DJX', 'OEX', 'XEO']);
+
 /** Fixed widths for the figure columns (the spot's then → now and its change would otherwise clip); the name, contract and mark share the rest */
-const WIDTHS: Record<string, number> = { then: 170, money: 90, since: 140, spot: 200, vol: 96, oi: 96, lean: 160 };
-const FLEXES: Record<string, number> = { ticker: 1, contract: 2, marked: 1.4 };
+const WIDTHS: Record<string, number> = { then: 150, money: 84, since: 124, spot: 196, vol: 84, oi: 80, lean: 120 };
+const FLEXES: Record<string, number> = { ticker: 1, contract: 2.2, marked: 1.6 };
 
 // ---- one row shape for every kind of mark ----------------------------------------
 
@@ -231,10 +235,11 @@ const FlowTracker = () => {
       options
         .filter(w => nq === '' || normSymbol(w.ticker).includes(nq))
         .map(w => {
-          ensureBook(w.ticker, 'board');
-          const spotNow = peekSpot(w.ticker);
+          const isIndex = INDEX_ROOTS.has(w.ticker.toUpperCase());
+          if (!isIndex) ensureBook(w.ticker, 'board');
+          const spotNow = isIndex ? null : peekSpot(w.ticker);
           const spotThen = w.at.spot;
-          const spotChg = spotNow != null ? pct(spotNow, spotThen) : null;
+          const spotChg = spotNow != null && spotThen > 0 ? pct(spotNow, spotThen) : null;
           if (w.kind === 'structure') {
             return { w, live: null, chg: null, spotThen, spotNow, spotChg, volAdded: null, oiDelta: null, leanThen: null, leanNow: null, moved: spotChg ?? 0 };
           }
@@ -415,7 +420,7 @@ const FlowTracker = () => {
         sortValue: r => r.spotChg ?? -Infinity,
         render: r =>
           r.spotNow == null ? (
-            <span className="text-textPrimary">${r.spotThen.toFixed(2)}</span>
+            r.spotThen > 0 ? <span className="text-textPrimary">${r.spotThen.toFixed(2)}</span> : <span className="text-textMuted">—</span>
           ) : (
             <span className="text-textPrimary">
               ${r.spotThen.toFixed(2)} <span className="text-textSecondary">→</span> <span className="text-textPrimary">${r.spotNow.toFixed(2)}</span>{' '}

@@ -29,7 +29,7 @@
 ==================================================
 */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { quotePlace, useAccumTape, useNameDark } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
@@ -201,7 +201,7 @@ const DarkPool = () => {
   const { view, tape } = hold.value;
   const name: string | null = named;
   /* THE HEAD'S OWNER — the name, or the market */
-  const head = useMemo(
+  const headNow = useMemo(
     () =>
       view
         ? { ticker: view.ticker, dpSharePct: view.dpSharePct, posture: view.posture, netPosturePct: view.netPosturePct, postureNote: view.postureNote, totalNotional: view.totalNotional }
@@ -217,6 +217,12 @@ const DarkPool = () => {
           : null,
     [view, tape]
   );
+  /* THE FIELD KEEPS ITS CARET (the ship pass, 2026-10-22): a typed letter that is a ticker ("S") made the page wait on
+     that name's book with no head, the whole page fell back to its skeleton, and the search field it was typed into
+     unmounted — "SPY" stopped at "S". The last head stands until the new name's lands. */
+  const lastHeadRef = useRef<typeof headNow>(null);
+  if (headNow) lastHeadRef.current = headNow;
+  const head = headNow ?? lastHeadRef.current;
   /* THE CROSS'S CARD (the Live Tape's print card, for a cross) */
   const [openCross, setOpenCross] = useState<DarkPoolPrint | null>(null);
   const openView = useMemo(() => {
@@ -320,7 +326,7 @@ const DarkPool = () => {
           ]),
       { key: 'time', header: 'Time', sortValue: p => p.time, render: p => <span className="text-textSecondary">{p.time}</span> },
       { key: 'price', header: 'Price', align: 'right', sortValue: p => p.price, render: p => <span className="font-mono tnum font-bold text-textPrimary">${p.price.toFixed(2)}</span> },
-      { key: 'vs', header: 'vs spot', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${place.cents === 0 ? 'text-textMuted' : dirInk(place.cents)}`}>{place.text}</span>; } },
+      { key: 'vs', header: 'vs mid', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${place.cents === 0 ? 'text-textMuted' : dirInk(place.cents)}`}>{place.text}</span>; } },
       { key: 'shares', header: 'Shares', align: 'right', sortValue: p => p.size, render: p => <span className={`font-mono tnum ${weightInk(p.size, marks.size)}`}>{num(p.size)}</span> },
       { key: 'dollars', header: 'Dollars', align: 'right', sortValue: p => p.notional, render: p => <span className={`font-mono tnum ${weightInk(p.notional, marks.notional)}`}>{fmtUsd(p.notional)}</span> },
       { key: 'venue', header: 'Venue', sortValue: p => p.venue, render: p => <span className="text-textSecondary">{p.venue}</span> },
@@ -606,7 +612,7 @@ const DarkPool = () => {
                     <span className="flex items-baseline gap-2">
                       <span className="font-mono text-[13px] font-bold tnum text-textPrimary">${l.price.toFixed(2)}</span>
                       <span className={`font-mono text-[10px] tnum ${dirInk(l.distPct)}`}>{signedPct(l.distPct)}</span>
-                      <span className="ml-auto min-w-0 truncate font-mono text-[9px] text-textMuted tnum whitespace-nowrap">{l.prints} prints · defended {l.defended}×</span>
+                      <span className="ml-auto min-w-0 truncate font-mono text-[9px] text-textMuted tnum whitespace-nowrap">{l.prints} print{l.prints === 1 ? '' : 's'}{l.defended > 0 ? ` · held ${l.defended}×` : ''}</span>
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="relative h-0.5 flex-1 rounded-full bg-ink/[0.06] overflow-hidden">

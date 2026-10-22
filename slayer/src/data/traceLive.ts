@@ -9,7 +9,9 @@ import { uwCall } from './whales';
 import { vendorFault, type FeedFault } from '../components/ui/liveRead';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
-import type { SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
+import { isoDate, isTradingDay, sessionsBetween } from '../core/calendar';
+import { nyParts } from '../core/nyTime';
+import type { MoneynessKey, NetFlowSegment, SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
 
 const POLL_MS = 4_000;
 
@@ -21,6 +23,8 @@ export interface LivePack<T> {
 }
 
 interface CacheBox<T> {
+  /** the request these rows answer — a box for another key is never shown */
+  key?: string;
   rows: T;
   at: number | null;
   fault: FeedFault | null;
@@ -75,11 +79,25 @@ function expiryLabel(iso: string): string {
   return `${m[2]}/${m[3]}/${m[1]}`;
 }
 
+/** THE TAPE'S SESSION — the New York trading day the vendor's prints belong to: today once the day's tape opens (04:00
+    New York, a session day), otherwise the last session before it. Overnight and on a closed day every row on Trace is
+    the last session's, and its days-to-expiry count from that day (the ship pass, 2026-10-22: at 00:54 on Oct 22 the
+    Oct 23 contracts read "1d" while the Oct 21 ones, expired at the bell, read "0d" — two clocks on one grid). */
+export function tapeSessionIso(): string {
+  const p = nyParts(new Date());
+  const d = new Date(p.year, p.month - 1, p.day);
+  if (!(isTradingDay(d) && p.hour >= 4)) {
+    d.setDate(d.getDate() - 1);
+    for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
+  }
+  return isoDate(d);
+}
+
 function dteOf(iso: string): number {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return 0;
   const day = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const today = Date.parse(`${nyIsoToday()}T00:00:00Z`);
+  const today = Date.parse(`${tapeSessionIso()}T00:00:00Z`);
   return Math.max(0, Math.round((day - today) / 86_400_000));
 }
 
@@ -96,12 +114,12 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
       try {
         const rows = await load();
         if (stop) return;
-        setBox({ rows, at: Date.now(), fault: null });
+        setBox({ key, rows, at: Date.now(), fault: null });
         setWaiting(false);
       } catch (e) {
         if (stop) return;
         const fault = vendorFault(e instanceof Error ? e.message : 'unusual whales') ?? 'failed';
-        setBox(prev => ({ rows: prev ? prev.rows : empty, at: prev ? prev.at : null, fault }));
+        setBox(prev => (prev && prev.key === key ? { ...prev, fault } : { key, rows: empty, at: null, fault }));
         setWaiting(false);
       }
     };
@@ -114,7 +132,10 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
     // `key` is the request. `load` closes over the same key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled]);
-  return { rows: box?.rows ?? empty, at: box?.at ?? null, fault: box?.fault ?? null, waiting: enabled && waiting && !box };
+  /* A NEW KEY NEVER WEARS THE OLD KEY'S ROWS (the ship pass, 2026-10-22): the box outlived its request, so a Net Flow pane
+     moved from SPY to META drew SPY's minutes under META's name until the next answer landed */
+  const mine = box && box.key === key ? box : null;
+  return { rows: mine?.rows ?? empty, at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: enabled && !mine && (waiting || !!box) };
 }
 
 async function getRows(path: string): Promise<Record<string, unknown>[]> {
@@ -147,8 +168,12 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const bidVol = num(row.bid_vol);
   const volSum = askVol + bidVol;
   const flags = `${row.report_flags || ''} ${Array.isArray(row.tags) ? row.tags.join(' ') : ''}`;
-  const multi = num(row.stock_multi_vol) > 0 || /multi/i.test(flags);
-  const sweep = /sweep/i.test(flags);
+  /* THE PRINT'S OWN CONDITION CODE (OPRA, upstream_condition_detail) says what it was (the ship pass, 2026-10-22): ISOI is
+     an intermarket sweep; ML?T / TL?T and the ?ESL / ?ASL / ?FSL family are legs of a multi-leg order. Read only from
+     the flags, 2,000 prints counted 0 sweeps and a tenth of the multi-leg. */
+  const cond = String(row.upstream_condition_detail || '').toLowerCase();
+  const multi = num(row.stock_multi_vol) > 0 || /multi/i.test(flags) || /^(ml|tl)[aecf]t$|^[mt][aef]sl$/.test(cond);
+  const sweep = /sweep/i.test(flags) || cond === 'isoi';
   const idRaw = String(row.id || `${ticker}-${when.epoch}-${i}`);
   return {
     id: hashId(idRaw),
@@ -174,7 +199,8 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     oi,
     deltaOI: 0,
     spot,
-    iv: num(row.implied_volatility) * (num(row.implied_volatility) <= 3 ? 100 : 1),
+    /* the vendor's IV is always a fraction — a same-day contract's 5.3 is 530%, not 5% */
+    iv: num(row.implied_volatility) * 100,
     volOverOI: oi > 0 ? volume / oi : 0,
     strat: multi ? 'Custom' : '—',
     sweep,
@@ -194,7 +220,7 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
       executed_at: row.created_at ?? row.end_time,
       underlying_price: row.underlying_price,
       option_type: row.type ?? row.option_type,
-      implied_volatility: row.iv,
+      implied_volatility: row.iv ?? row.iv_end ?? row.iv_start, // alerts carry the IV at their first and last print, never `iv`
       flow_alert_id: row.id,
     },
     i
@@ -204,6 +230,55 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
 
 export function useOptionTape(limit = 200): LivePack<FlowPrint[]> {
   return useLive(`tape:${limit}`, async () => (await getRows(`/option-trades?limit=${limit}`)).map(tradeToPrint), []);
+}
+
+/* ONE NAME'S TAPE AND STRUCTURES (Trace › Compare, 2026-10-22): the market-wide windows are the market's latest prints
+   — after the close almost all index — so a name like SPY read "0 prints" beside a full book. Additive: the vendor's
+   ticker_symbol filter on the same routes. */
+export function useNameTape(ticker: string | null, limit = 200): LivePack<FlowPrint[]> {
+  const name = (ticker || '').trim().toUpperCase();
+  return useLive(name ? `tape:${name}:${limit}` : 'tape:name:off', async () => (await getRows(`/option-trades?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)).map(tradeToPrint), [], !!name);
+}
+
+export function useNameSpreads(ticker: string | null, limit = 80): LivePack<SpreadTrade[]> {
+  const name = (ticker || '').trim().toUpperCase();
+  return useLive(name ? `spreads:${name}:${limit}` : 'spreads:name:off', async () => (await getRows(`/option-trades/multi-leg?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)).map(spreadOf), [], !!name);
+}
+
+/** One contract's real last trade — /option-contract/{occ}/flow (the vendor's "last trades"). The contract card anchors
+    on it: a book row's card had stood on an invented clip (a hashed size and spread), "$1.2M BOUGHT × 205" on a contract
+    whose last print was 2 lots on the bid. */
+export interface ContractLast {
+  size: number;
+  fill: number;
+  side: 'ASK' | 'BID' | 'MID';
+  time: string;
+  bid: number;
+  ask: number;
+  premium: number;
+  /** The print's own OPRA condition said it was a leg of a multi-leg order / an intermarket sweep */
+  multi: boolean;
+  sweep: boolean;
+}
+export function useContractLast(occ: string | null | undefined): LivePack<ContractLast | null> {
+  const sym = (occ || '').trim().toUpperCase();
+  return useLive(
+    sym ? `last:${sym}` : 'last:off',
+    async () => {
+      const rows = await getRows(`/option-contract/${encodeURIComponent(sym)}/flow?limit=1`);
+      const r = rows[0];
+      if (!r) return null;
+      const tags = Array.isArray(r.tags) ? (r.tags as unknown[]).map(String) : [];
+      const side: ContractLast['side'] = tags.includes('ask_side') ? 'ASK' : tags.includes('bid_side') ? 'BID' : 'MID';
+      const cond = String(r.upstream_condition_detail || '').toLowerCase();
+      const flags = `${r.report_flags || ''} ${tags.join(' ')}`;
+      const multi = /multi/i.test(flags) || /^(ml|tl)[aecf]t$|^[mt][aef]sl$/.test(cond);
+      const sweep = /sweep/i.test(flags) || cond === 'isoi';
+      return { size: num(r.size), fill: num(r.price), side, time: clock(r.executed_at).time.slice(0, 5), bid: num(r.nbbo_bid), ask: num(r.nbbo_ask), premium: num(r.premium), multi, sweep };
+    },
+    null,
+    !!sym
+  );
 }
 
 const TAPE_CAP = 2000;
@@ -451,7 +526,9 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0): Da
   const intent = intentOf(vs, sized);
   const exec = execOf(price, bid, ask);
   const when = clock(row.executed_at);
-  const id = hashId(String(row.tracking_id || `${row.ticker}-${row.executed_at}-${i}`));
+  /* the vendor's tracking_id is NOT unique — distinct prints (other sizes, other cumulative volumes) share one — so the
+     id folds in the fields that tell them apart; stable across polls, so the accumulator still de-dupes repeats */
+  const id = hashId(row.tracking_id != null ? `${row.tracking_id}-${row.executed_at}-${row.size}-${row.price}-${row.volume}` : `${row.ticker}-${row.executed_at}-${i}`);
   const place = quotePlace(vs, price);
   const where = place.cents === 0 ? 'at the mid' : place.cents > 0 ? `${place.text.slice(1)} over the mid` : `${place.text.slice(1)} under the mid`;
   const read = sized ? `Size printed ${where}.` : `Printed ${where}.`;
@@ -544,7 +621,7 @@ const DARK_CAP = 2000;
 
 function mergeDark(prev: DarkPoolPrint[], incoming: DarkPoolPrint[]): DarkPoolPrint[] {
   const seen = new Set(prev.map(r => r.id));
-  const fresh = incoming.filter(r => !seen.has(r.id));
+  const fresh = incoming.filter(r => !seen.has(r.id) && (seen.add(r.id), true));
   if (!fresh.length) return prev;
   const next = fresh.concat(prev);
   return next.length > DARK_CAP ? next.slice(0, DARK_CAP) : next;
@@ -563,7 +640,7 @@ export function useAccumTape(kind: 'dark' | 'lit', limit: number): LivePack<Dark
     setWaiting(true);
     const run = async () => {
       try {
-        const batch = (await getRows(path)).map((r, i) => darkPrint(r, i));
+        const batch = (await getRows(path)).filter(r => !r.canceled).map((r, i) => darkPrint(r, i)); // a cancelled print never traded
         if (stop) return;
         setRows(prev => mergeDark(prev, batch));
         setAt(Date.now());
@@ -596,9 +673,9 @@ export function useNameDark(ticker: string | null): LivePack<{ view: DarkPoolVie
         getRows(`/darkpool/${encodeURIComponent(name)}/price-levels`).catch(() => [] as Record<string, unknown>[]),
         getRows(`/lit-flow/${encodeURIComponent(name)}?limit=80`).catch(() => [] as Record<string, unknown>[]),
       ]);
-      const mapped = prints.map((r, i) => darkPrint(r, i));
+      const mapped = prints.filter(r => !r.canceled).map((r, i) => darkPrint(r, i));
       const spot = mapped[0]?.price || 0;
-      return { view: darkView(name, mapped, darkLevels(levels, spot), spot), lit: lit.map((r, i) => darkPrint(r, i)) };
+      return { view: darkView(name, mapped, darkLevels(levels, spot), spot), lit: lit.filter(r => !r.canceled).map((r, i) => darkPrint(r, i)) };
     },
     { view: null, lit: [] },
     !!name
@@ -620,6 +697,7 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
   const dte = dteOf(expiryIso);
   return {
     key: `${ticker}-${strike}-${right}-${dte}-${i}`,
+    optionSymbol: row.option_symbol ? String(row.option_symbol) : undefined,
     ticker,
     sector: row.sector ? String(row.sector) : null,
     sectorColor: null,
@@ -630,7 +708,9 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
     spot,
     otmPct: spot > 0 && strike > 0 ? ((right === 'C' ? strike - spot : spot - strike) / spot) * 100 : 0,
     last: num(row.close || row.avg_price),
-    chgPct: num(row.roc),
+    /* the fill against the contract's prior close (chain_prev_close) — `roc` is not a price change (TSLA 370C: roc 0.76
+       beside a real +15.0%); no prior close (a new listing) is no change to state */
+    chgPct: num(row.chain_prev_close) > 0 ? ((num(row.close || row.avg_price) - num(row.chain_prev_close)) / num(row.chain_prev_close)) * 100 : NaN,
     lastAt: when.time.slice(0, 5),
     lastAtMin: when.minute,
     volume,
@@ -642,9 +722,9 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
        every row of the Screener */
     iv: (() => {
       const v = num(row.iv) || (row.prev_iv != null ? num(row.prev_iv) + num(row.iv_change) : 0);
-      return v * (v <= 3 ? 100 : 1);
+      return v * 100; // always a fraction: a same-day contract's 5.31 is 531%, never 5%
     })(),
-    ivChg: num(row.iv_change) * (Math.abs(num(row.iv_change)) <= 3 ? 100 : 1),
+    ivChg: num(row.iv_change) * 100,
     volOverOI: oi > 0 ? volume / oi : 0,
     sweepPct: volume > 0 ? (num(row.sweep_volume) / volume) * 100 : 0,
     multiPct: volume > 0 ? (num(row.multileg_volume) / volume) * 100 : 0,
@@ -657,7 +737,15 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
     prevAskPct: 0,
     oiStreak: num(row.days_of_oi_increases),
     volGtOiStreak: num(row.days_of_vol_greater_than_oi),
-    earnDays: null,
+    /* the name's next report in sessions from the tape's day — only when it lands before this contract expires
+       (the column was a dead row of dashes: the field was never read) */
+    earnDays: (() => {
+      const er = String(row.next_earnings_date || '').slice(0, 10);
+      const session = tapeSessionIso();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(er) || er < session || (expiryIso && er > expiryIso)) return null;
+      const at = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+      return sessionsBetween(at(session), at(er));
+    })(),
     prevSpark: [],
   };
 }
@@ -707,39 +795,8 @@ export function useAlertTrades(id: string | null): LivePack<FlowPrint[]> {
   return useLive(id ? `alert-trades:${id}` : 'alert-trades:off', async () => (await getRows(`/option-trades/flow-alerts/${encodeURIComponent(id!)}`)).map(tradeToPrint), [], !!id);
 }
 
-export interface ExchangeBreak {
-  key: string;
-  symbol: string;
-  exchange: string;
-  code: string;
-  trades: number;
-  calls: number;
-  puts: number;
-  contracts: number;
-  premium: number;
-}
-
-export function useExchangeBreak(day: string): LivePack<ExchangeBreak[]> {
-  return useLive(`exch:${day}`, async () => {
-    const rows = await getRows(`/option-trades/exchange-breakdown/${encodeURIComponent(day)}`);
-    return rows.map((row, i) => {
-      const symbol = String(row.underlying_symbol || row.symbol || row.ticker || '—');
-      const exchange = String(row.exchange || row.market_center || '—');
-      const code = String(row.trade_code || row.code || '—');
-      return {
-        key: `${symbol}-${exchange}-${code}-${i}`,
-        symbol,
-        exchange,
-        code,
-        trades: num(row.trade_count || row.trades),
-        calls: num(row.call_trades || row.calls),
-        puts: num(row.put_trades || row.puts),
-        contracts: num(row.contracts || row.size),
-        premium: num(row.premium),
-      };
-    });
-  }, []);
-}
+/* No exchange / trade-code breakdown: /option-trades/exchange-breakdown is gated to the vendor's API Advanced plan
+   (422 on this key, verified 2026-10-22 — docs/DATA_SOURCES.md), so the Live Tape no longer asks for it. */
 
 function spreadKind(strategy: string): SpreadKind {
   const s = strategy.toLowerCase();
@@ -748,17 +805,24 @@ function spreadKind(strategy: string): SpreadKind {
   if (s.includes('calendar')) return 'calendar';
   if (s.includes('straddle')) return 'straddle';
   if (s.includes('strangle')) return 'strangle';
-  if (s.includes('ratio')) return 'ratio';
-  return 'vertical';
+  if (s.includes('ratio') || s.includes('frontspread') || s.includes('backspread')) return 'ratio';
+  /* the vendor names verticals (call_vertical_spread, put_vertical_spread); anything else is not one */
+  if (s.includes('vertical')) return 'vertical';
+  return 'custom';
 }
 
 function spreadLeg(leg: Record<string, unknown>, fallbackExpiry: string): SpreadLeg {
   const expiryIso = String(leg.expiry || leg.expiration || fallbackExpiry || '').slice(0, 10);
   const sideRaw = String(leg.side || leg.direction || leg.txn || '');
+  /* THE LEGS ROUTE (/option-trades/multi-leg/{id}/legs) speaks its own way (the ship pass, 2026-10-22): side "ask" /
+     "bid" (a bid-side leg was SOLD), the ratio as `size`, and the strike in thousandths (7780000 for 7780) — the card
+     read every leg "Buy ×1 7780000". The OCC symbol's last eight digits are the strike × 1000. */
+  const occ = String(leg.option_symbol || '').match(/(\d{8})$/);
+  const rawStrike = num(leg.strike);
   return {
-    side: /sell|short|sto|stc/i.test(sideRaw) ? 'SELL' : 'BUY',
-    ratio: num(leg.ratio) || 1,
-    strike: num(leg.strike),
+    side: /sell|short|sto|stc|^bid/i.test(sideRaw) ? 'SELL' : 'BUY',
+    ratio: num(leg.ratio) || num(leg.size) || 1,
+    strike: occ ? Number(occ[1]) / 1000 : rawStrike >= 100000 ? rawStrike / 1000 : rawStrike,
     right: String(leg.type || leg.option_type || '').toLowerCase().startsWith('p') ? 'P' : 'C',
     expiry: expiryLabel(expiryIso),
     dte: dteOf(expiryIso) || num(leg.dte),
@@ -798,7 +862,9 @@ function definedProfit(kind: SpreadKind, strategy: string, size: number, strikes
   if (/^other$/i.test(strategy)) return null;
   if (!Number.isFinite(netPremium) || netPremium === 0) return vendorProfit;
   if ((kind === 'straddle' || kind === 'strangle') && netPremium > 0 && !/bid/i.test(side)) return 'uncapped';
-  if (netPremium < 0 && !/ask/i.test(side)) return Math.abs(netPremium);
+  /* a credit keeps what it took in only where the sold shape caps the gain at the credit — a calendar's or a ratio's
+     profit is not its credit (an XSP calendar read "+$866" off a $4.33 credit) */
+  if (netPremium < 0 && !/ask/i.test(side)) return kind === 'calendar' || kind === 'ratio' ? vendorProfit : Math.abs(netPremium);
   const sorted = [...strikes].sort((x, y) => x - y);
   if (kind === 'vertical' && sorted.length === 2 && netPremium > 0 && !/bid/i.test(side)) {
     const gain = (sorted[1] - sorted[0]) * 100 * size - netPremium;
@@ -838,7 +904,7 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     premium: num(row.total_premium) || Math.abs(net) * size * 100,
     maxLoss: definedLoss(spreadKind(String(row.strategy || '')), String(row.strategy || ''), size, strikes, String(row.net_side || ''), netPremium, vendorLoss),
     maxProfit: definedProfit(spreadKind(String(row.strategy || '')), String(row.strategy || ''), size, strikes, String(row.net_side || ''), netPremium, vendorProfit),
-    iv: num(row.avg_iv) * (num(row.avg_iv) <= 3 ? 100 : 1),
+    iv: num(row.avg_iv) * 100,
     delta: num(row.net_delta),
     theta: num(row.net_theta),
     spot: num(row.underlying_price),
@@ -909,15 +975,90 @@ export function useTopNet(limit = 40): LivePack<TopNet[]> {
   }, []);
 }
 
-export function useNetExpiry(moneyness: string, tenor: string): LivePack<TidePoint[]> {
-  return useLive(`net-exp:${moneyness}:${tenor}`, async () => {
-    const rows = await getRows(`/net-flow/expiry?moneyness=${encodeURIComponent(moneyness)}&tide_type=${encodeURIComponent(tenor)}`);
-    return rows.map(r => ({
-      time: clock(r.timestamp || r.expiry || r.date).epoch,
-      callPrem: num(r.net_call_premium || r.call_premium),
-      putPrem: num(r.net_put_premium || r.put_premium),
-      volume: num(r.net_volume || r.volume),
-      price: num(r.price),
-    })).filter(p => p.time > 0);
-  }, []);
+
+/* ---- the net-flow pane's own minutes ------------------------------------------------------------------------------ */
+
+export interface PaneFlowPoint {
+  /** epoch seconds, on the minute */
+  time: number;
+  /** running net call premium since the open of the vendor's day */
+  callPrem: number;
+  /** running net put premium */
+  putPrem: number;
+  /** contracts that minute — gross for a name, |Δ net volume| for a cut */
+  vol: number;
+  /** the underlying's close that minute (0 when the vendor sends none) */
+  price: number;
+}
+
+const minuteOf = (iso: unknown) => {
+  const e = clock(iso).epoch;
+  return e > 0 ? Math.floor(e / 60) * 60 : 0;
+};
+
+/** THE PANE'S LINES ARE THE VENDOR'S MINUTES (the ship pass, 2026-10-22): the pane drew a day spread from each
+    contract's daily total through a hashed clip table — real end totals, an invented shape — and on Net Flow it was
+    handed the WHOLE MARKET's tide under a single name's header. Now:
+    - a name: /stock/{t}/net-prem-ticks (per-minute net call and put premium, every expiry) summed into the running
+      line, priced by the name's own one-minute closes;
+    - a cut: /net-flow/expiry (already running) — tide_type from the segment, moneyness from the card, expiration
+      zero_dte for a same-day pane and weekly otherwise; a sector cut reads that sector's tide. */
+export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; mny: MoneynessKey; zeroDte: boolean; enabled: boolean }): LivePack<PaneFlowPoint[]> {
+  const { ticker, seg, mny, zeroDte, enabled } = opts;
+  const name = (ticker || '').trim().toUpperCase();
+  const key = name ? `pane:${name}` : `pane:${seg}:${mny}:${zeroDte ? '0' : 'w'}`;
+  return useLive(
+    key,
+    async () => {
+      if (name) {
+        const [ticks, bars] = await Promise.all([
+          getRows(`/stock/${encodeURIComponent(name)}/net-prem-ticks`),
+          getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]),
+        ]);
+        const close = new Map<number, number>();
+        for (const b of bars) close.set(minuteOf(b.start_time), num(b.close));
+        let c = 0;
+        let p = 0;
+        let last = 0;
+        const out: PaneFlowPoint[] = [];
+        for (const r of [...ticks].sort((a, b) => minuteOf(a.tape_time) - minuteOf(b.tape_time))) {
+          const t = minuteOf(r.tape_time);
+          if (!t) continue;
+          c += num(r.net_call_premium);
+          p += num(r.net_put_premium);
+          last = close.get(t) ?? last;
+          out.push({ time: t, callPrem: c, putPrem: p, vol: num(r.call_volume) + num(r.put_volume), price: last });
+        }
+        return out;
+      }
+      if (seg.startsWith('sector:')) {
+        const sector = seg.slice('sector:'.length);
+        const rows = await getRows(`/market/${encodeURIComponent(sector)}/sector-tide?interval_5m=false`);
+        let prevVol = 0;
+        return rows
+          .map(r => {
+            const nv = num(r.net_volume);
+            const pt = { time: minuteOf(r.timestamp || r.date), callPrem: num(r.net_call_premium), putPrem: num(r.net_put_premium), vol: Math.abs(nv - prevVol), price: num(r.close || r.price) };
+            prevVol = nv;
+            return pt;
+          })
+          .filter(pt => pt.time > 0);
+      }
+      const tide = seg === 'stocks' ? 'equity_only' : seg === 'index-funds' ? 'etf_only' : 'all';
+      const got = await getRows(`/net-flow/expiry?moneyness=${encodeURIComponent(mny)}&tide_type=${tide}&expiration=${zeroDte ? 'zero_dte' : 'weekly'}`);
+      /* the series sits one level down: { data: [ { data: [minutes…], moneyness, tide_type } ] } */
+      const rows = got.flatMap(g => (Array.isArray(g.data) ? (g.data as Record<string, unknown>[]) : [g]));
+      let prevVol = 0;
+      return rows
+        .map(r => {
+          const nv = num(r.net_volume);
+          const pt = { time: minuteOf(r.timestamp), callPrem: num(r.net_call_premium), putPrem: num(r.net_put_premium), vol: Math.abs(nv - prevVol), price: num(r.underlying_price) };
+          prevVol = nv;
+          return pt;
+        })
+        .filter(pt => pt.time > 0);
+    },
+    [],
+    enabled
+  );
 }

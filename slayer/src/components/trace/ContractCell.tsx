@@ -49,10 +49,11 @@ const ContractCell = ({
   otmPct?: number;
 }) => {
   /* No underlying on the print (the vendor sends none for index options — SPXW, XSP): no spot and no distance, never
-     "spot $0.00 · 0.0%" */
+     "spot $0.00 · 0.0%". The sub-line goes whole: left with only the days, it repeated the DTE column beside it. */
   if (spot !== undefined && !(spot > 0)) {
     spot = undefined;
     otmPct = undefined;
+    dte = undefined;
   }
   const context = dte !== undefined || spot !== undefined || otmPct !== undefined;
   /* leading-none + align-middle on the head too, not just on the compound

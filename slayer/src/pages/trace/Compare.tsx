@@ -27,8 +27,9 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { SPREAD_KINDS, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
-import { useLiveBook, useOptionTape, useSpreads } from '../../data/traceLive';
+import { useLiveBook, useNameSpreads, useNameTape, usePaneFlow, type PaneFlowPoint } from '../../data/traceLive';
 import { fmtUsd } from '../../data/gex';
+import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
 import type { SleeveKey } from '../../types/compass';
 import type { BookContract } from '../../types/trace';
@@ -42,6 +43,10 @@ import LeanCell from '../../components/trace/LeanCell';
 import { PointerFollowCard } from '../../components/ui/PointerCard';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS, paneTimes } from '../../components/trace/NetFlowPane';
+
+/** Each name's last prints and structures the card reads */
+const TAPE_N = 300;
+const SPREADS_N = 80;
 import ReadDoor from '../../components/trace/ReadDoor';
 import TraceBox, { Champion, Fact } from '../../components/trace/TraceBox';
 import { CompareGuide } from '../../components/trace/TraceGuide';
@@ -289,12 +294,14 @@ const Compare = () => {
     };
   }, [pinned, openKey]);
 
-  const liveBook = useLiveBook(activeTicker).rows;
-  const liveSpreads = useSpreads(80).rows;
-  const liveTape = useOptionTape(200).rows;
-  /* The shared hold (see LiveHold): the book, the structures, the tape and the panes' tick freeze together */
-  const hold = useHold(useMemo(() => ({ book: liveBook, spreads: liveSpreads, tape: liveTape, tick: marketData }), [liveBook, liveSpreads, liveTape, marketData]), activeTicker);
-  const { book, spreads, tape, tick } = hold.value;
+  const bookPack = useLiveBook(activeTicker);
+  const liveBook = bookPack.rows;
+  /* NOT YET / NOT AT ALL: with no book the card read "SPY leans bullish at +$0 … SPY $0" (the ship pass, 2026-10-22) */
+  const bookState: 'reading' | 'down' | 'in' = liveBook.length ? 'in' : bookPack.fault ? 'down' : 'reading';
+  /* The shared hold (see LiveHold): the book and the panes' tick freeze together; the two names' tapes and structures
+     freeze with them below */
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const { book, tick } = hold.value;
 
   /* Only names on today's book can be compared — busiest first, so the defaults are the names that matter */
   const names = useMemo(() => {
@@ -310,8 +317,49 @@ const Compare = () => {
 
   /* Both names read at the tape's last bar — the same instant, the leaders board's rule */
   const sampleAt = useMemo(() => paneTimes('SPY').slice(-1), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sideA = useMemo(() => buildTraceSide(book, spreads, tape, aTicker, tenor, mny, sampleAt), [book, spreads, tape, aTicker, tenor, mny, sampleAt]);
-  const sideB = useMemo(() => buildTraceSide(book, spreads, tape, bTicker, tenor, mny, sampleAt), [book, spreads, tape, bTicker, tenor, mny, sampleAt]);
+
+  /* EACH NAME'S OWN TAPE AND STRUCTURES (2026-10-22): the market-wide windows are the market's latest prints — after the
+     close almost all index — and read "0 prints" for SPY beside a full book. Each name's own last prints instead, cut to
+     the window BOTH tapes cover: a capped tape only reaches back so far, and a longer reach is not a busier tape. */
+  const tapeA = useNameTape(aTicker, TAPE_N).rows;
+  const tapeB = useNameTape(bTicker, TAPE_N).rows;
+  const spreadsA = useNameSpreads(aTicker, SPREADS_N).rows;
+  const spreadsB = useNameSpreads(bTicker, SPREADS_N).rows;
+  const liveNames = useMemo(() => {
+    const reach = (r: { epoch?: number }[], cap: number) => (r.length >= cap ? Math.min(...r.map(p => p.epoch ?? Infinity)) : -Infinity);
+    const since = Math.max(reach(tapeA, TAPE_N), reach(tapeB, TAPE_N));
+    const minuteReach = (r: SpreadTrade[]) => (r.length >= SPREADS_N ? Math.min(...r.map(t => t.minute)) : -Infinity);
+    const sinceMin = Math.max(minuteReach(spreadsA), minuteReach(spreadsB));
+    return {
+      tape: [...tapeA, ...tapeB].filter(p => (p.epoch ?? 0) >= since),
+      spreads: [...spreadsA, ...spreadsB].filter(t => t.minute >= sinceMin),
+      since: Number.isFinite(since) ? since : null,
+    };
+  }, [tapeA, tapeB, spreadsA, spreadsB]);
+  /* EACH NAME READS ITS OWN BOOK (2026-10-22): the page's book is the terminal name's — its top contracts plus the
+     market's — so the OTHER name stood on whatever of its rows the market page carried: SPY on side B read $509.7M across
+     16 contracts where its own book held $946.3M across 80. */
+  const bookA = useLiveBook(aTicker).rows;
+  const bookB = useLiveBook(bTicker).rows;
+  const liveSides = useMemo(() => ({ ...liveNames, bookA: bookA.length ? bookA : book, bookB: bookB.length ? bookB : book }), [liveNames, bookA, bookB, book]);
+  const frozen = useRef(liveSides);
+  if (!hold.paused) frozen.current = liveSides;
+  const { tape, spreads, since: tapeSince } = frozen.current;
+  const sideBookA = frozen.current.bookA;
+  const sideBookB = frozen.current.bookB;
+  /* THE NET FLOW READS THE PANES' OWN SERIES (2026-10-22): each pane draws the name's vendor minutes
+     (/stock/{t}/net-prem-ticks, every expiry); the card summed off the book read SPY −$17.4M beside a pane at +$9.6M.
+     Uncut, the card takes the same running totals. The vendor's minutes cannot be cut by clock or moneyness, so a cut
+     card keeps the book's own figures and says so. */
+  const flowA = usePaneFlow({ ticker: aTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
+  const flowB = usePaneFlow({ ticker: bTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
+  const uncut = tenor === 'all' && mny === 'all';
+  const withTicks = (side: TraceSide, rows: PaneFlowPoint[]): TraceSide => {
+    const lastPt = rows.length ? rows[rows.length - 1] : null;
+    return uncut && lastPt ? { ...side, net: lastPt.callPrem - lastPt.putPrem, netCall: lastPt.callPrem, netPut: lastPt.putPrem } : side;
+  };
+  const sideA = useMemo(() => withTicks(buildTraceSide(sideBookA, spreads, tape, aTicker, tenor, mny, sampleAt), flowA), [sideBookA, spreads, tape, aTicker, tenor, mny, sampleAt, flowA, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideB = useMemo(() => withTicks(buildTraceSide(sideBookB, spreads, tape, bTicker, tenor, mny, sampleAt), flowB), [sideBookB, spreads, tape, bTicker, tenor, mny, sampleAt, flowB, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
   const cmp = useMemo(() => buildTraceCompare(sideA, sideB), [sideA, sideB]);
   const { a, b } = cmp;
 
@@ -353,7 +401,7 @@ const Compare = () => {
 
   const sections: { title: string; rows: Row[] }[] = [
     {
-      title: 'Net flow',
+      title: uncut ? 'Net flow · every expiry' : 'Net flow · on this cut, from the book',
       rows: [
         {
           key: 'net',
@@ -489,7 +537,7 @@ const Compare = () => {
         },
         {
           key: 'iv',
-          label: 'Implied vol',
+          label: 'Implied vol · past today',
           note: the(higher(s => s.book.iv), 'the richer'),
           lead: higher(s => s.book.iv),
           bars: s => [{ v: s.book.iv, text: `${s.book.iv}%`, ink: 'silver' }],
@@ -578,7 +626,8 @@ const Compare = () => {
       ],
     },
     {
-      title: 'The tape',
+      /* both names over the same reach of their own tapes — the title says from when */
+      title: tapeSince ? `The tape · since ${nyClock(tapeSince * 1000)}` : 'The tape',
       rows: [
         {
           key: 'prints',
@@ -707,7 +756,9 @@ const Compare = () => {
             {t.expiry} · {t.dte}d
           </span>
           <span className="font-mono text-[11px] tnum text-right whitespace-nowrap max-sm:hidden">
-            <span className="text-textPrimary">${Math.abs(t.net).toFixed(2)}</span> <span className={t.net >= 0 ? 'text-bull' : 'text-bear'}>{t.net >= 0 ? 'debit' : 'credit'}</span>
+            {/* paid or collected is a fact, not a lean — the Multi-Leg page's neutral ink; a structure the vendor priced no net
+                for says nothing rather than "$0.00 debit" */}
+            {t.net === 0 ? <span className="text-textMuted">—</span> : <><span className="text-textPrimary">${Math.abs(t.net).toFixed(2)}</span> <span className="text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span></>}
           </span>
           <span className="font-mono text-[12px] tnum font-semibold text-textPrimary text-right">{fmtUsd(t.premium)}</span>
         </div>
@@ -728,6 +779,16 @@ const Compare = () => {
       data={{ a: aTicker, b: bTicker, clock: tenor, money: mny }}
       guide={{ title: 'How to read the card', door: 'What the rows, the panes and the lists mean', body: <CompareGuide />, testId: 'compare-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
+        bookState !== 'in' ? (
+          <>
+            <Fact label={`${aTicker} net`} testId="a-net">
+              <span className="text-textMuted">—</span>
+            </Fact>
+            <Fact label={`${bTicker} net`} testId="b-net">
+              <span className="text-textMuted">—</span>
+            </Fact>
+          </>
+        ) : (
         <>
           <Fact label={`${a.ticker} net`} testId="a-net">
             <span className={dirInk(a.net)}>{signedUsd(a.net)}</span>
@@ -745,10 +806,11 @@ const Compare = () => {
             {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
           </Champion>
           <Fact label="Busier tape" testId="busier">
-            {/* the tape window is the market's last 200 prints — neither name on it is "no print", not a winner */}
+            {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
             {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints</>}
           </Fact>
         </>
+        )
       }
       controls={
         <>
@@ -777,8 +839,14 @@ const Compare = () => {
           <DropdownSelect label="Money" value={mny} options={MONEY_OPTIONS} onChange={setMny} title="Which strikes against the stock — both names" testId="compare-money" />
         </>
       }
-      sentence={sentence}
+      sentence={bookState === 'reading' ? "Reading the day's book." : bookState === 'down' ? 'This read did not land — the two names fill when the feed answers.' : sentence}
     >
+      {bookState !== 'in' ? (
+        <div className="border-t border-borderSubtle h-40 flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted" data-compare-empty>
+          {bookState === 'reading' ? 'Reading the day’s book' : 'This read did not land'}
+        </div>
+      ) : (
+        <>
       {/* THE PANES — each name through the session, on the page's one cut */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 border-t border-borderSubtle p-2" data-compare-panes>
         {[a, b].map((s, i) => (
@@ -885,6 +953,8 @@ const Compare = () => {
       <p className="px-5 flex items-center border-t border-borderSubtle text-[11px] text-textMuted" style={{ height: 40 }} data-compare-foot>
         Only names on today's book can be compared — a name off it falls back to the frame's, or to the busiest.
       </p>
+        </>
+      )}
       <BookDrill list={listed} openKey={openKey} onOpen={setOpenKey} tick={tick} />
     </TraceBox>
   );

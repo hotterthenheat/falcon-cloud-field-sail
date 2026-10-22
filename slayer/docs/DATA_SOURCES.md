@@ -20,7 +20,7 @@ Also note:
 
 - `/stock/{t}/greeks?expiry=YYYY-MM-DD` works (greeks for every strike of one expiry). It must be on the proxy's
   allowlist in `server/uwProxy.mjs` — every route the browser calls has to be listed there or the proxy answers 404.
-- `/option-trades/exchange-breakdown/{date}` answered 422 in the live sweep.
+- `/option-trades/exchange-breakdown/{date}` is gated to the API Advanced plan (422 "Missing access for the option tape") — not called.
 
 ## Unusual Whales
 

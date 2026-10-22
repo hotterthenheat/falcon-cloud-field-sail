@@ -1218,7 +1218,7 @@ export function buildNetLeaders(rows: BookContract[], sampleTime?: number, scope
    (max loss / max profit) and a plain-English line saying what the shape
    DOES. Dripped through the session like the wire and the alerts. */
 
-export type SpreadKind = 'vertical' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio';
+export type SpreadKind = 'vertical' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio' | 'custom';
 
 export interface SpreadKindDef {
   key: SpreadKind;
@@ -1235,6 +1235,8 @@ export const SPREAD_KINDS: SpreadKindDef[] = [
   { key: 'strangle', label: 'Strangle', read: 'Call above, put below — movement either way, cheaper than the straddle.' },
   { key: 'calendar', label: 'Calendar', read: 'Same strike on two clocks — the near expiry sold, the far one bought.' },
   { key: 'ratio', label: 'Ratio', read: 'Unbalanced legs — extra contracts written on one side, risk open past the far strike.' },
+  /* the vendor's "other": legs that print together but match no named shape — never relabelled a vertical */
+  { key: 'custom', label: 'Custom', read: 'Legs that printed together but match no named shape — read the legs.' },
 ];
 
 export interface SpreadLeg {

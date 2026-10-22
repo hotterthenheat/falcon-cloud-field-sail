@@ -539,7 +539,7 @@ export const StructureGuide = () => (
 
 /** A row of the board: rank, the name, its net in its ink, the C and P under it */
 export const BoardRowFigure = () => (
-  <Figure label="Two board rows: 01 GOOGL +$57.9M in magenta with a green bar and C $52.2M · P −$5.6M under it; 15 META −$923.1K in red with a short red bar" h={70}>
+  <Figure label="Two board rows: 01 GOOGL +$57.9M in magenta with a green bar and net bullish under it; 15 META −$923.1K in red with a short red bar and net bearish under it" h={70}>
     {[
       { y: 16, n: '01', t: 'GOOGL', net: '+$57.9M', ink: SUPREME, bar: 1, bull: true, c: '$52.2M', p: '−$5.6M' },
       { y: 46, n: '15', t: 'META', net: '−$923.1K', ink: BEAR, bar: 0.05, bull: false, c: '$1.1M', p: '$2.0M' },
@@ -557,7 +557,7 @@ export const BoardRowFigure = () => (
         <rect x={34} y={r.y + 6} width={100} height={2} rx={1} fill="#ffffff" fillOpacity={0.06} />
         <rect x={34} y={r.y + 6} width={100 * r.bar} height={2} rx={1} fill={r.bull ? BULL : BEAR} fillOpacity={0.6} />
         <text x={140} y={r.y + 9} fontSize={6.5} fill={MUTED} fontFamily={MONO}>
-          C {r.c} · P {r.p}
+          {r.bull ? 'net bullish' : 'net bearish'}
         </text>
         <text x={230} y={r.y + 4} fontSize={7} fill={SECOND} fontFamily={SANS}>
           {r.ink === SUPREME ? 'the largest lean on the board — magenta' : 'a quiet lean, the bulk of the board'}
@@ -594,11 +594,11 @@ export const PaneLinesFigure = () => (
 export const NetFlowGuide = () => (
   <div data-trace-guide="net-flow">
     <Section title="The board">
-      <p>Every name ranked by net premium — net calls less net puts, calls bought and puts sold against the reverse. Each row says its share of the board's whole lean and how many contracts carried it; a click puts the name on the pane, and so does the search. Only a name on today's book goes on the pane: a name the book has not traded leaves the pane where it was.</p>
+      <p>Every name ranked by net premium — net calls less net puts, calls bought and puts sold against the reverse. Each row says its share of the board's whole lean and which way it leans; a click puts the name on the pane, and so does the search. Only a name on today's book goes on the pane: a name the book has not traded leaves the pane where it was.</p>
       <BoardRowFigure />
     </Section>
     <Section title="The pane">
-      <p>The picked name through the session, New York's 09:30 to now: its spot, its net calls and puts, the volume on the floor — cut by moneyness and by tenor in the cards, and to one expiry by the calendar above. Net puts bought lean bearish and wear red; sold, they lean bullish and wear green.</p>
+      <p>The picked name through the session, minute by minute from the vendor's tape: its own one-minute closes as the white line, its running net call and put premium across every expiry, the contracts each minute on the floor. The pane's two figures are where those lines end, so they add up to the name's lean on the board. Net puts bought lean bearish and wear red; sold, they lean bullish and wear green.</p>
       <PaneLinesFigure />
     </Section>
     <Section title="The inks">
@@ -827,10 +827,10 @@ export const CompareGuide = () => (
 
 /** A shelf on the board: the role in its ink, the price, the distance, the dollars, the bar and the count */
 export const ShelfFigure = () => (
-  <Figure label="Two shelf rows: RESISTANCE $492.27 +0.29% $177.6M with a red bar and 34% · 9 prints · defended 4× under it; SUPPORT $488.40 −0.50% $96.1M with a green bar" h={78}>
+  <Figure label="Two shelf rows: RESISTANCE $492.27 +0.29% $177.6M with a red bar and 34% · 9 prints · held 4× under it; SUPPORT $488.40 −0.50% $96.1M with a green bar" h={78}>
     {[
-      { y: 18, role: 'RESISTANCE', ink: BEAR, price: '$492.27', dist: '+0.29%', dInk: BULL, usd: '$177.6M', bar: 1, under: '34% · 9 prints · defended 4×', note: 'dollars rested above the market — a seller waits there' },
-      { y: 52, role: 'SUPPORT', ink: BULL, price: '$488.40', dist: '−0.50%', dInk: BEAR, usd: '$96.1M', bar: 0.54, under: '18% · 12 prints · defended 2×', note: 'dollars rested below it — a buyer has leaned on it' },
+      { y: 18, role: 'RESISTANCE', ink: BEAR, price: '$492.27', dist: '+0.29%', dInk: BULL, usd: '$177.6M', bar: 1, under: '34% · 9 prints · held 4×', note: 'dollars rested above the market — a seller waits there' },
+      { y: 52, role: 'SUPPORT', ink: BULL, price: '$488.40', dist: '−0.50%', dInk: BEAR, usd: '$96.1M', bar: 0.54, under: '18% · 12 prints · held 2×', note: 'dollars rested below it — a buyer has leaned on it' },
     ].map(r => (
       <g key={r.role}>
         <text x={14} y={r.y} fontSize={6.5} fontWeight={700} letterSpacing={0.6} fill={r.ink} fontFamily={MONO}>
@@ -860,7 +860,7 @@ export const ShelfFigure = () => (
 
 /** The four reads, each in its ink, with the conviction the grid draws: a word over four steps, never a figure (2026-09-19) */
 export const ReadFigure = () => (
-  <Figure label="Four reads in a row, each over a bar with its number: ACCUMULATION green at 84%, DISTRIBUTION red at 71%, HEDGE FLOW amber at 56%, ROTATION grey at 38%" h={62}>
+  <Figure label="Four reads in a row, each over a bar with its number: ACCUMULATION green at 84%, DISTRIBUTION red at 71%, HEDGE FLOW amber at 56%, ROTATION grey at 38%" h={76}>
     {[
       { x: 14, w: 'ACCUMULATION', ink: BULL, c: 84, note: 'size bought on weakness — someone building' },
       { x: 118, w: 'DISTRIBUTION', ink: BEAR, c: 71, note: 'size sold into strength — someone leaving' },
@@ -876,12 +876,15 @@ export const ReadFigure = () => (
         <text x={r.x + 80} y={33.5} textAnchor="end" fontSize={7} fill={INK} fontFamily={MONO}>
           {r.c}%
         </text>
-        <text x={r.x} y={48} fontSize={5.6} fill={SECOND} fontFamily={SANS}>
-          {r.note}
-        </text>
+        {/* two short lines: on one, each note ran into its neighbour's column */}
+        {r.note.split(' — ').map((line, i) => (
+          <text key={line} x={r.x} y={46 + i * 8} fontSize={5.6} fill={SECOND} fontFamily={SANS}>
+            {line}
+          </text>
+        ))}
       </g>
     ))}
-    <text x={14} y={58} fontSize={6.5} fill={MUTED} fontFamily={SANS}>
+    <text x={14} y={70} fontSize={6.5} fill={MUTED} fontFamily={SANS}>
       the bar and its number are how sure the read is — a sized print at a shelf earns a surer read than a small one between shelves
     </text>
   </Figure>
@@ -890,7 +893,7 @@ export const ReadFigure = () => (
 export const DarkPoolGuide = () => (
   <div data-trace-guide="dark-pool">
     <Section title="The shelves">
-      <p>A shelf is a price where off-exchange dollars rested today. Below the market it reads support, above it resistance, at it a pivot; "defended" counts the times price turned there. The board at the left lists them heaviest first — a click cuts the grid to the crosses that printed on that shelf, and the Where card does the same.</p>
+      <p>A shelf is a price where off-exchange dollars rested today. Below the market it reads support, above it resistance, at it a pivot; "held" counts the times price turned there. Shelves are read per name: with a name in the search, the strip above the grid lists its shelves, lowest price at the left — a click cuts the grid to the crosses that printed on that shelf, and the Where card does the same.</p>
       <ShelfFigure />
     </Section>
     <Section title="The reads">
