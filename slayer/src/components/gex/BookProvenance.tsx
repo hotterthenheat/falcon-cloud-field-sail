@@ -156,7 +156,7 @@ export const DataCard = ({ ticker, surface, greeks, expiries, rings, view }: Car
             Expiries drawn: <span className="text-textPrimary">{dates.join(' · ') || '—'}</span> ({dates.length} of the {surface.expiries.length} the book holds)
           </li>
           <li>
-            Levels now: call wall <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.callWall)}</span> · flip <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.flip)}</span> · put wall <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.putWall)}</span> · pin <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.pin)}</span> · supreme <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.supreme)}</span>
+            Levels now: call wall <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.callWall)}</span> · flip <span className="font-mono tnum text-textPrimary">{surface.levels.flipFound === false ? 'none within ±10%' : fmtStrike(surface.levels.flip)}</span> · put wall <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.putWall)}</span> {surface.levels.pinFound === false ? null : <> · pin <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.pin)}</span></>} · supreme <span className="font-mono tnum text-textPrimary">{fmtStrike(surface.levels.supreme)}</span>
           </li>
         </ul>
       </div>

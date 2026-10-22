@@ -28,16 +28,12 @@ import ErrorBoundary from '../ui/ErrorBoundary';
 import FilterTabs from '../ui/FilterTabs';
 import Chip from '../ui/Chip';
 import { sentimentOf } from '../../data/tape';
+import { SESSION_MIN } from '../../data/contractflow';
 import { fmtUsd } from '../../data/gex';
-import {
-  buildContractFlow,
-  DEFAULT_FLOW_OPTIONS,
-  sessionDate,
-  SESSION_MIN,
-  type FlowOptions,
-  type FlowRange,
-  type VolOiDay,
-} from '../../data/contractflow';
+import { isoToDate, sessionIsoBack, sessionOnOrBefore, useContractTape, type CardDay, type ContractTape } from '../../data/contractflow';
+import { indexRoot, tapeSessionIso } from '../../data/traceLive';
+import { printKind } from '../../data/tape';
+import { isTradingDay, isoDate } from '../../core/calendar';
 import type { NetMetric } from './ContractFlowChart';
 import DatePicker from '../ui/DatePicker';
 import { weighContract } from '../../core/contractScore';
@@ -75,7 +71,6 @@ const usd = (v: number | undefined | null): string => (Number.isFinite(v as numb
 
 /** One small labelled figure inside a hero zone. */
 
-const RANGES: FlowRange[] = ['1D', '2D', '3D', '5D', '10D', '1M'];
 const INTERVALS = [1, 5, 15, 30];
 
 /* The engine answers its own question. STATES, not adjectives left to the
@@ -84,9 +79,13 @@ const INTERVALS = [1, 5, 15, 30];
 type TapeState = 'UNUSUAL' | 'BUSY' | 'ORDINARY';
 const TAPE_TONE: Record<TapeState, Tone> = { UNUSUAL: 'warn', BUSY: 'neutral', ORDINARY: 'neutral' };
 
-function tapeVerdict(rows: VolOiDay[]): { state: TapeState; read: string; volX: number } | null {
-  if (!rows || rows.length < 4) return null;
-  const [today, ...past] = rows;
+function tapeVerdict(rows: CardDay[], dateIso: string): { state: TapeState; read: string; volX: number } | null {
+  const i = rows.findIndex(r => r.iso === dateIso);
+  if (i < 0) return null;
+  const today = rows[i];
+  /* its last five sessions — a month back the contract was another animal (far from the money, far from expiry) */
+  const past = rows.slice(i + 1, i + 6).filter(r => r.vol > 0);
+  if (past.length < 3) return null;
   const med = (xs: number[]) => {
     const s = [...xs].sort((a, b) => a - b);
     return s[Math.floor(s.length / 2)] ?? 0;
@@ -95,9 +94,8 @@ function tapeVerdict(rows: VolOiDay[]): { state: TapeState; read: string; volX: 
   const sweptTypical = med(past.map(p => p.sweepPct));
   const sweptDelta = today.sweepPct - sweptTypical;
   const state: TapeState = volX >= 2.5 || sweptDelta >= 25 ? 'UNUSUAL' : volX >= 1.4 ? 'BUSY' : 'ORDINARY';
-  const bits = `${volX.toFixed(1)}× its usual volume · swept ${today.sweepPct}% vs ${Math.round(sweptTypical)}% typical · open interest ${
-    today.oiChangePct >= 0 ? '+' : ''
-  }${today.oiChangePct.toFixed(1)}%`;
+  const oi = today.oiChange == null ? '' : ` · open interest ${today.oiChange >= 0 ? '+' : '−'}${Math.abs(today.oiChange).toLocaleString('en-US')} on the session before`;
+  const bits = `${volX.toFixed(1)}× its median volume over the ${past.length} sessions before · swept ${Math.round(today.sweepPct)}% vs ${Math.round(sweptTypical)}% typical${oi}`;
   const read =
     state === 'UNUSUAL'
       ? `${bits} — this is not how it normally trades.`
@@ -107,30 +105,24 @@ function tapeVerdict(rows: VolOiDay[]): { state: TapeState; read: string; volX: 
   return { state, read, volX };
 }
 
-/** Tiny inline volume shape for a history row. */
-const Spark = ({ values }: { values: number[] }) => {
-  const max = Math.max(...values, 0.01);
-  return (
-    <span className="inline-flex items-end gap-[1px] h-4">
-      {values.map((v, i) => (
-        <span key={i} className="w-[3px] rounded-[1px] bg-ink/30" style={{ height: `${Math.max(8, (v / max) * 100)}%` }} />
-      ))}
-    </span>
-  );
-};
-
-/** Plain-English summary of what this print actually was. */
+/** Plain-English summary of what this print actually was — what the print's own fields say, nothing more. */
 function printRead(p: FlowPrint, sent: PrintSentiment): string {
   const who = p.side === 'ASK' ? 'paid the offer' : p.side === 'BID' ? 'hit the bid' : 'traded at the mid';
   const size = p.premium >= 1_000_000 ? 'a whale-sized' : p.premium >= 250_000 ? 'a sizeable' : 'a modest';
-  const urgency = p.sweep ? 'swept across venues — that is urgency, not patience' : 'printed as a single block';
+  const kind = printKind(p);
+  const right = p.right === 'C' ? 'call' : 'put';
+  const shape =
+    p.trades && p.trades > 1
+      ? `flow alert — ${p.trades} prints on this contract in one burst — that mostly ${who}${p.sweep ? ', with a sweep among them' : ''}`
+      : `${right} print that ${who}${kind === 'SWEEP' ? ' and swept across exchanges — urgency, not patience' : kind === 'MULTI' ? ' as one leg of a multi-leg order' : ''}`;
   const oiNote =
-    p.volOverOI >= 5
-      ? `Volume is ${fixed(p.volOverOI, 1)}x the open interest, so this is new positioning rather than someone closing out.`
-      : p.deltaOI > 0
-        ? 'Open interest grew on the day, so size is being added rather than unwound.'
-        : 'Open interest did not grow much, so some of this is likely closing existing risk.';
-  return `${size} ${p.right === 'C' ? 'call' : 'put'} print that ${who} and ${urgency}. The tape reads ${sent.toLowerCase()} on it. ${oiNote}`;
+    p.oi > 0 && p.volOverOI >= 1.5
+      ? ` The day's volume is ${fixed(p.volOverOI, 1)}× the open interest, so at least some of it is new positioning.`
+      : p.oi > 0
+        ? ` The day's volume is ${fixed(p.volOverOI, 2)}× the open interest — it could be opening or closing.`
+        : '';
+  const line = `${size} ${p.trades && p.trades > 1 ? `${right} ` : ''}${shape}. By its side and its right it reads ${sent.toLowerCase()}.${oiNote}`;
+  return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
 interface PrintDrilldownProps {
@@ -175,17 +167,19 @@ const SequenceStrip = ({
 }) => {
   const n = siblings.length;
   const read = useMemo(() => {
-    if (n <= 1) return 'Isolated — the only print on this contract on the live tape.';
+    if (n <= 1) return 'Isolated — the only row on this contract in the list you were watching.';
     const total = siblings.reduce((a, p) => a + p.premium, 0);
-    const bought = siblings.filter(p => p.side === 'ASK').length;
-    const sold = siblings.filter(p => p.side === 'BID').length;
-    const mid = n - bought - sold;
+    const by = (side: FlowPrint['side']) => siblings.filter(p => p.side === side);
+    const lots = (xs: FlowPrint[]) => xs.reduce((a, p) => a + p.size, 0).toLocaleString('en-US');
+    const ask = by('ASK');
+    const bid = by('BID');
+    const mid = by('MID');
     const oldest = siblings[n - 1].time;
     const newest = siblings[0].time;
     const parts = [
-      `Part of a sequence — ${n} prints on this contract on the live tape`,
+      `Part of a sequence — ${n} prints on this contract in the tape you were watching`,
       `${fmtUsd(total)} total`,
-      `${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} mid` : ''}`,
+      `${ask.length} paid the offer (${lots(ask)} contracts) / ${bid.length} hit the bid (${lots(bid)})${mid.length ? ` / ${mid.length} mid (${lots(mid)})` : ''}`,
       `${oldest} → ${newest}`,
     ];
     return `${parts.join(' · ')}.`;
@@ -197,7 +191,7 @@ const SequenceStrip = ({
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden">
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-baseline gap-2 flex-wrap">
         <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The sequence</span>
-        <span className="font-mono text-[11px] text-textMuted">same contract on the live tape</span>
+        <span className="font-mono text-[11px] text-textMuted">same contract in the tape's buffer — not the whole session</span>
       </div>
       <p className="px-3 pt-2 text-[11px] text-textSecondary leading-snug tnum">
         <RichRead text={read} />
@@ -262,18 +256,14 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
     [print, tapeRows]
   );
 
-  // Window controls
-  // The card opens on the house window — one source, shared with the builder's
-  // own default so the tape can never open on a setting nothing else agrees to.
-  const [range, setRange] = useState<FlowRange>(DEFAULT_FLOW_OPTIONS.range);
-  const [intervalMin, setIntervalMin] = useState(DEFAULT_FLOW_OPTIONS.intervalMin);
-  const [dayOffset, setDayOffset] = useState(0);
-  const [singleLegOnly, setSingleLegOnly] = useState(false);
+  /* THE SESSION THE CARD SHOWS — a New York trading day, the tape's own at open */
+  const tapeIso = tapeSessionIso();
+  const [dateIso, setDateIso] = useState<string>(tapeIso);
+  const [intervalMin, setIntervalMin] = useState(1);
   const [showAvg, setShowAvg] = useState(true);
   const [showIv, setShowIv] = useState(false);
   const [showCalls, setShowCalls] = useState(true);
   const [showPuts, setShowPuts] = useState(true);
-  const [showPrice, setShowPrice] = useState(true);
   const [metric, setMetric] = useState<NetMetric>('netPremium');
   const [tableTab, setTableTab] = useState<TableTab>('history');
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -285,50 +275,37 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
      on a put sold — the side is not the direction; the sentiment line under it carries the direction */
   const sideTone = print?.side === 'MID' ? 'text-textMuted' : 'text-textPrimary';
 
-  const opts: FlowOptions = useMemo(
-    () => ({ range, intervalMin, dayOffset, singleLegOnly }),
-    [range, intervalMin, dayOffset, singleLegOnly]
-  );
+  /* THE CONTRACT'S OWN TAPE (the audit, 2026-10-22): its prints, its minutes and its history off the vendor's
+     per-contract routes, and the underlying's net premium minute by minute — data/contractflow.ts */
+  const load = useContractTape(print?.occ, print?.ticker, dateIso);
+  const cf: ContractTape | null = load.tape;
 
-  // Where in the session the print landed — feeds the builder AND the marker
-  const atMinute = print
-    ? Math.min(389, Math.max(0, (Number(print.time.slice(0, 2)) - 9) * 60 + Number(print.time.slice(3, 5)) - 30))
-    : 0;
-
-  const cf = useMemo(() => {
-    if (!print) return null;
-    try {
-      return buildContractFlow(
-        {
-          ticker: print.ticker,
-          strike: print.strike,
-          right: print.right,
-          fill: print.fill,
-          spot: print.spot,
-          size: print.size,
-          side: print.side,
-          volume: print.volume,
-          oi: print.oi,
-          iv: print.iv,
-          atMinute,
-        },
-        opts
-      );
-    } catch {
-      return null;
-    }
-  }, [print, opts, atMinute]);
-
-  // The lime moment-marker through both chart strips. Multi-session windows
-  // end on the live session, so the print sits in the LAST session; browsing
-  // a past session means the window no longer contains it — no marker.
+  /* The print's minute since the bell — the marker through both strips, only on the print's own session */
   const printMin = useMemo(() => {
-    if (!print || !cf || dayOffset !== 0) return null;
-    return (cf.sessions - 1) * SESSION_MIN + Math.min(atMinute, SESSION_MIN);
-  }, [print, cf, dayOffset, atMinute]);
+    if (!print || dateIso !== tapeIso || !/^\d{2}:\d{2}/.test(print.time)) return null;
+    const m = Number(print.time.slice(0, 2)) * 60 + Number(print.time.slice(3, 5)) - (9 * 60 + 30);
+    return m >= 0 && m <= SESSION_MIN ? m : null;
+  }, [print, dateIso, tapeIso]);
 
   // Is this session unusual FOR THIS CONTRACT? Judged against its own history.
-  const verdict = useMemo(() => (cf ? tapeVerdict(cf.history) : null), [cf]);
+  const verdict = useMemo(() => (cf ? tapeVerdict(cf.history, dateIso) : null), [cf, dateIso]);
+  /* the day's side split, off the contract's own history row for the session */
+  const dayLean = cf?.day ? (() => {
+    const d = cf.day;
+    const t = d.askVol + d.bidVol + d.midVol + d.neutralVol;
+    if (!(t > 0)) return null;
+    const pc = (v: number) => Math.round((v / t) * 100);
+    return { text: `ask ${pc(d.askVol)}% · bid ${pc(d.bidVol)}% · mid ${pc(d.midVol + d.neutralVol)}%`, lead: d.askVol > d.bidVol ? 'ask' : d.bidVol > d.askVol ? 'bid' : 'even' };
+  })() : null;
+  const nextIso = useMemo(() => {
+    const d = isoToDate(dateIso);
+    for (let i = 0; i < 10; i++) {
+      d.setDate(d.getDate() + 1);
+      if (isTradingDay(d)) break;
+    }
+    const iso = isoDate(d);
+    return iso > tapeIso ? null : iso;
+  }, [dateIso, tapeIso]);
 
   const copySummary = () => {
     if (!print) return;
@@ -383,7 +360,7 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
   const linkBtn =
     'inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded border border-borderSubtle bg-ink/[0.02] font-mono text-[11px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors';
 
-  const dateLabel = sessionDate(dayOffset).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const dateLabel = isoToDate(dateIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   return (
     <Modal
@@ -408,7 +385,7 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
               aria-hidden
             />
             <button
-              onClick={() => setDayOffset(d => d + 1)}
+              onClick={() => setDateIso(d => sessionIsoBack(d, 1))}
               title="Previous session"
               className="p-0.5 rounded transition-colors"
             >
@@ -420,11 +397,11 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[11px] font-semibold tnum transition-colors"
             >
               <CalendarDays className="w-3 h-3" />
-              {dayOffset === 0 ? 'Today' : dateLabel}
+              {dateIso === tapeIso ? 'Today' : dateLabel}
             </button>
             <button
-              onClick={() => setDayOffset(d => Math.max(0, d - 1))}
-              disabled={dayOffset === 0}
+              onClick={() => nextIso && setDateIso(nextIso)}
+              disabled={!nextIso}
               title="Next session"
               className="p-0.5 rounded disabled:opacity-30 transition-colors"
             >
@@ -432,7 +409,15 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
             </button>
 
           {calendarOpen && (
-            <DatePicker selected={sessionDate(dayOffset)} onPick={setDayOffset} onClose={() => setCalendarOpen(false)} />
+            <DatePicker
+              selected={isoToDate(dateIso)}
+              onPick={offset => {
+                const day = new Date();
+                day.setDate(day.getDate() - offset);
+                setDateIso(sessionOnOrBefore(day));
+              }}
+              onClose={() => setCalendarOpen(false)}
+            />
           )}
         </div>
       }
@@ -496,15 +481,21 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
               {print.expiry} · {print.dte}d
             </span>
             {/* White: a leg count is a fact, not a status — the tape's own rule (2026-08-30). */}
-            {print.legs > 1 && <span className="font-mono text-[11px] text-textPrimary">×{print.legs} legs</span>}
+            {print.legs > 1 && (
+              <span className="font-mono text-[11px] text-textPrimary" title={print.trades ? 'The alert held multi-leg prints' : "The print's OPRA condition marks it a leg of a multi-leg order — how many legs it had is not on the print"}>
+                multi-leg
+              </span>
+            )}
             <SignalBadge tone={SENT_TONE[sent]}>{sent}</SignalBadge>
             <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
             <span className={`font-mono text-[11px] uppercase ${print.sweep ? 'text-warn font-semibold' : 'text-textMuted'}`}>
-              {print.sweep ? 'Sweep' : print.strat === '—' ? 'Block' : print.strat}
+              {print.trades && print.trades > 1 ? `Alert · ${print.trades} prints` : { SWEEP: 'Sweep', MULTI: 'Multi-leg', BLOCK: 'Block', SINGLE: 'Single print' }[printKind(print)]}
             </span>
-            <span className="font-mono text-[11px] text-textMuted tnum">
-              {print.ticker} ${fixed(print.spot)}
-            </span>
+            {print.spot > 0 && (
+              <span className="font-mono text-[11px] text-textMuted tnum">
+                {print.ticker} {indexRoot(print.ticker) ? `≈${Math.round(print.spot).toLocaleString('en-US')}` : `$${fixed(print.spot)}`}
+              </span>
+            )}
           </div>
         )
       }
@@ -543,9 +534,10 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
             </p>
             {/* THE EVIDENCE — the house's dot-leader rows; the Compass scale folded in, in words (no figure of ours in public) */}
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-print-facts>
-              <Fact label="Conviction" value={print.flowScore > 15 ? 'BUYERS' : print.flowScore < -15 ? 'SELLERS' : 'MIXED'} valueCls={Math.abs(print.flowScore) > 15 ? 'text-textPrimary' : 'text-textMuted'} />
-              <Fact label="Day lean" value={print.ratioLabel} valueCls={print.ratioLabel === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
-              <Fact label="Strike vs spot" value={`${print.otmPct >= 0 ? '+' : ''}${fixed(print.otmPct, 1)}%`} />
+              <Fact label={print.trades && print.trades > 1 ? 'This alert, mostly' : 'This print'} value={print.side === 'ASK' ? 'paid the offer' : print.side === 'BID' ? 'hit the bid' : 'mid / no side'} valueCls={print.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
+              {/* the contract's whole session by side — the same history row the table reads, mid shown on its own */}
+              <Fact label={dateIso === tapeIso ? "Today's volume by side" : 'Session volume by side'} value={dayLean ? dayLean.text : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
+              <Fact label="Strike vs spot" value={print.spot > 0 && Number.isFinite(print.otmPct) ? `${print.otmPct >= 0 ? '+' : ''}${fixed(print.otmPct, 1)}%` : '—'} />
               <Fact label="Volume" value={num(print.volume)} />
               <Fact label="Open interest" value={num(print.oi)} />
               <Fact label="Vol ÷ OI" value={`${fixed(print.volOverOI)}x`} valueCls={print.volOverOI >= 5 ? 'text-warn' : 'text-textPrimary'} />
@@ -594,7 +586,7 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
               line through both at the exact minute of the print you clicked.
               The question this answers that two side-by-side dashboards
               can't: where does THIS print sit in the day? */}
-          <ErrorBoundary label="The flow panels" resetKey={`${print.id}-${range}-${intervalMin}-${dayOffset}`}>
+          <ErrorBoundary label="The flow panels" resetKey={`${print.id}-${intervalMin}-${dateIso}`}>
             <Suspense
               fallback={
                 <div className="h-[520px] rounded-md border border-borderSubtle bg-inset flex items-center justify-center font-mono text-[11px] text-textMuted uppercase tracking-widest">
@@ -602,68 +594,48 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
                 </div>
               }
             >
-              {cf && (
-                <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden">
-                  {/* One toolbar drives both strips — the window is shared */}
-                  <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
-                    <span className="font-mono text-[11px] text-textMuted">both instruments on one clock</span>
-                    <span className="ml-auto flex items-center gap-0.5">
-                      {RANGES.map(r => (
-                        <Chip key={r} active={r === range} onClick={() => setRange(r)} title={`Show ${r}`}>
-                          {r}
-                        </Chip>
-                      ))}
-                    </span>
-                    <span className="w-px h-3.5 bg-borderSubtle" />
-                    <span className="flex items-center gap-0.5">
-                      {INTERVALS.map(m => (
-                        <Chip key={m} active={m === intervalMin} onClick={() => setIntervalMin(m)} title={`${m}-minute bars`}>
-                          {m}m
-                        </Chip>
-                      ))}
-                    </span>
-                    <span className="w-px h-3.5 bg-borderSubtle" />
-                    <Chip
-                      active={singleLegOnly}
-                      onClick={() => setSingleLegOnly(!singleLegOnly)}
-                      title="Hide prints that are one leg of a spread"
-                    >
-                      Single-leg only
-                    </Chip>
-                  </div>
-                  <div className="px-3 pt-2.5 pb-1">
-                    <FlowPanels
-                      cf={cf}
-                      showAvg={showAvg}
-                      onShowAvg={setShowAvg}
-                      showIv={showIv}
-                      onShowIv={setShowIv}
-                      dayOffset={dayOffset}
-                      printMin={printMin}
-                      syncId="print-tape"
-                    />
-                  </div>
-                  <div className="mx-3 my-1.5 h-px bg-borderSubtle/60" />
-                  <div className="px-3 pt-1 pb-2.5">
-                    <NetPanels
-                      cf={cf}
-                      ticker={print.ticker}
-                      metric={metric}
-                      onMetric={setMetric}
-                      showCalls={showCalls}
-                      onShowCalls={setShowCalls}
-                      showPuts={showPuts}
-                      onShowPuts={setShowPuts}
-                      showPrice={showPrice}
-                      onShowPrice={setShowPrice}
-                      dayOffset={dayOffset}
-                      printMin={printMin}
-                      syncId="print-tape"
-                    />
-                  </div>
+              <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-print-tape>
+                <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
+                  <span className="font-mono text-[11px] text-textMuted">the contract and {print.ticker} on one clock · {dateIso === tapeIso ? 'today' : dateLabel}, 09:30–16:00 ET</span>
+                  <span className="ml-auto flex items-center gap-0.5">
+                    {INTERVALS.map(m => (
+                      <Chip key={m} active={m === intervalMin} onClick={() => setIntervalMin(m)} title={`${m}-minute bars`}>
+                        {m}m
+                      </Chip>
+                    ))}
+                  </span>
                 </div>
-              )}
+                {!print.occ ? (
+                  <div className="h-[160px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">This row carries no contract symbol to read</div>
+                ) : !cf ? (
+                  <div className="h-[420px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted" data-print-tape-state={load.failed ? 'down' : 'reading'}>
+                    {load.failed ? 'This read did not land — the tape fills when the feed answers' : "Reading the contract's session…"}
+                  </div>
+                ) : (
+                  <>
+                    <div className="px-3 pt-2.5 pb-1">
+                      <FlowPanels tape={cf} intervalMin={intervalMin} showAvg={showAvg} onShowAvg={setShowAvg} showIv={showIv} onShowIv={setShowIv} printMin={printMin} syncId="print-tape" />
+                    </div>
+                    <div className="mx-3 my-1.5 h-px bg-borderSubtle/60" />
+                    <div className="px-3 pt-1 pb-2.5">
+                      <NetPanels
+                        tape={cf}
+                        ticker={print.ticker}
+                        intervalMin={intervalMin}
+                        metric={metric}
+                        onMetric={setMetric}
+                        showCalls={showCalls}
+                        onShowCalls={setShowCalls}
+                        showPuts={showPuts}
+                        onShowPuts={setShowPuts}
+                        printMin={printMin}
+                        syncId="print-tape"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </Suspense>
           </ErrorBoundary>
 
@@ -680,8 +652,8 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
                   while it did. */}
               <span key={tableTab} className="animate-soft-in min-w-0">
                 {tableTab === 'orders' ? (
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">
-                    {cf?.orders.length ?? 0} orders in this window
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted" data-orders-note>
+                    {cf ? (cf.prints.length ? `${cf.printsCapped ? 'the newest ' : ''}${cf.prints.length.toLocaleString('en-US')} prints · ${cf.prints[cf.prints.length - 1].time}–${cf.prints[0].time} ET${cf.printsCapped && cf.day ? ` of ${cf.day.trades.toLocaleString('en-US')} in the session` : ''}` : 'no prints this session') : '…'}
                   </span>
                 ) : verdict ? (
                   <span className="flex items-center gap-2 flex-wrap min-w-0">
@@ -696,14 +668,14 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
                 ) : null}
               </span>
             </div>
-            <ErrorBoundary label="The table" resetKey={`${print.id}-${tableTab}-${range}-${dayOffset}`}>
+            <ErrorBoundary label="The table" resetKey={`${print.id}-${tableTab}-${dateIso}`}>
               {/* Both views are capped scrollers of the SAME height, so the
                   swap is a cross-fade in a slot that never moves. Animating a
                   changing height here would have been the wrong answer: it
                   costs a layout animation on every re-render, and this card
                   already has enough moving parts. */}
               <div key={tableTab} className="animate-soft-in">
-                {cf && (tableTab === 'orders' ? <OrdersTable cf={cf} /> : <HistoryTable rows={cf.history} unusual={!!verdict && verdict.volX >= 2.5} />)}
+                {cf && (tableTab === 'orders' ? <OrdersTable tape={cf} /> : <HistoryTable rows={cf.history} dateIso={dateIso} unusual={!!verdict && verdict.volX >= 2.5} />)}
               </div>
             </ErrorBoundary>
           </div>
@@ -749,117 +721,112 @@ const PrintDrilldown = ({ print, snapshot, onClose, isMarked, onToggleMark, onSt
 const th = 'px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle';
 const td = 'px-2 py-1.5 font-mono text-[11px] tnum';
 
-/** The raw orders behind the window. */
-const OrdersTable = ({ cf }: { cf: ReturnType<typeof buildContractFlow> }) => (
-  <div className="border border-borderSubtle rounded-md overflow-hidden max-h-[240px] overflow-y-auto">
-    <table className="w-full border-collapse">
-      <thead className="sticky top-0 z-10">
-        <tr className="bg-inset">
-          <th className={`${th} text-left`}>Time</th>
-          <th className={`${th} text-right`}>Price</th>
-          <th className={`${th} text-right`}>Size</th>
-          <th className={`${th} text-left`}>Who paid</th>
-          <th className={`${th} text-right`}>Premium</th>
-          <th className={`${th} text-right`}>Implied vol</th>
-          <th className={`${th} text-left`}>Tag</th>
-        </tr>
-      </thead>
-      <tbody>
-        {cf.orders.slice(0, 60).map(o => (
-          <tr key={o.id} className="border-b border-borderSubtle/30 last:border-0 hover:bg-ink/[0.02]">
-            <td className={`${td} text-textPrimary`}>{o.time}</td>
-            <td className={`${td} text-right text-textPrimary`}>${o.price.toFixed(2)}</td>
-            <td className={`${td} text-right text-textPrimary`}>{o.size.toLocaleString()}</td>
-            <td className={`${td} ${o.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>
-              {o.side === 'ASK' ? 'Paid offer' : o.side === 'BID' ? 'Hit bid' : 'Mid'}
-            </td>
-            <td className={`${td} text-right ${o.premium >= 250_000 ? 'text-textPrimary font-semibold' : 'text-textPrimary'}`}>
-              {fmtUsd(o.premium)}
-            </td>
-            <td className={`${td} text-right text-textPrimary`}>{o.iv.toFixed(1)}%</td>
-            <td className={`${td} text-textSecondary`}>
-              {o.sweep && <span className="text-warn font-semibold mr-1.5">Sweep</span>}
-              {o.multiLeg ? 'Spread leg' : 'Single leg'}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
-
-/** Is this session actually unusual for this contract, or is this just how it
-    trades? The verdict chip above answers; the latest row wears the selection
-    edge so the eye lands where the claim is. */
-const HistoryTable = ({ rows, unusual }: { rows: VolOiDay[]; unusual: boolean }) => {
-  /* A CAPPED SCROLLER, exactly like the orders table beside it.
-     This used to render 8 rows with a "show all N sessions" button — the right
-     instinct (a 1M window carries ~21 sessions and a tower is unreadable) with
-     the wrong mechanism: it made the two tabs different heights, so switching
-     between them lurched, and it solved by paging a problem the orders table
-     had already solved by scrolling. One grammar now: every session is here,
-     the box is the same size either way, and the swap is a pure cross-fade. */
-  const visible = rows;
+/** The contract's real prints for the session, newest first — the largest of them is marked */
+const OrdersTable = ({ tape }: { tape: ContractTape }) => {
+  const largest = tape.prints.reduce<string | null>((a, p) => (a === null || p.premium > (tape.prints.find(x => x.id === a)?.premium ?? 0) ? p.id : a), null);
+  if (!tape.prints.length) return <div className="border border-borderSubtle rounded-md px-3 py-6 font-mono text-[11px] text-textMuted uppercase tracking-widest text-center">No prints on this contract this session</div>;
   return (
-  <div className="border border-borderSubtle rounded-md overflow-hidden max-h-[240px] overflow-y-auto">
-    <table className="w-full border-collapse">
-      <thead className="sticky top-0 z-10">
-        <tr className="bg-inset">
-          <th className={`${th} text-left`}>Date</th>
-          <th className={`${th} text-right`}>Volume</th>
-          <th className={`${th} text-right`}>Open int.</th>
-          <th className={`${th} text-right`}>OI change</th>
-          <th className={`${th} text-right`}>Close</th>
-          <th className={`${th} text-right`}>Avg</th>
-          <th className={`${th} text-left`}>Through the day</th>
-          <th className={`${th} text-left`}>Bid vs ask</th>
-          <th className={`${th} text-right`}>Implied vol</th>
-          <th className={`${th} text-right`}>Swept</th>
-          <th className={`${th} text-right`}>Multi-leg</th>
-          <th className={`${th} text-right`}>Premium</th>
-          <th className={`${th} text-right`}>Share</th>
-        </tr>
-      </thead>
-      <tbody>
-        {visible.map((d, i) => (
-          <tr
-            key={d.date}
-            className={`border-b border-borderSubtle/30 last:border-0 hover:bg-ink/[0.02] ${
-              /* Holographic silver, not lime (Noah, 2026-08-30): the latest
-                 row is WHERE YOU ARE, and silver is that ink everywhere. */
-              i === 0 ? 'shadow-[inset_2px_0_0_0_rgb(var(--silver)/0.7)]' : ''
-            }`}
-          >
-            <td className={`${td} text-textPrimary whitespace-nowrap`}>
-              {d.date}
-              {i === 0 && <span className="ml-1.5 text-silver">latest</span>}
-            </td>
-            <td className={`${td} text-right ${i === 0 && unusual ? 'text-warn font-semibold' : 'text-textPrimary'}`}>{num(d.vol)}</td>
-            <td className={`${td} text-right text-textPrimary`}>{num(d.oi)}</td>
-            <td className={`${td} text-right ${d.oiChangePct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
-              {d.oiChangePct >= 0 ? '+' : ''}
-              {fixed(d.oiChangePct, 1)}%
-            </td>
-            <td className={`${td} text-right text-textPrimary`}>${fixed(d.close)}</td>
-            <td className={`${td} text-right text-textPrimary`}>${fixed(d.avg)}</td>
-            <td className="px-2 py-1.5">
-              <Spark values={d.intraday} />
-            </td>
-            <td className="px-2 py-1.5">
-              <span className="flex h-[3px] w-20 rounded-full overflow-hidden bg-ink/[0.14]" title={`${100 - d.bidPct}% at the ask, ${d.bidPct}% on the bid`}>
-                <span className="h-full bg-textPrimary/80 ml-auto" style={{ width: `${100 - d.bidPct}%` }} />
-              </span>
-            </td>
-            <td className={`${td} text-right text-textPrimary`}>{fixed(d.iv, 1)}%</td>
-            <td className={`${td} text-right ${d.sweepPct >= 50 ? 'text-warn' : 'text-textPrimary'}`}>{d.sweepPct}%</td>
-            <td className={`${td} text-right text-textPrimary`}>{d.multiPct}%</td>
-            <td className={`${td} text-right text-textPrimary`}>{usd(d.totalPrem)}</td>
-            <td className={`${td} text-right text-textPrimary`}>{fixed(d.shareOfTotalPct, 1)}%</td>
+    <div className="border border-borderSubtle rounded-md overflow-hidden max-h-[240px] overflow-y-auto">
+      <table className="w-full border-collapse">
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-inset">
+            <th className={`${th} text-left`}>Time</th>
+            <th className={`${th} text-right`}>Price</th>
+            <th className={`${th} text-right`}>Size</th>
+            <th className={`${th} text-left`}>Side</th>
+            <th className={`${th} text-right`}>Bid × ask</th>
+            <th className={`${th} text-right`}>Premium</th>
+            <th className={`${th} text-right`}>Implied vol</th>
+            <th className={`${th} text-left`}>Kind</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          {tape.prints.slice(0, 200).map(o => (
+            <tr key={o.id} className="border-b border-borderSubtle/30 last:border-0 hover:bg-ink/[0.02]">
+              <td className={`${td} text-textPrimary`}>{o.time}</td>
+              <td className={`${td} text-right text-textPrimary`}>${o.price.toFixed(2)}</td>
+              <td className={`${td} text-right text-textPrimary`}>{o.size.toLocaleString('en-US')}</td>
+              <td className={`${td} ${o.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{o.side === 'ASK' ? 'Paid offer' : o.side === 'BID' ? 'Hit bid' : 'Mid'}</td>
+              <td className={`${td} text-right text-textSecondary`}>{o.bid > 0 || o.ask > 0 ? `${o.bid.toFixed(2)} × ${o.ask.toFixed(2)}` : '—'}</td>
+              <td className={`${td} text-right ${o.id === largest ? 'text-supreme font-semibold' : 'text-textPrimary'}`} title={o.id === largest ? 'The largest print in this list' : undefined}>
+                {fmtUsd(o.premium)}
+              </td>
+              <td className={`${td} text-right text-textPrimary`}>{o.iv > 0 ? `${o.iv.toFixed(1)}%` : '—'}</td>
+              <td className={`${td} text-textSecondary`}>
+                {o.sweep && <span className="text-warn font-semibold mr-1.5">Sweep</span>}
+                {o.multi ? 'Multi-leg' : 'Single leg'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+/** Is this session actually unusual for this contract, or is this just how it trades? The vendor's day-by-day
+    history; the session on the card wears the selection edge. */
+const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: string; unusual: boolean }) => {
+  const premSum = rows.reduce((a, r) => a + r.premium, 0) || 1;
+  if (!rows.length) return <div className="border border-borderSubtle rounded-md px-3 py-6 font-mono text-[11px] text-textMuted uppercase tracking-widest text-center">No history for this contract</div>;
+  return (
+    <div className="border border-borderSubtle rounded-md overflow-hidden max-h-[240px] overflow-y-auto">
+      <table className="w-full border-collapse">
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-inset">
+            <th className={`${th} text-left`}>Date</th>
+            <th className={`${th} text-right`}>Volume</th>
+            <th className={`${th} text-right`} title="Open interest standing that session">Open int.</th>
+            <th className={`${th} text-right`} title="Against the session before">OI change</th>
+            <th className={`${th} text-right`}>Close</th>
+            <th className={`${th} text-right`}>Avg</th>
+            <th className={`${th} text-left`} title="The session's volume on the bid, at the mid or no side, and at the ask">Bid · mid · ask</th>
+            <th className={`${th} text-right`}>Implied vol</th>
+            <th className={`${th} text-right`}>Swept</th>
+            <th className={`${th} text-right`}>Multi-leg</th>
+            <th className={`${th} text-right`}>Premium</th>
+            <th className={`${th} text-right`} title={`Share of the premium across the ${rows.length} sessions listed`}>Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(d => {
+            const here = d.iso === dateIso;
+            const t = d.askVol + d.bidVol + d.midVol + d.neutralVol;
+            const pc = (v: number) => (t > 0 ? (v / t) * 100 : 0);
+            return (
+              <tr key={d.iso} className={`border-b border-borderSubtle/30 last:border-0 hover:bg-ink/[0.02] ${here ? 'shadow-[inset_2px_0_0_0_rgb(var(--silver)/0.7)]' : ''}`}>
+                <td className={`${td} text-textPrimary whitespace-nowrap`}>
+                  {d.date}
+                  {here && <span className="ml-1.5 text-silver">this session</span>}
+                </td>
+                <td className={`${td} text-right ${here && unusual ? 'text-warn font-semibold' : 'text-textPrimary'}`}>{num(d.vol)}</td>
+                <td className={`${td} text-right text-textPrimary`}>{num(d.oi)}</td>
+                <td className={`${td} text-right ${d.oiChange == null ? 'text-textMuted' : d.oiChange >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
+                  {d.oiChange == null ? '—' : `${d.oiChange >= 0 ? '+' : '−'}${Math.abs(d.oiChange).toLocaleString('en-US')}`}
+                </td>
+                <td className={`${td} text-right text-textPrimary`}>{d.close > 0 ? `$${fixed(d.close)}` : '—'}</td>
+                <td className={`${td} text-right text-textPrimary`}>{d.avg > 0 ? `$${fixed(d.avg)}` : '—'}</td>
+                <td className="px-2 py-1.5">
+                  <span
+                    className="flex h-[3px] w-24 rounded-full overflow-hidden bg-ink/[0.14]"
+                    title={`${Math.round(pc(d.bidVol))}% on the bid · ${Math.round(pc(d.midVol + d.neutralVol))}% mid or no side · ${Math.round(pc(d.askVol))}% at the ask`}
+                  >
+                    <span className="h-full bg-bear/80" style={{ width: `${pc(d.bidVol)}%` }} />
+                    <span className="h-full bg-ink/30" style={{ width: `${pc(d.midVol + d.neutralVol)}%` }} />
+                    <span className="h-full bg-bull/80" style={{ width: `${pc(d.askVol)}%` }} />
+                  </span>
+                </td>
+                <td className={`${td} text-right text-textPrimary`}>{d.iv > 0 ? `${fixed(d.iv, 1)}%` : '—'}</td>
+                <td className={`${td} text-right ${d.sweepPct >= 50 ? 'text-warn' : 'text-textPrimary'}`}>{Math.round(d.sweepPct)}%</td>
+                <td className={`${td} text-right text-textPrimary`}>{Math.round(d.multiPct)}%</td>
+                <td className={`${td} text-right text-textPrimary`}>{usd(d.premium)}</td>
+                <td className={`${td} text-right text-textPrimary`}>{fixed((d.premium / premSum) * 100, 1)}%</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 };
 

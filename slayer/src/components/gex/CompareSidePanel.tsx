@@ -43,12 +43,13 @@
 ==================================================
 */
 
+import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { holdLabel } from '../../data/wall';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { buildExposureProfile } from '../../data/exposure';
 import { GREEKS, GREEK_UNIT } from '../../data/exposureSurface';
-import { distanceIn, fmtShared, sharedUnit, GREEK_LABEL, WINDOW, type Compare, type CompareSide, type Greek } from '../../data/compare';
+import { distanceIn, fmtShared, sharedUnit, GREEK_EXPLAIN, GREEK_LABEL, WINDOW, type Compare, type CompareSide, type Greek } from '../../data/compare';
 import type { DistanceUnit } from '../../data/atr';
 import { fmtUsd } from '../../data/gex';
 import { netGexTitle } from '../../data/board';
@@ -65,9 +66,9 @@ export const SIDE_TAB_W = 28;
 
 /** Each level in one plain line — its hover */
 const SIDE_TIPS: Record<string, string> = {
-  'put wall': 'Put wall: the strike below price with the most put hedging; it tends to slow a fall',
-  'call wall': 'Call wall: the strike above price with the most call hedging; it tends to slow a rise',
-  flip: 'Flip: where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them',
+  'put wall': 'Put wall: the strike below price with the most put hedging. Dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate',
+  'call wall': 'Call wall: the strike above price with the most call hedging. Dealers are long gamma there, so it tends to slow a rise — the lid',
+  flip: "Flip: the price where the book's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves. \"none nearby\": no crossing within 10%",
   supreme: 'Supreme: the single strike with the most dealer hedging on it',
 };
 
@@ -144,15 +145,25 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const net = greek === 'gex' ? s.netGex : s.rows[greek].reduce((acc, r) => acc + r.value, 0);
   const flipAt = s.flip;
-  const regimeWord =
-    flipAt == null || !(flipAt > 0) ? (s.netGex >= 0 ? 'absorbs' : 'amplifies') : Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.spot > flipAt ? 'absorbs' : 'amplifies';
+  /* THE REGIME IS THE NET'S SIGN (data/flipLevel.ts) — "ABSORBS" beside a red −$1.3B read the side of the flip */
+  const regimeWord = flipAt != null && flipAt > 0 && Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.netGex >= 0 ? 'absorbs' : 'amplifies';
   const rowOf = (strike: number): StrikeExposure | undefined => s.strikes.find(r => r.strike === strike);
-  const valueAt = (strike: number | null, g: Greek = greek): number | null => (strike == null ? null : rowOf(strike)?.[g].net ?? null);
+  /* A LEVEL OUTSIDE THE DRAWN WINDOW STILL HAS ITS VALUE (the audit: SPY's 800 call wall read "—" in All expiries) —
+     read off the side's whole chain when the window does not reach it */
+  const NODE_KEY: Record<Greek, 'netGex' | 'netDex' | 'netVex' | 'netVanna' | 'netCharm'> = { gex: 'netGex', dex: 'netDex', vex: 'netVex', vanna: 'netVanna', charm: 'netCharm' };
+  const sideChain = (s.snapshot.liveBook && s.snapshot.uwChains?.[s.expiry]?.length ? s.snapshot.uwChains[s.expiry] : s.snapshot.chain) ?? [];
+  const valueAt = (strike: number | null, g: Greek = greek): number | null => {
+    if (strike == null) return null;
+    const r = rowOf(strike);
+    if (r) return r[g].net;
+    const n = sideChain.find(x => Math.abs(x.strike - strike) < 1e-9);
+    return n ? (n[NODE_KEY[g]] ?? null) : null;
+  };
   const roleOf = (strike: number): { word: string; tone: Tone } | null =>
     strike === s.levels.supreme ? { word: 'supreme', tone: 'supreme' }
     : strike === s.levels.callWall ? { word: 'call wall', tone: 'bull' }
     : strike === s.levels.putWall ? { word: 'put wall', tone: 'bear' }
-    : strike === s.levels.flip ? { word: 'flip', tone: 'white' }
+    : s.flip != null && strike === s.flip ? { word: 'flip', tone: 'white' }
     : s.strikes.find(r => r.pin)?.strike === strike ? { word: 'pin', tone: 'neutral' }
     : null;
   const heaviest = useMemo(() => [...s.strikes].sort((x, y) => Math.abs(y[greek].net) - Math.abs(x[greek].net)).slice(0, 6), [s, greek]);
@@ -191,7 +202,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     <div className={LEVEL_COLS} data-side-level={word} title={SIDE_TIPS[word] ?? `The strike with the most ${word} on these contracts`}>
       <Tag tone={tone}>{word}</Tag>
       {k == null ? (
-        <span className="col-span-3 font-mono text-[11px] text-textMuted">none</span>
+        <span className="col-span-3 font-mono text-[11px] text-textMuted">{word === 'flip' ? 'none nearby' : 'none'}</span>
       ) : (
         <>
           <Door k={k} />
@@ -307,7 +318,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       )}
       <div className="pt-1 grid grid-cols-2 gap-x-3 gap-y-0.5" data-side-greeks>
         {others.map(g => (
-          <Fact key={g} label={GREEK_LABEL[g]} value={<Money v={valueAt(strike, g)} g={g} />} />
+          <Fact key={g} label={<span className="cursor-help" title={GREEK_EXPLAIN[g]}>{GREEK_LABEL[g]}</span>} value={<Money v={valueAt(strike, g)} g={g} />} />
         ))}
       </div>
 
@@ -362,7 +373,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             )
           }
         />
-        <Fact label="Expires at the bell" value={s.bellShare != null ? <span title={`${s.bellShare}% of ${s.ticker}'s gamma sits in contracts that expire at 4:00 today`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? `Nothing on ${s.ticker} expires today` : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? '— nothing today' : '—'}</span>} />
+        <Fact label="Expires at the bell" value={s.bellShare != null ? <span title={`${s.bellShare}% of ${s.ticker}'s gamma sits in contracts that expire at 4:00 today`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? BELL_NONE : '…'}</span>} />
       </div>
       <div className="pt-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-side-foot>
         {s.strikes.length} strikes · {s.expiryCount} {s.expiryCount === 1 ? 'expiry' : 'expiries'}

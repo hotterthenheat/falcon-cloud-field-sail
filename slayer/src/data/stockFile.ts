@@ -5,9 +5,10 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
+import { daysBetween, nyTodayIso } from './nyDate';
 import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
-import { whalesDaily, whalesDarkTicker, whalesEarnings, whalesFlowTicker, whalesScreener, type UwDaily } from './whales';
+import { whalesDailyLong, whalesDarkTicker, whalesEarnings, whalesFlowTicker, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
 
 export interface EarnRow {
   report_date?: string;
@@ -27,6 +28,8 @@ export interface StockFile {
   days: Candle[];
   flow: FlowPrint[];
   dark: DarkPoolPrint[];
+  /** The chain's contracts, busiest by volume first (/stock/{t}/option-contracts) — the earnings page reads the same */
+  contracts: Record<string, unknown>[];
   /** Epoch ms of the last print that landed. */
   at?: number;
 }
@@ -35,10 +38,11 @@ const EMPTY_EARN: EarnRow[] = [];
 const EMPTY_DAYS: Candle[] = [];
 const EMPTY_FLOW: FlowPrint[] = [];
 const EMPTY_DARK: DarkPoolPrint[] = [];
+const EMPTY_CONTRACTS: Record<string, unknown>[] = [];
 /** One object per status. A fresh object on every read makes useSyncExternalStore
     treat the file as changed and warn that getSnapshot is not cached. */
-const LOADING: StockFile = { status: 'loading', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK };
-const FAILED: StockFile = { status: 'error', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK };
+const LOADING: StockFile = { status: 'loading', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
+const FAILED: StockFile = { status: 'error', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
 
 const blank = (status: StockFile['status']): StockFile => (status === 'error' ? FAILED : LOADING);
 
@@ -64,10 +68,11 @@ const mmddyyyy = (iso: string): string => {
   return y && m && d ? `${m}/${d}/${y}` : iso;
 };
 
+/* calendar days from New York's today to the expiry — never UTC midnight against the clock (data/nyDate.ts) */
 const dteOf = (iso: string): number => {
-  const t = Date.parse(`${iso.slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(t)) return 0;
-  return Math.max(0, Math.round((t - Date.now()) / 86_400_000));
+  const day = iso.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return 0;
+  return Math.max(0, daysBetween(nyTodayIso(), day));
 };
 
 function daysFrom(rows: UwDaily[]): Candle[] {
@@ -175,12 +180,14 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
 }
 
 async function load(ticker: string): Promise<void> {
-  const [screenR, earnR, dayR, flowR, darkR] = await Promise.all([
+  const [screenR, earnR, dayR, flowR, darkR, contractR] = await Promise.all([
     whalesScreener([ticker]).catch(() => [] as Record<string, unknown>[]),
     whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
-    whalesDaily(ticker).catch(() => [] as UwDaily[]),
+    whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
     whalesFlowTicker(ticker).catch(() => [] as Record<string, unknown>[]),
     whalesDarkTicker(ticker).catch(() => [] as Record<string, unknown>[]),
+    /* the same call the earnings page makes, so the two pages' busiest contracts agree */
+    whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
   ]);
   const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? screenR[0] ?? null) : null;
   const days = daysFrom(Array.isArray(dayR) ? dayR : []);
@@ -193,6 +200,7 @@ async function load(ticker: string): Promise<void> {
     days,
     flow: flowsFrom(Array.isArray(flowR) ? flowR : [], spot),
     dark: darksFrom(Array.isArray(darkR) ? darkR : [], spot),
+    contracts: Array.isArray(contractR) ? (contractR as Record<string, unknown>[]) : [],
     at: got ? Date.now() : undefined,
   });
   emit();

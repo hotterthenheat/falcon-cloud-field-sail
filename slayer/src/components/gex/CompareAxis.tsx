@@ -154,7 +154,8 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
       const ob = b.find(x => x.value === o.value);
       if (!oa || !ob || !o.date) return o;
       if (oa.label === ob.label) return oa;
-      return { ...o, hint: `${cmp.a.ticker} reads ${day(oa.date)} · ${cmp.b.ticker} reads ${day(ob.date)}` };
+      /* the label names both listings (the retail test: "EXPIRY Today · Oct 22" over an NVDA book that reads Oct 23) */
+      return { ...o, label: `${cmp.a.ticker} ${day(oa.date)} · ${cmp.b.ticker} ${day(ob.date)}`, hint: `${cmp.a.ticker} reads ${day(oa.date)} · ${cmp.b.ticker} reads ${day(ob.date)}` };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cmp.a.ticker, cmp.b.ticker, cmp]);

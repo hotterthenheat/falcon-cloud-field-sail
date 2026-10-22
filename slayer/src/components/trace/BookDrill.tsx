@@ -19,7 +19,7 @@
 
 import { useMemo } from 'react';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
-import { useContractLast } from '../../data/traceLive';
+import { indexRoot, useContractLast } from '../../data/traceLive';
 import PrintDrilldown from './PrintDrilldown';
 import { bookRowToPrint } from '../../data/tape';
 import { contractKey, useWatch, watchContract } from '../../context/WatchContext';
@@ -48,11 +48,12 @@ const BookDrill = ({ list, openKey, onOpen, clipFor, tick }: BookDrillProps) => 
   /* The anchor is a REAL print: the host's exact clip (a flow alert's), else the contract's own last trade off the
      vendor — never an invented one (data/tape bookRowToPrint) */
   const last = useContractLast(row && !clipFor?.(row) ? row.optionSymbol : null).rows;
-  const print = useMemo(() => (row ? bookRowToPrint(row, clipFor?.(row) ?? last ?? undefined) : null), [row, clipFor, last]);
+  const print = useMemo(() => (row ? { ...bookRowToPrint(row, clipFor?.(row) ?? last ?? undefined), occ: row.optionSymbol } : null), [row, clipFor, last]);
 
   const bookRev = useBookRev();
   const snapshot = useMemo(
-    () => (row ? snapshotOf(row.ticker) : null),
+    /* an index's book is not on this key (its quote and candles answer 422) — the card grades only a name it can read */
+    () => (row && !indexRoot(row.ticker) ? snapshotOf(row.ticker) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [row?.ticker, tick, bookRev]
   );

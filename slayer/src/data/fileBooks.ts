@@ -197,6 +197,10 @@ export interface ShortRow {
   history: ShortPrint[];
   exchanges: { exchange: string; shortM: number; totalM: number }[];
   ftdDays: { date: string; quantity: number; price: number }[];
+  /** The vendor's issue type is a fund (an ETF, ETN or closed-end fund) — short interest there is creation and hedging, not a squeeze */
+  fund?: boolean;
+  /** The settlement day the fee and the shares available were read on, when they are the screener's rather than today's */
+  borrowAsOf?: string;
 }
 
 function shortFrom(ticker: string, sector: string): ShortRow {
@@ -244,7 +248,8 @@ export function shortFile(ticker: string): ShortRow {
   return buildShorts().find(r => r.ticker === ticker) ?? shortFrom(ticker, sectorOf(ticker));
 }
 
-export type EtfKind = 'broad' | 'sector' | 'rates';
+/** Broad equity index, one sector, Treasuries, corporate credit, or a commodity trust */
+export type EtfKind = 'broad' | 'sector' | 'rates' | 'credit' | 'commodity';
 
 export interface EtfFlow {
   day: string;

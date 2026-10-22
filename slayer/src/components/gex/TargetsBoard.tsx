@@ -65,7 +65,7 @@ import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM }
 import { AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
 import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
-import { holdLabel, holdShort } from '../../data/wall';
+import { chanceLabel, holdLabel, holdShort } from '../../data/wall';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -76,7 +76,8 @@ export const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put w
 /** Breaks and trapdoors are the calendar's warm side; a wall's weight its cool side */
 const WARM = THERMAL_WARM;
 const COOL = THERMAL_COOL;
-const pct = (v: number) => `${Math.round(v * 100)}%`;
+/* "<1%" for the tiny chances — no floor (the audit: SPY 742–782, five expected moves out, all read "2% reached") */
+const pct = chanceLabel;
 const ORDER_OPTIONS: DropdownOption<AgendaOrder>[] = AGENDA_ORDERS.map(o => ({ value: o.value, label: o.label, hint: o.hint }));
 const WINDOW_OPTIONS: DropdownOption<number>[] = STRIKE_WINDOWS.map(w => ({ value: w, label: `${w} each side`, hint: w === 30 ? 'The whole book' : `${w} strikes above spot and ${w} below` }));
 
@@ -85,7 +86,11 @@ const WINDOW_OPTIONS: DropdownOption<number>[] = STRIKE_WINDOWS.map(w => ({ valu
 /** What a strike is: a named level, a shelf (a wall the Map does not name), a
     trapdoor (its hedging pushes the move along), or too thin to be any of them */
 type Kind = 'named' | 'shelf' | 'trapdoor' | 'thin';
-const kindOf = (t: Target): Kind => (t.role ? 'named' : t.isShelf ? 'shelf' : t.isWall ? 'thin' : 'trapdoor');
+/* A WALL % ONLY ON A WALL (the audit's M3: "Wall 5%" on the 764 trapdoor — a named level with negative weight read as
+   'named'): a role names the strike, but only a strike that absorbs (dealers long gamma) carries a size */
+const kindOf = (t: Target): Kind => (t.isShelf ? (t.role ? 'named' : 'shelf') : t.isWall ? 'thin' : 'trapdoor');
+/** What a strike that is not a wall does, in the cell's few words */
+const notWallWords = (t: Target) => (t.role === 'put wall' ? 'short gamma — a break can accelerate' : 'pushes the move along');
 
 /** The beam in miniature: the silver share is the wall's size against the top wall on the chain; a trapdoor's is warm; a thin strike's is empty */
 const HoldBeam = ({ t, w = 52, h = 6 }: { t: Target; w?: number | string; h?: number }) => {
@@ -103,8 +108,8 @@ const HoldBeam = ({ t, w = 52, h = 6 }: { t: Target; w?: number | string; h?: nu
 
 const Tags = ({ t, yours }: { t: Target; yours?: string }) => (
   <>
-    {kindOf(t) !== 'thin' && (
-      <span className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: t.role ? ROLE_INK[t.role] : t.isShelf ? 'rgb(var(--text-muted))' : WARM }}>
+    {(t.role || kindOf(t) !== 'thin') && (
+      <span className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: t.role ? ROLE_INK[t.role] : t.isShelf ? 'rgb(var(--text-muted))' : WARM }} title={t.role ? undefined : t.isShelf ? 'A shelf: dealers are long gamma here, so their hedging slows price' : 'A trapdoor: dealers are short gamma here, so their hedging speeds a move through it'}>
         {t.role ?? (t.isShelf ? 'shelf' : 'trapdoor')}
       </span>
     )}
@@ -190,7 +195,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
           )}
         </CardLine>
         <CardLine label="Wall size">
-          {kind === 'trapdoor' ? <span style={{ color: WARM }}>pushes the move along</span> : kind === 'thin' ? <span className="text-textMuted">too thin to be a wall</span> : <span style={{ color: SILVER }}>{holdLabel(t.hold)}</span>}
+          {kind === 'trapdoor' ? <span style={{ color: WARM }}>{notWallWords(t)}</span> : kind === 'thin' ? <span className="text-textMuted">too thin to be a wall</span> : <span style={{ color: SILVER }}>{holdLabel(t.hold)}</span>}
         </CardLine>
         <CardLine label="If it breaks">
           {t.breakTo == null ? (
@@ -212,7 +217,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
         <CardLine label="Open interest">
           {fmtContracts(t.oi.calls)} <span className="text-textMuted">calls</span> · {fmtContracts(t.oi.puts)} <span className="text-textMuted">puts</span>
         </CardLine>
-        <CardLine label={inSession ? 'Built today' : 'Built last'}>
+        <CardLine label={t.buildOvernight ? 'Built overnight' : inSession ? 'Built today' : 'Built last'}>
           <span className={t.verdict === 'steady' ? 'text-textMuted' : ''}>{buildWords(t, inSession)}</span>
         </CardLine>
         {t.beside && <CardLine label="Beside it">{t.beside}</CardLine>}
@@ -301,7 +306,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
     >
       <div className="flex items-center gap-2 h-[22px] min-w-0">
         <span className={`shrink-0 inline-flex items-center h-4 px-2 rounded-full font-mono text-[9px] font-bold uppercase tracking-widest ${pick ? 'text-supreme bg-supreme/10 border border-supreme/30' : 'text-textSecondary bg-ink/[0.04] border border-borderSubtle'}`}>
-          {pick && !brief ? '#1 · watch first' : `#${n}`}
+          {pick && !brief ? `#${n} · watch first` : `#${n}`}
         </span>
         <span className={`font-mono text-[16px] leading-none font-bold tnum ${kept ? 'text-silver' : 'text-textPrimary'}`}>{fmtStrike(t.strike)}</span>
         <Tags t={t} yours={yours} />
@@ -320,7 +325,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
               Wall <span className="normal-case tracking-normal text-[11px] tnum" style={{ color: SILVER }}>{holdShort(t.hold)}</span>
             </>
           ) : kindOf(t) === 'trapdoor' ? (
-            <span style={{ color: WARM }}>pushes the move along</span>
+            <span style={{ color: WARM }}>{notWallWords(t)}</span>
           ) : (
             <span>too thin to be a wall</span>
           )}
@@ -453,7 +458,10 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   };
   const cardTarget = card ? (agenda.targets.find(t => Math.abs(t.strike - card.strike) < 1e-9) ?? null) : null;
   /* THE PODIUM: the first three, side by side — in a tight pane the one to watch first alone, the other two in the list */
-  const podium = density === 'tight' ? agenda.first.slice(0, 1) : agenda.first;
+  /* THE PODIUM IS THE CHOSEN ORDER'S FIRST THREE (the audit's M7: the cards stayed "Matters most" #1–#3 while the list
+     numbered by the chosen order and skipped them) — numbered by their own rank, the list going on from #4. In a tight
+     pane the one to watch first alone, as before. The card that is the desk's watch-first wears the word. */
+  const podium = density === 'tight' ? agenda.first.slice(0, 1) : agenda.targets.slice(0, 3);
   const podiumSet = useMemo(() => new Set(podium.map(t => t.strike)), [podium]);
   const rest = useMemo(() => agenda.targets.filter(t => !podiumSet.has(t.strike)), [agenda.targets, podiumSet]);
   const maxStake = Math.max(1, ...agenda.targets.map(t => t.stake));
@@ -519,8 +527,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           <Card
             key={t.strike}
             t={t}
-            n={i + 1}
-            pick={i === 0}
+            n={density === 'tight' ? 1 : t.rank}
+            pick={!!lead && Math.abs(lead.strike - t.strike) < 1e-9}
             kept={focus != null && Math.abs(focus - t.strike) < 1e-9}
             yours={yours?.get(t.strike)}
             armed={armedAt(t.strike)}
@@ -538,12 +546,12 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       <div className={`${pad} pb-2 overflow-x-auto`} data-targets-rows onPointerLeave={() => setHover(null)}>
         <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: cols.template, minWidth: cols.min }}>
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
-          {headCell('Strike', false, '', 'The option strike price, with its role: call wall, put wall, supreme, shelf (a wall that slows price) or trapdoor (a strike that speeds a move up)')}
+          {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price')}
           {headCell(clock.inSession ? 'Reached' : 'Reached next', true, 'whitespace-nowrap', clock.inSession ? 'The chance price touches this strike before the close' : 'The chance price touches this strike next session')}
           {headCell('Wall size', true, '', "How big the hedging here is next to the biggest wall on this ticker's own chain (that one is 100%). A dash: too thin to be a wall. It is size, not the chance price turns here")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
-          {full && headCell(clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', 'Hedging added (building) or taken off (draining) at this strike in the latest open-interest count')}
+          {full && headCell(agenda.targets[0]?.buildOvernight ? 'Built overnight' : clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', agenda.targets[0]?.buildOvernight ? "Hedging added (building) or taken off (draining) at this strike in yesterday's trading — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma" : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
           {wide && headCell('At stake', false, '', 'The dollars of dealer hedging that come into play if price reaches this strike')}
           {full && headCell('Why it ranks here', false, '', 'The two numbers behind its place: the chance it is reached times what is at stake')}
           {headCell(wide ? 'Actions' : '', true, '', 'Open the strike on the Map, or set a price alert on it')}

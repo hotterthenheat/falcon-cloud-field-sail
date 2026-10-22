@@ -20,7 +20,7 @@ import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 import { liveBars, useBookRev } from '../../data/uwBook';
 import { nyClock } from '../../core/nyTime';
-import { quotePlace } from '../../data/traceLive';
+import { quotePlace, useDarkDay } from '../../data/traceLive';
 import { fmtUsd } from '../../data/gex';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
@@ -218,7 +218,7 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
         </>
       )}
       <div className="px-3 pb-2.5 flex items-center gap-3 flex-wrap">
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> Running dark dollars</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> Running dark dollars · prints in hand</span>
         <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-silver" /> This cross</span>
       </div>
     </div>
@@ -228,21 +228,21 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
 const CrossSequence = ({ print, sequence, onOpen }: { print: DarkPoolPrint; sequence: DarkPoolPrint[]; onOpen?: (p: DarkPoolPrint) => void }) => {
   const n = sequence.length;
   const read = useMemo(() => {
-    if (n <= 1) return `Isolated — the only cross on ${print.ticker} on the tape today.`;
+    if (n <= 1) return `The only cross on ${print.ticker} among the prints in hand.`;
     const total = sequence.reduce((a, p) => a + p.notional, 0);
     const bought = sequence.filter(p => p.exec === 'ASK').length;
     const sold = sequence.filter(p => p.exec === 'BID').length;
     const mid = n - bought - sold;
     const oldest = sequence[n - 1]?.time ?? print.time;
     const newest = sequence[0]?.time ?? print.time;
-    return `Part of a sequence — ${n} crosses on ${print.ticker} today · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} at the mid` : ''} · ${oldest} → ${newest}.`;
+    return `${n} crosses on ${print.ticker} among the prints in hand · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} at the mid` : ''} · ${oldest} → ${newest}.`;
   }, [sequence, n, print.ticker, print.time]);
   const shown = sequence.slice(0, SEQ_SHOWN);
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-cross-sequence>
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-baseline gap-2 flex-wrap">
         <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The sequence</span>
-        <span className="font-mono text-[11px] text-textMuted">{print.ticker}'s crosses on the tape today</span>
+        <span className="font-mono text-[11px] text-textMuted">{print.ticker}'s crosses among the prints in hand — not the whole day</span>
       </div>
       <p className="px-3 pt-2 text-[11px] text-textSecondary leading-snug tnum">
         <RichRead text={read} />
@@ -298,7 +298,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
   const marked = !!print && isWatched(key);
   const shelf = useMemo(() => (print ? shelfOf(print, view) : null), [print, view]);
   const sequence = useMemo(() => (view ? [...view.prints].sort((a, b) => (a.time === b.time ? b.notional - a.notional : a.time < b.time ? 1 : -1)) : []), [view]);
-  const grade = print ? gradeOfConviction(print.conviction) : 'poor';
+  const day = useDarkDay(print?.ticker ?? null);
   const frac = print ? fillFrac(print) : null;
   const jump = (fn: () => void) => {
     onClose();
@@ -326,8 +326,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <Wordmark height={11} label="" />
             </span>
             <span className="inline-flex items-center rounded-full border border-borderMuted bg-ink/[0.04] px-2.5 py-0.5 font-mono text-[13px] font-semibold text-textPrimary">{print.ticker}</span>
-            <span className="font-mono text-[11px] text-textSecondary tnum">cross · {venueWord(print.venue)}</span>
-            <IntentTag intent={print.intent} />
+            <span className="font-mono text-[11px] text-textSecondary tnum">cross · reported to {print.facility ?? venueWord(print.venue)}</span>
+            {print.sized ? <IntentTag intent={print.intent} /> : <span className="font-mono text-[11px] uppercase text-textMuted">{print.special ? 'no read · terms' : 'no read · small'}</span>}
             <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
             {print.sized && <span className="font-mono text-[11px] uppercase font-semibold text-textPrimary">Sized</span>}
           </div>
@@ -385,20 +385,12 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <RichRead text={print.read} />
             </p>
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-cross-facts>
-              <Fact
-                label="Conviction"
-                value={
-                  <span className="inline-flex items-center gap-2">
-                    <span className={INTENT_INK[print.intent]}>{grade}</span>
-                    <GradeMeter grade={grade} fill={INTENT_BAR[print.intent]} thin className="w-16" />
-                  </span>
-                }
-              />
               <Fact label="Vs the quote" value={quotePlace(print.vsSpotPct, print.price).text} valueCls={quotePlace(print.vsSpotPct, print.price).cents === 0 ? 'text-textMuted' : quotePlace(print.vsSpotPct, print.price).cents > 0 ? 'text-bull' : 'text-bear'} />
-              <Fact label="Venue" value={print.venue && print.venue !== venueWord(print.venue) ? `${venueWord(print.venue)} · ${print.venue}` : venueWord(print.venue)} />
+              <Fact label="Reported to" value={print.facility ?? venueWord(print.venue)} />
+              {print.special && <Fact label="Trade kind" value={print.special} valueCls="text-warn" />}
               <Fact label="Shelf" value={shelf ? <span className={ROLE_INK[shelf.role]}>${shelf.price.toFixed(2)} · {ROLE_WORD[shelf.role]} · defended {shelf.defended}×</span> : <span className="text-textMuted">between shelves</span>} />
               <Fact
-                label={`${print.ticker} today`}
+                label={`${print.ticker}, prints in hand`}
                 value={
                   view ? (
                     <span className={view.posture === 'ACCUMULATING' ? 'text-bull' : view.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'}>
@@ -408,9 +400,11 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                   ) : '—'
                 }
               />
-              <Fact label="Off-exchange" value={view && view.dpSharePct > 0 ? `${view.dpSharePct.toFixed(0)}% of volume` : '—'} />
-              <Fact label="Dark dollars today" value={view ? fmtUsd(view.totalNotional) : '—'} />
-              <Fact label="Crosses today" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
+              {/* THE DAY IS THE NAME'S OWN DAY (the audit, 2026-10-22: "Dark dollars today" was the buffer's few prints) —
+                  /darkpool/{t}/price-levels, every dark and lit share by price */}
+              <Fact label="Off-exchange today" value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
+              <Fact label="Dark dollars today" value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh` : day.waiting ? '…' : '—'} />
+              <Fact label="Crosses in hand" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
               <Fact label="This cross" value={print.sized ? 'Sized' : 'Ordinary'} valueCls={print.sized ? 'text-textPrimary' : 'text-textMuted'} />
             </div>
           </div>
@@ -421,7 +415,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The crosses</span>
-              <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">{sequence.length} on the tape today</span>
+              <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">{sequence.length} in hand{sequence.length ? ` · ${sequence[sequence.length - 1].time}–${sequence[0].time} ET` : ''}</span>
             </div>
             <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden max-h-[240px] overflow-y-auto" data-cross-orders>
               <table className="w-full border-collapse">

@@ -65,6 +65,7 @@
 ==================================================
 */
 
+import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed, ensureOiChange, peekOiChange } from '../../data/uwBook';
@@ -108,7 +109,8 @@ let windowMemory: StrikeWindow = 20;
    alone had been the default since 2026-09-13 */
 let showMemory: BuildShow = 'all';
 
-const hhmmss = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
 const Building = () => {
   /* a phone reads the compact ledger too — the full one is 1060px wide and ran off a 390px screen */
@@ -262,7 +264,9 @@ const Building = () => {
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the bar, the chip and the line mean" testId="build-guide" />
         </div>
         <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-          {clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · the hedging added or taken off since the open, so a wall shows up before it is the wall · every strike, the steady ones too — Show · What moved folds them away
+          {first.overnight
+            ? `The overnight open-interest count${first.oiDates ? ` (${first.oiDates.from.slice(5)} → ${first.oiDates.to.slice(5)})` : ''}, contract by contract · the hedging yesterday's trading added or took off, each contract valued at its own gamma at today's price · every strike, the steady ones too — Show · What moved folds them away`
+            : `${clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · estimated from the day's volume until the overnight open-interest count loads · every strike, the steady ones too — Show · What moved folds them away`}
           {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
         </p>
       </div>

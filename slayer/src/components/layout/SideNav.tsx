@@ -118,7 +118,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [clock, setClock] = useState(() => readSessionClock());
-  const [time, setTime] = useState(() => new Date().toLocaleTimeString('en-US', { hour12: false }));
+  const [time, setTime] = useState(() => `${new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' })} ET`);
   const asideRef = useRef<HTMLElement | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
   const [bar, setBar] = useState<{ top: number } | null>(null);
@@ -134,7 +134,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   useEffect(() => {
     const id = window.setInterval(() => {
       setClock(readSessionClock());
-      setTime(new Date().toLocaleTimeString('en-US', { hour12: false }));
+      setTime(`${new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' })} ET`);
     }, 1000);
     return () => window.clearInterval(id);
   }, []);

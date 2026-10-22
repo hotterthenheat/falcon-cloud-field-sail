@@ -92,10 +92,16 @@ interface TraceBoxProps {
   className?: string;
   /** Attributes for the probes */
   data?: Record<string, string | number | undefined>;
+  /** On a phone the cards line folds behind one Filters button (opt-in — the Live Tape and the Screener stood ~750px of
+      head and cards above their first row) */
+  foldOnPhone?: boolean;
 }
 
-export const TraceBox = ({ title, sub, facts, controls, sentence, guide, children, testId, className = '', data }: TraceBoxProps) => {
+export const TraceBox = ({ title, sub, facts, controls, sentence, guide, children, testId, className = '', data, foldOnPhone = false }: TraceBoxProps) => {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([k, v]) => [`data-${k}`, v]));
+  const phone = useIsPhone();
+  const [unfolded, setUnfolded] = useState(false);
+  const folded = foldOnPhone && phone && !unfolded;
   return (
     /* overflow-CLIP, not hidden: hidden makes the box a scroll container, and
        a rail that should stick to the page while the grid runs past a screen
@@ -135,7 +141,20 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
           row of its own, the cards in rows of two in the page's order, then the doors: Link and Save on one row, Columns
           and the live hold on the last. The cards had kept their own widths inside the cells, so a row read "Most active"
           beside "Both" and Columns stood alone at the right. */}
-      {controls != null && controls !== false && (
+      {controls != null && controls !== false && foldOnPhone && phone && (
+        <div className="px-5 pb-2">
+          <button
+            type="button"
+            onClick={() => setUnfolded(v => !v)}
+            aria-expanded={!folded}
+            className="w-full h-8 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] uppercase tracking-widest text-textSecondary hover:text-textPrimary"
+            data-trace-fold
+          >
+            {folded ? 'Filters & cards ▾' : 'Hide filters ▴'}
+          </button>
+        </div>
+      )}
+      {controls != null && controls !== false && !folded && (
         <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-trace-controls>
           {controls}
         </div>

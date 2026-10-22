@@ -6,11 +6,12 @@
 
 import { useMemo, useSyncExternalStore } from 'react';
 import { EMPTY_CONGRESS } from './congress';
-import { ALL_CODES, insiderBook, OPEN_MARKET_CODES, personSlug, summariseFlow } from './insiders';
+import { ALL_CODES, OPEN_MARKET_CODES, personSlug, summariseFlow } from './insiders';
 import { geoFromItems, type EconEvent, type GeoNewsEvent } from './newsroom';
 import type { CongressFeed, CongressTrade, InsiderFlow, InsiderTrade, TxCode } from '../types/record';
-import { whalesCongress, whalesEcon, whalesNews, whalesPoliticians, uwCall, type UwInsider } from './whales';
-import { congressFromWhales, econFromWhales, insidersFromWhales, newsFromWhales, rollCongress } from './whalesMap';
+import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwInsider, type UwNews, type UwPolitician } from './whales';
+import { nyIsoDaysBack } from './nyDate';
+import { congressFromWhales, econFromWhales, insidersFromWhales, newsFromWhales, readInsiders, rollCongress } from './whalesMap';
 
 export type FeedStatus = 'loading' | 'live' | 'sim';
 
@@ -38,18 +39,88 @@ const emit = (next: LiveSnapshot) => {
 
 const patch = (part: Partial<LiveSnapshot>) => emit({ ...snap, ...part });
 
+/* THE WHOLE DAY'S WIRE (the data audit, 2026-10-22). The page said "every story on the wire today" over at most four
+   pages of 50 — about two hours of a busy afternoon. The first read now pages back (100 a page, the route's maximum)
+   until it passes New York's midnight, bounded at NEWS_PAGE_CAP pages; each minute after, only the newest page is read
+   and merged in. The coverage — from what time the stories are complete — is kept and said on the page. */
+const NEWS_LIMIT = 100;
+const NEWS_PAGE_CAP = 16;
+let newsRows: UwNews[] = [];
+let newsBackfilled = false;
+let newsPulling = false;
+export interface NewsCoverage {
+  /** The earliest story read, epoch ms, or null before the first answer */
+  fromMs: number | null;
+  /** True once the read reached back past New York's midnight */
+  wholeDay: boolean;
+  reading: boolean;
+}
+let newsCoverage: NewsCoverage = { fromMs: null, wholeDay: false, reading: true };
+const newsKey = (r: UwNews) => `${r.created_at}|${r.headline}`;
+/** New York's midnight today as an instant: 04:00 UTC in daylight time, 05:00 in standard time */
+const nyMidnightMs = (): number => {
+  const day = nyIsoDaysBack(0);
+  const at4 = Date.parse(`${day}T04:00:00Z`);
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date(at4)));
+  return hour === 0 ? at4 : Date.parse(`${day}T05:00:00Z`);
+};
+
+function paintNews() {
+  const seen = new Set<string>();
+  const rows = newsRows.filter(r => {
+    const k = newsKey(r);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  newsRows = rows;
+  const times = rows.map(r => Date.parse(r.created_at)).filter(Number.isFinite);
+  const from = times.length ? Math.min(...times) : null;
+  newsCoverage = { ...newsCoverage, fromMs: from, wholeDay: newsCoverage.wholeDay || (from != null && from <= nyMidnightMs()) };
+  patch({ news: { status: 'live', events: geoFromItems(newsFromWhales(rows)) } });
+}
+
 async function pullNews() {
+  if (newsPulling) return;
+  newsPulling = true;
   try {
-    let painted = false;
-    const rows = await whalesNews(soFar => {
-      painted = true;
-      patch({ news: { status: 'live', events: geoFromItems(newsFromWhales(soFar)) } });
-    });
-    if (!Array.isArray(rows)) throw new Error('shape');
-    if (!painted) patch({ news: { status: 'live', events: geoFromItems(newsFromWhales(rows)) } });
+    if (!newsBackfilled) {
+      const midnight = nyMidnightMs();
+      for (let page = 0; page < NEWS_PAGE_CAP; page++) {
+        const res = await uwCall(`/news/headlines?limit=${NEWS_LIMIT}&page=${page}`, page === 0);
+        if (res.error || !Array.isArray(res.data)) {
+          if (page === 0) throw new Error(res.error || 'shape');
+          break;
+        }
+        const rows = res.data as UwNews[];
+        newsRows = newsRows.concat(rows);
+        paintNews();
+        const oldest = Math.min(...rows.map(r => Date.parse(r.created_at)).filter(Number.isFinite));
+        if (rows.length < NEWS_LIMIT || !(oldest > midnight)) break;
+      }
+      newsBackfilled = true;
+    } else {
+      const res = await uwCall(`/news/headlines?limit=${NEWS_LIMIT}&page=0`);
+      if (!res.error && Array.isArray(res.data)) {
+        newsRows = (res.data as UwNews[]).concat(newsRows);
+        /* a new day keeps only its own stories */
+        const midnight = nyMidnightMs();
+        if (newsCoverage.wholeDay) newsRows = newsRows.filter(r => !(Date.parse(r.created_at) < midnight - 6 * 3_600_000));
+        paintNews();
+      }
+    }
   } catch {
     if (snap.news.status !== 'live') patch({ news: { status: 'sim', events: [] } });
+  } finally {
+    newsPulling = false;
+    newsCoverage = { ...newsCoverage, reading: false };
+    listeners.forEach(fn => fn());
   }
+}
+
+export function useNewsCoverage(): NewsCoverage {
+  useNewsFeed();
+  return newsCoverage;
 }
 
 async function pullEcon() {
@@ -62,18 +133,125 @@ async function pullEcon() {
   }
 }
 
-async function pullCongress() {
-  try {
-    const rows = await whalesCongress();
-    if (!Array.isArray(rows)) throw new Error('shape');
-    const paint = (people: Awaited<ReturnType<typeof whalesPoliticians>>) =>
-      patch({ congress: { status: 'live', trades: congressFromWhales(rows, Array.isArray(people) ? people : []).trades } });
-    paint([]);
-    const people = await whalesPoliticians().catch(() => []);
-    if (Array.isArray(people) && people.length) paint(people);
-  } catch {
-    if (snap.congress.status !== 'live') patch({ congress: { status: 'sim', trades: [] } });
+/* THE CONGRESS BOOK'S REACH (the data audit, 2026-10-22). /congress/recent-trades answers at most 200 reports a call,
+   newest TRADE first, and ignores `page` — the old three "pages" were one page three times, so the 90- and 180-day
+   windows both showed the same six weeks. Its `date` parameter is the paging door: it returns the reports traded on or
+   before that day. Each read asks again from the oldest trade day the last one reached, until the window is covered.
+   A day with more than 200 reports cannot be read past (the call has no offset); the read steps to the day before and
+   the coverage records that day as possibly incomplete. */
+const CONGRESS_LIMIT = 200;
+/** Enough calls to reach 180 days on the busiest stretch measured (27 on 2026-10-22), with room */
+const CONGRESS_CALL_CAP = 40;
+let congressRows: UwCongress[] = [];
+let congressPeople: UwPolitician[] = [];
+let congressWant = 90;
+let congressPulling: Promise<void> | null = null;
+/** The oldest trade day whose reports are complete, the days a read could not finish, and whether it is still reading */
+export interface CongressCoverage {
+  since: string | null;
+  partialDays: string[];
+  reading: boolean;
+  capped: boolean;
+}
+let congressCoverage: CongressCoverage = { since: null, partialDays: [], reading: true, capped: false };
+let congressCursor: string | null = null;
+let congressCalls = 0;
+let congressDone = false;
+
+const paintCongress = () =>
+  patch({ congress: { status: 'live', trades: congressFromWhales(congressRows, congressPeople).trades } });
+
+async function pageCongress(): Promise<void> {
+  while (!congressDone && congressCalls < CONGRESS_CALL_CAP) {
+    const since = congressCoverage.since;
+    if (since && since <= nyIsoDaysBack(congressWant)) break;
+    const path = `/congress/recent-trades?limit=${CONGRESS_LIMIT}${congressCursor ? `&date=${congressCursor}` : ''}`;
+    const res = await uwCall(path, congressCalls === 0);
+    congressCalls += 1;
+    if (res.error || !Array.isArray(res.data)) throw new Error(res.error || 'shape');
+    const rows = res.data as UwCongress[];
+    if (!rows.length) {
+      congressDone = true;
+      break;
+    }
+    congressRows = congressRows.concat(rows);
+    const days = rows.map(r => (r.transaction_date || '').slice(0, 10)).filter(Boolean).sort();
+    const oldest = days[0];
+    const full = rows.length >= CONGRESS_LIMIT;
+    if (!full) {
+      congressDone = true;
+      congressCoverage = { ...congressCoverage, since: oldest ?? congressCoverage.since };
+    } else if (oldest && oldest === congressCursor) {
+      /* the whole read was one day — more than 200 reports on it; step past it and say so */
+      congressCoverage = { ...congressCoverage, partialDays: [...congressCoverage.partialDays, oldest], since: oldest };
+      congressCursor = nyIsoDaysBack(1, oldest);
+    } else {
+      /* the oldest day may be cut mid-day: complete from the day after it, and the next read starts on it */
+      congressCoverage = { ...congressCoverage, since: oldest ? nyIsoDaysBack(-1, oldest) : congressCoverage.since };
+      congressCursor = oldest ?? null;
+    }
+    paintCongress();
   }
+  congressCoverage = { ...congressCoverage, capped: !congressDone && congressCalls >= CONGRESS_CALL_CAP };
+}
+
+function extendCongress(): Promise<void> {
+  if (!congressPulling) {
+    congressCoverage = { ...congressCoverage, reading: true };
+    congressPulling = pageCongress()
+      .catch(() => {
+        if (snap.congress.status !== 'live') patch({ congress: { status: 'sim', trades: [] } });
+      })
+      .finally(() => {
+        congressPulling = null;
+        congressCoverage = { ...congressCoverage, reading: false };
+        if (snap.congress.status === 'live') paintCongress();
+        else listeners.forEach(fn => fn());
+      });
+  }
+  return congressPulling;
+}
+
+async function pullCongress() {
+  /* a refresh re-reads from the newest report; the rows already read past it stay */
+  if (congressPulling) return;
+  if (congressCalls > 0) {
+    const res = await uwCall(`/congress/recent-trades?limit=${CONGRESS_LIMIT}`);
+    if (!res.error && Array.isArray(res.data)) {
+      congressRows = (res.data as UwCongress[]).concat(congressRows);
+      paintCongress();
+    }
+    return;
+  }
+  const people = whalesPoliticians()
+    .then(p => {
+      if (Array.isArray(p) && p.length) {
+        congressPeople = p;
+        if (snap.congress.status === 'live') paintCongress();
+      }
+    })
+    .catch(() => undefined);
+  await Promise.all([extendCongress(), people]);
+}
+
+/** The window the Congress page shows: the reports are paged back by trade day until it is covered */
+export function wantCongressWindow(days: number): void {
+  if (days <= congressWant) return;
+  congressWant = days;
+  if (congressCalls > 0) void extendCongress();
+}
+
+export function useCongressCoverage(): CongressCoverage {
+  useSyncExternalStore(
+    fn => {
+      const off = listen(fn);
+      ensureCongress();
+      return off;
+    },
+    () => snap.congress,
+    () => snap.congress,
+  );
+  return congressCoverage;
 }
 
 /* THE INSIDER BOOK'S COVERAGE (the retail pass, 2026-10-22). /insider/transactions answers at most 500 filings a call,
@@ -86,7 +264,8 @@ async function pullCongress() {
    common_stock_only keeps out SAFE notes and convertible debentures, whose "price" is the face of the whole note
    (a $2,000,000 "price" on a SAFE read as $15.7 trillion of chosen buying). */
 const INS_LIMIT = 500;
-const PAGE_CAP = 10;
+/* 180 days of $1M+ sales measured at about thirteen pages (2026-10-22) */
+const PAGE_CAP = 16;
 const REST_PAGES = 2;
 const BIG_SALE = 1_000_000;
 const BUYS_PATH = '/insider/transactions?transaction_codes[]=P&form_types[]=4&form_types[]=4/A&common_stock_only=true&limit=500';
@@ -98,9 +277,21 @@ export interface InsiderCoverage {
   buysSince: string | null;
   /** True when the purchase pages reached back past the window asked for */
   buysComplete: boolean;
-  /** Sales of BIG_SALE or more: the same two facts */
+  /** True when the purchases ran out (every filing the vendor has was read) */
+  buysRanOut: boolean;
+  /** True while purchase pages are still being read */
+  buysReading: boolean;
+  /** True when the reading stopped at the page cap, short of the window */
+  buysCapped: boolean;
+  /** Sales of BIG_SALE or more: the same facts */
   bigSalesSince: string | null;
   bigSalesComplete: boolean;
+  bigSalesRanOut: boolean;
+  bigSalesReading: boolean;
+  bigSalesCapped: boolean;
+  /** Rows set aside: open-market rows that were not common shares, and rows whose price or size cannot be a trade */
+  notShares: number;
+  implausible: number;
   bigSale: number;
   /** Everything else is complete for filings on or after this date */
   restSince: string | null;
@@ -108,12 +299,11 @@ export interface InsiderCoverage {
   restCount: number;
 }
 
-let insCoverage: InsiderCoverage = { buysSince: null, buysComplete: false, bigSalesSince: null, bigSalesComplete: false, bigSale: BIG_SALE, restSince: null, restNewest: null, restCount: 0 };
+let insCoverage: InsiderCoverage = { buysSince: null, buysComplete: false, buysRanOut: false, buysReading: true, buysCapped: false, bigSalesSince: null, bigSalesComplete: false, bigSalesRanOut: false, bigSalesReading: true, bigSalesCapped: false, notShares: 0, implausible: 0, bigSale: BIG_SALE, restSince: null, restNewest: null, restCount: 0 };
 let restRows: UwInsider[] = [];
 let wantDays = 90;
 
-const nyIso = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d);
-const isoDaysBack = (days: number) => nyIso(new Date(Date.now() - days * 86_400_000));
+const isoDaysBack = (days: number) => nyIsoDaysBack(days);
 const oldestFiling = (rows: UwInsider[]): string | null =>
   rows.reduce<string | null>((m, r) => {
     const f = (r.filing_date || '').slice(0, 10);
@@ -140,11 +330,12 @@ const buys: Pager = { path: BUYS_PATH, pages: [], pulling: null };
 const bigSales: Pager = { path: SALES_PATH, pages: [], pulling: null };
 
 /** Complete since: the oldest page's oldest filing day may be cut mid-day, so the day after it — unless the read ran out */
-const coverOf = (pg: Pager): { since: string | null; complete: boolean } => {
+const coverOf = (pg: Pager): { since: string | null; complete: boolean; ranOut: boolean; reading: boolean; capped: boolean } => {
   const last = pg.pages[pg.pages.length - 1];
   const oldest = oldestFiling(pg.pages.flat());
   const ranOut = !!last && last.length < INS_LIMIT;
-  return { since: ranOut ? oldest : oldest ? nextIso(oldest) : null, complete: ranOut || (!!oldest && oldest <= isoDaysBack(wantDays)) };
+  const complete = ranOut || (!!oldest && oldest <= isoDaysBack(wantDays));
+  return { since: ranOut ? oldest : oldest ? nextIso(oldest) : null, complete, ranOut, reading: !!pg.pulling, capped: !complete && !pg.pulling && pg.pages.length >= PAGE_CAP };
 };
 
 function paintInsiders() {
@@ -160,17 +351,26 @@ function paintInsiders() {
   const b = coverOf(buys);
   const s = coverOf(bigSales);
   const restOldest = oldestFiling(restRows);
+  const read = readInsiders(merged);
   insCoverage = {
     buysSince: b.since,
     buysComplete: b.complete,
+    buysRanOut: b.ranOut,
+    buysReading: b.reading,
+    buysCapped: b.capped,
     bigSalesSince: s.since,
     bigSalesComplete: s.complete,
+    bigSalesRanOut: s.ranOut,
+    bigSalesReading: s.reading,
+    bigSalesCapped: s.capped,
+    notShares: read.notShares,
+    implausible: read.implausible,
     bigSale: BIG_SALE,
     restSince: restRows.length >= INS_LIMIT * REST_PAGES ? (restOldest ? nextIso(restOldest) : null) : restOldest,
     restNewest: newestFiling(restRows),
     restCount: restRows.length,
   };
-  patch({ insiders: { status: 'live', trades: insidersFromWhales(merged) } });
+  patch({ insiders: { status: 'live', trades: read.trades } });
 }
 
 async function pageBack(pg: Pager): Promise<void> {
@@ -435,17 +635,204 @@ export function useInsiderFlow(ticker: string, windowDays = 90): InsiderFlow {
   }, [box, sym, windowDays]);
 }
 
-/** undefined while the feed is still being read; null when the person is not on it. */
-export function useInsiderBook(slug: string, windowDays = 365): ReturnType<typeof insiderBook> | undefined {
+/* ONE PERSON'S OWN FILINGS (the data audit, 2026-10-22). The person page said "every filing in the last 90 days, the
+   grants included" over the market-wide feed — the latest thousand filings, so most of a person's year was missing.
+   It now reads that person's own filings: /insider/transactions by the reporting owner's SEC CIK when the feed gave
+   one (the stable id across companies and spellings), else by the owner's name, over the last year. */
+const PERSON_DAYS = 365;
+interface PersonBox {
+  status: FeedStatus;
+  trades: InsiderTrade[];
+  /** How the filings were found: by the SEC id, or by the name (which can join two people who share it) */
+  by: 'cik' | 'name';
+  /** Distinct SEC ids among the rows — more than one when a name is shared */
+  filers: number;
+  /** True when the read hit the vendor's 500-row cap, so older filings in the year may be missing */
+  capped: boolean;
+}
+const PERSON_WAIT: PersonBox = { status: 'loading', trades: [], by: 'name', filers: 0, capped: false };
+const persons = new Map<string, PersonBox>();
+
+function ensurePerson(slug: string, cik: string | undefined, name: string | undefined) {
+  const key = cik ? `cik:${cik}` : `name:${slug}`;
+  if (persons.has(key) || typeof window === 'undefined') return key;
+  persons.set(key, { ...PERSON_WAIT, by: cik ? 'cik' : 'name' });
+  void (async () => {
+    const owner = name || slug.replace(/-/g, ' ');
+    const since = nyIsoDaysBack(PERSON_DAYS);
+    const path = cik
+      ? `/insider/transactions?reporter_cik=${encodeURIComponent(cik)}&start_date=${since}&limit=500`
+      : `/insider/transactions?owner_name=${encodeURIComponent(owner)}&start_date=${since}&limit=500`;
+    const res = await uwCall(path, true);
+    const rows = Array.isArray(res.data) ? (res.data as (UwInsider & { reporter_cik?: string })[]) : [];
+    /* by name, keep only the rows whose name reads the same as the slug (the vendor's match is a substring) */
+    const own = cik ? rows : rows.filter(r => personSlug(r.owner_name || '') === slug);
+    const trades = insidersFromWhales(own).filter(t => t.daysAgo <= PERSON_DAYS);
+    persons.set(key, {
+      status: res.error ? 'sim' : 'live',
+      trades,
+      by: cik ? 'cik' : 'name',
+      filers: new Set(own.map(r => r.reporter_cik).filter(Boolean)).size,
+      capped: rows.length >= 500,
+    });
+    listeners.forEach(fn => fn());
+  })();
+  return key;
+}
+
+export interface InsiderPersonBook {
+  person: string;
+  role: InsiderTrade['role'];
+  ticker: string;
+  trades: InsiderTrade[];
+  by: 'cik' | 'name';
+  filers: number;
+  capped: boolean;
+  windowDays: number;
+}
+
+/** undefined while the person's filings are being read; null when none is on file in the year. */
+export function useInsiderBook(slug: string): InsiderPersonBook | null | undefined {
   const insiders = useInsidersSnap();
+  /* the market feed names the person and their SEC id; the page then reads their own filings */
+  const seen = useMemo(() => (insiders.status === 'live' ? insiders.trades.find(t => personSlug(t.person) === slug) ?? null : null), [insiders, slug]);
+  const feedSettled = insiders.status !== 'loading';
+  const key = feedSettled ? (seen?.cik ? `cik:${seen.cik}` : `name:${slug}`) : null;
+  const box = useSyncExternalStore(
+    fn => {
+      const off = listen(fn);
+      if (feedSettled) ensurePerson(slug, seen?.cik, seen?.person);
+      return off;
+    },
+    () => (key ? persons.get(key) ?? PERSON_WAIT : PERSON_WAIT),
+    () => PERSON_WAIT,
+  );
   return useMemo(() => {
-    if (insiders.status === 'loading') return undefined;
-    if (insiders.status !== 'live') return null;
-    const trades = insiders.trades.filter(t => t.daysAgo <= windowDays && personSlug(t.person) === slug);
+    if (!feedSettled || box.status === 'loading') return undefined;
+    const trades = box.status === 'live' && box.trades.length ? box.trades : seen ? insiders.trades.filter(t => personSlug(t.person) === slug) : [];
     if (trades.length === 0) return null;
-    const first = trades[0];
-    return { person: first.person, role: first.role, ticker: first.ticker, trades };
-  }, [insiders, slug, windowDays]);
+    const newest = [...trades].sort((a, b) => a.daysAgo - b.daysAgo)[0];
+    return {
+      person: newest.person,
+      role: newest.role,
+      ticker: newest.ticker,
+      trades,
+      by: box.by,
+      filers: box.filers,
+      capped: box.capped,
+      windowDays: box.status === 'live' && box.trades.length ? PERSON_DAYS : -1,
+    };
+  }, [feedSettled, box, seen, insiders, slug]);
 }
 
 export const insiderCodes = { market: OPEN_MARKET_CODES, all: ALL_CODES };
+
+/* ONE NAME'S CONGRESS REPORTS (the data audit, 2026-10-22). The stock page said "STOCK Act reports naming this stock in
+   the last 180 days" over the market-wide book, which then reached back six weeks. It now asks for the name's own
+   reports (/congress/recent-trades?ticker=), which reach back years, and keeps the trades of the window. */
+interface TickerCongress {
+  status: FeedStatus;
+  trades: CongressTrade[];
+  /** False when the 200-report read ended inside the window, so older reports in it may be missing */
+  complete: boolean;
+}
+const TICKER_CONGRESS_WAIT: TickerCongress = { status: 'loading', trades: [], complete: false };
+const tickerCongress = new Map<string, TickerCongress>();
+
+function ensureTickerCongress(sym: string) {
+  if (tickerCongress.has(sym) || typeof window === 'undefined') return;
+  tickerCongress.set(sym, TICKER_CONGRESS_WAIT);
+  void (async () => {
+    const res = await uwCall(`/congress/recent-trades?ticker=${encodeURIComponent(sym)}&limit=200`);
+    const rows = Array.isArray(res.data) ? (res.data as UwCongress[]) : [];
+    const oldest = rows.map(r => (r.transaction_date || '').slice(0, 10)).filter(Boolean).sort()[0] ?? null;
+    tickerCongress.set(sym, res.error
+      ? { status: 'sim', trades: [], complete: false }
+      : { status: 'live', trades: congressFromWhales(rows, congressPeople).trades.filter(t => t.ticker.toUpperCase() === sym), complete: rows.length < 200 || (!!oldest && oldest <= nyIsoDaysBack(365)) });
+    listeners.forEach(fn => fn());
+  })();
+}
+
+export function useTickerCongress(ticker: string, windowDays: number): TickerCongress {
+  const sym = ticker.toUpperCase();
+  const box = useSyncExternalStore(
+    fn => {
+      const off = listen(fn);
+      ensureTickerCongress(sym);
+      return off;
+    },
+    () => tickerCongress.get(sym) ?? TICKER_CONGRESS_WAIT,
+    () => TICKER_CONGRESS_WAIT,
+  );
+  return useMemo(() => {
+    if (box.status !== 'live') return box;
+    const trades = box.trades.filter(t => t.tradedDaysAgo <= windowDays);
+    const oldestIn = box.trades.reduce((m, t) => Math.max(m, t.tradedDaysAgo), 0);
+    return { status: box.status, trades, complete: box.complete || oldestIn >= windowDays };
+  }, [box, windowDays]);
+}
+
+/* ONE MEMBER'S YEAR (the data audit, 2026-10-22). The member page said "37 reports in the last year" over the latest 40
+   reports by name (three weeks for an active trader, nine years for a quiet one). It now asks for the trades made in
+   the last year (/congress/congress-trader?date_from=) and pages (1-indexed, 200 a page) until the year is read. */
+export const MEMBER_DAYS = 365;
+const MEMBER_LIMIT = 200;
+const MEMBER_PAGE_CAP = 6;
+interface MemberBook {
+  status: FeedStatus;
+  trades: CongressTrade[];
+  /** False when the page cap stopped the read inside the year */
+  complete: boolean;
+  unreadTypes: number;
+}
+const MEMBER_WAIT: MemberBook = { status: 'loading', trades: [], complete: false, unreadTypes: 0 };
+const members = new Map<string, MemberBook>();
+
+/** The first page's address — the vendor desk asks the same, so the two share one call */
+export const memberReportsPath = (name: string, page = 1) =>
+  `/congress/congress-trader?name=${encodeURIComponent(name)}&date_from=${nyIsoDaysBack(MEMBER_DAYS)}&limit=${MEMBER_LIMIT}${page > 1 ? `&page=${page}` : ''}`;
+
+function ensureMember(id: string, name: string) {
+  const key = `${id}|${name}`;
+  if (members.has(key) || typeof window === 'undefined') return;
+  members.set(key, MEMBER_WAIT);
+  void (async () => {
+    const rows: UwCongress[] = [];
+    let complete = false;
+    let failed = false;
+    for (let page = 1; page <= MEMBER_PAGE_CAP; page++) {
+      const res = await uwCall(memberReportsPath(name, page), page === 1);
+      if (res.error || !Array.isArray(res.data)) {
+        failed = page === 1;
+        break;
+      }
+      const got = res.data as UwCongress[];
+      rows.push(...got);
+      if (got.length < MEMBER_LIMIT) {
+        complete = true;
+        break;
+      }
+    }
+    const feed = congressFromWhales(rows, congressPeople);
+    members.set(key, failed ? { status: 'sim', trades: [], complete: false, unreadTypes: 0 } : { status: 'live', trades: feed.trades.filter(t => t.tradedDaysAgo <= MEMBER_DAYS), complete, unreadTypes: feed.unreadTypes ?? 0 });
+    listeners.forEach(fn => fn());
+  })();
+}
+
+export function useMemberBook(id: string, name: string | null): MemberBook {
+  const key = name ? `${id}|${name}` : '';
+  return useSyncExternalStore(
+    fn => {
+      const off = listen(fn);
+      if (name) ensureMember(id, name);
+      return off;
+    },
+    () => (key ? members.get(key) ?? MEMBER_WAIT : MEMBER_WAIT),
+    () => MEMBER_WAIT,
+  );
+}
+
+/** The roster's entry for a member id, once the politician list has landed */
+export function memberFromRoster(id: string): UwPolitician | null {
+  return congressPeople.find(p => p.politician_id === id) ?? null;
+}

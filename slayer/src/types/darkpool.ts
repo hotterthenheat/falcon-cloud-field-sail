@@ -35,6 +35,10 @@ export interface DarkPoolPrint {
   /** The quote at the print, when the feed sent one. */
   bid?: number | null;
   ask?: number | null;
+  /** A print priced by its own terms, not the quote (average-price, contingent, derivative-priced…) — it carries no read */
+  special?: string | null;
+  /** The facility the print was reported to (a FINRA trade reporting facility) — the dark venue itself is not disclosed */
+  facility?: string;
 }
 
 export type LevelRole = 'SUPPORT' | 'RESISTANCE' | 'PIVOT';

@@ -13,6 +13,8 @@
 */
 
 import type { ReactNode } from 'react';
+import { expiryLabel } from '../../core/format';
+import { tapeSessionIso } from '../../data/traceLive';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const SUPREME = 'rgb(var(--supreme))';
@@ -445,21 +447,16 @@ export const ShareFigure = () => (
 
 export const WindowsGuide = () => (
   <div data-trace-guide="windows">
-    <Section title="An interval">
-      <p>The session, 09:30 to 16:00 New York, cut into quarter hours, a bar each, taller where more traded — the busiest in magenta, the one you have open on a silver column, the live one breathing under “now”. Hover a bar to read it; click and the box shows what traded inside it, heaviest first. ← and → walk the intervals, Home and End the first and the last.</p>
+    <Section title="A quarter hour">
+      <p>One name's options session, 09:30 to 16:00 New York, cut into quarter hours, a bar each, taller where more traded — the busiest in magenta, the one you have open on a silver column, the newest breathing while it fills. Every figure is the vendor's minute ticks for the name, every expiry, summed over the fifteen minutes. ← and → walk the quarter hours.</p>
       <DayStripFigure />
     </Section>
     <Section title="Share of the day">
-      <p>How much of a contract's whole day landed in this one interval — half or more is a burst.</p>
+      <p>How much of the name's session so far traded in this one quarter hour.</p>
       <ShareFigure />
     </Section>
-    <Section title="Lean">
-      <p>Whether the interval's volume paid the ask or hit the bid, and the same for the whole day beside it — in one ink, because the side is not the direction.</p>
-      <LeanFigure />
-    </Section>
-    <Section title="A contract">
-      <p>The strike and side are the door to the contract's card.</p>
-      <ContractFigure />
+    <Section title="Calls, puts and the lean">
+      <p>Calls and puts traded, each split by how many printed at the ask and on the bid; net calls and net puts are premium at the ask less premium on the bid. The lean is net calls less net puts — net puts bought lean bearish.</p>
     </Section>
   </div>
 );
@@ -649,8 +646,10 @@ export const OdteGuide = () => (
 /* ---- live tape ----------------------------------------------------------------- */
 
 /** One row of the tape: when, the name, the contract, size at the fill, the dollars, the tag */
+/* the example contract expires on the tape's own session — the guide never shows a date long gone (the audit, 2026-10-22) */
+const exampleExpiry = () => expiryLabel(tapeSessionIso());
 export const TapeRowFigure = () => (
-  <Figure label="One tape row: 18:16:04 · NVDA · 120C 19 Sep · 850 @ $1.24 · $105.4K in bold · SWEEP in amber" h={54}>
+  <Figure label={`One tape row: 14:52:07 · NVDA · 215C ${exampleExpiry()} · 850 @ $1.24 · $105.4K in bold · SWEEP in amber`} h={54}>
     <Head x={14} y={12}>TIME</Head>
     <Head x={74} y={12}>TICKER</Head>
     <Head x={126} y={12}>CONTRACT</Head>
@@ -658,13 +657,13 @@ export const TapeRowFigure = () => (
     <Head x={306} y={12}>PREM</Head>
     <Head x={372} y={12}>TAG</Head>
     <text x={14} y={34} fontSize={9} fill={SECOND} fontFamily={MONO}>
-      18:16:04
+      14:52:07
     </text>
     <text x={74} y={34} fontSize={9} fontWeight={700} fill={INK} fontFamily={MONO}>
       NVDA
     </text>
     <text x={126} y={34} fontSize={9} fill={INK} fontFamily={MONO}>
-      120<tspan fill={BULL}>C</tspan> <tspan fill={SECOND} fontSize={8}>19 Sep</tspan>
+      215<tspan fill={BULL}>C</tspan> <tspan fill={SECOND} fontSize={8}>{exampleExpiry()}</tspan>
     </text>
     <text x={222} y={34} fontSize={9} fill={INK} fontFamily={MONO}>
       850 <tspan fill={SECOND} fontSize={8}>@ $1.24</tspan>
@@ -702,7 +701,7 @@ export const FillFigure = () => (
   </Figure>
 );
 
-/** Which side was hit, and how hard — the bar's reach from the centre */
+/** Which side was hit, and how hard — the bar's reach from the centre (no longer on the tape) */
 export const ConvictionFigure = () => (
   <Figure label="Two conviction cells in one ink: a BUY chip over a bar reaching far right of centre; a SELL chip over a short bar left of centre — the reach and the side say it, never a colour" h={70}>
     {[
@@ -739,9 +738,8 @@ export const LiveTapeGuide = () => (
       <p>What was paid and which side it crossed — the fill with its side as a word, and under it the bid and the ask it crossed into, the dot where between them the price landed. The dot's place is the tell; it wears no colour, because the side is not the direction.</p>
       <FillFigure />
     </Section>
-    <Section title="Conviction">
-      <p>How hard the aggressor pressed — the bar's reach from the centre, right of centre lifting offers, left of centre hitting bids, in one ink because the side is not the direction.</p>
-      <ConvictionFigure />
+    <Section title="Side, lean and window">
+      <p>A print's side is the vendor's own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count. Bullish is calls bought and puts sold; bearish is puts bought and calls sold; a mid print is neutral. The day lean is the contract's whole day so far, its volume at the ask against on the bid. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 2,000 — and the Window fact says from when to when.</p>
     </Section>
     <Section title="The inks">
       <p>Premium quiet below $250K, bold above, the largest print on the tape in magenta.</p>
@@ -860,21 +858,16 @@ export const ShelfFigure = () => (
 
 /** The four reads, each in its ink, with the conviction the grid draws: a word over four steps, never a figure (2026-09-19) */
 export const ReadFigure = () => (
-  <Figure label="Four reads in a row, each over a bar with its number: ACCUMULATION green at 84%, DISTRIBUTION red at 71%, HEDGE FLOW amber at 56%, ROTATION grey at 38%" h={76}>
+  <Figure label="Four reads in a row: ACCUMULATION green, DISTRIBUTION red, HEDGE FLOW amber, NO READ grey" h={76}>
     {[
-      { x: 14, w: 'ACCUMULATION', ink: BULL, c: 84, note: 'size bought on weakness — someone building' },
-      { x: 118, w: 'DISTRIBUTION', ink: BEAR, c: 71, note: 'size sold into strength — someone leaving' },
-      { x: 222, w: 'HEDGE FLOW', ink: WARN, c: 56, note: 'on an options shelf — a desk hedging' },
-      { x: 326, w: 'ROTATION', ink: MUTED, c: 38, note: 'routine turnover — no signal alone' },
+      { x: 14, w: 'ACCUMULATION', ink: BULL, note: 'size under the mid — someone building' },
+      { x: 118, w: 'DISTRIBUTION', ink: BEAR, note: 'size over the mid — someone leaving' },
+      { x: 222, w: 'HEDGE FLOW', ink: WARN, note: 'size at the mid — a desk hedging' },
+      { x: 326, w: 'NO READ', ink: MUTED, note: 'small, or priced by its terms — no signal' },
     ].map(r => (
       <g key={r.w}>
         <text x={r.x} y={16} fontSize={6.5} fontWeight={700} letterSpacing={0.6} fill={r.ink} fontFamily={MONO}>
           {r.w}
-        </text>
-        <rect x={r.x} y={30} width={56} height={3} rx={1.5} fill="#ffffff" fillOpacity={0.07} />
-        <rect x={r.x} y={30} width={56 * (r.c / 100)} height={3} rx={1.5} fill={r.ink} fillOpacity={0.8} />
-        <text x={r.x + 80} y={33.5} textAnchor="end" fontSize={7} fill={INK} fontFamily={MONO}>
-          {r.c}%
         </text>
         {/* two short lines: on one, each note ran into its neighbour's column */}
         {r.note.split(' — ').map((line, i) => (
@@ -885,7 +878,7 @@ export const ReadFigure = () => (
       </g>
     ))}
     <text x={14} y={70} fontSize={6.5} fill={MUTED} fontFamily={SANS}>
-      the bar and its number are how sure the read is — a sized print at a shelf earns a surer read than a small one between shelves
+      a read is a sized print's place against the quote — nothing more
     </text>
   </Figure>
 );
@@ -897,15 +890,15 @@ export const DarkPoolGuide = () => (
       <ShelfFigure />
     </Section>
     <Section title="The reads">
-      <p>Every cross carries what it is most likely doing: accumulation when size is bought on weakness, distribution when size is sold into strength, hedge flow when it printed on an options shelf, rotation when it is routine turnover. Conviction is how sure that read is: a bar in the read's ink with its number beside it.</p>
+      <p>Only a sized cross — 10,000 shares or $500K — carries a read: accumulation when it printed under the mid, distribution when over it, hedge flow when at it. A small cross carries none, and neither does a print priced by its own terms (average-price, contingent, derivative-priced): it is shown, never read.</p>
       <ReadFigure />
     </Section>
     <Section title="The posture and the cut">
-      <p>The posture weighs the sized crosses that build against the ones that leave. It names the side that leads, accumulating or distributing, and how far it leans in a word: strong, good or caution. When neither side leads it reads Balanced: a poor lean is no lean. The Read, Size and Where cards cut the grid; the head's "On this cut" and "Building · leaving" follow the cut, the posture and the off-exchange share are the whole session's.</p>
+      <p>The posture weighs the sized crosses that build against the ones that leave. It names the side that leads, accumulating or distributing, and how far it leans in a word: strong, good or caution. When neither side leads it reads Balanced: a poor lean is no lean. The Read, Size and Where cards cut the grid; the head's "On this cut" and "Building · leaving" follow the cut, the off-exchange share is the name's whole day; the posture reads the sized crosses in hand.</p>
       <InkFigure />
     </Section>
     <Section title="Where the dark money went">
-      <p>The second box is the whole market's dark tape — every name we file, by sector, the heaviest first. "% avg vol" is today's dark volume against the name's usual day; over 100% is unusual and wears the amber. A row, or a name in the sentence, puts that name on the box above.</p>
+      <p>The second box is the market's latest dark prints, collected while the page is open, by name, the heaviest first — its window is printed beside its total. A name typed above reads that name's whole day instead: its off-exchange share of the day's shares and its dark dollars, from the vendor's day by price. A row, or a name in the sentence, puts that name on the box above.</p>
     </Section>
   </div>
 );

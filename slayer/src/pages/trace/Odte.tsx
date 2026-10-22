@@ -38,6 +38,7 @@ import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import { isNetSegment, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
 import { useLiveBook, usePaneFlow } from '../../data/traceLive';
 import { fmtUsd } from '../../data/gex';
+import { nyClock } from '../../core/nyTime';
 import Lean from '../../components/trace/Lean';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
@@ -66,17 +67,21 @@ interface OdteStore {
   panes: PaneCfg[];
 }
 
-/* The default desk keeps its old four faces: the whole book, SPY, QQQ, the
-   stocks alone — SPY and QQQ now as picked NAMES, which is what they were. */
+/* THE DEFAULT DESK IS SAME-DAY MONEY ON EVERY PANE (the audit, 2026-10-22): the SPY and QQQ panes drew each name's money
+   across ALL expiries (the vendor has no same-day minute series for one name), and "Stocks only" drew nothing (the
+   vendor's equity_only same-day series is empty). The four faces are now the vendor's same-day cuts — everything, the
+   index funds, the index options — and SPY, labelled on its pane as every expiry. */
 const DEFAULT_STORE: OdteStore = {
   count: 4,
   panes: [
     { seg: 'all', mny: 'all', ticker: null },
+    { seg: 'index-funds', mny: 'all', ticker: null },
+    { seg: 'indexes', mny: 'all', ticker: null },
     { seg: 'all', mny: 'all', ticker: 'SPY' },
-    { seg: 'all', mny: 'all', ticker: 'QQQ' },
-    { seg: 'stocks', mny: 'all', ticker: null },
   ],
 };
+/** The cuts the vendor has same-day minutes for: no sector (a sector's tide spans every expiry) and no stocks-only */
+const SAME_DAY_CUTS = (seg: NetFlowSegment) => seg === 'all' || seg === 'index-funds' || seg === 'indexes';
 
 const MNYS: MoneynessKey[] = ['all', 'itm', 'otm', 'atm'];
 
@@ -102,7 +107,8 @@ function loadStore(): OdteStore {
       const cfg = Array.isArray(p.panes) ? (p.panes[i] as Partial<PaneCfg> & { seg?: string }) : undefined;
       if (!cfg) return d;
       const legacy = typeof cfg.seg === 'string' ? LEGACY[cfg.seg] : undefined;
-      const seg: NetFlowSegment = legacy?.seg ?? (isNetSegment(cfg.seg) ? cfg.seg : d.seg);
+      const stored: NetFlowSegment = legacy?.seg ?? (isNetSegment(cfg.seg) ? cfg.seg : d.seg);
+      const seg: NetFlowSegment = SAME_DAY_CUTS(stored) ? stored : d.seg;
       const ticker =
         legacy?.ticker ?? (typeof cfg.ticker === 'string' && /^[A-Z0-9.]{1,6}$/.test(cfg.ticker) ? cfg.ticker : null);
       return {
@@ -161,14 +167,17 @@ const Odte = () => {
   const last = flow.rows.length ? flow.rows[flow.rows.length - 1] : null;
   const ncp = last?.callPrem ?? 0;
   const npp = last?.putPrem ?? 0;
-  const todayCount = useMemo(() => book.filter(r => r.dte === 0).length, [book]);
+  /* the head's instant — the last minute the vendor has a figure for */
+  const asOf = last ? nyClock(last.time * 1000) : null;
   /* awake on MONEY, not on a timeline: a session of empty minutes read "leans bullish" on $0 against "+$0" */
   const awake = !!last && (ncp !== 0 || npp !== 0);
   const bullish = ncp - npp >= 0;
   // Signed on purpose — RichRead inks +$/-$ by direction (2026-08-30).
   const signed = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
+  /* ONE COLOUR RULE: net puts bought lean bearish — said in words and inked as the direction they lean, never a green "+" */
+  const putWords = (v: number) => (v >= 0 ? `bearish net puts bought ${fmtUsd(v)}` : `bullish net puts sold ${fmtUsd(Math.abs(v))}`);
   const read = awake
-    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} against net puts ${signed(npp)} on contracts expiring today${todayCount ? `, ${todayCount} of them on the book` : ''}.`
+    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} against ${putWords(npp)} on every contract expiring today, from the bell to ${asOf} ET.`
     : flow.fault
       ? 'This read did not land — the same-day minutes fill when the feed answers.'
       : 'The same-day money is still waking up.';
@@ -214,6 +223,7 @@ const Odte = () => {
         onTicker={ticker => setPane(i, { ticker })}
         searchNames={onTheComplex}
         searchDoor={door}
+        segments={SAME_DAY_CUTS}
         tick={tick}
         onExpand={() => setFsIdx(expanded ? null : i)}
         expanded={expanded}
@@ -252,8 +262,8 @@ const Odte = () => {
               {/* net puts bought lean bearish and wear red; sold, bullish and green (Lean's `put`) */}
               {awake ? <Lean v={npp} put /> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="Contracts" testId="contracts">
-              {todayCount || '—'} <span className="text-textSecondary">· expiring today</span>
+            <Fact label="As of" testId="as-of" title="The last minute the vendor's same-day series has a figure for">
+              {asOf ? `${asOf} ET` : '—'} <span className="text-textSecondary">· every contract expiring today</span>
             </Fact>
           </>
         }

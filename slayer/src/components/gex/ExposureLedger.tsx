@@ -44,6 +44,7 @@
 ==================================================
 */
 
+import { GREEK_EXPLAIN } from '../../data/compare';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import HeatPill from './HeatPill';
 import { HEAT_MODE, heatLaneColor, type HeatMode } from './heatmap';
@@ -902,7 +903,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   /* A ROW'S LEVEL IN THE STRIKE'S INK (strikeRole.ts, 2026-10-13): the words after the strike made the column as wide as
      its widest label; the strike carries its level in its ink and its underline, the words on its title */
   const roleOf = (strike: number) =>
-    strikeRole(strike, { supreme: supremeStrike, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flip, pin: pinStrike, owned: !!marks?.has(strike) });
+    strikeRole(strike, { supreme: supremeStrike, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? Number.NaN : levels.flip, pin: pinStrike, owned: !!marks?.has(strike) });
   const showStar = cellW >= 96;
   const book = peekEntry(surface.ticker);
 
@@ -1015,7 +1016,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
               /* min-w-0 and a cut: on a phone five groups of one 45px column overprinted each other's words (the audit's 2.13) */
               className={`sticky top-0 z-10 ${ground} ${narrowGroup ? 'px-0.5 tracking-wider' : 'px-2 tracking-widest'} flex items-center justify-center min-w-0 overflow-hidden font-mono text-[11px] font-bold uppercase text-textPrimary border-l border-borderSubtle`}
               style={{ gridColumn: `span ${shownIdx.length}` }}
-              title={`${GREEK_LABEL[g]} · ${GREEK_UNIT[g]}`}
+              title={`${GREEK_LABEL[g]} · ${GREEK_UNIT[g]} — ${GREEK_EXPLAIN[g]}`}
             >
               <span className="truncate">
                 {GREEK_LABEL[g]}

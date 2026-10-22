@@ -52,9 +52,10 @@ import { useBoardNames } from '../../data/boardNames';
 import { type NewsCategory } from '../../data/news';
 import { lookup } from '../../data/universe';
 import { buildRoomInsights, clusterByCity, freshnessOf, severityWord, type CityPing, type GeoNewsEvent, type NewsGrade } from '../../data/newsroom';
-import { useEconFeed, useNewsFeed } from '../../data/liveRecord';
+import { useEconFeed, useNewsCoverage, useNewsFeed } from '../../data/liveRecord';
+import { nyClock } from '../../core/nyTime';
 import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from '../../components/record/impactMark';
-import NewsFeedTabs, { keepInWindow } from '../../components/record/NewsFeedTabs';
+import NewsFeedTabs, { keepInWindow, nameWord } from '../../components/record/NewsFeedTabs';
 import NewsCalendar from '../../components/record/NewsCalendar';
 import { useMediaQuery } from '../../components/ui/useMediaQuery';
 import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from './recordSkeletons';
@@ -82,13 +83,13 @@ const CATEGORY_OPTIONS: DropdownOption<CategoryPick>[] = [
   { value: 'Regulatory', label: 'Regulatory', hint: 'Courts, agencies, probes' },
 ];
 const LEAN_OPTIONS: DropdownOption<LeanPick>[] = [
-  { value: 'any', label: 'Any lean', hint: 'Positive, negative and neutral stories' },
+  { value: 'any', label: 'Any lean', short: 'All', hint: 'Positive, negative and neutral stories' },
   { value: 'ALLY', label: 'Positive', hint: 'Stories the model reads as good for the name', tone: 'bull' },
   { value: 'THREAT', label: 'Negative', hint: 'Stories the model reads as bad for the name', tone: 'bear' },
   { value: 'WATCH', label: 'Neutral', hint: 'Stories with no clear direction yet' },
 ];
 const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
-  { value: 'all', label: 'Every name', hint: 'Every story on the wire' },
+  { value: 'all', label: 'Every name', short: 'All', hint: 'Every story on the wire' },
   { value: 'board', label: 'Your board', hint: 'Stories on the names on your Board' },
   { value: 'macro', label: 'Macro only', hint: 'Stories with no single name' },
 ];
@@ -283,7 +284,7 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
                     data-news-tape-item={half === 0 ? e.id : undefined}
                   >
                     <ImpactMark tier={tierOf(e.severity)} />
-                    <span className="font-mono text-[10px] font-bold text-textPrimary">{e.item.ticker ?? 'MACRO'}</span>
+                    <span className="font-mono text-[10px] font-bold text-textPrimary">{nameWord(e.item)}</span>
                     <span className="text-[11px] whitespace-normal">{e.item.headline}</span>
                     <span className="font-mono text-[9px] text-textMuted">{ago(e.item.minutesAgo)}</span>
                   </button>
@@ -428,6 +429,9 @@ const News = () => {
     return () => window.clearInterval(t);
   }, []);
   const news = useNewsFeed();
+  /* what the wire on the page covers: the whole day once the read has reached New York's midnight, else since when */
+  const coverage = useNewsCoverage();
+  const coverText = coverage.fromMs == null ? 'Reading the wire' : coverage.wholeDay ? 'Every story on the wire today' : `The wire since ${nyClock(coverage.fromMs)} ET${coverage.reading ? ', reading further back' : ''}`;
   const econ = useEconFeed();
   const events = useMemo(() => (news.status === 'live' ? news.events : []), [news, wireRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const calendar = useMemo(() => (econ.status === 'live' ? econ.events : []), [econ, wireRev]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -484,7 +488,7 @@ const News = () => {
     const nameCount = new Map<string, number>();
     const cityCount = new Map<string, number>();
     cut.forEach(e => {
-      const n = e.item.ticker ?? 'MACRO';
+      const n = e.item.ticker ?? nameWord(e.item);
       nameCount.set(n, (nameCount.get(n) ?? 0) + 1);
       /* a story with no city of its own is on no map pin — it is not a city named "" (the ship pass: it listed as "111") */
       if (e.origin.city) cityCount.set(e.origin.city, (cityCount.get(e.origin.city) ?? 0) + 1);
@@ -499,7 +503,7 @@ const News = () => {
     return [
       {
         title: 'Names on the wire',
-        options: [...nameCount.entries()].sort(byCountThenName).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: n === 'MACRO' ? 'Stories with no single name' : (lookup(n)?.name ?? (tickerName(n) !== n ? tickerName(n) : undefined)), count: c })),
+        options: [...nameCount.entries()].sort(byCountThenName).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: n === 'MACRO' ? 'Economy and market stories with no single name' : n === 'NO TICKER' ? 'Company stories the wire tagged with no ticker' : (lookup(n)?.name ?? (tickerName(n) !== n ? tickerName(n) : undefined)), count: c })),
       },
       {
         title: 'Cities on the map',
@@ -509,7 +513,7 @@ const News = () => {
   }, [cut, picks]);
   const rows = useMemo(() => {
     const picked = new Set(picks);
-    const kept = picked.size === 0 ? cut : cut.filter(e => picked.has(`name:${e.item.ticker ?? 'MACRO'}`) || picked.has(`city:${e.origin.city}`));
+    const kept = picked.size === 0 ? cut : cut.filter(e => picked.has(`name:${nameWord(e.item)}`) || picked.has(`city:${e.origin.city}`));
     const by: Record<Sort, (a: GeoNewsEvent, b: GeoNewsEvent) => number> = {
       newest: (a, b) => a.item.minutesAgo - b.item.minutesAgo,
       matters: (a, b) => {
@@ -623,7 +627,7 @@ const News = () => {
               <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">The wire</h3>
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the pins, the flags and the numbers mean" testId="news-guide" />
             </div>
-            <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every story on the wire today · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
+            <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" data-news-coverage>{coverText} · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Stories" testId="stories" tip="Headlines on the wire after the cards and the filter">
@@ -753,7 +757,7 @@ const News = () => {
                       <span className="font-mono text-[12px] font-bold text-textPrimary group-hover:underline underline-offset-2">{selected.item.ticker}</span>
                     </button>
                   ) : (
-                    <span className="font-mono text-[12px] font-bold text-textPrimary">MACRO</span>
+                    <span className="font-mono text-[12px] font-bold text-textPrimary">{nameWord(selected.item)}</span>
                   )}
                   <NewsFlag major={selected.item.major} onBoard={onBoard(selected)} lean={leanOf(selected.grade)} />
                   <CatTag category={selected.item.category} size={9} />
@@ -863,7 +867,7 @@ const News = () => {
         <div ref={rowsRef} className={`relative border-t border-borderSubtle overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
           {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
             <span title="When the headline crossed, New York time">Time</span>
-            <span title="The first stock the headline names; MACRO when it names none">Name</span>
+            <span title="The first stock the headline names; MACRO for an economy or market story that names none; NO TICKER for a company story the wire left untagged">Name</span>
             <span title="What sort of story it is, read from the headline">Kind</span>
             <span title={NEWS_FLAG_TIP}>Flag</span>
             <span className="flex items-center gap-4">
@@ -906,7 +910,7 @@ const News = () => {
                         {e.item.ticker}
                       </span>
                     ) : (
-                      <span className="text-textSecondary">MACRO</span>
+                      <span className="text-textSecondary">{nameWord(e.item)}</span>
                     )}
                     <span>·</span>
                     <CatTag category={e.item.category} size={9} />
@@ -934,7 +938,7 @@ const News = () => {
                       {e.item.ticker}
                     </>
                   ) : (
-                    <span className="text-textSecondary">MACRO</span>
+                    <span className="text-textSecondary">{nameWord(e.item)}</span>
                   )}
                 </span>
                 <span className="min-w-0 h-5 flex items-center">
@@ -962,7 +966,7 @@ const News = () => {
       <div className="border border-borderSubtle rounded-md bg-panel" data-news-all>
         <div className="px-5 pt-4 pb-3">
           <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">All news</h3>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every headline on the wire, newest first · a tab per kind · follow a name and ring the bell on it · a click opens the story beside the map</p>
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The same wire as above, a tab per kind — it opens on the earnings stories; All repeats the list above · follow a name and ring the bell on it · a click opens the story beside the map</p>
         </div>
         <div className="border-t border-borderSubtle">
           <NewsFeedTabs events={events} calendar={calendar} selectedId={selectedId} onPick={pick} />

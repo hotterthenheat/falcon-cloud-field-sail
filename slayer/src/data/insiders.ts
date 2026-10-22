@@ -100,10 +100,12 @@ function universeRosters(): Map<string, Officer[]> {
 /** A company's roster — a name outside the universe gets one drawn on the spot */
 export const rosterOf = (ticker: string): Officer[] => universeRosters().get(ticker) ?? Array.from({ length: ROSTER }, (_, i) => ({ person: draw(ticker, i, 0), role: roleAt(i) }));
 
-/** An OPEN-MARKET buy someone chose — a purchase inside a plan is not one */
+/** An OPEN-MARKET buy someone chose: the filing ticked "not a 10b5-1 plan". A buy on a plan is not one, and neither is a
+    buy whose filing left the box blank — the row reads UNSTATED, so the sums do not count it as chosen either (the data
+    audit, 2026-10-22: unstated buys were summed as chosen while their rows said "unstated"). */
 export const isChosenBuy = (t: { code: TxCode; plan: PlanState }): boolean => {
   const m = TX_CODES[t.code];
-  return m.openMarket && m.acquires && m.discretionary && t.plan !== 'plan';
+  return m.openMarket && m.acquires && m.discretionary && t.plan === 'discretionary';
 };
 
 const EMPTY: InsiderFlow = { ticker: '', trades: [], bought: 0, sold: 0, net: 0, plannedValue: 0, compValue: 0, buyerCluster: 0, openMarketBuys: 0, signal: 'quiet', windowDays: 0 };
@@ -237,9 +239,16 @@ export function insidersSentence(rows: InsiderTrade[], windowDays: number): stri
   const planned = sales.filter(t => t.plan === 'plan');
   const buyValue = chosenBuys.reduce((s, t) => s + t.value, 0);
   const saleValue = sales.reduce((s, t) => s + t.value, 0);
-  const names = [...new Set(chosenBuys.map(t => t.ticker))].slice(0, 4);
+  /* the LARGEST names by chosen dollars, not the newest filings (the retail pass: "$1.1B in AGMB, ECF, RAPP, FBK and
+     more" named four small recent buys), and "and more" only when there are more names than are named (GME alone read
+     "$99.2M in GME and more") */
+  const byName = new Map<string, number>();
+  for (const t of chosenBuys) byName.set(t.ticker, (byName.get(t.ticker) ?? 0) + t.value);
+  const ranked = [...byName.entries()].sort((a, b) => b[1] - a[1]);
+  const names = ranked.slice(0, 4).map(([n]) => n);
+  const rest = ranked.length - names.length;
   const parts: string[] = [];
-  if (chosenBuys.length) parts.push(`${chosenBuys.length} ${chosenBuys.length === 1 ? 'purchase' : 'purchases'} someone chose to make, ${fmtM(buyValue)} in ${names.join(', ')}${chosenBuys.length > names.length ? ' and more' : ''} — the rows on this page with one obvious motive.`);
+  if (chosenBuys.length) parts.push(`${chosenBuys.length} ${chosenBuys.length === 1 ? 'purchase' : 'purchases'} someone chose to make, ${fmtM(buyValue)} — the most in ${names.join(', ')}${rest > 0 ? ` and ${rest} more ${rest === 1 ? 'name' : 'names'}` : ''}. These are the rows on this page with one obvious motive.`);
   else parts.push('No insider chose to buy in this window.');
   if (sales.length) {
     const pct = Math.round((planned.length / sales.length) * 100);

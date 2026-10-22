@@ -66,7 +66,7 @@ import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useLevelsScope } from '../../data/levelsScope';
 import ColumnFacts from './ColumnFacts';
 import { roomLevels } from '../../data/roomLevels';
-import { expirySpan, levelsBook } from '../../data/bookWindow';
+import { expirySpan, levelsBook, levelsDate, levelsWords } from '../../data/bookWindow';
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
@@ -1048,7 +1048,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
 
   const supremeGreek: Greek = greeks[0] ?? 'gex';
   /* the Levels card's contracts, in a word, for the supreme door */
-  const levelsLabel = levelsScope === 'ALL' ? 'all expiries' : 'today';
+  /* the ACTUAL expiry the scope reads (the retail test: "SUPREME · TODAY" on NVDA/AAPL, whose levels read Oct 23) —
+     "today · Oct 22", "Oct 23 · next expiry", "all expiries" */
+  const levelsLabel = snapshot ? levelsWords(snapshot, levelsScope).replace(/^Today/, 'today').replace(/^All expiries/, 'all expiries') : levelsScope === 'ALL' ? 'all expiries' : 'today';
   /* the book's strikes either side of spot — the Strikes menu's counts */
   const bookAbove = surface ? surface.strikes.filter(k => k >= surface.spot).length : WHOLE_BOOK;
   const bookBelow = surface ? surface.strikes.filter(k => k < surface.spot).length : WHOLE_BOOK;
@@ -1226,6 +1228,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           read, and 150px of every row */}
     </>
   );
+  /* THE MATRIX AND THE LEVELS READ DIFFERENT CONTRACTS, SAID WHERE IT MATTERS (the retail test, 2026-10-22: row 764 read
+     −$378.7M summed over "Oct 22 → Nov 2" beside "SUPREME · TODAY 764 · −$245.7M", with the note tiny at the foot) */
+  const lvDate = snapshot ? levelsDate(snapshot, levelsScope) : null;
+  const allListed = (snapshot?.uwExpiries ?? []).filter(e => snapshot?.uwByDate?.[e.date]?.length).length;
+  const scopeDiffers = chosenDates.length > 0 && (levelsScope === 'ALL' ? chosenDates.length < allListed : !(chosenDates.length === 1 && chosenDates[0] === lvDate));
   const supremeDoor = (
     <button
       onClick={() => onSelectStrike?.(supreme.strike)}
@@ -1241,6 +1248,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {/* the window it is crowned over, said on the door — the Agenda and the Board crown the Levels card's (today's), so
           a wider window here can name another strike (the UI sweep, 2026-10-22) */}
       <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && supremeGreek === 'gex' && <span className="text-textMuted/70"> · {levelsLabel}</span>}</span>
+      {scopeDiffers && supremeGreek === 'gex' && !doorCompact('supreme') && (
+        <span className="text-[10px] text-warn whitespace-nowrap" title={`The matrix rows add up ${expirySpan(chosenDates)} (the Expiries card); the supreme, the walls, the flip and this figure read ${levelsLabel} (the Levels card) — so the row's own figure can differ`} data-supreme-scope-differs>
+          · matrix {expirySpan(chosenDates)}
+        </span>
+      )}
       <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
         {fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}
@@ -1890,7 +1902,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           {/* WHICH CONTRACTS, SAID (the ship pass, 2026-10-22): the figures are the Expiries card's dates summed; the
               supreme and the walls marked on them are the Levels card's — the Board's — so the two can differ */}
           {chosenDates.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-textMuted/80" title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show." data-legend-scope>
+            <span className={`inline-flex items-center gap-1.5 ${scopeDiffers ? 'text-textSecondary font-semibold' : 'text-textMuted/80'}`} title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show." data-legend-scope>
               figures: {expirySpan(chosenDates)} · levels: {levelsLabel}
             </span>
           )}

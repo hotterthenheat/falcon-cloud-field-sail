@@ -40,6 +40,10 @@ import CardTabs from '../ui/CardTabs';
 import CompanyLogo from '../ui/CompanyLogo';
 import TickerLookup from '../ui/TickerLookup';
 import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './impactMark';
+
+/** The name column's word for a story with no ticker: MACRO only for an economy or market story — a company story the
+    wire left untagged is not macro (the retail pass, 2026-10-22: Moderna, Global Payments and Zurn all read MACRO) */
+export const nameWord = (item: { ticker: string | null; category: string }): string => item.ticker ?? (item.category === 'Macro' ? 'MACRO' : 'NO TICKER');
 import { useBoardNames } from '../../data/boardNames';
 
 export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals';
@@ -56,7 +60,9 @@ const leanOf = (g: NewsGrade): 'positive' | 'negative' | null => (g === 'ALLY' ?
 export const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
 const signed = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
 /** The tab in hand outlives the page — back from a story's page, the reader lands on the tab they left */
-let tabMemory: FeedTab = 'all';
+/* it opens on a kind, not on "All" — the wire box above already lists every story, and the two boxes opened on the same
+   list, every headline twice on the page (the retail pass, 2026-10-22) */
+let tabMemory: FeedTab = 'earnings';
 
 /** Scroll a window so the row it names is in view — the window alone, never the page (scrollIntoView would move both) */
 export function keepInWindow(box: HTMLElement | null, rowSelector: string | null): void {
@@ -209,7 +215,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
       <div ref={windowRef} className="relative overflow-y-auto overscroll-contain max-lg:overflow-x-auto" style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined}>
       <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
         <span title="When the headline crossed, New York time">Time</span>
-        <span title="The first stock the headline names; MACRO when it names none">Name</span>
+        <span title="The first stock the headline names; MACRO for an economy or market story that names none; NO TICKER for a company story the wire left untagged">Name</span>
         <span title="What sort of story it is, read from the headline">Kind</span>
         <span title={NEWS_FLAG_TIP}>Flag</span>
         <span className="flex items-center gap-4">
@@ -273,7 +279,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
                   {ringing.has(e.item.ticker) && <Bell className="w-2.5 h-2.5 text-silver" aria-label="the bell rings on this name" data-feed-bell />}
                 </>
               ) : (
-                <span className="text-textSecondary">MACRO</span>
+                <span className="text-textSecondary">{nameWord(e.item)}</span>
               )}
             </span>
             <span className="min-w-0 h-5 flex items-center">

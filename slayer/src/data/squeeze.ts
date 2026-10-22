@@ -25,7 +25,8 @@
 
 import type { ShortRow } from './fileBooks';
 
-export type SqueezeWord = 'weak' | 'building' | 'strong';
+/** 'fund': an ETF or other fund — not a squeeze candidate at all */
+export type SqueezeWord = 'weak' | 'building' | 'strong' | 'fund';
 
 export interface SqueezeFact {
   /** Plain words, e.g. "24% of the float is short" */
@@ -79,6 +80,14 @@ export function shortChangePct(row: ShortRow): number | null {
 }
 
 export function squeezeRead(row: ShortRow, extras: SqueezeExtras = {}): SqueezeRead {
+  const asOfFund = [...row.history].sort((a, b) => b.report.localeCompare(a.report))[0]?.report?.slice(0, 10) ?? null;
+  /* A FUND IS NOT A SQUEEZE (the data audit, 2026-10-22): HYG and KBE read "squeeze building" — an ETF's short interest
+     is market makers' creation and hedging, met by issuing new shares, so the rule does not apply to it at all */
+  if (row.fund) {
+    const expectedF = latestPublishedSettlement();
+    const staleF = asOfFund ? Date.parse(`${asOfFund}T12:00:00Z`) < Date.parse(`${expectedF}T12:00:00Z`) - 3 * 86_400_000 : false;
+    return { word: 'fund', points: 0, facts: [{ text: 'a fund — new shares are created to meet shorts, so no squeeze read', points: 0 }], asOf: asOfFund, stale: staleF };
+  }
   const facts: SqueezeFact[] = [];
   const quiet: SqueezeFact[] = [];
   const add = (points: number, text: string, quietText?: string) => {
@@ -112,7 +121,7 @@ export function squeezeRead(row: ShortRow, extras: SqueezeExtras = {}): SqueezeR
   return { word, points, facts: shown, asOf, stale };
 }
 
-export const SQUEEZE_INK: Record<SqueezeWord, string> = { weak: 'text-textSecondary', building: 'text-warn', strong: 'text-bear' };
+export const SQUEEZE_INK: Record<SqueezeWord, string> = { weak: 'text-textSecondary', building: 'text-warn', strong: 'text-bear', fund: 'text-textMuted' };
 
 export const SQUEEZE_TIP =
-  'A rule-based read, not a forecast. Points: short interest ≥20% of float 2 (≥10% 1) · days to cover ≥7 2 (≥4 1) · borrow fee ≥20%/yr 2 (≥5% 1) · under 1M shares left to borrow 1 · shares short up 10%+ since the prior report 1. Strong: 5+ points with 10%+ of the float short. Building: 3+ points or 15%+ short. Weak: the rest.';
+  'A rule-based read, not a forecast. Points: short interest ≥20% of float 2 (≥10% 1) · days to cover ≥7 2 (≥4 1) · borrow fee ≥20%/yr 2 (≥5% 1) · under 1M shares left to borrow 1 · shares short up 10%+ since the prior report 1. Strong: 5+ points with 10%+ of the float short. Building: 3+ points or 15%+ short. Weak: the rest. A fund (an ETF) gets no read: its shorts are met by creating new shares.';

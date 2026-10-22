@@ -9,7 +9,8 @@
 */
 
 import { fmtUsd } from './gex';
-import { pickFlip, pickWalls } from '../core/walls';
+import { pickWalls } from '../core/walls';
+import { levelFlip } from './flipLevel';
 import { airPocketZones, findAirPockets } from './airPockets';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import type {
@@ -97,6 +98,9 @@ export function strikeVolume(ticker: string, strike: number, oi: number): number
   return Math.round(oi * (0.2 + h01(`${ticker}-${strike}-tvol`) * 0.7));
 }
 
+/** How near price a long-gamma strike must sit to be called a pin, as a share of spot */
+const PIN_NEAR = 0.01;
+
 // ---- top-level build ----------------------------------------------------------
 export function buildExposureProfile(
   snapshot: MarketSnapshot,
@@ -128,6 +132,12 @@ export function buildExposureProfile(
     }
   }
 
+  /* A PIN IS A LONG-GAMMA STRIKE NEAR PRICE (the retail test, 2026-10-22: "CALL WALL · GAMMA PIN 776" on a book that
+     amplified, 2% away): dealers long gamma there pull price back to it, and only within reach. The most open interest
+     elsewhere is just that — no surface names it a pin. */
+  const pinNode = chain.find(n => n.strike === pinStrike);
+  const pinFound = pinOI > 0 && !!pinNode && pinNode.netGex < 0 && Math.abs(pinStrike - spot) <= spot * PIN_NEAR;
+
   const flowVol = new Map<number, number>();
   if (snapshot.liveBook) {
     for (const n of snapshot.uwChains?.ALL ?? snapshot.chain) {
@@ -158,7 +168,7 @@ export function buildExposureProfile(
     const oi = n.callOI + n.putOI;
     const traded = flowVol.get(n.strike);
     const volume = traded != null ? traded : snapshot.liveBook ? 0 : strikeVolume(ticker, n.strike, oi);
-    return { strike: n.strike, pin: pinOI > 0 && n.strike === pinStrike, gex, dex, vex, vanna, charm, oi, volume };
+    return { strike: n.strike, pin: pinFound && n.strike === pinStrike, gex, dex, vex, vanna, charm, oi, volume };
   });
 
   // Aggregates
@@ -198,7 +208,11 @@ export function buildExposureProfile(
      hand-synced nearest-to-spot transcriptions (unified 2026-08-18), which is
      the arrangement whose walls equivalent failed. `?? spot` keeps this
      function's own no-crossing fallback exactly as it was. */
-  const flip = pickFlip(chain, spot, n => n.netGex) ?? spot;
+  /* THE FLIP IS WHERE THE BOOK'S NET GAMMA CROSSES ZERO (the Pinpoint audit, 2026-10-22) — re-priced at each
+     hypothetical spot off these same contracts (data/flipLevel.ts), not the per-strike sign change nearest spot. None
+     within ±10% is carried as `flipFound: false`; the number then holds spot only as a placeholder. */
+  const flipRead = levelFlip(snapshot, chain);
+  const flip = flipRead.flip ?? spot;
 
   // The book's supreme — argmax |net gamma| over the FULL chain, not the window.
   // A windowed argmax answers "the biggest bar currently drawn", which moves
@@ -214,7 +228,7 @@ export function buildExposureProfile(
     }
   }
 
-  const levels: ExposureLevels = { spot, callWall, putWall, pin: pinStrike, flip, supreme };
+  const levels: ExposureLevels = { spot, callWall, putWall, pin: pinStrike, pinFound, flip, flipFound: flipRead.flip != null, net: flipRead.netAtSpot, supreme };
 
   // Zone bands (strikes descending: from ≥ to). One row of breathing room per wall.
   const strikeList = strikes.map(s => s.strike);
@@ -257,17 +271,15 @@ export function buildExposureProfile(
   // Insight narrative — levels translated to English
   const fmtK = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
   const inFriction = spot > putWall && spot < callWall;
+  /* every strike of the contracts, not the window — the one net the Board, Compare and the Map print */
+  const retailNet = flipRead.netAtSpot === 0 ? 0 : -flipRead.netAtSpot;
   const insights = [
-    // Above the flip the book is call-dominant and absorbs; below it, put
-    // gamma dominates and dealer hedging amplifies. That spatial fact is what
-    // the flip IS — the aggregate sign only says which side outweighs.
-    `Net GEX is ${netGex > 0 ? 'positive' : 'negative'} (${fmtUsd(netGex)}) — ${
-      netGex > 0 ? 'put gamma dominates and hedging amplifies moves' : 'call gamma dominates and hedging absorbs dips'
-    }. Above ${fmtK(flip)} dealers dampen the tape; below it they chase it.`,
+    /* the regime is the SIGN of net gamma, printed in the retail sign; the flip is where that sign changes */
+    `Net GEX is ${retailNet > 0 ? '+' : retailNet < 0 ? '−' : ''}${fmtUsd(Math.abs(retailNet))} — dealers are ${retailNet > 0 ? 'long gamma, so their hedging absorbs moves' : 'short gamma, so their hedging amplifies moves'}. ${flipRead.flip != null ? `The flip is ${fmtK(flipRead.flip)}, where that changes.` : 'There is no flip within ±10%.'}`,
     inFriction
       ? `Price sits between key levels (${fmtK(putWall)} – ${fmtK(callWall)}) inside the friction zone.`
       : `Price is ${spot >= callWall ? 'above the call wall' : 'below the put wall'} — outside the friction zone.`,
-    `Strongest dealer support sits at ${fmtK(pinStrike)} (pin level).`,
+    pinFound ? `Price is pinned toward ${fmtK(pinStrike)}: the most open interest, with dealers long gamma there.` : `The most open interest in the window sits at ${fmtK(pinStrike)}.`,
     `A break below ${fmtK(putWall)} shifts pressure toward ${fmtK(putWall - step * 2)}.`,
     `A break above ${fmtK(callWall)} opens quick supply up to ${fmtK(callWall + step * 2)}.`,
   ];

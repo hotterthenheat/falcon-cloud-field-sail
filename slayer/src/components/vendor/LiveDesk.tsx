@@ -489,8 +489,12 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const pain = painRows[0];
   const painLine = stamps(painRows, 'expiry', [{ key: 'max_pain', name: 'Max pain', ink: SILVER_FILL }]);
   const bookFlow = series(taken(book, 'greek-flow'));
-  const nopeWaiting = windowed && (summed == null || bookFlow.length === 0);
-  const nopeSrc = nopeWaiting ? [] : windowed && summed ? nopeForWindow(series(taken(book, 'nope')), bookFlow, summed) : series(taken(book, 'nope'));
+  /* THE VENDOR'S NOPE, AS PRINTED (the retail test, 2026-10-22: the Map read "NOPE −2.81" against the vendor's last
+     −3.00 — it was scaled by the window's share of the volume, a figure the vendor never printed). NOPE is the whole
+     name's; the head says so rather than deriving a per-window one. */
+  void nopeForWindow;
+  const nopeWaiting = false;
+  const nopeSrc = series(taken(book, 'nope'));
   const nopeLine = stamps(thin(cutAt(nopeSrc, at)), 'timestamp', [{ key: 'nope', name: 'NOPE', ink: BULL }]);
   const nopePts = nopeLine[0]?.pts ?? [];
   const lastNope = nopePts.length ? nopePts[nopePts.length - 1].v : null;
@@ -516,16 +520,13 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
     <div className="min-w-0 border border-borderSubtle rounded-md bg-panel overflow-hidden" data-reading="session" data-scope-ticker={ticker} data-reading-window={span ?? 'all'}>
       <div className="px-4 min-h-9 py-1 flex items-center gap-x-4 gap-y-1 flex-wrap">
         <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">{ticker}</h3>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">Max pain</span>
+        {/* MAX PAIN IS ONE EXPIRY'S — named for the date it is (it read "Window Oct 22" as if it were the window's) */}
+        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={pain ? `Max pain for the ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry — the nearest one in the window; each expiry has its own (the chart below)` : undefined}>
+          <span className="text-[11px] uppercase tracking-wider text-textMuted">Max pain{pain ? ` · ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry` : ''}</span>
           <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? String(pain.max_pain ?? '—') : waiting ? '…' : '—'}</span>
         </span>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">{windowed ? 'Window' : 'Front'}</span>
-          <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? shortDay(String(pain.expiry ?? '').slice(0, 10)) : '—'}</span>
-        </span>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">NOPE</span>
+        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title="The vendor's NOPE for the whole name (every expiry), as printed — not split by the window">
+          <span className="text-[11px] uppercase tracking-wider text-textMuted">NOPE · whole name</span>
           <span className="text-[12px] font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : nopeWaiting || waiting ? '…' : '—'}</span>
         </span>
       </div>
@@ -543,7 +544,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       ) : null}
       {chartable(nopeLine) ? (
         <>
-          <Head title="NOPE" rest={windowed ? (span ?? 'This window') : 'Net options pricing effect'} />
+          <Head title="NOPE" rest="Net options pricing effect · the vendor's, whole name" />
           <HouseChart lines={nopeLine} />
         </>
       ) : null}

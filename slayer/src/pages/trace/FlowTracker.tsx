@@ -50,6 +50,7 @@ import type { DarkPoolPrint } from '../../types/darkpool';
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
 import { useLiveBook } from '../../data/traceLive';
+import { nyParts } from '../../core/nyTime';
 import { ensureBook, peekSpot, useBookRev } from '../../data/uwBook';
 import { fmtUsd } from '../../data/gex';
 import type { BookContract } from '../../types/trace';
@@ -83,13 +84,13 @@ const SOURCE_LABEL: Record<WatchSource, string> = {
   'dark-pool': 'Dark pool',
 };
 
-/** "14:22" today, "09/02 14:22" for an older mark — the house's 24-hour clock. */
+/** "14:22 ET" today, "09/02 14:22 ET" for an older mark — New York's 24-hour clock, whatever the machine's zone */
 function markedAt(ms: number): string {
-  const d = new Date(ms);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const today = new Date();
-  const sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-  return sameDay ? hm : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${hm}`;
+  const d = nyParts(new Date(ms));
+  const t = nyParts(new Date());
+  const hm = `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')} ET`;
+  const sameDay = d.year === t.year && d.month === t.month && d.day === t.day;
+  return sameDay ? hm : `${String(d.month).padStart(2, '0')}/${String(d.day).padStart(2, '0')} ${hm}`;
 }
 
 /** The lean as the Lean cell would say it, in its ink — for a then → now pair. */

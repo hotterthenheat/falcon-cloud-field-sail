@@ -194,7 +194,8 @@ const OptionsScreener = () => {
   }, [screenQuery]);
 
   const unusual = screen === 'bullish' || screen === 'fresh' || screen === 'conviction-calls';
-  const hottest = useContracts(false, screen === 'active' ? 'stock' : null);
+  /* MOST ACTIVE IS ASKED BY VOLUME (the audit, 2026-10-22: it asked the vendor for premium order under "heaviest volume first") */
+  const hottest = useContracts(false, screen === 'active' ? 'stock' : null, screen === 'active' ? 'volume' : 'premium');
   const unusualBook = useContracts(true);
   const pack = unusual ? unusualBook : hottest;
   const liveBook = pack.rows;
@@ -238,7 +239,7 @@ const OptionsScreener = () => {
   const sentence = useMemo(() => {
     if (rows.length === 0) return 'Nothing on this cut.';
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-    return `${fmtUsd(facts.prem)} across ${plural(rows.length, 'contract', 'contracts')} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract', 'contracts')} trading past ${facts.fresh === 1 ? 'its' : 'their'} open interest.`;
+    return `${fmtUsd(facts.prem)} across ${plural(rows.length, 'contract', 'contracts')} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest today.`;
   }, [rows.length, facts]);
   /* AN EMPTY CUT NAMES THE CARDS THAT EMPTIED IT */
   const emptyText = useMemo(() => {
@@ -345,16 +346,24 @@ const OptionsScreener = () => {
           ),
       },
       { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`font-mono tnum ${r.volOverOI >= 1.5 ? 'font-bold text-textPrimary' : 'text-textPrimary'}`}>{r.volOverOI.toFixed(2)}</span> },
-      { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{r.sweepPct}%</span> },
-      { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{r.floorPct}%</span>) },
-      { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{r.multiPct}%</span> },
+      { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.sweepPct)}%</span> },
+      { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{Math.round(r.floorPct)}%</span>) },
+      { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.multiPct)}%</span> },
       { key: 'lean', header: 'Lean', align: 'right', sortValue: r => r.askPct, render: r => <LeanCell askPct={r.askPct} /> },
       { key: 'sector', header: 'Sector', sortValue: r => r.sector ?? '', render: r => <SectorName sector={r.sector} /> },
     ],
     [marks]
   );
 
-  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols');
+  /* SEVENTEEN COLUMNS DID NOT FIT AT 1440 (the audit, 2026-10-22): the floor share, the multi-leg share and the sector open
+     folded — one click away in Columns */
+  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols_v2', ['floor', 'multi', 'sector']);
+  /* WHAT THE BOOK IS (the audit: "every contract that traded today" headed the vendor's top 200) */
+  const pool = unusual
+    ? "the vendor's 200 unusual contracts with the most premium today"
+    : screen === 'active'
+      ? 'the 200 single-stock contracts with the most volume today'
+      : 'the 200 contracts with the most premium today';
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
   const screenOptions = useMemo<DropdownOption<ScreenKey>[]>(() => FLOW_SCREENS.map(s => ({ value: s.key, label: s.label, hint: s.hint })), []);
   const tenorGroups = useMemo(() => [{ title: 'Tenor', options: SLEEVES.map(s => ({ value: s.key, label: s.label, hint: s.blurb })) }], []);
@@ -364,8 +373,9 @@ const OptionsScreener = () => {
     <>
       <TraceBox
         title="The book"
-        sub={`${activeScreen.label} — ${activeScreen.hint} · every contract that traded today · a row opens the contract's card`}
+        sub={`${activeScreen.label} — ${activeScreen.hint} · ${pool} · a row opens the contract's card`}
         testId="screener"
+        foldOnPhone
         data={{ screen, rows: rows.length, expiry: expiry ?? 'all' }}
         guide={{ title: 'How to read the book', door: 'What a row, the inks and the shares mean', body: <ScreenerGuide />, testId: 'screener-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
@@ -383,7 +393,7 @@ const OptionsScreener = () => {
             <Fact label="Contracts" testId="contracts">
               {num(rows.length)} <span className="text-textSecondary">· {facts.names} names</span>
             </Fact>
-            <Fact label="Built today" testId="fresh" title="Contracts trading past their open interest">
+            <Fact label="Vol ≥ 1.5× OI" testId="fresh" title="Contracts on this cut whose volume today is at least 1.5 times their open interest — positions likely built today">
               {facts.fresh}
             </Fact>
             {champs.call && champs.call !== champs.all && (

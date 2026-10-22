@@ -1,5 +1,6 @@
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { bookToday, isoDate } from '../core/calendar';
+import { registerChainDates } from './chainDates';
 
 /*
 ==================================================
@@ -66,7 +67,10 @@ export function chainForDates(snapshot: MarketSnapshot, dates: readonly string[]
       else add(cur, n);
     }
   }
-  return [...acc.values()].sort((a, b) => a.strike - b.strike);
+  const out = [...acc.values()].sort((a, b) => a.strike - b.strike);
+  /* the flip re-prices each date at its own clock — it has to know which dates this sum is (data/chainDates.ts) */
+  registerChainDates(out, dates.filter(d => by[d]?.length));
+  return out;
 }
 
 /**

@@ -65,6 +65,10 @@ export interface EarningsEvent {
   iso?: string;
   /** False until the last prints are in. Absent on the sample, which already has them. */
   history?: boolean;
+  /** True once the report is out (its day has passed, or the vendor carries the session's reaction) */
+  reported?: boolean;
+  /** The stock's move the session after the report, signed % — the vendor's `reaction`, null until it is in */
+  actualMovePct?: number | null;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

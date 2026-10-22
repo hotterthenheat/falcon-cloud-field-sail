@@ -1,8 +1,8 @@
-import Simulator from '../core/simulator';
 import { pickFlip } from '../core/walls';
 import { buildExposureProfile } from './exposure';
 import { sessionBars } from './levelview';
-import { bookHistory } from './uwBook';
+import { levelFlip, regimeOfNet } from './flipLevel';
+import { levelTicks } from './levelRecord';
 import type { Candle, GexSnapshot, MarketSnapshot } from '../types/market';
 
 /*
@@ -106,39 +106,35 @@ export function countFlipCrossings(candles: readonly Candle[], snaps: readonly G
 
 export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
   const { ticker, spot, chain } = snapshot;
-  const flip = pickFlip(chain, spot, n => n.netGex);
-
+  /* THE ONE FLIP (data/flipLevel.ts): where the book's net gamma, re-priced at that price, crosses zero — off the
+     snapshot's own levels chain. THE REGIME IS THE SIGN OF NET GAMMA AT SPOT, never the side of the flip: on a book
+     whose net is long gamma "price below the flip" said "amplifying" beside a green net (the retail test, 2026-10-22:
+     MSFT "amplifying moves" next to "Net GEX +$140.4M"). */
+  const read = levelFlip(snapshot, chain);
+  const flip = read.flip;
   const base: FlipGauge = {
     spot,
     flip,
-    regime: flip === null ? null : spot >= flip ? 'LONG' : 'SHORT',
+    regime: regimeOfNet(read.netAtSpot),
     distAbs: flip === null ? null : flip - spot,
     distPct: flip === null || spot === 0 ? null : ((flip - spot) / spot) * 100,
     crossings: null,
     bars: 0,
   };
 
+  /* CROSSED TODAY IS THE MAP'S COUNT: the same flip, the same cash-session bars and the same test rule the Map's level
+     report reads (data/levelRecord.ts levelTicks) — the per-bar flips off the volume-walked history counted something
+     else (TSLA 1× on the Board against 11 on the Map) */
   const candles = sessionBars(ticker) ?? [];
-  const snaps = bookHistory(ticker) ?? Simulator.getGexHistory(ticker);
-  if (!candles?.length || !snaps?.length) return base;
-
-  /* The tail both series cover, capped at one session — the same alignment
-     buildDrift (data/vannacharm.ts) reads its timeline through. */
-  const n = Math.min(SESSION_BARS, candles.length, snaps.length);
-  if (n < GAUGE_MIN_BARS) return { ...base, bars: n };
-
-  return {
-    ...base,
-    crossings: countFlipCrossings(candles.slice(candles.length - n), snaps.slice(snaps.length - n)),
-    bars: n,
-  };
+  if (flip === null || candles.length < GAUGE_MIN_BARS) return { ...base, bars: candles.length };
+  return { ...base, crossings: levelTicks(candles, flip, flip >= spot ? 'call' : 'put').length, bars: candles.length };
 }
 
 /** The words the strip prints for a regime — one place, so the strip and its
     accessible name cannot drift apart. */
 export const REGIME_WORDS: Record<GammaRegime, { label: string; blurb: string }> = {
-  SHORT: { label: 'SHORT GAMMA', blurb: 'below the flip — dealer hedging amplifies moves' },
-  LONG: { label: 'LONG GAMMA', blurb: 'above the flip — dealer hedging absorbs moves' },
+  SHORT: { label: 'SHORT GAMMA', blurb: 'net gamma is negative here — dealer hedging amplifies moves' },
+  LONG: { label: 'LONG GAMMA', blurb: 'net gamma is positive here — dealer hedging absorbs moves' },
 };
 
 /*

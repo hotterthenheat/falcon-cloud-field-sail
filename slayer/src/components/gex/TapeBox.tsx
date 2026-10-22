@@ -155,9 +155,11 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       if (!l) return [];
       const all: Level[] = [
         { key: 'callWall', word: 'Call wall', ink: CALL_WALL, price: l.callWall },
-        { key: 'flip', word: 'Flip', ink: FLIP, price: l.flip },
+        /* no crossing within ±10% is no flip — no line is drawn at a placeholder */
+        { key: 'flip', word: 'Flip', ink: FLIP, price: l.flipFound === false ? Number.NaN : l.flip },
         { key: 'putWall', word: 'Put wall', ink: PUT_WALL, price: l.putWall },
-        { key: 'pin', word: 'Pin', ink: INK_3, price: l.pin },
+        /* a pin only where dealers are long gamma and price is near (data/exposure.ts) */
+        { key: 'pin', word: 'Pin', ink: INK_3, price: l.pinFound === false ? Number.NaN : l.pin },
         { key: 'supreme', word: 'Supreme', ink: SUPREME, price: l.supreme },
       ];
       return all.filter(x => Number.isFinite(x.price));
@@ -188,7 +190,12 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   /* THE FLIP'S PATH (idea 2, 2026-10-13): the flip of each minute's own book, paired to the bars by time. A closed
      minute's book never changes, so its flip is worked out once (kept by the book itself) — a tick re-reads the last. */
   const flipMemo = useRef(new WeakMap<GexSnapshot, number | null>());
+  /* THE PATH IS OFF (the Pinpoint audit, 2026-10-22): each minute's book was today's volume walked onto the overnight
+     open interest — volume is not open interest — and its flip was the per-strike sign change, not the book's zero
+     crossing the line beside it draws. No past book is on the feed to re-price, so no past flip is drawn. */
+  const FLIP_PATH = false;
   const flipTrail = useMemo<(LineData<Time> | WhitespaceData<Time>)[]>(() => {
+    if (!FLIP_PATH) return [];
     const snaps = bookHistory(snapshot.ticker) ?? [];
     if (!snaps?.length || !bars.length) return [];
     const byTime = new Map(snaps.map(s => [s.time, s]));

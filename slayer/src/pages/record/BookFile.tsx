@@ -26,7 +26,7 @@ import {
   type InstitutionRow,
   type PositionStatus,
 } from '../../data/fileBooks';
-import { shortRowFromFile, useEtfFile, useHouseBook, useShortRow } from '../../data/liveFiles';
+import { FUND_TYPES, shortRowFromFile, useEtfFile, useEtfWeights, useHouseBook, useShortRow, useStockCard } from '../../data/liveFiles';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { useShortReads } from '../../data/shortFile';
 import { tickerName } from '../../data/tickers';
@@ -34,11 +34,12 @@ import { AssetCell, assetKey, assetLine } from './Congress';
 import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/congress';
-import { useCongressFeed, useLiveRecord } from '../../data/liveRecord';
+import { memberFromRoster, useCongressCoverage, useCongressFeed, useLiveRecord, useMemberBook } from '../../data/liveRecord';
+import { nyIsoDaysBack } from '../../data/nyDate';
+import { reportDayLabelYear } from '../../data/earningsFeed';
 import { congressFromWhales } from '../../data/whalesMap';
-import { congressBookKey, useVendor, useVendorRow } from '../../data/vendorFeed';
+import { useVendor } from '../../data/vendorFeed';
 import { HouseSectors, ShortHistory } from '../../components/vendor/LiveDesk';
-import type { UwCongress } from '../../data/whales';
 import type { CongressTrade, ReportOwner } from '../../types/record';
 import { statHelp } from '../../components/record/statHelp';
 
@@ -84,18 +85,18 @@ type BookPick = 'any' | InstitutionRow['book'];
 type StatusPick = 'any' | PositionStatus;
 
 const BOOK_OPTIONS: DropdownOption<BookPick>[] = [
-  { value: 'any', label: 'Any side', hint: 'Shares, calls and puts' },
+  { value: 'any', label: 'Any side', short: 'All', hint: 'Shares, calls and puts' },
   { value: 'stock', label: 'Shares', hint: 'The filing left put/call empty' },
   { value: 'calls', label: 'Calls', hint: 'Marked call. No strike, no expiry' },
   { value: 'puts', label: 'Puts', hint: 'Marked put. No strike, no expiry' },
 ];
 const STATUS_OPTIONS: DropdownOption<StatusPick>[] = [
-  { value: 'any', label: 'Any change', hint: 'New, added, cut, closed and held' },
+  { value: 'any', label: 'Any change', short: 'All', hint: 'New, added, cut, closed and held' },
   { value: 'new', label: 'New', hint: 'Not on the prior 13F' },
-  { value: 'added', label: 'Added', hint: 'More units than last quarter', tone: 'bull' },
-  { value: 'cut', label: 'Cut', hint: 'Fewer units than last quarter', tone: 'bear' },
+  { value: 'added', label: 'Added', hint: 'At least 2% more units than last quarter', tone: 'bull' },
+  { value: 'cut', label: 'Cut', hint: 'At least 2% fewer units than last quarter', tone: 'bear' },
   { value: 'closed', label: 'Closed', hint: 'Sold out, or nearly', tone: 'bear' },
-  { value: 'held', label: 'Held', hint: 'About the same as last quarter' },
+  { value: 'held', label: 'Held', hint: 'Within 2% of last quarter’s units, either way' },
 ];
 
 const STATUS_INK: Record<PositionStatus, string> = {
@@ -112,7 +113,7 @@ const HouseName = ({ data }: ICellRendererParams<InstitutionRow>) =>
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
+        {tickerName(data.ticker) !== data.ticker ? <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span> : null}
       </span>
     </span>
   ) : null;
@@ -139,7 +140,7 @@ export const HouseFile = () => {
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: HouseName, headerTooltip: 'The stock' },
       { headerName: 'Side', field: 'book', width: 84, valueFormatter: p => (p.value === 'stock' ? (p.data?.security ?? 'Shares') : p.value === 'calls' ? 'Call' : 'Put'), headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
-      { headerName: 'Change', field: 'status', width: 92, cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${STATUS_INK[data.status]}`}>{positionWord(data.status)}</span> : null), headerTooltip: 'New, added, trimmed, sold out or unchanged since the house\'s prior 13F filing' },
+      { headerName: 'Change', field: 'status', width: 92, cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${STATUS_INK[data.status]}`}>{positionWord(data.status)}</span> : null), headerTooltip: 'Against the house\'s prior 13F: new, added (2% more units or over), cut (2% fewer or over), sold out, or held (within 2% either way — NVDA +1.6% reads held)' },
       { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M`, headerTooltip: 'Shares the house reported holding (for a call or put line, the shares the options cover), millions' },
       { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : ''}{data.unitsChangeM.toFixed(1)}M</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
@@ -169,12 +170,16 @@ export const HouseFile = () => {
             <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{house}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a 13F line means" testId="house-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">This filing, line by line. A call or a put is only the side.</p>
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">This filing's {feed.length} largest lines by value. A call or a put is only the side.</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Value")}>Value</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(value)}</dd>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The whole 13F as Unusual Whales totals it — every line the house reported, not only the ones below">Reported</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bookLive.totalB != null ? moneyB(bookLive.totalB) : '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The ${feed.length} largest lines read here, by value`}>Top {feed.length} lines</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(value)}{bookLive.totalB ? <span className="text-textMuted"> · {Math.round((100 * value) / bookLive.totalB)}%</span> : null}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Calls")}>Calls</dt>
@@ -195,7 +200,7 @@ export const HouseFile = () => {
         <DropdownSelect label="Change" value={status} options={STATUS_OPTIONS} onChange={setStatus} title="What happened versus the prior 13F" testId="house-status" />
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-house-sentence>
-        {house} reported {moneyB(value)} across {feed.length} lines. Calls {moneyB(callValue)}, puts {moneyB(putValue)}. {changed.length} lines changed size versus the prior quarter.
+        {house} reported {bookLive.totalB != null ? moneyB(bookLive.totalB) : 'its book'} on its latest 13F. The {feed.length} largest lines, shown here, are {moneyB(value)}{bookLive.totalB ? ` (${Math.round((100 * value) / bookLive.totalB)}% of it)` : ''}: calls {moneyB(callValue)}, puts {moneyB(putValue)}, and {changed.length} of them changed size by more than 2% versus the prior quarter.
         {line ? <> The line you opened is {line}.</> : null}
         {focused ? (focused.quarters.length > 1 ? <> {focused.quarters.length} quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units in {focused.quarters[0]?.period} and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : <> One quarter of {focused.ticker} is on file, {focused.quarters[0]?.unitsM.toFixed(1)}M units.</>) : null}
       </p>
@@ -261,7 +266,19 @@ export const ShortFile = () => {
   const shortLive = useShortRow(t);
   /* the file's own reads build the row for a name off the book, and fill what the screener row lacks */
   const reads = useShortReads(ok ? t : '');
-  const row = useMemo(() => (ok ? shortRowFromFile(t, shortLive.row, reads) : null), [ok, t, shortLive.row, reads]);
+  const card = useStockCard(ok ? t : '');
+  const isFund = card?.issueType ? FUND_TYPES.test(card.issueType) : undefined;
+  const row = useMemo(() => {
+    const made = ok ? shortRowFromFile(t, shortLive.row, reads) : null;
+    return made ? { ...made, fund: made.fund ?? isFund, borrowAsOf: undefined } : null;
+  }, [ok, t, shortLive.row, reads, isFund]);
+  /* the Shorts list's read of the same name, from the settlement's figures alone — said beside this one when they differ */
+  const listRead = useMemo(() => (shortLive.row ? squeezeRead(shortLive.row) : null), [shortLive.row]);
+  const borrowDay = useMemo(() => {
+    const rows = Array.isArray(reads.rebate) ? (reads.rebate as { timestamp?: string }[]) : [];
+    const newest = rows.map(r => String(r.timestamp ?? '')).sort().reverse()[0];
+    return newest ? newest.slice(0, 10) : null;
+  }, [reads.rebate]);
   const fileWaiting = reads.waiting;
   const [guideOpen, setGuideOpen] = useState(false);
   const [heavy, setHeavy] = useState<'any' | 'heavy'>('any');
@@ -279,7 +296,7 @@ export const ShortFile = () => {
   /* the latest session's short volume and the month's fails to deliver feed the squeeze read too */
   const squeeze = useMemo(() => {
     if (!row) return null;
-    const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const since = nyIsoDaysBack(30);
     const fails = (Array.isArray(reads.ftd) ? reads.ftd : []) as { date?: string; quantity?: number | string }[];
     const recent = fails.filter(f => String(f.date ?? '') >= since).map(f => Number(f.quantity) || 0);
     return squeezeRead(row, {
@@ -342,8 +359,13 @@ export const ShortFile = () => {
             ))}
           </ul>
           <p className={`mt-1 text-[10px] ${squeeze.stale ? 'text-warn' : 'text-textMuted'}`}>
-            Short interest as of {asOfDay(squeeze.asOf)}{squeeze.stale ? ' — a newer settlement should be out, so the shorts may have moved since' : ' — the latest settlement published; the next lands about seven business days after the 15th or month-end'}. The borrow figures are today’s. A setup is not a forecast: it says the shorts would be squeezed if buyers came, not that they will.
+            Short interest as of {asOfDay(squeeze.asOf)}{squeeze.stale ? ' — a newer settlement should be out, so the shorts may have moved since' : ' — the latest settlement published; the next lands about seven business days after the 15th or month-end'}. {borrowDay ? `The fee and the shares to borrow are the latest reading, ${asOfDay(borrowDay)}.` : 'The fee and the shares to borrow are the settlement day’s — the feed sent no newer reading.'} A setup is not a forecast: it says the shorts would be squeezed if buyers came, not that they will.
           </p>
+          {listRead && listRead.word !== squeeze.word ? (
+            <p className="mt-1 text-[10px] text-textSecondary" data-short-list-read={listRead.word}>
+              The Shorts list reads this name <span className={`font-semibold uppercase ${SQUEEZE_INK[listRead.word]}`}>{listRead.word}</span>: it scores the settlement’s own figures only (fee {shortLive.row?.feeRate == null ? '—' : `${shortLive.row.feeRate.toFixed(2)}%`}, {borrowM(shortLive.row?.availableM ?? null)} to borrow on {asOfDay(shortLive.row?.borrowAsOf ?? listRead.asOf)}), while this file adds today’s borrow, the last session’s short volume and the fails to deliver.
+            </p>
+          ) : null}
         </div>
       )}
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-short-sentence>
@@ -363,7 +385,7 @@ export const ShortFile = () => {
           label="Market"
           value={heavy}
           options={[
-            { value: 'any', label: 'Every market', hint: 'All of the session’s short volume' },
+            { value: 'any', label: 'Every market', short: 'All', hint: 'All of the session’s short volume' },
             { value: 'heavy', label: 'Half or more', hint: 'Short volume was half that market or more', tone: 'bear' },
           ]}
           onChange={setHeavy}
@@ -424,11 +446,19 @@ export const FundFile = () => {
   const [picks, setPicks] = useState<string[]>([]);
   const fundPaged = usePagedGrid<EtfHolding>();
   const holdings = fundLive.holdings;
-  const sectors = useMemo(() => shareOf(weightSlices(holdings.map(h => ({ name: h.sector, weight: h.weight })))), [holdings]);
-  const countries = useMemo(() => shareOf(weightSlices(holdings.map(h => ({ name: h.country, weight: h.weight })))), [holdings]);
+  const cover = fundLive.cover;
+  /* THE WHOLE FUND'S SPLIT, NOT THE LINES READ (the data audit, 2026-10-22): the holdings route sends the largest 250 lines
+     — 44% of IWM's 1,941 — and the page scaled those to 100% and called it "the book by country". The sector and
+     country tables now read the fund's own weights (/etfs/{t}/weights), which cover the whole fund. */
+  const weights = useEtfWeights(etf);
+  const lineSectors = useMemo(() => weightSlices(holdings.map(h => ({ name: h.sector, weight: h.weight }))), [holdings]);
+  const sectors = weights.sectors.length ? weights.sectors : [];
+  const countries = weights.countries.length ? weights.countries : [];
+  const partial = !!cover && cover.fundCount != null && cover.lines < cover.fundCount;
+  const coverWords = cover && cover.lines > 0 ? `${partial ? `the top ${cover.lines} of ${cover.fundCount!.toLocaleString('en-US')} holdings` : `all ${cover.lines} holdings`} · ${cover.weight.toFixed(0)}% of the fund` : '';
   const sectorOptions = useMemo<DropdownOption<string>[]>(
-    () => [{ value: 'all', label: 'Every sector', hint: 'The whole book' }, ...sectors.map(s => ({ value: s.name, label: s.name, hint: `${s.weight.toFixed(0)}% of the book` }))],
-    [sectors],
+    () => [{ value: 'all', label: 'Every sector', short: 'All', hint: 'Every line read' }, ...lineSectors.map(s => ({ value: s.name, label: s.name, hint: `${s.weight.toFixed(1)}% of the fund in the lines read` }))],
+    [lineSectors],
   );
   const cut = useMemo(() => holdings.filter(h => sector === 'all' || h.sector === sector), [holdings, sector]);
   const rows = useMemo(() => (picks.length === 0 ? cut : cut.filter(h => picks.includes(h.ticker))), [cut, picks]);
@@ -451,7 +481,7 @@ export const FundFile = () => {
               <CompanyLogo ticker={data.ticker} size={16} />
               <span className="flex flex-col leading-tight min-w-0">
                 <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-                <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
+                {tickerName(data.ticker) !== data.ticker ? <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span> : null}
               </span>
             </span>
             )
@@ -472,7 +502,7 @@ export const FundFile = () => {
               <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
                 <span className="absolute left-0 top-0 h-full rounded-full bg-silver" style={{ width: `${Math.min(100, data.weight * 4)}%` }} />
               </span>
-              <span className="font-mono text-[11px] tnum text-textPrimary w-[48px] text-right">{data.weight.toFixed(1)}%</span>
+              <span className="font-mono text-[11px] tnum text-textPrimary w-[48px] text-right">{data.weight.toFixed(data.weight < 1 ? 2 : 1)}%</span>
             </span>
           ) : null,
       },
@@ -496,7 +526,7 @@ export const FundFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a weight, a flow and a holding mean" testId="fund-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {fund.company} · {fund.domicile} · since {fund.inception}{fund.holdingsAsOf ? ` · weights as of ${asOfDay(fund.holdingsAsOf)}` : ''}
+            {fund.company} · {fund.domicile} · since {fund.inception}{fund.holdingsAsOf ? ` · weights as of ${asOfDay(fund.holdingsAsOf)}` : ''}{coverWords ? ` · ${coverWords}` : ''}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
@@ -528,8 +558,10 @@ export const FundFile = () => {
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-fund-sentence>
         {lead ? (
           <>
-            <span className="text-textPrimary font-semibold">{lead.bond ? lead.name : lead.ticker}</span> is the largest line, {lead.weight.toFixed(1)}% of {fund.etf}. Five sessions: {fund.flows.map(f => `${f.day} ${moneyFlow(f.flowM)}`).join(', ')}.
+            <span className="text-textPrimary font-semibold">{lead.bond ? lead.name : lead.ticker}</span> is the largest line, {lead.weight.toFixed(2)}% of {fund.etf}{partial ? ` — the grid is ${coverWords}, so it does not add to 100%` : ''}. Five sessions: {fund.flows.map(f => `${f.day} ${moneyFlow(f.flowM)}`).join(', ')}.
           </>
+        ) : holdings.length === 0 && fund.holdingsCount === 0 ? (
+          `${fund.etf} holds no securities on file — ${fund.kind === 'commodity' ? 'the trust holds the commodity itself' : 'the fund lists no holdings'}.`
         ) : (
           'Nothing in this book on this cut.'
         )}
@@ -554,7 +586,7 @@ export const FundFile = () => {
                 )}
               </span>
               <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
-                <span className="text-[13px] font-bold text-textPrimary">{h.weight.toFixed(1)}%</span>
+                <span className="text-[13px] font-bold text-textPrimary">{h.weight.toFixed(h.weight < 1 ? 2 : 1)}%</span>
                 <span className="text-[9px] text-textSecondary">{h.sector}</span>
               </span>
             </button>
@@ -579,21 +611,17 @@ export const FundFile = () => {
         </AgGridProvider>
         {fundPaged.bar(rows.length, 'fund-holdings')}
       </div>
-      <Board title="Sectors" rest="The book by sector, the weights adding to the whole" testId="fund-sectors" rows={sectors.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={SECTOR_COLS} />
-      <Board title="Countries" rest="The book by country" testId="fund-countries" rows={countries.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={COUNTRY_COLS} />
+      <Board title="Sectors" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by sector, from the fund’s own weights — not only the lines above'} testId="fund-sectors" rows={sectors.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={SECTOR_COLS} />
+      <Board title="Countries" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by country, from the fund’s own weights'} testId="fund-countries" rows={countries.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={COUNTRY_COLS} />
     </Page>
     </>
   );
 };
 
-const shareOf = (rows: { name: string; weight: number }[]) => {
-  const total = rows.reduce((s, r) => s + r.weight, 0) || 1;
-  return rows.map(r => ({ name: r.name, weight: (r.weight / total) * 100 }));
-};
 
 const Bar = ({ pct, heavy }: { pct: number; heavy?: boolean }) => (
   <span className="flex items-center gap-2 h-full w-full pr-2">
-    <span className={`font-mono text-[11px] tnum w-[44px] ${heavy ? 'text-bear font-semibold' : 'text-textPrimary'}`}>{pct.toFixed(0)}%</span>
+    <span className={`font-mono text-[11px] tnum w-[44px] ${heavy ? 'text-bear font-semibold' : 'text-textPrimary'}`}>{pct.toFixed(pct < 10 ? 1 : 0)}%</span>
     <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
       <span className={`absolute left-0 top-0 h-full rounded-full ${heavy ? 'bg-bear' : 'bg-silver'}`} style={{ width: `${Math.min(100, pct)}%` }} />
     </span>
@@ -609,7 +637,7 @@ const EX_COLS: ColDef<{ id: string; exchange: string; shortM: number; totalM: nu
   { headerName: 'Of that market', field: 'ratio', flex: 1, minWidth: 140, cellRenderer: ({ data }: ICellRendererParams<{ ratio: number }>) => (data ? <Bar pct={data.ratio} heavy={data.ratio >= 50} /> : null), headerTooltip: 'Short sales as a share of that venue\'s volume — market makers\' hedges count, so about half is ordinary' },
 ];
 const FTD_COLS: ColDef<{ id: string; date: string; quantity: number; price: number }>[] = [
-  { headerName: 'Day', field: 'date', flex: 1, minWidth: 120, headerTooltip: 'The settlement day the shares failed to deliver' },
+  { headerName: 'Day', field: 'date', flex: 1, minWidth: 120, valueFormatter: p => reportDayLabelYear(String(p.value ?? '')), headerTooltip: 'The settlement day the shares failed to deliver' },
   { headerName: 'Shares', field: 'quantity', width: 120, type: 'rightAligned', valueFormatter: p => Number(p.value).toLocaleString('en-US'), headerTooltip: 'Shares sold but not delivered on time' },
   { headerName: 'Close', field: 'price', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'The stock\'s close that day' },
 ];
@@ -671,13 +699,13 @@ type TypePick = 'any' | 'Purchase' | 'Sale' | 'Exchange';
 type OwnerPick = 'any' | ReportOwner;
 
 const TYPE_OPTIONS: DropdownOption<TypePick>[] = [
-  { value: 'any', label: 'Every report', hint: 'Purchases, sales and exchanges' },
+  { value: 'any', label: 'Every report', short: 'All', hint: 'Purchases, sales and exchanges' },
   { value: 'Purchase', label: 'Purchases', hint: 'Bought', tone: 'bull' },
   { value: 'Sale', label: 'Sales', hint: 'Sold, full or partial', tone: 'bear' },
   { value: 'Exchange', label: 'Exchanges', hint: 'Swapped, not bought or sold' },
 ];
 const OWNER_FILE_OPTIONS: DropdownOption<OwnerPick>[] = [
-  { value: 'any', label: 'Any owner', hint: 'Self, spouse, joint or a dependent' },
+  { value: 'any', label: 'Any owner', short: 'All', hint: 'Self, spouse, joint or a dependent' },
   { value: 'Self', label: 'Self', hint: "The member's own holding" },
   { value: 'Spouse', label: 'Spouse', hint: "The spouse's holding" },
   { value: 'Joint', label: 'Joint', hint: 'A joint account' },
@@ -691,16 +719,18 @@ export const MemberFile = () => {
   useVendor('dossier', '', `/dossier/congress/${id}`);
   const record = useLiveRecord();
   const feed = useCongressFeed(365);
-  const member = feed.trades.find(t => t.member.id === id)?.member ?? null;
-  const reports = useVendorRow(congressBookKey(id), 'member-reports');
+  const fromFeed = feed.trades.find(t => t.member.id === id)?.member ?? null;
+  const roster = memberFromRoster(id);
+  /* the member's identity from the market book, else the politician roster (a member with no trade in the book's reach) */
+  const member = fromFeed ?? (roster ? congressFromWhales([{ politician_id: id, name: roster.name, txn_type: 'Buy', transaction_date: nyIsoDaysBack(0), filed_at_date: nyIsoDaysBack(0) }], [roster]).trades[0]?.member ?? null : null);
+  /* their own reports of trades made in the last year — not the latest 40 by name */
+  const book = useMemberBook(id, member?.name ?? null);
+  const coverage = useCongressCoverage();
   const [guideOpen, setGuideOpen] = useState(false);
   const [kind, setKind] = useState<TypePick>('any');
   const [owner, setOwner] = useState<OwnerPick>('any');
   const [picks, setPicks] = useState<string[]>([]);
-  const trades = useMemo(() => {
-    if (!reports || reports.state !== 'live' || !Array.isArray(reports.data)) return [];
-    return congressFromWhales(reports.data as UwCongress[]).trades;
-  }, [reports]);
+  const trades = book.trades;
   const cut = useMemo(
     () => trades.filter(t => (kind === 'any' || typeOf(t) === kind) && (owner === 'any' || t.owner === owner)),
     [trades, kind, owner],
@@ -715,19 +745,21 @@ export const MemberFile = () => {
     }
     return [...by.values()].sort((a, b) => (b.bracket ?? -1) - (a.bracket ?? -1)).slice(0, 6);
   }, [cut]);
+  /* bought in the year's reports, with no full sale of the same asset in them since — what the reports show, NOT a
+     holdings disclosure (that is the annual report, which this key cannot read) */
   const held = useMemo(() => {
     const ordered = [...trades].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
     const open = new Map<string, CongressTrade>();
     for (const t of ordered) {
       const key = `${assetKey(t)}|${t.owner}`;
-      if (t.type === 'Purchase' || t.type === 'Exchange') open.set(key, t);
+      if (t.type === 'Purchase') open.set(key, t);
       if (t.type === 'Sale (Full)') open.delete(key);
     }
     return [...open.values()];
   }, [trades]);
   const cols = useMemo<ColDef<CongressTrade>[]>(
     () => [
-      { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.filedDaysAgo} /> : null), headerTooltip: 'The day the report was filed' },
+      { headerName: 'Filed', field: 'filedDaysAgo', width: 146, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.filedDaysAgo} /> : null), headerTooltip: 'The day the report was filed' },
       {
         headerName: 'Asset',
         headerTooltip: 'The stock the report names',
@@ -739,11 +771,11 @@ export const MemberFile = () => {
       { headerName: 'Type', field: 'type', width: 130, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] ${data.type === 'Purchase' ? 'text-bull' : data.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{data.type}</span> : null), headerTooltip: 'Purchase, sale (full or partial) or exchange' },
       { headerName: 'Owner', field: 'owner', width: 110, headerTooltip: 'Whose holding: the member\'s own, a spouse\'s, a joint account or a dependent\'s' },
       { headerName: 'Amount', field: 'bracket', flex: 1.2, minWidth: 180, valueFormatter: p => bracketLabel(p.value as number | null), headerTooltip: 'The disclosed bracket — members report a range, never an exact figure' },
-      { headerName: 'Lag', field: 'lagDays', width: 90, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] tnum ${data.late ? 'text-bear' : 'text-textPrimary'}`}>{data.lagDays}d</span> : null), headerTooltip: 'Days from the trade to the report; past 45 is late under the STOCK Act' },
+      { headerName: 'Lag', field: 'lagDays', width: 90, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] tnum ${data.late ? 'text-bear' : 'text-textPrimary'}`} title={data.lagDays === 0 ? `Filed the day it traded (${data.tradedOn ?? ''}), as the filing records it` : undefined}>{data.lagDays === 0 ? 'same day' : `${data.lagDays}d`}</span> : null), headerTooltip: 'Days from the trade to the report; past 45 is late under the STOCK Act' },
     ],
     [],
   );
-  if (record.congress.status === 'loading' && !member) {
+  if ((record.congress.status === 'loading' || coverage.reading) && !member) {
     return (
       <>
         <WayBack to="/dossier/congress" label="Congress" />
@@ -772,8 +804,8 @@ export const MemberFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a report, a bracket and a lag mean" testId="member-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {seatLabel(member) || '—'}
-            {member.district ? ` · ${member.district}` : ''} · {member.chamber}
+            {/* the seat once — "R-OK-1 · OK-1" said the district twice */}
+            {seatLabel(member) || '—'} · {member.chamber}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
@@ -800,7 +832,11 @@ export const MemberFile = () => {
         <DropdownSelect label="Owner" value={owner} options={OWNER_FILE_OPTIONS} onChange={setOwner} title="Whose holding" testId="member-owner" />
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-member-sentence>
-        {trades.length} {trades.length === 1 ? 'report' : 'reports'} in the last year. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days. What they still hold is the annual disclosure, a range and nothing finer.
+        {book.status === 'loading'
+          ? 'Reading their reports.'
+          : book.status === 'sim'
+            ? 'Their reports did not load.'
+            : <>{trades.length} {trades.length === 1 ? 'report' : 'reports'} of trades made in the last year{book.complete ? '' : ` — the read stopped at ${trades.length}, so older ones in the year may be missing`}. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days.{book.unreadTypes ? ` ${book.unreadTypes} with an unreadable type left out.` : ''} Amounts are the disclosed ranges, nothing finer.</>}
       </p>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="member-know">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
@@ -834,7 +870,8 @@ export const MemberFile = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
-            overlayNoRowsTemplate={noRows('No report on this book')}
+            overlayNoRowsTemplate={noRows(book.status === 'loading' ? 'Reading their reports' : 'No report on this book')}
+            key={book.status}
             columnDefs={cols}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.id}
@@ -844,8 +881,8 @@ export const MemberFile = () => {
         </AgGridProvider>
       </div>
       <Board
-        title="What they still hold"
-        rest="The annual disclosure. The range, never a midpoint. No strike on an option."
+        title="Bought, not since sold in full"
+        rest="Purchases in this year's reports with no later full sale of the same asset in them — not a holdings disclosure. The range, never a midpoint."
         testId="member-held"
         rows={held.map(t => ({ id: `${assetKey(t)}-${t.owner}`, ticker: assetLine(t).sym || assetKey(t), owner: t.owner, amount: bracketLabel(t.bracket) }))}
         cols={HELD_COLS}

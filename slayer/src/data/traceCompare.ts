@@ -20,7 +20,8 @@
 import type { SleeveKey } from '../types/compass';
 import type { BookContract, FlowPrint } from '../types/trace';
 import { sleeveForDte } from './compass';
-import { buildNetFlowView, moneynessFilter, type MoneynessKey, type SpreadTrade } from './flowBook';
+import { moneynessFilter, type MoneynessKey, type SpreadTrade } from './flowBook';
+import type { ExpiryFlow } from './traceLive';
 import { fmtUsd } from './gex';
 
 export interface TraceSide {
@@ -31,8 +32,9 @@ export interface TraceSide {
   net: number;
   netCall: number;
   netPut: number;
-  /** The same-day money: contracts expiring today or tomorrow, whatever the clock */
-  odte: { net: number; calls: number; puts: number; vol: number; count: number };
+  /** The same-day money: every contract on the name expiring TODAY (the vendor's flow for today's expiry), whatever the
+      clock — the 0DTE desk's definition */
+  odte: { net: number; calls: number; puts: number; vol: number; trades: number; has: boolean };
   book: {
     count: number;
     volume: number;
@@ -71,17 +73,18 @@ export function buildTraceSide(
   ticker: string,
   tenor: SleeveKey | 'all',
   mny: MoneynessKey,
-  sampleAt: number[]
+  expiries: ExpiryFlow[],
+  todayIso: string
 ): TraceSide {
   const own = book.filter(r => r.ticker === ticker);
   const rows = own.filter(r => onClock(r.dte, tenor) && moneynessFilter(r, mny)).sort((a, b) => b.premium - a.premium);
-  const flow = buildNetFlowView(book, 'all', mny, sampleAt, Infinity, ticker, tenor);
-  /* The same-day money keeps its own clock — it IS a clock */
-  const same = buildNetFlowView(book, 'all', mny, sampleAt, 1, ticker, 'all');
-
-  /* The same-day contracts and their volume are the book's own facts — the view's
-     `vol` is the one sampled bar's, which is nothing at one instant */
-  const sameRows = own.filter(r => r.dte <= 1 && moneynessFilter(r, mny));
+  /* THE NET IS THE VENDOR'S, BY EXPIRY (the audit, 2026-10-22): it was a hashed clip table over the book — SPY read
+     −$29.2M · −$23.7M same-day where the vendor's own flow said +$11.9M and +$0.7M. Net calls are call premium at the ask
+     less call premium on the bid, summed over the expiries on the clock; every strike (the route has no strike cut). */
+  const onTenor = expiries.filter(e => onClock(e.dte, tenor));
+  const netCall = onTenor.reduce((a, e) => a + e.callNet, 0);
+  const netPut = onTenor.reduce((a, e) => a + e.putNet, 0);
+  const today = expiries.find(e => e.expiry === todayIso) ?? null;
   const volume = rows.reduce((a, r) => a + r.volume, 0);
   const premium = rows.reduce((a, r) => a + r.premium, 0);
   const callPrem = rows.reduce((a, r) => a + (r.right === 'C' ? r.premium : 0), 0);
@@ -92,10 +95,12 @@ export function buildTraceSide(
   return {
     ticker,
     rows,
-    net: flow.ncp - flow.npp,
-    netCall: flow.ncp,
-    netPut: flow.npp,
-    odte: { net: same.ncp - same.npp, calls: same.ncp, puts: same.npp, vol: sameRows.reduce((a, r) => a + r.volume, 0), count: sameRows.length },
+    net: netCall - netPut,
+    netCall,
+    netPut,
+    odte: today
+      ? { net: today.callNet - today.putNet, calls: today.callNet, puts: today.putNet, vol: today.callVol + today.putVol, trades: today.trades, has: true }
+      : { net: 0, calls: 0, puts: 0, vol: 0, trades: 0, has: false },
     book: {
       count: rows.length,
       volume,
@@ -163,13 +168,13 @@ export function buildTraceCompare(a: TraceSide, b: TraceSide): TraceCompare {
     { name: b.ticker },
     `${lean(b)}. `,
     { name: heavier.ticker },
-    ` carries the heavier book — ${fmtUsd(heavier.book.premium)} across ${num(heavier.book.count)} contracts on ${num(heavier.book.volume)} volume${busier.tape.prints === 0 ? '. ' : ' — and '}`,
+    ` carries the heavier book — ${fmtUsd(heavier.book.premium)} across its ${num(heavier.book.count)} contracts with the most premium, on ${num(heavier.book.volume)} volume${busier.tape.prints === 0 ? '. ' : ' — and '}`,
     ...(busier.tape.prints === 0
       ? []
       : busier === heavier
-        ? [`the busier tape, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
-        : [{ name: busier.ticker }, ` the busier tape, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
-    `Same-day money: `,
+        ? [`the busier tape over the same stretch, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
+        : [{ name: busier.ticker }, ` the busier tape over the same stretch, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
+    `Money on contracts expiring today: `,
     { name: a.ticker },
     ` ${signedUsd(a.odte.net)}, `,
     { name: b.ticker },

@@ -16,7 +16,9 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
 import { bookToday, expiryFor, isoDate } from '../core/calendar';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
-import { pickFlip, pickWalls } from '../core/walls';
+import { pickWalls } from '../core/walls';
+import { registerChainDates } from './chainDates';
+import { levelFlip } from './flipLevel';
 import type { Candle, GexSnapshot, Indicators, MarketSnapshot, StrikeNode, TradePlan } from '../types/market';
 import { getDeskSession, minuteInSession, type DeskSession } from './deskSession';
 import { readLevelsScope, useLevelsScope, type LevelsScope } from './levelsScope';
@@ -78,6 +80,11 @@ interface Entry {
   totals?: { date: string; gross: number }[];
   /** When `totals` (and, on a board-only name, the front date's chain) last landed */
   totalsAt?: number;
+  /** Each expiry's at-the-money implied vol (volatility/term-structure), annualised fraction — the flip re-prices a
+      date's legs with it where that date's own contract vols are not in (data/flipLevel.ts) */
+  termIv?: Record<string, number>;
+  /** The front date's contract rows (open interest, vol, gamma) are painted on its chain */
+  frontFacts?: boolean;
 }
 
 const cache = new Map<string, Entry>();
@@ -244,10 +251,15 @@ interface LegBook {
   putVex: number;
   callVol: number;
   putVol: number;
+  /** The contract's own implied vol and gamma, per contract (0 = not printed) */
+  callIv: number;
+  putIv: number;
+  callGamma: number;
+  putGamma: number;
 }
 
 function emptyLeg(): LegBook {
-  return { callOI: 0, putOI: 0, callVex: 0, putVex: 0, callVol: 0, putVol: 0 };
+  return { callOI: 0, putOI: 0, callVex: 0, putVex: 0, callVol: 0, putVol: 0, callIv: 0, putIv: 0, callGamma: 0, putGamma: 0 };
 }
 
 function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook> {
@@ -260,14 +272,20 @@ function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook>
     const vega = num(row.vega);
     const leg = by.get(parsed.strike) ?? emptyLeg();
     const dollar = oi * 100 * vega;
+    const iv = num(row.implied_volatility);
+    const gamma = num(row.gamma);
     if (parsed.right === 'CALL') {
       leg.callOI += oi;
       leg.callVol += vol;
       leg.callVex += dollar * CALL_VEGA;
+      if (iv > 0 && iv < 10) leg.callIv = iv;
+      if (gamma > 0) leg.callGamma = gamma;
     } else {
       leg.putOI += oi;
       leg.putVol += vol;
       leg.putVex += dollar * PUT_VEGA;
+      if (iv > 0 && iv < 10) leg.putIv = iv;
+      if (gamma > 0) leg.putGamma = gamma;
     }
     by.set(parsed.strike, leg);
   }
@@ -285,6 +303,10 @@ function paintLegs(nodes: StrikeNode[], book: Map<number, LegBook>, oi: boolean)
     n.callVex = leg.callVex;
     n.putVex = leg.putVex;
     n.netVex = leg.callVex + leg.putVex;
+    if (leg.callIv > 0) n.callIv = leg.callIv;
+    if (leg.putIv > 0) n.putIv = leg.putIv;
+    if (leg.callGamma > 0) n.callGamma = leg.callGamma;
+    if (leg.putGamma > 0) n.putGamma = leg.putGamma;
     if (leg.callVol > 0 || leg.putVol > 0) {
       n.callVol = leg.callVol;
       n.putVol = leg.putVol;
@@ -422,9 +444,9 @@ function indicatorsOf(closes: number[]): Indicators {
   return { rsi, ema9: ema(9), ema21: ema(21), ema50: ema(50), squeeze: false };
 }
 
-function planFor(ticker: string, spot: number, chain: StrikeNode[]): TradePlan {
+function planFor(ticker: string, spot: number, chain: StrikeNode[], flipAt: number | null): TradePlan {
   const walls = pickWalls(chain, spot, n => n.netGex);
-  const flip = pickFlip(chain, spot, n => n.netGex) ?? spot;
+  const flip = flipAt ?? spot;
   const callWall = walls.callWall ?? spot;
   const putWall = walls.putWall ?? spot;
   return {
@@ -506,7 +528,9 @@ function liveAll(entry: Entry): StrikeNode[] {
 
 function chainsFor(entry: Entry): Partial<Record<string, StrikeNode[]>> {
   const dates = Object.keys(entry.byDate).filter(d => d >= isoDate(bookToday()));
-  const out: Partial<Record<string, StrikeNode[]>> = { ALL: liveAll(entry) };
+  const all = liveAll(entry);
+  registerChainDates(all, 'ALL');
+  const out: Partial<Record<string, StrikeNode[]>> = { ALL: all };
   for (const [label, dte] of LADDER_DTE) {
     const want = isoDate(expiryFor(dte, bookToday()).date);
     const hit = closestDate(want, dates);
@@ -542,20 +566,24 @@ function materialize(entry: Entry, scope: LevelsScope): MarketSnapshot {
   const today = uwChains['0DTE'];
   const chain = scope === 'ALL' ? (uwChains.ALL ?? entry.all) : today && today.length ? today : (uwChains.ALL ?? entry.all);
   const closes = entry.candles.map(c => c.close);
-  return {
+  const snap: MarketSnapshot = {
     ticker: entry.ticker,
     spot: entry.spot,
     changePercent: entry.changePct,
     priceHistory: closes.slice(-120),
     chain,
     indicators: indicatorsOf(closes),
-    plan: planFor(entry.ticker, entry.spot, chain),
+    plan: planFor(entry.ticker, entry.spot, chain, null),
     tape: [],
     liveBook: true,
     uwChains,
     uwByDate: entry.byDate,
     uwExpiries: liveListing(entry.expiries),
   };
+  /* the plan's flip zone is the one flip (data/flipLevel.ts), read off the snapshot's own levels chain */
+  const flip = levelFlip(snap, chain).flip;
+  if (flip != null) snap.plan = { ...snap.plan, flipZone: flip, direction: entry.spot >= flip ? 'BULLISH' : 'BEARISH' };
+  return snap;
 }
 
 export function peekEntry(ticker: string): Entry | undefined {
@@ -596,6 +624,18 @@ function impliedMoveOf(rows: UwTerm[], today: string, spot: number): number {
   const dollars = num(row?.implied_move);
   if (!(dollars > 0) || dollars > spot * 0.2) return 0;
   return dollars;
+}
+
+/** Each expiry's at-the-money vol off the term structure, annualised fraction — null when the rows carry none */
+function termIvOf(rows: UwTerm[]): Record<string, number> | null {
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    const d = String(r.expiry ?? '');
+    let v = num(r.volatility);
+    if (v > 3) v /= 100;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && v > 0 && v < 5) out[d] = v;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 /** The 1-day tenor, as a fraction of spot. The vendor prints a fraction (0.004 = 0.4%). */
@@ -813,6 +853,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     changePct: prev > 0 ? ((spot - prev) / prev) * 100 : 0,
     iv: iv > 0 ? iv : 0,
     impliedMove: impliedMoveOf(Array.isArray(termRows) ? termRows : [], nyIsoDate(), spot),
+    termIv: termIvOf(Array.isArray(termRows) ? termRows : []) ?? prevEntry?.termIv,
     dayMoveFrac: dayFracOf(Array.isArray(interpRows) ? interpRows : []),
     all: chainFrom(strikes, spot, oiMap(Array.isArray(oiRows) ? oiRows : []), flowMap(Array.isArray(flowRows) ? flowRows : [])),
     byDate: prevEntry?.byDate ?? {},
@@ -820,6 +861,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     expiriesAt: prevEntry?.expiriesAt,
     totals: prevEntry?.totals,
     totalsAt: prevEntry?.totalsAt,
+    frontFacts: prevEntry?.frontFacts,
     flow: flowMap(Array.isArray(flowRows) ? flowRows : []),
     candles: split.cash,
     tape: split.tape,
@@ -885,33 +927,116 @@ const FRONT_MS = 180_000;
 async function loadFront(entry: Entry, token: number): Promise<void> {
   const still = () => gen.get(entry.ticker) === token;
   const today = isoDate(bookToday());
+  const allScope = readLevelsScope() === 'ALL';
   const haveFront = Object.keys(entry.byDate).some(d => d >= today && entry.byDate[d]?.length);
-  if (entry.totalsAt && Date.now() - entry.totalsAt < FRONT_MS && haveFront) return;
+  const fresh = !!entry.totalsAt && Date.now() - entry.totalsAt < FRONT_MS;
+  if (fresh && haveFront && !!entry.frontFacts && (!allScope || datesComplete(entry))) return;
+  /* THE BOARD'S FRONT DATE AHEAD OF THE QUEUE (the retail test, 2026-10-22: 16 of 20 names sat on "…" at 22s): the
+     three calls that fill a row's "Today" levels jump the key's queue, so each name's row fills as its own core lands
+     rather than after every name's */
   let listed: { date: string; dte: number }[] = [];
-  try {
-    const rows = await whalesGreekExpiry(entry.ticker);
-    listed = listingOf(rows);
-    keepTotals(entry, rows);
-  } catch {
-    return;
-  }
+  const got = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/expiry`, true);
+  if (got.error) return;
+  listed = listingOf(got.data);
+  keepTotals(entry, got.data);
   if (!still() || !listed.length) return;
   const front = closestDate(isoDate(expiryFor(0, bookToday()).date), listed.map(r => r.date));
   if (!front) return;
-  let chain: StrikeNode[] = [];
-  try {
-    const rows = await whalesGreekStrikeExpiry(entry.ticker, front);
-    chain = Array.isArray(rows) ? chainFrom(rows, entry.spot, new Map()) : [];
-  } catch {
-    chain = [];
+  let chain: StrikeNode[] = entry.byDate[front] ?? [];
+  if (!chain.length || !fresh) {
+    const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/strike-expiry?expiry=${encodeURIComponent(front)}`, true);
+    chain = !rows.error && Array.isArray(rows.data) ? chainFrom(rows.data as UwGreekStrike[], entry.spot, new Map()) : chain;
   }
   if (!still()) return;
-  const current = cache.get(entry.ticker);
+  let current = cache.get(entry.ticker);
   if (!current || current.full) return;
   if (chain.length) current.byDate = { ...current.byDate, [front]: chain };
   if (!current.expiries.length) current.expiries = listed;
   cache.set(entry.ticker, current);
   emit();
+  /* the front date's contracts: open interest, each contract's own vol and gamma — the flip re-prices with them and
+     Building values the open-interest change with them (one call a name) */
+  if (chain.length) {
+    const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/option-contracts?limit=1000&expiry=${encodeURIComponent(front)}`, true);
+    if (!still()) return;
+    current = cache.get(entry.ticker);
+    if (!current || current.full) return;
+    if (!rows.error && Array.isArray(rows.data)) {
+      const book = foldContracts(rows.data as UwContract[], front);
+      if (book.size) paintLegs(chain, book, true);
+      current.frontFacts = true;
+      current.at = Date.now();
+      cache.set(entry.ticker, current);
+      emit();
+    }
+  }
+  /* "All expiries" on the Board: every live date's strikes, so the flip can re-price each date at its own clock */
+  if (readLevelsScope() === 'ALL') await loadBoardDates(entry.ticker, token, listed);
+}
+
+/** Every live listed date carries its own strikes */
+function datesComplete(entry: Entry): boolean {
+  const today = isoDate(bookToday());
+  /* the same forty listings the full book pulls (loadExpiries) — the day that just settled too, while the vendor still
+     lists it: its chain is what liveAll takes off the whole book's total, so without it a Board name's "All expiries"
+     net carried the settled contracts (QQQ −$10.6B on the Board against −$9.3B on the Map after the bell) */
+  const live = entry.expiries.slice(0, 40);
+  const empty = emptyDates.get(entry.ticker);
+  return live.some(e => e.date >= today) && live.every(e => entry.byDate[e.date]?.length || empty?.has(e.date));
+}
+
+const datesWait = new Set<string>();
+/** Listed dates whose strikes came back empty — asked once, not waited on forever */
+const emptyDates = new Map<string, Set<string>>();
+async function loadBoardDates(ticker: string, token: number, listed?: { date: string; dte: number }[]): Promise<void> {
+  const still = () => gen.get(ticker) === token;
+  const e = cache.get(ticker);
+  if (!e || datesWait.has(ticker)) return;
+  const today = isoDate(bookToday());
+  void today;
+  const want = (listed ?? e.expiries).slice(0, 40).map(x => x.date).filter(d => !e.byDate[d]?.length && !emptyDates.get(ticker)?.has(d));
+  if (!want.length) return;
+  datesWait.add(ticker);
+  try {
+    const fetched = await mapLimit(want, 3, async date => {
+      try {
+        const rows = await whalesGreekStrikeExpiry(ticker, date);
+        return [date, Array.isArray(rows) ? chainFrom(rows, e.spot, new Map()) : []] as const;
+      } catch {
+        return [date, [] as StrikeNode[]] as const;
+      }
+    });
+    if (!still()) return;
+    const current = cache.get(ticker);
+    if (!current) return;
+    const byDate = { ...current.byDate };
+    const empty = emptyDates.get(ticker) ?? new Set<string>();
+    for (const [date, chain] of fetched) {
+      if (chain.length && !byDate[date]?.length) byDate[date] = chain;
+      else if (!chain.length) empty.add(date);
+    }
+    emptyDates.set(ticker, empty);
+    current.byDate = byDate;
+    if (listed?.length) current.expiries = listed;
+    cache.set(ticker, current);
+    emit();
+  } finally {
+    datesWait.delete(ticker);
+  }
+}
+
+/** The Levels card reads "All expiries": a name read for the Board alone loads every live date's strikes (the flip
+    re-prices each at its own clock). A no-op for a full book or one already complete. */
+export function ensureScopeDates(ticker: string): void {
+  const e = peekEntry(ticker);
+  if (!e || e.status !== 'live' || e.full || readLevelsScope() !== 'ALL' || datesComplete(e)) return;
+  void loadBoardDates(e.ticker, gen.get(e.ticker) ?? 0);
+}
+
+/** True while the "All expiries" scope still waits on some live date's strikes */
+export function scopeDatesPending(ticker: string): boolean {
+  const e = peekEntry(ticker);
+  return !!e && e.status === 'live' && readLevelsScope() === 'ALL' && !datesComplete(e);
 }
 
 /** Share of the book's gamma that expires today, percent. `none`: nothing on this name expires today. `wait`: the
@@ -1077,36 +1202,61 @@ export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
    the strike, calls and puts apart. Pages are ordered by the size of the change, so the first few hold everything that
    moved a wall. */
 const OI_PAGES = 6;
-const oiChangeCache = new Map<string, Map<number, { c: number; p: number }>>();
+
+/** One contract's open-interest change: the vendor's oi_diff_plain — this morning's open interest (curr_date, set
+    overnight from the previous session's trading) against the session before's (last_date) */
+export interface OiChangeRow {
+  expiry: string;
+  strike: number;
+  right: 'C' | 'P';
+  /** Contracts added (negative = closed) */
+  diff: number;
+  /** The two dates the change runs between, as the vendor prints them */
+  currDate: string;
+  lastDate: string;
+}
+export interface OiChange {
+  rows: OiChangeRow[];
+  /** The open-interest dates the change runs between ("2026-10-21" → "2026-10-22") */
+  lastDate: string | null;
+  currDate: string | null;
+}
+const oiChangeCache = new Map<string, OiChange>();
 const oiChangeWait = new Set<string>();
 
+/* KEYED BY CONTRACT, NOT BY STRIKE (the Pinpoint audit, 2026-10-22): the strike-only parse dropped the expiry and summed
+   every date's change at a strike, and Building then valued that sum at the selected scope's per-contract gamma — SPY
+   767 read "+42,691 puts" on today's chain when 1,921 of them were 10/22 and 36,716 were 10/27. Each row keeps its
+   expiry, strike and side; Building picks the contracts in scope and values each with its own gamma. */
 export function ensureOiChange(ticker: string): void {
   const t = ticker.toUpperCase();
   if (!t || oiChangeCache.has(t) || oiChangeWait.has(t)) return;
   oiChangeWait.add(t);
   void (async () => {
-    const byStrike = new Map<number, { c: number; p: number }>();
+    const out: OiChangeRow[] = [];
+    let lastDate: string | null = null;
+    let currDate: string | null = null;
     for (let page = 0; page < OI_PAGES; page++) {
       const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}`);
       const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
       for (const r of rows) {
-        const m = /([CP])(\d{8})$/.exec(String(r.option_symbol ?? ''));
+        const occ = parseOcc(String(r.option_symbol ?? ''));
         const diff = num(r.oi_diff_plain);
-        if (!m || !diff) continue;
-        const strike = Number(m[2]) / 1000;
-        const cell = byStrike.get(strike) ?? { c: 0, p: 0 };
-        if (m[1] === 'C') cell.c += diff;
-        else cell.p += diff;
-        byStrike.set(strike, cell);
+        if (!occ || !diff) continue;
+        const cd = String(r.curr_date ?? '');
+        const ld = String(r.last_date ?? '');
+        if (cd && (!currDate || cd > currDate)) currDate = cd;
+        if (ld && (!lastDate || ld > lastDate)) lastDate = ld;
+        out.push({ expiry: occ.expiry, strike: occ.strike, right: occ.right === 'CALL' ? 'C' : 'P', diff, currDate: cd, lastDate: ld });
       }
       if (rows.length < 500) break;
     }
-    oiChangeCache.set(t, byStrike);
+    oiChangeCache.set(t, { rows: out, lastDate, currDate });
     emit();
   })().finally(() => {
     oiChangeWait.delete(t);
   });
 }
 
-/** Each strike's open-interest change over the last session (calls, puts, in contracts) — null until it lands */
-export const peekOiChange = (ticker: string): ReadonlyMap<number, { c: number; p: number }> | null => oiChangeCache.get(ticker.toUpperCase()) ?? null;
+/** Each contract's open-interest change over the last session — null until it lands */
+export const peekOiChange = (ticker: string): OiChange | null => oiChangeCache.get(ticker.toUpperCase()) ?? null;

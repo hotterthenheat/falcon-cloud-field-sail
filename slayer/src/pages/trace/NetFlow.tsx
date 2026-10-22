@@ -34,7 +34,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useTopNet, useLiveBook } from '../../data/traceLive';
+import { useTopNet, useLiveBook, useTide } from '../../data/traceLive';
+import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { type MoneynessKey } from '../../data/flowBook';
 import { fmtUsd } from '../../data/gex';
@@ -75,6 +76,10 @@ const NetFlow = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   const top = useTopNet(40);
+  /* THE MARKET'S OWN NET (the audit, 2026-10-22): the board is the vendor's 20 most bullish and 20 most bearish names,
+     and their sum was headed "Net across the board" as if it were the market. The market's net is the vendor's market
+     tide — every name's net call premium less net put premium, running from the open. */
+  const tide = useTide('market', '');
   const liveBook = useLiveBook(picked || activeTicker).rows;
   // The shared hold (see LiveHold): the board's book and the pane's tick freeze together while paused
   const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
@@ -132,14 +137,24 @@ const NetFlow = () => {
   /* ReactNode: both named leaders are doors — clicking puts that name on the pane.
      THE PARTS ADD UP: "+$113.6M net … +$104.5M of it in calls and −$9.1M in puts" did not sum; the net is net calls LESS
      net puts, and the sentence says it that way, each figure in its meaning's ink */
+  const market = useMemo(() => {
+    const lastPt = tide.rows.length ? tide.rows[tide.rows.length - 1] : null;
+    return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem, at: nyClock(lastPt.time * 1000) } : null;
+  }, [tide.rows]);
   const read = useMemo<ReactNode>(() => {
     if (!facts.top || !facts.bottom) return <RichRead text="The book is still waking up." />;
-    const { top, bottom, total, topIsChamp } = facts;
+    const { top, bottom, topIsChamp } = facts;
     const crown = (v: number, champ: boolean) => (champ ? <span className="font-semibold tnum text-supreme">{signed(v)}</span> : <Lean v={v} />);
     return (
       <>
-        <RichRead text={`The board's money leans ${total >= 0 ? 'bullish' : 'bearish'} — `} />
-        <Lean v={total} /> net across {leaders.length} names: bullish names <Lean v={facts.calls} /> against bearish names <Lean v={facts.puts} put />.{' '}
+        {market && (
+          <>
+            <RichRead text={`The whole market's money leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
+            <Lean v={market.net} /> net to {market.at} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
+          </>
+        )}
+        <RichRead text={`On the board — the vendor's ${facts.bullish} most bullish and ${facts.bearish} most bearish names — `} />
+        the bullish names sum to <Lean v={facts.calls} /> and the bearish to <Lean v={facts.puts} put />.{' '}
         <ReadDoor onOpen={() => onQuery(top.ticker)} title={`Put ${top.ticker} on the pane`}>
           {top.ticker}
         </ReadDoor>
@@ -153,7 +168,7 @@ const NetFlow = () => {
       </>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facts, leaders.length]);
+  }, [facts, leaders.length, market]);
 
   /* The search PICKS a name (it is a board, not a filter); the board scrolls the picked row into view */
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -167,17 +182,23 @@ const NetFlow = () => {
   return (
     <TraceBox
       title="Which way the money leans"
-      sub="Every name ranked most bullish to most bearish by net premium — net calls less net puts · click a name and its session goes on the pane"
+      sub="The vendor's most bullish and most bearish names, ranked by net premium — net calls less net puts, from the open · click a name and its session goes on the pane"
       testId="net-flow"
       className="md:flex-1 md:min-h-0"
       data={{ picked: sel, names: leaders.length }}
       guide={{ title: 'How to read the board', door: 'What the board, the lines and the floor mean', body: <NetFlowGuide />, testId: 'net-flow-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
         <>
-          <Fact label="Net across the board" testId="net">
-            <Lean v={facts.total} />
+          <Fact label="Market net · every name" testId="net" title="The vendor's market tide: every name's net call premium less its net put premium, from the open to the last minute">
+            {market ? (
+              <>
+                <Lean v={market.net} /> <span className="text-textSecondary">· to {market.at} ET</span>
+              </>
+            ) : (
+              <span className="text-textMuted">—</span>
+            )}
           </Fact>
-          <Fact label="Bullish names · bearish names" testId="sides" title="The bullish names' net premium against the bearish names' — each name's figure is its own net, call premium minus put premium">
+          <Fact label="The board · bullish · bearish" testId="sides" title="The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market">
             <Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} put className="font-normal" />
           </Fact>
           <Fact label="Names" testId="names">
@@ -193,19 +214,15 @@ const NetFlow = () => {
               {facts.busiest.ticker} · {num(facts.busiest.volume)} vol
             </Champion>
           )}
-          {facts.top && facts.bottom && !facts.topIsChamp && (
-            <Champion label="Most bullish" ink="bull" title="Put this name on the pane" onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
+          {/* the two ends of the board, each named for what it is; the larger of the two wears the magenta */}
+          {facts.top && facts.top.net > 0 && (
+            <Champion label="Most bullish" ink={champ === facts.top ? 'supreme' : 'bull'} title="Put this name on the pane" onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
               {facts.top.ticker} · {signed(facts.top.net)}
             </Champion>
           )}
-          {facts.top && facts.bottom && facts.topIsChamp && (
-            <Champion label="Most bearish" ink="bear" title="Put this name on the pane" onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
+          {facts.bottom && facts.bottom.net < 0 && (
+            <Champion label="Most bearish" ink={champ === facts.bottom ? 'supreme' : 'bear'} title="Put this name on the pane" onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
               {facts.bottom.ticker} · {signed(facts.bottom.net)}
-            </Champion>
-          )}
-          {champ && (
-            <Champion label="Largest lean" ink="supreme" title="Put this name on the pane" onOpen={() => onQuery(champ.ticker)} testId="largest">
-              {champ.ticker} · {signed(champ.net)}
             </Champion>
           )}
         </>
@@ -252,7 +269,7 @@ const NetFlow = () => {
                   <CompanyLogo ticker={l.ticker} size={15} />
                   <span className="font-mono text-[11px] font-bold text-textPrimary">{l.ticker}</span>
                   {/* the name's share of the board's gross lean */}
-                  <span className="font-mono text-[11px] tnum text-textSecondary" title="This name's share of the board's whole lean">
+                  <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={`${l.ticker}'s share of the board's gross lean: its net premium (${signed(l.net)}) against the sum of every board name's net, signs dropped (${fmtUsd(facts.gross)})`}>
                     {Math.round((Math.abs(l.net) / facts.gross) * 100)}%
                   </span>
                   <span className={`ml-auto font-mono text-[11px] tabular-nums ${directionInk(l.net, netMarks)}`}><TickFigure value={l.net}>{fmtUsd(l.net)}</TickFigure></span>

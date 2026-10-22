@@ -55,11 +55,12 @@
 ==================================================
 */
 
+import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed, ensureOiChange, peekOiChange } from '../../data/uwBook';
+import { ensureBook, snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
@@ -75,11 +76,11 @@ import { BookOrSkeleton } from './BookDown';
 import WatchMenu from '../../components/gex/WatchMenu';
 import { ladderExpiryOptions } from '../../components/gex/ladderControls';
 import { armPrice, removeAlert, useAlerts } from '../../components/gex/alertStore';
-import { buildAgenda, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { trimAgenda, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { deskAgenda } from '../../data/board';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { aheadClock, type AheadClock } from '../../data/ahead';
-import { buildBuilding } from '../../data/building';
 import { readSessionClock } from '../../data/moc';
 import { MAX_PANES, OFF_SCOPE_TITLE, PANE_COLS, newPaneKey, readPanes, usePanesFollowScope, writePanes, type Pane } from '../../data/panes';
 import { contractWords, usePositions } from '../../data/positions';
@@ -93,7 +94,8 @@ let panesMemory: Pane[] | null = null;
 let orderMemory: AgendaOrder = 'matters';
 let windowMemory: StrikeWindow = 20;
 
-const hhmmss = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
 /* ---- one pane --------------------------------------------------------------------------- */
 
@@ -283,13 +285,11 @@ const RankedTargets = () => {
     for (const p of panes) {
       const snap = snapFor(p);
       if (!snap) continue;
-      const t = snap.ticker;
-      const profile = buildExposureProfile(snap, p.expiry, window);
-      const iv = peekIv(t) ?? 0;
-      ensureOiChange(t);
-      const building = buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock, peekOiChange(t));
+      /* THE DESK'S ONE AGENDA (data/board.ts deskAgenda) — the Board's and Compare's watch-first is this page's; the
+         Strikes card only trims the list */
       const surface = buildExposureSurface(snap, 30, CALENDAR_DTES);
-      out.set(p.key, buildAgenda(snap, profile, building, surface, bookCandles(t) ?? [], clock, iv, order));
+      const agenda = deskAgenda(snap, p.expiry, clock, order, surface);
+      if (agenda) out.set(p.key, trimAgenda(agenda, window));
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps

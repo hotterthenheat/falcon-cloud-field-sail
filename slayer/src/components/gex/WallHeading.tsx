@@ -184,7 +184,9 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the dots, the rings and the diamonds mean" testId="heading-guide" />
             </div>
             <p className="mt-0.5 text-[11px] text-textMuted">
-              Each level on the strike axis: where it stood at the open, where it is now, and where {clock.inSession ? "today's pace puts it by the close" : "the last session's pace puts it next session"} · a straight line, not a forecast
+              {data.overnight
+                ? "Each level on the strike axis: where it stood before yesterday's trading (the overnight open-interest count) and where it is now · the count is one step, so nothing is projected"
+                : <>Each level on the strike axis: where it stood at the open, where it is now, and where {clock.inSession ? "today's pace puts it by the close" : "the last session's pace puts it next session"} · a straight line, not a forecast</>}
             </p>
           </div>
         )}
@@ -316,10 +318,10 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
         </div>
         {/* THE KEY — its own line, so nothing sits on the axis's prices */}
         <div className="mt-1 pl-2 flex items-center gap-4 flex-wrap text-[9px] text-textMuted" data-heading-key>
-          <Key kind="open">at the open</Key>
+          <Key kind="open">{data.overnight ? "before yesterday's trading" : 'at the open'}</Key>
           <Key kind="now">now</Key>
-          <Key kind="close">{clock.inSession ? 'by the close, at this pace' : 'next session, at this pace'}</Key>
-          <Key kind="challenger">growing fastest on that side</Key>
+          {!data.overnight && <Key kind="close">{clock.inSession ? 'by the close, at this pace' : 'next session, at this pace'}</Key>}
+          <Key kind="challenger">{data.overnight ? 'grew most overnight on that side' : 'growing fastest on that side'}</Key>
         </div>
       </div>
     </section>

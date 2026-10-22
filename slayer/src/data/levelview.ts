@@ -16,7 +16,7 @@
 
 import Simulator from '../core/simulator';
 import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyMinutes, nySession } from '../core/nyTime';
-import { bookCandles, bookHistory } from './uwBook';
+import { bookCandles, bookHistory, peekEntry } from './uwBook';
 import type { Candle, MarketSnapshot } from '../types/market';
 
 /** NONE: no book was kept at the open or now — nothing to compare */
@@ -97,6 +97,10 @@ export const inCashSession = (t: number): boolean => {
  * snapshots to compare.
  */
 export function netSinceOpenRatio(ticker: string): Map<number, number> | null {
+  /* NOT ON THE VENDOR'S BOOK (the Pinpoint audit, 2026-10-22): its minute history walks today's VOLUME onto the open
+     interest, and volume is not open interest — "39× growing", "new today" on strikes whose contracts never changed.
+     Open interest is counted once, overnight; there is no since-the-open change to show, so none is claimed. */
+  if (peekEntry(ticker)) return null;
   const session = sessionBars(ticker);
   if (!session) return null;
   const snaps = bookHistory(ticker) ?? Simulator.getGexHistory(ticker) ?? [];
@@ -121,6 +125,8 @@ export function netSinceOpenRatio(ticker: string): Map<number, number> | null {
  * the live one's — no surface reads them. Null until the session has a snapshot to start from.
  */
 export function snapshotAtOpen(ticker: string): MarketSnapshot | null {
+  /* the vendor's book has no opening book of its own (see netSinceOpenRatio) — and the simulator's chain is not this name's */
+  if (peekEntry(ticker)) return null;
   const session = sessionBars(ticker);
   if (!session) return null;
   const snaps = bookHistory(ticker) ?? Simulator.getGexHistory(ticker) ?? [];
@@ -197,7 +203,8 @@ export function buildLevelRead(ticker: string, strike: number): LevelRead | null
   const spot = Simulator.TICKERS[ticker]?.currentPrice ?? session[session.length - 1].close;
   const distPct = ((strike - spot) / spot) * 100;
 
-  const snaps = bookHistory(ticker) ?? Simulator.getGexHistory(ticker) ?? [];
+  /* the vendor's minute history is volume walked onto open interest — no since-the-open claim off it (see above) */
+  const snaps = peekEntry(ticker) ? [] : (Simulator.getGexHistory(ticker) ?? []);
   const at = (s: { levels: { strike: number; value: number }[] }) => s.levels.find(l => l.strike === strike)?.value ?? null;
   const first = snaps.find(s => s.time >= session[0].time);
   const last = snaps[snaps.length - 1];

@@ -57,6 +57,7 @@
 ==================================================
 */
 
+import { regimeOfNet } from './flipLevel';
 import { now } from '../core/clock';
 import { readSessionClock } from './moc';
 import { buildExposureProfile } from './exposure';
@@ -64,7 +65,7 @@ import { LEVELS_WINDOW } from './roomLevels';
 import { bookCandles, snapshotOf } from './uwBook';
 import { peekLive } from './liveRecord';
 import { peekStockFile, type EarnRow, type StockFile } from './stockFile';
-import { nextReportRow, reportDayLabel, tradingDaysUntil } from './earningsFeed';
+import { nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
 import { lookup } from './universe';
 import { tickerName } from './tickers';
@@ -444,63 +445,71 @@ const trendFor = (blocks: Candle[][], spot: number, uptoSessions?: number): { re
   return { read, factors };
 };
 
-const contractOf = (p: FlowPrint, premium: number, askPct: number, sweepPct: number): BookContract => ({
-  key: `${p.ticker}-${p.strike}-${p.right}-${p.expiry}`,
-  ticker: p.ticker,
-  sector: null,
-  sectorColor: null,
-  strike: p.strike,
-  right: p.right,
-  expiry: p.expiry,
-  dte: p.dte,
-  spot: p.spot,
-  otmPct: p.otmPct,
-  last: p.fill,
-  chgPct: 0,
-  lastAt: p.time,
-  lastAtMin: 0,
-  volume: p.volume,
-  oi: p.oi,
-  deltaOI: 0,
-  deltaOIPct: 0,
-  premium,
-  iv: p.iv,
-  ivChg: 0,
-  volOverOI: p.volOverOI,
-  sweepPct,
-  multiPct: p.legs > 1 ? 100 : 0,
-  floorPct: 0,
-  askPct,
-  prevOI: p.oi,
-  prevVolume: 0,
-  prevAvgFill: p.fill,
-  prevPremium: 0,
-  prevAskPct: askPct,
-  oiStreak: 0,
-  volGtOiStreak: 0,
-  earnDays: null,
-  prevSpark: [],
-});
-
-const busiestOf = (prints: FlowPrint[], right: 'C' | 'P'): BookContract[] => {
-  const groups = new Map<string, FlowPrint[]>();
-  for (const p of prints) {
-    if (p.right !== right || !(p.strike > 0)) continue;
-    const key = `${p.strike}-${p.expiry}`;
-    const list = groups.get(key) ?? [];
-    list.push(p);
-    groups.set(key, list);
+/* THE BUSIEST CONTRACTS, FROM THE CHAIN (the data audit, 2026-10-22). They were built from the last 40 flow alerts, the
+   dollars the alerts' premiums summed — AAPL's 350C read "$134K" against the contract's $6.56M day, and TSLA's 400C
+   (68,212 contracts) was missing. They are now the chain's own contracts by the day's volume, expired ones excluded,
+   with the day's whole premium — the same read and the same rule as the earnings page. */
+const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: string, spot: number): BookContract[] => {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  const out: BookContract[] = [];
+  for (const row of rows) {
+    const sym = String(row.option_symbol || '');
+    const m = /(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(sym);
+    if (!m || m[4] !== right) continue;
+    const expiryIso = `20${m[1]}-${m[2]}-${m[3]}`;
+    if (expiryIso < today) continue;
+    const volume = nOr(row.volume) ?? 0;
+    if (!(volume > 0)) continue;
+    const strike = Number(m[5]) / 1000;
+    const bid = nOr(row.nbbo_bid) ?? 0;
+    const ask = nOr(row.nbbo_ask) ?? 0;
+    const last = nOr(row.last_price) ?? 0;
+    const fill = nOr(row.avg_price) ?? (bid > 0 && ask > 0 ? (bid + ask) / 2 : last);
+    const premium = nOr(row.total_premium) ?? volume * fill * 100;
+    const askV = nOr(row.ask_volume) ?? 0;
+    const sweepV = nOr(row.sweep_volume) ?? 0;
+    const oi = nOr(row.open_interest) ?? 0;
+    const iv = nOr(row.implied_volatility) ?? 0;
+    const dte = Math.max(0, Math.round((Date.UTC(+`20${m[1]}`, +m[2] - 1, +m[3]) - Date.UTC(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10))) / 86_400_000));
+    out.push({
+      key: `${ticker}-${strike}-${right}-${expiryIso}`,
+      ticker,
+      sector: null,
+      sectorColor: null,
+      strike,
+      right,
+      expiry: `${m[2]}/${m[3]}/20${m[1]}`,
+      dte,
+      spot,
+      otmPct: spot > 0 ? ((strike - spot) / spot) * 100 : 0,
+      last,
+      chgPct: 0,
+      lastAt: String(row.last_tape_time || ''),
+      lastAtMin: 0,
+      volume,
+      oi,
+      deltaOI: 0,
+      deltaOIPct: 0,
+      premium,
+      iv: iv * (iv < 3 ? 100 : 1),
+      ivChg: 0,
+      volOverOI: oi > 0 ? volume / oi : 0,
+      sweepPct: volume > 0 ? (100 * sweepV) / volume : 0,
+      multiPct: volume > 0 ? (100 * (nOr(row.multi_leg_volume) ?? 0)) / volume : 0,
+      floorPct: volume > 0 ? (100 * (nOr(row.floor_volume) ?? 0)) / volume : 0,
+      askPct: volume > 0 ? (100 * askV) / volume : 0,
+      prevOI: nOr(row.prev_oi) ?? oi,
+      prevVolume: 0,
+      prevAvgFill: fill,
+      prevPremium: 0,
+      prevAskPct: 0,
+      oiStreak: 0,
+      volGtOiStreak: 0,
+      earnDays: null,
+      prevSpark: [],
+    });
   }
-  return [...groups.values()]
-    .map(list => {
-      const lead = [...list].sort((a, b) => b.volume - a.volume)[0];
-      const premium = list.reduce((a, p) => a + p.premium, 0);
-      const ask = list.filter(p => p.side === 'ASK').length;
-      const sweeps = list.filter(p => p.sweep).length;
-      return contractOf(lead, premium, list.length ? (100 * ask) / list.length : 0, list.length ? (100 * sweeps) / list.length : 0);
-    })
-    .sort((a, b) => b.volume - a.volume)
-    .slice(0, 3);
+  return out.sort((a, b) => b.volume - a.volume).slice(0, 3);
 };
 
 /* ---- the money, from the book, the flow and the dark pool ------------------------------- */
@@ -512,7 +521,8 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const profile = buildExposureProfile(snapshot, 'ALL', LEVELS_WINDOW);
   const netVanna = profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
   const netCharm = profile.strikes.reduce((a, s) => a + (s.charm?.net ?? 0), 0);
-  const regime: MoneyRead['regime'] = snapshot.spot >= profile.levels.flip ? 'absorbing' : 'amplifying';
+  /* the regime is the sign of net gamma at spot — the rule every Pinpoint page uses (data/flipLevel.ts) */
+  const regime: MoneyRead['regime'] = regimeOfNet(profile.netGex) === 'SHORT' ? 'amplifying' : 'absorbing';
   const screen = file.screen;
   const callPremium = nOr(screen?.bullish_premium) ?? 0;
   const putPremium = nOr(screen?.bearish_premium) ?? 0;
@@ -596,7 +606,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     dark,
     darkBlocks,
     today,
-    busiest: { calls: busiestOf(file.flow, 'C'), puts: busiestOf(file.flow, 'P') },
+    busiest: { calls: busiestOf(file.contracts, 'C', ticker, snapshot.spot), puts: busiestOf(file.contracts, 'P', ticker, snapshot.spot) },
   };
   const factors: Factor[] = [];
   if (rvol != null) factors.push({ key: 'rvol', label: 'Relative volume', value: `${rvol.toFixed(2)}×`, lean: clamp((rvol - 1) * (snapshot.changePercent >= 0 ? 1 : -1)), weight: 0.25, note: rvol >= 1.3 ? `heavy for the name, ${snapshot.changePercent >= 0 ? 'on an up day' : 'on a down day'}` : rvol <= 0.7 ? 'quiet' : 'ordinary' });
@@ -625,7 +635,8 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
   const reports: NewsRead['reports'] = past.slice(0, 8).map(r => {
     const actual = nOr(r.actual_eps) ?? 0;
     const est = nOr(r.street_mean_est) ?? 0;
-    return { label: String(r.report_date || ''), epsActual: actual, epsEst: est, beat: actual >= est, movePct: (nOr(r.post_earnings_move_1d) ?? 0) * (Math.abs(nOr(r.post_earnings_move_1d) ?? 0) <= 1.5 ? 100 : 1) };
+    /* the move is a fraction of the price, per the spec ("0.0724" is 7.24%) */
+    return { label: reportDayLabelYear(String(r.report_date || '')), epsActual: actual, epsEst: est, beat: actual >= est, movePct: (nOr(r.post_earnings_move_1d) ?? 0) * 100 };
   });
   const moved = reports.filter(r => r.movePct !== 0);
   const reaction = moved.length ? { pct: moved.reduce((a, r) => a + Math.abs(r.movePct), 0) / moved.length, reports: moved.length } : null;
@@ -636,7 +647,8 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
     ? {
         label: reportDayLabel(upcoming.report_date),
         daysOut: Math.max(0, tradingDaysUntil(upcoming.report_date)),
-        impliedMovePct: Math.abs(nOr(upcoming.expected_move_perc) ?? 0) <= 1.5 ? (nOr(upcoming.expected_move_perc) ?? 0) * 100 : (nOr(upcoming.expected_move_perc) ?? 0),
+        /* a fraction of the price, per the spec, always */
+        impliedMovePct: Math.abs(nOr(upcoming.expected_move_perc) ?? 0) * 100,
         confirmed: String(upcoming.source ?? '').toLowerCase() === 'company',
       }
     : null;

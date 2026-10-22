@@ -77,15 +77,15 @@ const SCREEN_DOT: Record<Grade, string> = { strong: 'bg-bull ring-2 ring-bull/30
 const GRADE_RANK: Grade[] = ['strong', 'good', 'caution', 'poor'];
 
 const SCREEN_OPTIONS: DropdownOption<ScreenPick>[] = [
-  { value: 'all', label: 'Every screen', hint: 'Strong, good, caution and poor' },
+  { value: 'all', label: 'Every screen', short: 'All', hint: 'Strong, good, caution and poor' },
   { value: 'strong', label: 'Strong', hint: 'Nearly everything lines up at once — rare on purpose' },
   { value: 'good', label: 'Good', hint: 'All four sleeves point the same way' },
   { value: 'caution', label: 'Caution', hint: 'The sleeves disagree — a catalyst decides' },
   { value: 'poor', label: 'Poor', hint: 'The data argues against the name' },
 ];
-const SECTOR_OPTIONS: DropdownOption<SectorPick>[] = [{ value: 'all', label: 'Every sector', hint: 'The ten sectors the universe files' }, ...SECTORS.map(s => ({ value: s, label: s }))];
+const SECTOR_OPTIONS: DropdownOption<SectorPick>[] = [{ value: 'all', label: 'Every sector', short: 'All', hint: 'The ten sectors the universe files' }, ...SECTORS.map(s => ({ value: s, label: s }))];
 const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
-  { value: 'all', label: 'Every name', hint: 'The whole universe' },
+  { value: 'all', label: 'Every name', short: 'All', hint: 'The whole universe' },
   { value: 'board', label: 'Your board', hint: 'The names on your Board' },
 ];
 
@@ -344,7 +344,7 @@ const Stocks = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the sleeves, the screen and the rotation mean" testId="stocks-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            The trend, the numbers and the money, each from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
+            The {picks.length || 'house list’s'} names the terminal files — not the whole market — each read on the trend, the numbers and the money from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
@@ -369,10 +369,13 @@ const Stocks = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Trailing sector")}>Trailing sector</dt>
+            {/* RANKED LAST, WITH ITS DIRECTION (the retail pass, 2026-10-22): "Trailing sector: Consumer Discretionary" sat over
+                that sector's own card reading TURNING UP while Communication read FALLING — the rank is by its names'
+                screens, the direction by the two windows against the tape; the fact says both */}
+            <dt className="text-[10px] text-textMuted cursor-help" title="The sector whose names screen worst, by rank — its direction against the tape (the card's word) beside it. A sector can rank last and still be turning up">Ranked last</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
               {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-[12px] tnum text-bear hover:underline underline-offset-2">
-                {bottom.sector}
+                {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
               </button>}
             </dd>
           </div>

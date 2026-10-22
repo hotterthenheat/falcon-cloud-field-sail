@@ -33,7 +33,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useMarketData } from '../../context/MarketDataContext';
 import { quotePlace, useAccumTape, useNameDark } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
-import { gradeOfConviction, gradeOfPosture, POSTURE_WORD, type DarkTapeView } from '../../data/darkpool';
+import { gradeOfPosture, POSTURE_WORD, type DarkTapeView } from '../../data/darkpool';
 import { crossKey, watchedCross } from '../../context/WatchContext';
 import CrossDrilldown from '../../components/trace/CrossDrilldown';
 import FlowSearch from '../../components/trace/FlowSearch';
@@ -92,20 +92,8 @@ const INTENT_WORD: Record<DarkPoolIntent, string> = { ACCUMULATION: 'accumulatio
 /** The read as a tag — the word in its ink, the house's uppercase mono */
 const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{intent}</span>;
 
-/** How sure the read is — THE PARTNER'S BAR (Noah, 2026-10-13: "i want his conviction bars as well not ours in the dark
-    pool"): the classifier's certainty as a one-sided bar in the read's ink and its number beside it. It was one of the
-    four words over the four-step meter from 2026-09-19 to then (the sentence and the posture still speak the words). */
-const ConvictionCell = ({ value, intent }: { value: number; intent: DarkPoolIntent }) => (
-  <span className="inline-flex items-center gap-2" data-conviction={gradeOfConviction(value)} title={`${value}% — how sure the classifier is of the read`}>
-    <span className="relative w-14 h-[3px] rounded-full bg-ink/[0.07]">
-      <span className={`absolute inset-y-0 left-0 rounded-full ${INTENT_BAR[intent]}`} style={{ width: `${value}%` }} />
-    </span>
-    <span className="font-mono text-[11px] tnum text-textPrimary">{value}%</span>
-  </span>
-);
-
 /** venue is a code ("L", "D") — at 108 the row ran past a laptop's box and "Says" stood half under its edge */
-const WIDTHS: Record<string, number> = { mark: 40, name: 112, time: 80, price: 88, vs: 84, shares: 96, dollars: 96, venue: 72, exec: 64, shelf: 80, read: 116, conviction: 120 };
+const WIDTHS: Record<string, number> = { mark: 40, name: 112, time: 92, price: 88, vs: 84, shares: 96, dollars: 96, exec: 64, shelf: 80, read: 116 };
 const TOOLTIPS: Record<string, string> = {
   vs: 'Cents through the quote at the print. A percent only when the fill left the spread.',
   exec: 'Where the print sat in the NBBO — at or above the ask, at or below the bid',
@@ -117,7 +105,7 @@ const TOOLTIPS: Record<string, string> = {
 /* The sector and the share flex — the table fills its box (Noah, 2026-09-13: his sat half-width beside empty space) */
 const LEADER_WIDTHS: Record<string, number> = { ticker: 140, price: 120, dark: 120, avg: 120, shares: 140 };
 const LEADER_TOOLTIPS: Record<string, string> = {
-  dark: 'Off-exchange dollars printed in the name today',
+  dark: 'Off-exchange dollars in the dark prints in hand',
   share: 'Against the heaviest name in its sector',
   avg: 'Today’s dark volume against the name’s usual day — over 100% is unusual',
   shares: 'Shares printed off-exchange',
@@ -153,6 +141,7 @@ const DarkPool = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   const liveView = named && tapeKind !== 'lit' ? nameBook.rows.view : null;
+  const nameDay = named ? nameBook.rows.day : null;
   const liveTape = useMemo<DarkTapeView | null>(() => {
     const prints = named ? (tapeKind === 'lit' ? nameBook.rows.lit : []) : tapeKind === 'lit' ? lit.rows : dark.rows;
     if (named && tapeKind !== 'lit') return null;
@@ -179,9 +168,11 @@ const DarkPool = () => {
       }
     }
     const total = prints.reduce((a, p) => a + p.notional, 0);
-    const acc = prints.filter(p => p.intent === 'ACCUMULATION').length;
-    const dist = prints.filter(p => p.intent === 'DISTRIBUTION').length;
-    const net = prints.length ? Math.round(((acc - dist) / prints.length) * 100) : 0;
+    /* the posture reads the SIZED prints only — never a print priced by its own terms, never a small one */
+    const sized = prints.filter(p => p.sized);
+    const acc = sized.filter(p => p.intent === 'ACCUMULATION').length;
+    const dist = sized.filter(p => p.intent === 'DISTRIBUTION').length;
+    const net = sized.length ? Math.round(((acc - dist) / sized.length) * 100) : 0;
     const posture: Posture = net > 15 ? 'ACCUMULATING' : net < -15 ? 'DISTRIBUTING' : 'BALANCED';
     const largest = prints.reduce<DarkPoolPrint | null>((a, p) => (!a || p.notional > a.notional ? p : a), null);
     return {
@@ -211,7 +202,7 @@ const DarkPool = () => {
               dpSharePct: tape.dpSharePct,
               posture: tape.posture,
               netPosturePct: tape.netPosturePct,
-              postureNote: `${POSTURE_WORD[tape.posture]} across ${tape.names.length} names — ${fmtUsd(tape.totalNotional)} crossed off-exchange today on ${num(tape.crosses)} prints.`,
+              postureNote: `${POSTURE_WORD[tape.posture]} across ${tape.names.length} names — ${fmtUsd(tape.totalNotional)} crossed off-exchange in the last ${num(tape.crosses)} prints.`,
               totalNotional: tape.totalNotional,
             }
           : null,
@@ -223,6 +214,13 @@ const DarkPool = () => {
   const lastHeadRef = useRef<typeof headNow>(null);
   if (headNow) lastHeadRef.current = headNow;
   const head = headNow ?? lastHeadRef.current;
+  /* THE WINDOW IS NAMED (the audit, 2026-10-22: "$177.6M crossed off-exchange today on 400 prints" was a 25-second
+     buffer) — every figure on the market's tape covers the prints in hand, first to last */
+  const tapeWindow = useMemo(() => {
+    const ps = view ? view.prints : tape ? tape.prints : [];
+    const ts = ps.map(p => p.time).filter(t => t && t !== '—').sort();
+    return ts.length ? `${ts[0]}–${ts[ts.length - 1]} ET` : null;
+  }, [view, tape]);
   /* THE CROSS'S CARD (the Live Tape's print card, for a cross) */
   const [openCross, setOpenCross] = useState<DarkPoolPrint | null>(null);
   const openView = useMemo(() => {
@@ -231,6 +229,10 @@ const DarkPool = () => {
     return tape?.views.get(openCross.ticker) ?? null;
   }, [openCross, view, tape]);
   const shownCross = useMemo(() => (openCross ? openView?.prints.find(p => p.id === openCross.id) ?? openCross : null), [openCross, openView]);
+  const leaderWindow = useMemo(() => {
+    const ts = dark.rows.map(p => p.time).filter(t => t && t !== '—').sort();
+    return ts.length ? `${ts[0]}–${ts[ts.length - 1]} ET` : null;
+  }, [dark.rows]);
   const leaders = useMemo<DarkLeadersView>(() => {
     const byName = new Map<string, DarkLeaderRow>();
     for (const p of dark.rows) {
@@ -287,14 +289,15 @@ const DarkPool = () => {
   const marks = useMemo(() => ({ size: earnMarks(cut, p => p.size), notional: earnMarks(cut, p => p.notional) }), [cut]);
 
   const facts = useMemo(() => {
-    const building = cut.reduce((a, p) => a + (p.intent === 'ACCUMULATION' ? p.notional : 0), 0);
-    const leaving = cut.reduce((a, p) => a + (p.intent === 'DISTRIBUTION' ? p.notional : 0), 0);
+    const building = cut.reduce((a, p) => a + (p.sized && p.intent === 'ACCUMULATION' ? p.notional : 0), 0);
+    const leaving = cut.reduce((a, p) => a + (p.sized && p.intent === 'DISTRIBUTION' ? p.notional : 0), 0);
+    const sizedCount = cut.filter(p => p.sized).length;
     const dollars = cut.reduce((a, p) => a + p.notional, 0);
     const strongest = levels.reduce<DarkPoolLevel | null>((a, l) => (a === null || l.notional > a.notional ? l : a), null);
     const largest = cut.reduce<DarkPoolPrint | null>((a, p) => (a === null || p.notional > a.notional ? p : a), null);
     const support = levels.filter(l => l.role === 'SUPPORT').length;
     const resistance = levels.filter(l => l.role === 'RESISTANCE').length;
-    return { building, leaving, dollars, strongest, largest, support, resistance, pivots: levels.length - support - resistance };
+    return { building, leaving, sizedCount, dollars, strongest, largest, support, resistance, pivots: levels.length - support - resistance };
   }, [cut, levels]);
   const shelfMax = useMemo(() => Math.max(1, ...levels.map(l => l.notional)), [levels]);
 
@@ -324,25 +327,30 @@ const DarkPool = () => {
               ),
             } as Column<DarkPoolPrint>,
           ]),
-      { key: 'time', header: 'Time', sortValue: p => p.time, render: p => <span className="text-textSecondary">{p.time}</span> },
+      { key: 'time', header: 'Time', sortValue: p => p.time, render: p => <span className="text-textSecondary tnum">{p.time}</span> },
       { key: 'price', header: 'Price', align: 'right', sortValue: p => p.price, render: p => <span className="font-mono tnum font-bold text-textPrimary">${p.price.toFixed(2)}</span> },
       { key: 'vs', header: 'vs mid', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${place.cents === 0 ? 'text-textMuted' : dirInk(place.cents)}`}>{place.text}</span>; } },
       { key: 'shares', header: 'Shares', align: 'right', sortValue: p => p.size, render: p => <span className={`font-mono tnum ${weightInk(p.size, marks.size)}`}>{num(p.size)}</span> },
       { key: 'dollars', header: 'Dollars', align: 'right', sortValue: p => p.notional, render: p => <span className={`font-mono tnum ${weightInk(p.notional, marks.notional)}`}>{fmtUsd(p.notional)}</span> },
-      { key: 'venue', header: 'Venue', sortValue: p => p.venue, render: p => <span className="text-textSecondary">{p.venue}</span> },
       { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-[10px] ${p.exec === 'ASK' ? 'text-bull' : p.exec === 'BID' ? 'text-bear' : 'text-textMuted'}`}>{p.exec ?? '—'}</span> },
+      /* a shelf is a name's (its day by price) — the market's tape has none, so the column stands only on a name */
+      ...(view
+        ? [
+            {
+              key: 'shelf',
+              header: 'Shelf',
+              sortValue: (p: DarkPoolPrint) => (p.atLevel ? 1 : 0),
+              render: (p: DarkPoolPrint) => (view.levels.length === 0 ? <span className="text-textMuted">—</span> : p.atLevel ? <span className="font-semibold text-textPrimary">On a shelf</span> : <span className="text-textMuted">Between</span>),
+            } as Column<DarkPoolPrint>,
+          ]
+        : []),
+      /* a read only where there is one: a sized print at the quote; a small print or one priced by its own terms says so */
       {
-        key: 'shelf',
-        header: 'Shelf',
-        sortValue: p => (p.atLevel ? 1 : 0),
-        render: p => {
-          const levels = (view && view.ticker === p.ticker ? view.levels : tape?.views.get(p.ticker)?.levels) ?? [];
-          if (levels.length === 0) return <span className="text-textMuted">—</span>;
-          return p.atLevel ? <span className="font-semibold text-textPrimary">On a shelf</span> : <span className="text-textMuted">Between</span>;
-        },
+        key: 'read',
+        header: 'Read',
+        sortValue: p => (p.sized ? p.intent : p.special ? 'zz' : 'zzz'),
+        render: p => (p.sized ? <IntentTag intent={p.intent} /> : <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted" title={p.read}>{p.special ? 'no read · terms' : 'no read · small'}</span>),
       },
-      { key: 'read', header: 'Read', sortValue: p => p.intent, render: p => <IntentTag intent={p.intent} /> },
-      { key: 'conviction', header: 'Conviction', align: 'right', sortValue: p => p.conviction, render: p => <ConvictionCell value={p.conviction} intent={p.intent} /> },
       {
         key: 'says',
         header: 'What it says',
@@ -378,7 +386,6 @@ const DarkPool = () => {
     return out.sort((x, y) => y.notional - x.notional);
   }, [leaders, sector]);
   const leaderMarks = useMemo(() => ({ dark: earnMarks(leaderRows, r => r.notional), shares: earnMarks(leaderRows, r => r.size) }), [leaderRows]);
-  const unusual = useMemo(() => leaderRows.reduce<LeaderRow | null>((a, r) => (a === null || r.pctAvgVol > a.pctAvgVol ? r : a), null), [leaderRows]);
   const heaviest = leaderRows[0] ?? null;
   const topSector = leaders.sectors[0];
   const shownSector = sector === 'all' ? topSector : leaders.sectors.find(s => s.sector === sector) ?? topSector;
@@ -412,15 +419,15 @@ const DarkPool = () => {
         align: 'right',
         sortValue: r => r.price,
         render: r => (
-          <span className="text-textPrimary whitespace-nowrap">
-            ${r.price.toFixed(2)} <span className={r.dirUp ? 'text-bull' : 'text-bear'}>{r.dirUp ? '▲' : '▼'}</span>
+          <span className="text-textPrimary whitespace-nowrap" title="The name's last dark print">
+            ${r.price.toFixed(2)}
           </span>
         ),
       },
       { key: 'dark', header: 'Dark $', align: 'right', sortValue: r => r.notional, render: r => <span className={weightInk(r.notional, leaderMarks.dark)}>{fmtUsd(r.notional)}</span> },
       {
         key: 'share',
-        header: 'Of its sector',
+        header: 'Vs the heaviest',
         align: 'right',
         sortValue: r => r.notional / r.sectorMax,
         render: r => {
@@ -434,14 +441,6 @@ const DarkPool = () => {
             </span>
           );
         },
-      },
-      {
-        key: 'avg',
-        header: '% avg vol',
-        align: 'right',
-        sortValue: r => r.pctAvgVol,
-        /* Over the name's usual day is UNUSUAL — the warn ink, the one thing on the row that is a signal */
-        render: r => <span className={r.pctAvgVol >= 100 ? 'font-bold text-warn' : r.pctAvgVol >= 20 ? 'font-bold text-textPrimary' : 'text-textSecondary'}>{r.pctAvgVol >= 100 ? r.pctAvgVol.toFixed(0) : r.pctAvgVol.toFixed(1)}%</span>,
       },
       { key: 'shares', header: 'Shares', align: 'right', sortValue: r => r.size, render: r => <span className={weightInk(r.size, leaderMarks.shares)}>{num(r.size)}</span> },
     ],
@@ -463,7 +462,7 @@ const DarkPool = () => {
           <ReadDoor onOpen={() => setOpenCross(largest)} title="Open the cross's card">
             {view ? '' : `${largest.ticker} `}{num(largest.size)} at ${largest.price.toFixed(2)}
           </ReadDoor>
-          <RichRead text={` for ${fmtUsd(largest.notional)} on ${largest.venue} — ${INTENT_WORD[largest.intent]}, a ${gradeOfConviction(largest.conviction)} read.`} />
+          <RichRead text={` for ${fmtUsd(largest.notional)}${largest.sized ? ` — read as ${INTENT_WORD[largest.intent]}` : largest.special ? ` — ${/^[aeiou]/i.test(largest.special) ? 'an' : 'a'} ${largest.special}, no read` : ' — too small to read'}.`} />
         </>
       ) : (
         <RichRead text="No cross on this cut." />
@@ -482,7 +481,7 @@ const DarkPool = () => {
           {i < lead.length - 2 ? ', ' : i === lead.length - 2 ? ' and ' : ''}
         </span>
       ))}
-      <RichRead text={` lead it. ${fmtUsd(leaders.totalNotional)} printed off-exchange across ${num(leaders.totalPrints)} crosses today.`} />
+      <RichRead text={` lead it. ${fmtUsd(leaders.totalNotional)} printed off-exchange across the last ${num(leaders.totalPrints)} crosses${leaderWindow ? ` (${leaderWindow})` : ''}.`} />
     </>
   ) : (
     <RichRead text="The dark tape has not printed yet." />
@@ -506,15 +505,15 @@ const DarkPool = () => {
         facts={
           <>
             {/* the market's tape carries no share of volume (only a name's book does) — no "0% of volume" beside $49M crossed */}
-            <Fact label="Off-exchange" testId="share">
-              {head.dpSharePct > 0 ? (
-                <>
-                  {head.dpSharePct.toFixed(0)}% <span className="text-textMuted">of volume</span>
-                </>
-              ) : (
-                <span className="text-textMuted">—</span>
-              )}
-            </Fact>
+            {view && nameDay ? (
+              <Fact label={`${view.ticker} off-exchange today`} testId="share" title="The whole day's dark shares by price (/darkpool/{t}/price-levels) over the day's whole volume (the quote); the dollars are each $1 bucket's shares at its price">
+                {Number.isFinite(nameDay.sharePct) ? `${nameDay.sharePct.toFixed(0)}% ` : ''}<span className="text-textMuted">{Number.isFinite(nameDay.sharePct) ? 'of shares · ' : ''}≈{fmtUsd(nameDay.darkDollars)} · {nameDay.darkShares.toLocaleString('en-US')} sh</span>
+              </Fact>
+            ) : (
+              <Fact label="Window" testId="window" title="Every figure in this head covers the prints in hand, first to last — not the whole day">
+                {tapeWindow ?? '—'} <span className="text-textMuted">· last {num(cut.length)} prints</span>
+              </Fact>
+            )}
             <Fact label="Posture" testId="posture">
               {/* which side leads, then how far it leans in the four words — never the figure (data/darkpool.ts gradeOfPosture).
                   Balanced stands alone: a poor lean is no lean. The steps wear the side's ink. */}
@@ -530,8 +529,14 @@ const DarkPool = () => {
             <Fact label="On this cut" testId="cut">
               {fmtUsd(facts.dollars)} <span className="text-textMuted">· {cut.length} crosses</span>
             </Fact>
-            <Fact label="Building · leaving" testId="sides">
-              <span className="text-bull">{fmtUsd(facts.building)}</span> <span className="text-textMuted">·</span> <span className="text-bear">{fmtUsd(facts.leaving)}</span>
+            <Fact label="Sized: under · over the mid" testId="sides" title="Sized prints (10,000 shares or $500K) that printed under the mid (read as building) and over it (read as leaving) — small prints and prints priced by their own terms carry no read">
+              {facts.sizedCount === 0 ? (
+                <span className="text-textMuted">no sized print</span>
+              ) : (
+                <>
+                  <span className="text-bull">{fmtUsd(facts.building)}</span> <span className="text-textMuted">·</span> <span className="text-bear">{fmtUsd(facts.leaving)}</span>
+                </>
+              )}
             </Fact>
             {facts.strongest && (
               <Champion label="Strongest shelf" ink={facts.strongest.role === 'SUPPORT' ? 'bull' : facts.strongest.role === 'RESISTANCE' ? 'bear' : 'warn'} onOpen={() => setWhere(atShelf(facts.strongest!.price))} testId="strongest">
@@ -583,7 +588,7 @@ const DarkPool = () => {
         <div className="border-t border-borderSubtle" data-dark-pool-shelves>
           <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 font-mono text-[9px] uppercase tracking-widest" style={{ height: DP_STRIP_HEAD_H }}>
             <span className="text-textPrimary">The shelves</span>
-            <span className="text-textMuted normal-case tracking-normal font-sans text-[10px]">· where the dark dollars rested · {shelfWords} · lowest at the left</span>
+            <span className="text-textMuted normal-case tracking-normal font-sans text-[10px]">· where the day's dark shares rested, by $1 price · {shelfWords} · lowest at the left</span>
           </div>
           {/* Two across on a phone, three rows (the phone pass, 2026-09-13): six cells in 350px ran their figures into each other, and three still did */}
           {/* six shelves across from 1024, three from 640 (the device sweep, 2026-10-18: six at 768 left each shelf 110px and
@@ -634,22 +639,17 @@ const DarkPool = () => {
       {/* BOX 2 — WHERE THE DARK MONEY WENT: the market's dark tape by sector and by name */}
       <TraceBox
         title="Where the dark money went"
-        sub="Off-exchange dollars across the market, by sector and by name, the heaviest first · a name goes on the box above"
+        sub="Off-exchange dollars in the market's latest dark prints, by name, the heaviest first · a name goes on the box above"
         testId="dark-leaders"
         data={{ sector, names: leaderRows.length }}
         facts={
           <>
-            <Fact label="Dark tape" testId="tape">
-              {fmtUsd(leaders.totalNotional)} <span className="text-textMuted">· {num(leaders.totalPrints)} crosses</span>
+            <Fact label="Dark tape in hand" testId="tape" title="The market's latest dark prints, collected while this page is open — not the whole day">
+              {fmtUsd(leaders.totalNotional)} <span className="text-textMuted">· {num(leaders.totalPrints)} crosses{leaderWindow ? ` · ${leaderWindow}` : ''}</span>
             </Fact>
             <Fact label="Sectors" testId="sectors">
               {leaders.sectors.length}{topSector ? <span className="text-textMuted"> · {topSector.sector} {topSector.sharePct.toFixed(0)}%</span> : null}
             </Fact>
-            {unusual && (
-              <Champion label="Most unusual" ink="warn" onOpen={() => putAbove(unusual.ticker)} testId="unusual">
-                {unusual.ticker} · {unusual.pctAvgVol.toFixed(0)}% of avg vol
-              </Champion>
-            )}
             {heaviest && (
               <Champion label="Heaviest name" ink="supreme" onOpen={() => putAbove(heaviest.ticker)} testId="heaviest">
                 {heaviest.ticker} · {fmtUsd(heaviest.notional)}
@@ -670,7 +670,7 @@ const DarkPool = () => {
         }
         sentence={leadersSentence}
       >
-        <TraceGrid rows={leaderRows} columns={leaderColumns} hidden={leaderChooser.hidden} widths={LEADER_WIDTHS} tooltips={LEADER_TOOLTIPS} rowKey={leaderKey} onRowClick={r => putAbove(r.ticker)} selectedKey={name} initialSort={{ key: 'dark', dir: 'desc' }} autoHeight emptyText="Nothing printed dark in this sector today" testId="dark-leaders" />
+        <TraceGrid rows={leaderRows} columns={leaderColumns} hidden={leaderChooser.hidden} widths={LEADER_WIDTHS} tooltips={LEADER_TOOLTIPS} rowKey={leaderKey} onRowClick={r => putAbove(r.ticker)} selectedKey={name} initialSort={{ key: 'dark', dir: 'desc' }} autoHeight emptyText="No dark prints in hand yet" testId="dark-leaders" />
       </TraceBox>
 
       {/* THE CROSS'S CARD — the Live Tape's print card, for a cross: the figures, the read, the sequence, the tape */}

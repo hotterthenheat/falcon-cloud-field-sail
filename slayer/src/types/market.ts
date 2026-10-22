@@ -101,6 +101,12 @@ export interface StrikeNode {
   /** Today's contracts at this strike, when the feed has them. Absent on a sample chain. */
   callVol?: number;
   putVol?: number;
+  /** The vendor's implied vol and per-contract gamma for this strike's call and put on ONE expiry
+      (option-contracts) — set on a per-expiry chain once its contract rows are in; absent otherwise */
+  callIv?: number;
+  putIv?: number;
+  callGamma?: number;
+  putGamma?: number;
 }
 
 export type TradeDirection = 'BULLISH' | 'BEARISH';
