@@ -19,12 +19,23 @@ const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   </div>
 );
 
+const COLS = 'minmax(0,1.4fr) 104px 104px';
+
+/** A book's own head: its name, then the two figures it carries */
+const Head = ({ cols }: { cols: [string, string, string] }) => (
+  <div className="px-5 h-7 grid items-center gap-x-3 border-t border-borderSubtle text-[10px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: COLS }}>
+    <span className="text-textPrimary font-semibold">{cols[0]}</span>
+    <span className="text-right">{cols[1]}</span>
+    <span className="text-right">{cols[2]}</span>
+  </div>
+);
+
 const Row = ({ onClick, testId, cells }: { onClick: () => void; testId: string; cells: ReactNode[] }) => (
   <button
     type="button"
     onClick={onClick}
     className="w-full text-left px-5 h-[34px] grid items-center gap-x-3 border-t border-borderSubtle/40 hover:bg-ink/[0.03] transition-colors"
-    style={{ gridTemplateColumns: 'minmax(0,1.4fr) 72px 88px' }}
+    style={{ gridTemplateColumns: COLS }}
     data-name-who={testId}
   >
     {cells.map((c, i) => (
@@ -70,37 +81,60 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
       </div>
       {missed ? (
         <FeedFallback fault={fault} />
-      ) : listed > 0 ? (
-        <div className="sticky top-0 z-10 bg-panel px-5 h-7 grid items-center gap-x-3 border-t border-borderSubtle text-[10px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: 'minmax(0,1.4fr) 72px 88px' }}>
-          <span>Name</span>
-          <span className="text-right">Weight</span>
-          <span className="text-right tabular-nums">Value</span>
-        </div>
       ) : null}
-      {houses.map(r => (
-        <Row key={r.name} testId={r.name} onClick={() => navigate(`/dossier/institutions/${houseSlug(r.name)}?line=${ticker}`)} cells={[r.name, r.mid || 'Shares', r.right]} />
-      ))}
-      {short && (
-      <Row testId="short" onClick={() => navigate(`/dossier/shorts/${ticker}`)} cells={['The short print', <TickFigure key="d" value={short.daysToCover}>{`${short.daysToCover.toFixed(1)} days`}</TickFigure>, <TickFigure key="s" value={short.shortSharesM}>{`${short.shortSharesM.toFixed(1)}M`}</TickFigure>]} />
+      {/* THREE BOOKS, EACH UNDER ITS OWN HEAD (the Dossier sweep, 2026-10-22): one "Weight · Value" head sat over houses,
+          the short print and the funds alike, and the houses' raw counts printed as "1162996939 336524794350" */}
+      {houses.length > 0 && (
+        <>
+          <Head cols={['Houses', 'Shares', 'Value']} />
+          {houses.map(r => (
+            <Row key={r.name} testId={r.name} onClick={() => navigate(`/dossier/institutions/${houseSlug(r.name)}?line=${ticker}`)} cells={[r.name, r.units, r.value]} />
+          ))}
+        </>
       )}
-      {funds.map(f => (
-        <Row key={f.name} testId={f.name} onClick={() => navigate(`/dossier/etfs/${f.etf || f.name}`)} cells={[f.name, f.mid, f.right]} />
-      ))}
+      {short && (
+        <>
+          <Head cols={['The short print', 'Days to cover', 'Shares short']} />
+          <Row testId="short" onClick={() => navigate(`/dossier/shorts/${ticker}`)} cells={[`${short.interestPct.toFixed(2)}% of the float`, <TickFigure key="d" value={short.daysToCover}>{`${short.daysToCover.toFixed(1)} days`}</TickFigure>, <TickFigure key="s" value={short.shortSharesM}>{shares(short.shortSharesM * 1e6)}</TickFigure>]} />
+        </>
+      )}
+      {funds.length > 0 && (
+        <>
+          <Head cols={['Funds', 'Weight', 'Fund']} />
+          {funds.map(f => (
+            <Row key={f.name} testId={f.name} onClick={() => navigate(`/dossier/etfs/${f.etf || f.name}`)} cells={[f.name, f.weight, f.etf]} />
+          ))}
+        </>
+      )}
       <div className="h-3" />
     </section>
   );
 };
 
-function people(data: unknown): { name: string; mid: string; right: string; etf: string }[] {
+const shares = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(0)}K` : `${Math.round(n)}`);
+const dollars = (n: number) => (n >= 1e12 ? `$${(n / 1e12).toFixed(2)}T` : n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(0)}M` : `$${Math.round(n / 1e3)}K`);
+const numOf = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+
+function people(data: unknown): { name: string; units: string; value: string; weight: string; etf: string }[] {
   if (!Array.isArray(data)) return [];
   return data.slice(0, 5).map(r => {
-    if (!r || typeof r !== 'object') return { name: '—', mid: '', right: '', etf: '' };
+    if (!r || typeof r !== 'object') return { name: '—', units: '—', value: '—', weight: '—', etf: '' };
     const o = r as Record<string, unknown>;
     const name = quietText(String(o.name || o.short_name || o.full_name || o.etf || '—'));
-    const weight = o.weight != null ? quietText(`${o.weight}%`) : '';
-    const units = o.units != null ? quietText(String(o.units)) : o.shares != null ? quietText(String(o.shares)) : '';
-    const value = o.value != null ? quietText(String(o.value)) : '';
-    return { name, mid: weight || units, right: value || quietText(String(o.etf || '')), etf: quietText(String(o.etf || '')) };
+    const w = numOf(o.weight);
+    const u = numOf(o.units ?? o.shares);
+    const v = numOf(o.value);
+    return {
+      name,
+      units: u != null && u > 0 ? shares(u) : '—',
+      value: v != null && v > 0 ? dollars(v) : '—',
+      /* the vendor's weight is a percent with up to six places ("5.803098") — two, everywhere */
+      weight: w != null ? `${w.toFixed(2)}%` : '—',
+      etf: quietText(String(o.etf || '')),
+    };
   });
 }
 

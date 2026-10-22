@@ -46,7 +46,7 @@ import { stateOf } from '../../components/earnings/volState';
 import { BULL } from '../../components/gex/paletteInk';
 import { useTicker } from '../../context/MarketDataContext';
 import { fmtDollars } from '../../data/ahead';
-import { bracketLabel } from '../../data/congress';
+import { bracketLabel, seatLabel } from '../../data/congress';
 import { useCongressFeed, useInsiderFlow } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
 import { useLiveDossier } from '../../data/earningsFeed';
@@ -98,6 +98,7 @@ const Door = ({ onClick, onWarm, children }: { onClick: () => void; onWarm?: () 
    line covered it; red below fell short. (Noah, 2026-08-19: "so simple yet unique") */
 const PriceReplay = ({ d }: { d: EarningsDossier }) => {
   const e = d.event;
+  const isPriced = e.impliedMovePct > 0 && e.price > 0;
   const cost = (e.price * e.impliedMovePct) / 100;
   const rows = useMemo(
     () =>
@@ -112,6 +113,25 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
   const avg = rows.reduce((a, r) => a + r.pl, 0) / (rows.length || 1);
   const [hover, setHover] = useState<{ r: (typeof rows)[number]; x: number; y: number } | null>(null);
   const H = 56;
+  /* NOT PRICED YET (the Dossier sweep, 2026-10-22): a print months out has no straddle on the vendor's row — the page
+     read "$0.00 · ±0.0% · covered 0 of 8 · 0.00× cheap". It says the print is not priced instead, and keeps the facts
+     that are real. */
+  if (!isPriced) {
+    return (
+      <div className="px-5 pb-4 flex flex-col gap-3" data-name-replay="unpriced">
+        <p className="text-[12px] text-textSecondary">
+          The options do not price this print yet — the vendor carries no expected move for {e.dateLabel}
+          {e.confirmed ? '' : ', an estimated date'}. The replay fills in once the report is on the near calendar.
+        </p>
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 pt-3 border-t border-borderSubtle/60">
+          <Fact label="Prints on file">{d.quarters.length}</Fact>
+          <Fact label="Beat the estimate">{d.quarters.length ? `${d.quarters.filter(q => q.epsBeat).length} of ${d.quarters.length}` : '—'}</Fact>
+          <Fact label="Usual move">{e.history === false ? '—' : `±${e.histAvgMovePct.toFixed(1)}%`}</Fact>
+          <Fact label="Up against down">{rows.length ? `${d.probUpPct}% up · ${100 - d.probUpPct}% down` : '—'}</Fact>
+        </dl>
+      </div>
+    );
+  }
   return (
     <div className="px-5 pb-4 flex flex-col gap-3" data-name-replay>
       <div className="flex items-baseline gap-2.5 flex-wrap font-mono tnum">
@@ -142,7 +162,7 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
         </div>
         <div className="flex gap-1.5 mt-1 pl-24">
           {rows.map(r => (
-            <span key={r.label} className="flex-1 min-w-0 text-center font-mono text-[9px] text-textMuted truncate">
+            <span key={r.label} className="flex-1 min-w-0 text-center font-mono text-[8px] sm:text-[9px] text-textMuted whitespace-nowrap">
               {r.label}
             </span>
           ))}
@@ -309,6 +329,8 @@ const EarningsName = () => {
 
   const { event: e, quarters } = dossier;
   const priced = stateOf(e);
+  /* no expected move on the row (a print months out) — every straddle figure says so instead of $0.00 */
+  const isPriced = e.impliedMovePct > 0 && e.price > 0;
   const nQ = quarters.length || 0;
   const hasRev = quarters.some(q => q.revEstB > 0);
   const epsBeats = quarters.filter(q => q.epsBeat).length;
@@ -367,13 +389,19 @@ const EarningsName = () => {
           </div>
           <dl className="grid grid-cols-5 gap-x-6">
             <Fact label="Options price" testId="price">
-              ±{e.impliedMovePct.toFixed(1)}% <span className="text-textMuted">· ${((e.price * e.impliedMovePct) / 100).toFixed(2)}</span>
+              {isPriced ? (
+                <>
+                  ±{e.impliedMovePct.toFixed(1)}% <span className="text-textMuted">· ${((e.price * e.impliedMovePct) / 100).toFixed(2)}</span>
+                </>
+              ) : (
+                <span className="text-textMuted">not priced yet</span>
+              )}
             </Fact>
             <Fact label="Usually moves" testId="usual">
               {e.history === false ? '—' : `±${e.histAvgMovePct.toFixed(1)}%`}
             </Fact>
             <Fact label="Priced" testId="priced">
-              {e.history === false ? <span className="text-textMuted">—</span> : (
+              {e.history === false || !isPriced ? <span className="text-textMuted">—</span> : (
               <span className={PRICED_INK[priced]}>
                 {e.richness.toFixed(2)}× {PRICED_WORD[priced]}
               </span>
@@ -470,8 +498,8 @@ const EarningsName = () => {
                       ) : null
                     }
                   />
-                  <ReferenceLine y={e.impliedMovePct} stroke="rgba(199,211,232,0.55)" strokeDasharray="4 3" />
-                  <ReferenceLine y={-e.impliedMovePct} stroke="rgba(199,211,232,0.55)" strokeDasharray="4 3" />
+                  {isPriced && <ReferenceLine y={e.impliedMovePct} stroke="rgba(199,211,232,0.55)" strokeDasharray="4 3" />}
+                  {isPriced && <ReferenceLine y={-e.impliedMovePct} stroke="rgba(199,211,232,0.55)" strokeDasharray="4 3" />}
                   <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" />
                   <Bar dataKey="move" radius={[2, 2, 0, 0]} barSize={16} isAnimationActive={false}>
                     {moveData.map(q => (
@@ -482,7 +510,7 @@ const EarningsName = () => {
               </ResponsiveContainer>
             </div>
             <p className="mt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">
-              the dashed lines are the ±{e.impliedMovePct.toFixed(1)}% priced for this print
+              {isPriced ? `the dashed lines are the ±${e.impliedMovePct.toFixed(1)}% priced for this print` : 'the options do not price this print yet'}
             </p>
           </div>
         </Box>
@@ -495,8 +523,8 @@ const EarningsName = () => {
             {!dossier.live || dossier.crushKnown ? <span className="text-warn">−{dossier.ivCrushPct}%</span> : <span className="text-textMuted">—</span>}
           </Fact>
           <Fact label="Extrinsic kept by next open">{!dossier.live || dossier.crushKnown ? `~${Math.max(0, 100 - dossier.premiumLostPct)}%` : '—'}</Fact>
-          <Fact label="Straddle today">${((e.price * e.impliedMovePct) / 100).toFixed(2)}</Fact>
-          <Fact label="The stock">${e.price.toFixed(2)}</Fact>
+          <Fact label="Straddle today">{isPriced ? `$${((e.price * e.impliedMovePct) / 100).toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
+          <Fact label="The stock">{e.price > 0 ? `$${e.price.toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
         </dl>
       </Box>
 
@@ -538,7 +566,7 @@ const EarningsName = () => {
           ) : (
             <>
               {/* Below lg: when, who, the trade and its value — the shares and the plan go (the phone pass, 2026-09-13) */}
-              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[64px_minmax(0,1fr)_64px_80px_80px_72px] max-xl:grid-cols-[64px_minmax(0,1fr)_64px_80px]">
+              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]">
                 <span>When</span>
                 <span>Who</span>
                 <span>Trade</span>
@@ -547,7 +575,7 @@ const EarningsName = () => {
                 <span className="text-right max-xl:hidden">Chose to?</span>
               </div>
               {marketInsiders.map(t => (
-                <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[64px_minmax(0,1fr)_64px_80px_80px_72px] max-xl:grid-cols-[64px_minmax(0,1fr)_64px_80px]" data-name-insider={t.id}>
+                <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]" data-name-insider={t.id}>
                   <When days={t.daysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
                     <span className="text-[11px] font-semibold text-textPrimary truncate">{t.person}</span>
@@ -579,7 +607,7 @@ const EarningsName = () => {
           ) : (
             <>
               {/* On a phone: filed, member, type — the amount and the lag go (the phone pass, 2026-09-13) */}
-              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[64px_minmax(0,1fr)_88px_132px_64px] max-xl:grid-cols-[64px_minmax(0,1fr)_88px]">
+              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_76px_132px_56px] max-xl:grid-cols-[96px_minmax(0,1fr)_76px]">
                 <span>Filed</span>
                 <span>Member</span>
                 <span>Type</span>
@@ -587,12 +615,12 @@ const EarningsName = () => {
                 <span className="text-right max-xl:hidden">Lag</span>
               </div>
               {congress.slice(0, 6).map(t => (
-                <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[64px_minmax(0,1fr)_88px_132px_64px] max-xl:grid-cols-[64px_minmax(0,1fr)_88px]" data-name-congress={t.id}>
+                <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_76px_132px_56px] max-xl:grid-cols-[96px_minmax(0,1fr)_76px]" data-name-congress={t.id}>
                   <When days={t.filedDaysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
                     <span className="text-[11px] font-semibold text-textPrimary truncate">{t.member.name}</span>
                     <span className="text-[9px] text-textMuted truncate">
-                      {t.member.party}-{t.member.state} · {t.committeeOverlap ? `${t.committeeOverlap} · own committee` : t.member.chamber}
+                      {seatLabel(t.member)} · {t.committeeOverlap ? `${t.committeeOverlap} · own committee` : t.member.chamber}
                     </span>
                   </span>
                   <span className={`font-mono text-[10px] ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}</span>

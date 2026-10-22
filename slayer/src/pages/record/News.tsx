@@ -841,7 +841,7 @@ const News = () => {
             one list in the house that keeps a window (grids grow, the Compass board rule of 2026-09-11), because a day
             of the wire is hundreds of rows and the box is one of three on the page */}
         <div ref={rowsRef} className="relative border-t border-borderSubtle overflow-y-auto overscroll-contain max-lg:overflow-x-auto" style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined}>
-          <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[640px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
+          <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
             <span>Time</span>
             <span>Name</span>
             <span>Kind</span>
@@ -865,13 +865,13 @@ const News = () => {
                 key={e.id}
                 type="button"
                 onClick={() => pick(e)}
-                className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[640px] ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+                className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[900px] ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
                 style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}
                 data-news-row={e.id}
                 data-open={open || undefined}
               >
-                <span className="font-mono text-[10px] tnum text-textSecondary">{e.item.time}</span>
-                <span className="min-w-0 inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-textPrimary">
+                <span className="h-5 flex items-center font-mono text-[10px] tnum text-textSecondary">{e.item.time}</span>
+                <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-textPrimary">
                   {e.item.ticker ? (
                     <>
                       <CompanyLogo ticker={e.item.ticker} size={14} />
@@ -881,16 +881,16 @@ const News = () => {
                     <span className="text-textSecondary">MACRO</span>
                   )}
                 </span>
-                <span className="min-w-0">
+                <span className="min-w-0 h-5 flex items-center">
                   <CatTag category={e.item.category} size={9} />
                 </span>
-                <span className={`font-mono text-[9px] font-semibold uppercase tracking-widest ${GRADE_INK[e.grade]}`}>{GRADE_WORD[e.grade]}</span>
+                <span className={`h-5 flex items-center font-mono text-[9px] font-semibold uppercase tracking-widest ${GRADE_INK[e.grade]}`}>{GRADE_WORD[e.grade]}</span>
                 <span className="min-w-0 flex items-center gap-2">
                   <ImpactMark tier={tierOf(e.severity)} />
                   <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
                 </span>
-                <span className={`text-right font-mono text-[11px] font-semibold tnum ${e.item.prediction.measured ? (e.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}`}>{e.item.prediction.measured ? signed(e.item.prediction.expMove1dPct) : '—'}</span>
-                <span className={`text-right font-mono text-[10px] font-semibold ${e.item.prediction.measured ? READ_INK[gradeOfNewsConfidence(e.item.prediction.confidencePct)] : 'text-textMuted'}`} data-news-row-sure>
+                <span className={`h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum ${e.item.prediction.measured ? (e.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}`}>{e.item.prediction.measured ? signed(e.item.prediction.expMove1dPct) : '—'}</span>
+                <span className={`h-5 flex items-center justify-end font-mono text-[10px] font-semibold ${e.item.prediction.measured ? READ_INK[gradeOfNewsConfidence(e.item.prediction.confidencePct)] : 'text-textMuted'}`} data-news-row-sure>
                   {e.item.prediction.measured ? gradeOfNewsConfidence(e.item.prediction.confidencePct) : '—'}
                 </span>
               </button>

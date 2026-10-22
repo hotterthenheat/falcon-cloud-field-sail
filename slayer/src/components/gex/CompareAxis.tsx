@@ -179,7 +179,8 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
   /* All on the page too (Noah, 2026-09-09: "non full screen on the rulers 'all' greek
      selection should be possible as well… making the rulers smaller") — the lanes
      picked stand in the single drawing's height; fullscreen gives them the screen */
-  const greekGroups = useMemo(() => [{ title: 'What the capsules measure', options: GREEK_PICK_OPTIONS }], []);
+  /* both books are the vendor's, and its per-strike exposure carries no vega — VEX would draw $0 capsules */
+  const greekGroups = useMemo(() => [{ title: 'What the capsules measure', options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm — the feed carries no vega' } : o)) }], []);
 
   /* WHAT SITS WITHIN REACH — each greek on the ruler, not the first one speaking for the rest. */
   const reachFacts = useMemo(() => {
@@ -289,7 +290,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
       <div className="px-5 pb-2 flex items-center gap-2 flex-wrap shrink-0" data-axis-controls>
         <ExpiryCard label="Expiry" value={expiry} choices={EXPIRY_OPTIONS} onChange={onExpiry} title="Which contracts both books weigh" testId="compare-expiry" />
         <DropdownSelect label="Reach" value={reach} options={REACH_OPTIONS} onChange={onReach} title="How far the ruler runs, in the day's expected moves" testId="reach" />
-        <DropdownMulti label="Greek" values={greekPick} groups={greekGroups} onChange={onGreekPick} emptyWord="All" title="One, some, or all five — a lane each, on one ruler" testId="compare-greek" align="start" />
+        <DropdownMulti label="Greek" values={greekPick} groups={greekGroups} onChange={onGreekPick} emptyWord="All" title="One, some, or all four — a lane each, on one ruler" testId="compare-greek" align="start" />
         {/* no Colours card on paper (2026-10-04): the paper ramps are one journey whatever the palette */}
         {!paper && <DropdownSelect label="Colours" value={palette} options={PALETTE_OPTIONS} onChange={onPalette} title="What the colours mean" testId="compare-colours" />}
         <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" title={unit === '$' ? 'Dollars do not compare across names, so the ruler reads percent here' : undefined} data-axis-ruler-words>
@@ -304,7 +305,9 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
            box does not move when the card flips between one greek and all */
         <div
           className={`min-h-0 px-3 pb-3 grid gap-2 ${full ? 'flex-1' : 'shrink-0'}`}
-          style={{ gridTemplateColumns: `repeat(${greeks.length}, minmax(0, 1fr))`, height: full ? undefined : AXIS_HEADS_H + AXIS_H + AXIS_READ_H + 12 /* the pb-3 */ }}
+          /* lanes no narrower than 200px — in the middle column four came to ~115px each, under the ruler's drawing floor,
+             and every lane stood blank (the Pinpoint sweep, 2026-10-22); they wrap to rows that share the height instead */
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gridAutoRows: 'minmax(0, 1fr)', height: full ? undefined : AXIS_HEADS_H + AXIS_H + AXIS_READ_H + 12 /* the pb-3 */ }}
           data-axis-all
         >
           {greeks.map(g => (

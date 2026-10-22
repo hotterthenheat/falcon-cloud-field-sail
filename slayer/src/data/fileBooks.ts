@@ -15,7 +15,7 @@ import { h01, hPick, hRange } from '../core/rng';
 import { dayKey } from '../core/rng';
 import type { DeskSession } from './deskSession';
 import { UNIVERSE } from './universe';
-import { bracketLabel, buildCongress } from './congress';
+import { bracketLabel, buildCongress, seatLabel } from './congress';
 import type { CongressTrade } from '../types/record';
 
 export const HOUSES = [
@@ -43,6 +43,8 @@ export interface InstitutionRow {
   id: string;
   name: string;
   ticker: string;
+  /** The holding's company name as the filing gives it, when the listing does not know the ticker */
+  company?: string;
   sector: string;
   sharesM: number;
   /** Shares on the prior 13F. Zero when the line is new. */
@@ -523,7 +525,7 @@ export function buildHoldings(source?: CongressTrade[]): HoldingRow[] {
   return [...open.values()].slice(0, 16).map(t => ({
     member: t.member.name,
     memberId: t.member.id,
-    seat: `${t.member.party}-${t.member.state}`,
+    seat: seatLabel(t.member),
     ticker: t.ticker,
     bracket: bracketLabel(t.bracket),
     owner: t.owner,

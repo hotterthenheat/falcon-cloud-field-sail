@@ -14,6 +14,7 @@
 */
 
 import { now } from './clock';
+import { nyParts } from './nyTime';
 
 /** US equity market holidays. Same list moc.ts used privately — now shared.
     EXTENDED BACK TO 2016 (2026-09-17): the replay walks the tape from 2016, and a
@@ -99,7 +100,19 @@ function atMidnight(d: Date): Date {
     Every default `from` in this module flows through here, which is what
     stops a backtest from resolving 2024's expiries against 2026's calendar. */
 export function today(): Date {
-  return atMidnight(now());
+  /* THE MARKET'S DAY, NOT THE BROWSER'S (the Pinpoint sweep, 2026-10-22): read off the local date, a UTC machine at
+     22:30 New York on Oct 21 called the session "Oct 22", and the Agenda printed "Today · Oct 22" over a book that
+     had closed on the 21st. The keys stay local midnights; the day they name is New York's. */
+  const p = nyParts(now());
+  return new Date(p.year, p.month - 1, p.day);
+}
+
+/** The day the BOOK is on: New York's date until the bell's last prints (16:15), the next calendar day after — today's
+    contracts are settled by then, so "0DTE" is the next session's expiry, and says so. */
+export function bookToday(): Date {
+  const p = nyParts(now());
+  const after = p.hour * 60 + p.minute >= 16 * 60 + 15;
+  return new Date(p.year, p.month - 1, p.day + (after ? 1 : 0));
 }
 
 /** Walk in `step` days until a session is found (bounded — never spins). */

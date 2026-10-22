@@ -125,7 +125,8 @@ const partyOf = (raw?: string): Party => {
   const s = (raw || '').toLowerCase();
   if (s.startsWith('dem') || s === 'd') return 'D';
   if (s.startsWith('rep') || s === 'r') return 'R';
-  return 'I';
+  if (s.startsWith('ind') || s === 'i') return 'I';
+  return '';
 };
 
 const placeOf = (district: string | undefined, chamber: Member['chamber']): { state: string; district?: string } => {
@@ -173,9 +174,31 @@ const bracketOf = (amounts: unknown): number | null => {
 const OWNER_WORD = /^(joint|spouse|self|undisclosed|not-disclosed|n\/a)$/i;
 
 /** The filing's notes are the asset when the issuer column is an owner word or "undisclosed". */
+/* A treasury filed as a bare maturity (", , 13-WEEK, MATURESP10/12/2023 - 01/11/2024", "8-WEEK, MATURES 8/29/23")
+   reads as the bill it is: "Treasury Bill (13-Week, matures 01/11/2024)" */
+const maturity = (raw: string): string => {
+  const s = raw.replace(/^[\s,;]+/, '').trim();
+  if (!/\bMATURES?P?\b|MATURESP/i.test(s)) return '';
+  const term = s.match(/(\d+)-(WEEK|MONTH|YEAR)/i);
+  const dates = [...s.matchAll(/(\d{1,2}\/\d{1,2}\/\d{2,4})/g)].map(m => m[1]);
+  const end = dates[dates.length - 1];
+  const t = term ? `${term[1]}-${term[2][0].toUpperCase()}${term[2].slice(1).toLowerCase()}` : '';
+  return `Treasury Bill${t || end ? ` (${[t, end ? `matures ${end}` : ''].filter(Boolean).join(', ')})` : ''}`;
+};
+
+/** A filing's placeholder that names no asset ("None", "N/A", "municipal-security 32500", "stock 32500") */
+const KIND_ONLY = /^(municipal-security|stock|corporate-bond|other)\s+\d+$/i;
+const NO_NAME = /^(none|n\/a|na|null)$/i;
+
 const cleanNotes = (notes?: string): string => {
   if (!notes) return '';
-  let s = notes.split(/FILING STATUS:|SUBHOLDING OF:|DESCRIPTION:/i)[0].replace(/\s+/g, ' ').trim();
+  const bill = maturity(notes);
+  if (bill) return bill;
+  let s = notes.split(/FILING STATUS:|SUBHOLDING OF:|DESCRIPTION:/i)[0].replace(/\s+/g, ' ').replace(/^[\s,;]+/, '').trim();
+  if (KIND_ONLY.test(s)) {
+    const kind = s.split(/\s+/)[0].replace(/-/g, ' ');
+    s = kind.toLowerCase() === 'stock' ? '' : kind[0].toUpperCase() + kind.slice(1).toLowerCase();
+  }
   s = s.replace(/\s*\[[A-Za-z]{1,6}\]\s*$/, '').trim();
   s = s.replace(/\s*\(([A-Z.]{1,6})\)\s*$/, '').trim();
   s = s.replace(/\s+-\s+(Common Stock|Class [A-C] Capital Stock|Ordinary Shares).*$/i, '').trim();
@@ -189,12 +212,14 @@ const namedAsset = (issuer?: string, ticker?: string, notes?: string): string =>
   const issuerOk = !!name && !OWNER_WORD.test(name);
   if (fromNotes) return fromNotes;
   if (issuerOk) return name;
-  return ticker || 'Undisclosed';
+  const t = (ticker || '').trim();
+  if (!t || NO_NAME.test(t)) return 'Undisclosed';
+  return maturity(t) || t;
 };
 
 const assetKindOf = (notes?: string, issuer?: string): AssetKind => {
   const s = `${notes || ''} ${issuer || ''}`;
-  if (/\btreasury\b/i.test(s)) return 'Other';
+  if (/\btreasury\b|MATURESP|\bMATURES\b/i.test(s)) return 'Other';
   if (/\b(call|put)\b|\boptions?\b/i.test(s) && !/common stock/i.test(s)) return 'Stock Option';
   if (/corporate bond|\bnote due\b|\bbond\b/i.test(s)) return 'Corporate Bond';
   if (/municipal/i.test(s)) return 'Municipal Security';
@@ -206,6 +231,9 @@ const assetKindOf = (notes?: string, issuer?: string): AssetKind => {
 export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = [], windowDays = 10000): CongressFeed {
   const roster = new Map(people.map(p => [p.politician_id, p]));
   const trades: CongressTrade[] = [];
+  /* the vendor repeats some reports word for word (Sen. Boozman's 10/21 filings came back twice each) — a report that
+     matches one already read, filing day included, is the same report and is read once */
+  const seen = new Set<string>();
   for (const r of rows) {
     const traded = daysAgo(r.transaction_date);
     if (traded > windowDays) continue;
@@ -227,10 +255,14 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
     };
     const type = typeOf(r.txn_type);
     if (!type) continue;
+    const id = `${member.id}-${r.ticker}-${r.transaction_date}-${r.txn_type}-${r.amounts ?? ''}-${r.filed_at_date ?? ''}-${(r.notes ?? '').slice(0, 40)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
     trades.push({
-      id: `${member.id}-${r.ticker}-${r.transaction_date}-${r.txn_type}`,
+      /* the notes join the id: two unnamed treasury bills bought the same day were one row id (duplicate grid rows) */
+      id,
       member,
-      ticker: r.ticker || '',
+      ticker: r.ticker && !NO_NAME.test(r.ticker.trim()) && !maturity(r.ticker) ? r.ticker : '',
       assetDescription: namedAsset(r.issuer, r.ticker, r.notes),
       assetKind: assetKindOf(r.notes, r.issuer),
       type,

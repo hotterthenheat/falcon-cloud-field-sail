@@ -22,7 +22,7 @@
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
+import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -40,17 +40,14 @@ import { FeedFallback } from '../../components/ui/liveRead';
 
 import { SECTORS, type Sector } from '../../data/universe';
 import { NAMES_TO_KNOW } from './recordSkeletons';
+import { moneyB, moneyM, signedM } from './money';
+import { usePagedGrid } from '../../components/record/pagedGrid';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
 const signed = (n: number, digits = 1) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`;
-/* Money said in dollars at its own scale (the dossier sweep, 2026-10-22: "+4,875M" and "$2086B" read as raw counts) */
-const moneyM = (absM: number) =>
-  absM >= 1_000_000 ? `$${(absM / 1_000_000).toFixed(2)}T` : absM >= 1000 ? `$${(absM / 1000).toFixed(absM >= 100_000 ? 0 : 1)}B` : `$${absM.toFixed(0)}M`;
-const signedM = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${moneyM(Math.abs(n))}`;
 const assetsB = (b: number) => moneyM(b * 1000);
 /** Millions of shares, one way everywhere: a decimal under 100M, whole above, a B past a billion */
 const sharesM = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(2)}B` : m >= 100 ? `${m.toFixed(0)}M` : `${m.toFixed(1)}M`);
-const moneyB = (b: number) => (b >= 1 ? `$${b.toFixed(2)}B` : `$${(b * 1000).toFixed(0)}M`);
 
 const CARD = (on: boolean) => `group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`;
 
@@ -110,7 +107,11 @@ const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
+        {/* the listing's name, else the filing's; never the ticker said twice ("IVV · IVV") */}
+        {(() => {
+          const n = tickerName(data.ticker) !== data.ticker ? tickerName(data.ticker) : data.company;
+          return n && n.toUpperCase() !== data.ticker ? <span className="text-[10px] text-textMuted truncate" title={n}>{n}</span> : null;
+        })()}
       </span>
     </span>
   ) : null;
@@ -209,19 +210,31 @@ export const Institutions = () => {
     () => [
       /* newest filing first, and inside one filing day the biggest line first — the tie fell to feed order, so the
          grid opened on one house's small lines while the cards above led with another's biggest (2026-10-22) */
-      { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: InstFiled, sort: 'asc', sortIndex: 0, headerTooltip: 'The day the 13F was filed, and how far back that is' },
+      {
+        headerName: 'Filed',
+        field: 'filedDaysAgo',
+        width: 126,
+        cellRenderer: InstFiled,
+        sort: 'asc',
+        /* newest filing first, the bigger line first within a filing — one sort, so the head carries no "1" and "2" */
+        comparator: (a: number, b: number, na: IRowNode<InstitutionRow>, nb: IRowNode<InstitutionRow>) => a - b || (nb.data?.valueB ?? 0) - (na.data?.valueB ?? 0),
+        headerTooltip: 'The day the 13F was filed, and how far back that is',
+      },
       { headerName: 'House', field: 'name', flex: 1.2, minWidth: 140, cellRenderer: InstHouse, headerTooltip: 'The filer' },
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: InstName, headerTooltip: 'The holding — click the row to open the house’s filing' },
       { headerName: 'Side', field: 'book', width: 88, cellRenderer: InstBook, headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
       { headerName: 'Status', field: 'status', width: 88, cellRenderer: InstStatus, headerTooltip: 'New, added, cut, closed, or held against the prior 13F' },
       { headerName: 'Shares', field: 'sharesM', width: 96, cellRenderer: InstShares, type: 'rightAligned', headerTooltip: 'Shares reported, in millions' },
-      { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', sort: 'desc', sortIndex: 1, headerTooltip: 'The reported value' },
+      { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', headerTooltip: 'The reported value' },
       { headerName: '% of book', field: 'pctOfBook', width: 96, cellRenderer: InstBookPct, type: 'rightAligned', headerTooltip: 'This line as a percent of the house’s reported book' },
       { headerName: 'Vs last filing', field: 'changePct', width: 120, cellRenderer: InstChange, type: 'rightAligned', headerTooltip: 'Change versus the prior 13F, not versus yesterday' },
     ],
     [],
   );
   const gridRef = useRef<HTMLDivElement | null>(null);
+  /* FIFTY LINES A PAGE (the Dossier sweep, 2026-10-22): twenty houses file ~1,700 lines, and the grid grown to all of
+     them made a page some 70,000px tall. The grid pages itself — the sort still runs over every line. */
+  const paged = usePagedGrid<InstitutionRow>();
   const cutKey = `${window}|${book}|${house}|${names}|${picks.join(',')}`;
   useEffect(() => {
     const el = gridRef.current;
@@ -300,6 +313,7 @@ export const Institutions = () => {
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-institutions-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<InstitutionRow>
+            {...paged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -316,6 +330,7 @@ export const Institutions = () => {
             key={failed ? 'failed' : 'live'}
           />
         </AgGridProvider>
+        {paged.bar(rows.length, 'institutions')}
       </div>
     </Page>
   );
@@ -431,7 +446,7 @@ export const Shorts = () => {
   const hasShortVol = rows.some(r => r.shortVolRatio != null);
   const columnDefs = useMemo<ColDef<ShortRow>[]>(() => {
     const cols: ColDef<ShortRow>[] = [
-      { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: ShortName, headerTooltip: 'The company — click the row to open the short file' },
+      { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: ShortName, /* the name lands after the row; the cell redraws when it does */ valueGetter: p => (p.data ? `${p.data.ticker}\u0000${p.data.name ?? ''}` : ''), comparator: (a: string, b: string) => a.localeCompare(b), headerTooltip: 'The company — click the row to open the short file' },
       { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 150, cellRenderer: ShortSector, headerTooltip: 'The sector the name files under' },
       { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'Percent of the float sold short. Eight percent and above is the heavy book' },
       { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
@@ -575,7 +590,10 @@ const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span classNam
 const EtfFlow = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.flow5dM)}`}>{signedM(data.flow5dM)}</span> : null);
 const EtfFee = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.expensePct == null ? '—' : `${data.expensePct.toFixed(2)}%`}</span> : null);
 const EtfTop = ({ data }: ICellRendererParams<EtfRow>) =>
-  data ? (
+  /* a bond fund's lines carry no ticker or weight on the feed — a dash, not "— · 0.0%" */
+  data && (!data.topHolding || data.topHolding === '—' || !(data.topWeight > 0)) ? (
+    <span className="font-mono text-[11px] text-textMuted">—</span>
+  ) : data ? (
     <span className="inline-flex items-center gap-1.5 min-w-0">
       <CompanyLogo ticker={data.topHolding} size={14} />
       <span className="font-mono text-[11px] tnum text-textSecondary truncate">
@@ -665,6 +683,7 @@ export const EtfBook = () => {
     ],
     [],
   );
+  const holdPaged = usePagedGrid<EtfHolding>();
   const holdCols = useMemo<ColDef<EtfHolding>[]>(
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: HoldName, headerTooltip: 'A holding. It stays on this page.' },
@@ -797,6 +816,7 @@ export const EtfBook = () => {
           <div className="slayer-board border-t border-borderSubtle" data-etf-holdings={focus.etf}>
             <AgGridProvider modules={GRID_MODULES}>
               <AgGridReact<EtfHolding>
+                {...holdPaged.props}
                 theme={GRID_THEME}
                 domLayout="autoHeight"
                 rowData={holdings}
@@ -810,6 +830,7 @@ export const EtfBook = () => {
                 tooltipHideDelay={8000}
               />
             </AgGridProvider>
+            {holdPaged.bar(holdings.length, 'etf-holdings')}
           </div>
         </>
       )}

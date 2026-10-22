@@ -58,7 +58,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
+import { useIsPhone } from '../../components/ui/useMediaQuery';
+import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed, ensureOiChange, peekOiChange } from '../../data/uwBook';
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
@@ -171,6 +172,7 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
 /* ---- the face --------------------------------------------------------------------------- */
 
 const RankedTargets = () => {
+  const phone = useIsPhone();
   const { activeTicker, changeTicker } = useTicker();
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
@@ -270,7 +272,8 @@ const RankedTargets = () => {
       const t = snap.ticker;
       const profile = buildExposureProfile(snap, p.expiry, window);
       const iv = peekIv(t) ?? 0;
-      const building = buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock);
+      ensureOiChange(t);
+      const building = buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock, peekOiChange(t));
       const surface = buildExposureSurface(snap, 30, CALENDAR_DTES);
       out.set(p.key, buildAgenda(snap, profile, building, surface, bookCandles(t) ?? [], clock, iv, order));
     }
@@ -293,7 +296,9 @@ const RankedTargets = () => {
   const first = agendas.get(panes[0].key);
   if (!scan || !first) return <BookOrSkeleton tickers={[activeTicker]}><TargetsPageSkeleton rows={window * 2 - 2} /></BookOrSkeleton>;
 
-  const density = densityFor(panes.length);
+  /* a phone is one narrow pane: the tight columns (strike · reached · holds · actions) fit its 360px, the full list ran
+     off the right edge at "Reached next" (the phone sweep, 2026-10-22) */
+  const density = phone ? 'tight' : densityFor(panes.length);
   let strikes = 0;
   for (const a of agendas.values()) strikes += a.targets.length;
 

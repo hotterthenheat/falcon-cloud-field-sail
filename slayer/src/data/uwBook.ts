@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
-import { expiryFor, isoDate } from '../core/calendar';
+import { bookToday, expiryFor, isoDate } from '../core/calendar';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { pickFlip, pickWalls } from '../core/walls';
 import type { Candle, GexSnapshot, Indicators, MarketSnapshot, StrikeNode, TradePlan } from '../types/market';
@@ -115,17 +115,28 @@ const emptyNode = (strike: number): StrikeNode => ({
   netCharm: 0,
 });
 
-/** Vendor call GEX stays positive, put GEX stays negative.
-    Long calls dampen a rally; short puts accelerate a dip. */
-function nodeFrom(row: UwGreekStrike, oi?: { c: number; p: number }): StrikeNode {
-  const callGex = num(row.call_gex);
-  const putGex = num(row.put_gex);
-  const callDex = -num(row.call_delta);
-  const putDex = -num(row.put_delta);
-  const callVanna = -num(row.call_vanna);
-  const putVanna = -num(row.put_vanna);
-  const callCharm = -num(row.call_charm);
-  const putCharm = -num(row.put_charm);
+/** Both gamma legs are negated into the house sign (see the head of this file and core/walls.ts): the vendor's call
+    gamma prints positive, the house's call-dominant shelf is NEGATIVE. Left as printed (the live sweep, 2026-10-22),
+    pickWalls found no call-dominant shelf above spot and named SPOT the call wall, the put wall landed 80 points away,
+    the matrix wore ice on the amplifying side, and a call-heavy book read "amplifying". */
+/* AND SCALED INTO THE HOUSE'S UNITS (the vendor's own spec, 2026-10-22): greek-exposure prints each greek × open
+   interest × 100 — shares, "without underlying-price scaling". The house book (core/simulator.ts) is dollars: GEX per
+   1% move is × spot² × 0.01, DEX × spot, vanna per vol point × 0.01 × spot, charm per session × spot / 252. Read raw,
+   SPY's heaviest strike printed $413K of gamma instead of ~$2.5B, so every wall weighed nothing against the market's
+   dollars per 1% and the hold odds sat on their 8% floor on every name. */
+function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }): StrikeNode {
+  const g = spot > 0 ? spot * spot * 0.01 : 1;
+  const d = spot > 0 ? spot : 1;
+  const v = spot > 0 ? spot * 0.01 : 1;
+  const c = spot > 0 ? spot / 252 : 1;
+  const callGex = -num(row.call_gex) * g;
+  const putGex = -num(row.put_gex) * g;
+  const callDex = -num(row.call_delta) * d;
+  const putDex = -num(row.put_delta) * d;
+  const callVanna = -num(row.call_vanna) * v;
+  const putVanna = -num(row.put_vanna) * v;
+  const callCharm = -num(row.call_charm) * c;
+  const putCharm = -num(row.put_charm) * c;
   const strike = num(row.strike);
   return {
     ...emptyNode(strike),
@@ -146,12 +157,12 @@ function nodeFrom(row: UwGreekStrike, oi?: { c: number; p: number }): StrikeNode
   };
 }
 
-function chainFrom(rows: UwGreekStrike[], oi: Map<number, { c: number; p: number }>, flow?: Map<number, { call: number; put: number }>): StrikeNode[] {
+function chainFrom(rows: UwGreekStrike[], spot: number, oi: Map<number, { c: number; p: number }>, flow?: Map<number, { call: number; put: number }>): StrikeNode[] {
   const out: StrikeNode[] = [];
   for (const row of rows) {
     const strike = num(row.strike);
     if (!(strike > 0)) continue;
-    const node = nodeFrom(row, oi.get(strike));
+    const node = nodeFrom(row, spot, oi.get(strike));
     const traded = flow?.get(strike);
     if (traded && (traded.call > 0 || traded.put > 0)) {
       node.callVol = traded.call;
@@ -453,7 +464,7 @@ function chainsFor(entry: Entry): Partial<Record<string, StrikeNode[]>> {
     ['7D', 7],
   ];
   for (const [label, dte] of labels) {
-    const want = isoDate(expiryFor(dte).date);
+    const want = isoDate(expiryFor(dte, bookToday()).date);
     const hit = closestDate(want, dates);
     if (hit && entry.byDate[hit]?.length) out[label] = entry.byDate[hit];
   }
@@ -628,9 +639,10 @@ export function ensureBookMinutes(ticker: string): void {
       const base = { time, min: nyMinutes(ms), spot };
       const vol = parseFloat(String(o.gamma_per_one_percent_move_vol ?? ''));
       const dir = parseFloat(String(o.gamma_per_one_percent_move_dir ?? ''));
-      /* vendor sign already matches the book: call gamma positive, put gamma negative */
-      if (Number.isFinite(vol)) volRows.push({ ...base, net: vol });
-      if (Number.isFinite(dir)) dirRows.push({ ...base, net: dir });
+      /* the vendor's dealer gamma is positive when dealers are long gamma (they absorb); the house prints that
+         NEGATIVE ("absorbs") and short gamma positive ("amplifies") — so the minute's net is negated like the strikes */
+      if (Number.isFinite(vol)) volRows.push({ ...base, net: -vol });
+      if (Number.isFinite(dir)) dirRows.push({ ...base, net: -dir });
     }
     const alive = (rows: BookMinute[]) => rows.reduce((n, r) => n + (r.net !== 0 ? 1 : 0), 0);
     const rows = alive(volRows) >= 8 ? volRows : alive(dirRows) >= 8 ? dirRows : volRows.length >= 2 ? volRows : dirRows;
@@ -740,7 +752,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     iv: iv > 0 ? iv : 0,
     impliedMove: impliedMoveOf(Array.isArray(termRows) ? termRows : [], nyIsoDate(), spot),
     dayMoveFrac: dayFracOf(Array.isArray(interpRows) ? interpRows : []),
-    all: chainFrom(strikes, oiMap(Array.isArray(oiRows) ? oiRows : []), flowMap(Array.isArray(flowRows) ? flowRows : [])),
+    all: chainFrom(strikes, spot, oiMap(Array.isArray(oiRows) ? oiRows : []), flowMap(Array.isArray(flowRows) ? flowRows : [])),
     byDate: prevEntry?.byDate ?? {},
     expiries: prevEntry?.expiries ?? [],
     expiriesAt: prevEntry?.expiriesAt,
@@ -798,7 +810,7 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
     mapLimit(list, 3, async date => {
       try {
         const rows = await whalesGreekStrikeExpiry(entry.ticker, date);
-        return [date, (Array.isArray(rows) ? chainFrom(rows, new Map()) : []) as StrikeNode[]] as const;
+        return [date, (Array.isArray(rows) ? chainFrom(rows, entry.spot, new Map()) : []) as StrikeNode[]] as const;
       } catch {
         return [date, [] as StrikeNode[]] as const;
       }
@@ -910,3 +922,46 @@ export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
   }
   load(t, mode);
 }
+
+/* ---- the last session's open-interest change, contract by contract ---------------------------------------------- */
+
+/* WHAT WAS BUILT IS THE VENDOR'S OPEN-INTEREST CHANGE, NOT THE DAY'S VOLUME (the Pinpoint sweep, 2026-10-22): Building
+   took every contract traded today as open interest added since the open — on SPY, where a strike trades several times
+   its open interest in a day, that printed walls "was $11.1B" against $36M now and "drained $144.6B". The vendor's
+   oi-change is the real thing: each contract's open interest this morning against the session before. Summed here to
+   the strike, calls and puts apart. Pages are ordered by the size of the change, so the first few hold everything that
+   moved a wall. */
+const OI_PAGES = 6;
+const oiChangeCache = new Map<string, Map<number, { c: number; p: number }>>();
+const oiChangeWait = new Set<string>();
+
+export function ensureOiChange(ticker: string): void {
+  const t = ticker.toUpperCase();
+  if (!t || oiChangeCache.has(t) || oiChangeWait.has(t)) return;
+  oiChangeWait.add(t);
+  void (async () => {
+    const byStrike = new Map<number, { c: number; p: number }>();
+    for (let page = 0; page < OI_PAGES; page++) {
+      const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}`);
+      const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+      for (const r of rows) {
+        const m = /([CP])(\d{8})$/.exec(String(r.option_symbol ?? ''));
+        const diff = num(r.oi_diff_plain);
+        if (!m || !diff) continue;
+        const strike = Number(m[2]) / 1000;
+        const cell = byStrike.get(strike) ?? { c: 0, p: 0 };
+        if (m[1] === 'C') cell.c += diff;
+        else cell.p += diff;
+        byStrike.set(strike, cell);
+      }
+      if (rows.length < 500) break;
+    }
+    oiChangeCache.set(t, byStrike);
+    emit();
+  })().finally(() => {
+    oiChangeWait.delete(t);
+  });
+}
+
+/** Each strike's open-interest change over the last session (calls, puts, in contracts) — null until it lands */
+export const peekOiChange = (ticker: string): ReadonlyMap<number, { c: number; p: number }> | null => oiChangeCache.get(ticker.toUpperCase()) ?? null;

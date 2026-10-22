@@ -147,11 +147,15 @@ export function buildBuilding(
   snaps: readonly GexSnapshot[],
   bars: readonly Candle[],
   profile: ExposureProfileData,
-  clock: AheadClock
+  clock: AheadClock,
+  /** The vendor's open-interest change over the last session, by strike (uwBook's peekOiChange). When it is in, it is
+      what was built — the day's volume walked onto the book is only the fallback, and only the shape of the day. */
+  oiChange?: ReadonlyMap<number, { c: number; p: number }> | null
 ): Building {
   const { ticker, spot } = snapshot;
   const today = todaySnapshots(snaps, bars);
-  const hasOi = today.length >= 2 && today.some(s => s.levels.some(l => l.callOI !== undefined));
+  const real = !!oiChange && oiChange.size > 0;
+  const hasOi = real || (today.length >= 2 && today.some(s => s.levels.some(l => l.callOI !== undefined)));
   const first = today[0];
   const last = today[today.length - 1];
   const elapsedMin = clock.inSession && clock.nowMin != null ? Math.max(30, clock.nowMin - OPEN_MIN) : SESSION_MIN;
@@ -182,9 +186,10 @@ export function buildBuilding(
     const now = u.net;
     const o = openAt.get(K);
     const n = nowAt.get(K) ?? { c: 0, p: 0 };
-    const isNew = hasOi && !o;
-    const dCall = hasOi ? n.c - (o?.c ?? 0) : 0;
-    const dPut = hasOi ? n.p - (o?.p ?? 0) : 0;
+    const oc = real ? oiChange!.get(K) : undefined;
+    const isNew = !real && hasOi && !o;
+    const dCall = real ? (oc?.c ?? 0) : hasOi ? n.c - (o?.c ?? 0) : 0;
+    const dPut = real ? (oc?.p ?? 0) : hasOi ? n.p - (o?.p ?? 0) : 0;
     /* Dollars in the house sign — call units are negative, so "calls added" is |dCall · unit| */
     const callAddedSigned = dCall * u.call;
     const putAddedSigned = dPut * u.put;
@@ -202,7 +207,8 @@ export function buildBuilding(
     const peak = Math.max(1, ...series);
     const shape = series.map(v => v / peak);
     let when: BuildRow['when'] = null;
-    if (series.length >= 3 && Math.abs(sizeChange) > 0) {
+    /* the vendor's change is session to session — it carries no time of day, so none is claimed */
+    if (!real && series.length >= 3 && Math.abs(sizeChange) > 0) {
       const third = Math.floor(series.length / 3);
       const d1 = series[third] - series[0];
       const d2 = series[2 * third] - series[third];
@@ -222,7 +228,7 @@ export function buildBuilding(
     const material = Math.abs(sizeChange) >= MATERIAL * maxAbsBook;
     const switched = hasOi && Math.sign(now) !== Math.sign(open) && Math.abs(now) >= MATERIAL * maxAbsBook && Math.abs(open) >= MATERIAL * maxAbsBook;
     const verdict: BuildVerdict = isNew && material ? 'new' : switched ? 'switched' : material ? (sizeChange > 0 ? 'building' : 'draining') : 'steady';
-    const byClose = (sizeChange / elapsedMin) * minutesLeft;
+    const byClose = real ? 0 : (sizeChange / elapsedMin) * minutesLeft;
 
     const role: BuildRole = K === levels.callWall ? 'call wall' : K === levels.putWall ? 'put wall' : K === levels.supreme ? 'supreme' : null;
     rows.push({ strike: K, role, pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, shape, when, verdict, byClose, words: '' });
@@ -234,7 +240,7 @@ export function buildBuilding(
      then what stands there (Noah, 2026-09-13: "easily understandable…
      word wise as well"); the strike itself is printed by the surface */
   const whenWords = (w: BuildRow['when']) => (w === 'early' ? 'mostly early in the day' : w === 'middle' ? 'mostly through the middle of the day' : w === 'late' ? 'mostly late in the day' : '');
-  const day = clock.inSession ? 'today' : 'in the last session';
+  const day = clock.inSession && !real ? 'today' : 'in the last session';
   for (const r of rows) {
     const stand = `now ${fmtDollars(r.now)}, ${sideWords(r.now)}`;
     if (!hasOi) {
@@ -244,7 +250,7 @@ export function buildBuilding(
     const dominant = Math.abs(r.callAdded) >= Math.abs(r.putAdded) ? 'calls' : 'puts';
     const change = `${signed(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`;
     const when = r.when ? `, ${whenWords(r.when)}` : '';
-    const pace = clock.inSession && r.verdict !== 'steady' ? ` At today's pace ${signed(r.byClose)} ${r.byClose >= 0 ? 'more' : 'further'} by the close.` : '';
+    const pace = clock.inSession && !real && r.verdict !== 'steady' ? ` At today's pace ${signed(r.byClose)} ${r.byClose >= 0 ? 'more' : 'further'} by the close.` : '';
     switch (r.verdict) {
       case 'building':
         r.words = `Building, ${dominant}. ${change}${when} — ${stand}.${pace}`;
@@ -253,7 +259,7 @@ export function buildBuilding(
         r.words = `Draining, ${dominant}. ${change}${when} — ${stand}.${pace}`;
         break;
       case 'switched':
-        r.words = `Changed sides, now ${r.now < 0 ? 'calls' : 'puts'}; it was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} at the open. ${change} — ${stand}.${pace}`;
+        r.words = `Changed sides, now ${r.now < 0 ? 'calls' : 'puts'}; it was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${real ? 'the session before' : 'at the open'}. ${change} — ${stand}.${pace}`;
         break;
       case 'new':
         r.words = `New ${day}: nothing sat here at the open. ${change} — ${stand}.${pace}`;

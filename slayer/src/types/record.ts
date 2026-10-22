@@ -19,7 +19,8 @@
 /* ---- Congress ------------------------------------------------------------------ */
 
 export type Chamber = 'House' | 'Senate';
-export type Party = 'D' | 'R' | 'I';
+/** '' when the roster does not have the member — never guessed as an independent */
+export type Party = 'D' | 'R' | 'I' | '';
 /** The Senate keeps the partial/full split; the House feed collapses it */
 export type ReportType = 'Purchase' | 'Sale (Full)' | 'Sale (Partial)' | 'Exchange';
 /** Whose holding the report covers — the member, their spouse, a joint account, a dependent */

@@ -71,7 +71,7 @@ import { When } from '../../components/record/when';
 import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
-import { bracketLabel } from '../../data/congress';
+import { bracketLabel, seatLabel } from '../../data/congress';
 import { useCongressFeed, useInsiderFlow, useLiveRecord } from '../../data/liveRecord';
 import { useStockFile } from '../../data/stockFile';
 import type { BookContract, FlowPrint } from '../../types/trace';
@@ -253,6 +253,9 @@ const FactorRow = ({ f }: { f: Factor }) => (
     <SignedBar v={f.lean} />
   </div>
 );
+/** How far a print landed from its estimate — a percent, or cents when the estimate is a few cents and a percent explodes */
+const epsGap = (actual: number, est: number) => (Math.abs(est) < 0.05 ? `${Math.round(Math.abs(actual - est) * 100)}¢` : `${Math.abs(((actual - est) / Math.abs(est || 1)) * 100).toFixed(1)}%`);
+
 const Money = ({ v, signed = true }: { v: number; signed?: boolean }) => <span className={signed ? (v >= 0 ? 'text-bull' : 'text-bear') : ''}>{fmtMoney(v)}</span>;
 
 /** A two-sided share bar: the left side's share of the whole, the rest to the right */
@@ -955,18 +958,18 @@ const StockName = () => {
           {/* THE LAST REPORTS — what it earned against the estimate, and how the stock took it */}
           {news.reports.length > 0 && (
             <div className="border-t border-borderSubtle/40" data-stock-reports={news.reports.length}>
-              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: '64px 96px minmax(0, 1fr) 72px' }}>
+              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: '78px 52px minmax(0, 1fr) 96px' }}>
                 <span>Report</span>
                 <span>EPS</span>
                 <span>Against the estimate</span>
-                <span className="text-right">The session after</span>
+                <span className="text-right whitespace-nowrap">The session after</span>
               </div>
               {news.reports.map(r => (
-                <div key={r.label} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: '64px 96px minmax(0, 1fr) 72px' }} data-stock-report={r.label}>
-                  <span className="font-mono text-[10px] tnum text-textSecondary">{r.label}</span>
+                <div key={r.label} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: '78px 52px minmax(0, 1fr) 96px' }} data-stock-report={r.label}>
+                  <span className="font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">{r.label}</span>
                   <span className="font-mono text-[11px] tnum text-textPrimary">{r.epsActual.toFixed(2)}</span>
                   <span className={`min-w-0 truncate font-mono text-[10px] tnum ${r.beat ? 'text-bull' : 'text-bear'}`}>
-                    {r.beat ? 'beat' : 'missed'} <span className="text-textMuted">{r.epsEst.toFixed(2)} by</span> {Math.abs(((r.epsActual - r.epsEst) / Math.abs(r.epsEst || 1)) * 100).toFixed(1)}%
+                    {r.beat ? 'beat' : 'missed'} <span className="text-textMuted">{r.epsEst.toFixed(2)} by</span> {epsGap(r.epsActual, r.epsEst)}
                   </span>
                   <span className={`text-right font-mono text-[11px] tnum font-semibold ${r.movePct >= 0 ? 'text-bull' : 'text-bear'}`}>{pct(r.movePct)}</span>
                 </div>
@@ -980,7 +983,7 @@ const StockName = () => {
             <div className="px-5 py-2.5 border-t border-borderSubtle/40 flex items-center gap-3 min-w-0 font-mono text-[10px] tnum" data-stock-next-earnings>
               {news.nextEarnings ? (
                 <span className="text-textSecondary truncate min-w-0">
-                  reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {news.nextEarnings.daysOut === 0 ? 'today' : `in ${news.nextEarnings.daysOut}d`} · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span>
+                  reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {news.nextEarnings.daysOut === 0 ? 'today' : `in ${news.nextEarnings.daysOut}d`} {news.nextEarnings.impliedMovePct > 0 ? <> · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span></> : <> · not priced yet</>}
                   {!news.nextEarnings.confirmed && <span className="text-warn"> · date estimated</span>}
                   {news.reaction && (
                     <span className="text-textMuted">
@@ -1019,7 +1022,7 @@ const StockName = () => {
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             {numbers.epsActual != null && (
             <Fact label="EPS · last print" testId="eps">
-              ${numbers.epsActual.toFixed(2)}{numbers.epsSurprisePct != null ? <> <span className={numbers.epsSurprisePct >= 0 ? 'text-bull' : 'text-bear'}>{pct(numbers.epsSurprisePct)}</span></> : null}
+              {numbers.epsActual < 0 ? '−' : ''}${Math.abs(numbers.epsActual).toFixed(2)}{numbers.epsSurprisePct != null && numbers.epsEstimate != null ? <> <span className={numbers.epsSurprisePct >= 0 ? 'text-bull' : 'text-bear'}>{Math.abs(numbers.epsEstimate) < 0.05 ? `${numbers.epsActual - numbers.epsEstimate >= 0 ? '+' : '−'}${Math.round(Math.abs(numbers.epsActual - numbers.epsEstimate) * 100)}¢` : pct(numbers.epsSurprisePct)}</span></> : null}
             </Fact>
             )}
             {numbers.epsGrowthPct != null && (
@@ -1303,16 +1306,16 @@ const StockName = () => {
           ) : (
             <>
               {/* On a phone: when, who, the trade and its value — the shares and the plan go (the phone pass, 2026-09-13) */}
-              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_64px_80px_80px_72px] max-xl:grid-cols-[96px_minmax(0,1fr)_64px_80px]">
+              <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]">
                 <span>When</span>
-                <span>Who · holds after</span>
+                <span className="truncate">Who · holds after</span>
                 <span>Trade</span>
                 <span className="text-right max-xl:hidden">Shares</span>
                 <span className="text-right">Value</span>
-                <span className="text-right max-xl:hidden">Chose to?</span>
+                <span className="text-right max-xl:hidden whitespace-nowrap">Chose to?</span>
               </div>
               {marketInsiders.map(t => (
-                <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_64px_80px_80px_72px] max-xl:grid-cols-[96px_minmax(0,1fr)_64px_80px]" data-name-insider={t.id}>
+                <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]" data-name-insider={t.id}>
                   <When days={t.daysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
                     <span className="text-[11px] font-semibold text-textPrimary truncate">{t.person}</span>
@@ -1363,7 +1366,7 @@ const StockName = () => {
                   <span className="min-w-0 flex flex-col leading-tight">
                     <span className="text-[11px] font-semibold text-textPrimary truncate">{t.member.name}</span>
                     <span className="text-[9px] text-textMuted truncate">
-                      {t.member.party}-{t.member.state} · {t.committeeOverlap ? <span className="text-warn">{t.committeeOverlap} · own committee</span> : t.member.chamber}
+                      {seatLabel(t.member)} · {t.committeeOverlap ? <span className="text-warn">{t.committeeOverlap} · own committee</span> : t.member.chamber}
                     </span>
                   </span>
                   <span className={`font-mono text-[10px] ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}</span>

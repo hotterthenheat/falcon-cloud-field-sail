@@ -67,7 +67,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
+import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed, ensureOiChange, peekOiChange } from '../../data/uwBook';
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
@@ -215,7 +215,8 @@ const Building = () => {
       if (!snap) continue;
       const t = snap.ticker;
       const profile = buildExposureProfile(snap, p.expiry, window);
-      out.set(p.key, buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock));
+      ensureOiChange(t);
+      out.set(p.key, buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock, peekOiChange(t)));
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
