@@ -56,7 +56,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
-import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { roomLevels } from '../../data/roomLevels';
 import { buildVannaCharm } from '../../data/vannacharm';
 import { readSessionClock } from '../../data/moc';
@@ -402,7 +402,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
         bellShare = total > 0 ? Math.round((100 * dies) / total) : null;
       } else {
         const surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-        const todayCol = surface.expiries.findIndex(e => e.dte === 0);
+        const todayCol = todayColumn(surface);
         if (todayCol >= 0) {
           let dies = 0;
           let total = 0;

@@ -35,7 +35,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { GREEK_LABEL } from '../../data/compare';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
-import { GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { todayColumn, GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { fmtUsd, readHeatPattern } from '../../data/gex';
 import { YEAR_MINUTES } from '../../data/measure';
 import { readSessionClock } from '../../data/moc';
@@ -140,7 +140,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   /* THE EXPIRIES SHOWN — the ladder's own rule (today's column out after the bell) */
   const shownIdx = useMemo(() => {
     const all = surface.expiries.map((_, i) => i);
-    const todayIdx = surface.expiries.findIndex(e => e.dte === 0);
+    const todayIdx = todayColumn(surface);
     const live = afterBell && todayIdx >= 0 ? all.filter(i => i !== todayIdx) : all;
     const kept = live.filter(i => expiries.includes(i));
     return kept.length ? kept : live.slice(0, 1);

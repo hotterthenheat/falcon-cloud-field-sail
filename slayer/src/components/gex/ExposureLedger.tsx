@@ -50,7 +50,7 @@ import { HEAT_MODE, heatLaneColor, type HeatMode } from './heatmap';
 import RoomSpotRule from './RoomSpotRule';
 import { useRoomSpotRead } from '../../pages/pinpoint/useRoomSpot';
 import { fmtUsd } from '../../data/gex';
-import { GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { todayColumn, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { LONG_GAMMA, SHORT_GAMMA, SUPREME } from './paletteInk';
 import { strikeRole, underlineClass } from './strikeRole';
 import StrikeNum, { hasCents } from './StrikeNum';
@@ -364,7 +364,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
 
   /* THE COLUMNS, as surface indices — the host's window (today gone after the bell, its ceiling), cut here to what
      fits: the book at the next open when the host says so */
-  const todayIdx = surface.expiries.findIndex(e => e.dte === 0);
+  const todayIdx = todayColumn(surface);
   const shownIdx = useMemo(() => {
     const live = expiries.filter(i => i >= 0 && i < surface.expiries.length);
     const list = live.length ? live : [Math.max(0, todayIdx)];

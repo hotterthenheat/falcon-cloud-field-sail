@@ -47,6 +47,11 @@ export const CORE_GREEKS: Greek[] = ['gex', 'dex', 'vex'];
 /** The unit each greek is stated in — the matrix's own headers. */
 export const GREEK_UNIT: Record<Greek, string> = { gex: '1% move', dex: '1σ move', vex: '1% vol', vanna: '1 vol pt', charm: '1 day' };
 
+/** Today's column, or -1. The one-column 'Book' fallback (no per-expiry chains loaded) also reads dte 0 but is the
+ *  whole book, not today's expiry — counting it made the Board read "100% expires today" on names with no 0DTE. */
+export const todayColumn = (surface: { expiries: readonly SurfaceExpiry[] }): number =>
+  surface.expiries.findIndex(e => e.dte === 0 && e.short !== 'Book');
+
 export interface SurfaceExpiry {
   dte: number;
   /** "0DTE", "2d", "45d" */

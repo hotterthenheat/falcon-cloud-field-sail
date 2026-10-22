@@ -51,7 +51,7 @@ import { findAirPockets, SHELF_SHARE, type AirPocket } from './airPockets';
 import { buildHedgeFlowLadder, type FlowLadder } from './hedgeFlow';
 import { SESSION_MIN, fmtDollars, fmtStrike, wholeBookVanna, type AheadClock } from './ahead';
 import type { Building } from './building';
-import type { ExposureSurface } from './exposureSurface';
+import { todayColumn, type ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
 
@@ -504,7 +504,7 @@ export function buildWallContext(
     ladder: buildHedgeFlowLadder(profile),
     building,
     surface,
-    todayIdx: surface ? surface.expiries.findIndex(e => e.dte === 0) : -1,
+    todayIdx: surface ? todayColumn(surface) : -1,
     bars: todayBars,
     clock,
     marketPer1Pct,
