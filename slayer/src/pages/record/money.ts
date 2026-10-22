@@ -13,6 +13,15 @@ export const moneyM = (absM: number): string =>
           ? `$${absM.toFixed(0)}M`
           : `$${(absM * 1000).toFixed(0)}K`;
 
+/** Whole dollars to two or three significant figures: $1.43M, $23.4M, $857M, $1.13B, $4.20K (the re-audit, 2026-10-22:
+    "$1M" for $1.43M rounded away a third of the figure) */
+export const dollars3 = (v: number): string => {
+  const a = Math.abs(v);
+  const sig = (x: number) => (x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2));
+  const s = a >= 1e12 ? `${sig(a / 1e12)}T` : a >= 1e9 ? `${sig(a / 1e9)}B` : a >= 1e6 ? `${sig(a / 1e6)}M` : a >= 1e3 ? `${sig(a / 1e3)}K` : a.toFixed(0);
+  return `${v < 0 ? '−' : ''}$${s}`;
+};
+
 /** Signed millions: +$4.9B, −$649M */
 export const signedM = (n: number): string => `${n > 0 ? '+' : n < 0 ? '−' : ''}${moneyM(Math.abs(n))}`;
 

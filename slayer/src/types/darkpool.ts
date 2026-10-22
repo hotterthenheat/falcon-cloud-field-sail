@@ -39,6 +39,10 @@ export interface DarkPoolPrint {
   special?: string | null;
   /** The facility the print was reported to (a FINRA trade reporting facility) — the dark venue itself is not disclosed */
   facility?: string;
+  /** Reported outside the regular session (the vendor's ext_hour_sold_codes) — read against a post-market quote, no read */
+  extended?: boolean;
+  /** A LIT print (on an exchange, /lit-flow) shown in the same grammar — not a dark cross */
+  lit?: boolean;
 }
 
 export type LevelRole = 'SUPPORT' | 'RESISTANCE' | 'PIVOT';

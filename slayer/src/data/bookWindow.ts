@@ -1,5 +1,6 @@
 import type { MarketSnapshot, StrikeNode } from '../types/market';
-import { bookToday, isoDate } from '../core/calendar';
+import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday } from '../core/calendar';
+import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
 
 /*
@@ -134,12 +135,130 @@ export function levelsDate(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): str
   return Object.keys(by).find(d => by[d] === front) ?? null;
 }
 
-/** The scope in a reader's words, for a label: "Today · Oct 22", "Oct 23 · next expiry", "All expiries" */
+/* ---- WHICH DAY A DATE IS, SAID THE WAY THE CLOCK STANDS (the second re-audit, 2026-10-22) ----------------------------
+   After the close the book's "today" is the next session's contracts (bookToday rolls at 16:15), and the pages printed
+   "SUPREME · TODAY · OCT 23", "Expires today", "EXPIRES AT THE CLOSE 16%" next to "NOW after the close" — about Friday's
+   contracts on Thursday evening. A date is "Today" only while today's session has not closed; after it (or on a day with
+   no session) the first session ahead is "Next session"; anything later is its own date. */
+
+/** The session day a reader is in: today's New York date while its session is ahead or running, else none */
+export function sessionDay(): { today: string; open: boolean; closed: boolean; next: string } {
+  const now = nyToday();
+  const iso = nyIsoDate();
+  const trading = isTradingDay(now);
+  const phase = nySessionPhase();
+  const closed = !trading || phase === 'after';
+  const nextFrom = closed ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) : now;
+  return { today: iso, open: trading && phase === 'open', closed, next: isoDate(nextSession(nextFrom)) };
+}
+
+/** "Today" · "Next session" · null (a later date) — for the date a level, a share or an expiry belongs to */
+export function dayWordOf(date: string | null | undefined): 'Today' | 'Next session' | null {
+  if (!date) return null;
+  const s = sessionDay();
+  if (!s.closed && date === s.today) return 'Today';
+  if (date === s.next) return s.closed ? 'Next session' : null;
+  return null;
+}
+
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** "Fri 10/23" */
+export function shortDay(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  if (!y || !m || !d) return date;
+  return `${DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${m}/${d}`;
+}
+
+/** "Expires today" while today's session runs (or has yet to), "Expires Fri 10/23" after its close — the date the
+    expiring share (uwBook peekBellShare) is read for */
+export function bellDay(): { date: string; head: string; clock: string; tip: (ticker: string) => string } {
+  const date = isoDate(bookToday());
+  const today = dayWordOf(date) === 'Today';
+  const day = shortDay(date);
+  return {
+    date,
+    head: today ? 'Expires today' : `Expires ${day}`,
+    clock: today ? 'Expires at the close' : `Expires ${day}`,
+    tip: (ticker: string) =>
+      today
+        ? `The share of ${ticker}'s hedging in contracts that expire at 4:00 today. It is gone after the close, and the walls it made go with it`
+        : `The share of ${ticker}'s hedging in contracts that expire at 4:00 on ${day}, the next session. Today's own contracts expired at today's close`,
+  };
+}
+
+/** The Levels card's "Today" option in the words the clock stands at: "Today" in or before the session, "Next session"
+    after the close */
+export const todayScopeLabel = (): string => (sessionDay().closed ? 'Next session' : 'Today');
+
+/** The scope in a reader's words, for a label: "Today · Oct 22", "Next session · Oct 23", "Oct 26 · next expiry",
+    "All expiries" */
 export function levelsWords(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE', today: string = isoDate(bookToday())): string {
   if (scope === 'ALL') return 'All expiries';
   const d = levelsDate(snapshot, scope);
   /* today's own chain is not in yet: the levels are the whole book's until it lands — say so */
   if (!d) return 'All expiries · today loading';
   const span = expirySpan([d]) ?? d;
-  return d === today ? `Today · ${span}` : `${span} · next expiry`;
+  const word = dayWordOf(d);
+  void today;
+  return word ? `${word} · ${span}` : `${span} · next expiry`;
+}
+
+/* ---- THE SESSION THAT RAN TODAY, AFTER ITS CLOSE (the second re-audit, 2026-10-22) -----------------------------------
+   "How the levels held · Today · Oct 23" with 0 tests / 0 held / 0 broke on every level, while the price panel showed
+   today's real session: after the close the levels moved on to Friday's contracts, and Thursday's prices were tested
+   against them. The record of TODAY is today's session against the levels that were live in it:
+     · Today scope, a name with a same-day expiry (SPY, QQQ): that date's own book — the vendor still serves this
+       morning's rows for the contracts that settled at 4:00 (greek-exposure/strike-expiry); its flip re-priced at the
+       session's open. Not loaded → null, and the page says so plainly.
+     · Today scope, a name with no same-day expiry (NVDA, AAPL on a Thursday): the front expiry the session was already
+       reading — the same contracts as now.
+     · All expiries: the whole book at the close (today's expiring contracts are no longer in it — said in the label). */
+export interface SessionBook {
+  /** The book the session's levels are read off — null when it is no longer available */
+  book: MarketSnapshot | null;
+  /** "Today · Oct 22", "Oct 23 · today's front expiry", "All expiries · at today's close" */
+  label: string;
+  /** Plain words when the book is not available */
+  why: string | null;
+  /** True after today's close (the report is a finished day) */
+  after: boolean;
+}
+
+const sessionMemo = new WeakMap<MarketSnapshot, Map<string, SessionBook>>();
+export function sessionBook(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionBook {
+  /* one object per snapshot, scope and minute — the report memoises on the book it is handed */
+  const key = `${scope}|${Math.floor(Date.now() / 60_000)}`;
+  let m = sessionMemo.get(snapshot);
+  if (!m) sessionMemo.set(snapshot, (m = new Map()));
+  const hit = m.get(key);
+  if (hit) return hit;
+  const out = sessionBookOf(snapshot, scope);
+  m.clear();
+  m.set(key, out);
+  return out;
+}
+
+function sessionBookOf(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionBook {
+  const s = sessionDay();
+  const isTrading = isTradingDay(nyToday());
+  const after = isTrading && nySessionPhase() === 'after';
+  if (!after || !snapshot.liveBook) return { book: levelsBook(snapshot, scope), label: levelsWords(snapshot, scope), why: null, after: false };
+  if (scope === 'ALL') return { book: levelsBook(snapshot, 'ALL'), label: `All expiries · at today's close`, why: null, after };
+  const by = snapshot.uwByDate ?? {};
+  const listed = (snapshot.uwExpiries ?? []).map(e => e.date);
+  const sameDay = listed.includes(s.today) || s.today in by;
+  if (sameDay) {
+    const chain = by[s.today];
+    if (!chain?.length)
+      return { book: null, label: `Today · ${expirySpan([s.today])}`, why: `Today's ${expirySpan([s.today])} contracts expired at 4:00 and their book is not loaded here — switch Levels to All expiries for the whole book's levels through today.`, after };
+    const [y, m, d] = s.today.split('-').map(Number);
+    return {
+      book: { ...snapshot, chain, uwChains: { ...snapshot.uwChains, '0DTE': chain }, asOf: nyWallTime(y, m, d, 9, 30) },
+      label: `Today · ${expirySpan([s.today])} · this morning's book`,
+      why: null,
+      after,
+    };
+  }
+  const front = levelsDate(snapshot, '0DTE');
+  return { book: levelsBook(snapshot, '0DTE'), label: front ? `${expirySpan([front])} · today's front expiry` : 'Today', why: null, after };
 }

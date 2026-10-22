@@ -38,13 +38,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useAlertTrades, useFlowAlerts, usePrintStream, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
+import { dayLean, indexRoot, plural, useAlertTrades, useFlowAlerts, useNameTopContracts, usePrintStream, usd as fmtUsd, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { printKey, useWatch, watchPrint } from '../../context/WatchContext';
 import WatchStar from '../../components/trace/WatchStar';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE, printKind, rankNotable, sentimentOf, summarizeTape, type PrintKind } from '../../data/tape';
-import { fmtUsd } from '../../data/gex';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -61,7 +60,7 @@ import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
-import { pctSigned } from '../../core/format';
+import { expiryLabel, pctSigned } from '../../core/format';
 import { LiveTapeGuide } from '../../components/trace/TraceGuide';
 import type { FlowPrint, PrintSentiment, TapeSummary } from '../../types/trace';
 
@@ -181,7 +180,7 @@ const TOOLTIPS: Record<string, string> = {
   quote: 'What was paid, which side of the market it crossed, and the bid and ask it crossed into',
   size: "Contracts on this print, over the day's volume and the open interest as of the last close",
   prem: 'Dollars paid — size × fill × 100',
-  dayRatio: "This contract's whole day so far: its volume at the ask against its volume on the bid (mid prints left out). An alert's: its own premium by side",
+  dayRatio: "This contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean only when at least half the day traded on a side. On the alerts lane: the alert's own premium by side",
   sentiment: "Bullish (calls bought, puts sold), bearish (puts bought, calls sold) or neutral (mid) — by the side the vendor tags and the right",
   volOverOi: "Today's volume against open interest — above 1.5, positions were built today",
   iv: 'Implied volatility of the contract',
@@ -202,30 +201,33 @@ type ReadSeg = string | { print: FlowPrint; label: string };
     THE SENTENCE AGREES WITH ITS OWN NUMBERS: it said "aggressive call buying leads" while the puts carried three times
     the calls' money — the lead is bullish premium (calls bought and puts sold) against bearish (puts bought and calls
     sold), and the sentence now says exactly that, with both sides' dollars. */
-function tapeRead(rows: FlowPrint[], summary: TapeSummary): ReadSeg[] {
-  if (rows.length === 0) return ['Awaiting prints…'];
+function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'alerts' = 'prints'): ReadSeg[] {
+  if (rows.length === 0) return [noun === 'alerts' ? 'Awaiting alerts…' : 'Awaiting prints…'];
   const zdte = rows.filter(r => r.dte === 0).length;
   const lead = summary.bullPremium >= summary.bearPremium ? 'Bullish' : 'Bearish';
   /* a cut with no side on it (the mid lean) leads nowhere: never "Bullish premium leads by $0 — $0 against $0" */
   /* THE WINDOW IS NAMED: these are the prints in hand, not the day */
   const times = rows.map(r => r.time).filter(t => t !== '—').sort();
   const span = times.length ? `${times[0]}–${times[times.length - 1]} ET` : '';
-  const segs: ReadSeg[] = [`In these ${rows.length.toLocaleString('en-US')} prints${span ? ` (${span})` : ''}: `];
+  const ext = rows.filter(r => r.extended).length;
+  const segs: ReadSeg[] = [`In these ${rows.length.toLocaleString('en-US')} ${noun}${span ? ` (${span})` : ''}${ext ? `, ${ext === rows.length ? 'all' : ext.toLocaleString('en-US')} after hours` : ''}: `];
   segs.push(
     summary.bullPremium === 0 && summary.bearPremium === 0
-      ? 'no premium has a side — every print traded at the mid'
+      ? ext === rows.length
+        ? 'none is read bullish or bearish — after the close a print is set against a thin post-market quote'
+        : `no premium has a side — every ${noun === 'alerts' ? 'alert' : 'print'} traded at the mid${ext ? ' or after hours' : ''}`
       : `${lead.toLowerCase()} premium leads by ${fmtUsd(Math.abs(summary.netPremium))} — ${fmtUsd(summary.bullPremium)} bullish (calls bought, puts sold) against ${fmtUsd(summary.bearPremium)} bearish (puts bought, calls sold); calls ${fmtUsd(summary.callPremium)} and puts ${fmtUsd(summary.putPremium)} in all`
   );
   if (summary.largest) {
     const L = summary.largest;
     const hit = rows.find(r => r.ticker === L.ticker && r.strike === L.strike && r.right === L.right && r.premium === L.premium);
-    segs.push(' · largest print ');
+    segs.push(noun === 'alerts' ? ' · largest alert ' : ' · largest print in this window ');
     if (hit) segs.push({ print: hit, label: `${L.ticker} ${L.strike}${L.right}` });
     else segs.push(`${L.ticker} ${L.strike}${L.right}`);
     segs.push(` at [[${fmtUsd(L.premium)}]]`);
   }
-  if (summary.sweeps > 2) segs.push(` · ${summary.sweeps} sweeps on the tape`);
-  if (rows.length >= 20 && zdte / rows.length > 0.25) segs.push(` · 0DTE is ${Math.round((zdte / rows.length) * 100)}% of the prints`);
+  if (summary.sweeps > 2) segs.push(` · ${summary.sweeps} sweeps`);
+  if (rows.length >= 20 && zdte / rows.length > 0.25) segs.push(` · 0DTE is ${Math.round((zdte / rows.length) * 100)}% of the ${noun}`);
   segs.push('.');
   return segs;
 }
@@ -245,11 +247,15 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary): ReadSeg[] {
    glance. The dot's POSITION on the rail and the word carry the side; the
    colour stays where it is information. */
 const SIDE_WORD: Record<FlowPrint['side'], string> = { ASK: 'ask', BID: 'bid', MID: 'mid' };
+/* A FILL OUTSIDE ITS QUOTE SAYS SO (the retail pass, 2026-10-22: an NVDA fill of $7.86 read "BID" over a bid of 7.90 —
+   right, it sold through the bid, but the word alone looked wrong): under the bid / over the ask */
+const sideWordOf = (p: FlowPrint) =>
+  p.bid > 0 && p.ask > p.bid && p.fill < p.bid - 0.005 ? 'under bid' : p.bid > 0 && p.ask > p.bid && p.fill > p.ask + 0.005 ? 'over ask' : SIDE_WORD[p.side];
 const QuoteCell = ({ print }: { print: FlowPrint }) => (
   <span className="inline-flex flex-col items-end gap-[2px] leading-none align-middle">
     <span className="inline-flex items-baseline gap-1">
       <span className="font-mono text-[11px] font-bold tnum text-textPrimary">${print.fill.toFixed(2)}</span>
-      <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-textPrimary">{SIDE_WORD[print.side]}</span>
+      <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-textPrimary" title={print.extended ? 'After hours — set against a post-market quote' : undefined}>{sideWordOf(print)}</span>
     </span>
     <span className="inline-flex items-center gap-1">
       <span className="font-mono text-[11px] tnum text-textSecondary">{print.bid.toFixed(2)}</span>
@@ -325,11 +331,11 @@ const phoneRow = (r: TapeRow) => {
           {fmtUsd(r.p.premium)}
         </span>,
         <span key="s">
-          {SIDE_WORD[r.p.side]} ${r.p.fill.toFixed(2)}
+          {sideWordOf(r.p)} ${r.p.fill.toFixed(2)}
         </span>,
-        <span key="z">{num(r.p.size)} contracts</span>,
+        <span key="z">{plural(r.p.size, 'contract')}</span>,
         <span key="l" className={SENT_TEXT[s]}>
-          {s.toLowerCase()}
+          {r.p.extended ? 'after hours' : s.toLowerCase()}
         </span>,
         printKind(r.p) === 'SWEEP' ? (
           <span key="k" className="text-warn">
@@ -572,8 +578,8 @@ const LiveTape = () => {
   /* ONE SNAPSHOT FOR THE HEAD AND THE SENTENCE (the audit, 2026-10-22): the sentence was throttled to 8s, so it named
      an RKLB print as the largest under a head that named a META one. Both now read the same rows on every render. */
   const read = useMemo<ReadSeg[]>(
-    () => (beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? 'Awaiting the first prints…' : 'No prints in this view.'] : tapeRead(beamRows, beamSummary)),
-    [beamRows, beamSummary, tapeDown, rows.length]
+    () => (beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? (lane === 'alerts' ? 'Awaiting the first alerts…' : 'Awaiting the first prints…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints')),
+    [beamRows, beamSummary, tapeDown, rows.length, lane]
   );
   const windowSpan = useMemo(() => {
     const times = beamRows.map(r => r.time).filter(t => t !== '—').sort();
@@ -677,7 +683,7 @@ const LiveTape = () => {
         header: 'OTM %',
         align: 'right',
         sortValue: r => (r.p.spot > 0 ? r.p.otmPct : Number.NEGATIVE_INFINITY),
-        render: r => (r.p.spot > 0 ? <span className="text-textPrimary">{pctSigned(r.p.otmPct, 1)}</span> : <span className="text-textMuted">—</span>),
+        render: r => (r.p.spot > 0 && Number.isFinite(r.p.otmPct) ? <span className="text-textPrimary">{indexRoot(r.p.ticker) ? '≈' : ''}{pctSigned(r.p.otmPct, 1)}</span> : <span className="text-textMuted" title={r.p.spot > 0 ? 'A whole-point index level is too coarse for this distance' : undefined}>—</span>),
       },
       {
         key: 'quote',
@@ -708,14 +714,15 @@ const LiveTape = () => {
       },
       {
         key: 'dayRatio',
-        /* "Day lean" — the same cell is the Lean on every other page */
-        label: 'Day lean',
+        /* "Day lean" — the same cell is the Lean on every other page; on the alerts lane it is the ALERT's own premium by
+           side, and says so */
+        label: lane === 'alerts' ? 'Alert side' : 'Day lean',
         group: 'Conviction',
-        header: 'Day lean',
+        header: lane === 'alerts' ? 'Alert side' : 'Day lean',
         align: 'right',
         sortValue: r => (Number.isFinite(r.p.ratioBidPct) ? 100 - r.p.ratioBidPct : -1),
         // The Screener's Lean cell IS the tape's old ratio cell, shared.
-        render: r => <LeanCell askPct={100 - r.p.ratioBidPct} />,
+        render: r => <LeanCell askPct={100 - r.p.ratioBidPct} split={lane === 'prints' ? r.p.daySide : undefined} />,
       },
       {
         key: 'sentiment',
@@ -726,6 +733,8 @@ const LiveTape = () => {
         sortValue: r => sentimentOf(r.p),
         render: r => {
           const s = sentimentOf(r.p);
+          /* after the close a print is set against a thin post-market quote — labelled, never read */
+          if (r.p.extended) return <span className="text-[11px] font-semibold uppercase text-textMuted" title="Printed after hours — set against a post-market quote, so it carries no read">after hrs</span>;
           return <span className={`text-[11px] font-semibold ${SENT_TEXT[s]}`}>{s}</span>;
         },
       },
@@ -785,7 +794,7 @@ const LiveTape = () => {
         },
       },
     ],
-    [champId]
+    [champId, lane]
   );
 
   /* The chooser offers every column but the time rail, which is always on. */
@@ -793,12 +802,17 @@ const LiveTape = () => {
   const chooserCols = useMemo(() => columns.filter(c => c.key !== 'time').map(c => ({ key: c.key, label: c.label, group: c.group })), [columns]);
   const [guideOpen, setGuideOpen] = useState(false);
 
+  /* THE PILL SAYS THE SIDE (the retail pass, 2026-10-22: "Top bull SPX 7350P" — a put as the top bull, unexplained): a
+     put sold on the bid is bullish, so the pill says "sold" and the label's hover says the rule */
   const pill = (p: FlowPrint) => (
     <>
       {p.ticker} {p.strike}
-      {p.right} · {fmtUsd(p.premium)}
+      {p.right} {p.side === 'ASK' ? 'bought' : p.side === 'BID' ? 'sold' : 'mid'} · {fmtUsd(p.premium)}
     </>
   );
+  /* THE NAME'S WHOLE DAY (the retail pass: "biggest NVDA bets today" — the tape cut to a name covers its window only):
+     with one name typed, its contracts by the day's premium, from the vendor's screener */
+  const topDay = useNameTopContracts(tickerOnly || null, 3);
 
   const readNode = read.map((seg, i) =>
     typeof seg === 'string' ? (
@@ -822,10 +836,10 @@ const LiveTape = () => {
         guide={{ title: 'How to read the tape', door: 'What a print, its fill and its conviction mean', body: <LiveTapeGuide />, testId: 'live-tape-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Prints" testId="prints" title="The prints in hand — the newest stretch of the tape, unbroken, up to 2,000 — not the whole day">
+            <Fact label={lane === 'alerts' ? 'Alerts' : 'Prints'} testId="prints" title={lane === 'alerts' ? "The vendor's newest flow alerts — each one an aggregate of a contract's prints in one burst" : 'The prints in hand — the newest stretch of the tape, unbroken, up to 2,000 — not the whole day'}>
               {filtered.length}{' '}
               <span className="text-textSecondary">
-                of {rows.length}
+                of {rows.length}{lane === 'alerts' ? ' alerts' : ''}
                 {lane === 'prints' && stream.hasOlder ? ' · older still coming' : ''}
                 {lane === 'prints' && !stream.hasOlder && rows.length >= TAPE_CAP ? ' · at the max' : ''}
                 {' · '}
@@ -847,18 +861,32 @@ const LiveTape = () => {
             <Fact label="0DTE" testId="odte" title="Share of this view's prints expiring today">
               <span className="text-textPrimary">{Math.round(zdteShare * 100)}%</span> <span className="text-textSecondary">of prints</span>
             </Fact>
+            {tickerOnly && topDay.rows.length > 0 && (
+              <Fact label={`${tickerOnly}'s biggest today · whole day`} testId="name-day" title={`${tickerOnly}'s contracts with the most premium today, the whole day — the vendor's screener, not the window of prints above. Each with its day's lean: at the ask, on the bid, or mostly mid / no side`}>
+                {topDay.rows.slice(0, 2).map((c, i) => {
+                  const l = dayLean(c);
+                  return (
+                    <span key={c.key}>
+                      {i > 0 && <span className="text-textSecondary"> · </span>}
+                      {c.strike}
+                      {c.right} {expiryLabel(c.expiry)} {fmtUsd(c.premium)} <span className="text-textSecondary">{l.lean === 'ASK' ? 'ask' : l.lean === 'BID' ? 'bid' : l.lean === 'UNSIDED' ? 'mid/no side' : 'even'}</span>
+                    </span>
+                  );
+                })}
+              </Fact>
+            )}
             {whales.bull && whales.bull !== whales.all && (
-              <Champion label="Top bull" ink="bull" onOpen={() => setOpenPrint(whales.bull)} testId="bull">
+              <Champion label="Top bull" ink="bull" title="The biggest bullish print in this window — a call bought at the ask or a put sold on the bid" onOpen={() => setOpenPrint(whales.bull)} testId="bull">
                 {pill(whales.bull)}
               </Champion>
             )}
             {whales.bear && whales.bear !== whales.all && (
-              <Champion label="Top bear" ink="bear" onOpen={() => setOpenPrint(whales.bear)} testId="bear">
+              <Champion label="Top bear" ink="bear" title="The biggest bearish print in this window — a put bought at the ask or a call sold on the bid" onOpen={() => setOpenPrint(whales.bear)} testId="bear">
                 {pill(whales.bear)}
               </Champion>
             )}
             {whales.all && (
-              <Champion label="Largest print" ink="supreme" onOpen={() => setOpenPrint(whales.all)} testId="largest">
+              <Champion label={lane === 'alerts' ? 'Largest alert' : 'Largest in window'} ink="supreme" title="The biggest premium among the rows in hand — the Window fact says from when to when" onOpen={() => setOpenPrint(whales.all)} testId="largest">
                 {pill(whales.all)}
               </Champion>
             )}
@@ -977,7 +1005,6 @@ const LiveTape = () => {
           comparing against stay visible behind it */}
       <PrintDrilldown
         print={openPrint}
-        snapshot={marketData}
         onClose={() => setOpenPrint(null)}
         isMarked={openPrint ? isWatched(printKey(openPrint)) : false}
         onToggleMark={toggleMark}

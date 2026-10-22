@@ -19,6 +19,7 @@
 ==================================================
 */
 
+import { CoSub } from '../../components/record/CoName';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -34,7 +35,7 @@ import { When } from '../../components/record/when';
 import { EtfsGuide, InstitutionsGuide, ShortsGuide } from '../../components/record/FileGuides';
 import { useBoardNames } from '../../data/boardNames';
 import { houseSlug, positionWord, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type ShortRow } from '../../data/fileBooks';
-import { SHORTS_MIN_FLOAT, SHORTS_SCREEN, useEtfs, useInstitutions, useShorts, useStockCard } from '../../data/liveFiles';
+import { HOUSE_LINES, SHORTS_MIN_FLOAT, SHORTS_SCREEN, useCompanyName, useEtfs, useInstitutions, useShorts } from '../../data/liveFiles';
 import { tickerName } from '../../data/tickers';
 import { FeedFallback } from '../../components/ui/liveRead';
 
@@ -109,10 +110,7 @@ const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
         {/* the listing's name, else the filing's; never the ticker said twice ("IVV · IVV") */}
-        {(() => {
-          const n = tickerName(data.ticker) !== data.ticker ? tickerName(data.ticker) : data.company;
-          return n && n.toUpperCase() !== data.ticker ? <span className="text-[10px] text-textMuted truncate" title={n}>{n}</span> : null;
-        })()}
+        <CoSub ticker={data.ticker} fallback={data.company} />
       </span>
     </span>
   ) : null;
@@ -227,7 +225,7 @@ export const Institutions = () => {
       { headerName: 'Status', field: 'status', width: 88, cellRenderer: InstStatus, headerTooltip: 'Against the prior 13F: new, added (2% more units or over), cut (2% fewer or over), closed, or held — within 2% either way, so a +1.6% line reads held' },
       { headerName: 'Shares', field: 'sharesM', width: 96, cellRenderer: InstShares, type: 'rightAligned', headerTooltip: 'Shares reported, in millions' },
       { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', headerTooltip: 'The reported value' },
-      { headerName: '% of book', field: 'pctOfBook', width: 96, cellRenderer: InstBookPct, type: 'rightAligned', headerTooltip: 'This line as a percent of the house’s reported book' },
+      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, cellRenderer: InstBookPct, type: 'rightAligned', headerTooltip: 'This line’s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales’ perc_of_share_value) — measured over the whole filing, not only the lines read here' },
       { headerName: 'Vs last filing', field: 'changePct', width: 120, cellRenderer: InstChange, type: 'rightAligned', headerTooltip: 'Change versus the prior 13F, not versus yesterday' },
     ],
     [],
@@ -260,7 +258,7 @@ export const Institutions = () => {
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What the houses reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a line, a book and the change mean" testId="institutions-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every 13F line in the window · a row opens that house</p>
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title="Each house's book is far longer than the lines read here: the largest 80 lines by value from its latest 13F, for the 40 largest houses">The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
@@ -347,7 +345,8 @@ type SectorPick = string;
 
 const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'all', label: 'Every name', short: 'All', hint: 'The whole short book' },
-  { value: 'heavy', label: 'Heavy', hint: 'Eight percent of the float or more' },
+  /* the screen's own floor is ~19% of the float, so "8% or more" kept every row (the re-audit, 2026-10-22) */
+  { value: 'heavy', label: '30% or more', hint: 'Thirty percent of the float or more sold short' },
 ];
 
 
@@ -358,10 +357,7 @@ const ShortName = ({ data }: ICellRendererParams<ShortRow>) =>
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
         {/* the listing's name, else the vendor's; never the ticker said twice */}
-        {(() => {
-          const n = data.name ?? tickerName(data.ticker);
-          return n && n !== data.ticker ? <span className="text-[10px] text-textMuted truncate" title={n}>{n}</span> : null;
-        })()}
+        <CoSub ticker={data.ticker} fallback={data.name} />
       </span>
     </span>
   ) : null;
@@ -378,12 +374,12 @@ const ShortSector = ({ data }: ICellRendererParams<ShortRow>) =>
   ) : null;
 const ShortInterest = ({ data }: ICellRendererParams<ShortRow>) => {
   if (!data) return null;
-  const heavy = data.interestPct >= 8;
+  const heavy = data.interestPct >= 30;
   return (
-    <span className="flex items-center gap-2 h-full w-full pr-2" title={heavy ? 'Eight percent or more of the float — the heavy book' : 'Short interest as a percent of the float'}>
+    <span className="flex items-center gap-2 h-full w-full pr-2" title={heavy ? 'Thirty percent or more of the float sold short' : 'Short interest as a percent of the float'}>
       <span className={`font-mono text-[11px] tnum w-[52px] ${heavy ? 'text-bear font-semibold' : 'text-textPrimary'}`}>{data.interestPct.toFixed(2)}%</span>
       <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
-        <span className={`absolute left-0 top-0 h-full rounded-full ${heavy ? 'bg-bear' : 'bg-silver'}`} style={{ width: `${Math.min(100, data.interestPct * 5)}%` }} />
+        <span className={`absolute left-0 top-0 h-full rounded-full ${heavy ? 'bg-bear' : 'bg-silver'}`} style={{ width: `${Math.min(100, data.interestPct * 2)}%` }} />
       </span>
     </span>
   );
@@ -395,9 +391,8 @@ const ShortBorrow = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span c
 
 const ShortCard = ({ row, on, onToggle }: { row: ShortRow; on: boolean; onToggle: () => void }) => {
   /* the screen carries no company name; a card asks the name's own stock card for it */
-  const card = useStockCard(row.ticker);
-  const listed = row.name ?? tickerName(row.ticker);
-  const name = listed !== row.ticker ? listed : card?.name && card.name.toUpperCase() !== row.ticker ? card.name.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()) : '';
+  const co = useCompanyName(row.ticker, true);
+  const name = co && co.toUpperCase() !== row.ticker ? co : row.name && row.name !== row.ticker ? row.name : '';
   return (
   <button type="button" onClick={onToggle} aria-pressed={on} title={on ? `Showing ${row.ticker} only — click to show every name` : `Keep the grid to ${row.ticker}`} className={CARD(on)} data-shorts-know={row.ticker} data-on={on || undefined}>
     <span className="flex items-center gap-2 min-w-0">
@@ -406,7 +401,7 @@ const ShortCard = ({ row, on, onToggle }: { row: ShortRow; on: boolean; onToggle
       {name && <span className="text-[10px] text-textSecondary truncate">{name}</span>}
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
-      <span className={`text-[13px] font-bold ${row.interestPct >= 8 ? 'text-bear' : 'text-textPrimary'}`}>{row.interestPct.toFixed(1)}%</span>
+      <span className={`text-[13px] font-bold ${row.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{row.interestPct.toFixed(1)}%</span>
       <span className="text-[9px] text-textSecondary">of the float</span>
     </span>
     <span className="mt-1 block font-mono text-[9px] tnum text-textSecondary">{row.daysToCover.toFixed(1)} days to cover</span>
@@ -448,7 +443,7 @@ export const Shorts = () => {
   const cut = useMemo(
     () =>
       feed.filter(r => {
-        if (show === 'heavy' && r.interestPct < 8) return false;
+        if (show === 'heavy' && r.interestPct < 30) return false;
         if (sector !== 'all' && r.sector !== sector) return false;
         if (names === 'board' && !board.has(r.ticker)) return false;
         return true;
@@ -485,9 +480,10 @@ export const Shorts = () => {
     const stale = reads.some(q => q.asOf === asOf && q.stale);
     /* the heaviest STOCK — a fund's short interest is creation and hedging, not a bet a squeeze can punish */
     const lead = [...stocks].sort((a, b) => b.interestPct - a.interestPct)[0];
-    const dtc = rows.map(r => r.daysToCover).filter(d => d > 0).sort((a, b) => a - b);
+    /* the stocks only: a fund's days to cover is creation and hedging, not a short that must be bought back */
+    const dtc = stocks.map(r => r.daysToCover).filter(d => d > 0).sort((a, b) => a - b);
     const days = dtc.length ? (dtc.length % 2 ? dtc[(dtc.length - 1) / 2] : (dtc[dtc.length / 2 - 1] + dtc[dtc.length / 2]) / 2) : 0;
-    return { names: rows.length, funds: rows.length - stocks.length, heavy: heavy.length, floor, lead, days, strong, building, asOf, stale };
+    return { names: rows.length, stocks: stocks.length, funds: rows.length - stocks.length, heavy: heavy.length, floor, lead, days, strong, building, asOf, stale };
   }, [rows]);
   const hasShortVol = rows.some(r => r.shortVolRatio != null);
   const columnDefs = useMemo<ColDef<ShortRow>[]>(() => {
@@ -495,7 +491,7 @@ export const Shorts = () => {
       { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: ShortName, /* the name lands after the row; the cell redraws when it does */ valueGetter: p => (p.data ? `${p.data.ticker}\u0000${p.data.name ?? ''}` : ''), comparator: (a: string, b: string) => a.localeCompare(b), headerTooltip: 'The company — click the row to open the short file' },
       { headerName: 'Squeeze setup', colId: 'squeeze', flex: 1.4, minWidth: 200, cellRenderer: ShortSqueeze, valueGetter: p => (p.data ? squeezeRead(p.data).points : 0), headerTooltip: SQUEEZE_TIP },
       { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 150, cellRenderer: ShortSector, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'The share of the tradable stock (the float) that has been sold short and not bought back. Eight percent and above is the heavy book' },
+      { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'The share of the tradable stock (the float) that has been sold short and not bought back. Red at 30% and above' },
       { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
       { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'How many days of normal trading it would take the shorts to buy back every share — shares short divided by average daily volume' },
       { headerName: 'Fee', field: 'feeRate', width: 80, cellRenderer: ShortBorrow, type: 'rightAligned', headerTooltip: 'The annualized fee to borrow the shares on the settlement day — the short file shows today’s. A dash means the feed did not price the borrow.' },
@@ -545,7 +541,7 @@ export const Shorts = () => {
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={`${SQUEEZE_TIP}\nOn this list the read uses the settlement's figures only; a name's file adds today's borrow, the last session's short volume and the fails to deliver, so it can read stronger there.`}>Squeeze setups</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-squeeze>
-              {failed ? '—' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span></>}
+              {failed ? '—' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span> <span className="text-textMuted">of {facts.stocks}</span></>}
             </dd>
           </div>
           <div>
@@ -557,8 +553,8 @@ export const Shorts = () => {
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The median, across these names, of the days of normal volume the shorts would need to buy back — half need more, half less">Median days to cover</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.names ? facts.days.toFixed(1) : '—'}</>}</dd>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The median, across the stocks here (funds left out), of the days of normal volume the shorts would need to buy back — half need more, half less">Median days to cover</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.stocks ? facts.days.toFixed(1) : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -571,7 +567,7 @@ export const Shorts = () => {
       <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-shorts-sentence>
         {facts.lead ? (
           <>
-            <span className={`font-semibold ${facts.lead.interestPct >= 8 ? 'text-bear' : 'text-textPrimary'}`}>{facts.lead.ticker}</span> is the heaviest stock short on this screen, {facts.lead.interestPct.toFixed(1)}% of the float and {facts.lead.daysToCover.toFixed(1)} days to cover. <span className="text-bear font-semibold">{facts.heavy}</span> {facts.heavy === 1 ? 'stock sits' : 'stocks sit'} at 20% or more, and the lightest here is still {facts.floor.toFixed(1)}%{facts.funds ? `; ${facts.funds} ${facts.funds === 1 ? 'fund is' : 'funds are'} listed with no squeeze read` : ''}. The squeeze words here read the settlement alone; a name's file adds today's borrow, short volume and fails to deliver, and can read stronger.
+            <span className={`font-semibold ${facts.lead.interestPct >= 30 ? 'text-bear' : 'text-textPrimary'}`}>{facts.lead.ticker}</span> is the heaviest stock short on this screen, {facts.lead.interestPct.toFixed(1)}% of the float and {facts.lead.daysToCover.toFixed(1)} days to cover. <span className="text-bear font-semibold">{facts.heavy}</span> {facts.heavy === 1 ? 'stock sits' : 'stocks sit'} at 20% or more, and the lightest here is still {facts.floor.toFixed(1)}%{facts.funds ? `; ${facts.funds} ${facts.funds === 1 ? 'fund is' : 'funds are'} listed with no squeeze read` : ''}. The squeeze words here read the settlement alone; a name's file adds today's borrow, short volume and fails to deliver, and can read stronger.
           </>
         ) : liveShorts.status === 'loading' ? (
           'Reading the short book.'
@@ -670,7 +666,7 @@ const HoldName = ({ data }: ICellRendererParams<EtfHolding>) =>
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        {tickerName(data.ticker) !== data.ticker ? <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span> : null}
+        <CoSub ticker={data.ticker} />
       </span>
     </span>
   ) : null;

@@ -77,3 +77,146 @@ export function searchTickers(query: string, limit = 60): TickerListing[] {
   }
   return [...prefix, ...contains].slice(0, limit);
 }
+
+/* ---- THE VENDOR'S OWN NAME FIRST (the re-audit, 2026-10-22) -------------------------------------------------------
+   The bundled json is years old: SERV read "ServiceMaster" (it is Serve Robotics), SG, AI and FUN are other companies
+   now. The Dossier prefers the name Unusual Whales gives on the stock's own info and falls back to the json only when
+   the vendor has none. Names are remembered in this browser for a fortnight (a per-viewer convenience — every read
+   still works without it). `tickerName` itself is unchanged for the rest of the terminal. */
+const UW_NAMES_KEY = 'slayer.uwNames.v1';
+const UW_NAMES_TTL = 14 * 86_400_000;
+const uwNames = new Map<string, string>();
+const nameListeners = new Set<() => void>();
+try {
+  const raw0 = typeof localStorage !== 'undefined' ? localStorage.getItem(UW_NAMES_KEY) : null;
+  const parsed = raw0 ? (JSON.parse(raw0) as { at: number; names: Record<string, string> }) : null;
+  if (parsed && Date.now() - parsed.at < UW_NAMES_TTL) for (const [k, v] of Object.entries(parsed.names ?? {})) uwNames.set(k, v);
+} catch {
+  /* no storage: names are read again this visit */
+}
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const saveNames = () => {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try {
+      localStorage.setItem(UW_NAMES_KEY, JSON.stringify({ at: Date.now(), names: Object.fromEntries(uwNames) }));
+    } catch {
+      /* storage refused — fine */
+    }
+  }, 800);
+};
+/* the vendor writes names in capitals ("SERVE ROBOTICS INC"): sentence them, keeping short capital words that are names */
+const KEEP_UPPER = new Set(['AG', 'SA', 'NV', 'SE', 'LP', 'LLC', 'PLC', 'ETF', 'ETN', 'REIT', 'II', 'III', 'IV', 'US', 'USA', 'UK', 'AI', 'NYSE', 'SPDR', 'MSCI', 'S&P', 'ADR', 'ADS', 'NA', 'BDC', 'CO']);
+const titled = (s: string): string =>
+  s === s.toUpperCase() && /[A-Z]{3}/.test(s)
+    ? s
+        .toLowerCase()
+        .split(/(\s+|-|\/)/)
+        .map(w => (KEEP_UPPER.has(w.toUpperCase()) && w.length <= 4 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
+        .join('')
+        .replace(/\bInc\b\.?/g, 'Inc.')
+        .replace(/\bCorp\b\.?/g, 'Corp.')
+    : s;
+
+/** Remember the vendor's own name for a symbol (the stock's info) */
+export function rememberCompanyName(symbol: string, name: string | null | undefined): void {
+  const sym = symbol.toUpperCase();
+  const n = (name ?? '').trim();
+  if (!n || n.toUpperCase() === sym) return;
+  const v = titled(n);
+  if (uwNames.get(sym) === v) return;
+  uwNames.set(sym, v);
+  saveNames();
+  nameListeners.forEach(fn => fn());
+}
+
+/** The vendor's name if known, then the bundled listing's, then the symbol */
+export function companyName(symbol: string): string {
+  const sym = symbol.toUpperCase();
+  return uwNames.get(sym) ?? tickerName(sym);
+}
+
+/** True when the symbol is on the bundled listing — a name off it (an OTC symbol on a filing) is not asked of the vendor */
+export const isListed = (symbol: string): boolean => bySymbol.has(symbol.toUpperCase());
+
+/** True when the vendor's own name for the symbol is known */
+export const hasVendorName = (symbol: string): boolean => uwNames.has(symbol.toUpperCase());
+
+export function subscribeCompanyNames(fn: () => void): () => void {
+  nameListeners.add(fn);
+  return () => nameListeners.delete(fn);
+}
+
+/* ---- A COMPANY NAMED IN A HEADLINE (the re-audit, 2026-10-22) -----------------------------------------------------
+   The wire leaves many company stories untagged ("COCA-COLA SAYS DENTSU CONTINUES…", "Medpace Slumps On Solid Report").
+   A headline's company is found by the listing's own name with its legal form taken off ("The Coca-Cola Company" →
+   Coca-Cola), written as the listing writes it or in capitals. A name that is also plain English (Target, Visa, Square,
+   General, Energy…) is never matched alone — a missing tag costs less than a story filed under the wrong company. */
+const LEGAL = /(?<![\w-])(?:the|inc|incorporated|corp|corporation|co|company|companies|ltd|limited|llc|lp|l\.p|plc|sa|s\.a|nv|n\.v|ag|se|holdings?|group|class [a-c]|common stock|ordinary shares|ads|adr|american depositary shares?|depositary shares?|units?|warrants?|rights?)(?![\w-])\.?/gi;
+const PLAIN_WORDS = new Set(
+  'target visa square general energy western eastern southern northern american national united global international first second new great capital financial digital mobile express charter pioneer liberty progressive sterling fortune reliance summit frontier heritage pinnacle premier insight quantum vertex nexus alliance atlantic pacific century patriot universal trinity phoenix genesis matrix vector spectrum horizon compass anchor beacon bridge element evolution fusion galaxy impact legacy momentum origin paragon precision signal spirit sunrise titan unity venture vista zenith marathon discovery dynamic strategic emerald diamond crystal golden silver harmony gaming energy power solar water health care medical services systems solutions technologies technology industries resources partners trust bank bancorp financial insurance realty properties investment investors security securities brands foods motors airlines communications networks software therapeutics pharmaceuticals biosciences sciences acquisition opportunity growth income value select advisors management market markets stock stocks shares index fund funds street wall today report earnings results quarter outlook guidance price prices target rating ratings deal deals merger sale sales news daily weekly online direct plus prime smart open clear simple best better central standard royal crown eagle falcon lion tiger bear bull apex core edge peak point line link path wave flow form base cloud data info life live home house world earth ocean river lake forest mountain valley island harbor coast north south east west carbon green blue black white orange purple gold iron steel copper oil gas mining metals chemical chemicals materials equipment products services entertainment media sports games travel hotels restaurants retail stores nasdaq nyse dow amex cboe s&p russell institutions enterprises associates logistics analytics labs innovations devices instruments robotics semiconductors diagnostics biotech bio pharma therapeutics hospitality residential commercial industrial infrastructure aerospace defense automotive transport transportation shipping marine air space'
+    .split(' '),
+);
+let nameIndex: Map<string, { words: string[]; ticker: string }[]> | null = null;
+const coreOf = (name: string): string[] =>
+  name
+    .replace(/&#?\w+;/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(LEGAL, ' ')
+    .replace(/[,.]+(?=\s|$)/g, ' ')
+    .split(/\s+/)
+    .map(w => w.replace(/^[^A-Za-z0-9&]+|[^A-Za-z0-9&-]+$/g, ''))
+    .filter(Boolean);
+function buildNameIndex(): Map<string, { words: string[]; ticker: string }[]> {
+  if (nameIndex) return nameIndex;
+  const idx = new Map<string, { words: string[]; ticker: string }[]>();
+  const seenCore = new Map<string, string>();
+  for (const t of bySymbol.values()) {
+    if (!/^[A-Z]{1,5}$/.test(t.symbol)) continue;
+    const name = uwNames.get(t.symbol) ?? t.name;
+    const words = coreOf(name);
+    if (!words.length || words.length > 4) continue;
+    const plain = words.every(w => PLAIN_WORDS.has(w.toLowerCase()) || w.length < 3);
+    if (plain) continue;
+    if (words.length === 1) {
+      const w = words[0];
+      const marked = /[a-z][A-Z]|-|&|\d/.test(w);
+      if (!marked && (w.length < 6 || w === w.toUpperCase())) continue;
+    }
+    const key = words.join(' ').toLowerCase();
+    /* one company per name: a warrant or a second class shares its name — the shortest symbol stands */
+    const had = seenCore.get(key);
+    if (had && had.length <= t.symbol.length) continue;
+    seenCore.set(key, t.symbol);
+    const first = words[0].toLowerCase();
+    const list = (idx.get(first) ?? []).filter(e => e.words.join(' ').toLowerCase() !== key);
+    list.push({ words, ticker: t.symbol });
+    idx.set(first, list);
+  }
+  nameIndex = idx;
+  return idx;
+}
+
+/** The listed companies a headline names by their own name, in the order they appear (at most four) */
+export function companiesInHeadline(headline: string): string[] {
+  const idx = buildNameIndex();
+  const caps = headline === headline.toUpperCase();
+  const toks = headline.split(/\s+/).map(w => w.replace(/^[^A-Za-z0-9&]+|(?:'s|’s)?[^A-Za-z0-9&-]*$/g, ''));
+  const out: string[] = [];
+  for (let i = 0; i < toks.length && out.length < 4; i++) {
+    const cands = idx.get(toks[i].toLowerCase());
+    if (!cands) continue;
+    let best: { words: string[]; ticker: string } | null = null;
+    for (const c of cands) {
+      if (i + c.words.length > toks.length) continue;
+      const ok = c.words.every((w, k) => (caps ? toks[i + k] === w.toUpperCase() : toks[i + k] === w || (w === w.toLowerCase() && toks[i + k].toLowerCase() === w)));
+      if (ok && (!best || c.words.length > best.words.length)) best = c;
+    }
+    if (best && !out.includes(best.ticker)) {
+      out.push(best.ticker);
+      i += best.words.length - 1;
+    }
+  }
+  return out;
+}

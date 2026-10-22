@@ -49,7 +49,7 @@ import {
 import Chip from '../ui/Chip';
 import RichRead from '../ui/RichRead';
 import { bucketMinutes, bucketTicks, flowClock, runningAvg, SESSION_MIN, type ContractTape, type LedgerBin } from '../../data/contractflow';
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 import { BULL, SUPREME } from '../gex/paletteInk';
 import { useResolvedTheme } from '../../theme/theme';
 
@@ -80,9 +80,9 @@ const RIGHT_PAD = 6;
 
 /** The moment-marker — the print the drilldown was opened from. White, not
     lime (Noah, 2026-08-18): white = "where", the same voice as the spot rule. */
-const printLine = (min: number, yAxisId: string, withLabel: boolean, windowMin = Infinity) => (
+const printLine = (offset: number, yAxisId: string, withLabel: boolean, windowMin = Infinity, at = offset) => (
   <ReferenceLine
-    x={min}
+    x={at}
     yAxisId={yAxisId}
     stroke={PRICE_LINE}
     strokeOpacity={0.9}
@@ -91,7 +91,7 @@ const printLine = (min: number, yAxisId: string, withLabel: boolean, windowMin =
       withLabel
         ? /* the label reads INTO the plot: right of a line in the window's first half, left of it after — at the right edge
              it ran under the price axis as "This prin" (the ship pass, 2026-10-22) */
-          { value: 'This print', position: min > windowMin * 0.5 ? 'insideTopRight' : 'insideTopLeft', fill: PRICE_LINE, fontSize: 11, fontFamily: "'Inter', sans-serif", offset: 8 }
+          { value: 'This print', position: offset > windowMin * 0.5 ? 'insideTopRight' : 'insideTopLeft', fill: PRICE_LINE, fontSize: 11, fontFamily: "'Inter', sans-serif", offset: 8 }
         : undefined
     }
   />
@@ -196,7 +196,7 @@ export interface FlowPanelProps {
   grey block on the zero line. Every figure is /option-contract/{occ}/intraday — the whole session, by side — so the
   strip can never disagree with the day's totals above it. The heaviest bucket is named on the canvas.
 */
-const LedgerLayer = ({ bins, intervalMin, heaviest }: { bins: LedgerBin[]; intervalMin: number; heaviest: LedgerBin | null }) => {
+const LedgerLayer = ({ bins, intervalMin, heaviest, from = 0, to = SESSION_MIN }: { bins: LedgerBin[]; intervalMin: number; heaviest: LedgerBin | null; from?: number; to?: number }) => {
   const xScale = useXAxisScale();
   const yScale = useYAxisScale('prem');
   if (!xScale || !yScale || bins.length === 0) return null;
@@ -228,8 +228,8 @@ const LedgerLayer = ({ bins, intervalMin, heaviest }: { bins: LedgerBin[]; inter
     const half = heaviest.midPrem / 2;
     const up = heaviest.askPrem >= heaviest.bidPrem;
     const edge = up ? y(half + heaviest.askPrem) : y(-half - heaviest.bidPrem);
-    const first = x(0);
-    const last = x(SESSION_MIN);
+    const first = x(from);
+    const last = x(to);
     const tx = Math.min(Math.max(x(heaviest.min + intervalMin / 2), first + 70), last - 70);
     label = (
       <text x={tx} y={up ? edge - 5 : edge + 11} textAnchor="middle" fill={SUPREME} fontSize={9} fontWeight={600} fontFamily="'Inter', sans-serif">
@@ -268,7 +268,12 @@ const LedgerTooltip = ({ active, payload, step }: LedgerTipProps) => {
   );
 };
 
-const SESSION_TICKS = [0, 60, 120, 180, 240, 300, 360, 390];
+/** The strip's hour ticks across its window — 09:30, 10:30 … and the window's own ends */
+const ticksFor = (from: number, to: number): number[] => {
+  const out = new Set<number>([from, to]);
+  for (let m = Math.ceil(from / 60) * 60; m <= to; m += 60) out.add(m);
+  return [...out].sort((a, b) => a - b);
+};
 
 export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onShowIv, printMin, syncId }: FlowPanelProps) => {
   const paper = useResolvedTheme() === 'light';
@@ -279,14 +284,18 @@ export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onSho
   const binRows = useMemo(() => bins.map(b => ({ min: b.min + intervalMin / 2, up: b.askPrem, down: b.bidPrem, mid: b.midPrem, vol: b.vol, hover: b.midPrem / 2 + b.askPrem })), [bins, intervalMin]);
   const premDomain = useMemo(() => [-maxSide * 1.08, maxSide * 1.08], [maxSide]);
   const totals = useMemo(() => tape.minutes.reduce((a, m) => ({ ask: a.ask + m.askVol, bid: a.bid + m.bidVol, mid: a.mid + m.midVol, prem: a.prem + m.askPrem + m.bidPrem + m.midPrem }), { ask: 0, bid: 0, mid: 0, prem: 0 }), [tape.minutes]);
-  const d = tape.day;
-  const vwap = avg.length ? avg[avg.length - 1].price : d?.avg ?? 0;
+  /* ONE WINDOW (the re-audit, 2026-10-22: the avg paid and the side bar were the regular session's while the dollars and
+     the print count were the whole day's) — every figure here is the strip's own minutes, and the label says which */
+  const w = tape.window;
+  const vwap = avg.length ? avg[avg.length - 1].price : 0;
   const summary = [
     vwap > 0 ? `avg paid $${vwap.toFixed(2)}` : null,
-    `${fmtUsd(d?.premium ?? totals.prem)} traded in the session`,
-    d && d.vol > 0 ? `${Math.round(d.multiPct)}% of the volume in multi-leg orders` : null,
-    d ? `${d.trades.toLocaleString('en-US')} prints` : null,
-  ].filter(Boolean).join(' · ');
+    `${fmtUsd(totals.prem)} traded`,
+    w.source === 'prints' ? `${tape.prints.length.toLocaleString('en-US')} prints` : `${(totals.ask + totals.bid + totals.mid).toLocaleString('en-US')} contracts`,
+    `· ${w.label}`,
+  ].filter(Boolean).join(' · ').replace(' · · ', ' · ');
+  const domain = useMemo(() => [w.from, w.to] as [number, number], [w.from, w.to]);
+  const ticks = useMemo(() => ticksFor(w.from, w.to), [w.from, w.to]);
 
   return (
     <div className={`flex flex-col gap-2 min-w-0 rounded-md px-2 py-1.5 ${paper ? '' : 'bg-panel'}`} data-theme={paper ? 'light' : 'dark'} data-flow-strip>
@@ -305,26 +314,26 @@ export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onSho
         </span>
       </div>
 
-      <SideSplit className="max-w-[460px]" bid={totals.bid} mid={totals.mid} ask={totals.ask} unit="contracts" caption={`${totals.bid.toLocaleString('en-US')} on the bid · ${totals.mid.toLocaleString('en-US')} mid or no side · ${totals.ask.toLocaleString('en-US')} at the ask — the session's contracts`} />
+      <SideSplit className="max-w-[460px]" bid={totals.bid} mid={totals.mid} ask={totals.ask} unit="contracts" caption={`${totals.bid.toLocaleString('en-US')} on the bid · ${totals.mid.toLocaleString('en-US')} mid or no side · ${totals.ask.toLocaleString('en-US')} at the ask — the same window's contracts`} />
 
       <div className="h-[200px] -ml-2">
         {bins.length === 0 ? (
-          <div className="h-full flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No prints in the regular session</div>
+          <div className="h-full flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">{w.source === 'prints' ? 'No prints this session' : 'No prints in the regular session'}</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={binRows} syncId={syncId} syncMethod="value" margin={{ top: 6, right: showAvg ? RIGHT_PAD : RIGHT_PAD + Y_RIGHT_W, bottom: 0, left: 0 }}>
               <CartesianGrid stroke={GRID} vertical={false} />
-              <XAxis type="number" dataKey="min" domain={[0, SESSION_MIN]} ticks={SESSION_TICKS} tick={false} height={4} stroke={AXIS} tickLine={false} axisLine={false} />
+              <XAxis type="number" dataKey="min" domain={domain} ticks={ticks} tick={false} height={4} stroke={AXIS} tickLine={false} axisLine={false} allowDataOverflow />
               <YAxis yAxisId="prem" type="number" tick={axisTick} stroke={AXIS} tickLine={false} width={Y_LEFT_W} domain={premDomain} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}${fmtUsd(Math.abs(v))}`} />
               {showAvg && <YAxis yAxisId="px" orientation="right" tick={axisTick} stroke={AXIS} tickLine={false} width={Y_RIGHT_W} domain={['auto', 'auto']} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />}
               {showIv && <YAxis yAxisId="iv" hide domain={['auto', 'auto']} />}
               <Tooltip content={<LedgerTooltip step={intervalMin} />} isAnimationActive={false} cursor={{ fill: HOVER_WASH }} />
               <ReferenceLine yAxisId="prem" y={0} stroke={ZERO_LINE} />
               <Bar yAxisId="prem" dataKey="hover" barSize={8} fillOpacity={0} isAnimationActive={false} />
-              <Customized component={<LedgerLayer bins={bins} intervalMin={intervalMin} heaviest={heaviest} />} />
+              <Customized component={<LedgerLayer bins={bins} intervalMin={intervalMin} heaviest={heaviest} from={w.from} to={w.to} />} />
               {showAvg && <Line yAxisId="px" data={avg} type="monotone" dataKey="price" stroke={PRICE_LINE} strokeWidth={1} strokeDasharray="3 3" dot={false} activeDot={false} isAnimationActive={false} />}
               {showIv && <Line yAxisId="iv" data={avg} type="monotone" dataKey="iv" stroke={IV_LINE} strokeWidth={1} dot={false} activeDot={false} isAnimationActive={false} />}
-              {printMin !== null && printLine(printMin, 'prem', true, SESSION_MIN)}
+              {printMin !== null && printLine(printMin - w.from, 'prem', true, w.to - w.from, printMin)}
             </ComposedChart>
           </ResponsiveContainer>
         )}
@@ -366,8 +375,8 @@ const NetTooltip = ({ active, payload }: NetTipProps) => {
   return (
     <Box>
       <div className="text-textMuted">{Number.isFinite(p.min) ? `${flowClock(p.min as number)} ET` : ''}</div>
-      {Number.isFinite(p.netCall) && <div style={{ color: ASK }}>net calls {fmtUsd(p.netCall as number)}</div>}
-      {Number.isFinite(p.netPut) && <div style={{ color: BID }}>net puts {fmtUsd(p.netPut as number)}</div>}
+      {Number.isFinite(p.netCall) && <div style={{ color: (p.netCall as number) >= 0 ? ASK : BID }}>net calls {fmtUsd(p.netCall as number)}</div>}
+      {Number.isFinite(p.netPut) && <div style={{ color: (p.netPut as number) > 0 ? BID : ASK }}>net puts {fmtUsd(p.netPut as number)} {(p.netPut as number) > 0 ? '· bought, bearish' : (p.netPut as number) < 0 ? '· sold, bullish' : ''}</div>}
     </Box>
   );
 };
@@ -484,7 +493,7 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
   return (
     <div className={`flex flex-col gap-2 min-w-0 rounded-md px-2 py-1.5 ${paper ? '' : 'bg-panel'}`} data-theme={paper ? 'light' : 'dark'} data-flow-strip>
       <div className="flex items-center gap-2.5 flex-wrap">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">{ticker} net premium · every expiry</span>
+        <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">{ticker} net premium · every expiry · the same window</span>
         <MetricPicker value={metric} onChange={onMetric} />
         {metric === 'netPremium' ? (
           <span className="font-mono text-[11px] text-textMuted tnum" data-net-summary title="Net premium is premium at the ask less premium at the bid. Net calls bought lean bullish; net puts bought lean bearish. The net is net calls less net puts.">
@@ -504,7 +513,7 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
           {metric === 'contracts' ? (
             <ComposedChart data={bars} syncId={syncId} syncMethod="value" margin={{ top: 6, right: RIGHT_PAD + Y_RIGHT_W, bottom: 0, left: 0 }}>
               <CartesianGrid stroke={GRID} vertical={false} />
-              <XAxis dataKey="min" type="number" domain={[0, SESSION_MIN]} ticks={SESSION_TICKS} tickFormatter={xFmt} tick={axisTick} stroke={AXIS} tickLine={false} />
+              <XAxis dataKey="min" type="number" domain={[tape.window.from, tape.window.to]} ticks={ticksFor(tape.window.from, tape.window.to)} tickFormatter={xFmt} tick={axisTick} stroke={AXIS} tickLine={false} allowDataOverflow />
               <YAxis yAxisId="v" tick={axisTick} stroke={AXIS} tickLine={false} width={Y_LEFT_W} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}${Math.abs(v) >= 1000 ? `${Math.round(Math.abs(v) / 1000)}k` : String(Math.abs(v))}`} />
               <Tooltip content={<BarTooltip step={intervalMin} />} isAnimationActive={false} cursor={{ fill: HOVER_WASH }} />
               <ReferenceLine yAxisId="v" y={0} stroke={ZERO_LINE} />
@@ -515,12 +524,25 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
           ) : (
             <ComposedChart data={n.series} syncId={syncId} syncMethod="value" margin={{ top: 6, right: RIGHT_PAD + Y_RIGHT_W, bottom: 0, left: 0 }}>
               <CartesianGrid stroke={GRID} vertical={false} />
-              <XAxis dataKey="min" type="number" domain={[0, SESSION_MIN]} ticks={SESSION_TICKS} tickFormatter={xFmt} tick={axisTick} stroke={AXIS} tickLine={false} />
+              <XAxis dataKey="min" type="number" domain={[tape.window.from, tape.window.to]} ticks={ticksFor(tape.window.from, tape.window.to)} tickFormatter={xFmt} tick={axisTick} stroke={AXIS} tickLine={false} allowDataOverflow />
               <YAxis yAxisId="prem" tick={axisTick} stroke={AXIS} tickLine={false} width={Y_LEFT_W} domain={[-premAbs, premAbs]} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}${fmtUsd(Math.abs(v))}`} />
               <Tooltip content={<NetTooltip />} isAnimationActive={false} cursor={{ stroke: 'rgb(var(--ink) / 0.15)' }} />
+              {/* EACH LINE WEARS ITS MEANING (the retail pass, 2026-10-22: a put line below zero — puts sold, bullish — drew red):
+                  the axis is symmetric about zero, so a gradient split at the middle inks calls green above and red below,
+                  puts red above (bought, bearish) and green below (sold, bullish); the puts are dashed */}
+              <defs>
+                <linearGradient id="cf-calls" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="50%" stopColor={ASK} />
+                  <stop offset="50%" stopColor={BID} />
+                </linearGradient>
+                <linearGradient id="cf-puts" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="50%" stopColor={BID} />
+                  <stop offset="50%" stopColor={ASK} />
+                </linearGradient>
+              </defs>
               <ReferenceLine yAxisId="prem" y={0} stroke={ZERO_LINE} />
-              {showCalls && <Area yAxisId="prem" type="monotone" dataKey="netCall" stroke={ASK} strokeWidth={1} fill={ASK} fillOpacity={0.14} isAnimationActive={false} />}
-              {showPuts && <Area yAxisId="prem" type="monotone" dataKey="netPut" stroke={BID} strokeWidth={1} fill={BID} fillOpacity={0.14} isAnimationActive={false} />}
+              {showCalls && <Area yAxisId="prem" type="monotone" dataKey="netCall" stroke="url(#cf-calls)" strokeWidth={1.25} fill="url(#cf-calls)" fillOpacity={0.12} isAnimationActive={false} baseValue={0} />}
+              {showPuts && <Area yAxisId="prem" type="monotone" dataKey="netPut" stroke="url(#cf-puts)" strokeWidth={1.25} strokeDasharray="4 2" fill="url(#cf-puts)" fillOpacity={0.12} isAnimationActive={false} baseValue={0} />}
               {printMin !== null && printLine(printMin, 'prem', false)}
             </ComposedChart>
           )}

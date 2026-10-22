@@ -29,14 +29,14 @@ export const ShortsGuide = () => (
     <Section title="Squeeze setup">
       A short squeeze is when shorts are forced to buy back fast and push the price up. The page reads the setup with fixed rules, and shows the facts that drove the word:
       <ul className="mt-1.5 list-disc pl-4">
-        <li>Short interest ≥ 20% of the float: 2 points · ≥ 10%: 1</li>
-        <li>Days to cover ≥ 7: 2 points · ≥ 4: 1</li>
-        <li>Borrow fee ≥ 20% a year: 2 points · ≥ 5%: 1</li>
-        <li>Under 1M shares left to borrow: 1</li>
-        <li>Shares short up 10% or more since the prior report: 1</li>
+        <li>Short interest ≥ 40% of the float: 3 points · ≥ 30%: 2 · ≥ 20%: 1</li>
+        <li>Days to cover ≥ 10: 2 points · ≥ 5: 1</li>
+        <li>Borrow fee ≥ 50% a year: 2 points · ≥ 10%: 1</li>
+        <li>Under 500K shares left to borrow: 1</li>
+        <li>Shares short up 20% or more since the prior report: 1</li>
         <li>On a name’s own file: short volume ≥ 65% of the last session: 1 · a fail-to-deliver day of ≥ 0.1% of the float in the last 30 days: 1</li>
       </ul>
-      <p className="mt-1.5"><b>Strong</b> is 5 points or more with at least 10% of the float short. <b>Building</b> is 3 points or more, or at least 15% short. <b>Weak</b> is the rest. It is a setup, not a forecast: it says the shorts would be squeezed if buyers came, not that buyers will come.</p>
+      <p className="mt-1.5"><b>Strong</b> needs several facts at once: 6 points or more from at least three different facts, with 20% or more of the float short and a tight borrow (a fee of 10% or more, or under 500K shares left). It is rare on purpose — the screen is already the 200 heaviest shorts by share of the float, so a high short interest alone says little here. <b>Building</b> is 4 points or more from at least two facts. <b>Weak</b> is the rest. It is a setup, not a forecast: it says the shorts would be squeezed if buyers came, not that buyers will come.</p>
     </Section>
     <Section title="A row">A card keeps the grid to that name. A row opens the short file, with the session’s short volume by market and the fails to deliver.</Section>
   </>

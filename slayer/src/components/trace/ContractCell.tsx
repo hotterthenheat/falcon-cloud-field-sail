@@ -90,7 +90,8 @@ const ContractCell = ({
         {dte !== undefined && (spot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
         {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points, from its spot-exposure minutes' : undefined}>{ticker && indexRoot(ticker) ? `index ${Math.round(spot).toLocaleString('en-US')}` : `spot $${spot.toFixed(2)}`}</span>}
         {spot !== undefined && otmPct !== undefined && <span aria-hidden>·</span>}
-        {otmPct !== undefined && <span>{pctSigned(otmPct, 1)}</span>}
+        {/* an index's level is whole points: its distance is about that, and says so; a small index's is not stated */}
+        {otmPct !== undefined && <span title={ticker && indexRoot(ticker) ? 'Against a whole-point index level — approximate' : undefined}>{ticker && indexRoot(ticker) && Number.isFinite(otmPct) ? '≈' : ''}{pctSigned(otmPct, 1)}</span>}
       </span>
     </span>
   );

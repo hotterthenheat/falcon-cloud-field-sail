@@ -8,7 +8,7 @@ import type { Candle } from '../types/market';
 import { daysBetween, nyTodayIso } from './nyDate';
 import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
-import { whalesDailyLong, whalesDarkTicker, whalesEarnings, whalesFlowTicker, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
+import { uwCall, whalesDailyLong, whalesEarnings, whalesFlowTicker, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
 
 export interface EarnRow {
   report_date?: string;
@@ -151,14 +151,53 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number): FlowPrint[] {
   });
 }
 
+/* THE DARK POOL READ, ON THE TRACE CONVENTION (the re-audit, 2026-10-22). AAPL read "distributing · strong · the
+   largest $991M at 348.22" off 80 prints that were all after 16:00 — the largest a prior-reference-price print, others
+   average-price trades — and every print was set against today's spot, not its own quote. Now, as Trace reads them: a
+   print is set against the NBBO midpoint at its own print time (the print's nbbo_bid / nbbo_ask); paid over the mid is
+   buyer-initiated (ACCUMULATION), sold under it seller-initiated (DISTRIBUTION), at the mid (within half a cent) neither.
+   Only a sized print (10,000 shares or $500K) in the regular session, priced at the quote, carries a read: average-price,
+   prior-reference, contingent, qualified-contingent, derivative-priced and stopped-stock prints, and every
+   extended-hours print, are kept on the tape and never read. */
+const SPECIAL_WORD: Record<string, string> = {
+  average_price_trade: 'average-price trade',
+  prior_reference_price: 'prior-reference-price trade',
+  contingent_trade: 'contingent trade',
+  qualified_contingent_trade: 'qualified contingent trade',
+  derivative_priced: 'derivative-priced trade',
+  derivatively_priced: 'derivative-priced trade',
+  stopped_stock: 'stopped-stock trade',
+};
+const nyMinutes = (iso: string): number | null => {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t));
+  const h = Number(parts.find(p => p.type === 'hour')?.value);
+  const m = Number(parts.find(p => p.type === 'minute')?.value);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+};
+
 function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint[] {
-  const prints = rows
+  return rows
     .filter(r => !r.canceled)
-    .slice(0, 80)
     .map((row, i) => {
       const price = num(row.price);
       const size = num(row.size);
       const notional = num(row.premium) || price * size;
+      const bid = num(row.nbbo_bid);
+      const ask = num(row.nbbo_ask);
+      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
+      const codes = [row.sale_cond_codes, row.trade_code].flatMap(c => (Array.isArray(c) ? c : [c])).filter(c => c != null && c !== '').map(String);
+      const own = codes.filter(c => c in SPECIAL_WORD);
+      const special = own.length ? [...new Set(own.map(c => SPECIAL_WORD[c]))].join(', ') : null;
+      const minute = nyMinutes(String(row.executed_at || ''));
+      const outside = minute != null && (minute < 9 * 60 + 30 || minute >= 16 * 60);
+      const extended = (row.ext_hour_sold_codes != null && row.ext_hour_sold_codes !== '') || outside;
+      const sized = size >= 10_000 || notional >= 500_000;
+      const cents = mid > 0 ? (price - mid) * 100 : 0;
+      const place = mid <= 0 ? 'no quote' : Math.abs(cents) < 0.5 ? 'at the mid' : cents > 0 ? 'over the mid' : 'under the mid';
+      const readable = sized && !special && !extended && mid > 0;
+      const intent: DarkPoolPrint['intent'] = !readable ? 'ROTATION' : Math.abs(cents) < 0.5 ? 'HEDGE FLOW' : cents > 0 ? 'ACCUMULATION' : 'DISTRIBUTION';
       return {
         id: i + 1,
         time: clock(String(row.executed_at || '')),
@@ -167,17 +206,48 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
         size,
         notional,
         venue: String(row.market_center || 'off-exchange'),
-        vsSpotPct: spot > 0 ? ((price - spot) / spot) * 100 : 0,
+        vsSpotPct: mid > 0 ? ((price - mid) / mid) * 100 : spot > 0 ? ((price - spot) / spot) * 100 : 0,
         atLevel: false,
-        sized: false,
-        intent: price >= spot ? ('DISTRIBUTION' as const) : ('ACCUMULATION' as const),
+        sized: sized && !special,
+        intent,
         conviction: 40,
-        read: `${size.toLocaleString('en-US')} shares at ${price.toFixed(2)}`,
-      };
+        read: special
+          ? `${size.toLocaleString('en-US')} shares at ${price.toFixed(2)} — ${/^[aeiou]/i.test(special) ? 'an' : 'a'} ${special}, priced by its terms; no read`
+          : extended
+            ? `${size.toLocaleString('en-US')} shares at ${price.toFixed(2)} — outside the regular session; no read`
+            : `${size.toLocaleString('en-US')} shares at ${price.toFixed(2)}, ${place}`,
+        exec: special || mid <= 0 ? null : Math.abs(cents) < 0.5 ? 'MID' : cents > 0 ? 'ASK' : 'BID',
+        bid: bid > 0 ? bid : null,
+        ask: ask > 0 ? ask : null,
+        special,
+        extended: extended || undefined,
+      } satisfies DarkPoolPrint;
     });
-  const cut = [...prints].sort((a, b) => b.size - a.size)[Math.floor(prints.length / 4)]?.size ?? 0;
-  return prints.map(p => ({ ...p, sized: cut > 0 && p.size >= cut }));
 }
+
+/* THE TAPE THE READ STANDS ON: the newest 80 prints after the bell were all post-market (AAPL's 80 were 16:00–17:30), so
+   the read had nothing of the session. The page asks for the prints of $500K or more — the sized prints — and, once the
+   session has closed, only those up to 16:00 New York, so the 500 the vendor sends reach as far back into the session as
+   they can. The window they span is printed with the read. */
+export const DARK_MIN_PREMIUM = 500_000;
+async function darkTape(ticker: string): Promise<Record<string, unknown>[]> {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
+  const minutes = Number(get('hour')) * 60 + Number(get('minute'));
+  const day = `${get('year')}-${get('month')}-${get('day')}`;
+  /* 16:00 New York as an instant: the offset is read off the clock itself (EDT −4, EST −5) */
+  const nyNoonUtc = Date.parse(`${day}T12:00:00Z`);
+  const nyNoonHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date(nyNoonUtc)));
+  const closeMs = nyNoonUtc + (16 - nyNoonHour) * 3_600_000;
+  const after = minutes >= 16 * 60 ? `&older_than=${Math.floor(closeMs / 1000)}` : '';
+  const res = await uwCall(`/darkpool/${encodeURIComponent(ticker)}?limit=500&min_premium=${DARK_MIN_PREMIUM}${after}`, true);
+  if (res.error) throw new Error(res.error);
+  return Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+}
+
+/** The prints the dark-pool read is built on: sized, in the regular session, priced at the quote */
+export const darkReadable = (p: DarkPoolPrint): boolean => p.intent !== 'ROTATION';
 
 async function load(ticker: string): Promise<void> {
   const [screenR, earnR, dayR, flowR, darkR, contractR] = await Promise.all([
@@ -185,7 +255,7 @@ async function load(ticker: string): Promise<void> {
     whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
     whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
     whalesFlowTicker(ticker).catch(() => [] as Record<string, unknown>[]),
-    whalesDarkTicker(ticker).catch(() => [] as Record<string, unknown>[]),
+    darkTape(ticker).catch(() => [] as Record<string, unknown>[]),
     /* the same call the earnings page makes, so the two pages' busiest contracts agree */
     whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
   ]);

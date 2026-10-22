@@ -91,23 +91,14 @@ const HEAT_FIGURE = {
     { lat: 51.51, lng: -0.13, w: 9 },
     { lat: 35.68, lng: 139.69, w: 7 },
   ] as HeatPoint[],
-  reach: {
-    lat: 37.35,
-    lng: -121.95,
-    city: 'Santa Clara',
-    zones: [
-      { lat: 25.03, lng: 121.56, label: 'Taipei · foundries', w: 6 },
-      { lat: 37.56, lng: 126.97, label: 'Seoul · memory complex', w: 4 },
-      { lat: 51.44, lng: 5.47, label: 'Eindhoven · lithography', w: 3 },
-    ],
-  } as Reach,
+  reach: { lat: 37.35, lng: -121.95, city: 'Santa Clara', zones: [] } as Reach,
   notes: [
     { lat: 36, lng: -98, text: 'hot · most news lands here', dy: 74 },
-    { lat: 25.03, lng: 121.56, text: 'where the open story reaches', dy: 50 },
+    
   ] as MapNote[],
 };
 const HeatFigure = () => (
-  <MapFigure label="The map, still: the United States warmed hottest, Asia and the Gulf warm, a silver wash over Europe reading London open, silver arcs from the open pin at Santa Clara to rings at Taipei, Seoul and Eindhoven">
+  <MapFigure label="The map, still: the United States warmed hottest, Asia and the Gulf warm, a silver wash over Europe reading London open, the open pin at Santa Clara">
     <NewsMap figure pins={HEAT_FIGURE.pins} selectedCity="Santa Clara" heat={HEAT_FIGURE.heat} reach={HEAT_FIGURE.reach} at={LONDON_MORNING} notes={HEAT_FIGURE.notes} {...still} />
   </MapFigure>
 );
@@ -231,7 +222,7 @@ export const NewsGuide = () => (
       <PinsFigure />
     </Section>
     <Section title="Heat, reach, sessions">
-      <p>The land warms where the news lands, the arcs are where the open story reaches, the wash is the market that is open now.</p>
+      <p>The land warms where the stories come from — each story's city, weighed by how hard it lands — and the wash is the market that is open now.</p>
       <HeatFigure />
     </Section>
     <Section title="The tape, the kinds, the glide">
@@ -242,7 +233,7 @@ export const NewsGuide = () => (
       <SquareFigure />
     </Section>
     <Section title="The flags and the numbers">
-      <p><b>MAJOR</b> marks a headline Unusual Whales flags as major. <b>BOARD</b> marks one that names a stock on your Board. The default sort, What matters, puts major stories on your Board first, then the rest of your Board, then the other major ones — newest first inside each. <b>Today</b> is how the named stock has moved so far this session: a fact from the tape, not a forecast. <b>Also</b> lists the other stocks a headline names. The square says how hard a story lands: major stories and big movers land harder.</p>
+      <p><b>MAJOR</b> marks a headline Unusual Whales flags as major. <b>BOARD</b> marks one that names a stock on your Board. The flag is the vendor's own; the page does not decide what is major. The default sort, What matters, puts major stories on your Board first, then the rest of your Board, then the other major ones — newest first inside each — except that a routine notice the vendor flags (a dividend declared, a results date, a conference slot) is not lifted for its flag. <b>At publish</b> is how the named stock had moved on the session when the story crossed: a snapshot, not today's move now. <b>Biggest move today</b>, in the head, is the regular session's change for the names the stories carry. Stories from paid legal and advice placements are left off the wire. <b>Also</b> lists the other stocks a headline names. The square says how hard a story lands: major stories and big movers land harder.</p>
     </Section>
     <Section title="All news">
       <p>Every headline, newest first, a tab per kind with its count. Follow a name and its stories gather on Following; ring its bell and the alerts drawer tells you of each one. A click opens the story beside the map.</p>

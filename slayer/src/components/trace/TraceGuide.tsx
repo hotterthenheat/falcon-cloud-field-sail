@@ -48,6 +48,26 @@ const Head = ({ x, y, children, anchor = 'start' }: { x: number; y: number; chil
   </text>
 );
 
+/* ---- the one rule ------------------------------------------------------------------
+   BOUGHT, SOLD, BULLISH, BEARISH — ONE RULE ACROSS TRACE (the re-audit, 2026-10-22: the tape counted at-the-ask as bought
+   while the dark pool tagged prints over the mid "DISTRIBUTION" in red). Said once, here, and every guide carries it. */
+export const SidesRule = () => (
+  <Section title="Bought, sold, bullish, bearish — one rule">
+    <p>
+      <b className="text-textPrimary">An option print</b> at the ask was <b className="text-textPrimary">bought</b> (the buyer paid the offer); on the bid it was <b className="text-textPrimary">sold</b>. Calls bought and puts sold read <span className="text-bull">bullish</span>; puts bought and calls sold read <span className="text-bear">bearish</span>; a mid print reads neither. So a put sold on the bid is a bullish print — "Top bull SPX 7350P sold".
+    </p>
+    <p className="mt-2">
+      <b className="text-textPrimary">Net premium</b> is premium at the ask less premium on the bid. Net calls above zero were bought on balance (bullish, green); net puts above zero were bought (bearish, red) and below zero sold (bullish, green). Every line and figure wears its meaning's ink, not its sign's.
+    </p>
+    <p className="mt-2">
+      <b className="text-textPrimary">A dark-pool cross</b> over the mid was paid up for — buyer-initiated — and reads <span className="text-bull">accumulation</span>; under the mid it was sold down — seller-initiated — and reads <span className="text-bear">distribution</span>; at the mid it leans neither way. Only a sized cross (10,000 shares or $500K) priced at the quote carries a read.
+    </p>
+    <p className="mt-2">
+      <b className="text-textPrimary">After the close</b> prints keep coming against thin post-market quotes: they are labelled after hours and never read bullish, bearish, accumulation or distribution. The badge by Live says which session it is.
+    </p>
+  </Section>
+);
+
 /* ---- the shared figures ---------------------------------------------------------- */
 
 /** A contract cell: the strike, call or put in its ink, the expiry — silver under the pointer is the door
@@ -208,6 +228,7 @@ export const WatchFigure = () => (
 
 export const ScreenerGuide = () => (
   <div data-trace-guide="screener">
+    <SidesRule />
     <Section title="A contract">
       <p>Every contract that traded today, one per row; the strike and side are the door to its card.</p>
       <ContractFigure />
@@ -285,6 +306,7 @@ export const StreakFigure = () => (
 
 export const FootprintsGuide = () => (
   <div data-trace-guide="footprints">
+    <SidesRule />
     <Section title="What stayed">
       <p>Volume is loud and gone by the close; open interest is what stayed overnight, and this page ranks what was built and unwound.</p>
       <OiChangeFigure />
@@ -353,6 +375,7 @@ export const PrintFigure = () => (
 
 export const WatchersGuide = () => (
   <div data-trace-guide="watchers">
+    <SidesRule />
     <Section title="A reason">
       <p>Why the contract is in front of you, in words — the desk's watchers, or one you wrote behind Your reasons.</p>
       <ReasonFigure />
@@ -447,6 +470,7 @@ export const ShareFigure = () => (
 
 export const WindowsGuide = () => (
   <div data-trace-guide="windows">
+    <SidesRule />
     <Section title="A quarter hour">
       <p>One name's options session, 09:30 to 16:00 New York, cut into quarter hours, a bar each, taller where more traded — the busiest in magenta, the one you have open on a silver column, the newest breathing while it fills. Every figure is the vendor's minute ticks for the name, every expiry, summed over the fifteen minutes. ← and → walk the quarter hours.</p>
       <DayStripFigure />
@@ -517,12 +541,13 @@ export const RiskFigure = () => (
 
 export const StructureGuide = () => (
   <div data-trace-guide="multi-leg">
+    <SidesRule />
     <Section title="A structure">
-      <p>The tape reconstructed into spreads — the shape, its strikes and how many legs; a row opens the structure with each leg.</p>
+      <p>The tape reconstructed into spreads — the shape, its strikes and how many legs; a row opens the structure with each leg. Size is in units: the legs' contracts over their common factor, so a fly of 5 / 10 / 5 contracts is 5 flies. The net is per unit — the net premium over units × 100 — paid (debit) or collected (credit).</p>
       <StructureFigure />
     </Section>
     <Section title="Defined risk">
-      <p>The most the structure can lose and make at expiry, and where a side has no limit.</p>
+      <p>The most the structure can lose and make at expiry — the payoff of its own legs, as they were bought and sold, on the row and the card alike — and where a side has no limit. A structure whose legs cannot be settled by its net, or that runs to two expiries, shows none.</p>
       <RiskFigure />
     </Section>
     <Section title="The inks">
@@ -590,6 +615,7 @@ export const PaneLinesFigure = () => (
 
 export const NetFlowGuide = () => (
   <div data-trace-guide="net-flow">
+    <SidesRule />
     <Section title="The board">
       <p>Every name ranked by net premium — net calls less net puts, calls bought and puts sold against the reverse. Each row says its share of the board's whole lean and which way it leans; a click puts the name on the pane, and so does the search. Only a name on today's book goes on the pane: a name the book has not traded leaves the pane where it was.</p>
       <BoardRowFigure />
@@ -628,6 +654,7 @@ export const DeskFigure = () => (
 
 export const OdteGuide = () => (
   <div data-trace-guide="odte">
+    <SidesRule />
     <Section title="The desk">
       <p>One to four panes of the same-day book, each with its own cut of the book or one name, its own money and clock; a pane's arrow opens it full screen.</p>
       <DeskFigure />
@@ -681,17 +708,19 @@ export const TapeRowFigure = () => (
 export const FillFigure = () => (
   <Figure label="Two fills in the spread, both dots in the plain ink: one near the ask, bought; one near the bid, sold — the dot's place is the tell, not a colour" h={64}>
     {[
-      { y: 22, pos: 0.92, ink: INK, word: 'near the ask — paid the offer, someone wanted it now' },
-      { y: 48, pos: 0.08, ink: INK, word: 'near the bid — hit the bid, someone took what was there' },
+      { y: 22, pos: 0.92, ink: INK, word: 'filled 1.27, near the ask — bought, someone wanted it now' },
+      { y: 48, pos: 0.08, ink: INK, word: 'filled 1.21, near the bid — sold, someone took what was there' },
     ].map(r => (
       <g key={r.y}>
-        <text x={14} y={r.y + 3} fontSize={7} fill={MUTED} fontFamily={MONO}>
-          1.20
+        {/* the bid at the left, the ask at the right — two different prices, each named (the retail pass: the sample read as
+            one price twice) */}
+        <text x={8} y={r.y + 3} fontSize={6.5} fill={MUTED} fontFamily={MONO}>
+          bid 1.20
         </text>
-        <rect x={40} y={r.y - 1.5} width={80} height={3} rx={1.5} fill="#ffffff" fillOpacity={0.08} />
-        <circle cx={40 + 80 * r.pos} cy={r.y} r={3.5} fill={r.ink} />
-        <text x={128} y={r.y + 3} fontSize={7} fill={MUTED} fontFamily={MONO}>
-          1.28
+        <rect x={44} y={r.y - 1.5} width={76} height={3} rx={1.5} fill="#ffffff" fillOpacity={0.08} />
+        <circle cx={44 + 76 * r.pos} cy={r.y} r={3.5} fill={r.ink} />
+        <text x={124} y={r.y + 3} fontSize={6.5} fill={MUTED} fontFamily={MONO}>
+          ask 1.28
         </text>
         <text x={170} y={r.y + 3} fontSize={7} fill={SECOND} fontFamily={SANS}>
           {r.word}
@@ -730,6 +759,7 @@ export const ConvictionFigure = () => (
 
 export const LiveTapeGuide = () => (
   <div data-trace-guide="live-tape">
+    <SidesRule />
     <Section title="A print">
       <p>One contract traded once — when, the name, the contract with its days left and where the stock stood, how many at what price, the dollars, and its kind. A block is one leg of 100 contracts or $250K and up; a print with legs is multi-leg; the rest are single prints. P/C is put premium over call premium.</p>
       <TapeRowFigure />
@@ -739,7 +769,7 @@ export const LiveTapeGuide = () => (
       <FillFigure />
     </Section>
     <Section title="Side, lean and window">
-      <p>A print's side is the vendor's own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count. Bullish is calls bought and puts sold; bearish is puts bought and calls sold; a mid print is neutral. The day lean is the contract's whole day so far, its volume at the ask against on the bid. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 2,000 — and the Window fact says from when to when.</p>
+      <p>A print's side is the vendor's own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count; a tag the quote at the print contradicts gives way to the quote, and a fill through the quote says "under bid" or "over ask". The day lean is the contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean is called only when at least half the day traded on a side. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 2,000 — and the Window fact says from when to when; with one name typed, its biggest contracts of the whole day stand beside them.</p>
     </Section>
     <Section title="The inks">
       <p>Premium quiet below $250K, bold above, the largest print on the tape in magenta.</p>
@@ -804,6 +834,7 @@ export const CardRowFigure = () => (
 
 export const CompareGuide = () => (
   <div data-trace-guide="compare">
+    <SidesRule />
     <Section title="The two names">
       <p>Pick any two names on today's book — the two searches offer exactly those, and the arrow between them swaps the sides. The Clock and Money cards cut both names the same way, so every row compares like with like.</p>
     </Section>
@@ -858,12 +889,12 @@ export const ShelfFigure = () => (
 
 /** The four reads, each in its ink, with the conviction the grid draws: a word over four steps, never a figure (2026-09-19) */
 export const ReadFigure = () => (
-  <Figure label="Four reads in a row: ACCUMULATION green, DISTRIBUTION red, HEDGE FLOW amber, NO READ grey" h={76}>
+  <Figure label="Four reads in a row: ACCUMULATION green (over the mid), DISTRIBUTION red (under the mid), AT THE MID amber, NO READ grey" h={76}>
     {[
-      { x: 14, w: 'ACCUMULATION', ink: BULL, note: 'size under the mid — someone building' },
-      { x: 118, w: 'DISTRIBUTION', ink: BEAR, note: 'size over the mid — someone leaving' },
-      { x: 222, w: 'HEDGE FLOW', ink: WARN, note: 'size at the mid — a desk hedging' },
-      { x: 326, w: 'NO READ', ink: MUTED, note: 'small, or priced by its terms — no signal' },
+      { x: 14, w: 'ACCUMULATION', ink: BULL, note: 'size over the mid — bought up' },
+      { x: 118, w: 'DISTRIBUTION', ink: BEAR, note: 'size under the mid — sold down' },
+      { x: 222, w: 'AT THE MID', ink: WARN, note: 'size at the mid — neither side' },
+      { x: 326, w: 'NO READ', ink: MUTED, note: 'small, own terms, after hours — no read' },
     ].map(r => (
       <g key={r.w}>
         <text x={r.x} y={16} fontSize={6.5} fontWeight={700} letterSpacing={0.6} fill={r.ink} fontFamily={MONO}>
@@ -885,26 +916,28 @@ export const ReadFigure = () => (
 
 export const DarkPoolGuide = () => (
   <div data-trace-guide="dark-pool">
+    <SidesRule />
     <Section title="The shelves">
       <p>A shelf is a price where off-exchange dollars rested today. Below the market it reads support, above it resistance, at it a pivot; "held" counts the times price turned there. Shelves are read per name: with a name in the search, the strip above the grid lists its shelves, lowest price at the left — a click cuts the grid to the crosses that printed on that shelf, and the Where card does the same.</p>
       <ShelfFigure />
     </Section>
     <Section title="The reads">
-      <p>Only a sized cross — 10,000 shares or $500K — carries a read: accumulation when it printed under the mid, distribution when over it, hedge flow when at it. A small cross carries none, and neither does a print priced by its own terms (average-price, contingent, derivative-priced): it is shown, never read.</p>
+      <p>Only a sized cross — 10,000 shares or $500K — carries a read: accumulation when it printed over the mid (paid up for, buyer-initiated), distribution when under it (sold down, seller-initiated), at the mid when it crossed there. A small cross carries none, nor does an after-hours one, nor a print priced by its own terms (average-price, contingent, derivative-priced): each is shown, never read. The head's "Sized: over · under the mid" adds up every sized cross by where it printed, any distance from the mid.</p>
       <ReadFigure />
     </Section>
     <Section title="The posture and the cut">
-      <p>The posture weighs the sized crosses that build against the ones that leave. It names the side that leads, accumulating or distributing, and how far it leans in a word: strong, good or caution. When neither side leads it reads Balanced: a poor lean is no lean. The Read, Size and Where cards cut the grid; the head's "On this cut" and "Building · leaving" follow the cut, the off-exchange share is the name's whole day; the posture reads the sized crosses in hand.</p>
+      <p>The posture weighs the dollars of the sized, regular-session crosses over the mid against those under it. It names the side that leads, accumulating or distributing, and how far it leans in a word: strong, good or caution. When neither side leads it reads Balanced: a poor lean is no lean. The Read, Size and Where cards cut the grid; the head's "On this cut" and "Building · leaving" follow the cut, the off-exchange share is the name's whole day; the posture reads the sized crosses in hand.</p>
       <InkFigure />
     </Section>
     <Section title="Where the dark money went">
-      <p>The second box is the market's latest dark prints, collected while the page is open, by name, the heaviest first — its window is printed beside its total. A name typed above reads that name's whole day instead: its off-exchange share of the day's shares and its dark dollars, from the vendor's day by price. A row, or a name in the sentence, puts that name on the box above.</p>
+      <p>The second box is the market's latest dark prints — the vendor's recent feed, about $100K and up — collected while the page is open, by name, the heaviest first; its window is printed beside its total. The Lit lane is the same grammar for prints on the exchanges. A name typed above reads that name's whole day instead: its off-exchange share of the day's shares and its dark dollars, from the vendor's day by price. A row, or a name in the sentence, puts that name on the box above.</p>
     </Section>
   </div>
 );
 
 export const TrackerGuide = () => (
   <div data-trace-guide="tracker">
+    <SidesRule />
     <Section title="A mark">
       <p>The mark at the left of any Trace row keeps the contract, print or structure here.</p>
       <WatchFigure />

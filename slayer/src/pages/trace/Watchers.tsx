@@ -39,10 +39,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { buildCatches, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
-import { useLiveBook } from '../../data/traceLive';
+import { buildCatches, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
+import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
-import { fmtUsd } from '../../data/gex';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -66,7 +65,7 @@ import { WatchersGuide } from '../../components/trace/TraceGuide';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
 import { createViewStore } from '../../data/savedViews';
-import { pctSigned } from '../../core/format';
+import { expiryLabel, pctSigned } from '../../core/format';
 
 const num = (v: number) => v.toLocaleString('en-US');
 
@@ -87,7 +86,7 @@ const TOOLTIPS: Record<string, string> = {
   time: "When the contract last printed today, New York",
   clip: "The contract's last fill today",
   clipprem: "The contract's premium today — every print, not one",
-  sideCol: "Where its day's volume leaned: at least 55% at the ask, or on the bid; else even",
+  sideCol: "Where its day's volume leaned — at the ask or on the bid (58% or more of the sided volume, with at least half the day on a side), even, or mostly mid / no side",
   voloi: 'Volume over open interest — above 1.5 the positions were built today',
 };
 
@@ -122,7 +121,7 @@ const phoneRow = (a: Catch) => (
         {fmtUsd(a.premium)} today
       </span>,
       <span key="s">last ${a.last.toFixed(2)}</span>,
-      <span key="z">{num(a.row.volume)} vol · {a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : 'even'}</span>,
+      <span key="z">{num(a.row.volume)} vol · {a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : a.side === 'MID' ? 'mid/no side' : 'even'}</span>,
     ]}
   />
 );
@@ -153,7 +152,10 @@ const Watchers = () => {
   const { book: heldBook, tick } = hold.value;
   /* THE EXPIRY CUT: the watchers run over the cut book */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
-  const book = useMemo(() => cutExpiry(heldBook), [heldBook, cutExpiry]);
+  /* THE CONTRACTS THAT STILL STAND (the re-audit, 2026-10-22: contracts that expired at today's bell were caught as if
+     they stood) — the expired ones are left out, and the sentence says how many */
+  const stand = useMemo(() => standing(cutExpiry(heldBook)), [heldBook, cutExpiry]);
+  const book = stand.rows;
   const keyOf = useCallback((a: { id: string }) => a.id, []);
   const openRow = useCallback((a: { row: { key: string } }) => setOpenKey(a.row.key), []);
   const catches = useMemo(() => buildCatches(book, myReasons), [book, myReasons]);
@@ -182,7 +184,7 @@ const Watchers = () => {
 
   const rows = useMemo(() => {
     const nq = normSymbol(query);
-    return catches.filter(a => (rule === 'ALL' || a.rule === rule) && (side === 'ALL' || a.row.right === side) && (nq === '' || normSymbol(`${a.row.ticker}${a.row.strike}${a.row.right}`).includes(nq)));
+    return catches.filter(a => (rule === 'ALL' || a.rules.includes(rule)) && (side === 'ALL' || a.row.right === side) && (nq === '' || normSymbol(`${a.row.ticker}${a.row.strike}${a.row.right}`).includes(nq)));
   }, [catches, rule, side, query]);
   const shown = rows;
 
@@ -217,7 +219,7 @@ const Watchers = () => {
   const read = useMemo<ReactNode>(() => {
     if (catches.length === 0) return <RichRead text="Nothing flagged yet today — the desk is watching." />;
     const byRule = new Map<string, number>();
-    for (const a of catches) byRule.set(a.rule, (byRule.get(a.rule) ?? 0) + 1);
+    for (const a of catches) for (const r of a.rules) byRule.set(r, (byRule.get(r) ?? 0) + 1);
     const loud = [...byRule.entries()].sort((a, b) => b[1] - a[1])[0];
     const loudName = reasonOf(loud[0])?.label ?? 'A reason';
     const mineCount = catches.reduce((n, a) => n + (a.mine ? 1 : 0), 0);
@@ -233,7 +235,7 @@ const Watchers = () => {
     const names = new Set(catches.map(a => a.row.ticker)).size;
     return (
       <>
-        <RichRead text={`${catches.length} ${catches.length === 1 ? 'catch' : 'catches'} on ${names} names among the book's ${num(bookSize)} contracts — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
+        <RichRead text={`${catches.length} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the book's ${num(bookSize)} standing contracts${stand.expired ? ` (${num(stand.expired)} that expired at today's bell left out)` : ''} — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
         <ReadDoor onOpen={() => setOpenKey(latest.row.key)}>
           {latest.row.ticker} {latest.row.strike}
           {latest.row.right}
@@ -241,7 +243,7 @@ const Watchers = () => {
         <RichRead text={`, last at $${latest.last.toFixed(2)} (${latest.time} ET), ${fmtUsd(latest.premium)} today.`} />
       </>
     );
-  }, [catches, reasonOf, bookSize]);
+  }, [catches, reasonOf, bookSize, stand.expired]);
 
   const activeRule = rule === 'ALL' ? null : reasonOf(rule);
   /* The Reason card: every reason, the desk's then yours */
@@ -301,19 +303,22 @@ const Watchers = () => {
            wears its categorical hue; one of yours wears a hollow ring and
            leads with the handle you gave it. Shape says whose, hue says which. */
         render: a => {
-          const meta = reasonOf(a.rule);
-          if (!meta) return <span className="text-textSecondary">—</span>;
+          /* EVERY REASON TOGETHER, each in the contract's own figure — one row a contract */
+          const said = a.rules
+            .map(k => {
+              const meta = reasonOf(k);
+              if (!meta) return null;
+              return { k, mine: meta.mine, label: meta.label, text: meta.mine ? `${meta.label}: ${meta.phrase}` : reasonPhrase(k as WatcherKey, a.row) };
+            })
+            .filter((x): x is { k: string; mine: boolean; label: string; text: string } => !!x);
+          if (!said.length) return <span className="text-textSecondary">—</span>;
           return (
             /* TWO LINES, NEVER CUT MID-WORD */
-            <span className="inline-flex items-center gap-1.5 text-[11px] leading-tight text-textPrimary whitespace-normal" title={a.mine ? `${meta.label} — ${meta.phrase}` : meta.phrase}>
-              {a.mine ? <span className="w-1.5 h-1.5 rounded-full shrink-0 border border-textSecondary" /> : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: RULE_DOT[a.rule as WatcherKey] }} />}
-              {a.mine ? (
-                <span className="line-clamp-2">
-                  <span className="font-semibold">{meta.label}</span> <span className="text-textSecondary">{meta.phrase}</span>
-                </span>
-              ) : (
-                <span className="line-clamp-2">{meta.phrase}</span>
-              )}
+            <span className="inline-flex items-center gap-1.5 text-[11px] leading-tight text-textPrimary whitespace-normal" title={said.map(x => x.text).join(' · ')}>
+              <span className="inline-flex gap-0.5 shrink-0">
+                {said.map(x => (x.mine ? <span key={x.k} className="w-1.5 h-1.5 rounded-full border border-textSecondary" /> : <span key={x.k} className="w-1.5 h-1.5 rounded-full" style={{ background: RULE_DOT[x.k as WatcherKey] }} />))}
+              </span>
+              <span className="line-clamp-2">{said.map(x => x.text).join(' · ')}</span>
             </span>
           );
         },
@@ -338,7 +343,7 @@ const Watchers = () => {
         align: 'right',
         sortValue: a => a.row.askPct,
         // The tape's rule: the side in one ink
-        render: a => <span className={`text-[11px] ${a.side === 'EVEN' ? 'text-textMuted' : 'text-textPrimary'}`}>{a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : 'even'}</span>,
+        render: a => <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : a.side === 'MID' ? 'mid/no side' : 'even'}</span>,
       },
       {
         key: 'vol',
@@ -392,13 +397,14 @@ const Watchers = () => {
     const byRule = new Map<string, number>();
     let mine = 0;
     for (const a of catches) {
-      byRule.set(a.rule, (byRule.get(a.rule) ?? 0) + 1);
+      for (const r of a.rules) byRule.set(r, (byRule.get(r) ?? 0) + 1);
       if (a.mine) mine++;
     }
     const loud = [...byRule.entries()].sort((a, b) => b[1] - a[1])[0];
     return { total: catches.length, loudName: loud ? (reasonOf(loud[0])?.label ?? '') : '', loudCount: loud ? loud[1] : 0, mine };
   }, [catches, reasonOf]);
-  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} · ${fmtUsd(a.premium)} today`;
+  /* the expiry rides in the pill — two SPX 7000 calls on different dates are two contracts */
+  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} ${expiryLabel(a.row.expiry)} · ${fmtUsd(a.premium)} today`;
 
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_flowalerts_cols');
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
@@ -415,7 +421,7 @@ const Watchers = () => {
         facts={
           <>
             {/* the most frequent reason, named, its count after — never a reason read as a noun */}
-            <Fact label="Caught" testId="caught" title={`Contracts on the live book (the ${num(bookSize)} with the most premium today, plus the terminal's name) that meet a reason`}>
+            <Fact label="Contracts caught" testId="caught" title={`Contracts on the live book (the ${num(bookSize)} standing ones with the most premium today, plus the terminal's name) that meet a reason — each counted once, whatever number of reasons it meets`}>
               {num(facts.total)}
               {facts.loudName && (
                 <span className="text-textSecondary">

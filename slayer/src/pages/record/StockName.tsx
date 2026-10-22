@@ -85,6 +85,7 @@ import { StockFacts } from '../../components/vendor/LiveDesk';
 import { stockBookKey, useVendorRow } from '../../data/vendorFeed';
 import { nyIsoDate } from '../../core/nyTime';
 import { statHelp } from '../../components/record/statHelp';
+import { useLiveQuote } from '../../data/liveQuote';
 
 const SILVER = 'rgb(var(--silver))';
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
@@ -203,9 +204,9 @@ const Box = ({ title, sub, aside, testId, children }: { title: string; sub?: Rea
     {children}
   </div>
 );
-const Fact = ({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) => (
+const Fact = ({ label, children, testId, tip }: { label: string; children: ReactNode; testId?: string; tip?: string }) => (
   <div className="min-w-0">
-    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
+    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={tip ?? statHelp(label)}>{label}</dt>
     {/* a figure wraps at its dots rather than being cut to "0…" in a narrow column (the dossier sweep, 2026-10-22) */}
     <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary break-words" data-stock-fact={testId}>
       {children}
@@ -438,7 +439,9 @@ const StockName = () => {
   }, []);
   const record = useLiveRecord();
   const file = useStockFile(T);
-  const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, record.news, bookRev, file]);
+  /* the quote carries the regular session's change and the extended-hours move apart (data/liveQuote.ts) */
+  const quote = useLiveQuote(T);
+  const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, record.news, bookRev, file, quote]);
   const insiders = useInsiderFlow(T, 90);
   const marketInsiders = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket).slice(0, 5), [insiders]);
   /* the name's own Congress reports, not the market book's latest few weeks */
@@ -614,7 +617,8 @@ const StockName = () => {
                 <span className="font-mono text-[12px] tnum text-textPrimary">
                   $<AnimatedNumber value={view.price} format={v => v.toFixed(2)} />
                 </span>{' '}
-                <span className={`font-mono tnum ${up ? 'text-bull' : 'text-bear'}`}>{pct(view.changePct, 2)}</span> · {view.marketWord}
+                <span className={`font-mono tnum ${up ? 'text-bull' : 'text-bear'}`} title="The regular session's change: today's close against the close before it" data-stock-day>{pct(view.changePct, 2)} today</span>
+                {view.extLine ? <span className="font-mono tnum text-textSecondary" data-stock-ext> · {view.extLine}</span> : <> · {view.marketWord}</>}
                 {view.sector ? ` · ${view.sector}` : ''}
               </p>
             </div>
@@ -669,13 +673,21 @@ const StockName = () => {
         </div>
         <div className="px-5 py-3 border-t border-borderSubtle/40 flex items-center gap-2 flex-wrap" data-stock-agreement={agreement.aligned}>
           <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted mr-1">
-            {agreement.aligned} of 4 agree · the read leans <span className={LEAN_INK[agreement.lean]}>{agreement.lean}</span>
+            {agreement.lean === 'neutral' ? (
+              <>
+                the read is <span className={LEAN_INK.neutral}>neutral</span> · {agreement.pillars.filter(p => p.stance === 'for').length} pull for · {agreement.pillars.filter(p => p.stance === 'against').length} against
+              </>
+            ) : (
+              <>
+                {agreement.aligned} of {agreement.pillars.length} agree · the read leans <span className={LEAN_INK[agreement.lean]}>{agreement.lean}</span>
+              </>
+            )}
           </span>
           {agreement.pillars.map(p => (
-            <span key={p.key} className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-md border font-mono text-[10px] tnum transition-colors ${p.agrees ? 'border-borderMuted text-textPrimary bg-ink/[0.04]' : 'border-borderSubtle text-textMuted'}`} data-stock-agree={p.key} data-agrees={p.agrees || undefined}>
+            <span key={p.key} className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-md border font-mono text-[10px] tnum transition-colors ${p.agrees ? 'border-borderMuted text-textPrimary bg-ink/[0.04]' : 'border-borderSubtle text-textMuted'}`} data-stock-agree={p.key} data-agrees={p.agrees || undefined} data-stance={p.stance}>
               <span className={`w-1.5 h-1.5 rounded-full ${GRADE_FILL[gradeOf(p.score)]}`} />
               {p.name.replace('The ', '')} <span className={GRADE_INK[gradeOf(p.score)]}>{gradeOf(p.score)}</span>
-              <span className={`text-[8px] uppercase tracking-widest ${p.agrees ? 'text-textSecondary' : 'text-warn'}`}>{p.agrees ? 'agrees' : 'argues'}</span>
+              <span className={`text-[8px] uppercase tracking-widest ${p.stance === 'agrees' ? 'text-textSecondary' : p.stance === 'argues' ? 'text-warn' : p.stance === 'for' ? 'text-bull' : p.stance === 'against' ? 'text-bear' : 'text-textMuted'}`}>{p.stance === 'middle' ? 'middle' : p.stance === 'for' ? 'pulls for' : p.stance === 'against' ? 'pulls against' : p.stance}</span>
             </span>
           ))}
           <span className="basis-full text-[11px] text-textSecondary" data-stock-risk>
@@ -778,9 +790,9 @@ const StockName = () => {
             ))}
           </div>
         </Box>
-        <Box title="The money" sub="The live book · every listed date" aside={<PillarBarSmall p={byKey.money} />} testId="money">
+        <Box title="The money" sub="The live book · all expiries (every listed date) unless marked Today" aside={<PillarBarSmall p={byKey.money} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
-            <Fact label="Net GEX" testId="gex">
+            <Fact label="Net GEX · all expiries" testId="gex" tip="Net gamma exposure over every strike of every listed expiry — the same figure Pinpoint shows on All expiries. Positive: dealers are long gamma and their hedging absorbs moves; negative: it amplifies them">
               <Money v={shownGamma(money.netGex)} /> <span className="text-textMuted">· {money.regime}</span>
             </Fact>
             <Fact label="Net DEX · VEX" testId="dex">
@@ -826,7 +838,19 @@ const StockName = () => {
           </dl>
           {/* THE BOOK ON A PRICE SCALE */}
           <div className="px-5 pb-1">
+            <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-levels-scope="all">
+              <span className="text-textPrimary font-semibold">All expiries</span>
+              <span className="normal-case tracking-normal">every listed date · the walls, the flip and the supreme as Pinpoint reads its All scope</span>
+            </div>
             <LevelsScale spot={view.price} putWall={money.levels.putWall} flip={money.levels.flip} callWall={money.levels.callWall} supreme={money.levels.supreme} />
+            {money.levelsToday ? (
+              <p className="mt-1 font-mono text-[10px] tnum text-textSecondary" data-stock-levels-scope="today" title="The same read on the nearest live expiry alone — Pinpoint's Today scope, the one its desk opens on (after the bell, the next session's expiry)">
+                <span className="text-textPrimary font-semibold uppercase tracking-widest text-[9px]">Today</span>
+                {money.levelsTodayDate ? <span className="text-textMuted"> (the {money.levelsTodayDate.slice(5).replace('-', '/')} expiry — Pinpoint's Today scope)</span> : null} · put wall <span className="text-bear">{money.levelsToday.putWall}</span> · flip {money.levelsToday.flipFound ? money.levelsToday.flip.toFixed(2) : 'none within ±10%'} · call wall <span className="text-bull">{money.levelsToday.callWall}</span> · supreme {money.levelsToday.supreme}
+              </p>
+            ) : (
+              <p className="mt-1 font-mono text-[10px] text-textMuted" data-stock-levels-scope="today-none">No expiry lists today on this name — Pinpoint's Today scope is empty here.</p>
+            )}
           </div>
           {prem > 0 ? (
           <div className="px-5 pb-2" data-stock-flow>
@@ -843,11 +867,13 @@ const StockName = () => {
             <div className="px-5 pb-2 font-mono text-[10px] uppercase tracking-widest text-textMuted">No option premium on the screener yet</div>
           )}
           {money.dark.prints.length > 0 && (
-          <div className="px-5 pb-3" data-stock-dark={money.dark.posture}>
+          <div className="px-5 pb-3" data-stock-dark={money.darkWindow.read ? money.dark.posture : 'none'} title="Each print set against the NBBO mid at its own print time: paid over the mid is buyer-initiated (buying), sold under it seller-initiated (selling). Average-price, prior-reference, contingent and derivative-priced prints and every print outside 09:30–16:00 ET are shown on the tape but not read">
             <div className="flex items-center justify-between font-mono text-[10px] tnum">
               <span className={money.dark.netPosturePct < 0 ? 'text-bear font-semibold' : 'text-textSecondary'}>selling</span>
               <span className="text-[9px] uppercase tracking-widest text-textMuted">
-                dark pool · {postureRead(money.dark)} · {money.dark.prints.length} prints{money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}
+                {money.darkWindow.read
+                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of $500K+${money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : ''}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
+                  : `dark pool · no read · none of the ${money.darkWindow.inHand} prints in hand is a sized regular-session print priced at the quote`}
               </span>
               <span className={money.dark.netPosturePct > 0 ? 'text-bull font-semibold' : 'text-textSecondary'}>buying</span>
             </div>
@@ -860,8 +886,8 @@ const StockName = () => {
           {(todayPoints.length > 1 || darkPoints.length > 1) && (
             <div className="px-5 pb-3" data-stock-dark-prints={darkPoints.length}>
               <div className="mb-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-widest text-textMuted">
-                <span>{darkPoints.length > 1 ? "today's tape · the off-exchange prints under it, shares by minute" : "today's tape"}</span>
-                <span>{darkPoints.length > 1 ? `${money.dark.prints.length} prints` : ''}</span>
+                <span>{darkPoints.length > 1 ? "today's tape · the off-exchange prints of $500K+ under it, shares by minute" : "today's tape"}</span>
+                <span>{darkPoints.length > 1 ? `${money.dark.prints.length} ${money.dark.prints.length === 1 ? 'print' : 'prints'}` : ''}</span>
               </div>
               <SessionsChart
                 testId="dark-prints"
@@ -981,10 +1007,21 @@ const StockName = () => {
                 <div key={r.label} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: '78px 52px minmax(0, 1fr) 96px' }} data-stock-report={r.label}>
                   <span className="font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">{r.label}</span>
                   <span className="font-mono text-[11px] tnum text-textPrimary">{r.epsActual.toFixed(2)}</span>
-                  <span className={`min-w-0 truncate font-mono text-[10px] tnum ${r.beat ? 'text-bull' : 'text-bear'}`}>
-                    {r.beat ? 'beat' : 'missed'} <span className="text-textMuted">{r.epsEst.toFixed(2)} by</span> {epsGap(r.epsActual, r.epsEst)}
+                  <span className={`min-w-0 truncate font-mono text-[10px] tnum ${r.result === 'beat' ? 'text-bull' : r.result === 'miss' ? 'text-bear' : 'text-textSecondary'}`} title={r.estOff ? `The vendor's estimate, ${r.epsEst.toFixed(2)}, is far off this name's other estimates — likely a vendor error, so no beat or miss size is read from it` : undefined}>
+                    {r.estOff ? (
+                      <>
+                        <span className="text-textMuted">vs {r.epsEst.toFixed(2)} · </span>
+                        <span className="text-warn">estimate looks off</span>
+                      </>
+                    ) : r.result === 'inline' ? (
+                      <>in line <span className="text-textMuted">with {r.epsEst.toFixed(2)}</span></>
+                    ) : (
+                      <>
+                        {r.result === 'beat' ? 'beat' : 'missed'} <span className="text-textMuted">{r.epsEst.toFixed(2)} by</span> {epsGap(r.epsActual, r.epsEst)}
+                      </>
+                    )}
                   </span>
-                  <span className={`text-right font-mono text-[11px] tnum font-semibold ${r.movePct >= 0 ? 'text-bull' : 'text-bear'}`}>{pct(r.movePct)}</span>
+                  <span className={`text-right font-mono text-[11px] tnum font-semibold ${r.movePct == null ? 'text-textMuted' : r.movePct >= 0 ? 'text-bull' : 'text-bear'}`}>{r.movePct == null ? '—' : pct(r.movePct)}</span>
                 </div>
               ))}
             </div>
@@ -998,16 +1035,17 @@ const StockName = () => {
                 <span className="text-textSecondary truncate min-w-0">
                   reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {untilWords(news.nextEarnings.daysOut)} {news.nextEarnings.impliedMovePct > 0 ? <> · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span></> : <> · not priced yet</>}
                   {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is Unusual Whales' estimate and can move"> · date estimated</span>}
+                  {news.nextEarnings.timeKnown === false && <span className="text-textMuted"> · time not set</span>}
                   {news.reaction && (
                     <span className="text-textMuted">
                       {' '}
-                      · the last {news.reaction.reports} moved it ±{news.reaction.pct.toFixed(1)}% on average
+                      · the last {news.reaction.reports} {news.reaction.reports === 1 ? 'report' : 'reports'} moved it ±{news.reaction.pct.toFixed(1)}% on average
                     </span>
                   )}
                 </span>
               ) : (
                 <span className="text-textMuted truncate min-w-0">
-                  no report on the next two weeks' calendar{news.reaction ? ` · the last ${news.reaction.reports} moved it ±${news.reaction.pct.toFixed(1)}% on average` : ''}
+                  {/ETF|ETN|fund|trust/i.test(String(file.screen?.issue_type ?? '')) ? 'a fund — funds do not report earnings' : 'no report date on file'}{news.reaction ? ` · the last ${news.reaction.reports} ${news.reaction.reports === 1 ? 'report' : 'reports'} moved it ±${news.reaction.pct.toFixed(1)}% on average` : ''}
                 </span>
               )}
               <Link to="/dossier/news" state={{ name: T }} className="ml-auto shrink-0 inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors whitespace-nowrap">
@@ -1045,8 +1083,8 @@ const StockName = () => {
             </Fact>
             )}
             {numbers.beats != null && (
-            <Fact label="Beats" testId="health">
-              {numbers.beats} <span className="text-textMuted">of {numbers.beatOf}</span>
+            <Fact label="Beat · in line · miss" testId="health" tip="Of the last reports with both an actual and an estimate: beat, in line (equal to the cent), missed">
+              <span className="text-bull">{numbers.beats}</span> · {numbers.inline ?? 0} · <span className="text-bear">{numbers.misses ?? 0}</span> <span className="text-textMuted">of {numbers.beatOf}</span>
             </Fact>
             )}
             {numbers.dividendYieldPct != null && (
@@ -1196,7 +1234,7 @@ const StockName = () => {
               </div>
             ))}
             <div className="px-5 py-3 border-t border-borderSubtle/40 text-[10.5px] leading-snug text-textSecondary">
-              <span className="text-textPrimary">{view.completeness}%</span> of the page is live. The board's own four sleeves are stand-ins until it reads this engine for every name; a row and its page can disagree until then.
+              <span className="text-textPrimary">{view.completeness}%</span> of the page is live. The Stocks board screens every name on the screener's fields alone, so its word for a name can differ from this page's fuller read.
             </div>
           </div>
         </div>

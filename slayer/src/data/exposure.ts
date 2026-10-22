@@ -9,7 +9,7 @@
 */
 
 import { fmtUsd } from './gex';
-import { pickWalls } from '../core/walls';
+import { pickLegWalls } from '../core/walls';
 import { levelFlip } from './flipLevel';
 import { airPocketZones, findAirPockets } from './airPockets';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
@@ -201,7 +201,9 @@ export function buildExposureProfile(
      different slices. The window is a drawing choice; it must not be an
      answer. When a wall lands outside the slice its band simply is not on
      screen, exactly as an off-window supreme crowns no row. */
-  const picked = pickWalls(chain, spot, n => n.netGex);
+  /* THE RETAIL WALLS (core/walls.ts pickLegWalls, the second re-audit 2026-10-22): the most call gamma and the most put
+     gamma on the full book, either side of spot */
+  const picked = pickLegWalls(chain, n => n.callGex, n => n.putGex);
   const callWall = picked.callWall ?? spot;
   const putWall = picked.putWall ?? spot;
   /* The flip from core/walls.ts, the ONE copy — this was one of three

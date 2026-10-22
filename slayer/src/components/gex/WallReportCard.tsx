@@ -62,8 +62,8 @@ const hhmm = (unix: number) => nyClock(unix * 1000);
 
 /** Each level in one plain line — the row's hover */
 const LEVEL_TIPS: Record<string, string> = {
-  'call wall': 'the strike above price with the most call hedging; it tends to slow a rise.',
-  'put wall': 'the strike below price with the most put hedging; it tends to slow a fall.',
+  'call wall': 'the strike with the most call gamma, either side of price; while dealers are long gamma there it tends to slow a rise, and once price is through it, it can act as support.',
+  'put wall': 'the strike with the most put gamma, either side of price; dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate.',
   'gamma flip': 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
   flip: 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
   'gamma pin': 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
@@ -168,7 +168,7 @@ const GRID = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg
 // ---- the section ----------------------------------------------------------------
 
 /** `scope`: the host's chip saying which name's levels these are */
-const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
+const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false, unavailable = null }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** Plain words when the book today's session ran on is no longer available (after the close) — said instead of a table of zeros */ unavailable?: string | null; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
   const picked = useDeskSession();
   const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : picked;
   const bars = useMemo(() => {
@@ -295,7 +295,12 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
           </span>
         )}
       </div>
-      {open && (
+      {open && unavailable && (
+        <p className="px-5 pb-4 font-mono text-[12px] text-textSecondary border-t border-borderSubtle/60 pt-3" data-report-unavailable>
+          {unavailable}
+        </p>
+      )}
+      {open && !unavailable && (
         <div className="font-mono" role="table" aria-label="Today's levels and how each held" data-level-rows>
           {/* THE COLUMNS, NAMED ONCE (the matrix's own head): a row per level under them */}
           <div className={`${grid} h-8 items-center border-t border-borderSubtle/60 text-[11px] uppercase tracking-wider text-textMuted`} role="row">

@@ -30,6 +30,7 @@
 ==================================================
 */
 
+import { todayScopeLabel } from '../../data/bookWindow';
 import { shownGreek } from './retailSign';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -394,7 +395,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
             </div>
           )}
           <div className="flex flex-col gap-1">
-            <Head title="Open interest is set once overnight, so the contracts are the same all day; each window's figure is those contracts re-priced at that minute's price and clock (vol held)">Today's contracts · {label} · re-priced over each window</Head>
+            <Head title="Open interest is set once overnight, so the contracts are the same all day; each window's figure is those contracts re-priced at that minute's price and clock (vol held)">{todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts"} · {label} · re-priced over each window</Head>
             <div className="grid grid-cols-7 gap-x-1 text-[11px]">
               {WINDOWS.map((w, i) => (
                 <span key={w.key} className="flex flex-col">

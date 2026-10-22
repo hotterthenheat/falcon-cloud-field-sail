@@ -28,6 +28,7 @@ import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
 import { ABSORB, AMPLIFY, FLIP } from './paletteInk';
+import DayMoveText from './DayMoveText';
 
 const fmt = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
@@ -93,7 +94,10 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
      first, then the dealers' label (its word stays, in its ink), then the flip's distance, then the change — the words
      before the figures */
   const priceW = ch(spot.toFixed(2), 14);
+  /* the move outside the session rides with the day's change ("−1.18% · after hours +0.05%"): the change sheds it last */
+  const extPct = snapshot.dayMove?.extPct;
   const changeW = 6 + ch(`${change > 0 ? '+' : ''}${change.toFixed(2)}%`, 11);
+  const extW = extPct != null ? 8 + ch(`· after hours +${Math.abs(extPct).toFixed(2)}%`, 11) : 0;
   const flipW = GROUP + ch('Flip', 11, true) + 6 + ch(flip != null ? fmt(flip) : 'none', 12);
   const distW = flip != null && lead ? 6 + ch(atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`, 11) : 0;
   const dealersLabelW = hasRegime ? ch('Dealers', 11, true) + 6 : 0;
@@ -102,7 +106,17 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const room = (width > 0 ? width : 9999) - 24 - 16;
   const base = priceW + flipW + dealersW;
   /* the last step: the dealers' word goes and the flip's figure wears its ink — ember amplifies, glacier absorbs */
-  const shed = base + changeW + distW + dealersLabelW + heldW <= room ? 0 : base + changeW + distW + dealersLabelW <= room ? 1 : base + changeW + distW <= room ? 2 : base + changeW <= room ? 3 : base <= room ? 4 : 5;
+  /* the after-hours figure outranks the flip's day count and the dealers' label: they shed first to make it room */
+  const shedRaw = base + changeW + distW + dealersLabelW + heldW <= room ? 0 : base + changeW + distW + dealersLabelW <= room ? 1 : base + changeW + distW <= room ? 2 : base + changeW <= room ? 3 : base <= room ? 4 : 5;
+  /* with an after-hours figure: the flip's day count, then the dealers' label shed to make it room; past that it goes */
+  let shed = shedRaw;
+  let showExt = false;
+  if (extW > 0) {
+    const core = base + changeW + extW + distW;
+    if (core + dealersLabelW + heldW <= room) [shed, showExt] = [0, true];
+    else if (core + dealersLabelW <= room) [shed, showExt] = [1, true];
+    else if (core <= room) [shed, showExt] = [2, true];
+  }
   const regimeInk = !hasRegime ? undefined : absorb ? ABSORB : AMPLIFY;
 
   return (
@@ -111,9 +125,8 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
         {spot.toFixed(2)}
       </span>
       {shed < 4 && (
-        <span className={`-ml-1 text-[11px] tnum ${change > 0 ? 'text-bull' : change < 0 ? 'text-bear' : 'text-textMuted'}`}>
-          {change > 0 ? '+' : ''}
-          {change.toFixed(2)}%
+        <span className="-ml-1">
+          <DayMoveText snapshot={snapshot} short={!showExt} />
         </span>
       )}
       <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={flip != null ? `The gamma flip: the price where the book's net gamma crosses zero — dealers ${absorb ? 'are long gamma on this side and turn short' : 'are short gamma on this side and turn long'} past it` : "No flip within ±10%: the book's net gamma keeps one sign across the whole range"}>

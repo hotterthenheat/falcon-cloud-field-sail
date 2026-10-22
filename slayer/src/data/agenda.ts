@@ -43,7 +43,7 @@
 
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
-import { PUT_WALL_WORDS, buildWallContext, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
+import { PUT_WALL_WORDS, buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
 import type { Building, BuildVerdict } from './building';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
@@ -134,6 +134,8 @@ export interface Agenda {
   first: Target[];
   mostReached: Target | null;
   weakestWall: Target | null;
+  /** How many walls are in reach — one is "the only wall in reach", not the smallest */
+  wallsInReach: number;
   closesNear: { strike: number; odds: number } | null;
   sentence: string;
 }
@@ -145,7 +147,8 @@ const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 /** A wall in reach is one the day can plausibly get to */
 const IN_REACH = 0.15;
 
-const flowWords = (flow: number) => (flow === 0 ? '' : `, ${fmtDollars(flow)} of forced dealer ${flow > 0 ? 'buying' : 'selling'} on the way`);
+/* the path's flow said with the way it leans (data/wall.ts pathFlowWords) — "pushes the move along" only when it does */
+const flowWords = (flow: number, side: WallSide) => (flow === 0 ? '' : `, ${pathFlowWords(side, flow)}`);
 
 function whyOf(t: Target, order: AgendaOrder, marketPer1Pct: number): string {
   const ratio = t.stake / Math.max(1, marketPer1Pct);
@@ -181,7 +184,7 @@ function besideOf(strikes: readonly { strike: number; gex: { net: number } }[], 
 function wordsOf(o: WallOdds, shelf: boolean): string {
   const dir = o.side === 'call' ? 'above' : 'below';
   const to = o.breakPath.to;
-  const run = to == null ? `no shelf behind it on the strikes shown` : `runs to ${fmtStrike(to)}${o.breakPath.pocket ? ' with almost nothing in between' : ''}${flowWords(o.breakPath.flow)}`;
+  const run = to == null ? `has no shelf behind it on the strikes shown` : `runs to ${fmtStrike(to)}${o.breakPath.pocket ? ' with almost nothing in between' : ''}${flowWords(o.breakPath.flow, o.side)}`;
   return shelf
     ? `${holdLabel(o.hold)}; a break ${dir} ${run}`
     : o.weight > 0
@@ -285,12 +288,12 @@ export function buildAgenda(
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';
 
-  return { ticker, spot, marketPer1Pct, sigmaLeft, inSession: clock.inSession, order, targets: ordered, first, mostReached, weakestWall, closesNear, sentence };
+  return { ticker, spot, marketPer1Pct, sigmaLeft, inSession: clock.inSession, order, targets: ordered, first, mostReached, weakestWall, wallsInReach: wallsInReach.length, closesNear, sentence };
 }
 
 /** The agenda as the page lists it: the strikes within `half` of spot either side, numbered in the chosen order. The
@@ -304,6 +307,9 @@ export function trimAgenda(agenda: Agenda, half: number): Agenda {
   const targets = agenda.targets.filter(t => keep.has(t.strike)).map((t, i) => ({ ...t, rank: i + 1 }));
   return { ...agenda, targets };
 }
+
+/** "The smallest wall in reach" — or "the only wall in reach" when it is alone */
+export const weakestLabel = (a: Pick<Agenda, 'wallsInReach'>): string => (a.wallsInReach === 1 ? 'Only wall in reach' : 'Smallest wall in reach');
 
 /** Building's word for today's change at a strike, for the row */
 export const buildWords = (t: Target, inSession: boolean): string =>

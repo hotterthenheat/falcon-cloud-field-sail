@@ -43,6 +43,8 @@
 ==================================================
 */
 
+import { bellDay, todayScopeLabel } from '../../data/bookWindow';
+import { GLOSSARY, kindTip } from './glossary';
 import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { holdLabel } from '../../data/wall';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -66,8 +68,8 @@ export const SIDE_TAB_W = 28;
 
 /** Each level in one plain line — its hover */
 const SIDE_TIPS: Record<string, string> = {
-  'put wall': 'Put wall: the strike below price with the most put hedging. Dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate',
-  'call wall': 'Call wall: the strike above price with the most call hedging. Dealers are long gamma there, so it tends to slow a rise — the lid',
+  'put wall': GLOSSARY.putWall,
+  'call wall': GLOSSARY.callWall,
   flip: "Flip: the price where the book's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves. \"none nearby\": no crossing within 10%",
   supreme: 'Supreme: the single strike with the most dealer hedging on it',
 };
@@ -99,9 +101,9 @@ interface Props {
   full?: boolean;
 }
 
-const Cap = ({ children, aside }: { children: ReactNode; aside?: ReactNode }) => (
+const Cap = ({ children, aside, tip }: { children: ReactNode; aside?: ReactNode; tip?: string }) => (
   <div className="flex items-end justify-between gap-2 pt-3 pb-1 border-b border-borderSubtle/60">
-    <span className="min-w-0 font-mono text-[10px] uppercase tracking-[0.14em] text-textMuted whitespace-nowrap truncate">{children}</span>
+    <span className="min-w-0 font-mono text-[10px] uppercase tracking-[0.14em] text-textMuted whitespace-nowrap truncate" title={tip}>{children}</span>
     {aside}
   </div>
 );
@@ -239,7 +241,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const body = (
     <div className="flex flex-col gap-0.5 px-3 pb-3" data-side-body>
       {/* THE BOOK — the net on one line, its word the sheet's one accent */}
-      <Cap>
+      <Cap tip={GLOSSARY.book}>
         The book · {L} · per {GREEK_UNIT[greek]}
       </Cap>
       <div className="pt-2 flex items-center gap-2 min-w-0">
@@ -299,7 +301,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* THE STRIKE — its legs on one line, its other greeks two by two */}
-      <Cap>
+      <Cap tip={kept ? undefined : GLOSSARY.supreme}>
         The strike · {fmtStrike(strike)} · {kept ? 'kept' : greeks && greeks.length > 1 ? `${GREEK_LABEL[greek]} supreme` : 'the supreme'}
       </Cap>
       {front ? (
@@ -323,7 +325,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* TODAY'S CONTRACTS — one row of seven figures under their labels */}
-      <Cap>Today's contracts · {L} · each window</Cap>
+      <Cap tip="The contracts the levels read, re-priced at each window's price — after the close they are the next session's">{todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts"} · {L} · each window</Cap>
       <div className="pt-1 grid grid-cols-7 font-mono tnum tabular-nums" data-side-windows>
         {READ_WINDOWS.map((w, i) => (
           <span key={w.key} className="flex flex-col leading-tight min-w-0">
@@ -364,7 +366,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             s.watch ? (
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.watch.strike} />
-                <span className="text-[10px] text-textMuted">
+                <span className="text-[10px] text-textMuted" title={kindTip(watchKind)}>
                   {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
                 </span>
               </span>
@@ -373,7 +375,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             )
           }
         />
-        <Fact label="Expires at the bell" value={s.bellShare != null ? <span title={`${s.bellShare}% of ${s.ticker}'s gamma sits in contracts that expire at 4:00 today`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? BELL_NONE : '…'}</span>} />
+        <Fact label={bellDay().clock} value={s.bellShare != null ? <span title={`${s.bellShare}% — ${bellDay().tip(s.ticker)}`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? BELL_NONE : '…'}</span>} />
       </div>
       <div className="pt-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-side-foot>
         {s.strikes.length} strikes · {s.expiryCount} {s.expiryCount === 1 ? 'expiry' : 'expiries'}

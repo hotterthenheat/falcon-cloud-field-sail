@@ -12,17 +12,27 @@
   price where the book's net gamma, re-priced at that
   price, crosses zero.
 
-  THE INPUTS ARE THE VENDOR'S. Each expiry's strikes
-  (greek-exposure/strike-expiry) carry the dollar gamma
-  at spot; each leg's implied vol is its own contract's
-  (option-contracts) where those rows are in — the
-  front expiry on every name, every expiry for the name
-  on the Map — else that expiry's at-the-money vol off
-  the vendor's term structure. Time to expiry runs to
-  4:00 ET on the date. Whatever of the whole book's
-  per-strike total is not on a loaded date (the rare
-  far listing) is carried flat. No vol at all on a book
-  falls back to the running-net crossing.
+  THE INPUTS ARE THE VENDOR'S, AND THE SAME ON EVERY
+  PAGE. Each expiry's strikes carry the vendor's live
+  open-interest gamma at spot (spot-exposures — each
+  contract's OI × Γ × 100 × S² × 1%, data/uwBook.ts), so
+  re-pricing a leg is pricing those contracts outright:
+  G(S) = G₀ · Γ(S)S² / Γ(S₀)S₀², exact at spot, with no
+  constant carried. The vol a leg is re-priced with: the
+  FRONT expiry's legs use their own contract's implied
+  vol (option-contracts — loaded for every name, Board
+  or Map); every later expiry uses that date's
+  at-the-money vol off the term structure. The Map holds
+  later dates' contract vols too, but a Board-only name
+  does not, and the same ticker and scope must give the
+  same flip whichever page loaded it first (the second
+  re-audit, 2026-10-22: NVDA All expiries read 205.38 on
+  the Board and 201.70 on the Map). Time to expiry runs
+  to 4:00 ET on the date. Whatever of the whole book's
+  per-strike total is not on a loaded date (a listing
+  past the fortieth, or a date still loading — the flip
+  is then marked provisional) is carried flat. No vol at
+  all on a book falls back to the running-net crossing.
 
   THE REGIME IS THE SIGN OF NET GAMMA AT SPOT, never the
   side of the flip: long gamma (absorbing) when net is
@@ -32,6 +42,7 @@
 ==================================================
 */
 
+import { todayScopeLabel } from './bookWindow';
 import { DEFAULT_R } from '../core/carry';
 import { cumulativeFlip, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
@@ -63,12 +74,13 @@ export function yearsTo(expiry: string, now: number = Date.now()): number {
   return Math.max(5, mins) / YEAR_MIN;
 }
 
-const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number): GammaLeg[] => {
+/** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date) — else the date's ATM vol */
+const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean): GammaLeg[] => {
   const t = yearsTo(date, now);
   const out: GammaLeg[] = [];
   for (const n of chain) {
-    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: n.callIv && n.callIv > 0 ? n.callIv : atmIv, t, oi: n.callIv && n.callOI > 0 ? n.callOI : undefined, side: 1 });
-    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: n.putIv && n.putIv > 0 ? n.putIv : atmIv, t, oi: n.putIv && n.putOI > 0 ? n.putOI : undefined, side: -1 });
+    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: own && n.callIv && n.callIv > 0 ? n.callIv : atmIv, t });
+    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: own && n.putIv && n.putIv > 0 ? n.putIv : atmIv, t });
   }
   return out;
 };
@@ -93,7 +105,7 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   if (!want.length) return fallback();
   const listed = (snapshot.uwExpiries ?? []).map(e => e.date).filter(d => d >= floor);
   const complete = dates === 'ALL' ? listed.length === 0 || listed.every(d => want.includes(d)) : true;
-  const now = Date.now();
+  const now = snapshot.asOf ?? Date.now();
   const minute = Math.floor(now / 60_000);
   const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${minute}|${chain.length}`;
   const hit = cache.get(key);
@@ -101,9 +113,11 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;
+  /* the front date: the first live listing that holds strikes — the one date every page loads contracts for */
+  const front = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort()[0];
   for (const d of want) {
     const atm = term[d] ?? (entry.iv > 0 ? entry.iv : 0);
-    const ls = legsOfDate(by[d], d, atm, now);
+    const ls = legsOfDate(by[d], d, atm, now, d === front || snapshot.asOf != null);
     for (const l of ls) if (l.iv > 0) withVol++;
     legs.push(...ls);
   }
@@ -155,7 +169,7 @@ export function flipMeaning(read: Pick<FlipRead, 'flip' | 'netAtSpot' | 'range'>
 
 /** What "Expires today" prints when nothing on the name expires today */
 export const BELL_NONE = '— none today';
-export const BELL_NONE_TITLE = (ticker: string): string => `Nothing on ${ticker} expires today — its nearest contracts expire on a later date`;
+export const BELL_NONE_TITLE = (ticker: string): string => `Nothing on ${ticker} expires ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — its nearest contracts expire on a later date`;
 
 /* ---- the book in one sentence, on the one regime rule ----------------------------------------------------------- */
 
@@ -176,22 +190,29 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   const flip = levels.flipFound === false ? null : levels.flip;
   const px = (v: number) => v.toFixed(2);
   const long = levels.net != null ? levels.net < 0 : flip != null && spot >= flip;
-  const cwPct = ((callWall - spot) / Math.max(spot, 1)) * 100;
-  const pwPct = ((spot - putWall) / Math.max(spot, 1)) * 100;
+  /* THE WALLS ARE THE MOST CALL AND THE MOST PUT GAMMA, EITHER SIDE OF PRICE (core/walls.ts pickLegWalls, the second
+     re-audit 2026-10-22) — so each is placed in words by where it actually is */
+  const side = (k: number) => (Math.abs(k - spot) < 1e-9 ? 'at price' : k > spot ? 'above' : 'below');
+  const cw = `the ${px(callWall)} call wall ${side(callWall)}`;
+  const pw = `the ${px(putWall)} put wall ${side(putWall)}`;
+  const cwPct = (Math.abs(callWall - spot) / Math.max(spot, 1)) * 100;
+  const pwPct = (Math.abs(spot - putWall) / Math.max(spot, 1)) * 100;
+  const between = putWall < spot && spot < callWall;
   const flipClause =
     flip == null
       ? ` No flip within ±10% — dealers stay ${long ? 'long' : 'short'} gamma across the whole range.`
       : ` A move ${flip > spot ? 'above' : 'below'} the ${px(flip)} flip turns them ${long ? 'short gamma, and their hedging starts to amplify moves' : 'long gamma, and their hedging starts to absorb moves'}.`;
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
   if (flip != null && (Math.abs(spot - flip) / Math.max(spot, 1)) * 100 < 0.05)
-    return { key: 'ON THE FLIP', read: `Sitting on the ${px(flip)} flip — net gamma is near zero, so the hedging can tip either way; the ${px(callWall)} call wall overhead and the ${px(putWall)} put wall below are the levels that decide it.` };
-  if (long && cwPct <= 1.2 && pwPct <= 1.2)
+    return { key: 'ON THE FLIP', read: `Sitting on the ${px(flip)} flip — net gamma is near zero, so the hedging can tip either way; ${cw} and ${pw} are the levels that decide it.` };
+  if (long && between && cwPct <= 1.2 && pwPct <= 1.2)
     return { key: 'PINNED', read: `Dealers are long gamma, so their hedging absorbs moves between the ${px(putWall)} put wall and the ${px(callWall)} call wall — dips get bought, rallies get sold, drift beats trend until one side gives.${flipClause}` };
   if (long)
-    return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves; the ${px(callWall)} call wall overhead is the lid, and the ${px(putWall)} put wall below holds the most put hedging.${flipClause}` };
-  if (pwPct >= 2.6)
-    return { key: 'WHIPSAW', read: `Dealers are short gamma, so their hedging speeds a move up whichever way it goes, and the nearest put wall is all the way down at ${px(putWall)}.${flipClause}` };
+    return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves. ${cap(cw)} has the most call hedging${callWall > spot ? ' — the lid' : callWall < spot ? ' — price is through it, so it can act as support' : ''}; ${pw} has the most put hedging.${flipClause}` };
+  if (putWall < spot && pwPct >= 2.6)
+    return { key: 'WHIPSAW', read: `Dealers are short gamma, so their hedging speeds a move up whichever way it goes, and the put wall is all the way down at ${px(putWall)}.${flipClause}` };
   return {
     key: 'AMPLIFYING',
-    read: `Dealers are short gamma, so their hedging amplifies moves. The ${px(putWall)} put wall below has the most put hedging: dealers buy dips into it while it holds, but they are short gamma there too, so a break can accelerate; the ${px(callWall)} call wall is the level overhead.${flipClause}`,
+    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(pw)} has the most put hedging: dealers buy dips into it while it holds, but they are short gamma there too, so a break can accelerate; ${cw} has the most call hedging.${flipClause}`,
   };
 }

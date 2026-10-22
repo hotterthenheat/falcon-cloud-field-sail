@@ -1,4 +1,5 @@
 import { useLedgerPalette } from '../../data/ledgerPalette';
+import { bellDay } from '../../data/bookWindow';
 import { pressureInks } from './paletteInk';
 /*
 ==================================================
@@ -188,7 +189,7 @@ const ClockGuide = ({ nowBlock, line, bellShare, pin, supreme, charmStrike }: Cl
         <li className="text-[11.5px] leading-relaxed text-textSecondary">{line}</li>
         {bellShare != null && (
           <li className="text-[11.5px] leading-relaxed text-textSecondary">
-            <span className="font-mono tnum text-textPrimary">{bellShare}%</span> of all the name's hedging, every expiry counted, sits in contracts that expire at today's close — the same figure as the Board's "Expires today".
+            <span className="font-mono tnum text-textPrimary">{bellShare}%</span> of all the name's hedging, every expiry counted, sits in contracts that expire at {bellDay().head === 'Expires today' ? "today's close" : `the close on ${bellDay().head.replace('Expires ', '')}, the next session`} — the same figure as the Board's "{bellDay().head}".
           </li>
         )}
         {(pin != null || supreme != null) && (

@@ -18,10 +18,9 @@ import RichRead from '../ui/RichRead';
 import GradeMeter from '../ui/GradeMeter';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
-import { liveBars, useBookRev } from '../../data/uwBook';
 import { nyClock } from '../../core/nyTime';
-import { quotePlace, useDarkDay } from '../../data/traceLive';
-import { fmtUsd } from '../../data/gex';
+import { quotePlace, useDarkDay, useStockMinutes } from '../../data/traceLive';
+import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
 import { readToken, useResolvedTheme } from '../../theme/theme';
@@ -36,9 +35,11 @@ const ROLE_TOKEN: Record<LevelRole, string> = { SUPPORT: '--bull', RESISTANCE: '
 const ROLE_WORD: Record<LevelRole, string> = { SUPPORT: 'support', RESISTANCE: 'resistance', PIVOT: 'pivot' };
 const SEQ_SHOWN = 6;
 
+const INTENT_TAG: Record<DarkPoolIntent, string> = { ACCUMULATION: 'ACCUMULATION', DISTRIBUTION: 'DISTRIBUTION', 'HEDGE FLOW': 'AT THE MID', ROTATION: 'NO READ' };
 const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => (
-  <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{intent}</span>
+  <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
 );
+const noReadWord = (p: DarkPoolPrint) => (p.special ? 'no read · terms' : p.extended ? 'no read · after hours' : 'no read · small');
 
 const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
   if (!view || !p.atLevel) return null;
@@ -50,7 +51,7 @@ const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
 /** A one-letter market-center code is not a venue name. */
 const venueWord = (v: string) => (v.trim().length > 2 && /[A-Za-z]/.test(v) ? v.trim() : 'off-exchange');
 
-const sideWord = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : 'at the mid');
+const sideWord = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : 'inside quote');
 const sideLabel = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'BOUGHT' : p.exec === 'BID' ? 'SOLD' : p.exec === 'MID' ? 'MID' : '');
 
 const fillFrac = (p: DarkPoolPrint): number | null => {
@@ -75,23 +76,26 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
   const priceRef = useRef<HTMLDivElement | null>(null);
   const darkRef = useRef<HTMLDivElement | null>(null);
   const paper = useResolvedTheme() === 'light';
-  const bookRev = useBookRev();
+  /* THE STOCK'S WHOLE DAY, EXTENDED HOURS IN (the re-audit, 2026-10-22: the stock line ended at the 16:00 close while
+     the cross was at 17:04): the name's own one-minute bars for the session's date, pre-market to after hours */
+  const bars = useStockMinutes(print.ticker).rows;
   const crosses = useMemo(() => (view?.prints?.length ? view.prints : [print]), [view, print]);
   const underDol = crosses.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents < 0 ? p.notional : 0), 0);
   const overDol = crosses.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents > 0 ? p.notional : 0), 0);
   const midN = crosses.filter(p => quotePlace(p.vsSpotPct, p.price).cents === 0).length;
   const sided = underDol + overDol;
   const underPct = sided > 0 ? (underDol / sided) * 100 : 0;
-  const hasDay = liveBars(print.ticker).length > 0;
+  const hasDay = bars.length > 0;
+  const extendedBars = bars.some(b => b.extended);
 
   useEffect(() => {
     const priceHost = priceRef.current;
     const darkHost = darkRef.current;
     if (!priceHost || !darkHost) return;
-    const candles = liveBars(print.ticker);
-    const day = candles.slice(-390);
+    const day = bars;
     if (day.length === 0) return;
-    const priceChart: IChartApi = createChart(priceHost, { ...dayChartOptions(cardSurface(priceHost, paper), { clock: false, logo: false }), autoSize: true });
+    /* the price strip carries its own clock now — the cross is read against a time */
+    const priceChart: IChartApi = createChart(priceHost, { ...dayChartOptions(cardSurface(priceHost, paper), { clock: true, logo: false }), autoSize: true });
     const darkChart: IChartApi = createChart(darkHost, { ...dayChartOptions(cardSurface(darkHost, paper), { clock: true, logo: false }), autoSize: true });
     const dropPrice = syncDayScale(priceChart, `cross-${print.ticker}`, 'price');
     const dropDark = syncDayScale(darkChart, `cross-${print.ticker}`, 'dark');
@@ -173,13 +177,13 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
       priceChart.remove();
       darkChart.remove();
     };
-  }, [print, view, paper, bookRev, crosses]);
+  }, [print, view, paper, bars, crosses]);
 
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-cross-tape={print.ticker}>
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
         <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
-        <span className="font-mono text-[11px] text-textMuted">the stock and its dark crosses on one clock</span>
+        <span className="font-mono text-[11px] text-textMuted">the stock and its {print.lit ? 'lit prints' : 'dark crosses'} on one clock · New York · {extendedBars ? 'pre-market and after hours included' : 'the regular session'}</span>
       </div>
       <div className="px-3 pt-2.5 pb-1">
         <div className="flex items-baseline gap-2.5 flex-wrap">
@@ -203,7 +207,7 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
         ) : (
           <p className="mt-2 font-mono text-[11px] text-textMuted">Every cross in view printed at the mid.</p>
         )}
-        {hasDay ? <div ref={priceRef} className="h-[220px] w-full" /> : <div className="h-[120px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No session bars for {print.ticker} yet</div>}
+        {hasDay ? <div ref={priceRef} className="h-[220px] w-full" data-cross-price /> : <div className="h-[120px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No session bars for {print.ticker} yet</div>}
       </div>
       {hasDay && (
         <>
@@ -235,7 +239,7 @@ const CrossSequence = ({ print, sequence, onOpen }: { print: DarkPoolPrint; sequ
     const mid = n - bought - sold;
     const oldest = sequence[n - 1]?.time ?? print.time;
     const newest = sequence[0]?.time ?? print.time;
-    return `${n} crosses on ${print.ticker} among the prints in hand · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} at the mid` : ''} · ${oldest} → ${newest}.`;
+    return `${n} crosses on ${print.ticker} among the prints in hand · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} inside the quote` : ''} · ${oldest} → ${newest}.`;
   }, [sequence, n, print.ticker, print.time]);
   const shown = sequence.slice(0, SEQ_SHOWN);
   return (
@@ -326,8 +330,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <Wordmark height={11} label="" />
             </span>
             <span className="inline-flex items-center rounded-full border border-borderMuted bg-ink/[0.04] px-2.5 py-0.5 font-mono text-[13px] font-semibold text-textPrimary">{print.ticker}</span>
-            <span className="font-mono text-[11px] text-textSecondary tnum">cross · reported to {print.facility ?? venueWord(print.venue)}</span>
-            {print.sized ? <IntentTag intent={print.intent} /> : <span className="font-mono text-[11px] uppercase text-textMuted">{print.special ? 'no read · terms' : 'no read · small'}</span>}
+            <span className="font-mono text-[11px] text-textSecondary tnum">{print.lit ? `lit print · ${print.venue}` : `cross · reported to ${print.facility ?? venueWord(print.venue)}`}</span>
+            {print.sized && !print.extended && !print.special ? <IntentTag intent={print.intent} /> : <span className="font-mono text-[11px] uppercase text-textMuted">{noReadWord(print)}</span>}
             <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
             {print.sized && <span className="font-mono text-[11px] uppercase font-semibold text-textPrimary">Sized</span>}
           </div>
@@ -386,7 +390,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
             </p>
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-cross-facts>
               <Fact label="Vs the quote" value={quotePlace(print.vsSpotPct, print.price).text} valueCls={quotePlace(print.vsSpotPct, print.price).cents === 0 ? 'text-textMuted' : quotePlace(print.vsSpotPct, print.price).cents > 0 ? 'text-bull' : 'text-bear'} />
-              <Fact label="Reported to" value={print.facility ?? venueWord(print.venue)} />
+              <Fact label={print.lit ? 'Printed on' : 'Reported to'} value={print.lit ? print.venue : print.facility ?? venueWord(print.venue)} />
               {print.special && <Fact label="Trade kind" value={print.special} valueCls="text-warn" />}
               <Fact label="Shelf" value={shelf ? <span className={ROLE_INK[shelf.role]}>${shelf.price.toFixed(2)} · {ROLE_WORD[shelf.role]} · defended {shelf.defended}×</span> : <span className="text-textMuted">between shelves</span>} />
               <Fact
@@ -451,7 +455,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                         <td className={`${td} text-right ${p.notional >= 1_000_000 ? 'text-textPrimary font-semibold' : 'text-textPrimary'}`}>{fmtUsd(p.notional)}</td>
                         <td className={`${td} ${p.exec === 'MID' || !p.exec ? 'text-textMuted' : 'text-textPrimary'}`}>{sideWord(p)}</td>
                         <td className={`${td} text-right ${place.cents > 0 ? 'text-bull' : place.cents < 0 ? 'text-bear' : 'text-textMuted'}`}>{place.text}</td>
-                        <td className={td}><IntentTag intent={p.intent} /></td>
+                        <td className={td}>{p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="text-textMuted uppercase text-[10px]">{noReadWord(p)}</span>}</td>
                       </tr>
                     );
                   })}

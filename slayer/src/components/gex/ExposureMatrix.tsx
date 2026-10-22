@@ -76,6 +76,9 @@ interface ExposureMatrixProps {
   legs?: 'net' | 'call' | 'put' | 'both' | 'all';
   /** The table's width at its widest — the strike column and every leg's column at MATRIX_COL_W — told to the host,
       which packs the names' panes to it (2026-10-13) */
+  /** The expiry window the rows add up ("Oct 23 → Nov 3") — said on each greek's head, so a row is never read as the
+      levels' figure (the second re-audit, 2026-10-22: row 769 −$768.7M beside "SUPREME 769 · −$701.9M") */
+  windowLabel?: string | null;
   onNatural?: (px: number) => void;
 }
 
@@ -150,7 +153,7 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
   );
 };
 
-const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural }: ExposureMatrixProps) => {
+const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural, windowLabel = null }: ExposureMatrixProps) => {
   const mode: HeatMode = palette === 'thermal' ? 'thermal-yellow' : HEAT_MODE;
   const paper = useResolvedTheme() === 'light';
   const shownGreeks = useMemo(() => GREEKS.filter(g => greeks.includes(g)), [greeks]);
@@ -596,7 +599,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                 data-matrix-group={g}
                 data-lead={g === lead || undefined}
                 /* the silver head is the greek the pointer card reads — said, not left to be guessed (the audit's L8) */
-                title={g === lead && shownGreeks.length > 1 ? `The greek the card reads · ${GREEK_UNIT[g]}` : headTier !== 'full' ? GREEK_UNIT[g] : undefined}
+                title={`${g === lead && shownGreeks.length > 1 ? `The greek the card reads · ${GREEK_UNIT[g]}` : GREEK_UNIT[g]}${windowLabel ? ` · each row adds up the matrix window, ${windowLabel} (the Expiries card) — not the Levels card's contracts, so a level's row can differ from the level's own figure` : ''}`}
               >
                 {/* ONE LEG, ONE HEAD (the audit's M4, 2026-10-13): with the net alone on the table the leg's name rides the
                     greek's head — "GEX · net · 1% move" — and the row that said "NET" five times is gone; it comes back
@@ -609,6 +612,12 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                     <span className="text-textSecondary font-medium normal-case tracking-normal">
                       {LEGS.length === 1 ? ` · ${LEGS[0]}` : ''}
                       {headTier === 'full' ? ` · ${GREEK_UNIT[g]}` : ''}
+                    </span>
+                  )}
+                  {windowLabel && headTier !== 'greek' && (
+                    <span className="text-warn font-medium normal-case tracking-normal" data-matrix-window>
+                      {' '}
+                      · {windowLabel}
                     </span>
                   )}
                 </span>

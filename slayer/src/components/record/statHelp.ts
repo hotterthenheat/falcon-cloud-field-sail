@@ -61,12 +61,12 @@ const HELP: Record<string, string> = {
   'The last': 'What it was',
   /* the wire */
   Stories: 'Headlines on the wire after the cards and the filter',
-  'Biggest move': 'The named stock that has moved most so far today, among these stories',
+  'Biggest move': 'The regular session\'s change today for the names these stories carry — not the move when a story crossed',
   'Next print': 'The next economic release on today’s calendar, the headline ones first',
   Major: 'Headlines Unusual Whales flags as major',
   'On your Board': 'Headlines that name a stock on your Board',
   'The wire leans': 'The vendor’s own positive and negative marks, weighed',
-  'Session move': 'How the named stock has moved so far today — a fact, not a forecast',
+  'Session move': 'How the named stock had moved on the session when the story crossed — a snapshot at publish, not a forecast',
   /* institutions, etfs, congress, insiders, stocks */
   Value: 'Market value on the filing',
   Calls: 'Call options the house reported — the shares they cover',
@@ -89,7 +89,7 @@ const HELP: Record<string, string> = {
   Sold: 'Shares this insider sold in the window',
   'On a plan': 'The share of their sales that ran off a 10b5-1 plan set months earlier',
   Names: 'Names on the grid after the cards',
-  'Above their trend': 'The share of these names whose momentum (RSI) is above 50 — trending up rather than down',
+  'Above their trend': 'The share of these names whose last price is above their 50-day simple average',
   'Leading sector': 'The sector whose names screen best on average — click it to keep the grid to it',
   'Trailing sector': 'The sector whose names screen worst on average — click it to keep the grid to it',
   Source: 'Where the data on this page comes from',

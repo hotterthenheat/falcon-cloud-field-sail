@@ -235,7 +235,15 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
         )}
         {agenda.weakestWall && agenda.closesNear && (
           <p className="mt-1 text-textMuted">
-            The smallest wall in reach is <Num>{fmtStrike(agenda.weakestWall.strike)}</Num>, at <Num silver>{holdLabel(agenda.weakestWall.hold)}</Num>; the close leans to <Num>{fmtStrike(agenda.closesNear.strike)}</Num> at <Num>{agenda.closesNear.odds.toFixed(0)}%</Num>.
+            {agenda.wallsInReach === 1 ? (
+              <>
+                The only wall in reach is <Num>{fmtStrike(agenda.weakestWall.strike)}</Num>;
+              </>
+            ) : (
+              <>
+                The smallest wall in reach is <Num>{fmtStrike(agenda.weakestWall.strike)}</Num>, at <Num silver>{holdLabel(agenda.weakestWall.hold)}</Num>;
+              </>
+            )} the close leans to <Num>{fmtStrike(agenda.closesNear.strike)}</Num> at <Num>{agenda.closesNear.odds.toFixed(0)}%</Num>.
           </p>
         )}
       </Section>

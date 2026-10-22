@@ -37,7 +37,7 @@ import { useMarketData } from '../../context/MarketDataContext';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import { isNetSegment, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
 import { useLiveBook, usePaneFlow } from '../../data/traceLive';
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import Lean from '../../components/trace/Lean';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -77,7 +77,10 @@ const DEFAULT_STORE: OdteStore = {
     { seg: 'all', mny: 'all', ticker: null },
     { seg: 'index-funds', mny: 'all', ticker: null },
     { seg: 'indexes', mny: 'all', ticker: null },
-    { seg: 'all', mny: 'all', ticker: 'SPY' },
+    /* NOT SPY ACROSS EVERY EXPIRY (the retail pass, 2026-10-22: the same-day desk's fourth pane was "SPY · EVERY EXPIRY"):
+       the vendor has no same-day minute series for one name, so every pane is a same-day cut — the fourth, the whole
+       market's out-of-the-money same-day money */
+    { seg: 'all', mny: 'otm', ticker: null },
   ],
 };
 /** The cuts the vendor has same-day minutes for: no sector (a sector's tide spans every expiry) and no stocks-only */
@@ -85,9 +88,6 @@ const SAME_DAY_CUTS = (seg: NetFlowSegment) => seg === 'all' || seg === 'index-f
 
 const MNYS: MoneynessKey[] = ['all', 'itm', 'otm', 'atm'];
 
-/** The same-day complex — the names a desk pane may be put on. */
-const SAME_DAY_COMPLEX = new Set(['SPY', 'QQQ', 'IWM']);
-const onTheComplex = (t: string) => SAME_DAY_COMPLEX.has(t);
 
 /* Stored lenses from the six-way days migrate: SPY/QQQ were names, Tech was
    the Technology sector. */
@@ -109,8 +109,9 @@ function loadStore(): OdteStore {
       const legacy = typeof cfg.seg === 'string' ? LEGACY[cfg.seg] : undefined;
       const stored: NetFlowSegment = legacy?.seg ?? (isNetSegment(cfg.seg) ? cfg.seg : d.seg);
       const seg: NetFlowSegment = SAME_DAY_CUTS(stored) ? stored : d.seg;
-      const ticker =
-        legacy?.ticker ?? (typeof cfg.ticker === 'string' && /^[A-Z0-9.]{1,6}$/.test(cfg.ticker) ? cfg.ticker : null);
+      /* a stored name pane (every expiry) goes back to its slot's same-day cut — this desk draws same-day money only */
+      if (legacy?.ticker || (typeof cfg.ticker === 'string' && cfg.ticker)) return d;
+      const ticker = null;
       return {
         seg,
         mny: MNYS.includes(cfg.mny as MoneynessKey) ? (cfg.mny as MoneynessKey) : d.mny,
@@ -185,18 +186,6 @@ const Odte = () => {
   const setPane = (i: number, patch: Partial<PaneCfg>) =>
     setStore(s => ({ ...s, panes: s.panes.map((p, j) => (j === i ? { ...p, ...patch } : p)) }));
 
-  /* THE DOOR (see the header): the typed name, if the book knows it, rides
-     to Net Flow with the 0DTE clock; an unknown or empty query opens Net
-     Flow on that clock with its leader up. */
-  const known = useMemo(() => new Set(book.map(r => r.ticker)), [book]);
-  const door = useMemo(
-    () => ({
-      label: (q: string) => (q && known.has(q) ? `${q} — on Net Flow's 0DTE clock` : "Any other name — on Net Flow's 0DTE clock"),
-      onOpen: (q: string) =>
-        navigate('/trace/net-flow', { state: { ticker: q && known.has(q) ? q : null, tenor: 'odte' } }),
-    }),
-    [known, navigate]
-  );
 
   /* The desk fills the frame: the grid takes every pixel down to the viewport
      floor and splits it EQUALLY — 2×2 for four panes, halves for two, one tall
@@ -219,10 +208,6 @@ const Odte = () => {
         // Picking a cut is a way back from a name too: the pane returns to the book.
         onSeg={seg => setPane(i, { seg, ticker: null })}
         onMny={mny => setPane(i, { mny })}
-        ticker={cfg.ticker ?? undefined}
-        onTicker={ticker => setPane(i, { ticker })}
-        searchNames={onTheComplex}
-        searchDoor={door}
         segments={SAME_DAY_CUTS}
         tick={tick}
         onExpand={() => setFsIdx(expanded ? null : i)}

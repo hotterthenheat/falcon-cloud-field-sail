@@ -6,6 +6,7 @@
   then the house grid. Not a second, grayer page.
 */
 
+import { CoSub } from '../../components/record/CoName';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
@@ -26,11 +27,12 @@ import {
   type InstitutionRow,
   type PositionStatus,
 } from '../../data/fileBooks';
-import { FUND_TYPES, shortRowFromFile, useEtfFile, useEtfWeights, useHouseBook, useShortRow, useStockCard } from '../../data/liveFiles';
+import { FUND_TYPES, shortRowFromFile, useCompanyName, useEtfFile, useEtfWeights, useHouseBook, useShortRow, useStockCard } from '../../data/liveFiles';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { useShortReads } from '../../data/shortFile';
 import { tickerName } from '../../data/tickers';
 import { AssetCell, assetKey, assetLine } from './Congress';
+import { holdingAssetKey } from '../../data/fileBooks';
 import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/congress';
@@ -113,7 +115,7 @@ const HouseName = ({ data }: ICellRendererParams<InstitutionRow>) =>
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        {tickerName(data.ticker) !== data.ticker ? <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span> : null}
+        <CoSub ticker={data.ticker} />
       </span>
     </span>
   ) : null;
@@ -145,7 +147,7 @@ export const HouseFile = () => {
       { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : ''}{data.unitsChangeM.toFixed(1)}M</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'Unusual Whales\' estimate of the average price the house paid' },
-      { headerName: '% of book', field: 'pctOfBook', width: 100, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s share of everything the house reported' },
+      { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales\' perc_of_share_value) — over the whole filing, not only the lines read here' },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
       { headerName: 'First buy', field: 'firstBuy', width: 110, headerTooltip: 'The first quarter this house reported owning the stock' },
       { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'The close on the day of the first buy. Not a strike.' },
@@ -267,6 +269,7 @@ export const ShortFile = () => {
   /* the file's own reads build the row for a name off the book, and fill what the screener row lacks */
   const reads = useShortReads(ok ? t : '');
   const card = useStockCard(ok ? t : '');
+  const coName = useCompanyName(ok ? t : '', true);
   const isFund = card?.issueType ? FUND_TYPES.test(card.issueType) : undefined;
   const row = useMemo(() => {
     const made = ok ? shortRowFromFile(t, shortLive.row, reads) : null;
@@ -322,7 +325,7 @@ export const ShortFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What interest, days to cover and the fee mean" testId="short-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {[row.name || (tickerName(t) !== t ? tickerName(t) : ''), row.sector && row.sector !== '—' ? row.sector : ''].filter(Boolean).concat(`short interest as of ${asOfDay(squeeze?.asOf)}${squeeze?.stale ? ' (stale)' : ''} — it settles twice a month`).join(' · ')}
+            {[coName && coName !== t ? coName : row.name || '', row.sector && row.sector !== '—' ? row.sector : ''].filter(Boolean).concat(`short interest as of ${asOfDay(squeeze?.asOf)}${squeeze?.stale ? ' (stale)' : ''} — it settles twice a month`).join(' · ')}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
@@ -341,7 +344,7 @@ export const ShortFile = () => {
           {row.shortVolRatio != null ? (
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Of the last session's volume, the share reported as short sales — market makers' hedges count too, so about half is ordinary">Short volume</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%{row.shortVolDate ? <span className="text-textMuted"> · {asOfDay(row.shortVolDate)}</span> : null}</dd>
           </div>
           ) : null}
         </dl>
@@ -481,7 +484,7 @@ export const FundFile = () => {
               <CompanyLogo ticker={data.ticker} size={16} />
               <span className="flex flex-col leading-tight min-w-0">
                 <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-                {tickerName(data.ticker) !== data.ticker ? <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span> : null}
+                <CoSub ticker={data.ticker} />
               </span>
             </span>
             )
@@ -581,7 +584,7 @@ export const FundFile = () => {
                   <>
                     <CompanyLogo ticker={h.ticker} size={18} />
                     <span className="font-mono text-[12px] font-bold text-textPrimary">{h.ticker}</span>
-                    <span className="text-[10px] text-textSecondary truncate">{tickerName(h.ticker)}</span>
+                    <CoSub ticker={h.ticker} className="text-[10px] text-textSecondary truncate" />
                   </>
                 )}
               </span>
@@ -751,9 +754,9 @@ export const MemberFile = () => {
     const ordered = [...trades].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
     const open = new Map<string, CongressTrade>();
     for (const t of ordered) {
-      const key = `${assetKey(t)}|${t.owner}`;
+      const key = `${holdingAssetKey(t)}|${t.owner}`;
       if (t.type === 'Purchase') open.set(key, t);
-      if (t.type === 'Sale (Full)') open.delete(key);
+      else if (t.type !== 'Exchange') open.delete(key);
     }
     return [...open.values()];
   }, [trades]);
@@ -770,7 +773,7 @@ export const MemberFile = () => {
       },
       { headerName: 'Type', field: 'type', width: 130, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] ${data.type === 'Purchase' ? 'text-bull' : data.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{data.type}</span> : null), headerTooltip: 'Purchase, sale (full or partial) or exchange' },
       { headerName: 'Owner', field: 'owner', width: 110, headerTooltip: 'Whose holding: the member\'s own, a spouse\'s, a joint account or a dependent\'s' },
-      { headerName: 'Amount', field: 'bracket', flex: 1.2, minWidth: 180, valueFormatter: p => bracketLabel(p.value as number | null), headerTooltip: 'The disclosed bracket — members report a range, never an exact figure' },
+      { headerName: 'Amount', field: 'bracket', flex: 1.2, minWidth: 180, valueFormatter: p => (p.data?.amountOver != null ? `Over $${p.data.amountOver.toLocaleString('en-US')}` : bracketLabel(p.value as number | null)), headerTooltip: 'The disclosed bracket — members report a range, never an exact figure' },
       { headerName: 'Lag', field: 'lagDays', width: 90, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] tnum ${data.late ? 'text-bear' : 'text-textPrimary'}`} title={data.lagDays === 0 ? `Filed the day it traded (${data.tradedOn ?? ''}), as the filing records it` : undefined}>{data.lagDays === 0 ? 'same day' : `${data.lagDays}d`}</span> : null), headerTooltip: 'Days from the trade to the report; past 45 is late under the STOCK Act' },
     ],
     [],
@@ -881,7 +884,7 @@ export const MemberFile = () => {
         </AgGridProvider>
       </div>
       <Board
-        title="Bought, not since sold in full"
+        title="Bought, no sale reported since"
         rest="Purchases in this year's reports with no later full sale of the same asset in them — not a holdings disclosure. The range, never a midpoint."
         testId="member-held"
         rows={held.map(t => ({ id: `${assetKey(t)}-${t.owner}`, ticker: assetLine(t).sym || assetKey(t), owner: t.owner, amount: bracketLabel(t.bracket) }))}

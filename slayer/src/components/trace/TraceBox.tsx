@@ -178,7 +178,8 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
   <span className="flex flex-col gap-1 py-1.5 w-full leading-none">
     <span className="flex items-center gap-2 min-w-0">
       {lead}
-      <span className="min-w-0 flex items-center gap-1.5 font-mono text-[12px] text-textPrimary">{title}</span>
+      {/* the title gives way to the time at its right — it clips, never runs under it */}
+      <span className="min-w-0 flex-1 overflow-hidden flex items-center gap-1.5 font-mono text-[12px] text-textPrimary whitespace-nowrap">{title}</span>
       {aside && <span className="ml-auto shrink-0 font-mono text-[11px] tnum text-textSecondary">{aside}</span>}
     </span>
     <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap font-mono text-[11px] tnum text-textSecondary pl-5">

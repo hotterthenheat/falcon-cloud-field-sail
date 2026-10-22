@@ -27,7 +27,7 @@
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';
 import { isoDate, isTradingDay } from '../core/calendar';
-import { sideOfTags, printCondition, tapeSessionIso } from './traceLive';
+import { sideOfTags, printCondition, sessionEndMin, tapeSessionIso } from './traceLive';
 
 export type FlowSide = 'BID' | 'MID' | 'ASK';
 
@@ -164,8 +164,20 @@ export interface NetTick {
   putVol: number;
 }
 
+/** ONE WINDOW FOR THE WHOLE PANEL (the re-audit, 2026-10-22: the card's session strip drew its avg paid and side bar
+    from the regular session's minutes while its dollars and print count were the whole day's, and an after-hours alert
+    never reached its own chart). Minutes since 09:30 New York, the label that says them, and where the figures come
+    from: every print of the day when the route sent them all, else the vendor's regular-session minutes. */
+export interface TapeWindow {
+  from: number;
+  to: number;
+  label: string;
+  source: 'prints' | 'minutes';
+}
+
 export interface ContractTape {
   dateIso: string;
+  window: TapeWindow;
   prints: CardPrint[];
   /** The route hands the newest 500 — true when the session had more */
   printsCapped: boolean;
@@ -229,6 +241,35 @@ async function get(path: string): Promise<unknown> {
   return got.data;
 }
 
+const clockOf = (min: number) => flowClock(min);
+
+/** The session's minutes off the day's own prints — every hour they traded in */
+function minutesFromPrints(prints: CardPrint[]): CardMinute[] {
+  const by = new Map<number, CardMinute & { dollars: number }>();
+  for (const p of prints) {
+    const k = p.min;
+    let m = by.get(k);
+    if (!m) {
+      m = { min: k, askPrem: 0, bidPrem: 0, midPrem: 0, askVol: 0, bidVol: 0, midVol: 0, vol: 0, avg: 0, iv: 0, dollars: 0 };
+      by.set(k, m);
+    }
+    if (p.side === 'ASK') {
+      m.askPrem += p.premium;
+      m.askVol += p.size;
+    } else if (p.side === 'BID') {
+      m.bidPrem += p.premium;
+      m.bidVol += p.size;
+    } else {
+      m.midPrem += p.premium;
+      m.midVol += p.size;
+    }
+    m.vol += p.size;
+    m.dollars += p.price * p.size;
+    if (p.iv > 0) m.iv = p.iv;
+  }
+  return [...by.values()].map(({ dollars, ...m }) => ({ ...m, avg: m.vol > 0 ? dollars / m.vol : 0 })).sort((a, b) => a.min - b.min);
+}
+
 export async function loadContractTape(occ: string, ticker: string, dateIso: string): Promise<ContractTape> {
   const sym = encodeURIComponent(occ.toUpperCase());
   const q = `date=${dateIso}`;
@@ -285,8 +326,24 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
         iv: hi > 0 && lo > 0 ? ((hi + lo) / 2) * 100 : (hi || lo) * 100,
       };
     })
-    .filter(m => m.min >= 0 && m.min < SESSION_MIN)
+    .filter(m => m.min >= 0 && m.min < sessionEndMin(ticker) - OPEN_MIN)
     .sort((a, b) => a.min - b.min);
+
+  /* the window: every print of the day when none was cut off (the route's 500), else the regular session's minutes */
+  const end = sessionEndMin(ticker) - OPEN_MIN;
+  const capped = prints.length >= PRINT_CAP;
+  const fromPrints = !capped && prints.length > 0;
+  const firstMin = fromPrints ? Math.min(...prints.map(p => p.min)) : 0;
+  const lastMin = fromPrints ? Math.max(...prints.map(p => p.min)) : end;
+  const window: TapeWindow = fromPrints
+    ? {
+        from: Math.min(0, firstMin),
+        to: Math.max(end, lastMin + 1),
+        label: firstMin < 0 || lastMin >= end ? `the whole day, ${clockOf(Math.min(0, firstMin))}–${clockOf(Math.max(end, lastMin + 1))} ET, every print` : `09:30–${clockOf(end)} ET, every print`,
+        source: 'prints',
+      }
+    : { from: 0, to: end, label: `the regular session, 09:30–${clockOf(end)} ET — the vendor's minutes`, source: 'minutes' };
+  const panelMinutes = fromPrints ? minutesFromPrints(prints) : minutes;
 
   const hist = rows(histRaw, 'chains').map(dayRow).filter(d => d.iso).sort((a, b) => b.iso.localeCompare(a.iso));
   for (let i = 0; i < hist.length; i++) hist[i].oiChange = i + 1 < hist.length ? hist[i].oi - hist[i + 1].oi : null;
@@ -295,7 +352,7 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
   let net: ContractTape['net'] = null;
   const ticks = rows(ticksRaw)
     .map(r => ({ r, at: nyOf(r.tape_time) }))
-    .filter(x => x.at && x.at.min >= 0 && x.at.min < SESSION_MIN)
+    .filter(x => x.at && x.at.min >= window.from && x.at.min < window.to)
     .sort((a, b) => a.at!.min - b.at!.min);
   if (ticks.length) {
     let c = 0;
@@ -321,7 +378,7 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
     net = { series, netCall: c, netPut: p, callVol, putVol, callAsk, callBid, putAsk, putBid };
   }
 
-  return { dateIso, prints, printsCapped: prints.length >= PRINT_CAP, minutes, day, history: hist, net };
+  return { dateIso, window, prints, printsCapped: capped, minutes: panelMinutes, day, history: hist, net };
 }
 
 /** The card's tape: loaded on open and on a session change; the live session refreshes every 20s */

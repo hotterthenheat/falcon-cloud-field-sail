@@ -43,7 +43,7 @@ import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './imp
 
 /** The name column's word for a story with no ticker: MACRO only for an economy or market story — a company story the
     wire left untagged is not macro (the retail pass, 2026-10-22: Moderna, Global Payments and Zurn all read MACRO) */
-export const nameWord = (item: { ticker: string | null; category: string }): string => item.ticker ?? (item.category === 'Macro' ? 'MACRO' : 'NO TICKER');
+export const nameWord = (item: { ticker: string | null; category: string }): string => item.ticker ?? (item.category === 'Macro' ? 'MACRO' : 'NO NAME');
 import { useBoardNames } from '../../data/boardNames';
 
 export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals';

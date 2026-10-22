@@ -24,13 +24,17 @@
       G(S) = G₀ · [S·φ(d₁(S))] / [S₀·φ(d₁(S₀))]
 
   (dollar gamma per 1% is Γ·S²·0.01, and Γ·S² =
-  S·φ(d₁)/(σ√T) — the σ√T cancels). When the leg's open
-  interest is known its gamma is computed outright from
-  it, OI·100·Γ(S)·S²·0.01, and whatever the vendor's
-  figure differs from the model's at S₀ rides along
-  unre-priced, so G(S₀) is ALWAYS exactly the book's net
-  at spot — the flip can never contradict the net GEX
-  sign it sits beside. Legs with no vol are carried flat.
+  S·φ(d₁)/(σ√T) — the σ√T cancels). G₀ is the vendor's
+  live open-interest gamma, OI·100·Γ(S₀)·S₀²·0.01, so this
+  IS the contracts priced outright at S — and G(S₀) is
+  exactly the book's net at spot, so the flip can never
+  contradict the net GEX sign it sits beside. No constant
+  rides along: the old outright branch carried the gap
+  between a stale vendor snapshot and the model flat to
+  every hypothetical spot (≈ +$256M on NVDA's 10/23
+  contracts, the second re-audit 2026-10-22), which hid a
+  crossing a dollar away. Legs with no vol are carried
+  flat (a far listing with no vol on hand).
 
   The crossing nearest spot inside ±10% is the flip;
   none there is a real state ("no flip nearby"), never a
@@ -47,10 +51,6 @@ export interface GammaLeg {
   iv: number;
   /** Years to expiry */
   t: number;
-  /** Open interest in contracts, when known — the leg is then priced outright */
-  oi?: number;
-  /** +1 call, −1 put — only the house sign of an outright-priced leg needs it */
-  side?: 1 | -1;
 }
 
 export interface FlipRead {
@@ -84,33 +84,31 @@ export const dollarGammaPerContract = (S: number, K: number, t: number, iv: numb
 export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: number): number {
   let sum = 0;
   for (const l of legs) {
-    if (!l.g0 && !(l.oi && l.oi > 0)) continue;
+    if (!l.g0) continue;
     if (!(l.iv > 0) || !(l.t > 0)) {
       sum += l.g0;
-      continue;
-    }
-    if (l.oi && l.oi > 0 && l.side) {
-      /* outright: the model at S, plus the vendor-vs-model gap at S₀ carried flat */
-      const sign = l.side === 1 ? -1 : 1;
-      const at0 = sign * l.oi * dollarGammaPerContract(S0, l.strike, l.t, l.iv, r);
-      const atS = sign * l.oi * dollarGammaPerContract(S, l.strike, l.t, l.iv, r);
-      sum += atS + (l.g0 - at0);
       continue;
     }
     /* re-priced off the leg's own gamma at S₀: the ratio of S·φ(d₁), in logs so a far wing cannot underflow */
     const a = d1Of(S0, l.strike, l.t, l.iv, r);
     const b = d1Of(S, l.strike, l.t, l.iv, r);
     const ln = Math.log(S / S0) - (b * b) / 2 + (a * a) / 2;
-    /* a ratio beyond 25× means the model thinks the vendor's gamma at spot was ~0 — the leg's vol is not its own; carry it flat */
-    const ratio = ln > Math.log(25) ? 1 : Math.exp(ln);
-    sum += l.g0 * ratio;
+    /* NO 25× CAP (the second re-audit, 2026-10-22): a wing's gamma legitimately grows a few hundred times as price walks
+       to its strike (NVDA's 230 call, 1 day out: $7M at 212, ~$2B at 230), and the cap froze those legs at their spot
+       value, which left jitter crossings on SPY's whole book and moved QQQ's by 1%. G₀ is the vendor's live gamma, so the
+       ratio is the contract priced outright. Only rounding noise is guarded (repricedFlip carries it flat). */
+    sum += l.g0 * Math.exp(Math.min(ln, 60));
   }
   return sum;
 }
 
 /** The flip off re-priced legs: the zero of net gamma across hypothetical spots, nearest spot inside ±10% */
-export function repricedFlip(legs: readonly GammaLeg[], spot: number, r: number, range: number = RANGE): FlipRead {
-  const net0 = legs.reduce((a, l) => a + l.g0, 0);
+export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: number, range: number = RANGE): FlipRead {
+  const net0 = legsIn.reduce((a, l) => a + l.g0, 0);
+  /* the vendor prints gamma to the cent: a leg within a ten-millionth of the book is rounding, and multiplied by a
+     wing's growth it would be noise the size of a strike — such legs are carried flat */
+  const gross = legsIn.reduce((a, l) => a + Math.abs(l.g0), 0);
+  const legs = legsIn.map(l => (Math.abs(l.g0) < gross * 1e-7 ? { ...l, iv: 0 } : l));
   if (!(spot > 0) || !legs.length) return { flip: null, netAtSpot: net0, beyond: null, range, method: 'repriced' };
   const lo = spot * (1 - range);
   const hi = spot * (1 + range);

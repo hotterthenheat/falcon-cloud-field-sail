@@ -66,7 +66,7 @@ import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useLevelsScope } from '../../data/levelsScope';
 import ColumnFacts from './ColumnFacts';
 import { roomLevels } from '../../data/roomLevels';
-import { expirySpan, levelsBook, levelsDate, levelsWords } from '../../data/bookWindow';
+import { expirySpan, levelsBook, levelsDate, levelsWords, todayScopeLabel } from '../../data/bookWindow';
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
@@ -76,6 +76,7 @@ import { HEAT_MODE, heatCellStyle, heatRampColorFor } from './heatmap';
 import type { MarketSnapshot } from '../../types/market';
 import { VIEWS_FOR, readLedgerView, writeLedgerView, type LedgerView } from './ledgerView';
 import ExposureMatrix from './ExposureMatrix';
+import DayMoveText from './DayMoveText';
 import { DataCard } from './BookProvenance';
 import { ABSORB, AMPLIFY, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import ExposureProfileView from './ExposureProfileView';
@@ -1091,8 +1092,6 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const crowned = scoped(surface, snapshot);
   const supreme = crowned.supreme[supremeGreek];
   const supremeEx = crowned.expiries[supreme.e];
-  const liveChange = snapshot.changePercent;
-  const up = liveChange >= 0;
   /* the expiries drawn for the host's book: the window, the ceiling, what fits (see `windowFor`) */
   const shownIdx = shownFor(surface, { range, afterBell, greeks });
   const ex = surface.expiries;
@@ -1104,13 +1103,15 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const expiryDays: ExpiryDay[] = ex.map((e, i) => ({
     value: i,
     date: expiryFor(e.dte).date,
-    label: e.dte === 0 ? 'Today' : e.date,
-    hint: e.dte === 0 ? `${e.date} — the contracts that expire at the bell` : `${e.date} — ${e.dte} ${e.dte === 1 ? 'day' : 'days'} out`,
+    /* after the close the front listing is the NEXT session's — its date, not "Today" (the second re-audit, 2026-10-22:
+       "TODAY → NOV 3" on the Expiries chip beside "MATRIX OCT 23 → NOV 3" on the supreme's) */
+    label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date,
+    hint: e.dte === 0 ? `${e.date} — the contracts that expire at ${todayScopeLabel() === 'Today' ? 'the bell' : "the next session's close"}` : `${e.date} — ${e.dte} ${e.dte === 1 ? 'day' : 'days'} out`,
   }));
   const lastIdx = Math.max(0, ex.length - 1);
   const weekEnd = ex.reduce((last, e, i) => (e.dte <= 5 ? i : last), 0);
   const shortcuts: ExpiryShortcut[] = [
-    { label: 'Today only', hint: 'The contracts that expire at the bell', from: 0, through: 0 },
+    { label: todayScopeLabel() === 'Today' ? 'Today only' : 'Next session only', hint: todayScopeLabel() === 'Today' ? 'The contracts that expire at the bell' : "The contracts that expire at the next session's close", from: 0, through: 0 },
     { label: 'This week', hint: 'Every expiry inside the week', from: 0, through: Math.min(weekEnd, ceiling - 1) },
     { label: `Next ${Math.min(7, ceiling, ex.length)}`, hint: `The nearest ${Math.min(7, ceiling, ex.length)} expiries`, from: 0, through: Math.min(6, ceiling - 1, lastIdx) },
   ];
@@ -1391,7 +1392,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {moreDoor}
       {/* ONE SUPREME AND ONE READ ARE ONE NAME'S. With names side by side each column carries its own — a single
          chip in the band would be the first name pretending to be the page. */}
-      {!many && (
+      {/* on a phone's scrolling row the supreme stood cut at the edge ("SUPREM…", the retail test 2026-10-22): there it
+          has a row of its own under the doors (below) */}
+      {!many && !bandScroll && (
         <Fold open gap={8} className="ml-auto" testId="data-band-supreme">
           {supremeDoor}
         </Fold>
@@ -1425,6 +1428,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         <div className={`flex items-center gap-x-2 gap-y-1.5 ${bandScroll ? 'flex-nowrap overflow-x-auto scroll-row [&>*]:shrink-0 py-2' : 'flex-wrap'}`} data-ledger-toolbar-row="doors">
           {doors}
         </div>
+        {bandScroll && !many && (
+          <div className="flex items-center min-w-0 pb-2 [&>button]:ml-0 [&>button]:max-w-full [&>button]:flex-wrap [&>button]:h-auto [&>button]:min-h-7 [&>button]:py-1 [&>button]:gap-y-0.5 [&>button]:text-left" data-ledger-toolbar-row="supreme">
+            {supremeDoor}
+          </div>
+        )}
       </div>
     )
   ) : panel ? (
@@ -1460,10 +1468,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           <CompanyLogo ticker={surface.ticker} size={18} />
           <span className="text-[14px] font-bold text-textPrimary">{surface.ticker}</span>
           <span className="text-[12px] tnum text-textPrimary">${snapshot.spot.toFixed(2)}</span>
-          <span className={`text-[11px] tnum ${up ? 'text-bull' : 'text-bear'}`}>
-            {up ? '+' : ''}
-            {liveChange.toFixed(2)}%
-          </span>
+          <DayMoveText snapshot={snapshot} />
         </span>
         {onTicker && <TickerSearch value={surface.ticker} onChange={onTicker} />}
         {/* The supreme — one door, the supreme ink, the thing the eye lands on. */}
@@ -1576,7 +1581,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {toolbar === 'band' && !noteSeen && (
         <div className="shrink-0 flex items-start gap-3 px-4 py-2 border-b border-borderSubtle/60 bg-silver/[0.04] text-[11px] text-textSecondary" data-map-note>
           <p className="min-w-0 flex-1 leading-relaxed">
-            <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. Ember means dealer hedging pushes a move along there, glacier means it holds one back. A strike in magenta is the supreme, green the call wall, red the put wall. Click a row to keep it on every box.
+            <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'blue means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, green the call wall, red the put wall. Click a row to keep it on every box.
           </p>
           <button type="button" onClick={dismissNote} className="hit shrink-0 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] text-textPrimary hover:border-borderMuted transition-colors" data-map-note-close>
             Got it
@@ -1842,7 +1847,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                   {d.view === 'profile' ? (
                     <ExposureProfileView surface={surfDrawn} expiries={colShown} liveSpot={book.snapshot.spot} live={!fresh} selectedStrike={kept} onSelectStrike={keep} paper={paper} />
                   ) : d.view === 'matrix' ? (
-                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} />
+                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={scopeDiffers ? expirySpan(chosenDates) : null} />
                   ) : (
                     <ExposureLedger wantCols={colGreeks.length * colWindow.length} onNatural={packs ? naturalFor(c.ticker, 'calendar') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} open={view === 'calendar' && !fresh ? openSurfaceOf(book.ticker) : null} focusOn={colFocus} greeks={colGreeks} expiries={colWindow} rings={d.rings} leg={d.legs === 'both' || d.legs === 'all' ? 'net' : d.legs} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} afterBell={d.afterBell} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} onExpiry={(many || onExpiries) ? i => { const date = listedIso(book.snapshot)[i]; if (many && date) { setOwnDates(prev => ({ ...prev, [c.ticker]: [date] })); return; } setOwnDates({}); setRange({ from: i, through: i }); } : undefined} fitKey={c.ticker} onFit={reportFit} paper={paper} />
                   )}

@@ -5,7 +5,7 @@
   theme/tokens.css): ▲ or ▼ under the colour-vision choices, so a direction never rests on hue alone.
 */
 
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 
 const Lean = ({ v, put = false, className = '' }: { v: number; put?: boolean; className?: string }) => {
   const up = put ? v < 0 : v > 0;

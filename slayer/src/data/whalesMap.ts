@@ -9,7 +9,7 @@ import type { EconEvent } from './newsroom';
 import type { UwCongress, UwEcon, UwNews, UwPolitician } from './whales';
 import { TX_CODES } from './insiders';
 import { UNIVERSE } from './universe';
-import { tickerName } from './tickers';
+import { companiesInHeadline, tickerName } from './tickers';
 import { daysBetween, nyDayOf, nyDaysAgo } from './nyDate';
 
 /* a bare vendor date is a New York calendar day; the distance is counted in calendar days (data/nyDate.ts) */
@@ -38,7 +38,7 @@ const EARNINGS_RE =
   /\bearnings?\b|\beps\b|\bq[1-4]\b|\b(?:first|second|third|fourth)[- ]quarter (?:results|profit|loss|revenue|sales|earnings)|\bquarterly (?:results|profit|loss|revenue|sales|earnings)\b|\b(?:profit|revenue|sales|net income|net loss)s? (?:rose|rises|fell|falls|jumps?|drops?|beats?|miss(?:es)?|tops?|surges?|slumps?|climbs?|declines?)\b|\b(?:beats?|miss(?:es)?|tops?) (?:estimates|expectations|forecasts|consensus)\b|\breports? (?:results|fiscal)\b|\bfiscal (?:\d{4}|q[1-4]|first|second|third|fourth|year) (?:results|earnings)/i;
 const GUIDANCE_RE =
   /\b(?:raises?|raised|lifts?|lifted|boosts?|boosted|lowers?|lowered|cuts?|trims?|trimmed|reaffirms?|reaffirmed|reiterates?|reiterated|maintains?|withdraws?|withdrew|suspends?|narrows?|narrowed|updates?|issues?|initiates?|sets?|sees)\b[^.;]{0,40}\b(?:guidance|outlook|forecast)\b|\b(?:guidance|outlook|forecast)\b[^.;]{0,25}\b(?:raised|lowered|cut|above|below|ahead of|short of|for (?:fy|fiscal|q[1-4]|20\d\d|the (?:full )?year|full[- ]year))\b|\b(?:fy|full[- ]year)\s?'?\d{0,4}\s(?:guidance|outlook)\b/i;
-const ANALYST_RE = /\bupgrades?\b|\bupgraded\b|\bdowngrades?\b|\bdowngraded\b|price target|\bpt\b(?= (?:to|raised|cut|lowered))|\b(?:initiates?|initiated|resumes?|starts?) coverage|\banalysts? (?:say|says|see|expect|rate|raise|cut)|\b(?:overweight|underweight|outperform|underperform|buy rating|sell rating|neutral rating)\b/i;
+const ANALYST_RE = /\btarget price\b|\bprice targets?\b|\bpt to\b|\b(?:rating|ratings)\b|\breiterat\w* (?:at )?(?:buy|sell|hold|neutral|outperform|underperform|overweight|underweight)\b|\bupgrades?\b|\bupgraded\b|\bdowngrades?\b|\bdowngraded\b|price target|\bpt\b(?= (?:to|raised|cut|lowered))|\b(?:initiates?|initiated|resumes?|starts?) coverage|\banalysts? (?:say|says|see|expect|rate|raise|cut)|\b(?:overweight|underweight|outperform|underperform|buy rating|sell rating|neutral rating)\b/i;
 const MA_RE = /\bacqui(?:re|res|red|ring|sition)s?\b|\bmerger\b|\bmerge\b|\bbuyout\b|\btakeover\b|\btender offer\b|\bto buy\b[^.;]{0,30}\bfor \$|\b(?:agrees?|agreed|deal) to (?:buy|sell|acquire|merge)\b|\bspin[- ]?off\b|\bdivest/i;
 const REG_RE = /\bsec\b|\bregulat|\bantitrust\b|\bdoj\b|\bftc\b|\bfda\b|\bprobe\b|\binvestigat|\blawsuit|\bclass action\b|\blitigation\b|\bsues?\b|\bsued\b|\bcourt\b|\bjudge\b|\bsettle(?:s|d|ment)\b|\bfined?\b|\bpenalt/i;
 const MACRO_RE =
@@ -47,6 +47,8 @@ const MACRO_RE =
 const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boolean): NewsCategory => {
   const s = `${headline} ${(tags ?? []).join(' ')}`;
   if (/\$MACRO\b/i.test(s)) return 'Macro';
+  /* a broker's note is the analyst beat even when it names a quarter ("HSBC cuts target price on X after Q3") */
+  if (/\btarget price\b|\bprice targets?\b|\bupgrades?\b|\bupgraded\b|\bdowngrades?\b|\bdowngraded\b/i.test(headline)) return 'Analyst';
   if (GUIDANCE_RE.test(s)) return 'Guidance';
   if (EARNINGS_RE.test(s)) return 'Earnings';
   if (ANALYST_RE.test(s)) return 'Analyst';
@@ -55,6 +57,10 @@ const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boo
   /* the economy, a central bank, prices or the whole market — and only when no company is the subject */
   if (MACRO_RE.test(s) && !hasTicker) return 'Macro';
   if (MACRO_RE.test(s) && /\b(?:fed|fomc|cpi|ppi|pce|gdp|payrolls?|ecb|boj|tariffs?)\b/i.test(s)) return 'Macro';
+  /* a story that names no listed company and fits no company beat — policy, politics, markets abroad, the world — is
+     the macro beat, not a company's product story (the re-audit, 2026-10-22: a thousand such rows read "NO TICKER ·
+     PRODUCT") */
+  if (!hasTicker) return 'Macro';
   return 'Product';
 };
 
@@ -97,11 +103,21 @@ function storyTickers(headline: string, tags: readonly string[] | undefined): st
   const tagged = [...new Set((tags ?? []).map(t => t.trim().toUpperCase()).filter(t => /^[A-Z][A-Z0-9.]{0,5}$/.test(t)))].filter(t => borneOut(t, headline));
   if (tagged.length) return tagged;
   const named = COMPANY_RE.find(c => c.re.test(headline));
-  return named ? [named.ticker] : [];
+  if (named) return [named.ticker];
+  /* an untagged company story names its company by the listing's own name (data/tickers.ts companiesInHeadline) —
+     "COCA-COLA SAYS…" is KO, "Medpace Slumps…" MEDP (the re-audit, 2026-10-22: dozens of NO TICKER rows) */
+  return companiesInHeadline(headline);
 }
 
+/* NOT MARKET NEWS (the re-audit, 2026-10-22): the press-release wires carry paid placements — a criminal-defense firm's
+   explainer ("Legal vs. Illegal Insider Trading… | Wichita Criminal Defense Lawyers"), HelloNation advice columns. A
+   story from such a source is not a market story and is dropped, counted. */
+const SPAM_RE =
+  /\b(?:criminal defense|defense lawyers?|defense attorneys?|personal injury|injury (?:lawyers?|attorneys?)|dui (?:lawyers?|attorneys?)|divorce (?:lawyers?|attorneys?)|hellonation|law offices? of|accident (?:lawyers?|attorneys?)|estate planning attorney)\b|\|\s*[^|]{0,60}\b(?:lawyers?|attorneys?|law firm|law group)\s*$/i;
+export const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline);
+
 export function newsFromWhales(rows: UwNews[]): NewsItem[] {
-  return rows.map((r) => {
+  return rows.filter(r => !isNewsSpam(decodeEntities(r.headline || ''))).map((r) => {
     const headline = decodeEntities(r.headline || '');
     const at = Date.parse(r.created_at);
     const sent = sentimentOf(r.sentiment);
@@ -130,8 +146,8 @@ export function newsFromWhales(rows: UwNews[]): NewsItem[] {
         expMove1dPct: move,
         expMove5dPct: move,
         confidencePct: moved != null ? 58 : 0,
-        analog: moved != null ? 'The figure is the session so far. Not a forecast.' : '',
-        playbook: moved != null ? 'The figure is how the name has traded today. Not a forecast, and not a trade on its own.' : '',
+        analog: moved != null ? 'The figure is the name\'s move when the story crossed. Not a forecast.' : '',
+        playbook: moved != null ? 'The figure is how the name had moved on the session when the story crossed the wire — a snapshot at publish, not today\'s move now, and not a forecast.' : '',
         measured: moved != null,
       },
     };
@@ -201,12 +217,14 @@ const typeOf = (raw?: string): ReportType | null => {
   if (!s) return null;
   const first = s.split(/\n/)[0].trim();
   const code = /^([pse])$/.exec(first)?.[1] ?? /\s([pse])$/.exec(first)?.[1] ?? (/^([pse])\s/.exec(first)?.[1] ?? null);
-  if (code && first.length > 1 && !/^(purchase|sale|sell|exchange|buy)/.test(first)) return code === 'p' ? 'Purchase' : code === 'e' ? 'Exchange' : 'Sale (Full)';
-  if (first.length === 1 && code) return code === 'p' ? 'Purchase' : code === 'e' ? 'Exchange' : 'Sale (Full)';
+  if (code && first.length > 1 && !/^(purchase|sale|sell|exchange|buy)/.test(first)) return code === 'p' ? 'Purchase' : code === 'e' ? 'Exchange' : 'Sale';
+  if (first.length === 1 && code) return code === 'p' ? 'Purchase' : code === 'e' ? 'Exchange' : 'Sale';
   if (s.includes('exchange')) return 'Exchange';
   if (s.includes('purchase') || /\bbuy\b/.test(s)) return 'Purchase';
   if (s.includes('partial')) return 'Sale (Partial)';
-  if (s.includes('sale') || s.includes('sell')) return 'Sale (Full)';
+  /* "Sell" is all the vendor says (the re-audit, 2026-10-22): a sale it marks full says so; a bare sell is a sale */
+  if (/\bfull\b/.test(s) && (s.includes('sale') || s.includes('sell'))) return 'Sale (Full)';
+  if (s.includes('sale') || s.includes('sell')) return 'Sale';
   return null;
 };
 
@@ -221,7 +239,9 @@ const ownerOf = (notes?: string, issuer?: string): ReportOwner => {
 const bracketOf = (amounts: unknown): number | null => {
   const s = typeof amounts === 'string' ? amounts : Array.isArray(amounts) ? amounts.map(String).join(' ') : amounts && typeof amounts === 'object' ? JSON.stringify(amounts) : '';
   if (!s) return null;
-  const nums = [...s.matchAll(/\$?\s*([0-9][0-9,]*)/g)].map(m => Number(m[1].replace(/,/g, ''))).filter(n => n > 0);
+  /* "Spouse/DC over $1,000,000" is the rung above $1,000,000, not the one ending at it (the re-audit, 2026-10-22) */
+  const over = /\b(?:over|above|more than|greater than)\s*\$?\s*([0-9][0-9,]*)/i.exec(s);
+  const nums = over ? [Number(over[1].replace(/,/g, '')) + 1] : [...s.matchAll(/\$?\s*([0-9][0-9,]*)/g)].map(m => Number(m[1].replace(/,/g, ''))).filter(n => n > 0);
   const low = nums[0];
   if (!low) return null;
   const exact = AMOUNT_BRACKETS.findIndex(b => low >= b.low && (b.high == null || low <= b.high));
@@ -231,6 +251,13 @@ const bracketOf = (amounts: unknown): number | null => {
     if (b.low <= low) best = i;
   });
   return best >= 0 ? best : null;
+};
+
+/** "Spouse/DC Over $1,000,000" → 1000000 — an open-ended amount, said as the filing says it */
+const overOf = (amounts: unknown): number | null => {
+  const s = typeof amounts === 'string' ? amounts : '';
+  const m = /\b(?:over|above|more than|greater than)\s*\$?\s*([0-9][0-9,]*)/i.exec(s);
+  return m ? Number(m[1].replace(/,/g, '')) : null;
 };
 
 const OWNER_WORD = /^(joint|spouse|self|undisclosed|not-disclosed|n\/a)$/i;
@@ -338,6 +365,7 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
       type,
       owner: ownerOf(r.notes, r.issuer),
       bracket: bracketOf(r.amounts),
+      amountOver: overOf(r.amounts) ?? undefined,
       lagDays: lag,
       tradedDaysAgo: traded,
       filedDaysAgo: filed,
@@ -361,8 +389,9 @@ export function rollCongress(trades: CongressTrade[], windowDays: number): Congr
     if (t.bracket == null) unknownAmounts += 1;
     else {
       const b = AMOUNT_BRACKETS[t.bracket];
-      totalLow += b.low;
-      if (totalHigh !== null) totalHigh = b.high == null ? null : totalHigh + b.high;
+      totalLow += t.amountOver != null ? t.amountOver + 1 : b.low;
+      /* an open-ended amount ("over $1,000,000") has no top, so the sum has none either */
+      if (totalHigh !== null) totalHigh = b.high == null || t.amountOver != null ? null : totalHigh + b.high;
     }
     if (t.type === 'Purchase') purchases += 1;
     else if (t.type !== 'Exchange') sales += 1;
@@ -381,9 +410,12 @@ const CODES = new Set<TxCode>(['P', 'S', 'A', 'M', 'F', 'G', 'D']);
 const OFFICER_WORDS = /\b(?:president|pres\.?|chief|cto|cio|cmo|cao|cso|cro|cdo|chro|svp|evp|vp|vice president|treasurer|secretary|controller|comptroller|officer|founder|general manager|head of|managing director|principal)\b/;
 const roleOf = (title: string, director: boolean, ten: boolean, officer: boolean): InsiderTrade['role'] => {
   const t = title.toLowerCase();
-  if (/\bceo\b|chief executive/.test(t)) return 'CEO';
-  if (/\bcfo\b|chief financial/.test(t)) return 'CFO';
-  if (/\bcoo\b|chief operating/.test(t)) return 'COO';
+  /* A CO- OR REGIONAL CHIEF IS AN OFFICER (the re-audit, 2026-10-22: "Co-CEO Asia Pacific" filed as the CEO): the three
+     singular offices are the company's own, not a co-holder's, a region's, a division's or a subsidiary's */
+  const partial = /\bco-?\s?(?:ceo|cfo|coo|chief)\b|\b(?:asia|pacific|apac|emea|europe|americas?|latam|latin america|north america|international|region(?:al)?|division(?:al)?|segment|subsidiary)\b/.test(t);
+  if (!partial && /\bceo\b|chief executive/.test(t)) return 'CEO';
+  if (!partial && /\bcfo\b|chief financial/.test(t)) return 'CFO';
+  if (!partial && /\bcoo\b|chief operating/.test(t)) return 'COO';
   if (/chief legal|general counsel|\bclo\b/.test(t)) return 'Chief Legal Officer';
   if (/\bevp\b|executive vice/.test(t)) return 'EVP';
   if (OFFICER_WORDS.test(t) || (officer && !/^\s*(?:director|chair(?:man|person|woman)?(?: of the board)?)\s*$/.test(t))) return 'Officer';
@@ -402,7 +434,7 @@ const isShareLine = (title?: string | null): boolean => !title || !NOT_SHARES.te
 /** The largest share of a company one open-market trade can plausibly be. A filing over it is a unit mix-up, not a trade */
 const MAX_CAP_SHARE = 0.25;
 
-type UwInsiderRow = { amount?: number; filing_date?: string; formtype?: string | null; is_10b5_1?: boolean | null; is_director?: boolean; is_officer?: boolean; is_ten_percent_owner?: boolean; officer_title?: string | null; owner_name?: string; price?: string | number | null; shares_owned_after?: number | null; shares_owned_before?: number | null; stock_price?: string | number | null; ticker?: string; transaction_code?: string; transaction_date?: string; id?: string; security_title?: string | null; marketcap?: string | number | null; sector?: string | null; reporter_cik?: string | null; full_name?: string | null };
+type UwInsiderRow = { amount?: number; filing_date?: string; formtype?: string | null; is_10b5_1?: boolean | null; is_director?: boolean; is_officer?: boolean; is_ten_percent_owner?: boolean; officer_title?: string | null; owner_name?: string; price?: string | number | null; shares_owned_after?: number | null; shares_owned_before?: number | null; stock_price?: string | number | null; ticker?: string; transaction_code?: string; transaction_date?: string; id?: string; security_title?: string | null; marketcap?: string | number | null; sector?: string | null; reporter_cik?: string | null; full_name?: string | null; reporter_is_public_company?: boolean | string | null; director_indirect?: string | null };
 
 /** What the insider feed read: the rows, and how many it set aside and why — counted, never silent */
 export interface InsiderRead {
@@ -411,14 +443,78 @@ export interface InsiderRead {
   notShares: number;
   /** Rows whose filed price or size cannot be a trade (ten times the stock's price, or past a quarter of the company) */
   implausible: number;
+  /** Rows folded into another: a joint filing's other owners, or an amended re-filing of a trade already read */
+  merged: number;
 }
 
 export function insidersFromWhales(rows: UwInsiderRow[]): InsiderTrade[] {
   return readInsiders(rows).trades;
 }
 
+/* A REPORTER THAT IS A COMPANY OR A FUND (the re-audit, 2026-10-22): Volkswagen AG's $1.0B RIVN stake and SMFG's JEF
+   purchases are code P but are strategic investments and private placements, not an insider choosing to buy with their
+   own money. The vendor's public-company flag, or an entity's legal form in the name, marks them. */
+const ENTITY_RE = /\b(?:inc|incorporated|corp|corporation|co|company|ltd|limited|llc|l\.?l\.?c|lp|l\.?p|llp|plc|ag|sa|s\.a|nv|n\.v|se|gmbh|bv|ab|asa|oyj|spa|kk|holdings?|group|partners(?:hip)?|capital|fund|funds|trust|management|advisors?|investments?|ventures|aggregator|foundation|bank|financial|securities)\.?\b/i;
+const isEntity = (r: UwInsiderRow): boolean => r.reporter_is_public_company === true || r.reporter_is_public_company === 'true' || ENTITY_RE.test(r.owner_name || '');
+
+/* ONE TRADE, ONE ROW (the re-audit, 2026-10-22). A joint Form 4 lists the same trade once per reporting owner —
+   BTSG's $857M KKR sale came twice (KKR Group Partnership and KKR Phoenix Aggregator), LTH three times — and an amended
+   filing (4/A) restates a trade already read (SMFG's JEF buy of 05/01, filed 05/04 and again 06/29). Both overstated the
+   90-day totals by about $1.1B. A joint filing: same name, trade day, code, shares and price, filed the same day. An
+   amendment: the same reporter, name, trade day, code and shares, filed later — the latest filing stands. */
+function dedupeFilings(rows: { t: InsiderTrade; filed: string; cik: string; amended: boolean; indirect: boolean }[]): { trades: InsiderTrade[]; merged: number } {
+  const groups: { t: InsiderTrade; filed: string; cik: string; owners: Set<string>; ciks: Set<string>; shared: boolean; amended: boolean }[] = [];
+  const byBase = new Map<string, number[]>();
+  let merged = 0;
+  for (const r of rows) {
+    const t = r.t;
+    const base = `${t.ticker}|${t.tradedOn ?? ''}|${t.code}|${t.shares}`;
+    const list = byBase.get(base) ?? [];
+    let hit = -1;
+    for (const gi of list) {
+      const g = groups[gi];
+      const sameReporter = !!r.cik && g.ciks.has(r.cik);
+      /* a joint filing's owners hold the shares through one another (indirect) or one of them is the fund itself — two
+         people each buying the same size at an offering price are two trades */
+      const joint = g.filed === r.filed && Math.abs(g.t.price - t.price) < 1e-6 && !g.owners.has(t.person) && (g.shared || r.indirect || !!t.entity);
+      /* an amendment restates the trade (holdings after may be corrected too); two separate filings of one reporter's
+         identical lots on different days are not one — so a later filing counts as an amendment only when it is a 4/A */
+      const amendment = sameReporter && (r.amended || g.amended) && g.filed !== r.filed;
+      /* the same filing read twice (one copy carried the reporter's CIK, the other none — BTSG's KKR, 2025-10-22) */
+      const twin = (sameReporter || g.owners.has(t.person)) && g.filed === r.filed && Math.abs(g.t.price - t.price) < 1e-6 && g.t.heldAfter === t.heldAfter;
+      if (joint || amendment || twin) {
+        hit = gi;
+        break;
+      }
+    }
+    if (hit < 0) {
+      groups.push({ t, filed: r.filed, cik: r.cik, owners: new Set([t.person]), ciks: new Set(r.cik ? [r.cik] : []), shared: r.indirect || !!t.entity, amended: r.amended });
+      list.push(groups.length - 1);
+      byBase.set(base, list);
+      continue;
+    }
+    merged += 1;
+    const g = groups[hit];
+    g.owners.add(t.person);
+    if (r.cik) g.ciks.add(r.cik);
+    if (r.amended) g.amended = true;
+    /* the latest filing's figures stand (an amendment corrects the price) */
+    if (r.filed > g.filed) {
+      const owners = g.t.owners;
+      g.t = { ...t, owners };
+      g.filed = r.filed;
+    }
+  }
+  const trades = groups.map(g => {
+    const owners = [...g.owners];
+    return owners.length > 1 ? { ...g.t, person: owners[0], owners, entity: g.t.entity } : g.t;
+  });
+  return { trades, merged };
+}
+
 export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
   const out: InsiderTrade[] = [];
+  const meta2: { t: InsiderTrade; filed: string; cik: string; amended: boolean; indirect: boolean }[] = [];
   let notShares = 0;
   let implausible = 0;
   for (const r of rows) {
@@ -465,7 +561,7 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
     const base = meta.acquires ? (held > 0 ? held : before + shares) : before > 0 ? before : held > 0 ? held + shares : 0;
     const stakePct = base > 0 ? Number(((100 * shares) / base).toFixed(1)) : -1;
     const title = (r.officer_title || '').trim();
-    out.push({
+    const row: InsiderTrade = {
       id: r.id || `${r.ticker}-${r.owner_name}-${r.transaction_date}-${code}`,
       ticker: r.ticker || '',
       role: roleOf(title, !!r.is_director, !!r.is_ten_percent_owner, !!r.is_officer),
@@ -487,8 +583,13 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
       cik: r.reporter_cik?.trim() || undefined,
       title: title && !/see remarks/i.test(title) ? title : undefined,
       tradedOn: nyDayOf(r.transaction_date || r.filing_date) ?? undefined,
-    });
+      filedOn: nyDayOf(r.filing_date) ?? undefined,
+      entity: isEntity(r) || undefined,
+    };
+    meta2.push({ t: row, filed: String(r.filing_date ?? ''), cik: (r.reporter_cik ?? '').trim(), amended: /\/A$/i.test(form), indirect: String(r.director_indirect ?? '').toUpperCase() === 'I' });
   }
+  const deduped = dedupeFilings(meta2);
+  out.push(...deduped.trades);
   const buyers = new Map<string, Set<string>>();
   const sellers = new Map<string, Set<string>>();
   for (const t of out) {
@@ -496,7 +597,7 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
     const bag = t.code === 'P' ? buyers : t.code === 'S' ? sellers : null;
     if (!bag) continue;
     const set = bag.get(t.ticker) ?? new Set<string>();
-    set.add(t.person);
+    for (const p of t.owners ?? [t.person]) set.add(p);
     bag.set(t.ticker, set);
   }
   for (const t of out) {
@@ -504,7 +605,7 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
     if (t.code === 'P') t.clusterCount = buyers.get(t.ticker)?.size ?? 1;
     else if (t.code === 'S') t.clusterCount = sellers.get(t.ticker)?.size ?? 1;
   }
-  return { trades: out, notShares, implausible };
+  return { trades: out, notShares, implausible, merged: deduped.merged };
 }
 
 export const EMPTY_LIVE_CONGRESS = EMPTY_CONGRESS;

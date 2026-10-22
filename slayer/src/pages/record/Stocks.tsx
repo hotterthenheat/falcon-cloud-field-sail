@@ -56,9 +56,9 @@ import Sparkline from '../../components/compass/Sparkline';
 import { SectorMark } from '../../components/trace/SectorMark';
 import { StocksGuide } from '../../components/record/StocksGuide';
 import { useBoardNames } from '../../data/boardNames';
-import { buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
+import { aboveFifty, buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
 import { useLiveStocks } from '../../data/liveFiles';
-import { peekQuote, useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, peekQuote, useLiveQuote } from '../../data/liveQuote';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
 import { SECTORS, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
@@ -79,8 +79,8 @@ const GRADE_RANK: Grade[] = ['strong', 'good', 'caution', 'poor'];
 const SCREEN_OPTIONS: DropdownOption<ScreenPick>[] = [
   { value: 'all', label: 'Every screen', short: 'All', hint: 'Strong, good, caution and poor' },
   { value: 'strong', label: 'Strong', hint: 'Nearly everything lines up at once — rare on purpose' },
-  { value: 'good', label: 'Good', hint: 'All four sleeves point the same way' },
-  { value: 'caution', label: 'Caution', hint: 'The sleeves disagree — a catalyst decides' },
+  { value: 'good', label: 'Good', hint: 'The measures with a number point the same way' },
+  { value: 'caution', label: 'Caution', hint: 'The measures disagree — a catalyst decides' },
   { value: 'poor', label: 'Poor', hint: 'The data argues against the name' },
 ];
 const SECTOR_OPTIONS: DropdownOption<SectorPick>[] = [{ value: 'all', label: 'Every sector', short: 'All', hint: 'The ten sectors the universe files' }, ...SECTORS.map(s => ({ value: s, label: s }))];
@@ -138,7 +138,13 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const q = useLiveQuote(data?.ticker);
   if (!data) return null;
   const chg = q?.spot && q.spot > 0 ? q.changePct : data.changePct;
-  return <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>;
+  const ext = extendedLine(q);
+  return (
+    <span className="flex flex-col items-end leading-tight" title={`The regular session's change${ext ? ` · ${ext}, kept apart` : ''}`}>
+      <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
+      {ext ? <span className="font-mono text-[8px] tnum text-textMuted whitespace-nowrap">{ext.replace('after hours', 'AH').replace('pre-market', 'pre')}</span> : null}
+    </span>
+  );
 };
 const TrendCell = ({ data }: ICellRendererParams<StockPick>) => {
   if (!data || data.trend.length < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
@@ -171,7 +177,7 @@ const ScreenCell = ({ data }: ICellRendererParams<StockPick>) =>
 
 const WhyCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
-    <span className="block text-[11px] text-textSecondary truncate" title={data.thesis}>
+    <span className="block py-1.5 text-[11px] leading-snug text-textSecondary whitespace-normal break-words" title={data.thesis}>
       {data.thesis}
     </span>
   ) : null;
@@ -184,7 +190,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
     type="button"
     onClick={onToggle}
     aria-pressed={on}
-    title={`${s.note} ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
+    title={`${s.note} ${s.count} ${s.count === 1 ? 'name' : 'names'} on this board.${s.ret1w != null ? ` Their average return: ${signedPct(s.ret1w)} over a week, ${s.ret1m != null ? signedPct(s.ret1m) : '—'} over a month.` : ''} Against the average of every name here: ${signedPct(s.rs1w)} over a week, ${signedPct(s.rs1m)} over a month — the direction word reads those two. ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
     className={`group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`}
     data-stocks-sector={s.sector}
     data-on={on || undefined}
@@ -198,11 +204,16 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
       <span className={`block h-full rounded-full ${leader ? 'bg-supreme' : PHASE_BAR[s.phase]}`} style={{ width: `${Math.round((s.score / top) * 100)}%` }} />
     </span>
     <span className={`mt-1 block h-[12px] font-mono text-[8px] uppercase tracking-widest whitespace-nowrap ${leader ? 'text-supreme' : PHASE_INK[s.phase]}`}>{leader ? 'LEADING' : PHASE_WORD[s.phase]}</span>
-    <span className="mt-0.5 block h-[12px] font-mono text-[9px] tnum whitespace-nowrap">
+    {/* THE REAL RETURN, AND THE RELATIVE ONE SAID AS RELATIVE (the re-audit, 2026-10-22: "1w +3.4% · 1m +13.1%" was the
+        sector against the board's average, read as a return; Utilities is one name) */}
+    <span className="mt-0.5 block h-[12px] font-mono text-[9px] tnum whitespace-nowrap overflow-hidden">
       <span className="text-textMuted">1w </span>
-      <span className={dirInk(s.rs1w)}>{signedPct(s.rs1w)}</span>
+      <span className={s.ret1w != null ? dirInk(s.ret1w) : 'text-textMuted'}>{s.ret1w != null ? signedPct(s.ret1w) : '—'}</span>
       <span className="text-textMuted"> · 1m </span>
-      <span className={dirInk(s.rs1m)}>{signedPct(s.rs1m)}</span>
+      <span className={s.ret1m != null ? dirInk(s.ret1m) : 'text-textMuted'}>{s.ret1m != null ? signedPct(s.ret1m) : '—'}</span>
+    </span>
+    <span className="mt-0.5 block h-[12px] font-mono text-[8px] tnum whitespace-nowrap overflow-hidden text-textMuted">
+      vs board <span className={dirInk(s.rs1m)}>{signedPct(s.rs1m)}</span> 1m · {s.count} {s.count === 1 ? 'name' : 'names'}
     </span>
   </button>
 );
@@ -258,8 +269,9 @@ const Stocks = () => {
     const strong = count('strong');
     const good = count('good');
     const weak = count('poor');
-    const scored = rows.filter(p => !p.quiet.includes('momentum'));
-    const breadth = scored.length ? Math.round((scored.filter(p => p.sleeves.momentum > 50).length / scored.length) * 100) : 0;
+    /* price above its 50-day average, not RSI over 50 (the re-audit, 2026-10-22) */
+    const placed = rows.map(aboveFifty).filter((v): v is boolean => v != null);
+    const breadth = placed.length ? Math.round((placed.filter(Boolean).length / placed.length) * 100) : 0;
     return { names: rows.length, strong, good, mixed: rows.length - strong - good - weak, weak, breadth };
   }, [rows]);
 
@@ -279,7 +291,7 @@ const Stocks = () => {
         ) : (
           ' — no sector is falling on both windows'
         )}
-        . <span className="text-textPrimary font-semibold">{facts.breadth}%</span> of the names here sit above their trend;{' '}
+        . <span className="text-textPrimary font-semibold">{facts.breadth}%</span> of the names here sit above their 50-day average;{' '}
         <span className="text-bull font-semibold">{facts.strong + facts.good}</span> read good or better, <span className="text-bear font-semibold">{facts.weak}</span> poor.
       </>
     ),
@@ -291,10 +303,10 @@ const Stocks = () => {
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [
       /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
-      { headerName: 'Name', field: 'ticker', flex: 1.2, minWidth: 150, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
-      { headerName: 'Sector', field: 'sector', width: 150, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
+      { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 140, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
+      { headerName: 'Sector', field: 'sector', width: 132, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
       { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.spot || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The last price' },
-      { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "Today's change" },
+      { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — today's close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
       { headerName: 'Year', field: 'trend', width: 92, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
       { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 88, cellRenderer: sleeveCell('momentum'), headerTooltip: 'RSI — above the 50 line the trend is up, below it is not. A dash is left out of the screen.' },
       { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 88, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. Above the 50 line is growing. A dash means the feed has no growth figure.' },
@@ -302,8 +314,8 @@ const Stocks = () => {
     ];
     if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 88, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
     cols.push(
-      { headerName: 'Screen', field: 'verdict', width: 100, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The sleeves that have a number, rolled into one word. What the data says, never an instruction.' },
-      { headerName: 'Why', field: 'thesis', flex: 2, minWidth: 150, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
+      { headerName: 'Screen', field: 'verdict', width: 100, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The measures that have a number, rolled into one word. What the data says, never an instruction.' },
+      { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 220, autoHeight: true, wrapText: true, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
     );
     return cols;
   }, [newsQuiet]);
@@ -341,7 +353,7 @@ const Stocks = () => {
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the sleeves, the screen and the rotation mean" testId="stocks-guide" />
+            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the measures, the screen and the rotation mean" testId="stocks-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
             The {picks.length || 'house list’s'} names the terminal files — not the whole market — each read on the trend, the numbers and the money from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
@@ -355,7 +367,7 @@ const Stocks = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Above their trend")}>Above their trend</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The share of the names on the grid whose last price is above their 50-day simple average (the screener's)">Above their 50-day</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
               {quiet ? '—' : `${facts.breadth}%`}
             </dd>
@@ -400,7 +412,7 @@ const Stocks = () => {
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The rotation</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">every sector ranked by its names' screens, leader first · the two windows against the tape · click a sector to keep the grid to its names</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">every sector ranked by its names' screens, leader first · its names' average return over a week and a month, and the month against the board's average · click a sector to keep the grid to its names</span>
         </div>
         {/* every sector across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
             2026-10-18: eleven across at 360 left a card 30px wide and cut its two windows, and at 1024 still 70px) */}

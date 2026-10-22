@@ -77,7 +77,7 @@ import { readSessionClock } from '../../data/moc';
 import { setReplayLabel } from './replayState';
 import { readPosition, usePositions } from '../../data/positions';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
-import { levelsBook, levelsDate, levelsWords } from '../../data/bookWindow';
+import { levelsBook, levelsDate, levelsWords, sessionBook } from '../../data/bookWindow';
 import { useLevelsScope } from '../../data/levelsScope';
 import type { ExposureExpiry } from '../../types/gex';
 import type { Candle, MarketSnapshot } from '../../types/market';
@@ -726,7 +726,7 @@ const MapDesk = () => {
               if (!base) return null;
               return (
                 <div key={t} ref={host ? reportRef : undefined} id={host ? 'map-report' : undefined} className="min-w-0 border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={t} data-on-screen={host ? reportOn : undefined}>
-                  <WallReportCard tight snapshot={lv(base)} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} span={lvWords(base)} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
+                  <WallReportCard tight snapshot={sessionBook(base, levelsScope).book ?? lv(base)} unavailable={sessionBook(base, levelsScope).why} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} span={sessionBook(base, levelsScope).label} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
                 </div>
               );
             })}
@@ -738,7 +738,7 @@ const MapDesk = () => {
         <TraderClock snapshot={lv(daySnap ?? scan)} scope={chipFor('day', dayTicker)} dates={lvDates(daySnap ?? scan)} at={playing && dayTicker === ticker ? replayMinute(framePos, range) : undefined} onSeek={playing && range && dayTicker === ticker ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
       </div>
       <div ref={reportRef} id="map-report" className="border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={reportTicker} data-on-screen={reportOn}>
-        <WallReportCard snapshot={lv(reportSnap ?? scan)} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={lvWords(reportSnap ?? scan)} bars={playing && reportTicker === ticker ? reportBars : undefined} />
+        <WallReportCard snapshot={sessionBook(reportSnap ?? scan, levelsScope).book ?? lv(reportSnap ?? scan)} unavailable={sessionBook(reportSnap ?? scan, levelsScope).why} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={sessionBook(reportSnap ?? scan, levelsScope).label} bars={playing && reportTicker === ticker ? reportBars : undefined} />
       </div>
       </div>
       )}

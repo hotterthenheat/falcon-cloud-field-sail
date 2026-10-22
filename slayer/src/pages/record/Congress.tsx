@@ -41,7 +41,8 @@ import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, c
 import { useCongressCoverage, useCongressFeed, useCongressStatus, wantCongressWindow, type CongressCoverage } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { FeedFallback } from '../../components/ui/liveRead';
-import { tickerName } from '../../data/tickers';
+import { companyName, tickerName } from '../../data/tickers';
+import { useCompanyName } from '../../data/liveFiles';
 import type { Chamber, CongressTrade, ReportOwner } from '../../types/record';
 import { REPORTS_TO_KNOW } from './recordSkeletons';
 import { CongressHoldings } from '../../components/record/ExtraFaces';
@@ -97,7 +98,13 @@ const MemberCell = ({ data }: ICellRendererParams<CongressTrade>) =>
 
 const SYMBOL = /^[A-Z][A-Z.]{0,5}$/;
 /* an all-caps filing phrase ("US TREASURY BILLS") reads in sentence case, so it never shouts across a card */
-const readable = (s: string) => (s.length > 6 && s === s.toUpperCase() && /[A-Z]{3}/.test(s) ? s.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/\bUs\b/g, 'US') : s);
+/* short capital words that are names or legal forms stay capitals ("REOF XXX, LLC", not "Reof Xxx, Llc" — the re-audit,
+   2026-10-22); the plain English short words are sentenced */
+const PLAIN_SHORT = new Set(['THE', 'AND', 'OF', 'FOR', 'IN', 'ON', 'AT', 'TO', 'BY', 'BILL', 'BILLS', 'FUND', 'BOND', 'BONDS', 'NOTE', 'NOTES', 'CORP', 'INC', 'CO', 'TRUST', 'BANK', 'CITY', 'TOWN', 'GAS', 'OIL', 'NEW', 'YORK', 'WEST', 'EAST', 'SOUTH', 'NORTH', 'REAL', 'LAND', 'FARM', 'FARMS', 'HOME', 'LOAN', 'CASH', 'GOLD', 'WEEK', 'YEAR', 'DUE', 'SER', 'SR', 'JR', 'CL', 'CLASS', 'UNIT', 'UNITS', 'STOCK', 'SHS', 'COM']);
+const readable = (s: string) =>
+  s.length > 6 && s === s.toUpperCase() && /[A-Z]{3}/.test(s)
+    ? s.replace(/[A-Z][A-Z'&.]*/g, w => (w.length <= 4 && !PLAIN_SHORT.has(w.replace(/[.,']/g, '')) ? w : w.charAt(0) + w.slice(1).toLowerCase())).replace(/\bInc\b\.?/g, 'Inc.').replace(/\bCorp\b\.?/g, 'Corp.')
+    : s;
 
 export const assetLine = (t: CongressTrade) => {
   const sym = t.ticker.trim().toUpperCase();
@@ -106,7 +113,7 @@ export const assetLine = (t: CongressTrade) => {
   const rawDesc = t.assetDescription && t.assetDescription !== 'Stock' && t.assetDescription !== 'Undisclosed' && t.assetDescription.toUpperCase() !== sym ? t.assetDescription : '';
   const fallback = !named && sym && !/^(NONE|NA|N\/A)$/.test(sym) ? sym : '';
   const described = readable(rawDesc || fallback);
-  if (named) return { sym, title: sym, sub: described || (t.assetKind === 'Stock' ? tickerName(sym) : t.assetKind) };
+  if (named) return { sym, title: sym, sub: described || (t.assetKind === 'Stock' ? companyName(sym) : t.assetKind) };
   const title = described || (t.assetKind === 'Stock' || t.assetKind === 'Other' ? 'Not named on the filing' : t.assetKind);
   const sub = described && t.assetKind !== 'Stock' && t.assetKind !== 'Other' ? t.assetKind : '';
   return { sym: '', title, sub };
@@ -122,6 +129,8 @@ export const assetKey = (t: CongressTrade) => {
 };
 
 export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
+  /* the vendor's own name for a named stock, once its info lands */
+  useCompanyName(data?.ticker && SYMBOL.test(data.ticker.trim().toUpperCase()) ? data.ticker.trim().toUpperCase() : '');
   if (!data) return null;
   const line = assetLine(data);
   return (
@@ -158,6 +167,13 @@ const Ladder = ({ bracket }: { bracket: number }) => (
 const AmountCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   if (!data) return null;
   if (data.bracket === null) return <span className="font-mono text-[10px] text-textMuted">not disclosed</span>;
+  if (data.amountOver != null)
+    return (
+      <span className="inline-flex items-center gap-2.5" title="An open-ended amount as filed — no upper bound">
+        <Ladder bracket={data.bracket} />
+        <span className="font-mono text-[11px] tnum text-textPrimary whitespace-nowrap">Over ${data.amountOver.toLocaleString('en-US')}</span>
+      </span>
+    );
   return (
     <span className="inline-flex items-center gap-2.5" title={`Rung ${AMOUNT_BRACKETS[data.bracket].column} of ${AMOUNT_BRACKETS.length}`}>
       <Ladder bracket={data.bracket} />
@@ -195,20 +211,31 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
     {(() => {
       const line = assetLine(t);
       return (
-        <span className="flex items-center gap-2 min-w-0">
-          {line.sym ? <CompanyLogo ticker={line.sym} size={18} /> : null}
-          {/* the symbol never gives way — the member's name is what truncates ("AP…" read as nothing) */}
-          <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono shrink-0' : ''}`}>{line.title}</span>
-          <span className="min-w-0 text-[10px] text-textSecondary truncate">
-            {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
+        line.sym ? (
+          <span className="flex items-center gap-2 min-w-0">
+            <CompanyLogo ticker={line.sym} size={18} />
+            {/* the symbol never gives way — the member's name is what truncates ("AP…" read as nothing) */}
+            <span className="text-[12px] font-bold text-textPrimary font-mono shrink-0">{line.title}</span>
+            <span className="min-w-0 text-[10px] text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
+              {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
+            </span>
           </span>
-        </span>
+        ) : (
+          /* an unlisted asset ("Reof Xxx, Llc", "Bank of No…" cut on the card — the re-audit, 2026-10-22) takes the whole
+             line, the member under it, the full name on hover */
+          <span className="flex flex-col min-w-0 leading-tight">
+            <span className="text-[12px] font-bold text-textPrimary truncate" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>{line.title}</span>
+            <span className="min-w-0 text-[10px] text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
+              {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
+            </span>
+          </span>
+        )
       );
     })()}
     {/* the bracket as its words — the ladder lives in the grid; at six across it pushed the label off the card */}
     <span className="mt-1.5 flex items-center gap-2 font-mono tnum">
       <span className={`text-[11px] ${typeInk(t)}`}>{typeWord(t)}</span>
-      <span className="text-[11px] font-bold text-textPrimary truncate" title={bracketLabel(t.bracket)}>{bracketShort(t.bracket)}</span>
+      <span className="text-[11px] font-bold text-textPrimary truncate" title={t.amountOver != null ? `Over $${t.amountOver.toLocaleString('en-US')}, as filed` : bracketLabel(t.bracket)}>{t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketShort(t.bracket)}</span>
       {t.late && <span className="ml-auto text-[8px] uppercase tracking-widest text-bear">late</span>}
     </span>
     <span className="mt-1 block font-mono text-[8px] uppercase tracking-widest text-textSecondary truncate">

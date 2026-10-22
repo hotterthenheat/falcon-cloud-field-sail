@@ -46,3 +46,16 @@ export function nyIsoDaysBack(days: number, from = nyTodayIso()): string {
   const [y, m, d] = from.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d - days, 12)).toISOString().slice(0, 10);
 }
+
+/** The Monday the earnings board starts on, on New York's calendar: this week's Monday on a weekday, the coming Monday
+    on a Saturday or Sunday (the re-audit, 2026-10-22: the feed started at the past Monday while the board's columns,
+    on the browser's clock, rolled forward — every weekend card sat a week off its date). The feed and the board read
+    this one day. */
+export function boardMondayIso(today = nyTodayIso()): string {
+  const [y, m, d] = today.split('-').map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d, 12));
+  const dow = at.getUTCDay();
+  const shift = dow === 0 ? 1 : dow === 6 ? 2 : 1 - dow;
+  at.setUTCDate(at.getUTCDate() + shift);
+  return at.toISOString().slice(0, 10);
+}

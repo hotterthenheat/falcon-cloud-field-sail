@@ -32,10 +32,9 @@ import { useSearchParams } from 'react-router-dom';
 import { filtersToParams, paramsToFilters, screenerCuts } from '../../data/screenerViews';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useContracts } from '../../data/traceLive';
+import { dayLean, useContracts, usd as fmtUsd } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { applyFilters, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
-import { fmtUsd } from '../../data/gex';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -78,9 +77,8 @@ const PIN_RIGHT = ['prem'];
 
 /** The day's side in words */
 const leanWords = (r: BookContract) => {
-  const ask = Math.round(r.askPct);
-  const bid = 100 - ask;
-  return Math.abs(ask - bid) < 10 ? 'mid' : ask > bid ? `ask ${ask}%` : `bid ${bid}%`;
+  const l = dayLean(r);
+  return l.lean === 'ASK' ? `ask ${Math.round(l.ask)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bid)}%` : l.lean === 'UNSIDED' ? (Number.isFinite(l.mid) ? `mid/no side ${Math.round(l.mid)}%` : '—') : 'even';
 };
 
 /** A contract's day on a phone */
@@ -315,12 +313,9 @@ const OptionsScreener = () => {
           const tone = a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? (r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary';
           return (
             <span className={tone}>
-              {r.deltaOI > 0 ? '+' : ''}
-              {num(r.deltaOI)} {/* a tier down, never opacity */}
-              <span className="text-[11px]">
-                {r.deltaOIPct > 0 ? '+' : ''}
-                {r.deltaOIPct.toFixed(0)}%
-              </span>
+              {r.deltaOI > 0 ? '+' : '−'}
+              {num(Math.abs(r.deltaOI))} {/* a tier down, never opacity */}
+              <span className="text-[11px]">{pctSigned(r.deltaOIPct, 0)}</span>
             </span>
           );
         },
@@ -337,8 +332,8 @@ const OptionsScreener = () => {
             <span className="text-textPrimary">
               {r.iv.toFixed(0)}%{' '}
               <span className={`text-[11px] ${r.ivChg >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
-                {r.ivChg >= 0 ? '+' : ''}
-                {r.ivChg.toFixed(Math.abs(r.ivChg) >= 100 ? 0 : 1)}
+                {r.ivChg >= 0 ? '+' : '−'}
+                {Math.abs(r.ivChg).toFixed(Math.abs(r.ivChg) >= 100 ? 0 : 1)}
               </span>
             </span>
           ) : (
@@ -349,7 +344,7 @@ const OptionsScreener = () => {
       { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.sweepPct)}%</span> },
       { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{Math.round(r.floorPct)}%</span>) },
       { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.multiPct)}%</span> },
-      { key: 'lean', header: 'Lean', align: 'right', sortValue: r => r.askPct, render: r => <LeanCell askPct={r.askPct} /> },
+      { key: 'lean', header: 'Lean', align: 'right', sortValue: r => r.askPct, render: r => <LeanCell askPct={r.askPct} split={r.sideVol} /> },
       { key: 'sector', header: 'Sector', sortValue: r => r.sector ?? '', render: r => <SectorName sector={r.sector} /> },
     ],
     [marks]

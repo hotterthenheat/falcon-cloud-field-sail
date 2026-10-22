@@ -17,6 +17,7 @@ import type { Sector } from './universe';
 import { SECTOR_UNIVERSE } from './darkpool';
 import { SP500_NYSE } from './sp500';
 import { tickerName } from './tickers';
+import { boardMondayIso, nyTodayIso } from './nyDate';
 
 export type EarningsVerdict = 'PLAY' | 'FADE' | 'SKIP';
 export type ReportSlot = 'BMO' | 'AMC';
@@ -69,6 +70,20 @@ export interface EarningsEvent {
   reported?: boolean;
   /** The stock's move the session after the report, signed % — the vendor's `reaction`, null until it is in */
   actualMovePct?: number | null;
+  /** How many past reports the usual move is the average of (the live feed; the sample has eight) */
+  histCount?: number;
+  /** Past reports with both an actual and an estimate, split three ways — an in-line print is not a beat */
+  beatCount?: number;
+  inlineCount?: number;
+  missCount?: number;
+  /** False when the vendor has no time for the report ("unknown") — the slot is then not stated */
+  timeKnown?: boolean;
+  /** True when the date is the vendor's estimate, not one the company set */
+  estimated?: boolean;
+  /** True when the name is a fund (an ETF or a trust) — funds do not report earnings */
+  fund?: boolean;
+  /** A second share class whose reports the vendor files under another symbol (BBDO → BBD) */
+  classOf?: string;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -104,17 +119,18 @@ function labelFor(d: Date): string {
 }
 
 /** The calendar date of a board cell — the week list needs the real day to
-    seat the macro calendar beside the reports (2026-09-03). */
+    seat the macro calendar beside the reports (2026-09-03). New York's calendar, from the same Monday the feed starts
+    its fortnight on (nyDate.ts boardMondayIso) — never the browser's clock. The Date is local midnight of that day. */
 export function weekDayDate(weekIdx: 0 | 1, weekday: number): Date {
-  const today = tradingToday();
-  return new Date(mondayOf(today) + weekIdx * 7 * 86400000 + (weekday - 1) * 86400000);
+  const [y, m, d] = boardMondayIso().split('-').map(Number);
+  return new Date(y, m - 1, d + weekIdx * 7 + (weekday - 1));
 }
 
-/** Column header for the week board — date math stays in one module. */
+/** Column header for the week board — date math stays in one module. "Today" is New York's today, never on a weekend. */
 export function weekDayLabel(weekIdx: 0 | 1, weekday: number): { label: string; isToday: boolean } {
-  const today = tradingToday();
   const d = weekDayDate(weekIdx, weekday);
-  return { label: labelFor(d), isToday: d.getTime() === today.getTime() };
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { label: labelFor(d), isToday: iso === nyTodayIso() };
 }
 
 /** "Q2'26"-style labels for the last N quarters, oldest first. */
@@ -225,6 +241,8 @@ export interface EarningsQuarter {
   epsEst: number;
   epsActual: number;
   epsBeat: boolean;
+  /** Beat, in line (equal to the cent) or miss — the live feed's; the sample leaves it off */
+  epsResult?: 'beat' | 'inline' | 'miss';
   revEstB: number;
   revActualB: number;
   revBeat: boolean;

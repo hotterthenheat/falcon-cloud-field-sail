@@ -9,6 +9,7 @@ import { houseSlug, type EtfHolding, type EtfKind, type EtfRow, type Institution
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDaysAgo } from './nyDate';
+import { companyName, hasVendorName, isListed, rememberCompanyName } from './tickers';
 import {
   whalesEtfFlow,
   whalesEtfHoldings,
@@ -268,7 +269,7 @@ async function inBatches<T>(items: readonly T[], size: number, job: (item: T) =>
 }
 
 /** The lines read per house — the largest by value; the house's whole book is far longer */
-const HOUSE_LINES = 80;
+export const HOUSE_LINES = 80;
 
 async function pullInstitutions() {
   try {
@@ -401,6 +402,7 @@ export function shortRowFromFile(
   if (session) {
     const ratio = num(session.short_volume_ratio);
     if (ratio > 0) out.shortVolRatio = ratio <= 1.5 ? ratio * 100 : ratio;
+    if (session.market_date) out.shortVolDate = String(session.market_date).slice(0, 10);
     const sv = num(session.short_volume);
     if (sv > 0) out.shortVolM = sv / 1e6;
   }
@@ -654,6 +656,7 @@ async function pullStocks() {
           weekClose: numOr(row.one_week_close),
           bullish: numOr(row.bullish_premium),
           bearish: numOr(row.bearish_premium),
+          sma50: numOr(row.sma_50),
         }),
       );
     }
@@ -694,6 +697,7 @@ export function ensureStockCard(ticker: string): void {
         return;
       }
       const row = info as Record<string, unknown>;
+      rememberCompanyName(t, String(row.full_name || row.short_name || ''));
       emit({
         cards: {
           ...snap.cards,
@@ -830,6 +834,20 @@ export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
 
 export function useLiveTide(): TidePrint | null {
   return useLiveFiles().tide;
+}
+
+/** The company's name as the vendor gives it (its stock info), the bundled listing's until that lands — every Dossier
+    name cell reads this (the re-audit, 2026-10-22: the listing called SERV "ServiceMaster") */
+export function useCompanyName(ticker: string, fromVendorFeed = false): string {
+  const t = (ticker || '').toUpperCase();
+  /* subscribed to the file store: the card's landing re-renders the name */
+  useLiveFiles();
+  useEffect(() => {
+    /* a symbol the vendor's own feed sent is asked of it; any other only when it is a listed one (an OTC symbol on a
+       Congress filing answers 404) */
+    if (t && /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && !hasVendorName(t) && (fromVendorFeed || isListed(t))) ensureStockCard(t);
+  }, [t, fromVendorFeed]);
+  return t ? companyName(t) : '';
 }
 
 export function useStockCard(ticker: string): StockCard | null | undefined {

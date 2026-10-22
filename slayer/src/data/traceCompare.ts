@@ -22,7 +22,7 @@ import type { BookContract, FlowPrint } from '../types/trace';
 import { sleeveForDte } from './compass';
 import { moneynessFilter, type MoneynessKey, type SpreadTrade } from './flowBook';
 import type { ExpiryFlow } from './traceLive';
-import { fmtUsd } from './gex';
+import { usd as fmtUsd } from './traceLive';
 
 export interface TraceSide {
   ticker: string;
@@ -41,8 +41,10 @@ export interface TraceSide {
     premium: number;
     /** Calls' share of the premium, 0–100 */
     callShare: number;
-    /** Ask-side share of the volume, 0–100 */
+    /** Ask-side share of the sided volume, 0–100 */
     askPct: number;
+    /** The book's contracts by side — at the ask, on the bid, at the mid or no side */
+    side: { ask: number; bid: number; mid: number };
     /** Share of the volume that arrived in sweeps, 0–100 */
     sweptPct: number;
     /** Volume-weighted implied vol, % */
@@ -52,6 +54,7 @@ export interface TraceSide {
   };
   /** What stood overnight: interest added and interest shed, contracts */
   interest: { added: number; shed: number };
+  /** dollars: the structures' NET premium, signs dropped — what changed hands, not the gross of every leg */
   structures: { count: number; paid: number; collected: number; dollars: number; list: SpreadTrade[] };
   tape: { prints: number; dollars: number; sweeps: number };
   /** Sessions until the name reports, null when the calendar has none */
@@ -76,7 +79,8 @@ export function buildTraceSide(
   expiries: ExpiryFlow[],
   todayIso: string
 ): TraceSide {
-  const own = book.filter(r => r.ticker === ticker);
+  /* a contract that expired at today's bell no longer stands — it is not on the side's book (the re-audit, 2026-10-22) */
+  const own = book.filter(r => r.ticker === ticker && !r.expired);
   const rows = own.filter(r => onClock(r.dte, tenor) && moneynessFilter(r, mny)).sort((a, b) => b.premium - a.premium);
   /* THE NET IS THE VENDOR'S, BY EXPIRY (the audit, 2026-10-22): it was a hashed clip table over the book — SPY read
      −$29.2M · −$23.7M same-day where the vendor's own flow said +$11.9M and +$0.7M. Net calls are call premium at the ask
@@ -88,7 +92,7 @@ export function buildTraceSide(
   const volume = rows.reduce((a, r) => a + r.volume, 0);
   const premium = rows.reduce((a, r) => a + r.premium, 0);
   const callPrem = rows.reduce((a, r) => a + (r.right === 'C' ? r.premium : 0), 0);
-  const list = spreads.filter(t => t.ticker === ticker && onClock(t.dte, tenor)).sort((a, b) => b.premium - a.premium);
+  const list = spreads.filter(t => t.ticker === ticker && onClock(t.dte, tenor)).sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium));
   const prints = tape.filter(p => p.ticker === ticker && onClock(p.dte, tenor) && moneynessFilter(p, mny));
   const earnDays = own.reduce<number | null>((m, r) => (r.earnDays == null ? m : m == null ? r.earnDays : Math.min(m, r.earnDays)), null);
 
@@ -107,6 +111,7 @@ export function buildTraceSide(
       premium,
       callShare: premium > 0 ? Math.round((callPrem / premium) * 100) : 0,
       askPct: Math.round(weighted(rows, r => r.askPct, volume)),
+      side: rows.reduce((a, r) => (r.sideVol ? { ask: a.ask + r.sideVol.ask, bid: a.bid + r.sideVol.bid, mid: a.mid + r.sideVol.mid } : a), { ask: 0, bid: 0, mid: 0 }),
       sweptPct: Math.round(weighted(rows, r => r.sweepPct, volume)),
       /* past today's expiry: a contract in its last hours prints vol in the hundreds (QQQ's read 139% after the bell), so
          the same-day ones would swamp the read — it falls back to them only when nothing else traded */
@@ -123,9 +128,9 @@ export function buildTraceSide(
     },
     structures: {
       count: list.length,
-      paid: list.filter(t => t.net > 0).length,
-      collected: list.filter(t => t.net < 0).length,
-      dollars: list.reduce((a, t) => a + t.premium, 0),
+      paid: list.filter(t => t.netKnown !== false && t.netPremium > 0).length,
+      collected: list.filter(t => t.netKnown !== false && t.netPremium < 0).length,
+      dollars: list.reduce((a, t) => a + Math.abs(t.netPremium), 0),
       list,
     },
     tape: {
@@ -145,7 +150,7 @@ export interface TraceCompare {
   b: TraceSide;
   /** The name whose money leans the more bullish */
   bullish: TraceSide;
-  /** The heavier book, by premium */
+  /** The heavier premium on the book */
   heavier: TraceSide;
   /** The busier tape, by prints */
   busier: TraceSide;
@@ -157,23 +162,26 @@ const num = (v: number) => v.toLocaleString('en-US');
 /* Signed on purpose — RichRead inks +$/-$ by direction */
 export const signedUsd = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
 
-export function buildTraceCompare(a: TraceSide, b: TraceSide): TraceCompare {
+/** `tapeWindow` names the stretch both tapes cover ("from 15:58 to 16:14 ET"); `regular` is false after the close, when
+    a count of after-hours prints says nothing about which name is busier — the tape clause is then left out */
+export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over the same stretch', regular = true): TraceCompare {
   const bullish = a.net >= b.net ? a : b;
   const heavier = a.book.premium >= b.book.premium ? a : b;
   const busier = a.tape.prints >= b.tape.prints ? a : b;
   const lean = (s: TraceSide) => ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${signedUsd(s.net)}`;
+  const showTape = busier.tape.prints > 0 && regular;
   const parts: SentencePart[] = [
     { name: a.ticker },
     `${lean(a)} while `,
     { name: b.ticker },
     `${lean(b)}. `,
     { name: heavier.ticker },
-    ` carries the heavier book — ${fmtUsd(heavier.book.premium)} across its ${num(heavier.book.count)} contracts with the most premium, on ${num(heavier.book.volume)} volume${busier.tape.prints === 0 ? '. ' : ' — and '}`,
-    ...(busier.tape.prints === 0
+    ` carries more premium — ${fmtUsd(heavier.book.premium)} across its ${num(heavier.book.count)} standing contracts with the most premium, on ${num(heavier.book.volume)} volume${showTape ? ' — and ' : '. '}`,
+    ...(!showTape
       ? []
       : busier === heavier
-        ? [`the busier tape over the same stretch, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
-        : [{ name: busier.ticker }, ` the busier tape over the same stretch, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
+        ? [`the busier tape ${tapeWindow}, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
+        : [{ name: busier.ticker }, ` the busier tape ${tapeWindow}, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
     `Money on contracts expiring today: `,
     { name: a.ticker },
     ` ${signedUsd(a.odte.net)}, `,

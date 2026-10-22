@@ -152,6 +152,12 @@ export interface MarketSnapshot {
   uwByDate?: Record<string, StrikeNode[]>;
   /** Every expiry the vendor listed, nearest first. */
   uwExpiries?: { date: string; dte: number }[];
+  /** The live book's day move: `changePercent` is the regular session's change; this keeps the move outside the session
+      (pre-market before the open, after hours after the close) apart, and whether the day's change is known yet */
+  dayMove?: { extPct: number | null; phase: 'pre' | 'regular' | 'post' | 'closed'; known: boolean };
+  /** The instant (epoch ms) a book is read as of — set only for a session that has closed, so its flip is re-priced at
+      that session's own clock rather than now (data/bookWindow.ts sessionBook) */
+  asOf?: number;
 }
 
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS';

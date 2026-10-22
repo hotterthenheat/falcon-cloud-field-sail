@@ -56,6 +56,8 @@ export interface WatchedContract extends WatchBase {
   expiry: string;
   /** The contract's facts at the moment it was watched — the Tracker's "then" */
   at: { dte: number; spot: number; last: number; chgPct: number; volume: number; oi: number; premium: number; askPct: number };
+  /** The vendor's OCC symbol — the Tracker reads the contract's own day by it (optional: older marks carry none) */
+  occ?: string;
 }
 
 export interface WatchedPrint extends WatchBase {
@@ -72,6 +74,7 @@ export interface WatchedPrint extends WatchBase {
   sweep: boolean;
   /** The underlying and the contract's day when it printed */
   at: { spot: number; volume: number; oi: number };
+  occ?: string;
 }
 
 export interface WatchedStructure extends WatchBase {
@@ -82,9 +85,16 @@ export interface WatchedStructure extends WatchBase {
   dte: number;
   time: string;
   size: number;
-  /** Positive = debit paid, negative = credit collected */
+  /** Per UNIT: positive = debit paid, negative = credit collected (older marks: the vendor's net price) */
   net: number;
+  /** The net premium that changed hands, dollars, signs dropped (older marks: the gross of every leg — see `gross`) */
   premium: number;
+  /** Signed net premium: + paid, − collected — newer marks only */
+  netPremium?: number;
+  /** The gross of every leg — newer marks only */
+  gross?: number;
+  /** Units (the legs' common factor) — newer marks only; `size` holds the same */
+  units?: number;
   at: { spot: number };
 }
 
@@ -169,6 +179,7 @@ export const watchContract = (r: BookContract, from: WatchSource): WatchedContra
   watchedAt: Date.now(),
   from,
   at: { dte: r.dte, spot: r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct },
+  occ: r.optionSymbol,
 });
 
 export const watchPrint = (p: FlowPrint, from: WatchSource): WatchedPrint => ({
@@ -188,6 +199,7 @@ export const watchPrint = (p: FlowPrint, from: WatchSource): WatchedPrint => ({
   watchedAt: Date.now(),
   from,
   at: { spot: p.spot, volume: p.volume, oi: p.oi },
+  occ: p.occ,
 });
 
 export const watchStructure = (t: SpreadTrade, from: WatchSource): WatchedStructure => ({
@@ -199,9 +211,14 @@ export const watchStructure = (t: SpreadTrade, from: WatchSource): WatchedStruct
   expiry: t.expiry,
   dte: t.dte,
   time: t.time,
-  size: t.size,
+  /* THE MONEY THAT CHANGED HANDS (the re-audit, 2026-10-22: a structure's "Then $18.1K" was the gross of its legs; it
+     collected $2.35K) — units and the per-unit net from its settled legs, the net premium beside the gross */
+  size: t.units ?? t.size,
   net: t.net,
-  premium: t.premium,
+  premium: t.netKnown === false ? t.premium : Math.abs(t.netPremium),
+  netPremium: t.netKnown === false ? undefined : t.netPremium,
+  gross: t.premium,
+  units: t.units,
   watchedAt: Date.now(),
   from,
   at: { spot: t.spot },

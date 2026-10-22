@@ -47,7 +47,8 @@ import { useLiveQuote } from '../../data/liveQuote';
 import { SAMPLE_PROFILE, useProfile } from '../../data/profile';
 import { useAccount } from '../../data/account';
 import { useMarketData } from '../../context/MarketDataContext';
-import { usePinpointFeed } from '../../data/uwBook';
+import { usePinpointFeed, dayMoveWords, changeInk } from '../../data/uwBook';
+import { dayMoveOfSnapshot } from '../gex/DayMoveText';
 import { warmPath } from '../../data/warmRooms';
 import { useLaunch } from './LaunchTransition';
 import CompanyLogo from '../ui/CompanyLogo';
@@ -216,10 +217,14 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const live = usePinpointFeed(pathname.startsWith('/pinpoint') ? activeTicker : null);
   const quoted = useLiveQuote(onLiveDesk ? activeTicker : null);
   const spot = onLiveDesk ? (live?.spot ?? quoted?.spot ?? null) : (live?.spot ?? marketData?.spot ?? null);
-  const change = onLiveDesk ? (live?.changePercent ?? quoted?.changePct ?? null) : (live?.changePercent ?? marketData?.changePercent ?? 0);
+  /* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22): the regular session's change, the
+     move outside the session in the hover; zero in the neutral ink */
+  const move = live?.liveBook ? dayMoveOfSnapshot(live) : quoted ? { dayPct: quoted.changePct, extPct: quoted.extPct, phase: quoted.phase } : null;
+  const moveWords = onLiveDesk ? dayMoveWords(move) : null;
+  const change = onLiveDesk ? (move ? (move.phase === 'pre' ? move.extPct : move.dayPct) : null) : (live?.changePercent ?? marketData?.changePercent ?? 0);
   const open = clock.phase === 'OPEN' || clock.phase === 'AUCTION';
   const priceText = spot != null ? `$${spot.toFixed(2)}` : '—';
-  const changeText = spot != null && change != null ? `${change >= 0 ? '+' : ''}${change.toFixed(2)}%` : '';
+  const changeText = spot != null && change != null ? (moveWords ? moveWords.main : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`) : '';
 
   /* the signature's word, read on the clock's own tick so the dot and the session line never disagree */
   const marketWord = readMarketState().word;
@@ -281,11 +286,19 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       <span className="font-mono text-[11px] tnum text-textPrimary" data-subject-price>
         {priceText}
       </span>
-      {change != null && <span className={`font-mono text-[10px] tnum ${change >= 0 ? 'text-bull' : 'text-bear'}`}>{changeText}</span>}
-      <span className="ml-auto inline-flex items-center gap-1 text-textMuted group-hover:text-textSecondary transition-colors">
-        <Search className="w-3 h-3" />
-        <kbd className="font-mono text-[9px] tracking-wide">⌘K</kbd>
-      </span>
+      {change != null && (
+        <span className="font-mono text-[10px] tnum whitespace-nowrap" style={{ color: changeInk(change) }} title={moveWords ? `${moveWords.title}${moveWords.ext ? ` (${moveWords.ext})` : ''}` : undefined} data-subject-change>
+          {changeText}
+          {moveWords?.ext && move?.extPct != null && <span className="text-textMuted"> · AH {move.extPct > 0 ? '+' : move.extPct < 0 ? '−' : ''}{Math.abs(move.extPct).toFixed(2)}%</span>}
+        </span>
+      )}
+      {/* the after-hours figure takes the search mark's room — ⌘K still switches */}
+      {!(moveWords?.ext && move?.extPct != null) && (
+        <span className="ml-auto inline-flex items-center gap-1 text-textMuted group-hover:text-textSecondary transition-colors">
+          <Search className="w-3 h-3" />
+          <kbd className="font-mono text-[9px] tracking-wide">⌘K</kbd>
+        </span>
+      )}
     </button>
   );
 

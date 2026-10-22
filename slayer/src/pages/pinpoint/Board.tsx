@@ -37,7 +37,8 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, dayMoveWords, changeInk } from '../../data/uwBook';
+import { bellDay, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
 import { tickerName } from '../../data/tickers';
@@ -54,6 +55,7 @@ import { nyClock } from '../../core/nyTime';
 import { useLevelsScope } from '../../data/levelsScope';
 import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { BOARD_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
+import { kindTip } from '../../components/gex/glossary';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
@@ -114,11 +116,25 @@ const NameCell = ({ data, context }: ICellRendererParams<BoardRow, unknown, Boar
     </span>
   ) : null;
 
+/* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22: SPY −0.00% on a −1.18% day): the regular
+   session's change, with the move outside the session on its own labelled line; a zero change is neutral, never green */
+const DayChange = ({ data, compact = false }: { data: BoardRow; compact?: boolean }) => {
+  const w = dayMoveWords(data.day);
+  if (!w) return null;
+  const main = data.day?.phase === 'pre' ? data.day.extPct : data.day?.dayPct;
+  return (
+    <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-[11px]' : 'text-[10px]'} whitespace-nowrap`} title={w.title} data-day-change>
+      <span style={{ color: changeInk(main) }}>{w.main}</span>
+      {w.ext && <span className="text-textMuted">· {w.ext}</span>}
+    </span>
+  );
+};
+
 const SpotCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data ? (
     <TickFigure value={data.spot} className="inline-flex items-baseline gap-2 font-mono text-[12px]">
       <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
-      <span className={`text-[10px] ${data.changePct >= 0 ? 'text-bull' : 'text-bear'}`}>{fmtPct(data.changePct)}</span>
+      <DayChange data={data} />
     </TickFigure>
   ) : null;
 
@@ -190,7 +206,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
       <span className="inline-flex items-baseline gap-2">
         <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(w.strike)}</span>
         {kind && (
-          <span className="text-[8px] uppercase tracking-widest" style={{ color: ink }}>
+          <span className="text-[8px] uppercase tracking-widest" style={{ color: ink }} title={kindTip(kind)}>
             {kind}
           </span>
         )}
@@ -234,7 +250,7 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
 
 const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
   !data ? null : data.bellShare != null ? (
-    <span className="inline-flex items-center gap-2 font-mono tnum tabular-nums w-full" title={`${data.bellShare}% of ${data.ticker}'s gamma sits in contracts that expire at 4:00 today`}>
+    <span className="inline-flex items-center gap-2 font-mono tnum tabular-nums w-full" title={`${data.bellShare}% — ${bellDay().tip(data.ticker)}`}>
       <span className="text-[11px] text-textPrimary w-8 text-right">{data.bellShare}%</span>
       <span className="flex-1 h-[3px] rounded-full bg-ink/[0.06] overflow-hidden">
         <span className="block h-full rounded-full" style={{ width: `${data.bellShare}%`, background: SUPREME, opacity: 0.7 }} />
@@ -253,7 +269,14 @@ const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
 const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data?.pending ? (
     <Pending data={data} />
-  ) : data ? <span className="font-mono text-[11px] tnum tabular-nums text-textSecondary">{data.crossings == null ? '—' : `${data.crossings}×`}</span> : null;
+  ) : data ? (
+    <span
+      className="font-mono text-[11px] tnum tabular-nums text-textSecondary"
+      title={data.crossWhy ?? `Today's session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
+    >
+      {data.crossWhy ? 'not available' : data.crossings == null ? '—' : `${data.crossings}×`}
+    </span>
+  ) : null;
 
 /** The session's closes as one quiet line — the day's shape, not a chart */
 const SparkCell = ({ data }: ICellRendererParams<BoardRow>) => {
@@ -269,6 +292,104 @@ const SparkCell = ({ data }: ICellRendererParams<BoardRow>) => {
     <svg width={W} height={H} className="block" aria-hidden="true">
       <polyline points={pts} fill="none" stroke={up ? 'rgb(var(--bull))' : 'rgb(var(--bear))'} strokeOpacity={0.85} strokeWidth={1.2} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
+  );
+};
+
+/* THE PHONE'S BOARD IS CARDS, NOT A GRID (the retail test, 2026-10-22: the phone showed Name / Price / Hedging and hid
+   the flip, the walls and the supreme behind a sideways scroll). One card a name, every read a phone needs first on it:
+   price and the day's change, the regime, the flip and how far, the nearest wall, the supreme, net GEX. */
+const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: string) => void; onRemove: (t: string) => void }) => {
+  const label = (t: string, title?: string) => (
+    <span className="text-[9px] uppercase tracking-widest text-textMuted" title={title}>
+      {t}
+    </span>
+  );
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(row.ticker)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(row.ticker);
+        }
+      }}
+      className="px-3 py-2.5 border-b border-borderSubtle/60 active:bg-ink/[0.04] font-mono"
+      data-board-card={row.ticker}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <CompanyLogo ticker={row.ticker} size={18} />
+        <span className="text-[13px] font-bold text-textPrimary">{row.ticker}</span>
+        <span className="text-[13px] text-textPrimary tnum">${row.spot.toFixed(2)}</span>
+        <span className="min-w-0 truncate">
+          <DayChange data={row} compact />
+        </span>
+        <button
+          type="button"
+          aria-label={`Take ${row.ticker} off the board`}
+          title="Take this name off the board"
+          onClick={e => {
+            e.stopPropagation();
+            onRemove(row.ticker);
+          }}
+          className="ml-auto shrink-0 inline-flex items-center justify-center w-9 h-9 -mr-2 rounded text-textMuted"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      {row.pending ? (
+        <div className="mt-1 text-[11px] text-textMuted">Reading the levels…</div>
+      ) : (
+        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] tnum">
+          <div className="flex flex-col min-w-0">
+            {label('Hedging', 'What dealer hedging does at the current price')}
+            <span style={{ color: row.regime === 'SHORT' ? SHORT_GAMMA : row.regime === 'LONG' ? LONG_GAMMA : undefined }} className="truncate">
+              {row.regime === 'SHORT' ? 'amplifying moves' : row.regime === 'LONG' ? 'absorbing moves' : 'balanced'}
+            </span>
+          </div>
+          <div className="flex flex-col min-w-0">
+            {label('Net GEX', 'All the dealer hedging added up, dollars per 1% move — positive absorbs, negative amplifies')}
+            <span className={row.netGex > 0 ? 'text-bull' : row.netGex < 0 ? 'text-bear' : 'text-textMuted'}>
+              {row.netGex > 0 ? '+' : ''}
+              {fmtUsd(row.netGex)}
+            </span>
+          </div>
+          <div className="flex flex-col min-w-0">
+            {label('Flip', 'The price where dealer hedging switches between absorbing and amplifying')}
+            {row.flip != null ? (
+              <span>
+                <span style={{ color: FLIP }} className="font-semibold">
+                  {fmtStrike(row.flip)}
+                </span>
+                {row.flipDistPct != null && <span className="text-textSecondary"> {fmtPct(row.flipDistPct)}</span>}
+              </span>
+            ) : (
+              <span className="text-textMuted">none nearby</span>
+            )}
+          </div>
+          <div className="flex flex-col min-w-0">
+            {label('Nearest wall', 'The nearer of the call wall (most call gamma) and the put wall (most put gamma)')}
+            <span className="truncate">
+              <span style={{ color: row.nearest.kind === 'call' ? CALL_WALL : PUT_WALL }} className="text-[9px] font-bold uppercase tracking-wider">
+                {row.nearest.kind === 'call' ? 'Call' : 'Put'}
+              </span>{' '}
+              <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary">{fmtPct(row.nearest.distPct)}</span>
+            </span>
+          </div>
+          <div className="flex flex-col min-w-0">
+            {label('Supreme', 'The single strike with the most hedging on it')}
+            <span className="font-bold" style={{ color: SUPREME }}>
+              {fmtStrike(row.supreme)}
+            </span>
+          </div>
+          <div className="flex flex-col min-w-0">
+            {label(bellDay().head, bellDay().tip(row.ticker))}
+            <span className="text-textSecondary">{row.bellShare != null ? `${row.bellShare}%` : row.bellWhy === 'none' ? 'none' : '…'}</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -384,9 +505,9 @@ const Board = () => {
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
       { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 130, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
-      { headerName: 'Price', field: 'spot', flex: 1.1, minWidth: 130, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: "The last price and today's change" },
-      { headerName: 'Hedging today', field: 'regime', flex: 1.1, minWidth: 130, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
-      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : 'Net GEX · today', field: 'netGex', flex: 1.1, minWidth: 150, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
+      { headerName: 'Price', field: 'spot', flex: 1.6, minWidth: 250, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: "The last price and today's change" },
+      { headerName: todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 1.1, minWidth: 170, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
+      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : `Net GEX · ${todayScopeLabel().toLowerCase()}`, field: 'netGex', flex: 1.1, minWidth: 150, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
@@ -405,7 +526,7 @@ const Board = () => {
         minWidth: 170,
         cellRenderer: WallCell,
         cellDataType: false,
-        headerTooltip: 'The nearest wall: a strike with a lot of hedging that tends to slow price down. Call walls sit above price, put walls below. Shows how far away it is',
+        headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
       { headerName: 'Supreme', field: 'supreme', flex: 0.7, minWidth: 84, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
@@ -420,8 +541,8 @@ const Board = () => {
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
-      { headerName: 'Expires today', field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: "The share of the name's hedging in contracts that expire at 4:00 today. It is gone after the close, and the walls it made go with it. A dash means nothing on the name expires today" },
-      { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: 'How many times price has crossed the flip today. The more crossings, the less either side of it means' },
+      { headerName: bellDay().head, field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
+      { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: "How many times price crossed the flip in today's session — the flip of the contracts that were live in it (after the close, today's own book, not the next session's). The more crossings, the less either side of it means" },
       { headerName: 'Today so far', field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: 'The price path since the open' },
       {
         headerName: 'Your positions',
@@ -524,6 +645,24 @@ const Board = () => {
       </div>
       {bookDown && rows.length === 0 ? (
         <FeedFallback fault="failed" />
+      ) : phone ? (
+        <div data-board-cards>
+          {rows.length === 0 && <p className="px-3 py-4 font-mono text-[11px] text-textSecondary">Still reading the book</p>}
+          {[...rows]
+            .filter(r => !tokens.length || tokens.some(tok => r.ticker.startsWith(tok) || tickerName(r.ticker).toUpperCase().includes(tok)))
+            .sort((a, b) => Math.abs(a.flipDistPct ?? 1e9) - Math.abs(b.flipDistPct ?? 1e9))
+            .map(r => (
+              <PhoneCard
+                key={r.ticker}
+                row={r}
+                onRemove={removeBoardName}
+                onOpen={t => {
+                  changeTicker(t);
+                  navigate('/pinpoint/map');
+                }}
+              />
+            ))}
+        </div>
       ) : (
       /* MORE TO THE RIGHT, SAID (the UI sweep, 2026-10-22): twelve columns run past a laptop's width and the last one
          stood cut at the edge ("$354.9", "Net GEX to") as if broken — a fade now says the grid scrolls on, and the

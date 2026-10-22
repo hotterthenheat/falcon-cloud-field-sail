@@ -26,10 +26,9 @@ import { useCallback, useDeferredValue, useMemo, useState, type ReactNode } from
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { indexRoot, payoffRange, positionTheta, useSpreadLegs, useSpreads } from '../../data/traceLive';
+import { indexRoot, plural, usd as fmtUsd, useSpreads, useSpreadTrade } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
-import { fmtUsd } from '../../data/gex';
 import BookDrill from '../../components/trace/BookDrill';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
 import { DOOR, DOOR_HOVER_TEXT } from '../../components/trace/door';
@@ -75,10 +74,11 @@ const TOOLTIPS: Record<string, string> = {
   strategy: 'The shape — its dot is its kind, never a verdict',
   kind: "The vendor's name for the shape — its dot is its kind, never a verdict",
   strikes: 'Every strike the structure prints, in order — the row opens the structure and its legs',
-  net: 'The net price per structure — paid (debit) or collected (credit)',
-  prem: "The structure's net premium — paid (+) or collected (−) across every lot; the gross of every leg is on the hover",
-  maxloss: 'The most it can lose at expiry',
-  maxprofit: 'The most it can make at expiry',
+  size: 'Units — the legs\' contracts over their common factor: S5/B10/S5 is 5 flies',
+  net: 'The net per unit — the net premium over units × 100 — paid (debit) or collected (credit)',
+  prem: "The structure's net premium — paid (+) or collected (−) across every unit; the gross of every leg is on the hover",
+  maxloss: 'The most it can lose at expiry — the payoff of its legs as they were bought and sold',
+  maxprofit: 'The most it can make at expiry — the payoff of its legs as they were bought and sold',
   legs: 'How many legs the structure has',
 };
 
@@ -100,8 +100,14 @@ const KIND_DOT: Record<SpreadKind, string> = {
 
 const KIND_META = Object.fromEntries(SPREAD_KINDS.map(k => [k.key, k])) as Record<SpreadKind, (typeof SPREAD_KINDS)[number]>;
 
-const riskCell = (v: number | 'uncapped' | null, tone: 'loss' | 'profit') => {
-  if (v === null) return <span className="text-textSecondary">—</span>;
+const RISK_WHY: Record<NonNullable<SpreadTrade['riskNote']>, string> = {
+  unsettled: 'No single set of buys and sells adds up to its net — the legs carry no direction, so no payoff is drawn',
+  expiries: 'Its legs run to different expiries — the payoff at the near one depends on the far leg, so no max is drawn',
+  'no-net': 'The vendor printed no net and its legs no side — which way it went is not known',
+};
+const riskCell = (v: number | 'uncapped' | null, tone: 'loss' | 'profit', t?: SpreadTrade) => {
+  if (t && t.legsState === 'pending') return <span className="text-textMuted" title="Reading its legs">…</span>;
+  if (v === null) return <span className="text-textSecondary" title={t?.riskNote ? RISK_WHY[t.riskNote] : t?.legsState === 'none' ? 'Its legs did not load' : undefined}>—</span>;
   if (v === 'uncapped') return <span className={`font-bold ${tone === 'loss' ? 'text-warn' : 'text-bull'}`}>Uncapped</span>;
   return <span className={tone === 'loss' ? 'text-bear' : 'text-bull'}>{fmtUsd(v)}</span>;
 };
@@ -114,13 +120,16 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
   const navigate = useNavigate();
   /* THE STRUCTURE'S OWN LEGS, always (the audit, 2026-10-22): they merged only while the structure was among the newest
      rows, and the card fell back to placeholders — "Buy ×1 93 put — · 0d @ $0.00" */
-  const legPack = useSpreadLegs(trade);
-  const legs = legPack.rows;
+  const own = useSpreadTrade(trade);
+  /* THE CARD AND THE ROW ARE ONE STRUCTURE (the re-audit, 2026-10-22: an SPX "iron condor" read $5.8K max profit on the
+     card and $780 on its row): both are settleSpread's — its legs, its units, its expiry payoff */
+  const t = own.trade ?? trade;
+  const legs = t.legs;
   const settled = legs.length > 0 && legs.every(l => l.side != null);
-  const theta = positionTheta(legs);
-  const range = payoffRange(legs, trade.netPremium);
-  const maxLoss = range ? range.maxLoss : trade.maxLoss;
-  const maxProfit = range ? range.maxProfit : trade.maxProfit;
+  const theta = Number.isFinite(t.theta) ? t.theta : null;
+  const maxLoss = t.maxLoss;
+  const maxProfit = t.maxProfit;
+  const units = t.units ?? null;
 
   const go = (fn: () => void) => {
     onClose();
@@ -168,15 +177,16 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
       }
     >
       <div>
-        <div className="text-[12px] text-textSecondary leading-snug mb-3">
-          <RichRead text={KIND_META[trade.kind].read} />
+        {/* the structure in a sentence, from ITS legs — never the family's fixed line */}
+        <div className="text-[12px] text-textSecondary leading-snug mb-3" data-spread-read>
+          <RichRead text={t.read ?? (own.waiting ? 'Reading the legs…' : KIND_META[trade.kind].read)} />
         </div>
 
         {/* The legs — each line one fill, its direction settled by the structure's own net premium; a leg is the door to
             its contract's card */}
         <div className="border border-borderSubtle rounded mb-3 overflow-hidden" data-spread-legs>
           {legs.length === 0 ? (
-            <div className="px-2.5 py-3 font-mono text-[11px] text-textMuted">{legPack.waiting ? 'Reading the legs…' : legPack.fault ? 'The legs did not load' : 'No legs on the record'}</div>
+            <div className="px-2.5 py-3 font-mono text-[11px] text-textMuted">{own.waiting ? 'Reading the legs…' : own.failed ? 'The legs did not load' : 'No legs on the record'}</div>
           ) : (
             legs.map((l, i) => (
               <button
@@ -189,6 +199,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
                 {/* a leg's side in one ink (2026-10-13): a put sold is not bearish */}
                 <span className="font-bold text-textPrimary w-8">{l.side === 'BUY' ? 'Buy' : l.side === 'SELL' ? 'Sell' : 'Leg'}</span>
                 <span className="text-textSecondary">{num(l.contracts ?? trade.size * l.ratio)}×</span>
+                {units != null && units > 1 && <span className="text-textMuted" title="This leg's share of one unit">({l.ratio} a unit)</span>}
                 <span className="font-bold text-textPrimary tnum">{l.strike}</span>
                 <span className={`font-semibold ${l.right === 'C' ? 'text-bull' : 'text-bear'}`}>{l.right === 'C' ? 'call' : 'put'}</span>
                 <span className="text-[11px] text-textSecondary">
@@ -199,26 +210,26 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
             ))
           )}
         </div>
-        {legs.length > 0 && !settled && (
+        {legs.length > 0 && !settled && t.netKnown !== false && (
           <p className="-mt-2 mb-3 font-mono text-[11px] text-textMuted">No single set of buys and sells adds up to this structure's net, so its legs carry no direction here — and no theta or payoff.</p>
         )}
 
         <div className="grid grid-cols-2 gap-x-6 mb-3">
           <div>
             {fact(
-              'Net',
+              'Net a unit',
               <>
-                {trade.net === 0 ? '—' : <>${Math.abs(trade.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{trade.net > 0 ? 'debit' : 'credit'}</span></>}
+                {t.net === 0 ? (t.netAbs != null && units ? <>${(t.netAbs / (units * 100)).toFixed(2)} <span className="text-[11px] text-textSecondary">way not printed</span></> : '—') : <>${Math.abs(t.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span></>}
               </>
             )}
-            {fact('Size', `${num(trade.size)}×`)}
-            {fact(trade.netPremium >= 0 ? 'Net paid' : 'Net collected', trade.netPremium === 0 ? '—' : fmtUsd(Math.abs(trade.netPremium)))}
-            {fact('Gross of the legs', fmtUsd(trade.premium))}
-            {fact('IV', trade.iv > 0 ? `${trade.iv.toFixed(1)}%` : '—')}
+            {fact('Size', units != null ? <span title={t.ratioLabel ? `${t.ratioLabel} a unit · ${plural(t.contracts ?? 0, 'contract')} in all` : undefined}>{num(units)}× {t.ratioLabel && <span className="text-[11px] text-textSecondary">{t.ratioLabel}</span>}</span> : '…')}
+            {fact(t.netKnown === false ? 'Net, either way' : t.netPremium >= 0 ? 'Net paid' : 'Net collected', t.netKnown === false ? (t.netAbs != null ? fmtUsd(t.netAbs) : '—') : fmtUsd(Math.abs(t.netPremium)))}
+            {fact('Gross of the legs', fmtUsd(t.premium))}
+            {fact('IV', t.iv > 0 ? `${t.iv.toFixed(1)}%` : '—')}
           </div>
           <div>
-            {fact('Max loss', riskCell(maxLoss, 'loss'))}
-            {fact('Max profit', riskCell(maxProfit, 'profit'))}
+            {fact('Max loss', riskCell(maxLoss, 'loss', t))}
+            {fact('Max profit', riskCell(maxProfit, 'profit', t))}
             {fact(
               'Theta',
               /* per POSITION: Σ ± theta × contracts × 100 over the settled legs — dollars a day to time */
@@ -252,26 +263,40 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
 };
 
 
-/** A structure on a phone */
+/** The net per unit, in words — "$4.70 credit", "$1.25 · way not printed", "—" */
+const netWords = (t: SpreadTrade) =>
+  t.legsState === 'pending' && t.net === 0 && t.netKnown !== false
+    ? '…'
+    : t.net !== 0
+      ? `$${Math.abs(t.net).toFixed(2)} ${t.net > 0 ? 'debit' : 'credit'}`
+      : t.netAbs != null && t.units
+        ? `$${(t.netAbs / (t.units * 100)).toFixed(2)} · way not printed`
+        : 'net not printed';
+const sizeWords = (t: SpreadTrade) => (t.units != null ? `${num(t.units)}×` : t.legsState === 'pending' ? '…' : '—');
+
+/** A structure on a phone — the strikes on the figures line, so they never run into the time (the retail pass,
+    2026-10-22: "7690 / 7720 / 7750 16:59:23") */
 const phoneRow = (t: SpreadTrade) => (
   <PhoneRow
     lead={<span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />}
     title={
       <>
         <span className="font-bold">{t.ticker}</span>
-        <span>{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
-        <span className="font-bold tnum">{t.strikesLabel}</span>
+        <span className="truncate">{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
       </>
     }
     aside={t.time}
     figures={[
+      <span key="k" className="font-bold tnum text-textPrimary">
+        {t.strikesLabel}
+      </span>,
       <span key="p" className="font-semibold text-textPrimary">
-        {t.netPremium === 0 ? fmtUsd(t.premium) : `${fmtUsd(Math.abs(t.netPremium))} ${t.netPremium > 0 ? 'paid' : 'collected'}`}
+        {t.netKnown === false ? (t.netAbs != null ? `${fmtUsd(t.netAbs)} either way` : `${fmtUsd(t.premium)} gross`) : `${fmtUsd(Math.abs(t.netPremium))} ${t.netPremium > 0 ? 'paid' : 'collected'}`}
       </span>,
       <span key="n">
-        {t.net === 0 ? 'net not printed' : `$${Math.abs(t.net).toFixed(2)} ${t.net > 0 ? 'debit' : 'credit'}`}
+        {sizeWords(t)} · {netWords(t)}
       </span>,
-      <span key="l">max loss {t.maxLoss === 'uncapped' ? 'uncapped' : t.maxLoss == null ? 'on the card' : fmtUsd(t.maxLoss)}</span>,
+      <span key="l">max loss {t.legsState === 'pending' ? '…' : t.maxLoss === 'uncapped' ? 'uncapped' : t.maxLoss == null ? '—' : fmtUsd(t.maxLoss)}</span>,
     ]}
   />
 );
@@ -312,7 +337,9 @@ const MultiLeg = () => {
   /* THE EXPIRY CUT: a structure sits on its near leg's expiry */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldTrades, t => t.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
   const trades = useMemo(() => cutExpiry(heldTrades), [heldTrades, cutExpiry]);
-  const keyOf = useCallback((t: { id: string }) => t.id, []);
+  /* the row's identity carries whether its legs are in: the grid redraws a row only when its key or its sort value moves,
+     and a structure that settles keeps its id — so a settled row is a new row, never a stale "…" */
+  const keyOf = useCallback((t: SpreadTrade) => `${t.id}:${t.legsState ?? ''}`, []);
   /* the window the structures cover — the first and last in hand */
   const windowSpan = useMemo(() => {
     const ts = heldTrades.map(t => t.time).sort();
@@ -325,7 +352,7 @@ const MultiLeg = () => {
     return trades.filter(
       t =>
         (kind === 'ALL' || t.kind === kind) &&
-        (money === 'ALL' || (money === 'DEBIT' ? t.net > 0 : t.net < 0)) &&
+        (money === 'ALL' || (t.netKnown !== false && (money === 'DEBIT' ? t.netPremium > 0 : t.netPremium < 0))) &&
         // A structure matches on its ticker or ANY of its legs' contracts.
         (nq === '' || normSymbol(t.ticker).includes(nq) || t.legs.some(l => normSymbol(`${t.ticker}${l.strike}${l.right}`).includes(nq)))
     );
@@ -341,7 +368,7 @@ const MultiLeg = () => {
   // Three registers per column — components/trace/earnedInk.ts.
   const marks = useMemo(
     () => ({
-      size: earnMarks(shown, t => t.size),
+      size: earnMarks(shown, t => t.units ?? 0),
       prem: earnMarks(shown, t => Math.abs(t.netPremium)),
     }),
     [shown]
@@ -368,8 +395,8 @@ const MultiLeg = () => {
       names.add(t.ticker);
       prem += Math.abs(t.netPremium);
       /* a structure whose net the vendor left out is neither — it was counted as paid */
-      if (t.net > 0) paid++;
-      else if (t.net < 0) collected++;
+      if (t.netKnown !== false && t.netPremium > 0) paid++;
+      else if (t.netKnown !== false && t.netPremium < 0) collected++;
     }
     const unpriced = trades.length - paid - collected;
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -381,7 +408,7 @@ const MultiLeg = () => {
         <ReadDoor onOpen={() => setDrill(big)}>
           {big.ticker} {big.shape === 'unnamed' ? KIND_META[big.kind].label.toLowerCase() : big.shape}
         </ReadDoor>
-        <RichRead text={`, ${num(big.size)} of them for [[${fmtUsd(Math.abs(big.netPremium))}]] net${big.netPremium > 0 ? ' paid' : big.netPremium < 0 ? ' collected' : ''} (${fmtUsd(big.premium)} across every leg).`} />
+        <RichRead text={`, ${big.units != null ? `${plural(big.units, 'unit')} ` : ''}for [[${fmtUsd(Math.abs(big.netPremium))}]] net${big.netPremium > 0 ? ' paid' : big.netPremium < 0 ? ' collected' : ''} (${fmtUsd(big.premium)} across every leg).`} />
       </>
     );
   }, [trades, tapeState, windowSpan]);
@@ -418,7 +445,7 @@ const MultiLeg = () => {
         header: 'Strategy',
         sortValue: t => t.kind,
         render: t => (
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap" title={KIND_META[t.kind].read}>
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap" title={t.read ?? KIND_META[t.kind].read}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
             {t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}
           </span>
@@ -448,8 +475,12 @@ const MultiLeg = () => {
         key: 'size',
         header: 'Size',
         align: 'right',
-        sortValue: t => t.size,
-        render: t => <span className={weightInk(t.size, marks.size)}>{num(t.size)}×</span>,
+        sortValue: t => t.units ?? 0,
+        render: t => (
+          <span className={weightInk(t.units ?? 0, marks.size)} title={t.ratioLabel ? `${t.ratioLabel} a unit · ${plural(t.contracts ?? 0, 'contract')} in all` : undefined}>
+            {sizeWords(t)}
+          </span>
+        ),
       },
       {
         key: 'net',
@@ -457,9 +488,22 @@ const MultiLeg = () => {
         align: 'right',
         sortValue: t => t.net,
         render: t => (
-          <span className="text-textPrimary">
-            {/* the vendor leaves some structures' net price out — no figure, not "$0.00 debit" */}
-            {t.net === 0 ? <span className="text-textMuted">—</span> : <>${Math.abs(t.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span></>}
+          <span className="text-textPrimary whitespace-nowrap">
+            {/* per UNIT, from the net premium — the vendor's net_price is wrong on ratio'd shapes; a net the vendor left
+                out is no figure, not "$0.00 debit" (its size, either way, when the shape's legs can say it) */}
+            {t.net !== 0 ? (
+              <>
+                ${Math.abs(t.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span>
+              </>
+            ) : t.netAbs != null && t.units ? (
+              <span title="The vendor printed no net and the legs no side — this is the net's size either way">
+                ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">way n/a</span>
+              </span>
+            ) : t.legsState === 'pending' && t.netKnown !== false ? (
+              <span className="text-textMuted">…</span>
+            ) : (
+              <span className="text-textMuted">—</span>
+            )}
           </span>
         ),
       },
@@ -470,7 +514,13 @@ const MultiLeg = () => {
         sortValue: t => Math.abs(t.netPremium),
         render: t => (
           <span className={weightInk(Math.abs(t.netPremium), marks.prem)} title={`${fmtUsd(t.premium)} across every leg`}>
-            {t.netPremium === 0 ? <span className="text-textMuted">—</span> : <TickFigure value={t.netPremium}>{`${t.netPremium > 0 ? '+' : '−'}${fmtUsd(Math.abs(t.netPremium))}`}</TickFigure>}
+            {t.netKnown === false ? (
+              t.netAbs != null ? <span className="text-textSecondary" title="Paid if it was bought, collected if it was sold — the way is not printed">±{fmtUsd(t.netAbs)}</span> : <span className="text-textMuted">—</span>
+            ) : t.netPremium === 0 ? (
+              <span className="text-textMuted">—</span>
+            ) : (
+              <TickFigure value={t.netPremium}>{`${t.netPremium > 0 ? '+' : '−'}${fmtUsd(Math.abs(t.netPremium))}`}</TickFigure>
+            )}
           </span>
         ),
       },
@@ -479,14 +529,14 @@ const MultiLeg = () => {
         header: 'Max loss',
         align: 'right',
         sortValue: t => (t.maxLoss === 'uncapped' ? Number.MAX_SAFE_INTEGER : (t.maxLoss ?? -1)),
-        render: t => riskCell(t.maxLoss, 'loss'),
+        render: t => riskCell(t.maxLoss, 'loss', t),
       },
       {
         key: 'maxprofit',
         header: 'Max profit',
         align: 'right',
         sortValue: t => (t.maxProfit === 'uncapped' ? Number.MAX_SAFE_INTEGER : (t.maxProfit ?? -1)),
-        render: t => riskCell(t.maxProfit, 'profit'),
+        render: t => riskCell(t.maxProfit, 'profit', t),
       },
       {
         key: 'iv',
@@ -518,15 +568,15 @@ const MultiLeg = () => {
      The bull/bear pills only show when they are not the magenta one. */
   const champs = useMemo(() => {
     const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(pick).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
-    return { paid: by(t => t.net > 0), collected: by(t => t.net < 0), all: by(() => true) };
+    return { paid: by(t => t.netKnown !== false && t.netPremium > 0), collected: by(t => t.netKnown !== false && t.netPremium < 0), all: by(() => true) };
   }, [shown]);
   const facts = useMemo(() => {
     let paid = 0;
     let collected = 0;
     const byKind = new Map<SpreadKind, number>();
     for (const t of trades) {
-      if (t.net > 0) paid++;
-      else if (t.net < 0) collected++;
+      if (t.netKnown !== false && t.netPremium > 0) paid++;
+      else if (t.netKnown !== false && t.netPremium < 0) collected++;
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
     }
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -603,7 +653,7 @@ const MultiLeg = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill?.id ?? null} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : 'No structures on this cut — nothing printed as a spread, a fly or a condor under these cards today'} testId="multi-leg" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : 'No structures on this cut — nothing printed as a spread, a fly or a condor under these cards today'} testId="multi-leg" />
         {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}
         {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
