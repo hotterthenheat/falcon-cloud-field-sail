@@ -127,6 +127,27 @@ const cache = new Map();
 const inflight = new Map();
 const MAX_CACHE = 400;
 
+/* THE KEY'S CONCURRENCY CAP (the live-session sweep, 2026-10-22): the plan allows THREE requests in flight at once —
+   for the whole key, every viewer together ("You have exceeded 3 concurrent requests, the maximum allowed for your
+   current plan"). Past it the vendor answers 429, and under a burst sometimes a bare 500, and the page shows an empty
+   cell. Every upstream call takes a slot here and the rest queue, so the server never asks for more than the key may. */
+const UPSTREAM_SLOTS = 3;
+let upstreamBusy = 0;
+const upstreamQueue = [];
+async function upstreamSlot(fn) {
+  if (upstreamBusy >= UPSTREAM_SLOTS) await new Promise(r => upstreamQueue.push(r));
+  upstreamBusy += 1;
+  try {
+    return await fn();
+  } finally {
+    upstreamBusy -= 1;
+    const next = upstreamQueue.shift();
+    if (next) next();
+  }
+}
+/** A rate-limit or a passing vendor error — worth a wait and another ask */
+const retryable = status => status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+
 const ttlFor = (path) => {
   const p = path.split('?')[0];
   if (/\/(option-trades|flow-alerts|market-tide|sector-tide|etf-tide|top-net-impact|net-flow|greek-flow|stock-state|quote|flow-per-strike-intraday|net-prem-ticks|nope|spot-exposures)(\/|$)/.test(p)) return 3_000;
@@ -156,21 +177,25 @@ async function load(path, key) {
        left red "Failed to load resource" lines and empty cells; the proxy now waits the vendor out (its Retry-After, or
        0.8s, 1.6s, 3.2s) and only then gives up — handing back the last good print for the path when it has one. */
     let upstream;
+    let buf;
     for (let attempt = 0; ; attempt++) {
-      upstream = await fetch(`https://api.unusualwhales.com/api${path}`, {
-        headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(12_000),
+      /* the body is read inside the slot, so a slot is only freed once the vendor has finished answering */
+      [upstream, buf] = await upstreamSlot(async () => {
+        const r = await fetch(`https://api.unusualwhales.com/api${path}`, {
+          headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(12_000),
+        });
+        return [r, Buffer.from(await r.arrayBuffer())];
       });
-      if (upstream.status !== 429 || attempt >= 3) break;
+      if (!retryable(upstream.status) || attempt >= 3) break;
       const after = Number(upstream.headers.get('retry-after'));
-      await upstream.arrayBuffer().catch(() => null);
       await new Promise(r => setTimeout(r, Number.isFinite(after) && after > 0 && after <= 5 ? after * 1000 : 800 * 2 ** attempt));
     }
-    if (upstream.status === 429) {
+    /* still refused after the retries: the last good print for the path beats an empty cell */
+    if (retryable(upstream.status)) {
       const stale = cache.get(path);
       if (stale) return { status: stale.status, body: stale.body, type: stale.type };
     }
-    const buf = Buffer.from(await upstream.arrayBuffer());
     const type = upstream.headers.get('content-type') || 'application/json';
     if (upstream.status === 200) {
       cache.set(path, { at: Date.now(), status: 200, body: buf, type });

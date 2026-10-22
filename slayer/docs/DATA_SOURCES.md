@@ -22,6 +22,11 @@ Also note:
   allowlist in `server/uwProxy.mjs` — every route the browser calls has to be listed there or the proxy answers 404.
 - `/option-trades/exchange-breakdown/{date}` is gated to the API Advanced plan (422 "Missing access for the option tape" on this key) — not called, and the Live Tape's exchange panel is removed. It is the only route the three products used that this key refuses (browser sweep 2026-10-22: 40 pages, 7,621 calls, 146 distinct endpoints, every other one 200).
 - The Congress page needs only `/congress/*` (all open on this key); stock ownership ("Who is in it") reads `/institution/{t}/ownership` (open). The enterprise `/stock/{t}/ownership` and `/politician-portfolios/*` are extras the pages do not depend on.
+- **The key allows only 3 concurrent requests, across everyone using it** (UW answers 429 "You have exceeded 3
+  concurrent requests" and sometimes 500 past that). `server/uwProxy.mjs` therefore runs at most 3 upstream calls at
+  once, queues the rest, retries 429/5xx with backoff, and serves the last good copy if a retry still fails. In
+  production every visitor shares those 3 slots, so the proxy cache is what keeps it usable — a higher plan or a
+  shared server-side cache is needed before real traffic.
 - Futures and the rate strip are not carried: the Trace Futures tab is hidden from the navigation and `/trace/futures` redirects to the Live Tape (the page file is kept).
 
 ## Unusual Whales
