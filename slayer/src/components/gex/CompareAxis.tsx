@@ -42,7 +42,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Maximize2, Minimize2 } from 'lucide-react';
-import { fmtDollars } from '../../data/ahead';
+import { fmtDollars, fmtStrike } from '../../data/ahead';
 import { GREEK_LABEL, GREEK_WORDS, REACH_OPTIONS, type Compare, type Greek, type Reach } from '../../data/compare';
 import DropdownMulti from '../ui/DropdownMulti';
 import { GREEK_PICK_OPTIONS } from './exposureView';
@@ -267,6 +267,16 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
                 </dd>
               </div>
             </>
+          )}
+          {/* ON A PHONE THE FLIPS ARE NAMED HERE (the owner's call, 2026-10-22): a ~140px lane has no room for a "flip 769.50"
+              chip beside its capsules, so the lane keeps only the dashed line and the head says which strike it is */}
+          {(cmp.a.flip != null || cmp.b.flip != null) && (
+            <div className="md:hidden col-span-3 mt-2">
+              <dt className="text-[10px] text-textMuted">Flips · the dashed lines</dt>
+              <dd className="mt-0.5 font-mono text-[12px] tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-flips>
+                {cmp.a.ticker} {cmp.a.flip != null ? fmtStrike(cmp.a.flip) : '—'} <span className="text-textMuted">·</span> {cmp.b.ticker} {cmp.b.flip != null ? fmtStrike(cmp.b.flip) : '—'}
+              </dd>
+            </div>
           )}
         </dl>
         {/* THE FULLSCREEN DOOR at the head's far right — where the calendar's and

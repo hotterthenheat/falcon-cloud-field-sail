@@ -449,8 +449,10 @@ const Windows = () => {
               <button type="button" onClick={() => setWinSel(Math.max(0, winIdx - 1))} disabled={winIdx === 0} aria-label="Previous interval" className={stepBtn}>
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span className="inline-flex items-center gap-2 h-7 px-2.5 rounded-md border border-borderSubtle bg-chip font-mono">
-                <span className="text-[11px] text-textMuted">Interval</span>
+              {/* the word "Interval" lives on the hover and on phones only — at 1440 it was the last 50px between the Columns
+                  card and its own row */}
+              <span className="inline-flex items-center gap-2 h-7 px-2.5 rounded-md border border-borderSubtle bg-chip font-mono" title="The quarter-hour interval on the grid">
+                <span className="text-[11px] text-textMuted xl:hidden">Interval</span>
                 <span className="text-[11px] font-semibold tnum text-textPrimary">{win ? `${win.label} ET` : '—'}</span>
                 {win?.live && (hold.paused ? <span className="text-[11px] text-warn">held</span> : <span className="text-[11px] text-select animate-live-breathe">live</span>)}
               </span>
@@ -472,7 +474,7 @@ const Windows = () => {
             <DropdownSelect label="Screen" value={cut} options={CUT_OPTIONS} onChange={setCut} title="Which of the interval's flow" testId="windows-cut" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="windows-side" />
             <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="Only contracts on one expiry — or every expiry" testId="windows-expiry" />
-            <SavedCutsControl store={WINDOW_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="windows" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} />
+            <SavedCutsControl store={WINDOW_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="windows" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} compact />
             <div className="ml-auto">
               <ColumnChooser columns={chooserCols} hidden={hidden} onToggle={toggle} onAll={showAll} onNone={() => hideAll(columns.map(c => c.key))} />
             </div>
