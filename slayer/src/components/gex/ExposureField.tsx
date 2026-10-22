@@ -69,7 +69,7 @@ import { roomLevels } from '../../data/roomLevels';
 import { bookForDates } from '../../data/bookWindow';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
-import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { snapshotAtOpen } from '../../data/levelview';
 import { HEAT_MODE, heatCellStyle, heatRampColorFor } from './heatmap';
 import type { MarketSnapshot } from '../../types/market';
@@ -501,7 +501,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       ceiling, then what fits (every pane reports its own; the least wins) — read off a shape (the live picks for the
       card's words, the drawn snapshot for the columns; see the soft swap below) */
   const windowFor = (surface: ExposureSurface, sh: { range: { from: number; through: number }; afterBell: boolean; greeks: Greek[] }): number[] => {
-    const todayIdx = surface.expiries.findIndex(e => e.dte === 0);
+    const todayIdx = todayColumn(surface);
     const last = surface.expiries.length - 1;
     const lo = Math.max(0, Math.min(sh.range.from, last));
     const hi = Math.max(lo, Math.min(sh.range.through, last));

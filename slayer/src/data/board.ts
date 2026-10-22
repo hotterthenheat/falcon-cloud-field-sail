@@ -24,7 +24,7 @@ import { buildAgenda } from './agenda';
 import { aheadClock, type AheadClock } from './ahead';
 import { buildBuilding } from './building';
 import { buildExposureProfile } from './exposure';
-import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge } from './flipGauge';
 import { getBoardNames } from './boardNames';
 import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange } from './uwBook';
@@ -66,7 +66,7 @@ const SPARK_POINTS = 48;
 
 /** Share of the surface's gamma that expires today, percent — null without a today column */
 export function bellShareOf(surface: ExposureSurface): number | null {
-  const todayIdx = surface.expiries.findIndex(e => e.dte === 0);
+  const todayIdx = todayColumn(surface);
   if (todayIdx < 0) return null;
   let dies = 0;
   let total = 0;

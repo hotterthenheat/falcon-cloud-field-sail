@@ -56,7 +56,7 @@ import { impliedDaySigma } from './atr';
 import { lastSessionSupreme, moveIntoClose, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
 import { inCashSession, sessionBars } from './levelview';
 import { nyMinutes } from '../core/nyTime';
-import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildVannaCharm } from './vannacharm';
 import type { SessionClock } from './moc';
 import type { ExposureProfileData, IvShift, LevelShift } from '../types/gex';
@@ -534,7 +534,7 @@ export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfile
   let surface: ExposureSurface | null = null;
   try {
     surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-    const today = surface.expiries.findIndex(e => e.dte === 0);
+    const today = todayColumn(surface);
     if (today >= 0) {
       let dies = 0;
       let total = 0;

@@ -18,6 +18,7 @@ import { createContext, useContext, useEffect, useRef, type ReactNode } from 're
 import { attachScrollMore } from '../ui/scrollMore';
 import { fmtUsd } from '../../data/gex';
 import type { ExposureSurface, Greek } from '../../data/exposureSurface';
+import { todayColumn } from '../../data/exposureSurface';
 import { heatCellStyle, type HeatMode } from './heatmap';
 
 const INK = 'rgb(var(--text-primary))';
@@ -389,7 +390,7 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
   const supreme = surface.supreme[greek];
   const supremeDate = surface.expiries[supreme.e]?.date ?? '';
   /* How much of the calendar expires at the bell */
-  const todayIdx = surface.expiries.findIndex(e => e.dte === 0);
+  const todayIdx = todayColumn(surface);
   let dies = 0;
   let total = 0;
   for (let e = 0; e < surface.expiries.length; e++) for (let s = 0; s < surface.strikes.length; s++) {
