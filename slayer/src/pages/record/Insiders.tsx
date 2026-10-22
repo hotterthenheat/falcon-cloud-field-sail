@@ -134,7 +134,7 @@ const TradeCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
 const SharesCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{fmtInt(data.shares)}</span> : null);
 const PriceCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">${data.price.toFixed(2)}</span> : null);
 const ValueCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum font-semibold text-textPrimary">{fmtDollars(data.value)}</span> : null);
-const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{data.stakePct < 0 ? '—' : `${data.stakePct.toFixed(1)}%`}</span> : null);
+const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{data.stakePct < 0 ? '—' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}</span> : null);
 
 /** Chosen, planned or unstated — the flag the whole page turns on */
 const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
@@ -507,7 +507,13 @@ export const InsiderFile = () => {
           />
         </div>
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insider-sentence>
-          {book.person} filed {book.trades.length} {book.trades.length === 1 ? 'time' : 'times'} at {book.ticker}. {book.trades.length - book.trades.filter(t => TX_CODES[t.code].openMarket).length} of them never reached the market.
+          {book.person} filed {book.trades.length} {book.trades.length === 1 ? 'time' : 'times'} at {book.ticker}.{' '}
+          {(() => {
+            /* "0 of them never reached the market" read as a double negative — say how many were grants, awards or
+               withholdings only when there were some */
+            const off = book.trades.length - book.trades.filter(t => TX_CODES[t.code].openMarket).length;
+            return off === 0 ? (book.trades.length === 1 ? 'It was an open-market trade.' : 'Every one was an open-market trade.') : `${off} of them never reached the market — grants, awards or shares withheld for tax.`;
+          })()}
         </p>
         <div className="slayer-board border-t border-borderSubtle" data-insider-trades>
           <AgGridProvider modules={GRID_MODULES}>

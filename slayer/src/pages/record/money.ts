@@ -18,3 +18,7 @@ export const signedM = (n: number): string => `${n > 0 ? '+' : n < 0 ? '−' : '
 
 /** Billions of dollars at their own scale */
 export const moneyB = (b: number): string => moneyM(b * 1000);
+
+/** Shares left to borrow, millions. The borrow feed caps the count at 10,000,000 — a row at the cap reads "10M+", not an
+    exact 10.00M (the Dossier ship pass, 2026-10-22: half the short book printed "10.00M"). */
+export const borrowM = (m: number | null): string => (m == null ? '—' : m >= 10 - 1e-9 ? '10M+' : m >= 1 ? `${m.toFixed(2)}M` : `${Math.round(m * 1000)}K`);

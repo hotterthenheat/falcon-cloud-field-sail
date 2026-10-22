@@ -309,6 +309,8 @@ export interface UwShort {
 export interface UwEtfHolding {
   ticker?: string;
   name?: string;
+  /** 'bond' lines carry no ticker — the name and the face amount */
+  type?: string;
   weight?: string | number;
   shares?: string | number;
   sector?: string;
