@@ -8,3 +8,9 @@ Rules:
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
 - On this machine `graphify` is not on PATH (installed 2026-09-19 with `uv tool install graphifyy`): call it as `"C:/Users/Dracula/.local/bin/graphify.exe"` until `~/.local/bin` is added to PATH. The graph lives in `graphify-out/`, which is git-ignored.
+
+## data sources
+
+What the Unusual Whales and ThetaData keys actually give us — and the rule that **Pinpoint and Dossier read Unusual
+Whales only** — lives in `docs/DATA_SOURCES.md`. Read it before adding or changing any data call. Every UW route the
+browser uses must also be on the allowlist in `server/uwProxy.mjs`.
