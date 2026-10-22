@@ -80,6 +80,8 @@ const ALLOWED = [
   new RegExp(`^\\/stock\\/${T}\\/greek-exposure\\/expiry(?:\\?|$)`),
   new RegExp(`^\\/stock\\/${T}\\/greek-exposure\\/strike-expiry(?:\\?|$)`),
   new RegExp(`^\\/stock\\/${T}\\/gex-levels(?:\\?|$)`),
+  /* greeks for every strike of one expiry (?expiry=YYYY-MM-DD) — Pinpoint's greeks once the Theta terminal is out of the picture */
+  new RegExp(`^\\/stock\\/${T}\\/greeks(?:\\?|$)`),
   new RegExp(`^\\/stock\\/${T}\\/spot-exposures(?:\\?|$)`),
   new RegExp(`^\\/stock\\/${T}\\/spot-exposures\\/strike(?:\\?|$)`),
   new RegExp(`^\\/stock\\/${T}\\/spot-exposures\\/expiry-strike(?:\\?|$)`),
