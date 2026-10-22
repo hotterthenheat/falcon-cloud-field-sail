@@ -97,7 +97,9 @@ export async function uwCall(path: string, priority = false): Promise<{ status: 
   await takeSlot(priority);
   try {
     let res = await fetch(`/api/uw${path}`);
-    if (res.status === 429) {
+    /* one retry for a rate limit or a passing gateway hiccup (the ship sweep, 2026-10-22: a single 503 on a route that
+       answered 200 three times straight after) — a second failure is real and is reported */
+    if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
       await new Promise(r => setTimeout(r, 1500));
       res = await fetch(`/api/uw${path}`);
     }
