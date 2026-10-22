@@ -326,7 +326,7 @@ function Rows({ cols, rows, max = 8 }: { cols: { key: string; label: string; rig
       <div className="min-w-[360px]">
         <div className="px-5 h-[20px] grid items-center gap-x-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: template }}>
           {cols.map(c => (
-            <span key={c.key} className={c.right ? 'text-right' : 'truncate'}>
+            <span key={c.key} className={c.right ? 'text-right truncate' : 'truncate'}>
               {c.label}
             </span>
           ))}
@@ -662,7 +662,6 @@ export function EarningsVol({ ticker }: { ticker: string }) {
   const stats = latest(taken(book, 'vstats'));
   const iv = num(stats?.iv);
   const rv = num(stats?.rv);
-  const rank = num(stats?.iv_rank);
   const ratio = iv != null && rv ? iv / rv : null;
   const termRows = series(taken(book, 'term-dist')).map(r => {
     const vol = asPct(num(r.volatility));
@@ -676,7 +675,7 @@ export function EarningsVol({ ticker }: { ticker: string }) {
   const chart = term.some(l => l.pts.length >= 2);
   const facts = [
     iv != null ? { label: 'Implied', value: pct(iv) } : null,
-    rank != null ? { label: 'IV rank', value: rank.toFixed(0) } : null,
+    /* no IV rank here: the page head already carries it, read once, so the two never disagree by a point */
     rv != null ? { label: 'Realized', value: pct(rv) } : null,
     ratio != null ? { label: 'IV / RV', value: ratio.toFixed(2) } : null,
   ].filter((f): f is { label: string; value: string } => !!f);
@@ -787,10 +786,11 @@ export function ShortHistory({ ticker }: { ticker: string }) {
             max={body.length}
             rows={body}
             cols={[
-              { key: 'market_date', label: 'Report', w: 'minmax(0,1.2fr)' },
-              { key: 'si', label: '% of float', right: true },
-              { key: 'days', label: 'Days to cover', right: true, w: '96px' },
-              { key: 'shares', label: 'Shares', right: true },
+              /* the date keeps its width — on a phone the share columns took it and every row read "2026…" (the Dossier sweep, 2026-10-22) */
+              { key: 'market_date', label: 'Report', w: '86px' },
+              { key: 'si', label: '% of float', right: true, w: 'minmax(0,1fr)' },
+              { key: 'days', label: 'Days to cover', right: true, w: 'minmax(0,96px)' },
+              { key: 'shares', label: 'Shares', right: true, w: 'minmax(0,1fr)' },
             ]}
           />
           <PageBar page={at} pages={pages} onPage={setPage} testId="short-reports" />

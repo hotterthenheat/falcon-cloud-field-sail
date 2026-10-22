@@ -700,9 +700,8 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   const window = past.slice(0, 8);
   const epsActual = last ? nOr(last.actual_eps) : null;
   const epsEstimate = last ? nOr(last.street_mean_est) : null;
-  /* against a cent-sized estimate the percent explodes (−0.10 against −0.03 read −233%) — under five cents it is said in
-     cents instead, and the lean is read off the cents */
-  const tinyEst = epsEstimate != null && Math.abs(epsEstimate) < 0.05;
+  /* cents when the estimate is small or the two straddle zero — the same rule as the page's report table (StockName centsGap) */
+  const tinyEst = epsEstimate != null && epsActual != null && (Math.abs(epsEstimate) < 0.25 || Math.sign(epsActual) !== Math.sign(epsEstimate));
   const epsSurprisePct = epsActual != null && epsEstimate != null && epsEstimate !== 0 ? ((epsActual - epsEstimate) / Math.abs(epsEstimate)) * 100 : null;
   const beats = window.filter(r => (nOr(r.actual_eps) ?? 0) >= (nOr(r.street_mean_est) ?? 0)).length;
   const growth = nOr(file.screen?.eps_growth_4q);
@@ -834,7 +833,8 @@ const agreementOf = (pillars: Pillar[], composite: number, news: NewsRead): Agre
   if (against.length) {
     const p = against[0];
     const f = [...p.factors].sort((a, b) => Math.abs(b.lean) * b.weight - Math.abs(a.lean) * a.weight)[0];
-    risk = f ? `If ${p.name.toLowerCase()} is right — ${f.label.toLowerCase()} ${f.value}, ${f.note} — the ${lean} read fails there first.` : `If ${p.name.toLowerCase()} is right, the ${lean} read fails there first.`;
+    const is = /s$/.test(p.name) && !/news$/i.test(p.name) ? 'are' : 'is';
+    risk = f ? `If ${p.name.toLowerCase()} ${is} right — ${f.label.toLowerCase()} ${f.value}, ${f.note} — the ${lean} read fails there first.` : `If ${p.name.toLowerCase()} ${is} right, the ${lean} read fails there first.`;
   } else {
     /* nothing argues — but a pillar that sits in the middle does not AGREE either (SOUN: "1 of 4 agree" over "Every pillar
        agrees"); the line says which it is */
@@ -1000,7 +1000,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     { key: 'news', label: 'The wire', status: wireLive(ticker) ? 'live' : 'thin', stamp: news.read.stories.length ? `the newest story ${news.read.stories[0].item.time}` : 'nothing on this name yet' },
     { key: 'sessions', label: 'Sessions', status: sessions >= 20 ? 'live' : 'thin', stamp: `${sessions} on hand` },
     { key: 'fundamentals', label: 'Fundamentals', status: numbers.read.sample ? 'thin' : 'live', stamp: numbers.read.sample ? 'the feed has no print for this name yet' : 'the last print and earnings growth' },
-    { key: 'record', label: 'Insiders and Congress', status: record.insiders.status === 'live' || record.congress.status === 'live' ? 'live' : 'thin', stamp: `${insiderN} insider ${insiderN === 1 ? 'trade' : 'trades'} · ${congressN} congress ${congressN === 1 ? 'report' : 'reports'}` },
+    { key: 'record', label: 'Insiders and Congress', status: record.insiders.status === 'live' || record.congress.status === 'live' ? 'live' : 'thin', stamp: insiderN || congressN ? `${insiderN} insider ${insiderN === 1 ? 'trade' : 'trades'} · ${congressN} congress ${congressN === 1 ? 'report' : 'reports'} in the latest feed` : 'the name\'s own filings below' },
   ];
   const completeness = Math.round((100 * sources.filter(s => s.status === 'live').length) / sources.length);
 

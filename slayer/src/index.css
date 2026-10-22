@@ -948,6 +948,13 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
 .slayer-board .ag-row {
   cursor: pointer;
 }
+/* A short book (one sector, two countries) sat on AG Grid's 150px auto-height floor — a band of empty panel under the
+   rows. With rows on the grid the floor goes; an empty grid keeps it for its overlay line (the Dossier sweep, 2026-10-22). */
+.slayer-board .ag-layout-auto-height .ag-center-cols-viewport:has(.ag-row),
+.slayer-board .ag-layout-auto-height .ag-center-cols-container:has(.ag-row),
+.slayer-board .ag-grid-scrolling-rows.ag-layout-auto-height:has(.ag-row) {
+  min-height: 0 !important;
+}
 /* A wide grid stays inside the screen and scrolls its own columns. */
 .slayer-board {
   min-width: 0;
