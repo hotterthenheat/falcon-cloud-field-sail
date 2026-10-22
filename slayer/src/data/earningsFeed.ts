@@ -8,7 +8,7 @@ import type { Sector } from './universe';
 import { lookup } from './universe';
 import { decide, isKnownName, type ActiveContract, type EarningsDossier, type EarningsEvent, type EarningsQuarter, type NextReport, type ReportSlot } from './earnings';
 import { tickerName } from './tickers';
-import { whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
+import { uwCall, whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
 
 interface SlotRow {
   symbol?: string;
@@ -486,7 +486,10 @@ async function pullIvBatch(tickers: string[]): Promise<void> {
 }
 
 async function enrich(events: EarningsEvent[]) {
-  const want = events.filter(e => e.known && e.history === false).map(e => e.ticker);
+  /* today's reports first, then the days ahead, then the days behind — the vendor's slots are taken in order, and the
+     board read Thursday's names "—" while Monday's histories queued ahead of them (the ship pass, 2026-10-22) */
+  const urgency = (e: EarningsEvent) => (e.daysOut >= 0 ? e.daysOut : 100 - e.daysOut);
+  const want = events.filter(e => e.known && e.history === false).sort((a, b) => urgency(a) - urgency(b)).map(e => e.ticker);
   const unique = [...new Set(want)];
   void pullIvBatch(events.filter(e => e.known).map(e => e.ticker)).then(() => {
     feed = {
@@ -630,8 +633,15 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
       if (dead) return;
       emit();
       const upcoming = rows?.find(r => (r.report_date || '') >= nyToday()) ?? rows?.[0];
-      const spot = upcoming ? priceOf(upcoming) : 0;
-      return pullContracts(sym, spot, true).then(() => {
+      /* the contracts' "from spot" and breakevens read the stock's LAST price — the calendar row's price is the one
+         the print was priced against, stale once it is out (TSLA's cards measured from $386.55 after a $373.63 close) */
+      return uwCall(`/stock/${encodeURIComponent(sym)}/stock-state`, true)
+        .then(res => {
+          const last = Number((res.data as { close?: string } | null)?.close);
+          return last > 0 ? last : upcoming ? priceOf(upcoming) : 0;
+        })
+        .catch(() => (upcoming ? priceOf(upcoming) : 0))
+        .then(spot => pullContracts(sym, spot, true)).then(() => {
         if (!dead) emit();
       });
     });

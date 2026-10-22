@@ -60,7 +60,6 @@
 import { now } from '../core/clock';
 import { readSessionClock } from './moc';
 import { buildExposureProfile } from './exposure';
-import { readLevelsScope } from './levelsScope';
 import { LEVELS_WINDOW } from './roomLevels';
 import { bookCandles, snapshotOf } from './uwBook';
 import { peekLive } from './liveRecord';
@@ -129,7 +128,8 @@ export interface TrendRead {
 export interface MoneyRead {
   netGex: number;
   netDex: number;
-  netVex: number;
+  /** null when the vendor's book carries no vega (its greek-exposure rows have none) — never a measured $0 */
+  netVex: number | null;
   netVanna: number;
   netCharm: number;
   levels: ExposureLevels;
@@ -505,7 +505,10 @@ const busiestOf = (prints: FlowPrint[], right: 'C' | 'P'): BookContract[] => {
 /* ---- the money, from the book, the flow and the dark pool ------------------------------- */
 
 const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], file: StockFile): { read: MoneyRead; factors: Factor[] } => {
-  const profile = buildExposureProfile(snapshot, readLevelsScope(), LEVELS_WINDOW);
+  /* EVERY LISTED DATE, NOT THE DESK'S SCOPE (the ship pass, 2026-10-22): the Pinpoint desk's Levels card defaults to
+     today's contracts, and a single stock with no same-day expiry (AAPL on a Thursday) then read an empty book — open
+     interest 0, "50% calls", a $44M net GEX against the whole book's −$573M. The name's page reads the whole book. */
+  const profile = buildExposureProfile(snapshot, 'ALL', LEVELS_WINDOW);
   const netVanna = profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
   const netCharm = profile.strikes.reduce((a, s) => a + (s.charm?.net ?? 0), 0);
   const regime: MoneyRead['regime'] = snapshot.spot >= profile.levels.flip ? 'absorbing' : 'amplifying';
@@ -557,9 +560,9 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     postureNote: !file.dark.length
       ? ''
       : posture === 'ACCUMULATING'
-        ? 'which reads as buying'
+        ? 'blocks bought on dips'
         : posture === 'DISTRIBUTING'
-          ? 'which reads as selling'
+          ? 'blocks sold into strength'
           : 'on both sides of the price',
     totalNotional: darkNotional,
     levels: [],
@@ -571,7 +574,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const read: MoneyRead = {
     netGex: profile.netGex,
     netDex: profile.netDex,
-    netVex: profile.netVex,
+    netVex: profile.netVex !== 0 ? profile.netVex : null,
     netVanna,
     netCharm,
     levels: profile.levels,
@@ -893,7 +896,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const name = u?.name ?? tickerName(ticker);
   const sector = u?.sector ?? null;
   const clock = readSessionClock();
-  const marketWord = clock.phase === 'OPEN' ? 'market open' : clock.phase === 'AUCTION' ? 'the closing auction' : clock.phase === 'PREMARKET' ? 'pre-market' : clock.phase === 'AFTERHOURS' ? 'after hours' : 'market closed';
+  const marketWord = clock.phase === 'OPEN' ? 'market open' : clock.phase === 'AUCTION' ? 'the closing auction' : clock.phase === 'PREMARKET' ? 'before the open' : clock.phase === 'AFTERHOURS' ? 'after hours' : 'market closed';
   const minute = bookCandles(ticker) ?? [];
   const file = peekStockFile(ticker);
   const blocks = file.days.length >= 5 ? file.days.map(c => [c]) : minute.length >= 2 ? [minute] : [];

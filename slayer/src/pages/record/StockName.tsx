@@ -79,6 +79,8 @@ import { StockNameSkeleton } from './recordSkeletons';
 import CompanyFile from '../../components/record/CompanyFile';
 import NameBooks from '../../components/record/NameBooks';
 import { StockFacts } from '../../components/vendor/LiveDesk';
+import { stockBookKey, useVendorRow } from '../../data/vendorFeed';
+import { nyIsoDate } from '../../core/nyTime';
 
 const SILVER = 'rgb(var(--silver))';
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
@@ -482,8 +484,6 @@ const StockName = () => {
   const maxPrem = Math.max(1, ...view.prints.buys.map(p => p.premium), ...view.prints.sells.map(p => p.premium));
   const prem = money.callPremium + money.putPremium;
   const callShare = prem > 0 ? (100 * money.callPremium) / prem : 50;
-  const oi = money.callOI + money.putOI;
-  const callOIShare = oi > 0 ? (100 * money.callOI) / oi : 50;
   const up = view.changePct >= 0;
   const live = view.sources.filter(s => s.status === 'live').length;
   const maxPts = Math.max(0.1, ...view.contributions.map(c => Math.abs(c.points)));
@@ -598,7 +598,7 @@ const StockName = () => {
             <CompanyLogo ticker={T} size={34} />
             <div className="min-w-0">
               <div className="h-6 flex items-center gap-2.5">
-                <h3 className="text-[15px] font-semibold leading-tight text-textPrimary truncate">{view.name}</h3>
+                <h3 className="text-[15px] font-semibold leading-tight text-textPrimary truncate"><CompanyTitle ticker={T} name={view.name} /></h3>
                 <span className="font-mono text-[11px] font-bold text-textSecondary">{T}</span>
                 <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the read, the pillars and the factors mean" testId="stock-guide" />
               </div>
@@ -770,19 +770,19 @@ const StockName = () => {
             ))}
           </div>
         </Box>
-        <Box title="The money" sub="The live book" aside={<PillarBarSmall p={byKey.money} />} testId="money">
+        <Box title="The money" sub="The live book · every listed date" aside={<PillarBarSmall p={byKey.money} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             <Fact label="Net GEX" testId="gex">
               <Money v={money.netGex} /> <span className="text-textMuted">· {money.regime}</span>
             </Fact>
             <Fact label="Net DEX · VEX" testId="dex">
-              <Money v={money.netDex} /> <span className="text-textMuted">·</span> <Money v={money.netVex} />
+              <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
             </Fact>
             <Fact label="Vanna · charm" testId="vanna">
               <Money v={money.netVanna} /> <span className="text-textMuted">·</span> <Money v={money.netCharm} />
             </Fact>
             <Fact label="Open interest" testId="oi">
-              {count(oi)} <span className={callOIShare >= 50 ? 'text-bull' : 'text-bear'}>{callOIShare >= 50 ? `${callOIShare.toFixed(0)}% calls` : `${(100 - callOIShare).toFixed(0)}% puts`}</span>
+              <OpenInterest ticker={view.ticker} fallbackCall={money.callOI} fallbackPut={money.putOI} />
             </Fact>
             <Fact label="Volume · usual" testId="volume">
               {money.volumeToday != null ? count(money.volumeToday) : '—'} <span className="text-textMuted">· {money.volumeAvg != null ? count(money.volumeAvg) : '—'}</span>
@@ -1403,5 +1403,45 @@ const PillarBarSmall = ({ p }: { p: Pillar }) => (
     <PillarBar p={p} />
   </div>
 );
+
+/* THE NAME'S WHOLE OPEN INTEREST, from the vendor's per-expiry rows (the ship pass, 2026-10-22): the snapshot's chain
+   carries only the front expiry, so AAPL read "120K" — one expired date — against 4.7M across the 23 still listed.
+   Expired dates are dropped; with no rows yet the chain's own figure stands; with nothing at all, a dash — never
+   "0 · 50% calls". */
+function OpenInterest({ ticker, fallbackCall, fallbackPut }: { ticker: string; fallbackCall: number; fallbackPut: number }) {
+  const row = useVendorRow(stockBookKey(ticker), 'oi-expiry');
+  const today = nyIsoDate();
+  let call = 0;
+  let put = 0;
+  if (row?.state === 'live' && Array.isArray(row.data)) {
+    for (const r of row.data as Record<string, unknown>[]) {
+      if (String(r.expiry ?? '').slice(0, 10) < today) continue;
+      call += Number(r.call_oi) || 0;
+      put += Number(r.put_oi) || 0;
+    }
+  }
+  if (call + put <= 0) {
+    call = fallbackCall;
+    put = fallbackPut;
+  }
+  const oi = call + put;
+  if (oi <= 0) return <span className="text-textMuted">—</span>;
+  const share = (100 * call) / oi;
+  return (
+    <>
+      {count(oi)} <span className={share >= 50 ? 'text-bull' : 'text-bear'}>{share >= 50 ? `${share.toFixed(0)}% calls` : `${(100 - share).toFixed(0)}% puts`}</span>
+    </>
+  );
+}
+
+/* THE COMPANY'S NAME, never the ticker twice (the ship pass: SOUN read "SOUN SOUN") — names outside the built-in lists
+   come from the vendor's info row, set in title case with the short acronyms kept ("SOUNDHOUND AI" → "Soundhound AI") */
+const titleCase = (raw: string) => raw.split(/\s+/).map(w => (w.length <= 3 && /^[A-Z&.]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(' ');
+function CompanyTitle({ ticker, name }: { ticker: string; name: string }) {
+  const info = useVendorRow(stockBookKey(ticker), 'info');
+  if (name && name.toUpperCase() !== ticker.toUpperCase()) return <>{name}</>;
+  const full = info?.state === 'live' ? String((info.data as { full_name?: string } | null)?.full_name ?? '') : '';
+  return <>{full ? titleCase(full) : name}</>;
+}
 
 export default StockName;

@@ -8,6 +8,8 @@ import type { CongressFeed, CongressTrade, InsiderTrade, Member, Party, ReportOw
 import type { EconEvent } from './newsroom';
 import type { UwCongress, UwEcon, UwNews, UwPolitician } from './whales';
 import { TX_CODES } from './insiders';
+import { UNIVERSE } from './universe';
+import { tickerName } from './tickers';
 
 const daysAgo = (iso?: string): number => {
   const t = iso ? Date.parse(iso) : NaN;
@@ -28,11 +30,13 @@ const sentimentOf = (s: string): number => (s === 'positive' || s === 'bullish' 
 
 const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boolean): NewsCategory => {
   const s = `${headline} ${(tags ?? []).join(' ')}`;
-  if (/earn|eps|quarter/i.test(s)) return 'Earnings';
-  if (/guid|outlook/i.test(s)) return 'Guidance';
-  if (/upgrade|downgrade|price target|analyst/i.test(s)) return 'Analyst';
-  if (/acqui|merger|\bdeal\b/i.test(s)) return 'M&A';
-  if (/\bsec\b|regulat|antitrust|\bdoj\b|probe|lawsuit/i.test(s)) return 'Regulatory';
+  /* WHOLE WORDS (the ship pass, 2026-10-22): /eps/ matched "stEPS" and filed "China steps up 'grey zone' tactics" under
+     Earnings; /earn/ caught "learn", /quarter/ "headquarters" */
+  if (/\bearnings?\b|\beps\b|\bquarter(?:ly)?\b|\bq[1-4]\b|\bfiscal\b|\brevenues?\b/i.test(s)) return 'Earnings';
+  if (/\bguid(?:ance|es|ed)?\b|\boutlook\b|\bforecasts?\b/i.test(s)) return 'Guidance';
+  if (/\bupgrade|\bdowngrade|price target|\banalysts?\b|\binitiat(?:es|ed) coverage/i.test(s)) return 'Analyst';
+  if (/\bacqui|\bmerger\b|\bbuyout\b|\btakeover\b|\bdeal\b/i.test(s)) return 'M&A';
+  if (/\bsec\b|\bregulat|\bantitrust\b|\bdoj\b|\bftc\b|\bprobe\b|\blawsuit|\blitigation\b|\bsues?\b|\bcourt\b|\bsettle(?:s|d|ment)?\b/i.test(s)) return 'Regulatory';
   if (/\bfed\b|fomc|\bcpi\b|inflation|payroll|jobs report|\bgdp\b/i.test(s) || !hasTicker) return 'Macro';
   return 'Product';
 };
@@ -46,13 +50,46 @@ const sessionMove = (meta: UwNews['meta'], ticker: string | null): number | null
   return Number((((curr - prev) / prev) * 100).toFixed(2));
 };
 
+/* THE STORY'S NAME, CHECKED AGAINST ITS OWN HEADLINE (the ship pass, 2026-10-22): the wire's ticker tags are loose —
+   a "$MACRO" Dutch consumer-confidence print came tagged BROS, and "SpaceX, Tesla consider all-stock merger" came with
+   no ticker at all. A headline the wire itself marks $MACRO is macro; an untagged one that names a large cap by its
+   company name gets that name. Everything else keeps the wire's tags. */
+const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/* the full company name as written ("Tesla", "Bank of America", "NVIDIA" or "Nvidia"), or in an all-caps headline —
+   never a first word alone ("Advanced", "Home", "Bank" would tag half the wire) */
+const COMPANY_RE = UNIVERSE.filter(u => u.name.length >= 4 && u.name !== u.ticker).map(u => {
+  const proper = u.name === u.name.toUpperCase() ? u.name.charAt(0) + u.name.slice(1).toLowerCase() : u.name;
+  return { ticker: u.ticker, re: new RegExp(`\\b(?:${esc(u.name)}|${esc(proper)}|${esc(u.name.toUpperCase())})\\b`) };
+});
+/* A WIRE TAG MUST BE BORNE OUT BY ITS HEADLINE: the vendor tags by bare word — "AI", "Gold" (Barrick), "Bond",
+   "CPI", "FUTURE" (FutureFuel), "Tesla Eyes" (Second Sight). A tag stands when the headline writes it as a symbol
+   ($T, (T), NASDAQ: T) or names the company by its distinctive word; otherwise it is dropped — a missing tag costs
+   less than a story filed under the wrong company. */
+const GENERIC = new Set(['first', 'second', 'general', 'united', 'american', 'national', 'global', 'international', 'international', 'new', 'the', 'great', 'western', 'eastern', 'southern', 'northern', 'capital', 'financial']);
+function borneOut(t: string, headline: string): boolean {
+  const T = esc(t);
+  if (new RegExp(`\\$${T}\\b|\\(${T}\\)|\\b(?:NASDAQ|NYSE|AMEX|OTC)\\s*:\\s*${T}\\b`, 'i').test(headline)) return true;
+  const name = tickerName(t);
+  if (!name || name.toUpperCase() === t) return false;
+  const core = (name.split(/[\s,]+/)[0] ?? '').replace(/[^A-Za-z0-9.&-]/g, '');
+  if (core.length < 4 || GENERIC.has(core.toLowerCase())) return false;
+  return new RegExp(`\\b${esc(core)}\\b`, 'i').test(headline);
+}
+function storyTickers(headline: string, tags: readonly string[] | undefined): string[] {
+  if (/\$MACRO\b/i.test(headline)) return [];
+  const tagged = [...new Set((tags ?? []).map(t => t.trim().toUpperCase()).filter(t => /^[A-Z][A-Z0-9.]{0,5}$/.test(t)))].filter(t => borneOut(t, headline));
+  if (tagged.length) return tagged;
+  const named = COMPANY_RE.find(c => c.re.test(headline));
+  return named ? [named.ticker] : [];
+}
+
 export function newsFromWhales(rows: UwNews[]): NewsItem[] {
   return rows.map((r) => {
     const headline = decodeEntities(r.headline || '');
     const at = Date.parse(r.created_at);
     const sent = sentimentOf(r.sentiment);
     const major = !!r.is_major;
-    const tickers = [...new Set((r.tickers ?? []).map(t => t.toUpperCase()).filter(Boolean))];
+    const tickers = storyTickers(headline, r.tickers);
     const ticker = tickers[0] ?? null;
     const moved = sessionMove(r.meta, ticker);
     const move = moved ?? 0;
@@ -337,7 +374,9 @@ export function insidersFromWhales(rows: { amount?: number; filing_date?: string
        out of is after + shares. A buy's "after" already includes them.
        Unknown when both fields are empty — never 0%, which would read as a
        trade of nothing. */
-    const base = before > 0 ? before : held > 0 ? (meta.acquires ? held : held + shares) : 0;
+    /* A BUY is read against the holding it built — the "after" (CRF, 2026-10-22: 484 held, 20,000 bought read as
+       4132% of the stake; it is 98% of what they hold now). A SALE against the holding it came out of — the "before". */
+    const base = meta.acquires ? (held > 0 ? held : before + shares) : before > 0 ? before : held > 0 ? held + shares : 0;
     const stakePct = base > 0 ? Number(((100 * shares) / base).toFixed(1)) : -1;
     out.push({
       id: r.id || `${r.ticker}-${r.owner_name}-${r.transaction_date}-${code}`,

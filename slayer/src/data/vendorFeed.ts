@@ -483,6 +483,7 @@ function stockJobs(t: string): Job[] {
   const month = new Date().getMonth() + 1;
   return [
     { id: 'info', label: 'Sector of the name', path: `/stock/${e}/info`, kind: 'uw' },
+    { id: 'oi-expiry', label: 'Open interest per expiry', path: `/stock/${e}/oi-per-expiry`, kind: 'uw' },
     { id: 'sector-names', label: 'Companies in the same sector', path: '', kind: 'uw' },
     { id: 'bs', label: 'Balance sheet', path: `/stock/${e}/balance-sheets`, kind: 'uw' },
     { id: 'cf', label: 'Cash flow', path: `/stock/${e}/cash-flows`, kind: 'uw' },

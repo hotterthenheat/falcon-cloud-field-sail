@@ -35,6 +35,8 @@
 ==================================================
 */
 
+import { nyParts } from '../../core/nyTime';
+import { useLiveQuote } from '../../data/liveQuote';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, LayoutGrid } from 'lucide-react';
@@ -265,8 +267,9 @@ const ActiveRow = ({ c, maxVol, onOpen, onWarm }: { c: ActiveContract; maxVol: n
       </span>
     </div>
     <span className="font-mono text-[10px] text-textMuted tnum">
-      {c.fromSpotPct === 0 ? 'at the money' : `${c.fromSpotPct > 0 ? '+' : ''}${c.fromSpotPct}% from spot`} · breaks even {c.right === 'CALL' ? '+' : '−'}
-      {c.breakevenPct}% by expiry
+      {c.fromSpotPct === 0 ? 'at the money' : `${c.fromSpotPct > 0 ? '+' : ''}${c.fromSpotPct}% from spot`} ·{' '}
+      {/* already through its breakeven at today's price (the $385 put on a $373.63 TSLA) — not "breaks even −0%" */}
+      {c.breakevenPct > 0 ? `breaks even ${c.right === 'CALL' ? '+' : '−'}${c.breakevenPct}% by expiry` : 'past its breakeven at today\'s price'}
     </span>
   </button>
 );
@@ -289,6 +292,8 @@ const EarningsName = () => {
   const insiders = useInsiderFlow(T, 90);
   const congressFeed = useCongressFeed(180);
   const congress = useMemo(() => congressFeed.trades.filter(t => t.ticker === T).sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressFeed, T]);
+  /* the stock now, read before any early return (hooks keep their order) */
+  const quote = useLiveQuote(T);
 
   const back = (
     <div className="flex items-center gap-4" data-name-back>
@@ -331,6 +336,13 @@ const EarningsName = () => {
   const priced = stateOf(e);
   /* no expected move on the row (a print months out) — every straddle figure says so instead of $0.00 */
   const isPriced = e.impliedMovePct > 0 && e.price > 0;
+  /* THE PRINT IS OUT once its date has passed, or today once its slot has (the ship pass, 2026-10-22: TSLA still read
+     "Reports Wed 10/21" at 00:40 on the 22nd, its options price quoted as if the move were still to come) */
+  /* the stock NOW — the calendar row's price is the one the options were priced against, stale once the print is out
+     (TSLA read $386.55 after closing the night at $373.63) */
+  const spotNow = quote?.spot && quote.spot > 0 ? quote.spot : e.price;
+  const nowNy = nyParts(new Date());
+  const reported = e.daysOut < 0 || (e.daysOut === 0 && nowNy.hour * 60 + nowNy.minute >= (e.slot === 'AMC' ? 16 * 60 : 9 * 60 + 30));
   const nQ = quarters.length || 0;
   const hasRev = quarters.some(q => q.revEstB > 0);
   const epsBeats = quarters.filter(q => q.epsBeat).length;
@@ -375,9 +387,13 @@ const EarningsName = () => {
               </div>
               {/* max-xl:flex-wrap — an inline-flex line does not truncate, it spills; on a phone it folds instead (the phone pass, 2026-09-13) */}
               <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap">
-                Reports {e.dateLabel} <SlotMark slot={e.slot} className="w-3 h-3" /> {slotWord(e)}
+                {reported ? 'Reported' : 'Reports'} {e.dateLabel} <SlotMark slot={e.slot} className="w-3 h-3" /> {slotWord(e)}
                 <span className="text-textMuted">·</span>
-                <span className={e.confirmed ? 'text-textMuted' : 'text-warn'}>{e.confirmed ? 'the company has confirmed the date' : 'the date is still an estimate'}</span>
+                {reported ? (
+                  <span className="text-textMuted">the result lands on the feed once the vendor posts it</span>
+                ) : (
+                  <span className={e.confirmed ? 'text-textMuted' : 'text-warn'}>{e.confirmed ? 'the company has confirmed the date' : 'the date is still an estimate'}</span>
+                )}
                 {e.daysOut === 0 && (
                   <>
                     <span className="text-textMuted">·</span>
@@ -388,7 +404,7 @@ const EarningsName = () => {
             </div>
           </div>
           <dl className="grid grid-cols-5 gap-x-6">
-            <Fact label="Options price" testId="price">
+            <Fact label={reported ? 'Options priced' : 'Options price'} testId="price">
               {isPriced ? (
                 <>
                   ±{e.impliedMovePct.toFixed(1)}% <span className="text-textMuted">· ${((e.price * e.impliedMovePct) / 100).toFixed(2)}</span>
@@ -429,7 +445,7 @@ const EarningsName = () => {
           <Door onClick={() => navigate('/compass', { state: { tickerFilter: e.ticker } })}>
             Compass
           </Door>
-          <Door onClick={() => navigate('/dossier/news')}>The wire</Door>
+          <Door onClick={() => navigate('/dossier/news', { state: { name: e.ticker } })}>The wire</Door>
         </div>
       </div>
 
@@ -525,8 +541,8 @@ const EarningsName = () => {
             {!dossier.live || dossier.crushKnown ? <span className="text-warn">−{dossier.ivCrushPct}%</span> : <span className="text-textMuted">—</span>}
           </Fact>
           <Fact label="Straddle kept by next open">{!dossier.live || dossier.crushKnown ? `~${Math.max(0, 100 - dossier.premiumLostPct)}%` : '—'}</Fact>
-          <Fact label="Straddle today">{isPriced ? `$${((e.price * e.impliedMovePct) / 100).toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
-          <Fact label="The stock">{e.price > 0 ? `$${e.price.toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
+          <Fact label={reported ? 'Straddle priced' : 'Straddle today'}>{isPriced ? `$${((e.price * e.impliedMovePct) / 100).toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
+          <Fact label="The stock">{spotNow > 0 ? `$${spotNow.toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
         </dl>
       </Box>
 
