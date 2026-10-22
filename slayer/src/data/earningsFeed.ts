@@ -570,6 +570,12 @@ export function useEveryReport(): EarningsEvent[] {
   return useMemo(() => (feed.status === 'live' ? feed.events : []), [version]);
 }
 
+/** True when the fortnight's read failed — an empty board then is a failure, not a quiet fortnight */
+export function useEarningsFailed(): boolean {
+  const version = useSyncExternalStore(subscribe, () => rev, () => rev);
+  return useMemo(() => feed.status === 'sim', [version]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 /** True only while the fortnight has not answered. An empty live list is not pending. */
 export function useEarningsPending(): boolean {
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);

@@ -156,7 +156,8 @@ const Odte = () => {
 
   /* The whole same-day book, once, for the head's facts and the sentence */
   const view = useMemo(() => buildNetFlowView(book, 'all', 'all', paneTimes('SPY')), [book]);
-  const awake = view.points.length > 0;
+  /* awake on MONEY, not on a timeline: a session of empty minutes read "leans bullish" on $0 against "+$0" */
+  const awake = view.points.length > 0 && (view.count > 0 || view.ncp !== 0 || view.npp !== 0);
   const bullish = view.ncp - view.npp >= 0;
   // Signed on purpose — RichRead inks +$/-$ by direction (2026-08-30).
   const signed = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
@@ -212,8 +213,10 @@ const Odte = () => {
 
   // Keyed by count too: a layout switch REMOUNTS the pane so the chart
   // re-fits its new frame instead of hugging the old one's view.
+  // Below lg the desk stacks and the page scrolls, so the frame has no height to split — each pane holds its own
+  // (the phone sweep, 2026-10-22: the charts collapsed to their head strips).
   const renderPane = (i: number, extraClass = '') => (
-    <div key={`${store.count}-${i}`} className={`min-h-0 ${extraClass}`}>
+    <div key={`${store.count}-${i}`} className={`h-[340px] lg:h-auto min-h-0 ${extraClass}`}>
       {pane(i)}
     </div>
   );

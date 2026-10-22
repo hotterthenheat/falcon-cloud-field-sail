@@ -107,9 +107,11 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
         </GuideFocus>
       )}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        {/* the title keeps a floor: with five facts beside it the column was squeezed until "Which way the money leans"
+            broke over three lines into its own sub — now the facts wrap under it instead */}
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{title}</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{title}</h3>
             {guide && <GuideDoor open={guide.open} onClick={() => guide.onOpen(!guide.open)} title={guide.door} testId={guide.testId} />}
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{sub}</p>
@@ -133,13 +135,18 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
           row of its own, the cards in rows of two in the page's order, then the doors: Link and Save on one row, Columns
           and the live hold on the last. The cards had kept their own widths inside the cells, so a row read "Most active"
           beside "Both" and Columns stood alone at the right. */}
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-trace-controls>
-        {controls}
-      </div>
+      {controls != null && controls !== false && (
+        <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-trace-controls>
+          {controls}
+        </div>
+      )}
       {/* a div, not a p: the saved cuts' chips and the status line stand inside the sentence (2026-10-13) */}
-      <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
-        {sentence}
-      </div>
+      {/* no sentence, no line — a page whose body already says it (the Tracker's empty desk) never says it twice */}
+      {sentence != null && sentence !== false && (
+        <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
+          {sentence}
+        </div>
+      )}
       {children}
     </div>
   );
@@ -183,8 +190,15 @@ export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, w
       resizable: true,
       suppressMovable: true,
     };
-    if (fixed) def.width = fixed;
-    else {
+    /* A SET WIDTH IS A SHARE, NOT A WALL (the audit, 2026-10-22): fixed widths summed past the box at a laptop width, so
+       the last column stood half under the box's edge ("W", "Prev $", "V") behind a scroll nobody saw. Each column now
+       takes its width as its floor and its share of the room — never narrower than its cells (a squeezed cell paints a
+       clipped ellipsis), growing to fill a wide box; the pages keep their widths inside a laptop's box. */
+    if (fixed) {
+      def.width = fixed;
+      def.flex = fixed;
+      def.minWidth = fixed;
+    } else {
       def.flex = flexes[c.key] ?? 1;
       /* 92, not 84: the house's widest standard cell (the Lean bar) is 64px and the grid's own padding is 24, so 84
          guaranteed a four-pixel overflow — and an overflowing cell paints a CLIPPED ELLIPSIS, a stray ".." at the

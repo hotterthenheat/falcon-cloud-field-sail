@@ -200,7 +200,8 @@ const Box = ({ title, sub, aside, testId, children }: { title: string; sub?: Rea
 const Fact = ({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) => (
   <div className="min-w-0">
     <dt className="text-[10px] text-textMuted whitespace-nowrap">{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap truncate" data-stock-fact={testId}>
+    {/* a figure wraps at its dots rather than being cut to "0…" in a narrow column (the dossier sweep, 2026-10-22) */}
+    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary break-words" data-stock-fact={testId}>
       {children}
     </dd>
   </div>

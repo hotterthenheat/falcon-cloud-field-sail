@@ -12,7 +12,7 @@ import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import { EtfsGuide, InstitutionsGuide, ShortsGuide } from '../../components/record/FileGuides';
@@ -93,7 +93,7 @@ const STATUS_INK: Record<PositionStatus, string> = {
 
 const HouseName = ({ data }: ICellRendererParams<InstitutionRow>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
@@ -149,9 +149,9 @@ export const HouseFile = () => {
         <InstitutionsGuide />
       </GuideFocus>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{house}</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{house}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a 13F line means" testId="house-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">This filing, line by line. A call or a put is only the side.</p>
@@ -210,6 +210,7 @@ export const HouseFile = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows('No line on this book')}
             columnDefs={cols}
             defaultColDef={defaultColDef}
             getRowId={p => p.data?.id ?? ''}
@@ -268,9 +269,9 @@ export const ShortFile = () => {
         <ShortsGuide />
       </GuideFocus>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{t} short</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{t} short</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What interest, days to cover and the fee mean" testId="short-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -346,6 +347,7 @@ export const ShortFile = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={shown}
+            overlayNoRowsTemplate={noRows('Nothing on this book')}
             columnDefs={EX_COLS}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.id}
@@ -433,9 +435,9 @@ export const FundFile = () => {
         <EtfsGuide />
       </GuideFocus>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{fund.etf} · {fund.name}</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{fund.etf} · {fund.name}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a weight, a flow and a holding mean" testId="fund-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -504,6 +506,7 @@ export const FundFile = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows('No holding on file')}
             columnDefs={cols}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.ticker}
@@ -583,6 +586,7 @@ function Board<T extends IdRow>({ title, rest, testId, rows, cols }: { title: st
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows('Nothing on file')}
             columnDefs={cols}
             defaultColDef={defaultColDef}
             getRowId={p => p.data?.id ?? ''}
@@ -701,9 +705,9 @@ export const MemberFile = () => {
         <CongressGuide />
       </GuideFocus>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{member.name}</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{member.name}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a report, a bracket and a lag mean" testId="member-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -765,6 +769,7 @@ export const MemberFile = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows('No report on this book')}
             columnDefs={cols}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.id}

@@ -656,7 +656,7 @@ export const StocksPageSkeleton = () => (
         <Line w={480} h={9} />
       </div>
       {/* a sector card: the rank row 18, the bar 4, the word row 12, the windows row 12 (with its padding 80) */}
-      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${ROTATION_SECTORS}, minmax(0, 1fr))` }}>
+      <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-5">
         {Array.from({ length: ROTATION_SECTORS }, (_, i) => (
           <div key={i} className="rounded-md border border-borderSubtle px-3 py-2.5 flex flex-col">
             <div className="h-[18px] flex items-center gap-1.5">

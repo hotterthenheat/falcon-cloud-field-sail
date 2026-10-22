@@ -524,7 +524,9 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
             "the strikes should be furthest left" and no empty band — the table sizes the column to its content, the
             cells take the rest) */}
         {/* the strike in the first ink (the owner, 2026-10-14: "strike numbers — what the row IS — are dim grey") */}
-        <td className={`pl-2 pr-1.5 ${rowH < 20 ? 'py-0' : 'py-0.5'} leading-tight bg-inset text-right font-mono text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap`}>
+        {/* the extra foot room lifts the strike onto its figures' line — the cells stack a 3px beam under the figure, so a
+            centred strike sat ~4px below the numbers it names (the UI sweep, 2026-10-22) */}
+        <td className={`pl-2 pr-1.5 ${rowH < 20 ? 'pt-0 pb-1' : 'pt-0.5 pb-2'} leading-tight bg-inset text-right font-mono text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap`}>
           {/* THE LEVEL IN THE STRIKE'S INK (strikeRole.ts, 2026-10-13): the words after it made the column as wide as its
               widest label, and every plain strike carried the gap */}
           <span
@@ -573,7 +575,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
             {shownGreeks.map(g => LEGS.map(leg => <col key={`${g}-${leg}`} />))}
           </colgroup>
         )}
-        <thead ref={theadRef} className="sticky top-0 z-10 bg-panel">
+        <thead ref={theadRef} className="sticky top-0 z-10 bg-panel shadow-[0_8px_8px_-8px_rgba(0,0,0,0.55)]">
           <tr>
             <th className={`${head} !tracking-normal pl-2 pr-1.5 pt-2 pb-1 text-right text-textSecondary border-b border-borderSubtle bg-panel`}>
               {/* THE COLUMN'S WIDTH IS RESERVED (2026-10-12, the replay): the widest row this table can print, set

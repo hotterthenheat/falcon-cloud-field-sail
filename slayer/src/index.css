@@ -953,6 +953,18 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
   min-width: 0;
   max-width: 100%;
 }
+/* THE SCROLL SAYS SO (the audit, 2026-10-22): a Trace grid wider than its box scrolls its middle columns under the pinned
+   figure at the right, and the column half under it read as a rendering fault ("W", "Prev $", "V"). The pinned edge
+   now casts a shade over what runs beneath it, and the box's own right edge fades when the columns run past it. */
+[data-trace-grid] .ag-pinned-right-header,
+[data-trace-grid] .ag-pinned-right-cols-container {
+  box-shadow: -14px 0 14px -10px rgb(0 0 0 / 0.55);
+  position: relative;
+  z-index: 1;
+}
+[data-trace-grid] .ag-body-horizontal-scroll:not(.ag-scrollbar-invisible) {
+  min-height: 8px;
+}
 /* The × that takes a name off the board shows on its row's hover (Board.tsx NameCell) */
 .slayer-board [data-board-remove] {
   opacity: 0;

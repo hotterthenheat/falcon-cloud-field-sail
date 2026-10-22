@@ -168,6 +168,8 @@ export interface ShortPrint {
 
 export interface ShortRow {
   ticker: string;
+  /** The company's name from the vendor's file, when the listing has none */
+  name?: string;
   sector: string;
   interestPct: number;
   /** Shares sold short, in millions */

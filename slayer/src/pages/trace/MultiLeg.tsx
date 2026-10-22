@@ -251,7 +251,7 @@ const phoneRow = (t: SpreadTrade) => (
       <span key="n">
         ${Math.abs(t.net).toFixed(2)} {t.net >= 0 ? 'debit' : 'credit'}
       </span>,
-      <span key="l">max loss {t.maxLoss === 'uncapped' ? 'uncapped' : fmtUsd(t.maxLoss)}</span>,
+      <span key="l">max loss {t.maxLoss === 'uncapped' ? 'uncapped' : t.maxLoss == null ? '—' : fmtUsd(t.maxLoss)}</span>,
     ]}
   />
 );
@@ -468,7 +468,7 @@ const MultiLeg = () => {
         key: 'maxloss',
         header: 'Max loss',
         align: 'right',
-        sortValue: t => (t.maxLoss === 'uncapped' ? Number.MAX_SAFE_INTEGER : t.maxLoss),
+        sortValue: t => (t.maxLoss === 'uncapped' ? Number.MAX_SAFE_INTEGER : (t.maxLoss ?? -1)),
         render: t => riskCell(t.maxLoss, 'loss'),
       },
       {

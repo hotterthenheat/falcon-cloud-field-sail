@@ -426,15 +426,6 @@ function politician(data: unknown, id: string): { id: string; name: string } | n
   return null;
 }
 
-function firstPoliticianId(data: unknown): string {
-  for (const r of asRows(data)) {
-    if (r && typeof r === 'object' && typeof (r as { politician_id?: unknown }).politician_id === 'string') {
-      return (r as { politician_id: string }).politician_id;
-    }
-  }
-  return '';
-}
-
 function seed(key: string, jobs: Job[]) {
   books.set(key, {
     key,
@@ -444,9 +435,8 @@ function seed(key: string, jobs: Job[]) {
 
 function pinJobs(t: string): Job[] {
   const e = enc(t);
-  const end = new Date();
-  const start = new Date(end.getTime() - 14 * 86400000);
-  const g = `symbol=${e}&expiration=*&max_dte=30&format=json`;
+  /* Unusual Whales only (the owner's call, 2026-10-22): the Theta terminal's greeks, rate and calendar rows are gone —
+     the carry rate and the holidays fall back to core/carry and core/calendar */
   return [
     { id: 'gex-levels', label: 'GEX levels', path: `/stock/${e}/gex-levels`, kind: 'uw' },
     { id: 'gex-minute', label: 'GEX each minute', path: `/stock/${e}/spot-exposures`, kind: 'uw' },
@@ -485,13 +475,6 @@ function pinJobs(t: string): Job[] {
     { id: 'opt-px', label: 'Option volume by price', path: `/stock/${e}/option/stock-price-levels`, kind: 'uw' },
     { id: 'lit-off', label: 'Lit versus off-lit volume by price', path: `/stock/${e}/stock-volume-price-levels`, kind: 'uw' },
     { id: 'unusual', label: 'Unusual volume vs ~90 sessions', path: `/stock/${e}/unusualness`, kind: 'uw' },
-    { id: 'th-bs', label: 'Theta Black-Scholes greeks', path: `/option/snapshot/greeks/all?${g}`, kind: 'theta' },
-    { id: 'th-bin', label: 'Theta binomial greeks', path: `/option/snapshot/binomial_greeks/all?${g}`, kind: 'theta' },
-    { id: 'th-iv', label: 'Theta bid / mid / ask IV', path: `/option/snapshot/greeks/implied_volatility?${g}`, kind: 'theta' },
-    { id: 'th-rate', label: 'Treasury bill, 3 month', path: `/interest_rate/history/eod?symbol=treasury_m3&start_date=${ymd(start)}&end_date=${ymd(end)}&format=json`, kind: 'theta' },
-    { id: 'th-today', label: 'Session today', path: '/calendar/today?format=json', kind: 'theta' },
-    { id: 'th-date', label: 'Session on this date', path: `/calendar/on_date?date=${ymd(end)}&format=json`, kind: 'theta' },
-    { id: 'th-year', label: "This year's holidays", path: `/calendar/year_holidays?year=${end.getFullYear()}&format=json`, kind: 'theta' },
   ];
 }
 
@@ -511,7 +494,6 @@ function stockJobs(t: string): Job[] {
     { id: 'seas-y', label: 'Seasonality, month by year', path: `/seasonality/${e}/year-month`, kind: 'uw' },
     { id: 'seas-mkt', label: 'Seasonality, market average month', path: '/seasonality/market', kind: 'uw' },
     { id: 'seas-best', label: 'Best names in this month', path: `/seasonality/${month}/performers?limit=12`, kind: 'uw' },
-    { id: 'ownership', label: 'Who holds the shares', path: `/stock/${e}/ownership`, kind: 'uw' },
     { id: 'opt-hold', label: 'Who holds the options', path: `/institution/${e}/option-holders`, kind: 'uw' },
     { id: 'inst-own', label: 'Institutional ownership', path: `/institution/${e}/ownership`, kind: 'uw' },
     { id: 'etf-exposure', label: 'Which ETFs hold the name', path: `/etfs/${e}/exposure`, kind: 'uw' },
@@ -554,16 +536,11 @@ function jobsFor(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string)
   if (desk === 'pinpoint') return t ? pinJobs(t) : [];
   const path = pathname.split('?')[0];
   if (path.startsWith('/dossier/news')) {
-    const end = new Date();
     return [
       { id: 'fda', label: 'FDA calendar', path: '/market/fda-calendar?limit=80', kind: 'uw' },
       { id: 'daily', label: 'Daily market report', path: '/market/daily-report', kind: 'uw' },
       { id: 'potus-p', label: "President's posts", path: '/potus/posts', kind: 'uw' },
       { id: 'potus-s', label: 'Public schedule', path: '/potus/schedule', kind: 'uw' },
-      { id: 'th-today', label: 'Session today', path: '/calendar/today?format=json', kind: 'theta' },
-      { id: 'th-date', label: 'Session on this date', path: `/calendar/on_date?date=${ymd(end)}&format=json`, kind: 'theta' },
-      { id: 'th-year', label: "This year's holidays", path: `/calendar/year_holidays?year=${end.getFullYear()}&format=json`, kind: 'theta' },
-      { id: 'th-rate', label: 'Treasury bill, 3 month', path: `/interest_rate/history/eod?symbol=treasury_m3&start_date=${ymd(new Date(end.getTime() - 14 * 86400000))}&end_date=${ymd(end)}&format=json`, kind: 'theta' },
     ];
   }
   if (path.startsWith('/dossier/shorts')) return t ? [
@@ -584,12 +561,10 @@ function jobsFor(desk: 'pinpoint' | 'dossier', ticker: string, pathname: string)
     const member = path.split('/')[3] ?? '';
     const rows: Job[] = [
       { id: 'late', label: 'Late reports', path: '/congress/late-reports?limit=40', kind: 'uw' },
-      { id: 'disc', label: 'Annual disclosures', path: '/politician-portfolios/disclosures?limit=40', kind: 'uw' },
     ];
     if (member) {
       rows.unshift({ id: 'people', label: 'Politicians', path: '/congress/politicians?last_traded_within_months=24', kind: 'uw' });
       rows.push({ id: 'member-reports', label: "This member's reports", path: '', kind: 'uw' });
-      rows.push({ id: 'portfolio', label: 'Politician portfolio', path: '', kind: 'uw' });
     } else {
       rows.unshift({ id: 'member-reports', label: 'Member reports', path: '/congress/congress-trader?limit=30', kind: 'uw' });
     }
@@ -687,10 +662,7 @@ async function after(key: string, ticker: string, pathname: string, got: Map<str
     const who = politician(got.get('people'), member);
     const name = who?.name || decodeURIComponent(member).replace(/-/g, ' ');
     if (books.get(key)?.rows.some(r => r.id === 'member-reports')) {
-      const reports = await runJob(key, { id: 'member-reports', label: "This member's reports", path: `/congress/congress-trader?name=${enc(name)}&limit=40`, kind: 'uw' });
-      const pid = who?.id || firstPoliticianId(reports);
-      if (!pid) paint(key, 'portfolio', { state: 'empty', brief: 'no politician id on the report', n: 0, data: null });
-      else await runJob(key, { id: 'portfolio', label: 'Politician portfolio', path: `/politician-portfolios/${enc(pid)}`, kind: 'uw' });
+      await runJob(key, { id: 'member-reports', label: "This member's reports", path: `/congress/congress-trader?name=${enc(name)}&limit=40`, kind: 'uw' });
     }
   }
 }

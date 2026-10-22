@@ -133,7 +133,7 @@ const MONEY_OPTIONS: DropdownOption<'any' | 'otm'>[] = [
 const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ? s : best), 0);
 
 /** The grid's own widths where flex would starve a cell */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 150, dte: 64, otm: 76, last: 118, doi: 150, prem: 92, iv: 100, sector: 176, lean: 96 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, otm: 76, last: 118, doi: 150, prem: 92, iv: 100, sector: 176, lean: 96 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
@@ -329,15 +329,19 @@ const OptionsScreener = () => {
         header: 'IV · Δ',
         align: 'right',
         sortValue: r => r.iv,
-        render: r => (
-          <span className="text-textPrimary">
-            {r.iv.toFixed(0)}%{' '}
-            <span className={`text-[11px] ${r.ivChg >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
-              {r.ivChg >= 0 ? '+' : ''}
-              {r.ivChg.toFixed(1)}
+        /* a contract the vendor sends no volatility for reads "—", never "0% +0.0" */
+        render: r =>
+          r.iv > 0 ? (
+            <span className="text-textPrimary">
+              {r.iv.toFixed(0)}%{' '}
+              <span className={`text-[11px] ${r.ivChg >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
+                {r.ivChg >= 0 ? '+' : ''}
+                {r.ivChg.toFixed(1)}
+              </span>
             </span>
-          </span>
-        ),
+          ) : (
+            <span className="text-textMuted">—</span>
+          ),
       },
       { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`font-mono tnum ${r.volOverOI >= 1.5 ? 'font-bold text-textPrimary' : 'text-textPrimary'}`}>{r.volOverOI.toFixed(2)}</span> },
       { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{r.sweepPct}%</span> },
@@ -366,7 +370,14 @@ const OptionsScreener = () => {
         facts={
           <>
             <Fact label="Premium" testId="premium">
-              {fmtUsd(facts.prem)} <span className="text-textSecondary">·</span> <span className="text-bull">calls {facts.callPct}%</span> <span className="text-textSecondary">/</span> <span className="text-bear">puts {100 - facts.callPct}%</span>
+              {fmtUsd(facts.prem)}
+              {/* no premium, no split — "calls 0% / puts 100%" on $0 was a division by nothing */}
+              {facts.prem > 0 && (
+                <>
+                  {' '}
+                  <span className="text-textSecondary">·</span> <span className="text-bull">calls {facts.callPct}%</span> <span className="text-textSecondary">/</span> <span className="text-bear">puts {100 - facts.callPct}%</span>
+                </>
+              )}
             </Fact>
             <Fact label="Contracts" testId="contracts">
               {num(rows.length)} <span className="text-textSecondary">· {facts.names} names</span>

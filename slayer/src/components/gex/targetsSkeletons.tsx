@@ -18,9 +18,12 @@ import { Skeleton } from '../ui/Skeleton';
 /* ---- geometry shared with TargetsBoard.tsx ---------------------------------------- */
 
 /** # · strike · from spot · reached · holds · if it breaks · today · at stake · why · actions */
-export const AGENDA_COLUMNS = '32px 150px 72px 72px 104px minmax(150px,1fr) 112px 130px minmax(150px,1.2fr) 120px';
+/* The words columns WRAP to two lines and share the room (the UI sweep, 2026-10-22): at 1200px the list ran past a
+   laptop's card and "changed sides −$4M last session" sat cut in a 112px column — the narrow columns gave up what they
+   did not use, and the floor now fits a 1440 screen beside the rail */
+export const AGENDA_COLUMNS = '32px 120px 64px 64px 84px minmax(140px,1fr) minmax(140px,1fr) 120px minmax(120px,1fr) 124px';
 /** The columns' floor plus nine 12px gaps */
-export const AGENDA_MIN_W = 1200;
+export const AGENDA_MIN_W = 1116;
 export const CARD_H = 158;
 export const ROW_H = 32;
 

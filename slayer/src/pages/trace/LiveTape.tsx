@@ -394,6 +394,7 @@ const LiveTape = () => {
     [tickerOnly, sentFilter, flowFilter, minPremKey]
   );
   const stream = usePrintStream(tapeQuery, paused || away || lane !== 'prints');
+  const tapeDown = (lane === 'alerts' ? alerts : stream).fault != null;
   const liveRows = lane === 'alerts' ? alerts.rows : stream.rows;
   const rows = frozen ?? liveRows;
   useEffect(() => {
@@ -598,8 +599,9 @@ const LiveTape = () => {
     lastScopeRef.current = scopeKey;
     lastReadRef.current = now;
     readEmptyRef.current = beamRows.length === 0;
-    setRead(beamRows.length === 0 ? ['No prints in this view.'] : tapeRead(beamRows, beamSummary));
-  }, [beamRows, beamSummary, scopeKey]);
+    /* a tape that did not answer is not an empty tape — the grid's own line says which (the audit, 2026-10-22) */
+    setRead(beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : 'No prints in this view.'] : tapeRead(beamRows, beamSummary));
+  }, [beamRows, beamSummary, scopeKey, tapeDown]);
 
   /* The card's bookmark, by tape id — the card only knows the id, the store
      wants the print; the rows ref keeps this callback stable. */
@@ -699,8 +701,8 @@ const LiveTape = () => {
         group: 'Contract',
         header: 'OTM %',
         align: 'right',
-        sortValue: r => r.p.otmPct,
-        render: r => <span className="text-textPrimary">{pctSigned(r.p.otmPct, 1)}</span>,
+        sortValue: r => (r.p.spot > 0 ? r.p.otmPct : Number.NEGATIVE_INFINITY),
+        render: r => (r.p.spot > 0 ? <span className="text-textPrimary">{pctSigned(r.p.otmPct, 1)}</span> : <span className="text-textMuted">—</span>),
       },
       {
         key: 'quote',
@@ -955,9 +957,6 @@ const LiveTape = () => {
       >
         {/* The grid takes the whole window — the rail and its door are gone with the partner's layout (2026-10-13). */}
         <div data-tape-body>
-          {(lane === 'alerts' ? alerts : stream).fault && rows.length === 0 ? (
-            <FeedFallback fault={(lane === 'alerts' ? alerts : stream).fault} />
-          ) : null}
           {lane === 'alerts' && openAlert && (
             <div className="px-5 py-2 border-b border-borderSubtle flex items-center gap-3" data-alert-trades>
               <span className="font-mono text-[11px] text-textSecondary">Trades inside {openAlert.ticker} {openAlert.strike}{openAlert.right}</span>
@@ -1013,7 +1012,7 @@ const LiveTape = () => {
             rowClass={FADE_ROW}
             animate={false}
             autoHeight
-            emptyText={rows.length === 0 ? 'Awaiting first prints…' : 'No prints on this cut — loosen a card: the order, the kind, the lean, the floor or the expiry'}
+            emptyText={rows.length === 0 ? (tapeDown ? 'This read did not land — the tape will fill when the feed answers' : 'Awaiting first prints…') : 'No prints on this cut — loosen a card: the order, the kind, the lean, the floor or the expiry'}
             testId="live-tape"
           />
           {breakdown.rows.length > 0 && (
@@ -1050,7 +1049,7 @@ const LiveTape = () => {
               </table>
             </div>
           )}
-          {breakdown.fault && breakdown.rows.length === 0 ? <FeedFallback fault={breakdown.fault} /> : null}
+          {/* the exchange break is a supplement (and plan-gated at the vendor): no rows, no panel — never a second fault line */}
         </div>
       </TraceBox>
 
