@@ -135,7 +135,18 @@ export function readHeatPattern(levels: KeyLevels): HeatPatternRead {
   /** Walls this close (%) box price in; a floor past GONE might as well not exist. */
   const TIGHT = 1.2;
   const GONE = 2.6;
+  /** Within this (%) of the flip, price is on it, not above or below */
+  const AT_FLIP = 0.05;
 
+  /* ON THE FLIP (the Pinpoint sweep, 2026-10-22): SPY closed 0.04 under a 769.50 flip and the read said "the hedging
+     amplifies moves" beside a book whose net absorbed — a hair either side of the flip is neither regime */
+  if (Math.abs(spot - flip) / Math.max(spot, 1) * 100 < AT_FLIP) {
+    return {
+      key: 'ON THE FLIP',
+      direction: 'RANGE',
+      read: `Sitting on the ${px(flip)} flip — the hedging can tip either way from here; ${px(callWall)} overhead and ${px(putWall)} below are the walls that decide it.`,
+    };
+  }
   if (aboveFlip && cwPct <= TIGHT && pwPct <= TIGHT) {
     return {
       key: 'PINNED',
@@ -154,13 +165,13 @@ export function readHeatPattern(levels: KeyLevels): HeatPatternRead {
     return {
       key: 'WHIPSAW',
       direction: 'VOLATILE',
-      read: `Below the ${px(flip)} flip with no floor in reach — hedging accelerates whichever way price moves, and the nearest shelf sits all the way down at ${px(putWall)}.`,
+      read: `Below the ${px(flip)} flip with no floor in reach — hedging around price accelerates whichever way price moves, and the nearest shelf sits all the way down at ${px(putWall)}.`,
     };
   }
   return {
     key: 'TRAPDOOR',
     direction: 'BEARISH',
-    read: `Below the ${px(flip)} flip the hedging amplifies moves — rallies get sold back under the ${px(callWall)} lid, and ${px(putWall)} is the only structure holding under price.`,
+    read: `Below the ${px(flip)} flip the hedging around price amplifies moves, whatever the book nets to — rallies get sold back under the ${px(callWall)} lid, and ${px(putWall)} is the only structure holding under price.`,
   };
 }
 

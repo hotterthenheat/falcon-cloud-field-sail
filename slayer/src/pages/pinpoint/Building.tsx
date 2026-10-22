@@ -90,6 +90,7 @@ import { readSessionClock } from '../../data/moc';
 import { MAX_PANES, PANE_COLS, newPaneKey, readPanes, writePanes, type Pane } from '../../data/panes';
 import { usePositions } from '../../data/positions';
 import { BuildingArrived } from '../../components/vendor/LiveDesk';
+import { useIsPhone } from '../../components/ui/useMediaQuery';
 import type { ExposureExpiry } from '../../types/gex';
 import type { MarketSnapshot } from '../../types/market';
 
@@ -110,6 +111,8 @@ let showMemory: BuildShow = 'all';
 const hhmmss = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 
 const Building = () => {
+  /* a phone reads the compact ledger too — the full one is 1060px wide and ran off a 390px screen */
+  const phone = useIsPhone();
   const { activeTicker, changeTicker } = useTicker();
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
@@ -230,7 +233,7 @@ const Building = () => {
   const first = builds.get(panes[0].key);
   if (!scan || !first) return <BookOrSkeleton tickers={[activeTicker]}><BuildingPageSkeleton rows={rows} folded={show === 'moved'} /></BookOrSkeleton>;
 
-  const compact = panes.length > 1;
+  const compact = panes.length > 1 || phone;
   let moved = 0;
   let total = 0;
   for (const b of builds.values()) {
@@ -254,7 +257,7 @@ const Building = () => {
         </div>
         <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
           {clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · the hedging added or taken off since the open, so a wall shows up before it is the wall · every strike, the steady ones too — Show · What moved folds them away
-          {compact ? ' · one pane a name, each on its own expiry' : ''}
+          {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
         </p>
       </div>
       <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={moved} total={total} />
@@ -274,7 +277,7 @@ const Building = () => {
                 ticker={t}
                 linked={i === 0 ? linked : undefined}
                 /* the quote is room beside other panes — the chip and the Expiry card share one row there */
-                quote={!compact}
+                quote={panes.length < 2}
                 onToggleLink={i === 0 ? () => patchPane(p.key, { ticker: linked ? t : undefined }) : undefined}
                 onPick={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
               />

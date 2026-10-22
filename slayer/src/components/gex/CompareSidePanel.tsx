@@ -43,6 +43,7 @@
 ==================================================
 */
 
+import { holdPct } from '../../data/wall';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { buildExposureProfile } from '../../data/exposure';
@@ -323,7 +324,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.watch.strike} />
                 <span className="text-[10px] text-textMuted">
-                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · holds ${pct(s.watch.hold)}` : ''}
+                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · holds ${holdPct(s.watch.hold)}` : ''}
                 </span>
               </span>
             ) : (

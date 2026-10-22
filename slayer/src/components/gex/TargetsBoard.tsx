@@ -65,6 +65,7 @@ import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM }
 import { AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
 import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
+import { holdPct } from '../../data/wall';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -189,7 +190,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
           )}
         </CardLine>
         <CardLine label="Holds">
-          {kind === 'trapdoor' ? <span style={{ color: WARM }}>pushes the move along</span> : kind === 'thin' ? <span className="text-textMuted">too thin to be a wall</span> : <span style={{ color: SILVER }}>{pct(t.hold)} when reached</span>}
+          {kind === 'trapdoor' ? <span style={{ color: WARM }}>pushes the move along</span> : kind === 'thin' ? <span className="text-textMuted">too thin to be a wall</span> : <span style={{ color: SILVER }}>{holdPct(t.hold)} when reached</span>}
         </CardLine>
         <CardLine label="If it breaks">
           {t.breakTo == null ? (
@@ -316,7 +317,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
         <span>
           {kindOf(t) === 'named' || kindOf(t) === 'shelf' ? (
             <>
-              Holds <span className="normal-case tracking-normal text-[11px] tnum" style={{ color: SILVER }}>{pct(t.hold)}</span>
+              Holds <span className="normal-case tracking-normal text-[11px] tnum" style={{ color: SILVER }}>{holdPct(t.hold)}</span>
             </>
           ) : kindOf(t) === 'trapdoor' ? (
             <span style={{ color: WARM }}>pushes the move along</span>
@@ -486,7 +487,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           <div>
             <dt className="text-[10px] text-textMuted">Weakest wall in reach</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: SILVER }}>
-              {agenda.weakestWall ? `${fmtStrike(agenda.weakestWall.strike)} · holds ${pct(agenda.weakestWall.hold)}` : '—'}
+              {agenda.weakestWall ? `${fmtStrike(agenda.weakestWall.strike)} · holds ${holdPct(agenda.weakestWall.hold)}` : '—'}
             </dd>
           </div>
           <div>
@@ -568,7 +569,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                 )}
                 <div className="text-right font-mono text-[11px] tnum text-textPrimary">{pct(t.reach)}</div>
                 <div className="flex items-center justify-end gap-2 font-mono text-[11px] tnum font-semibold" style={{ color: t.isShelf ? SILVER : kindOf(t) === 'trapdoor' ? WARM : 'rgb(var(--text-muted))' }}>
-                  {t.isShelf ? pct(t.hold) : '—'}
+                  {t.isShelf ? holdPct(t.hold) : '—'}
                   <HoldBeam t={t} w={wide ? 52 : 36} />
                 </div>
                 {full && <div className="font-mono text-[10px] leading-[13px] tnum line-clamp-2">{breakWords(t)}</div>}
@@ -593,7 +594,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       {card && cardTarget && <RowCard t={cardTarget} at={card} inSession={clock.inSession} onClose={() => setCard(null)} />}
       <p className={`${pad} pb-4 pt-2 text-[12px] leading-relaxed text-textSecondary`} data-targets-foot>
         {lead ? `${fmtStrike(lead.strike)} is ${reachedWord} ${pct(lead.reach)} of the time. ` : ''}
-        {agenda.weakestWall ? `The weakest wall in reach is ${fmtStrike(agenda.weakestWall.strike)}, holding ${pct(agenda.weakestWall.hold)} of the time. ` : ''}
+        {agenda.weakestWall ? `The weakest wall in reach is ${fmtStrike(agenda.weakestWall.strike)}, holding ${holdPct(agenda.weakestWall.hold)} of the time. ` : ''}
         {agenda.closesNear ? `The close leans to ${fmtStrike(agenda.closesNear.strike)} at ${agenda.closesNear.odds.toFixed(0)}%.` : ''}
       </p>
     </section>

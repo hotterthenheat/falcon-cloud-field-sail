@@ -77,7 +77,7 @@ import { readSessionClock } from '../../data/moc';
 import { setReplayLabel } from './replayState';
 import { readPosition, usePositions } from '../../data/positions';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
-import { bookForDates } from '../../data/bookWindow';
+import { bookForDates, expirySpan } from '../../data/bookWindow';
 import type { ExposureExpiry } from '../../types/gex';
 import type { Candle, MarketSnapshot } from '../../types/market';
 import { useOnScreen } from '../../components/ui/useOnScreen';
@@ -715,7 +715,7 @@ const MapDesk = () => {
               if (!base) return null;
               return (
                 <div key={t} ref={host ? reportRef : undefined} id={host ? 'map-report' : undefined} className="min-w-0 border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={t} data-on-screen={host ? reportOn : undefined}>
-                  <WallReportCard tight snapshot={bookForDates(base, datesFor(t))} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
+                  <WallReportCard tight snapshot={bookForDates(base, datesFor(t))} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} span={expirySpan(datesFor(t))} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
                 </div>
               );
             })}
@@ -727,7 +727,7 @@ const MapDesk = () => {
         <TraderClock snapshot={bookForDates(daySnap ?? scan, datesFor(dayTicker))} scope={chipFor('day', dayTicker)} dates={datesFor(dayTicker)} at={playing && dayTicker === ticker ? replayMinute(framePos, range) : undefined} onSeek={playing && range && dayTicker === ticker ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
       </div>
       <div ref={reportRef} id="map-report" className="border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={reportTicker} data-on-screen={reportOn}>
-        <WallReportCard snapshot={bookForDates(reportSnap ?? scan, datesFor(reportTicker))} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} bars={playing && reportTicker === ticker ? reportBars : undefined} />
+        <WallReportCard snapshot={bookForDates(reportSnap ?? scan, datesFor(reportTicker))} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={expirySpan(datesFor(reportTicker))} bars={playing && reportTicker === ticker ? reportBars : undefined} />
       </div>
       </div>
       )}

@@ -62,6 +62,8 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const levels = roomLevels(snapshot, scope);
   const flip = levels && levels.flip != null && Number.isFinite(levels.flip) ? levels.flip : null;
   const absorb = flip != null && spot >= flip;
+  /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
+  const onFlip = flip != null && (Math.abs(spot - flip) / Math.max(spot, 1)) * 100 < 0.05;
   /* the ATR of finished sessions moves once a day; read it only when the Ruler asks for it */
   const atr = useMemo(() => (unit === 'ATR' ? sessionAtr(bookCandles(ticker) ?? dayBars(ticker) ?? []) : null), [unit, ticker, bookRev]);
   const away = flip != null ? flip - spot : null;
@@ -93,7 +95,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const flipW = GROUP + ch('Flip', 11, true) + 6 + ch(flip != null ? fmt(flip) : 'none', 12);
   const distW = flip != null && lead ? 6 + ch(atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`, 11) : 0;
   const dealersLabelW = flip != null ? ch('Dealers', 11, true) + 6 : 0;
-  const dealersW = flip != null ? GROUP + ch(absorb ? 'absorb' : 'amplify', 11, true) : 0;
+  const dealersW = flip != null ? GROUP + ch(onFlip ? 'either way' : absorb ? 'absorb' : 'amplify', 11, true) : 0;
   const heldW = heldWords ? GROUP + ch('Flip today', 11, true) + 6 + ch(heldWords, 12) : 0;
   const room = (width > 0 ? width : 9999) - 24 - 16;
   const base = priceW + flipW + dealersW;
@@ -120,10 +122,10 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
         {flip != null && shed < 3 && lead && <span className="text-[11px] tnum text-textMuted">{atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`}</span>}
       </span>
       {flip != null && shed < 5 && (
-        <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={absorb ? 'Price above the flip — dealer hedging absorbs a move' : 'Price below the flip — dealer hedging amplifies a move'}>
+        <span className={`inline-flex items-baseline gap-1.5 ${SEP}`} title={onFlip ? 'Price is on the flip — dealer hedging can tip either way' : absorb ? 'Price above the flip — dealer hedging absorbs a move' : 'Price below the flip — dealer hedging amplifies a move'}>
           {shed < 2 && <span className="text-[11px] uppercase tracking-wider text-textMuted">Dealers</span>}
-          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: absorb ? ABSORB : AMPLIFY }}>
-            {absorb ? 'absorb' : 'amplify'}
+          <span className={`text-[11px] font-semibold uppercase tracking-wider ${onFlip ? 'text-textSecondary' : ''}`} style={onFlip ? undefined : { color: absorb ? ABSORB : AMPLIFY }}>
+            {onFlip ? 'either way' : absorb ? 'absorb' : 'amplify'}
           </span>
         </span>
       )}

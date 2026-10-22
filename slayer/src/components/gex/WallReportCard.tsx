@@ -156,7 +156,7 @@ const GRID = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg
 // ---- the section ----------------------------------------------------------------
 
 /** `scope`: the host's chip saying which name's levels these are */
-const WallReportCard = ({ snapshot, focus, onPick, scope, bars: barsProp, tight = false }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
+const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
   const picked = useDeskSession();
   const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : picked;
   const bars = useMemo(() => {
@@ -269,6 +269,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, bars: barsProp, tight 
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
         <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">How the levels held today</h3>
         {scope}
+        {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The expiries these levels are read from — the Map's Expiries card" data-report-span>{span}</span>}
         <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the rows, the strips and the ticks mean" testId="report-guide" />
         <FoldDoor open={open} onToggle={toggleOpen} what="the report" testId="report" />
         {rates.insideMove.n > 0 && (

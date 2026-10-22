@@ -482,7 +482,8 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                 {/* THE WALL NOW, and the lean under it */}
                 <div className={`px-2 min-w-0 ${compact ? 'pr-[48px]' : 'pr-[168px]'}`}>
                   <Wall row={r} max={maxAbs} compact={compact} />
-                  <div className="mt-[6px] text-[10px] text-textMuted whitespace-nowrap truncate" data-build-lean>
+                  {/* the lean takes the bar's reserved right room too — inside it "call-heavy · dealers push back…" was cut to "dealers p…" */}
+                  <div className={`mt-[6px] text-[10px] text-textMuted whitespace-nowrap truncate ${compact ? '-mr-[48px]' : '-mr-[168px]'}`} data-build-lean>
                     {r.verdict === 'switched' ? `${r.now < 0 ? 'call-heavy' : 'put-heavy'} now · was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} at the open` : sideWords(r.now).replace(', so ', ' · ')}
                   </div>
                 </div>

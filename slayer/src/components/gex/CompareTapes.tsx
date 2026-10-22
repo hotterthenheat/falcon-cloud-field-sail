@@ -229,11 +229,12 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
     <section className="flex flex-col min-w-0" data-compare-tapes-band data-since-a={today.lastA?.toFixed(2)} data-since-b={today.lastB?.toFixed(2)}>
       {/* THE HEAD */}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3 flex-wrap">
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Since the open</h3>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap">
+          {/* truncate: unclipped, the line ran under the facts beside it ("…in the leader's ink" over "SPY +0.47%") */}
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
             Today, both as percent from their own open · <span style={{ color: aInk }}>{a}</span> and <span style={{ color: bInk }}>{b}</span>, the same line each · the band beneath is the gap, in the leader's ink
           </p>
         </div>
