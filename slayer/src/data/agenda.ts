@@ -43,7 +43,7 @@
 
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
-import { buildWallContext, holdPct, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
+import { buildWallContext, holdWord, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
 import type { Building, BuildVerdict } from './building';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
@@ -155,7 +155,7 @@ function whyOf(t: Target, order: AgendaOrder, marketPer1Pct: number): string {
     case 'reached':
       return `${pct(t.reach)} reached · ${t.distanceSigma.toFixed(1)}× the expected move away`;
     case 'weakest':
-      return t.isShelf ? `holds ${holdPct(t.hold)} when reached · ${pct(t.reach)} reached` : t.isWall ? 'too thin to be a wall' : 'a trapdoor — pushes the move along';
+      return t.isShelf ? `a ${holdWord(t.hold)} wall · ${pct(t.reach)} reached` : t.isWall ? 'too thin to be a wall' : 'a trapdoor — pushes the move along';
     case 'biggest':
       return `${fmtDollars(Math.abs(t.weight))} here + ${fmtDollars(Math.abs(t.breakFlow))} on the way through · ${ratio.toFixed(1)}× the market`;
   }
@@ -180,7 +180,7 @@ function wordsOf(o: WallOdds, shelf: boolean): string {
   const dir = o.side === 'call' ? 'above' : 'below';
   const to = o.breakPath.to;
   const run = to == null ? `no shelf behind it on the strikes shown` : `runs to ${fmtStrike(to)}${o.breakPath.pocket ? ' with almost nothing in between' : ''}${flowWords(o.breakPath.flow)}`;
-  return shelf ? `holds ${holdPct(o.hold)} when reached; a break ${dir} ${run}` : o.weight > 0 ? `too thin to be a wall; a move ${dir} ${run}` : `a trapdoor — a move ${dir} through it ${run}`;
+  return shelf ? `a ${holdWord(o.hold)} wall; a break ${dir} ${run}` : o.weight > 0 ? `too thin to be a wall; a move ${dir} ${run}` : `a trapdoor — a move ${dir} through it ${run}`;
 }
 
 /* ---- the build ----------------------------------------------------------------- */
@@ -274,7 +274,7 @@ export function buildAgenda(
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `holds ${holdPct(lead.hold)} when it is` : lead.isWall ? 'too thin to be a wall' : 'a trapdoor'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `a ${holdWord(lead.hold)} wall` : lead.isWall ? 'too thin to be a wall' : 'a trapdoor'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';
