@@ -62,7 +62,6 @@ import { TickFigure } from '../ui/liveRead';
 /* THE HEAD'S OTHER CARDS (Noah, 2026-09-10: "is 'the two books on one ruler'
    missing some top buttons … the house color vs thermal color button"): the
    Map's Expiry card and the calendar's Colours card, the same words. */
-const EXPIRY_OPTIONS: ExpiryChoice<ExposureExpiry>[] = ladderExpiryOptions();
 const PALETTE_OPTIONS: DropdownOption<'thermal' | 'house'>[] = [
   { value: 'thermal', label: 'Thermal', hint: 'Yellow in the middle, red where hedging amplifies a move, blue where it absorbs one' },
   { value: 'house', label: 'House', hint: 'Gold where hedging amplifies, ice where it absorbs' },
@@ -143,6 +142,22 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
   /* THE WINDOW'S TARGET along the ruler (0 = spot), one for every lane on the box */
   const [want, setWant] = useState(0);
   useEffect(() => setWant(0), [cmp.a.ticker, cmp.b.ticker, reach]);
+  /* THE CHOICES NAME THE LISTINGS THE TWO BOOKS READ (the ship pass, 2026-10-22): read per render, not once at load (the
+     calendar rolls at the bell), and when both names land on the same listing the card says it; when they differ
+     (NVDA lists no Oct 22) the calendar's label stays and the hint says which day each book reads */
+  const expiryChoices = useMemo<ExpiryChoice<ExposureExpiry>[]>(() => {
+    const a = ladderExpiryOptions(cmp.a.ticker);
+    const b = ladderExpiryOptions(cmp.b.ticker);
+    const day = (d: Date | null | undefined) => (d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—');
+    return ladderExpiryOptions().map(o => {
+      const oa = a.find(x => x.value === o.value);
+      const ob = b.find(x => x.value === o.value);
+      if (!oa || !ob || !o.date) return o;
+      if (oa.label === ob.label) return oa;
+      return { ...o, hint: `${cmp.a.ticker} reads ${day(oa.date)} · ${cmp.b.ticker} reads ${day(ob.date)}` };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cmp.a.ticker, cmp.b.ticker, cmp]);
   const target = Math.max(-limit, Math.min(limit, want));
   const view = inView(lay, target);
   const scale = view.scale(greek);
@@ -180,7 +195,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
      selection should be possible as well… making the rulers smaller") — the lanes
      picked stand in the single drawing's height; fullscreen gives them the screen */
   /* both books are the vendor's, and its per-strike exposure carries no vega — VEX would draw $0 capsules */
-  const greekGroups = useMemo(() => [{ title: 'What the capsules measure', options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm — the feed carries no vega' } : o)) }], []);
+  const greekGroups = useMemo(() => [{ title: 'What the capsules measure', options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm' } : o)) }], []);
 
   /* WHAT SITS WITHIN REACH — each greek on the ruler, not the first one speaking for the rest. */
   const reachFacts = useMemo(() => {
@@ -298,7 +313,7 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
 
       {/* THE ONE LINE OF CONTROLS */}
       <div className="px-5 pb-2 flex items-center gap-2 flex-wrap shrink-0" data-axis-controls>
-        <ExpiryCard label="Expiry" value={expiry} choices={EXPIRY_OPTIONS} onChange={onExpiry} title="Which contracts both books weigh" testId="compare-expiry" />
+        <ExpiryCard label="Expiry" value={expiry} choices={expiryChoices} onChange={onExpiry} title="Which contracts both books weigh" testId="compare-expiry" />
         <DropdownSelect label="Reach" value={reach} options={REACH_OPTIONS} onChange={onReach} title="How far the ruler runs, in the day's expected moves" testId="reach" />
         <DropdownMulti label="Greek" values={greekPick} groups={greekGroups} onChange={onGreekPick} emptyWord="All" title="One, some, or all four — a lane each, on one ruler" testId="compare-greek" align="start" />
         {/* no Colours card on paper (2026-10-04): the paper ramps are one journey whatever the palette */}

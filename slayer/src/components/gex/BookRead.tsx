@@ -321,7 +321,9 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
           <div className="flex items-baseline gap-2">
             {/* the net in the ladder's own ramp — the total against itself, the foot's rule */}
             <span className="text-[17px] font-semibold" style={{ color: rampInk(greek, net, Math.max(1, Math.abs(net))) }}>{fmtUsd(net)}</span>
-            <span className="text-[11px] text-textMuted">net {label}</span>
+            {/* the strikes near spot, not the whole book — the Dealer hedging card's "Net now" adds every strike, so the two
+                differ; say which this is (the ship pass, 2026-10-22) */}
+            <span className="text-[11px] text-textMuted">net {label} · the {surface.strikes.length} strikes near spot</span>
           </div>
           <p className="font-sans text-[11px] leading-relaxed text-textSecondary">{verdict.read}</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">

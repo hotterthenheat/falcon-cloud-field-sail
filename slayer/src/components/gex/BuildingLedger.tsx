@@ -217,7 +217,7 @@ interface ControlsProps {
   /** "14:35:10" — when the numbers were last read */
   updatedAt: string;
   /** Across every pane: how many strikes moved, of how many */
-  moved: number;
+  moved: number | null;
   total: number;
 }
 
@@ -245,7 +245,7 @@ export const BuildingControls = ({ clock, order, onOrder, window, onWindow, show
       </span>
     </span>
     <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" data-build-updated>
-      {moved} of {total} moved · {updatedAt}
+      {moved == null ? 'reading the book' : `${moved} of ${total} moved`} · {updatedAt}
     </span>
   </div>
 );
@@ -338,6 +338,8 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
     return () => document.removeEventListener('click', h);
   }, [anyKept, onClear]);
 
+  /* no strike carries a change of open interest yet — the by-expiry book is still being read, not a quiet day */
+  const counted = data.rows.some(r => r.dCall !== 0 || r.dPut !== 0);
   const soft = 'blur-[2px] opacity-30';
   const crisp = 'blur-0 opacity-100';
   const span = compact ? 'col-span-4' : 'col-span-7';
@@ -352,13 +354,13 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
           <div>
             <dt className="text-[10px] text-textMuted whitespace-nowrap">{clock.inSession ? 'Built today' : 'Built last session'}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-built>
-              +{fmtDollars(data.built)}
+              {counted ? `+${fmtDollars(data.built)}` : '—'}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted whitespace-nowrap">{clock.inSession ? 'Drained today' : 'Drained last session'}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-drained>
-              −{fmtDollars(data.drained)}
+              {counted ? `−${fmtDollars(data.drained)}` : '—'}
             </dd>
           </div>
           {!compact && (

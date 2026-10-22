@@ -27,7 +27,7 @@
 ==================================================
 */
 
-import { holdWord } from '../../data/wall';
+import { holdLabel } from '../../data/wall';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -173,7 +173,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
       )}
       <span className="text-[10px] text-textSecondary">
         {Math.round(w.reach * 100)}% reached{w.isShelf ? ' · ' : ''}
-        {w.isShelf && <span style={{ color: SILVER }}>{holdWord(w.hold)} wall</span>}
+        {w.isShelf && <span style={{ color: SILVER }}>holds {holdLabel(w.hold)}</span>}
       </span>
       <span className="text-[10px] text-textMuted">{fmtDollars(w.stake)}</span>
     </span>
@@ -340,7 +340,7 @@ const Board = () => {
         minWidth: 290,
         cellRenderer: WatchCell,
         cellDataType: false,
-        headerTooltip: 'The strike to watch first on this name — the one most likely reached with the most at stake — with the odds it is reached, how strong a wall it is against the others on the name, and the dollars behind it',
+        headerTooltip: 'The strike to watch first on this name — the one most likely reached with the most at stake — with the odds it is reached, the share of touches walls like it held in the back-test, and the dollars behind it',
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },

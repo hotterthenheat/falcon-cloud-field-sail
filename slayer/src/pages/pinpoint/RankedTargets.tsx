@@ -207,7 +207,9 @@ const RankedTargets = () => {
   };
   const [guideOpen, setGuideOpen] = useState(false);
   /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
-  const expiryOptions = useMemo<DropdownOption<ExposureExpiry>[]>(() => ladderExpiryOptions().map(o => ({ value: o.value, label: o.label, hint: o.hint })), []);
+  /* each pane's Expiry card names the listing its own name reads (ladderExpiryOptions with a ticker) — re-read as the
+     book lands (bookRev re-renders the page) */
+  const expiryOptionsFor = (t: string): DropdownOption<ExposureExpiry>[] => ladderExpiryOptions(t).map(o => ({ value: o.value, label: o.label, hint: o.hint }));
 
   /* THE CLOCK — New York time, re-read every 15s; the reach odds run on it */
   const [clockRaw, setClockRaw] = useState(() => readSessionClock());
@@ -359,7 +361,7 @@ const RankedTargets = () => {
                     clock={clock}
                     density={density}
                     count={panes.length}
-                    expiryOptions={expiryOptions}
+                    expiryOptions={expiryOptionsFor(t)}
                     linked={linked}
                     onToggleLink={() => patchPane(p.key, { ticker: linked ? t : undefined })}
                     onPickName={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}

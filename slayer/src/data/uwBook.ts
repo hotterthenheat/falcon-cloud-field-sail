@@ -124,7 +124,7 @@ const emptyNode = (strike: number): StrikeNode => ({
    1% move is × spot² × 0.01, DEX × spot, vanna per vol point × 0.01 × spot, charm per session × spot / 252. Read raw,
    SPY's heaviest strike printed $413K of gamma instead of ~$2.5B, so every wall weighed nothing against the market's
    dollars per 1% and the hold odds sat on their 8% floor on every name. */
-function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }): StrikeNode {
+export function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }): StrikeNode {
   const g = spot > 0 ? spot * spot * 0.01 : 1;
   const d = spot > 0 ? spot : 1;
   const v = spot > 0 ? spot * 0.01 : 1;
@@ -157,7 +157,7 @@ function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number 
   };
 }
 
-function chainFrom(rows: UwGreekStrike[], spot: number, oi: Map<number, { c: number; p: number }>, flow?: Map<number, { call: number; put: number }>): StrikeNode[] {
+export function chainFrom(rows: UwGreekStrike[], spot: number, oi: Map<number, { c: number; p: number }>, flow?: Map<number, { call: number; put: number }>): StrikeNode[] {
   const out: StrikeNode[] = [];
   for (const row of rows) {
     const strike = num(row.strike);
@@ -327,9 +327,9 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
 }
 
 /** Open interest and vega the greek-by-expiry rows do not carry. One request a date. */
-async function fillExpiryFacts(entry: Entry, token: number): Promise<void> {
+async function fillExpiryFacts(entry: Entry, token: number, only?: readonly string[]): Promise<void> {
   const still = () => gen.get(entry.ticker) === token;
-  const dates = Object.keys(entry.byDate);
+  const dates = only ? only.filter(d => d in entry.byDate) : Object.keys(entry.byDate);
   if (!dates.length) return;
   const books = await mapLimit(dates, 3, async date => {
       try {
@@ -438,12 +438,18 @@ function planFor(ticker: string, spot: number, chain: StrikeNode[]): TradePlan {
   };
 }
 
-const closestDate = (want: string, dates: string[]): string | null => {
-  if (dates.includes(want)) return want;
+/* NEVER AN EXPIRED DATE (the ship pass, 2026-10-22): after the bell the vendor still lists the day that just settled
+   (NVDA: Oct 21, then Oct 23) — "today" on the 22nd sat equidistant between them and could read the settled book. A
+   choice resolves to its own date, else the first listing after it, else the nearest one still live. */
+const closestDate = (want: string, dates: string[], floor: string = isoDate(bookToday())): string | null => {
+  const live = dates.filter(d => d >= floor).sort();
+  if (live.includes(want)) return want;
+  const after = live.find(d => d > want);
   const target = Date.parse(`${want}T00:00:00Z`);
+  if (after && Date.parse(`${after}T00:00:00Z`) - target <= 4 * 86_400_000) return after;
   let best: string | null = null;
   let dist = 4 * 86_400_000;
-  for (const d of dates) {
+  for (const d of live) {
     const dd = Math.abs(Date.parse(`${d}T00:00:00Z`) - target);
     if (dd < dist) {
       dist = dd;
@@ -453,17 +459,51 @@ const closestDate = (want: string, dates: string[]): string | null => {
   return best;
 };
 
+const LADDER_DTE: [string, number][] = [
+  ['0DTE', 0],
+  ['1D', 1],
+  ['2D', 2],
+  ['5D', 5],
+  ['7D', 7],
+];
+
+/** The date an expiry choice reads on this name's book — the one chainsFor hands the pages — or null when the book is
+    not in or the choice is not one date. The expiry cards label themselves with it. */
+export function expiryDateFor(ticker: string, choice: string): string | null {
+  const entry = cache.get(ticker);
+  if (!entry) return null;
+  const dte = LADDER_DTE.find(([label]) => label === choice)?.[1];
+  if (dte == null) return null;
+  return closestDate(isoDate(expiryFor(dte, bookToday()).date), Object.keys(entry.byDate));
+}
+
+const LIVE_KEYS = ['callGex', 'putGex', 'netGex', 'callDex', 'putDex', 'netDex', 'callVex', 'putVex', 'netVex', 'callVanna', 'putVanna', 'netVanna', 'callCharm', 'putCharm', 'netCharm', 'callOI', 'putOI'] as const;
+
+/* THE WHOLE BOOK WITHOUT THE DAY THAT SETTLED (the ship pass, 2026-10-22): the vendor's per-strike totals are dated to its
+   last session, so before the next open "every expiry" still carried the settled 0DTE's gamma. Once that date's own
+   chain is in, it comes off the total, strike by strike. */
+function liveAll(entry: Entry): StrikeNode[] {
+  const floor = isoDate(bookToday());
+  const settled = Object.keys(entry.byDate).filter(d => d < floor && entry.byDate[d]?.length);
+  if (!settled.length) return entry.all;
+  const off = new Map<number, StrikeNode[]>();
+  for (const d of settled) for (const n of entry.byDate[d]) off.set(n.strike, [...(off.get(n.strike) ?? []), n]);
+  return entry.all.map(n => {
+    const gone = off.get(n.strike);
+    if (!gone) return n;
+    const out = { ...n };
+    for (const k of LIVE_KEYS) {
+      const less = gone.reduce((a, g) => a + (g[k] ?? 0), 0);
+      if (less) out[k] = (k === 'callOI' || k === 'putOI') ? Math.max(0, out[k] - less) : out[k] - less;
+    }
+    return out;
+  });
+}
+
 function chainsFor(entry: Entry): Partial<Record<string, StrikeNode[]>> {
-  const dates = Object.keys(entry.byDate);
-  const out: Partial<Record<string, StrikeNode[]>> = { ALL: entry.all };
-  const labels: [string, number][] = [
-    ['0DTE', 0],
-    ['1D', 1],
-    ['2D', 2],
-    ['5D', 5],
-    ['7D', 7],
-  ];
-  for (const [label, dte] of labels) {
+  const dates = Object.keys(entry.byDate).filter(d => d >= isoDate(bookToday()));
+  const out: Partial<Record<string, StrikeNode[]>> = { ALL: liveAll(entry) };
+  for (const [label, dte] of LADDER_DTE) {
     const want = isoDate(expiryFor(dte, bookToday()).date);
     const hit = closestDate(want, dates);
     if (hit && entry.byDate[hit]?.length) out[label] = entry.byDate[hit];
@@ -474,14 +514,29 @@ function chainsFor(entry: Entry): Partial<Record<string, StrikeNode[]>> {
   });
   const opex = fridays.sort((a, b) => Math.abs(a.dte - 30) - Math.abs(b.dte - 30))[0];
   if (opex && entry.byDate[opex.date]?.length) out.OPEX = entry.byDate[opex.date];
-  if (!out['0DTE'] && dates[0] && entry.byDate[dates[0]]?.length) out['0DTE'] = entry.byDate[dates.sort()[0]];
+  /* the fallback is the first LIVE date — the sorted list's head after the bell is the day that just settled */
+  const firstLive = [...dates].sort().find(d => d >= isoDate(bookToday()));
+  if (!out['0DTE'] && firstLive && entry.byDate[firstLive]?.length) out['0DTE'] = entry.byDate[firstLive];
   return out;
+}
+
+/* THE LISTING AS IT STANDS ON THE BOOK'S DAY (the ship pass, 2026-10-22): the vendor's expiries are dated to its last
+   session — after the bell and into the next morning it still lists the day that settled at dte 0 (SPY Oct 21 with
+   the book on Oct 22), and the Map's window, its supreme and its levels card counted the settled contracts as live.
+   Settled dates leave the listing; the rest count their days from the book's day, so Oct 22 is "today" again. */
+function liveListing(expiries: Entry['expiries']): Entry['expiries'] {
+  const floor = isoDate(bookToday());
+  const settledFront = expiries.find(e => e.dte === 0 && e.date < floor);
+  /* the vendor's dte counts calendar days (Oct 21 → Oct 26 is 5), so the shift does too — a Friday's settled front is three days behind Monday */
+  const shift = settledFront ? Math.round((Date.parse(`${floor}T00:00:00Z`) - Date.parse(`${settledFront.date}T00:00:00Z`)) / 86_400_000) : 0;
+  const live = expiries.filter(e => e.date >= floor).map(e => (shift ? { ...e, dte: Math.max(0, e.dte - shift) } : e));
+  return live.length ? live : expiries;
 }
 
 function materialize(entry: Entry, scope: LevelsScope): MarketSnapshot {
   const uwChains = chainsFor(entry);
   const today = uwChains['0DTE'];
-  const chain = scope === 'ALL' ? entry.all : today && today.length ? today : entry.all;
+  const chain = scope === 'ALL' ? (uwChains.ALL ?? entry.all) : today && today.length ? today : (uwChains.ALL ?? entry.all);
   const closes = entry.candles.map(c => c.close);
   return {
     ticker: entry.ticker,
@@ -495,7 +550,7 @@ function materialize(entry: Entry, scope: LevelsScope): MarketSnapshot {
     liveBook: true,
     uwChains,
     uwByDate: entry.byDate,
-    uwExpiries: entry.expiries,
+    uwExpiries: liveListing(entry.expiries),
   };
 }
 
@@ -727,7 +782,10 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     whalesIvRank(ticker).catch(() => []),
     whalesTermStructure(ticker).catch(() => [] as UwTerm[]),
     whalesInterpIv(ticker).catch(() => [] as UwInterp[]),
-    whalesBars(ticker, mode === 'full' ? '1m' : '5m', mode === 'full' ? 500 : 90).catch(() => [] as UwBar[]),
+    /* A WHOLE DAY OF BARS, NOT THE LAST FEW HOURS (the ship pass, 2026-10-22): the feed hands bars newest first,
+       post-market included — after the bell 500 one-minute bars reached back only to ~11:40, so the day's chart and
+       "How the levels held" started late morning. 1000 / 200 cover pre-market, the session and the evening. */
+    whalesBars(ticker, mode === 'full' ? '1m' : '5m', mode === 'full' ? 1000 : 200).catch(() => [] as UwBar[]),
   ]);
   if (!still()) return;
   if (!state || !Array.isArray(strikes) || strikes.length === 0) throw new Error('shape');
@@ -833,15 +891,20 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
     emit();
   };
   /* The dates on screen first, then the rest of the listed book. */
+  /* THE NEAR DATES' OPEN INTEREST AT ONCE (the ship pass, 2026-10-22): the by-expiry rows carry no open interest, and
+     it was filled only after all ~40 dates had landed — on Building (today's expiry by default) every strike's change
+     read +$0 for the better part of a minute. The dates on screen get theirs as soon as they are in. */
   const near = dates.slice(0, 6);
   apply(await pull(near), dates.length <= 6);
   if (!still()) return;
+  const first = cache.get(entry.ticker);
+  if (first) void fillExpiryFacts(first, token, near);
   if (dates.length > 6) {
     apply(await pull(dates.slice(6)), true);
     if (!still()) return;
+    const current = cache.get(entry.ticker);
+    if (current) void fillExpiryFacts(current, token, dates.slice(6));
   }
-  const current = cache.get(entry.ticker);
-  if (current) void fillExpiryFacts(current, token);
 }
 
 function load(ticker: string, mode: BookMode) {
