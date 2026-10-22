@@ -39,6 +39,7 @@
 ==================================================
 */
 
+import { readMarketState } from '../../data/marketState';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, LineStyle, createChart, createSeriesMarkers, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { buildPair, pairPlace, type DailyClose, type Pair } from '../../data/compare';
@@ -279,7 +280,8 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
             {shown && shownTime != null && (
               <div className="absolute top-2 left-3 z-10 pointer-events-none flex items-center gap-2 font-mono text-[11px] tnum whitespace-nowrap" data-pair-legend data-legend-time={shownTime}>
                 <span className="font-semibold text-textPrimary">{shown.today ? 'Today' : dayWords(shownTime)}</span>
-                {shown.today && (
+                {/* "still moving" only while the session is — after the bell today's ratio is a close like any other day's */}
+                {shown.today && readMarketState().word === 'live' && (
                   <span className="text-[9px] uppercase tracking-widest" style={{ color: SILVER }}>
                     still moving
                   </span>
@@ -293,7 +295,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
             {/* THE CARD on the day under the crosshair — the marks included: the two closes in their inks, the ratio, where
                 that day sat against the usual range and which name was further ahead than usual */}
             {hovering && shown && shownTime != null && (
-              <PointerFollowCard start={pointerAt.current} width={248} testId="data-pair-card" testValue={`${shownTime}`} title={shown.today ? 'Today' : dayWords(shownTime)} aside={shown.today ? 'still moving' : isOutside(shown.ratio) ? 'closed outside the range' : 'closed inside the range'}>
+              <PointerFollowCard start={pointerAt.current} width={248} testId="data-pair-card" testValue={`${shownTime}`} title={shown.today ? 'Today' : dayWords(shownTime)} aside={shown.today && readMarketState().word === 'live' ? 'still moving' : isOutside(shown.ratio) ? 'closed outside the range' : 'closed inside the range'}>
                 <CardRow k={a} v={fmtClose(shown.closeA)} ink={aInk} sub="close" />
                 <CardRow k={b} v={fmtClose(shown.closeB)} ink={bInk} sub="close" />
                 <CardRow k={`${a} ÷ ${b}`} v={fmtRatio(shown.ratio)} />

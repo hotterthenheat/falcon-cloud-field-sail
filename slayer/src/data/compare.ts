@@ -426,7 +426,10 @@ export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] |
   return { a, b, sessions, today, now, mean, sd, z, outside, sentence };
 }
 
-export const regimeWord = (s: CompareSide) => (s.regime === 'LONG' ? 'absorb' : s.regime === 'SHORT' ? 'amplify' : 'lean one way');
+/* on the flip (within 0.05%, data/gex.ts readHeatPattern's AT_FLIP) a name is neither regime — the panel says "sitting on
+   the flip", so the sentence under the ruler must not say "amplify" for it */
+const onFlip = (s: CompareSide) => s.flipDistPct != null && Math.abs(s.flipDistPct) < 0.05;
+export const regimeWord = (s: CompareSide) => (onFlip(s) ? 'go either way on' : s.regime === 'LONG' ? 'absorb' : s.regime === 'SHORT' ? 'amplify' : 'lean one way');
 
 export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock): Compare {
   const ratioRaw = b.sigmaLeftPct / Math.max(1e-9, a.sigmaLeftPct);
@@ -435,9 +438,11 @@ export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock):
   const nearerCall = Math.abs(a.callWall.distPct) <= Math.abs(b.callWall.distPct) ? a : b;
   const nearerPut = Math.abs(a.putWall.distPct) <= Math.abs(b.putWall.distPct) ? a : b;
   const regimes =
-    a.regime && b.regime && a.regime === b.regime
-      ? `dealers ${regimeWord(a)} moves on both`
-      : `dealers ${regimeWord(a)} moves on ${a.ticker} and ${regimeWord(b)} them on ${b.ticker}`;
+    onFlip(a) || onFlip(b)
+      ? [a, b].map(s => (onFlip(s) ? `${s.ticker} sits on its flip` : `dealers ${regimeWord(s)} moves on ${s.ticker}`)).join(' and ')
+      : a.regime && b.regime && a.regime === b.regime
+        ? `dealers ${regimeWord(a)} moves on both`
+        : `dealers ${regimeWord(a)} moves on ${a.ticker} and ${regimeWord(b)} them on ${b.ticker}`;
   const when = clock.inSession ? 'to the close' : 'next session';
   const sentence =
     `${wider.ticker} has the wider expected move ${when}, ${wider.ratio.toFixed(1)}× ${narrower}'s; ${regimes}. ` +

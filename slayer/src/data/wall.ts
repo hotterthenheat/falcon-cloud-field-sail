@@ -165,6 +165,10 @@ const phi = (x: number) => {
   return x >= 0 ? 1 - p : p;
 };
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** Hold odds at the clamp are a bound, not a reading (the Pinpoint sweep, 2026-10-22: on SPY every wall's hedging is
+    a few percent of the market's dollars per 1%, so every shelf sat on the 8% floor and printed "holds 8%" as if
+    measured). The floor and the ceiling print as "<10%" and ">90%". */
+export const holdPct = (v: number) => (v <= ODDS_LO + 1e-9 ? '<10%' : v >= ODDS_HI - 1e-9 ? '>90%' : pct(v));
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 
 /** Tests of a level as VISITS, not bars: a test begins when a bar's range
@@ -438,7 +442,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const sentence =
     weight > 0
-      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time and holds ${pct(hold)} of the time when it is. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
+      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time and holds ${holdPct(hold)} of the time when it is. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
       : `${who} is not a wall: the hedging there pushes moves along rather than back. ${cap(breakPath.words)}.`;
 
   return { strike: K, side, role, weight, weightEff, expiresToday, touches, breaks, build, speed, prints, distanceSigma, reach, hold, factors, breakPath, holdPath, sentence };
@@ -542,7 +546,7 @@ export function buildWallBoard(
   const s = walls.find(x => x.strike === strongest);
   const sentence =
     w && s && w.strike !== s.strike
-      ? `The weakest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''}, holding ${pct(w.hold)} of the time; the strongest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} at ${pct(s.hold)}.`
+      ? `The weakest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''}, holding ${holdPct(w.hold)} of the time; the strongest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} at ${holdPct(s.hold)}.`
       : walls.length
         ? `${walls.length} wall${walls.length === 1 ? '' : 's'} on the strikes shown, the nearest at ${fmtStrike(walls[0].strike)}.`
         : 'No wall on the strikes shown.';

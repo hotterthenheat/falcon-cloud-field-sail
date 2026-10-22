@@ -27,6 +27,7 @@
 ==================================================
 */
 
+import { holdPct } from '../../data/wall';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -122,6 +123,8 @@ const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
   if (!data.regime) return <span className="font-mono text-[10px] text-textMuted">one-sided — no flip</span>;
   const w = REGIME_WORDS[data.regime];
+  /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
+  if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="font-mono text-[11px] text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
   /* The shell's words, not "LONG GAMMA" (2026-09-09): plain English on Pinpoint */
   return (
     <span className="font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}`}>
@@ -170,7 +173,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
       )}
       <span className="text-[10px] text-textSecondary">
         {Math.round(w.reach * 100)}% reached{w.isShelf ? ' · holds ' : ''}
-        {w.isShelf && <span style={{ color: SILVER }}>{Math.round(w.hold * 100)}%</span>}
+        {w.isShelf && <span style={{ color: SILVER }}>{holdPct(w.hold)}</span>}
       </span>
       <span className="text-[10px] text-textMuted">{fmtDollars(w.stake)}</span>
     </span>
