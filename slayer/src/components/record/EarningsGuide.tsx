@@ -230,7 +230,7 @@ const RecordFigure = () => (
 export const EarningsGuide = () => (
   <div data-earnings-guide>
     <Section title="A day on the board">
-      <p>Five days across, today's head in silver; every name is a card with the move its options charge, on the shelf for before the open or after the close. The Fed's FOMC decision days and the payrolls Friday sit under the day's head. Click a card for the name's page.</p>
+      <p>Five days across, today's head in silver; every name is a card with the move its options charge, on the shelf for before the open, after the close, or "time not set" when the vendor has no time for it. "Date estimated" marks a date the company has not set. The Fed's FOMC decision days and the payrolls Friday sit under the day's head. Click a card for the name's page.</p>
       <BoardDayFigure />
     </Section>
     <Section title="The same day as a list">
@@ -244,11 +244,11 @@ export const EarningsGuide = () => (
       <p>The Name card takes any ticker and answers with its next report: the date, before the open or after the close, and whether the company has set it or it is still Unusual Whales' estimate. Inside the fortnight the answer carries the options price and opens the name's page. Every next-earnings date in the Dossier — this card, the stock page, the company card and the News calendar — is the same one: the name's own Unusual Whales earnings file, the first report dated today or later. "In 7 trading days" counts weekdays.</p>
     </Section>
     <Section title="Priced">
-      <p>The move the options charge for the print (the straddle's price as a % of the stock) over what the name usually moved the day after its last eight reports: rich above 1.3×, cheap below 0.85×, fair between.</p>
+      <p>The move the options charge for the print (the straddle's price as a % of the stock) over what the name usually moved the day after its last eight reports with a move on file — fewer when fewer are on file, and the count is said: rich above 1.3×, cheap below 0.85×, fair between. A name needs at least four past moves to be called rich, fair or cheap; a name with none has no usual move. A report already out shows the move it made, not a price. Beat · in line · miss counts the last reports that carry both an actual and an estimate; equal to the cent is in line.</p>
       <PricedFigure />
     </Section>
     <Section title="Today's price, replayed">
-      <p>On a name's page, today's price for the move is tested against its last eight real prints — how often the move would have covered it.</p>
+      <p>On a name's page, today's price for the move is tested against its last eight real prints with a move (fewer when fewer are on file) — how often the move would have covered it.</p>
       <ReplayFigure />
     </Section>
     <Section title="On the record">

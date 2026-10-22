@@ -100,7 +100,19 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
   const own = useVendorRow(stockBookKey(ticker), 'inst-own');
   const held = useVendorRow(stockBookKey(ticker), 'etf-exposure');
   const shortLive = useShortRow(ticker);
-  const short = shortLive.row;
+  /* THE NAME'S OWN SHORT PRINT (the re-audit, 2026-10-22: AAPL, TSLA, GME and SPY read "—" — only names on the Shorts
+     screen had one). /shorts/{t}/interest-float/v2 is already on this page's book; its newest settlement is the figure,
+     the Shorts screen's row only when the name's own read has not answered */
+  const siRow = useVendorRow(stockBookKey(ticker), 'si');
+  const own_si = (() => {
+    const rows = siRow?.state === 'live' && Array.isArray(siRow.data) ? (siRow.data as Record<string, unknown>[]) : [];
+    const last = rows.filter(r => r && r.market_date).sort((a, b) => String(b.market_date).localeCompare(String(a.market_date)))[0];
+    if (!last) return null;
+    const f = numOf(last.si_float);
+    if (f == null) return null;
+    return { interestPct: f <= 1.5 ? f * 100 : f, daysToCover: numOf(last.days_to_cover) ?? 0, shortSharesM: (numOf(last.short_interest) ?? 0) / 1e6, asOf: String(last.market_date).slice(0, 10) };
+  })();
+  const short = own_si ?? (shortLive.row ? { interestPct: shortLive.row.interestPct, daysToCover: shortLive.row.daysToCover, shortSharesM: shortLive.row.shortSharesM, asOf: null as string | null } : null);
   const houses = people(own?.state === 'live' ? own.data : null);
   const funds = people(held?.state === 'live' ? held.data : null);
   const own_ = useOwnWeights(ticker, funds.map(f => f.etf).filter(Boolean));
@@ -123,7 +135,14 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <Fact label="Largest house">{largest ? largest.name : own?.state === 'loading' ? '…' : '—'}</Fact>
-          <Fact label="Short interest">{short ? <TickFigure value={short.interestPct}>{`${short.interestPct.toFixed(2)}%`}</TickFigure> : shortLive.status === 'loading' ? '…' : '—'}</Fact>
+          <Fact label="Short interest">
+            {short ? (
+              <button type="button" onClick={() => navigate(`/dossier/shorts/${ticker}`)} className="hover:underline underline-offset-2" title={`Short interest as a share of the float${short.asOf ? `, settlement ${short.asOf}` : ''} — open the short file`} data-name-short>
+                <TickFigure value={short.interestPct}>{`${short.interestPct.toFixed(2)}%`}</TickFigure>
+                {short.asOf ? <span className="text-textMuted"> · {shortDay(short.asOf)}</span> : null}
+              </button>
+            ) : shortLive.status === 'loading' || !siRow || siRow.state === 'loading' ? '…' : '—'}
+          </Fact>
           <Fact label="Largest fund">{fund ? fund.name : held?.state === 'loading' ? '…' : '—'}</Fact>
           {/* the ownership read answers fifty houses a page — fifty is the page, not the count, so it reads "50+" */}
           <Fact label="Holders">{own?.state === 'live' || own?.okAt ? (own?.n == null ? '—' : own.n >= 50 ? '50+' : own.n) : own?.state === 'loading' || !own ? '…' : '—'}</Fact>
@@ -144,7 +163,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
       )}
       {short && (
         <>
-          <Head cols={['The short print', 'Days to cover', 'Shares short']} />
+          <Head cols={[short.asOf ? `The short print · ${shortDay(short.asOf)}` : 'The short print', 'Days to cover', 'Shares short']} />
           <Row testId="short" onClick={() => navigate(`/dossier/shorts/${ticker}`)} cells={[`${short.interestPct.toFixed(2)}% of the float`, <TickFigure key="d" value={short.daysToCover}>{`${short.daysToCover.toFixed(1)} days`}</TickFigure>, <TickFigure key="s" value={short.shortSharesM}>{shares(short.shortSharesM * 1e6)}</TickFigure>]} />
         </>
       )}

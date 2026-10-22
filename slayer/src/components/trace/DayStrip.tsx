@@ -40,19 +40,17 @@ import { WINDOWS_PER_DAY, type IntervalWindow } from '../../data/flowBook';
 import { SESSION_LENGTH_MIN } from '../../core/nyTime';
 import { earnMarks } from './earnedInk';
 
-const SLOTS = WINDOWS_PER_DAY;
-const MIN_PER_SLOT = SESSION_LENGTH_MIN / SLOTS;
+const MIN_PER_SLOT = SESSION_LENGTH_MIN / WINDOWS_PER_DAY;
 const num = (v: number) => v.toLocaleString('en-US');
-/** A minute of the SESSION (0 = 09:30) at its x */
-const pct = (minute: number) => `${(minute / SESSION_LENGTH_MIN) * 100}%`;
 
-/* Hour marks at their true x, minutes since the open; the open and the close speak louder. */
-const TICKS: { min: number; label: string; edge?: boolean }[] = [
+/* Hour marks at their true x, minutes since the open; the open and the close speak louder — the close is 16:15 for the
+   index and ETF options that trade then (the strip takes the name's own slot count) */
+const ticksFor = (len: number): { min: number; label: string; edge?: boolean }[] => [
   { min: 0, label: '09:30', edge: true },
   { min: 90, label: '11:00' },
   { min: 210, label: '13:00' },
   { min: 330, label: '15:00' },
-  { min: 390, label: '16:00', edge: true },
+  { min: len, label: len === 405 ? '16:15' : '16:00', edge: true },
 ];
 
 /* THE BARS ARE CAPSULES, NOT BLOCKS (Noah, 2026-10-13: "they look way too blocky like barebone html"): each bar is a
@@ -74,12 +72,19 @@ const DayStrip = ({
   selectedIdx,
   onSelect,
   paused,
+  slots = WINDOWS_PER_DAY,
 }: {
   windows: IntervalWindow[];
   selectedIdx: number;
   onSelect: (idx: number) => void;
   paused: boolean;
+  /** The session's quarter hours — 26 to 16:00, 27 to 16:15 */
+  slots?: number;
 }) => {
+  const len = slots * MIN_PER_SLOT;
+  /** A minute of the SESSION (0 = 09:30) at its x */
+  const pct = (minute: number) => `${(minute / len) * 100}%`;
+  const TICKS = ticksFor(len);
   const [hover, setHover] = useState<number | null>(null);
   const marks = useMemo(() => earnMarks(windows, w => w.totalVol), [windows]);
   const max = Math.max(marks.top === Infinity ? 1 : marks.top, 1);
@@ -162,7 +167,7 @@ const DayStrip = ({
           <span
             className={`max-sm:hidden pointer-events-none absolute top-0.5 z-10 px-1.5 py-0.5 rounded border border-borderSubtle bg-panel/70 backdrop-blur-sm font-mono text-[11px] tnum whitespace-nowrap text-textSecondary ${
               /* pinned at the end AWAY from the window it reads, so it never sits on that capsule's head */
-              shown && shown.idx >= SLOTS * 0.7 ? 'left-0' : 'right-0'
+              shown && shown.idx >= slots * 0.7 ? 'left-0' : 'right-0'
             }`}
             data-strip-readout={shown?.idx}
           >

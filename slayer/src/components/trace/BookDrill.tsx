@@ -8,18 +8,16 @@
 
   Mounts the Live Tape's full PrintDrilldown for
   any day-book row: the row speaks as its latest
-  print (data/tape bookRowToPrint), the snapshot
-  is the row's OWN ticker (so the Compass strip
-  grades every name, not just the active one), and
+  print (data/tape bookRowToPrint) — the
+  contract's real last trade off the vendor — and
   ↑/↓ steps through the host page's table order.
-  Opening an unseeded name pays its seed here —
-  the Dark Pool Leaders precedent.
+  No simulator snapshot and no seeded grade: the
+  card reads the vendor's rows only.
 ==================================================
 */
 
 import { useMemo } from 'react';
-import { snapshotOf, useBookRev } from '../../data/uwBook';
-import { indexRoot, useContractLast } from '../../data/traceLive';
+import { useContractLast } from '../../data/traceLive';
 import PrintDrilldown from './PrintDrilldown';
 import { bookRowToPrint } from '../../data/tape';
 import { contractKey, useWatch, watchContract } from '../../context/WatchContext';
@@ -33,11 +31,11 @@ interface BookDrillProps {
   onOpen: (key: string | null) => void;
   /** Anchor-print override per row — Watchers hands in the exact clip */
   clipFor?: (row: BookContract) => { size: number; fill: number; side: 'ASK' | 'BID'; time: string } | undefined;
-  /** Changes every simulator tick so the snapshot stays live */
+  /** The host's hold tick (kept for the hosts; the card reads the vendor itself) */
   tick?: unknown;
 }
 
-const BookDrill = ({ list, openKey, onOpen, clipFor, tick }: BookDrillProps) => {
+const BookDrill = ({ list, openKey, onOpen, clipFor }: BookDrillProps) => {
   /* The card's bookmark is the CONTRACT's (2026-09-03) — the same star the
      row wears, the same store the Tracker reads. */
   const { isWatched, toggle } = useWatch();
@@ -50,18 +48,9 @@ const BookDrill = ({ list, openKey, onOpen, clipFor, tick }: BookDrillProps) => 
   const last = useContractLast(row && !clipFor?.(row) ? row.optionSymbol : null).rows;
   const print = useMemo(() => (row ? { ...bookRowToPrint(row, clipFor?.(row) ?? last ?? undefined), occ: row.optionSymbol } : null), [row, clipFor, last]);
 
-  const bookRev = useBookRev();
-  const snapshot = useMemo(
-    /* an index's book is not on this key (its quote and candles answer 422) — the card grades only a name it can read */
-    () => (row && !indexRoot(row.ticker) ? snapshotOf(row.ticker) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [row?.ticker, tick, bookRev]
-  );
-
   return (
     <PrintDrilldown
       print={print}
-      snapshot={snapshot}
       onClose={() => onOpen(null)}
       isMarked={row ? isWatched(contractKey(row)) : false}
       onToggleMark={() => row && toggle(watchContract(row, 'card'))}

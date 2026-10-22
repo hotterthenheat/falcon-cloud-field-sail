@@ -63,6 +63,7 @@ import { buildVannaCharm } from '../../data/vannacharm';
 import { readSessionClock } from '../../data/moc';
 import { sessionMeta, sessionOfMinute, useDeskSession, minuteInSession, type DeskSession } from '../../data/deskSession';
 import { deskBars, peekBellShare } from '../../data/uwBook';
+import { bellDay } from '../../data/bookWindow';
 import { nyMinutes } from '../../core/nyTime';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import ClockGuide from './ClockGuide';
@@ -162,7 +163,7 @@ export const PHASES: Phase[] = [
     weight: 1,
     pressure: 'amplifies',
     /* "at the close", not "4:00": the box prints its hours as 09:30 … 16:00 (the audit's M6, 2026-10-13) */
-    words: f => `the closing auction — ${f.bellShare != null ? `${f.bellShare}% of today's gamma expires at the close` : 'today’s gamma expires at the close'}`,
+    words: f => `the closing auction — ${f.bellShare != null ? `${f.bellShare}% of the gamma expires at the close (${bellDay().date})` : 'the session’s gamma expires at the close'}`,
   },
 ];
 
@@ -259,8 +260,8 @@ const CLOCK_TIPS: Record<string, string> = {
   Next: 'The next part of the day and how long until it starts',
   'Expires at the close': "The share of all the name's hedging, every expiry counted, in contracts that expire at 4:00 today",
 };
-const ClockFact = ({ label, children }: { label: string; children: ReactNode }) => (
-  <span className="inline-flex items-baseline gap-2 whitespace-nowrap pr-3 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-borderSubtle [&:not(:first-child)]:pl-3" title={CLOCK_TIPS[label]}>
+const ClockFact = ({ label, children, tip }: { label: string; children: ReactNode; tip?: string }) => (
+  <span className="inline-flex items-baseline gap-2 whitespace-nowrap pr-3 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-borderSubtle [&:not(:first-child)]:pl-3" title={tip ?? CLOCK_TIPS[label]}>
     <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
     <span className="text-[13px] font-semibold text-textPrimary">{children}</span>
   </span>
@@ -536,11 +537,13 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
             </>
           )}
           {/* in the page's ink, not magenta — magenta is the supreme's marker alone (2026-10-14) */}
-          <ClockFact label="Expires at the close">
+          {/* AFTER THE CLOSE THE SHARE IS THE NEXT SESSION'S (the second re-audit, 2026-10-22: "EXPIRES AT THE CLOSE 16%" beside
+              "NOW after the close") — said with its day (data/bookWindow.ts bellDay) */}
+          <ClockFact label={bellDay().clock} tip={`${bellDay().tip(snapshot.ticker)} — every expiry counted`}>
             <span
               className="tnum"
               data-clock-bell
-              title={facts.bellShare != null ? `${facts.bellShare}% of ${snapshot.ticker}'s gamma sits in contracts that expire at 4:00 today` : bellNone ? BELL_NONE_TITLE(snapshot.ticker) : 'Still reading the expiry list'}
+              title={facts.bellShare != null ? `${facts.bellShare}% — ${bellDay().tip(snapshot.ticker)}` : bellNone ? BELL_NONE_TITLE(snapshot.ticker) : 'Still reading the expiry list'}
             >
               {facts.bellShare != null ? `${facts.bellShare}%` : bellNone ? BELL_NONE : '…'}
             </span>

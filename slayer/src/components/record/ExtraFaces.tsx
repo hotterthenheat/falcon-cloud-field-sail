@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { CoSub } from './CoName';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
@@ -26,12 +27,16 @@ const MemberCell = ({ data }: ICellRendererParams<HoldingRow>) =>
   ) : null;
 
 const HoldName = ({ data }: ICellRendererParams<HoldingRow>) =>
-  data ? (
+  data && !data.ticker ? (
+    <span className="flex items-center min-w-0 w-full h-full overflow-hidden" title={data.asset}>
+      <span className="text-[12px] text-textPrimary truncate">{data.asset}</span>
+    </span>
+  ) : data ? (
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        {tickerName(data.ticker) !== data.ticker ? <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span> : null}
+        <CoSub ticker={data.ticker} vendor={false} />
       </span>
     </span>
   ) : null;
@@ -63,8 +68,8 @@ export const CongressHoldings = () => {
     <div data-congress-holdings>
       <div className="px-5 border-t border-borderSubtle/60">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
-          <span>Bought, not since sold in full</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">purchases in the reports read with no later full sale of the same asset in them · not a holdings disclosure · a row opens that member’s book</span>
+          <span>Bought, no sale reported since</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">purchases in the reports read with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
         </div>
       </div>
       <div className="slayer-board border-t border-borderSubtle">
@@ -77,7 +82,7 @@ export const CongressHoldings = () => {
             overlayNoRowsTemplate={noRows('No holding on this cut')}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
-            getRowId={p => `${p.data.member}-${p.data.ticker}`}
+            getRowId={p => p.data.key}
             onRowClicked={open}
             rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
             suppressCellFocus

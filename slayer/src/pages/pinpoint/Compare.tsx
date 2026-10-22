@@ -55,6 +55,7 @@ import { readSessionClock } from '../../data/moc';
 import type { MarketSnapshot } from '../../types/market';
 import type { ExposureExpiry } from '../../types/gex';
 import { LEVELS_OPTIONS, useLevelsScope } from '../../data/levelsScope';
+import { todayScopeLabel } from '../../data/bookWindow';
 import { BOOK_TTL_MS, StaleMark } from '../../components/ui/liveRead';
 
 /** The reads sweep on their own cadence — a comparison must not vibrate with every tick */
@@ -279,7 +280,7 @@ const Compare = () => {
         {expiry !== levelsScope && (
           <div className="shrink-0 px-5 py-2 border-t border-borderSubtle/60 flex items-center gap-3 flex-wrap text-[11px] text-textSecondary" data-compare-off-scope>
             <span>
-              This page is reading a different expiry from the Levels card ({LEVELS_OPTIONS.find(o => o.value === levelsScope)?.label}), so its walls, flip, supreme and net GEX can differ from the Board and the Map.
+              This page is reading a different expiry from the Levels card ({levelsScope === '0DTE' ? todayScopeLabel() : LEVELS_OPTIONS.find(o => o.value === levelsScope)?.label}), so its walls, flip, supreme and net GEX can differ from the Board and the Map.
             </span>
             <button type="button" onClick={() => setExpiryPick(null)} className="min-h-10 px-2 font-mono text-[10px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors">
               Back to the Levels card

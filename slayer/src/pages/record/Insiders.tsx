@@ -27,6 +27,7 @@
 ==================================================
 */
 
+import { CoSub } from '../../components/record/CoName';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -41,13 +42,13 @@ import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { InsidersGuide } from '../../components/record/InsidersGuide';
 import { When } from '../../components/record/when';
-import { fmtDollars } from '../../data/ahead';
+import { dollars3 as fmtDollars } from './money';
 import { useBoardNames } from '../../data/boardNames';
-import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, personSlug } from '../../data/insiders';
+import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, personSlug } from '../../data/insiders';
 import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
-import { useStockCard } from '../../data/liveFiles';
+import { useCompanyName } from '../../data/liveFiles';
 import { nyIsoDaysBack } from '../../data/nyDate';
 
 const titleCase = (raw: string) => raw.trim().split(/\s+/).map(w => (w.length <= 3 && /^[A-Z&.]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(' ');
@@ -102,11 +103,6 @@ const fmtInt = (n: number) => Math.round(n).toLocaleString('en-US');
 /* the date, then how far back (the partner's review: never "9d ago" alone) */
 const WhenCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <When days={data.daysAgo} /> : null);
 
-/** The company's name: the house listing's, else the feed's own; never the ticker said twice */
-const companyOf = (t: { ticker: string; company?: string }): string => {
-  const n = tickerName(t.ticker);
-  return n !== t.ticker ? n : t.company ?? '';
-};
 
 const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
@@ -114,7 +110,7 @@ const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        {companyOf(data) ? <span className="text-[10px] text-textMuted truncate">{companyOf(data)}</span> : null}
+        <CoSub ticker={data.ticker} fallback={data.company ? titleCase(data.company) : null} />
       </span>
     </span>
   ) : null;
@@ -122,7 +118,10 @@ const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
 const WhoCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="flex flex-col leading-tight min-w-0 text-left" data-open-person={personSlug(data.person)}>
-      <span className="text-[12px] font-semibold text-textPrimary truncate">{data.person}</span>
+      <span className="text-[12px] font-semibold text-textPrimary truncate" title={data.owners && data.owners.length > 1 ? `One joint filing by ${data.owners.join(', ')} — counted once` : data.person}>
+        {data.person}
+        {data.owners && data.owners.length > 1 ? <span className="font-mono text-[9px] font-normal text-textMuted"> +{data.owners.length - 1} joint</span> : null}
+      </span>
       <span className="text-[10px] text-textMuted truncate" title={data.title ? `Filed as: ${data.title}` : undefined}>{data.role === 'Officer' && data.title ? data.title : data.role === 'Other' ? 'Role not stated' : data.role}</span>
     </span>
   ) : null;
@@ -172,9 +171,15 @@ const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!TX_CODES[data.code].openMarket) return <span className="font-mono text-[10px] text-textMuted">—</span>;
   if (data.plan === 'plan') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Ran off a 10b5-1 plan adopted months earlier — no view on the day">planned</span>;
   if (data.plan === 'unknown') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way — not counted as chosen buying in the sums above">unstated</span>;
+  if (isCorporateBuy(data))
+    return (
+      <span className="font-mono text-[8px] uppercase tracking-widest text-textSecondary" title="Bought by a company or a fund — a strategic stake or a private placement, not an insider choosing to buy. Not counted in chosen buying">
+        corporate
+      </span>
+    );
   const loud = isChosenBuy(data);
   return (
-    <span className={`font-mono text-[8px] uppercase tracking-widest ${loud ? 'text-textPrimary font-bold' : 'text-textSecondary'}`} title={loud ? 'A purchase the insider chose to make with their own money — the loudest row here' : 'A trade the insider chose to make'}>
+    <span className={`font-mono text-[8px] uppercase tracking-widest ${loud ? 'text-textPrimary font-bold' : 'text-textSecondary'}`} title={loud ? 'A purchase a person chose to make, not on a 10b5-1 plan — the loudest row here' : 'A trade the insider chose to make'}>
       chosen
     </span>
   );
@@ -196,11 +201,14 @@ const OthersCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
 const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: () => void }) => {
   const s = SIGNAL_WORD[f.signal];
   /* the feed carries no company name; a name the house list does not file is asked of its own stock card */
-  const card = useStockCard(f.ticker);
-  const listed = tickerName(f.ticker);
-  const company = listed !== f.ticker ? listed : card?.name && card.name.toUpperCase() !== f.ticker ? titleCase(card.name) : '';
+  const co = useCompanyName(f.ticker, true);
+  const company = co && co.toUpperCase() !== f.ticker ? co : '';
   /* the distinct people who chose to buy in the window (the engine's cluster counts thirty days only) */
-  const buyers = new Set(f.trades.filter(t => isChosenBuy(t)).map(t => t.person)).size;
+  const buyers = new Set(f.trades.filter(t => isChosenBuy(t)).flatMap(t => t.owners ?? [t.person])).size;
+  /* THE POSTURE SAYS WHY (the retail pass, 2026-10-22: "AUGO $23M chosen buying · 1 buyer · DISTRIBUTING" read as a
+     contradiction): the word weighs chosen buying against chosen selling in the same window, so the selling is shown */
+  const chosenSold = Math.max(0, f.sold - f.plannedValue);
+  const why = f.signal === 'distributing' ? ` · ${fmtDollars(chosenSold)} sold by choice outweighs it` : f.signal === 'accumulating' && chosenSold > 0 ? ` · against ${fmtDollars(chosenSold)} sold by choice` : '';
   return (
     <button
       type="button"
@@ -225,7 +233,10 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
           {buyers} {buyers === 1 ? 'buyer' : 'buyers'}
         </span>
       </span>
-      <span className={`mt-1 block font-mono text-[8px] uppercase tracking-widest ${s.ink}`}>{s.word}</span>
+      <span className={`mt-1 block font-mono text-[8px] uppercase tracking-widest truncate ${s.ink}`} title={`${s.word}${why} — chosen buying against chosen (not planned) selling in the window`}>
+        {s.word}
+        <span className="normal-case tracking-normal text-textMuted">{why}</span>
+      </span>
     </button>
   );
 };
@@ -300,6 +311,8 @@ const Insiders = () => {
   const status = useInsidersStatus();
   const failed = status === 'sim';
   const waiting = status === 'loading';
+  /* THE TOTALS ARE PARTIAL WHILE THE PAGES LOAD (the retail pass, 2026-10-22: Filings read 4685, then 4900) */
+  const reading = coverage.buysReading || coverage.bigSalesReading || coverage.restCount === 0;
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No filing on this cut';
   const cut = useMemo(() => {
     const board = new Set(boardNames);
@@ -344,10 +357,11 @@ const Insiders = () => {
   const facts = useMemo(() => {
     const market = rows.filter(t => TX_CODES[t.code].openMarket);
     const chosen = market.filter(t => isChosenBuy(t)).reduce((s, t) => s + t.value, 0);
+    const corporate = market.filter(t => isCorporateBuy(t)).reduce((s, t) => s + t.value, 0);
     const sales = market.filter(t => t.kind === 'SELL');
     const sold = sales.reduce((s, t) => s + t.value, 0);
     const planned = sales.filter(t => t.plan === 'plan').length;
-    return { filings: rows.length, chosen, sold, plannedPct: sales.length ? Math.round((planned / sales.length) * 100) : null };
+    return { filings: rows.length, chosen, corporate, sold, plannedPct: sales.length ? Math.round((planned / sales.length) * 100) : null };
   }, [rows]);
 
   /* THE NAMES TO KNOW: chosen buying in the window, heaviest first, on the Names card's cut */
@@ -360,8 +374,8 @@ const Insiders = () => {
   const columnDefs = useMemo<ColDef<InsiderTrade>[]>(
     () => [
       { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day the trade happened, and how far back that is — newest first' },
-      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: NameCell, headerTooltip: 'The company' },
-      { headerName: 'Who', field: 'person', flex: 1.4, minWidth: 180, cellRenderer: WhoCell, headerTooltip: 'A row opens this person’s book' },
+      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 150, cellRenderer: NameCell, headerTooltip: 'The company' },
+      { headerName: 'Who', field: 'person', flex: 1.4, minWidth: 160, cellRenderer: WhoCell, headerTooltip: 'A row opens this person’s book' },
       { headerName: 'Trade', field: 'code', flex: 0.9, minWidth: 120, cellRenderer: TradeCell, headerTooltip: 'Bought or sold in the market; with Every filing on, the grants, conversions and withholdings are named for what they are' },
       { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
       { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
@@ -375,7 +389,7 @@ const Insiders = () => {
         comparator: (a: InsiderTrade['plan'], b: InsiderTrade['plan']) => ['discretionary', 'unknown', 'plan'].indexOf(a) - ['discretionary', 'unknown', 'plan'].indexOf(b),
         headerTooltip: 'Chosen: the insider decided to trade. Planned: it ran off a 10b5-1 schedule adopted months earlier. Unstated: the filing carried no box either way',
       },
-      { headerName: 'Others', field: 'clusterCount', width: 92, cellRenderer: OthersCell, headerTooltip: 'How many distinct filers did the same in this name inside 30 days — a cluster is a stronger read than one' },
+      { headerName: 'Others', field: 'clusterCount', width: 84, cellRenderer: OthersCell, headerTooltip: 'How many distinct filers did the same in this name inside 30 days — a cluster is a stronger read than one' },
     ],
     []
   );
@@ -405,19 +419,28 @@ const Insiders = () => {
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-count>
-              {failed || waiting ? '—' : facts.filings}
+              {failed || waiting ? '—' : facts.filings.toLocaleString()}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title="The filings are still being paged back; the totals grow until the window is read"> · reading…</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Dollars insiders spent buying shares in the open market with their own money, not on a pre-set plan">Chosen buying</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Purchases (code P — on the open market or in a private placement) that a person chose to make, not on a 10b5-1 plan. Purchases by companies and funds — strategic stakes — are counted apart under Company & fund buys">Chosen buying</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
               {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · reading…</span> : null}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Code-P purchases by a company or a fund (Volkswagen buying Rivian, a bank buying into a broker): strategic stakes and private placements, not an insider choosing to buy">Company &amp; fund buys</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-corporate>
+              {failed || waiting ? '—' : facts.corporate > 0 ? fmtDollars(facts.corporate) : 'none'}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Dollars of shares insiders sold in the open market — planned or not">Sold in the market</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
               {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · reading…</span> : null}
             </dd>
           </div>
           <div>
@@ -449,7 +472,7 @@ const Insiders = () => {
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The names to know</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">where someone chose to buy with their own money in the last {window} days, heaviest first · click a name to keep the grid to it</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">where a person chose to buy (not on a plan, not a company or fund) in the last {window} days, heaviest first · click a name to keep the grid to it</span>
         </div>
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window'}</div>
@@ -519,7 +542,7 @@ export const InsiderFile = () => {
             <span className="inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={data.ticker} size={16} />
               <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-              {companyOf(data) ? <span className="text-[10px] text-textMuted truncate">{companyOf(data)}</span> : null}
+              <CoSub ticker={data.ticker} fallback={data.company ? titleCase(data.company) : null} />
             </span>
           ) : null,
       },

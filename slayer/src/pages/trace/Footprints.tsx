@@ -30,8 +30,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { FOOTPRINT_SCREENS, runFootprintScreen, type FootprintScreenKey } from '../../data/flowBook';
-import { useLiveBook } from '../../data/traceLive';
-import { fmtUsd } from '../../data/gex';
+import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -99,8 +98,8 @@ const phoneRow = (r: BookContract) => (
     aside={`${r.dte}d`}
     figures={[
       <span key="d" className={r.deltaOI > 0 ? 'font-semibold text-bull' : r.deltaOI < 0 ? 'font-semibold text-bear' : ''}>
-        {r.deltaOI > 0 ? '+' : ''}
-        {num(r.deltaOI)} OI
+        {r.deltaOI > 0 ? '+' : r.deltaOI < 0 ? '−' : ''}
+        {num(Math.abs(r.deltaOI))} OI
       </span>,
       <span key="o">{num(r.oi)} standing</span>,
       ...(builtWords(r) ? [<span key="b">{builtWords(r)}</span>] : []),
@@ -165,7 +164,10 @@ const Footprints = () => {
   const { book: heldBook, tick } = hold.value;
   /* THE EXPIRY CUT: the dates on the book, as a calendar */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
-  const book = useMemo(() => cutExpiry(heldBook), [heldBook, cutExpiry]);
+  /* WHAT STILL STANDS (the re-audit, 2026-10-22: 64 of 146 builds were Oct 22 contracts, read after the bell as standing
+     interest) — a contract that expired at the bell is left out, and the sentence says how many */
+  const stand = useMemo(() => standing(cutExpiry(heldBook)), [heldBook, cutExpiry]);
+  const book = stand.rows;
   /* THE SCREENS THE FEED CAN ANSWER (the ship pass, 2026-10-22): bought/sold to open and carryover read the PREVIOUS
      session's side and volume, which the live book does not carry — "Sold to open" passed every build (a side of 0 is
      ≤ 42%) and the other two never matched. Without that data they are not offered, and a link that asks for one
@@ -197,7 +199,7 @@ const Footprints = () => {
     /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
     /* WHAT IT COVERS (the audit, 2026-10-22: "Open interest grew by 297,774 overnight" summed only the book's contracts) */
-    const base = `Across the ${num(book.length)} contracts on the book (today's heaviest premium), open interest rose ${num(added)} overnight on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.`;
+    const base = `Across the ${num(book.length)} standing contracts on the book (today's heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at today's bell left out` : ''}), open interest rose ${num(added)} overnight on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.`;
     if (!loudestBuild) return <RichRead text={base} />;
     return (
       <>
@@ -209,7 +211,7 @@ const Footprints = () => {
         <RichRead text={` [[+${num(loudestBuild.deltaOI)}]]${loudestBuild.prevVolume > 0 ? `, built ${loudestBuild.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}.`} />
       </>
     );
-  }, [book, loudestBuild]);
+  }, [book, loudestBuild, stand.expired]);
 
   const activeScreen = FOOTPRINT_SCREENS.find(s => s.key === screen) ?? FOOTPRINT_SCREENS[0];
   const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.filter(s => hasPrevSide || !['bought', 'sold', 'carryover'].includes(s.key)).map(s => ({ value: s.key, label: s.label, hint: s.hint })), [hasPrevSide]);
@@ -310,8 +312,8 @@ const Footprints = () => {
           const ink = a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? `font-bold ${r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down'}` : 'text-textPrimary';
           return (
             <span className={ink}>
-              {r.deltaOI > 0 ? '+' : ''}
-              {num(r.deltaOI)}
+              {r.deltaOI > 0 ? '+' : '−'}
+              {num(Math.abs(r.deltaOI))}
             </span>
           );
         },
@@ -327,8 +329,8 @@ const Footprints = () => {
           if (r.deltaOI === 0) return <span className="text-textSecondary">—</span>;
           return (
             <span className={dirInk(r.deltaOI > 0 ? Math.abs(r.deltaOIPct) : -Math.abs(r.deltaOIPct), marks.doiPct)}>
-              {r.deltaOIPct > 0 ? '+' : ''}
-              {num(Math.round(r.deltaOIPct))}%
+              {r.deltaOIPct > 0 ? '+' : '−'}
+              {num(Math.abs(Math.round(r.deltaOIPct)))}%
             </span>
           );
         },
@@ -450,7 +452,7 @@ const Footprints = () => {
             )}
             {champs.unwind && (
               <Champion label="Biggest unwind" ink="bear" onOpen={() => setOpenKey(champs.unwind!.key)} testId="unwind">
-                {pill(champs.unwind, num(champs.unwind.deltaOI))}
+                {pill(champs.unwind, `−${num(Math.abs(champs.unwind.deltaOI))}`)}
               </Champion>
             )}
             {champs.fastest && (

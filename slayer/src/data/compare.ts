@@ -21,7 +21,7 @@
 ==================================================
 */
 
-import { bookCandles, peekBellShare, peekIv } from './uwBook';
+import { bookCandles, peekBellShare, peekIv, peekSpot } from './uwBook';
 import { UNIVERSE } from './universe';
 import { SESSION_MIN, buildCloseOdds, type AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
@@ -420,7 +420,13 @@ export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] |
     const cb = bAt.get(x.time);
     if (cb) today.push({ time: x.time, ratio: x.close / cb, closeA: x.close, closeB: cb });
   }
-  const now = today.length ? today[today.length - 1].ratio : sessions.length ? sessions[sessions.length - 1].ratio : null;
+  /* ONE QUOTE ON THE PAGE (the second re-audit, 2026-10-22: "SPY 763.97 ÷ QQQ 704.59" under a head reading QQQ 703.42):
+     today's point is the two last prices the heads print (the book's spot — after the close, the after-hours print), not
+     the last minute bar both happened to print */
+  const qa = peekSpot(a);
+  const qb = peekSpot(b);
+  if (qa != null && qb != null && qb > 0 && today.length) today[today.length - 1] = { ...today[today.length - 1], ratio: qa / qb, closeA: qa, closeB: qb };
+  const now = today.length ? today[today.length - 1].ratio : qa != null && qb != null && qb > 0 ? qa / qb : sessions.length ? sessions[sessions.length - 1].ratio : null;
   let mean: number | null = null;
   let sd: number | null = null;
   if (done.length >= 5) {
@@ -466,6 +472,6 @@ export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock):
   const when = clock.inSession ? 'to the close' : 'next session';
   const sentence =
     `${wider.ticker} has the wider expected move ${when}, ${wider.ratio.toFixed(1)}× ${narrower}'s; ${regimes}. ` +
-    `${nearerCall.ticker}'s call wall is the nearer overhead at ${fmtStrike(nearerCall.callWall.strike)}, ${nearerPut.ticker}'s put wall the nearer below at ${fmtStrike(nearerPut.putWall.strike)}.`;
+    `${nearerCall.ticker}'s call wall (the most call gamma) is the nearer at ${fmtStrike(nearerCall.callWall.strike)}, ${Math.abs(nearerCall.callWall.distPct).toFixed(2)}% ${nearerCall.callWall.distPct >= 0 ? 'above' : 'below'}; ${nearerPut.ticker}'s put wall (the most put gamma) the nearer at ${fmtStrike(nearerPut.putWall.strike)}, ${Math.abs(nearerPut.putWall.distPct).toFixed(2)}% ${nearerPut.putWall.distPct >= 0 ? 'above' : 'below'}.`;
   return { a, b, inSession: clock.inSession, wider, sentence };
 }

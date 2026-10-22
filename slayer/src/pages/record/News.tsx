@@ -29,7 +29,8 @@
 ==================================================
 */
 
-import { tickerName } from '../../data/tickers';
+import { companyName } from '../../data/tickers';
+import { extendedLine, useDayMoves, useLiveQuote } from '../../data/liveQuote';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -77,7 +78,7 @@ const CATEGORY_OPTIONS: DropdownOption<CategoryPick>[] = [
   { value: 'Earnings', label: 'Earnings', hint: 'Prints and what they said' },
   { value: 'Guidance', label: 'Guidance', hint: 'What a company said about what is coming' },
   { value: 'Analyst', label: 'Analyst', hint: 'Upgrades, downgrades, targets' },
-  { value: 'Macro', label: 'Macro', hint: 'The economy and the Fed — no single name' },
+  { value: 'Macro', label: 'Macro', hint: 'The economy, the Fed, markets, policy and the world — no single company' },
   { value: 'M&A', label: 'M&A', hint: 'Deals, bids, spin-offs' },
   { value: 'Product', label: 'Product', hint: 'Launches and reviews' },
   { value: 'Regulatory', label: 'Regulatory', hint: 'Courts, agencies, probes' },
@@ -96,11 +97,14 @@ const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
 const SORT_OPTIONS: DropdownOption<Sort>[] = [
   { value: 'matters', label: 'What matters', hint: 'Major stories on your Board first, then other stories on your Board, then the rest of the major ones — newest first inside each' },
   { value: 'newest', label: 'Newest', hint: 'The latest story first' },
-  { value: 'move', label: 'Biggest move', hint: 'The named stock that has moved most so far today first' },
+  { value: 'move', label: 'Biggest move at publish', hint: 'The named stock that had moved most on the session when its story crossed, first' },
   { value: 'loud', label: 'Loudest', hint: 'Major stories and big movers first' },
 ];
 
 /* THE IMPACT MARK lives in components/record/impactMark.tsx since 2026-09-13 — the All news box and the month draw the same square */
+
+/** A notice, not news: dividends declared, results dates and calls scheduled, conference slots, tokenized listings */
+const ROUTINE_RE = /\bdeclares?\b[^.]{0,40}\bdividends?\b|\bdividends?\b[^.]{0,20}\bdeclared\b|\b(?:to (?:announce|report|release|host)|announces?|schedules?|sets?)\b[^.]{0,60}\b(?:results|earnings release|conference call|webcast)\b[^.]{0,40}\b(?:on|date|dates|for)\b|\b(?:to )?(?:participate|present) (?:in|at)\b[^.]{0,40}\bconferences?\b|\btokeni[sz]ed\b|\bbinance futures\b|\belected\b[^.]{0,40}\bdirector\b/i;
 
 const ago = (m: number) => (m < 1 ? 'just now' : m < 60 ? `${Math.round(m)}m ago` : `${Math.floor(m / 60)}h ${Math.round(m % 60)}m ago`);
 const signed = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
@@ -503,7 +507,7 @@ const News = () => {
     return [
       {
         title: 'Names on the wire',
-        options: [...nameCount.entries()].sort(byCountThenName).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: n === 'MACRO' ? 'Economy and market stories with no single name' : n === 'NO TICKER' ? 'Company stories the wire tagged with no ticker' : (lookup(n)?.name ?? (tickerName(n) !== n ? tickerName(n) : undefined)), count: c })),
+        options: [...nameCount.entries()].sort(byCountThenName).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: n === 'MACRO' ? 'Economy and market stories with no single name' : n === 'NO NAME' ? 'Company-beat stories (earnings, deals, analysts, courts) that name no listed company the page can find' : (lookup(n)?.name ?? (companyName(n) !== n ? companyName(n) : undefined)), count: c })),
       },
       {
         title: 'Cities on the map',
@@ -517,7 +521,10 @@ const News = () => {
     const by: Record<Sort, (a: GeoNewsEvent, b: GeoNewsEvent) => number> = {
       newest: (a, b) => a.item.minutesAgo - b.item.minutesAgo,
       matters: (a, b) => {
-        const rank = (e: GeoNewsEvent) => (onBoard(e) ? (e.item.major ? 0 : 1) : e.item.major ? 2 : 3);
+        /* UW's MAJOR flag is shown as the vendor's, but a routine notice it flags (a dividend declared, a results date,
+           a conference slot, a tokenized listing) is not lifted up the wire for it (the re-audit, 2026-10-22) */
+        const lifted = (e: GeoNewsEvent) => e.item.major && !ROUTINE_RE.test(e.item.headline);
+        const rank = (e: GeoNewsEvent) => (onBoard(e) ? (lifted(e) ? 0 : 1) : lifted(e) ? 2 : 3);
         return rank(a) - rank(b) || a.item.minutesAgo - b.item.minutesAgo;
       },
       move: (a, b) => Math.abs(b.item.prediction.expMove1dPct) - Math.abs(a.item.prediction.expMove1dPct),
@@ -527,17 +534,17 @@ const News = () => {
   
   }, [cut, picks, sort]);
   const pins = useMemo(() => clusterByCity(rows), [rows]);
-  /* THE HEAT: where the cut's news lands, every story's zones summed by place */
+  /* THE HEAT: where the cut's stories come from, each story's city weighed by how hard it lands. The per-sector
+     "where it lands" zones were a fixed template, not data, and are gone (the re-audit, 2026-10-22) */
   const heat = useMemo<HeatPoint[]>(() => {
     const sum = new Map<string, HeatPoint>();
-    rows.forEach(e =>
-      e.impacts.forEach(zn => {
-        const key = `${zn.lat},${zn.lng}`;
-        const had = sum.get(key);
-        if (had) had.w += zn.w;
-        else sum.set(key, { lat: zn.lat, lng: zn.lng, w: zn.w });
-      })
-    );
+    rows.forEach(e => {
+      if (!e.origin.city) return;
+      const key = `${e.origin.lat},${e.origin.lng}`;
+      const had = sum.get(key);
+      if (had) had.w += e.severity;
+      else sum.set(key, { lat: e.origin.lat, lng: e.origin.lng, w: e.severity });
+    });
     return [...sum.values()];
   }, [rows]);
 
@@ -569,7 +576,7 @@ const News = () => {
      whatever the sort (the partner: "no section for all news… I don't see
      any headlines whatsoever" — the rows sat under the fold) */
   const tape = useMemo(() => [...rows].sort((a, b) => a.item.minutesAgo - b.item.minutesAgo).slice(0, 14), [rows]);
-  const reach = useMemo<Reach | null>(() => (selected ? { lat: selected.origin.lat, lng: selected.origin.lng, city: selected.origin.city, zones: selected.impacts } : null), [selected]);
+  const reach = useMemo<Reach | null>(() => (selected ? { lat: selected.origin.lat, lng: selected.origin.lng, city: selected.origin.city, zones: [] } : null), [selected]);
   const sessionsOpen = useMemo(() => openSessions(at), [at]);
   /* nothing open (a night, a weekend): which market opens next and how long until it, so the read line never just says "no" */
   const nextUp = useMemo(() => (sessionsOpen.length ? null : nextOpen(at)), [sessionsOpen, at]);
@@ -584,7 +591,26 @@ const News = () => {
   /* THE FACTS */
   const positive = rows.filter(r => r.grade === 'ALLY').length;
   const negative = rows.filter(r => r.grade === 'THREAT').length;
-  const biggest = rows.filter(r => r.item.ticker && r.item.prediction.measured).reduce<GeoNewsEvent | null>((m, r) => (!m || Math.abs(r.item.prediction.expMove1dPct) > Math.abs(m.item.prediction.expMove1dPct) ? r : m), null);
+  /* BIGGEST MOVE TODAY, NOT AT PUBLISH (the re-audit, 2026-10-22: "STT −1.2%" on a day META fell 7% — the figure was a
+     snapshot from when each story crossed). The names the stories carry, the dozen that had moved most at publish read
+     for today's regular-session change through the shared quote (data/liveQuote.ts, data/dayChange.ts) */
+  const moveNames = useMemo(() => {
+    const best = new Map<string, number>();
+    for (const r of rows) {
+      const t = r.item.ticker;
+      if (!t) continue;
+      const v = r.item.prediction.measured ? Math.abs(r.item.prediction.expMove1dPct) : 0;
+      if (!best.has(t) || v > best.get(t)!) best.set(t, v);
+    }
+    return [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([t]) => t).sort();
+  }, [rows]);
+  const dayMoves = useDayMoves(moveNames);
+  const biggest = useMemo(() => {
+    let top: { ticker: string; pct: number } | null = null;
+    for (const [t, q] of dayMoves) if (!top || Math.abs(q.changePct) > Math.abs(top.pct)) top = { ticker: t, pct: q.changePct };
+    return top;
+  }, [dayMoves]);
+  const selectedQuote = useLiveQuote(selected?.item.ticker ?? null);
   const nextPrint = calendar.find(c => c.impact === 'high' && c.inMinutes >= 0) ?? calendar.find(c => c.inMinutes >= 0) ?? null;
   const unmarked = positive === 0 && negative === 0;
   const moodInk = mood.label === 'LEANS BULLISH' ? 'text-bull' : mood.label === 'LEANS BEARISH' ? 'text-bear' : 'text-textPrimary';
@@ -656,10 +682,10 @@ const News = () => {
                 <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
               </Fact>
             )}
-            <Fact label="Biggest move" testId="biggest" tip="The named stock that has moved most so far today, among these stories">
+            <Fact label="Biggest move today" testId="biggest" tip={`The regular session's change today — not the move when the story crossed — for the names these stories carry (the ${moveNames.length} that had moved most at publish)`}>
               {biggest ? (
                 <>
-                  {biggest.item.ticker} <span className={biggest.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.item.prediction.expMove1dPct)}</span>
+                  {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.pct)}</span>
                 </>
               ) : (
                 <span className="text-textMuted">—</span>
@@ -788,45 +814,32 @@ const News = () => {
                   </div>
                 </div>
                 {/* THE NUMBERS — how the named stock has traded today */}
-                <div data-news-numbers>
+                <div className="grid grid-cols-2 gap-3" data-news-numbers>
                   {selected.item.prediction.measured ? (
-                    <Figure label="Session move" tone={selected.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear'}>
+                    <Figure label="Move at publish" title="How the named stock had moved on the session when the story crossed — a snapshot, not now" tone={selected.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear'}>
                       <AnimatedNumber value={selected.item.prediction.expMove1dPct} format={v => signed(v)} />
                     </Figure>
                   ) : (
-                    <Figure label="Session move">
+                    <Figure label="Move at publish">
                       <span className="text-textMuted">—</span>
                     </Figure>
                   )}
+                  {selected.item.ticker ? (
+                    <Figure label="Today" title={`The regular session's change today${extendedLine(selectedQuote) ? ` · ${extendedLine(selectedQuote)}, kept apart` : ''}`} tone={selectedQuote ? (selectedQuote.changePct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}>
+                      {selectedQuote ? signed(selectedQuote.changePct) : '—'}
+                    </Figure>
+                  ) : null}
                 </div>
                 {selected.item.prediction.measured ? (
                 <div key={selected.id} className="flex flex-col gap-2 animate-soft-in text-[11.5px] leading-relaxed text-textSecondary">
                   <div>
-                    <div className="text-[9px] uppercase tracking-widest text-textMuted">The session</div>
+                    <div className="text-[9px] uppercase tracking-widest text-textMuted">At publish</div>
                     <p className="mt-0.5">
                       <RichRead text={selected.item.prediction.playbook} />
                     </p>
                   </div>
                 </div>
                 ) : null}
-                {/* WHERE IT LANDS — the story's zones, the heaviest first */}
-                {selected.impacts.length > 0 && (
-                  <div className="flex flex-col gap-1.5" data-news-zones>
-                    <div className="text-[9px] uppercase tracking-widest text-textMuted">Where it lands · {selected.impacts.length} zones</div>
-                    {[...selected.impacts]
-                      .sort((a, b) => b.w - a.w)
-                      .slice(0, 4)
-                      .map(z => (
-                        <div key={z.label} className="flex items-center gap-2 min-w-0">
-                          <span className="font-mono text-[10px] text-textPrimary min-w-0 flex-1 break-words whitespace-normal leading-relaxed">{z.label}</span>
-                          <span className="flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
-                            <span className={`block h-full rounded-full ${GRADE_BAR[selected.grade]}`} style={{ width: `${Math.min(100, z.w * 10)}%` }} />
-                          </span>
-                          <span className="font-mono text-[9px] text-textMuted w-9 text-right">{z.w >= 7 ? 'heavy' : z.w >= 4 ? 'firm' : 'light'}</span>
-                        </div>
-                      ))}
-                  </div>
-                )}
                 {/* THE DOORS — a macro story has no name of its own, so its door is the index */}
                 <div className="mt-auto pt-2 border-t border-ink/[0.06] flex items-center gap-2 flex-wrap" data-news-doors>
                   {selected.item.ticker ? (
@@ -867,7 +880,7 @@ const News = () => {
         <div ref={rowsRef} className={`relative border-t border-borderSubtle overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
           {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
             <span title="When the headline crossed, New York time">Time</span>
-            <span title="The first stock the headline names; MACRO for an economy or market story that names none; NO TICKER for a company story the wire left untagged">Name</span>
+            <span title="The first stock the headline names — the wire's tag, or the listed company the headline names; MACRO for a story about the economy, markets, policy or the world that names none; NO NAME for a company-beat story that names no listed company">Name</span>
             <span title="What sort of story it is, read from the headline">Kind</span>
             <span title={NEWS_FLAG_TIP}>Flag</span>
             <span className="flex items-center gap-4">
@@ -877,7 +890,7 @@ const News = () => {
                 <ImpactLegend />
               </span>
             </span>
-            <span className="text-right" title="How the named stock has moved so far today — a fact, not a forecast">Today</span>
+            <span className="text-right" title="How the named stock had moved on the session when the story crossed — a snapshot at publish, not today's move now">At publish</span>
             <span className="text-right" title="The other stocks the headline names">Also</span>
           </div>}
           {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
@@ -915,7 +928,7 @@ const News = () => {
                     <span>·</span>
                     <CatTag category={e.item.category} size={9} />
                     {(e.item.major || onBoard(e) || leanOf(e.grade)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} />}
-                    {move != null && <span className={`ml-auto tnum font-semibold ${move >= 0 ? 'text-bull' : 'text-bear'}`}>{signed(move)}</span>}
+                    {move != null && <span className={`ml-auto tnum font-semibold ${move >= 0 ? 'text-bull' : 'text-bear'}`} title="The name's move when the story crossed — a snapshot at publish">{signed(move)} <span className="font-normal text-textMuted">at publish</span></span>}
                   </span>
                 </button>
               );

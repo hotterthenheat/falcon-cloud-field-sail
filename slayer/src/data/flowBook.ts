@@ -22,6 +22,7 @@ import { sleeveForDte } from './compass';
 import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons';
 import type { SleeveKey } from '../types/compass';
 import type { BookContract } from '../types/trace';
+import { dayLean, usd } from './traceLive';
 
 /* THE BOOK KEEPS NEW YORK'S SESSION (2026-10-13, from the partner's build at Noah's word): every minute in here is New
    York's minute of the day, and the book's day is the cash session, 09:30 to 16:00. It used to be the machine's
@@ -107,12 +108,15 @@ export const FLOW_SCREENS: FlowScreen[] = [
 ];
 
 /** Aggressive call flow reads bullish; put flow bought at the ask reads
-    bearish — sentimentOf's rule, applied to the day's dominant side. */
+    bearish — sentimentOf's rule, applied to the day's dominant side, and only where the day HAS a side (dayLean: at
+    least half the volume on a side — a day that was mostly a no-side cross leans nowhere). */
 function leansBull(r: BookContract): boolean {
-  return r.right === 'C' ? r.askPct >= 58 : r.askPct <= 42;
+  const l = dayLean(r).lean;
+  return r.right === 'C' ? l === 'ASK' : l === 'BID';
 }
 function leansBear(r: BookContract): boolean {
-  return r.right === 'P' ? r.askPct >= 58 : r.askPct <= 42;
+  const l = dayLean(r).lean;
+  return r.right === 'P' ? l === 'ASK' : l === 'BID';
 }
 
 export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] {
@@ -249,7 +253,7 @@ export const WATCHERS: WatcherRule[] = [
   {
     key: 'fresh-size',
     label: 'Fresh size',
-    reason: 'Volume 1.8× its open interest, on $300K or more',
+    reason: 'Volume 1.8× its open interest or more, on $300K or more',
     hint: 'Trading many times its open interest — positions built today',
   },
   {
@@ -261,12 +265,15 @@ export const WATCHERS: WatcherRule[] = [
 ];
 
 /** One row the desk's (or the reader's) watcher caught — a contract on the live book that meets a reason, told by its
-    own day: when it last printed, at what fill, how much money it carried, and which side its volume leaned. */
+    own day: when it last printed, at what fill, how much money it carried, and which side its volume leaned. ONE ROW A
+    CONTRACT (the retail pass, 2026-10-22: QQQ 725C sat twice in "362 catches", once per reason) — its reasons together. */
 export interface Catch {
   id: string;
-  /** A house reason's key, or one of the reader's own reasons' ids. */
+  /** The contract's loudest reason — a house reason's key, or one of the reader's own reasons' ids. */
   rule: string;
-  /** True when the reader wrote this reason */
+  /** Every reason it meets, loudest first */
+  rules: string[];
+  /** True when the reader wrote the loudest reason */
   mine: boolean;
   /** Minute-of-day of the contract's last print */
   minute: number;
@@ -276,9 +283,28 @@ export interface Catch {
   last: number;
   /** The contract's premium today */
   premium: number;
-  /** Which side its day's volume leaned: at least 55% at the ask, or at the bid; else even */
-  side: 'ASK' | 'BID' | 'EVEN';
+  /** Which side its day's volume leaned (dayLean): at the ask, on the bid, even, or MID — mostly mid or no side */
+  side: 'ASK' | 'BID' | 'EVEN' | 'MID';
   row: BookContract;
+}
+
+/** A house reason said with the contract's OWN figure, not its threshold (the re-audit, 2026-10-22: "Volume 1.8× its
+    open interest" beside a Vol/OI of 30.14) */
+export function reasonPhrase(key: WatcherKey, r: BookContract): string {
+  switch (key) {
+    case 'big-money':
+      return `Carried ${usd(r.premium)} of premium today — $25M and up`;
+    case 'into-earnings':
+      return `Reports in ${r.earnDays === 0 ? 'this session' : `${r.earnDays} session${r.earnDays === 1 ? '' : 's'}`}, open interest +${r.deltaOI.toLocaleString('en-US')} on ${r.volume.toLocaleString('en-US')} contracts`;
+    case 'climbing':
+      return `Up ${r.chgPct.toFixed(0)}% on the day, ${Math.round(r.sweepPct)}% swept, leaning to the ask`;
+    case 'falling':
+      return `Down ${Math.abs(r.chgPct).toFixed(0)}% on the day, ${Math.round(r.sweepPct)}% swept, leaning to the bid`;
+    case 'fresh-size':
+      return `Volume ${r.volOverOI >= 10 ? r.volOverOI.toFixed(0) : r.volOverOI.toFixed(1)}× its open interest, on ${usd(r.premium)}`;
+    case 'hammering':
+      return `${r.volume.toLocaleString('en-US')} contracts, ${Math.round(r.sweepPct)}% of them swept`;
+  }
 }
 
 function rulesFor(r: BookContract): WatcherKey[] {
@@ -287,11 +313,12 @@ function rulesFor(r: BookContract): WatcherKey[] {
   if (r.premium >= 25_000_000) out.push('big-money');
   if (r.earnDays != null && r.earnDays <= 5 && r.deltaOI > 0 && r.volume >= 3000) out.push('into-earnings');
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
-  if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && r.askPct >= 55) out.push('climbing');
-  else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && r.askPct <= 45) out.push('falling');
+  const lean = dayLean(r).lean;
+  if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
+  else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
   if (r.volOverOI >= 1.8 && r.premium >= 300_000) out.push('fresh-size');
   if (r.volume >= 12000 && r.sweepPct >= 30) out.push('hammering');
-  return out.slice(0, 2); // a very loud contract reports at most twice
+  return out;
 }
 
 /** The reader's own reasons this row meets — same per-row ceiling as the house
@@ -300,7 +327,6 @@ function myReasonsFor(r: BookContract, reasons: UserReason[]): string[] {
   const out: string[] = [];
   for (const reason of reasons) {
     if (reasonMatches(reason, r)) out.push(reason.id);
-    if (out.length === 2) break;
   }
   return out;
 }
@@ -320,19 +346,21 @@ export function buildCatches(rows: BookContract[], reasons: UserReason[] = []): 
   for (const r of rows) {
     const house = rulesFor(r);
     const mine = myReasonsFor(r, reasons);
-    for (const rule of [...house, ...mine]) {
-      catches.push({
-        id: `${r.key}-${rule}`,
-        rule,
-        mine: !house.includes(rule as WatcherKey),
-        minute: r.lastAtMin,
-        time: r.lastAt,
-        last: r.last,
-        premium: r.premium,
-        side: r.askPct >= 55 ? 'ASK' : r.askPct <= 45 ? 'BID' : 'EVEN',
-        row: r,
-      });
-    }
+    const all = [...house, ...mine];
+    if (!all.length) continue;
+    const lean = dayLean(r).lean;
+    catches.push({
+      id: r.key,
+      rule: all[0],
+      rules: all,
+      mine: !house.includes(all[0] as WatcherKey),
+      minute: r.lastAtMin,
+      time: r.lastAt,
+      last: r.last,
+      premium: r.premium,
+      side: lean === 'UNSIDED' ? 'MID' : lean,
+      row: r,
+    });
   }
   catches.sort((a, b) => b.minute - a.minute || b.premium - a.premium);
   catchCache = { rows, sig, catches };
@@ -441,11 +469,14 @@ export interface SpreadKindDef {
 }
 
 export const SPREAD_KINDS: SpreadKindDef[] = [
-  { key: 'vertical', label: 'Vertical', read: 'One strike bought, the next sold — a lane between them, risk capped both ways.' },
-  { key: 'condor', label: 'Iron condor', read: 'Both sides sold, wings bought for cover — collects if the name goes nowhere.' },
-  { key: 'butterfly', label: 'Butterfly', read: 'Wings bought, the body sold twice — pays most if it pins the middle strike.' },
-  { key: 'straddle', label: 'Straddle', read: 'Call and put at the same strike — a position on movement itself, either direction.' },
-  { key: 'strangle', label: 'Strangle', read: 'Call above, put below — movement either way, cheaper than the straddle.' },
+  /* THE FAMILY, NEVER ITS DIRECTION (the re-audit, 2026-10-22: "wings bought, body sold" was printed over short flies):
+     these say what the shape is, both ways round; each structure's own sentence is worked from its settled legs
+     (traceLive describeStructure) */
+  { key: 'vertical', label: 'Vertical', read: 'Two strikes on one side and one expiry, one bought and one sold — the risk capped both ways.' },
+  { key: 'condor', label: 'Iron condor', read: 'Four legs, two inner strikes and two outer — sold inner, it gains if the name stays between; bought inner, it gains on a move out.' },
+  { key: 'butterfly', label: 'Butterfly', read: 'Three strikes, the middle one twice — long (wings bought), it pays most at the middle; short (wings sold), it gains on a move away.' },
+  { key: 'straddle', label: 'Straddle', read: 'A call and a put at one strike — bought, a position on a move either way; sold, on no move.' },
+  { key: 'strangle', label: 'Strangle', read: 'A call above and a put below — bought, a move either way; sold, the name staying between.' },
   { key: 'calendar', label: 'Calendar', read: 'Same strike on two clocks — one expiry bought, the other sold.' },
   { key: 'diagonal', label: 'Diagonal', read: 'Two strikes on two clocks — a vertical and a calendar in one.' },
   { key: 'riskReversal', label: 'Risk reversal', read: 'A call one way and a put the other, on two strikes — a directional stance financed by the other side.' },
@@ -491,7 +522,7 @@ export interface SpreadTrade {
   expiry: string;
   dte: number;
   size: number;
-  /** Per-structure price: positive = debit paid, negative = credit collected */
+  /** Per-UNIT price (net premium over units × 100): positive = debit paid, negative = credit collected; 0 = not known */
   net: number;
   /** The vendor's name for the shape, spelled out ("put diagonal spread", "time butterfly") */
   shape: string;
@@ -501,6 +532,7 @@ export interface SpreadTrade {
   legCount?: number;
   /** |net| × size × 100, dollars */
   premium: number;
+  /** The expiry payoff of the settled legs — null when the legs cannot be settled, or run to two expiries */
   maxLoss: number | 'uncapped' | null;
   maxProfit: number | 'uncapped' | null;
   iv: number;
@@ -508,6 +540,22 @@ export interface SpreadTrade {
   theta: number;
   spot: number;
   legs: SpreadLeg[];
+  /** False when the vendor printed no net premium at all */
+  netKnown?: boolean;
+  /** The size of the net when its way is not known — the shape's canonical signs, either way */
+  netAbs?: number;
+  /** Units: the GCD of the legs' contracts — "5 flies" of S5/B10/S5 */
+  units?: number;
+  /** Every leg's contracts together */
+  contracts?: number;
+  /** "S1/B2/S1" — each leg's direction and its ratio, low strike first */
+  ratioLabel?: string;
+  /** Why the risk is not drawn: the legs did not settle, they run to two expiries, or the net is not known */
+  riskNote?: 'unsettled' | 'expiries' | 'no-net';
+  /** The structure in a sentence, from its settled legs */
+  read?: string;
+  /** Whether its legs are in hand */
+  legsState?: 'pending' | 'in' | 'none';
 }
 
 /** One leg as a book row — every figure the vendor's legs route sends for it (its day volume, open interest, fill,

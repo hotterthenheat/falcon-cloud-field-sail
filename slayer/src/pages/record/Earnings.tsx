@@ -41,7 +41,7 @@
 */
 
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Moon, Search, Sunrise, X } from 'lucide-react';
@@ -58,7 +58,7 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { untilWords, useEarningsCoverage, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
 import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
@@ -102,16 +102,22 @@ const MACRO_WORD: Record<string, string> = { 'FOMC decision': 'FOMC', 'NFP relea
 /** The pricing in the page's words: how the options price sits against the usual move */
 export const PRICED_WORD: Record<VolState, string> = { RICH: 'rich', INLINE: 'fair', CHEAP: 'cheap' };
 export const PRICED_INK: Record<VolState, string> = { RICH: 'text-warn', INLINE: 'text-textPrimary', CHEAP: 'text-bull' };
-export const slotWord = (e: { slot: EarningsEvent['slot'] }) => (e.slot === 'BMO' ? 'before the open' : 'after the close');
-const pricedKnown = (e: EarningsEvent) => e.history !== false;
+/* a report whose time the vendor does not have ("unknown") is not "after the close" (the re-audit, 2026-10-22) */
+export const slotWord = (e: { slot: EarningsEvent['slot']; timeKnown?: boolean }) => (e.timeKnown === false ? 'time not set' : e.slot === 'BMO' ? 'before the open' : 'after the close');
+/** How many past moves the usual move averages — the live feed says; the sample has eight */
+const histN = (e: EarningsEvent) => (e.history === false ? 0 : e.histCount ?? e.pastMoves.length);
+/** A usual move exists: at least one past move on file */
+const usualKnown = (e: EarningsEvent) => histN(e) > 0 && e.histAvgMovePct > 0;
+/** Rich, fair or cheap: enough past moves, and the report not out yet (a reported row carries its move, not a price) */
+const pricedKnown = (e: EarningsEvent) => !e.reported && histN(e) >= MIN_PRICED_PRINTS && e.richness > 0;
 const priceInk = (e: EarningsEvent) => (pricedKnown(e) ? PRICED_INK[stateOf(e)] : 'text-textPrimary');
 
 /** The slot as a mark: dawn amber before the open, the moon after the close */
-export const SlotMark = ({ slot, className = 'w-3 h-3' }: { slot: EarningsEvent['slot']; className?: string }) =>
-  slot === 'BMO' ? <Sunrise className={`${className} text-warn`} aria-label="before the open" /> : <Moon className={`${className} text-moon`} aria-label="after the close" />;
+export const SlotMark = ({ slot, className = 'w-3 h-3', timeKnown }: { slot: EarningsEvent['slot']; className?: string; timeKnown?: boolean }) =>
+  timeKnown === false ? <span className={`${className} inline-block rounded-full border border-textMuted/60`} aria-label="time not set" title="The report's time is not set" /> : slot === 'BMO' ? <Sunrise className={`${className} text-warn`} aria-label="before the open" /> : <Moon className={`${className} text-moon`} aria-label="after the close" />;
 
 /** Set by the company, or still an analyst's estimate — the same two words everywhere on the page */
-const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-[8px] uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`}>{confirmed ? 'confirmed' : 'estimated'}</span>;
+const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font-mono text-[8px] uppercase tracking-widest ${confirmed ? 'text-textMuted' : 'text-warn'}`} title={confirmed ? 'The company has set the date' : "The date is Unusual Whales' estimate — the company has not set it"}>{confirmed ? 'confirmed' : 'date estimated'}</span>;
 
 const Fact = ({ label, children, testId, clip }: { label: string; children: React.ReactNode; testId?: string; clip?: boolean }) => (
   <div className={clip ? 'min-w-0 max-w-[320px]' : undefined}>
@@ -144,7 +150,7 @@ const NameDoor = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) 
       <span className="flex items-center gap-1.5">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{e.ticker}</span>
         <span className={`font-mono text-[11px] tnum ${e.reported ? moveInk(e) : e.impliedMovePct > 0 ? priceInk(e) : 'text-textMuted'}`}>{moveText(e)}</span>
-        <SlotMark slot={e.slot} />
+        <SlotMark slot={e.slot} timeKnown={e.timeKnown} />
       </span>
       <span className="text-[10px] text-textMuted truncate max-w-[180px]">{e.name}</span>
     </span>
@@ -228,7 +234,7 @@ const Answer = ({ next, inWindow, onOpen, onClear }: { next: NextReport; inWindo
         <span className="text-textMuted">{` · ${untilWords(next.daysOut)}`}</span>
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <SlotMark slot={next.slot} className="w-2.5 h-2.5" />
+        <SlotMark slot={next.slot} timeKnown={next.event?.timeKnown} className="w-2.5 h-2.5" />
         {slotWord(next)}
       </span>
       <SetTag confirmed={next.confirmed} />
@@ -293,7 +299,7 @@ const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
         {data.dateLabel} <span className="text-textMuted">· {untilWords(data.daysOut)}</span>
       </span>
       <span className="inline-flex items-center gap-1.5 text-[10px]">
-        <SlotMark slot={data.slot} className="w-2.5 h-2.5" />
+        <SlotMark slot={data.slot} timeKnown={data.timeKnown} className="w-2.5 h-2.5" />
         <span className="text-textSecondary">{slotWord(data)}</span>
         <SetTag confirmed={data.confirmed} />
       </span>
@@ -312,10 +318,25 @@ const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
       {moveText(data)}
     </span>
   ) : null;
-const UsualCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{pricedKnown(data) ? `±${data.histAvgMovePct.toFixed(1)}%` : '—'}</span> : null);
+const UsualCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
+  if (!data) return null;
+  if (data.history === false) return data.known ? <span className="font-mono text-[11px] text-textMuted" title="Reading the name's past reports">…</span> : <span className="font-mono text-[11px] text-textMuted" title="The board reads the past reports of the known names; this name's are on its own page">—</span>;
+  if (!usualKnown(data)) return <span className="font-mono text-[11px] text-textMuted" title={data.classOf ? `A second share class — its reports are filed under ${data.classOf}` : 'No past move on file for this name'}>{data.classOf ? `see ${data.classOf}` : 'no history'}</span>;
+  const n = histN(data);
+  return (
+    <span className="font-mono text-[11px] tnum text-textSecondary" title={`The average move the session after its last ${n} ${n === 1 ? 'report' : 'reports'}`}>
+      ±{data.histAvgMovePct.toFixed(1)}%{n < 8 ? <span className="text-[9px] text-textMuted"> · {n} {n === 1 ? 'print' : 'prints'}</span> : null}
+    </span>
+  );
+};
 const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!data) return null;
-  if (!pricedKnown(data)) return <span className="font-mono text-[11px] text-textMuted">—</span>;
+  if (!pricedKnown(data))
+    return (
+      <span className="font-mono text-[11px] text-textMuted" title={data.reported ? 'Reported — the move is in, so the premium is no longer priced' : usualKnown(data) ? `From ${histN(data)} ${histN(data) === 1 ? 'print' : 'prints'} — rich or cheap needs ${MIN_PRICED_PRINTS}` : 'No usual move to set the price against'}>
+        —
+      </span>
+    );
   const s = stateOf(data);
   return (
     <span className={`font-mono text-[11px] tnum ${PRICED_INK[s]}`}>
@@ -323,12 +344,24 @@ const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
     </span>
   );
 };
+/* BEAT · IN LINE · MISS, over the reports that carry both an actual and an estimate (the re-audit, 2026-10-22: BBD read
+   "7 of 8" with six in line) */
 const BeatCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   if (!data) return null;
-  if (!pricedKnown(data) || !data.pastMoves.length) return <span className="font-mono text-[11px] text-textMuted">—</span>;
-  const n = data.pastMoves.length;
-  const beats = Math.round((data.beatRate8q / 100) * n);
-  return <span className="font-mono text-[11px] tnum text-textPrimary">{beats} of {n}</span>;
+  const b = data.beatCount ?? 0;
+  const i = data.inlineCount ?? 0;
+  const m = data.missCount ?? 0;
+  const n = b + i + m;
+  if (data.history === false || !n) return <span className="font-mono text-[11px] text-textMuted">—</span>;
+  return (
+    <span className="font-mono text-[11px] tnum text-textPrimary" title={`Of the last ${n} reports with an estimate: ${b} beat, ${i} in line, ${m} missed`}>
+      <span className="text-bull">{b}</span>
+      <span className="text-textMuted">·</span>
+      {i}
+      <span className="text-textMuted">·</span>
+      <span className="text-bear">{m}</span>
+    </span>
+  );
 };
 /* ---- the page ----------------------------------------------------------------------- */
 
@@ -338,6 +371,7 @@ const Earnings = () => {
   /* EVERY REPORT, the known names marked — and the reader's own board names count as known: a name you follow is one
      you recognise, whatever its size */
   const live = useEveryReport();
+  useEarningsHistories();
   const pending = useEarningsPending();
   const failed = useEarningsFailed();
   const events = useMemo(() => {
@@ -362,18 +396,24 @@ const Earnings = () => {
      board, the list and the grid to it; a name outside it says so under the line, with its page */
   /* in the window only when its NEXT report is (TSLA reported on Wednesday; its next is 01/27, outside) */
   const askedIn = asked != null && !!next && events.some(e => e.ticker === asked && e.iso === next.iso);
+  const inWeeks = (e: EarningsEvent) => week === 'both' || String(e.weekIdx) === week;
   const shown = useMemo(() => {
-    const cut = show === 'all' ? events : events.filter(e => !e.reported && pricedKnown(e) && stateOf(e) === show);
+    const cut = (show === 'all' ? events : events.filter(e => pricedKnown(e) && stateOf(e) === show)).filter(e => week === 'both' || String(e.weekIdx) === week);
     const named = askedIn ? cut.filter(e => e.ticker === asked) : cut;
     /* still to report first, soonest first; the reports already out follow, newest first */
     return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut));
-  }, [events, show, askedIn, asked]);
+  }, [events, show, askedIn, asked, week]);
+  /* a new cut starts the grid on its first page (the re-audit, 2026-10-22: it stayed on page 3 of an older cut) */
+  useEffect(() => setReportPage(0), [week, show, asked]);
   const reportPages = Math.max(1, Math.ceil(shown.length / REPORT_PAGE));
   const reportAt = Math.min(reportPage, reportPages - 1);
   const reportRows = shown.slice(reportAt * REPORT_PAGE, (reportAt + 1) * REPORT_PAGE);
   /* the pricing facts are told over the known names still to report whose usual move is in — a print that is out is
      not priced any more, and a count that grows as histories land says how many are in */
-  const ahead = knownEvents.filter(e => !e.reported);
+  /* the head counts the weeks the Week card shows — the same cut as the board and the grid */
+  const weekEvents = events.filter(inWeeks);
+  const weekKnown = knownEvents.filter(inWeeks);
+  const ahead = weekKnown.filter(e => !e.reported);
   const scored = ahead.filter(pricedKnown);
   const cover = useEarningsCoverage();
   const rich = scored.filter(e => stateOf(e) === 'RICH').length;
@@ -384,6 +424,7 @@ const Earnings = () => {
   const todayMore = events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()).length - today.length;
 
   const weeks: (0 | 1)[] = week === 'both' ? [0, 1] : [Number(week) as 0 | 1];
+  const weekWords = week === 'both' ? 'over two weeks' : week === '0' ? 'this week' : 'next week';
   const open = (t: string) => navigate(`/dossier/earnings/${t}`);
   /* a name asked for inside the fortnight: the week turns to its page, its card wears the ring */
   const ask = (t: string) => {
@@ -394,23 +435,23 @@ const Earnings = () => {
 
   const sentence = useMemo(() => {
     const parts = [
-      `${events.length} reports over two weeks, ${knownEvents.length} of them known names, ${ahead.length} of those still to report`,
-      `of the ${scored.length} whose last eight prints are read${cover.historiesPending ? ` (${cover.historiesPending} still reading)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
+      `${weekEvents.length} reports ${weekWords}, ${weekKnown.length} of them known names, ${ahead.length} of those still to report`,
+      `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${cover.historiesPending ? ` (${cover.historiesPending} still reading)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
     if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
     parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
     if (cover.missed) parts.push(`${cover.missed} of the ${cover.slots} day lists did not answer, so the count is short`);
     return parts.join(' · ') + '.';
-  }, [events.length, knownEvents.length, ahead.length, scored.length, cover, rich, fair, cheap, biggest, today, todayMore]);
+  }, [weekEvents.length, weekKnown.length, weekWords, ahead.length, scored.length, cover, rich, fair, cheap, biggest, today, todayMore]);
 
   const columnDefs = useMemo<ColDef<EarningsEvent>[]>(
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 180, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open its page' },
       { headerName: 'Reports', field: 'daysOut', width: 210, cellRenderer: WhenCell, headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
       { headerName: 'Options price', field: 'impliedMovePct', width: 124, cellRenderer: MoveCell, type: 'rightAligned', headerTooltip: 'The move the options charge for the print — the at-the-money straddle as a percent of the stock. Once the report is out, the move the stock made the session after' },
-      { headerName: 'Usually moves', field: 'histAvgMovePct', width: 124, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move on the last eight prints' },
+      { headerName: 'Usually moves', field: 'histAvgMovePct', width: 136, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move the session after its last eight reports — or fewer, said beside it, when fewer are on file' },
       { headerName: 'Priced', field: 'richness', width: 124, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
-      { headerName: 'Beat', field: 'beatRate8q', width: 96, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'How many of the last eight quarters beat the estimate' },
+      { headerName: 'Beat · in line · miss', field: 'beatRate8q', width: 130, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'Of the last eight reports that carry both an actual and an estimate: how many beat, came in line (equal to the cent) and missed' },
       { headerName: 'IV rank', field: 'ivRank', width: 92, cellRenderer: IvCell, type: 'rightAligned', headerTooltip: 'Where implied volatility sits against its own past year, 0 to 100 — 80 and up is dear' },
     ],
     []
@@ -438,7 +479,7 @@ const Earnings = () => {
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Reports" testId="reports">
-              {pending || failed ? <span className="text-textMuted">—</span> : <>{events.length} <span className="text-textMuted">· two weeks ·</span> {knownEvents.length} <span className="text-textMuted">known names</span></>}
+              {pending || failed ? <span className="text-textMuted">—</span> : <>{weekEvents.length} <span className="text-textMuted">· {weekWords} ·</span> {weekKnown.length} <span className="text-textMuted">known names</span>{cover.missed ? <span className="text-warn" title={`${cover.missed} of the ${cover.slots} day lists did not answer`}> · short</span> : null}</>}
             </Fact>
             <Fact label="Priced" testId="priced">
               {failed ? (
@@ -446,7 +487,7 @@ const Earnings = () => {
               ) : scored.length === 0 ? (
                 <span className="text-textMuted">reading the usual moves</span>
               ) : (
-                <span title={`Known names still to report whose last eight prints are read: ${scored.length} of ${ahead.length}`}>
+                <span title={`Known names still to report ${weekWords} with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${ahead.length}. A name with fewer, or none, is not called rich or cheap`}>
                   <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
                   <span className="text-textMuted"> · of {scored.length}{cover.historiesPending ? ` (${cover.historiesPending} reading)` : ''}</span>
                 </span>
@@ -576,24 +617,25 @@ const Earnings = () => {
                   const dayKey = `${weekIdx}-${wd}`;
                   const opened = !!openDays[dayKey];
                   const ranked = rankEvents(dayAll);
-                  const take = (slot: EarningsEvent['slot']) => {
-                    const all = ranked.filter(e => e.slot === slot);
+                  const take = (slot: EarningsEvent['slot'], timed: boolean) => {
+                    const all = ranked.filter(e => (timed ? e.timeKnown !== false && e.slot === slot : e.timeKnown === false));
                     const list = opened ? all : all.slice(0, SHELF);
                     return { list, hidden: all.length - list.length };
                   };
-                  const bmo = take('BMO');
-                  const amc = take('AMC');
-                  const more = bmo.hidden + amc.hidden;
-                  const capped = bmo.list.length + bmo.hidden > SHELF || amc.list.length + amc.hidden > SHELF;
+                  const bmo = take('BMO', true);
+                  const amc = take('AMC', true);
+                  const unset = take('AMC', false);
+                  const more = bmo.hidden + amc.hidden + unset.hidden;
+                  const capped = bmo.list.length + bmo.hidden > SHELF || amc.list.length + amc.hidden > SHELF || unset.list.length + unset.hidden > SHELF;
                   /* the macro calendar's dates under the day's head (2026-09-10 night: the list had them, the board did not) */
                   const dayMacro = macro.filter(m => m.iso === isoOf(weekDayDate(weekIdx, wd)));
                   const bmoList = bmo.list;
                   const amcList = amc.list;
-                  const shelf = (list: EarningsEvent[], slot: EarningsEvent['slot']) =>
+                  const shelf = (list: EarningsEvent[], slot: EarningsEvent['slot'], timed = true) =>
                     list.length === 0 ? null : (
                       <div>
                         <span className="flex items-center gap-1.5 px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">
-                          <SlotMark slot={slot} className="w-2.5 h-2.5" /> {slot === 'BMO' ? 'before the open' : 'after the close'}
+                          <SlotMark slot={slot} timeKnown={timed} className="w-2.5 h-2.5" /> {!timed ? 'time not set' : slot === 'BMO' ? 'before the open' : 'after the close'}
                         </span>
                         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                           {list.map(e => (
@@ -616,12 +658,13 @@ const Earnings = () => {
                           ))}
                         </div>
                       )}
-                      {bmo.list.length + amc.list.length === 0 ? (
+                      {bmo.list.length + amc.list.length + unset.list.length === 0 ? (
                         dayMacro.length === 0 && more === 0 && <div className="mt-7 text-center font-mono text-[9px] uppercase tracking-widest text-textMuted">{show === 'all' ? 'no reports' : 'none priced this way'}</div>
                       ) : (
                         <div className="mt-2.5 flex flex-col gap-3">
                           {shelf(bmoList, 'BMO')}
                           {shelf(amcList, 'AMC')}
+                          {shelf(unset.list, 'AMC', false)}
                         </div>
                       )}
                       {(more > 0 || (opened && capped)) && (
@@ -629,7 +672,7 @@ const Earnings = () => {
                           type="button"
                           onClick={() => setOpenDays(d => ({ ...d, [dayKey]: !opened }))}
                           title={opened ? 'Back to the names that matter' : 'The rest of this day'}
-                          className={`${bmo.list.length + amc.list.length === 0 ? 'mt-7' : 'mt-auto pt-3'} self-start px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors`}
+                          className={`${bmo.list.length + amc.list.length + unset.list.length === 0 ? 'mt-7' : 'mt-auto pt-3'} self-start px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors`}
                           data-earnings-board-more={more || undefined}
                         >
                           {opened ? 'Show fewer' : `+ ${more} more`}
@@ -649,7 +692,7 @@ const Earnings = () => {
         <div className="px-5 pt-4 pb-3">
           <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Every report</h3>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            Both weeks · {show === 'all' ? 'every report, the known names and the rest' : `the reports still to come priced ${PRICED_WORD[show]}`} · still to report first, soonest first, then the ones already out with their move · click a row for the name's page
+            {week === 'both' ? 'Both weeks' : week === '0' ? 'This week' : 'Next week'} · {show === 'all' ? 'every report, the known names and the rest' : `the reports still to come priced ${PRICED_WORD[show]}`} · still to report first, soonest first, then the ones already out with their move · click a row for the name's page
           </p>
         </div>
         <div className="slayer-board border-t border-borderSubtle">

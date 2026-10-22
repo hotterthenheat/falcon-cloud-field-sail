@@ -296,15 +296,31 @@ function roleOf(K: number, levels: ExposureProfileData['levels']): WallRole {
     gamma (positive — the warm "pushes a move along"), above spot or below. The old rule counted put-dominant gamma below
     spot as absorbing, so SPY 760/761/762 read "PUT WALL 100% / SHELF 95%" on strikes the Map coloured as pushing a move
     along, while the identical sign at 765 above spot read TRAPDOOR. */
+/* THE STRIKE'S OWN SIGN NAMES IT (the second re-audit, 2026-10-22: SPY 770 nets +$15.4M — dealers long, Building's
+   "dealers push back" — yet the Agenda called it a TRAPDOOR, because its heavier short-gamma neighbour 769 at half
+   weight outvoted it). The neighbours still size a wall (half weight, the same side only), but the side — wall or
+   trapdoor — is the strike's own gamma. A strike with no gamma weighs nothing. */
 function wallWeight(K: number, spot: number, strikes: readonly StrikeExposure[]): number {
-  let weight = 0;
+  const own = strikes.find(s => s.strike === K)?.gex.net ?? 0;
+  if (!own) return 0;
+  const absorbs = own < 0;
+  let mag = 0;
   for (const s of strikes) {
     if (Math.abs(s.strike - K) > spot * NEIGHBOUR_PCT) continue;
-    const near = s.strike === K ? 1 : 0.5;
-    weight += s.gex.net < 0 ? Math.abs(s.gex.net) * near : -Math.abs(s.gex.net) * near;
+    if (s.gex.net < 0 !== absorbs || !s.gex.net) continue;
+    mag += Math.abs(s.gex.net) * (s.strike === K ? 1 : 0.5);
   }
-  return weight;
+  return absorbs ? mag : -mag;
 }
+
+/** Which way the dealers' hedging along a path leans against the move: a move up met by dealer BUYING is pushed along,
+    by selling it is leaned against (and the reverse for a move down) — the words follow the flow's own sign */
+export const pathLean = (side: WallSide, flow: number): 'along' | 'against' | null => (flow === 0 ? null : (side === 'call') === flow > 0 ? 'along' : 'against');
+export const pathFlowWords = (side: WallSide, flow: number): string => {
+  const lean = pathLean(side, flow);
+  if (!lean) return '';
+  return `${fmtDollars(flow)} of forced dealer ${flow > 0 ? 'buying' : 'selling'} on the way, which ${lean === 'along' ? 'pushes the move along' : 'leans against the move'}`;
+};
 
 /** The put wall in plain words — the most put hedging, and what a short-gamma floor does when it gives */
 export const PUT_WALL_WORDS = 'the most put hedging; dealers buy dips into it while it holds, but they are short gamma here, so a break can accelerate';
@@ -387,7 +403,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
     words:
       breakTo == null
         ? `a break ${side === 'call' ? 'above' : 'below'} ${fmtStrike(K)} has no shelf behind it on the strikes shown`
-        : `a break ${side === 'call' ? 'above' : 'below'} ${fmtStrike(K)} runs to ${fmtStrike(breakTo)}${pocket ? ' with almost nothing in between' : ''}${breakFlow !== 0 ? `, ${fmtDollars(breakFlow)} of forced dealer ${breakFlow > 0 ? 'buying' : 'selling'} on the way` : ''}`,
+        : `a ${weight > 0 ? 'break' : 'move'} ${side === 'call' ? 'above' : 'below'} ${fmtStrike(K)} runs to ${fmtStrike(breakTo)}${pocket ? ' with almost nothing in between' : ''}${breakFlow !== 0 ? `, ${pathFlowWords(side, breakFlow)}` : ''}`,
   };
   const flipOnSpotSide = side === 'call' ? levels.flip < K : levels.flip > K;
   const holdTo = flipOnSpotSide && Math.abs(levels.flip - spot) > 1e-9 ? levels.flip : side === 'call' ? levels.putWall : levels.callWall;
@@ -397,7 +413,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
     to: holdTo,
     pocket: null,
     flow: holdFlow,
-    words: `a hold sends price back toward ${fmtStrike(holdTo)}${holdFlow !== 0 ? `, ${fmtDollars(holdFlow)} of forced dealer ${holdFlow > 0 ? 'buying' : 'selling'} on the way` : ''}`,
+    words: `a hold sends price back toward ${fmtStrike(holdTo)}${holdFlow !== 0 ? `, ${pathFlowWords(side === 'call' ? 'put' : 'call', holdFlow)}` : ''}`,
   };
 
   /* THE FACTORS, each a fact and a push */

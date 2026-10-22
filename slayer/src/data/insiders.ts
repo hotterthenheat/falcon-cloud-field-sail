@@ -41,7 +41,7 @@ import { RECORD_UNIVERSE, recordPrice } from './recordUniverse';
 import type { InsiderFlow, InsiderKind, InsiderRole, InsiderSignal, InsiderTrade, PlanState, TxCode, TxCodeMeta } from '../types/record';
 
 export const TX_CODES: Record<TxCode, TxCodeMeta> = {
-  P: { code: 'P', label: 'Open-market purchase', discretionary: true, openMarket: true, acquires: true, note: 'The insider bought with their own money at a price they accepted — the one row here with a single obvious motive behind it.' },
+  P: { code: 'P', label: 'Purchase', discretionary: true, openMarket: true, acquires: true, note: 'A purchase on the open market or in a private placement, at a price the buyer accepted. Bought by a person, it is the one row here with a single obvious motive behind it; bought by a company or fund, it is a strategic stake and is counted apart.' },
   S: { code: 'S', label: 'Open-market sale', discretionary: true, openMarket: true, acquires: false, note: 'A real sale into the market — though a sale has many motives a purchase does not: tax, diversification, a house.' },
   A: { code: 'A', label: 'Grant or award', discretionary: false, openMarket: false, acquires: true, note: 'The compensation committee acted, not the insider. No decision, no purchase, no price paid.' },
   M: { code: 'M', label: 'Option or RSU conversion', discretionary: false, openMarket: false, acquires: true, note: 'A derivative converting to shares under a plan. Mechanical — a sale the same day is usually funding the exercise, not an exit.' },
@@ -103,10 +103,15 @@ export const rosterOf = (ticker: string): Officer[] => universeRosters().get(tic
 /** An OPEN-MARKET buy someone chose: the filing ticked "not a 10b5-1 plan". A buy on a plan is not one, and neither is a
     buy whose filing left the box blank — the row reads UNSTATED, so the sums do not count it as chosen either (the data
     audit, 2026-10-22: unstated buys were summed as chosen while their rows said "unstated"). */
-export const isChosenBuy = (t: { code: TxCode; plan: PlanState }): boolean => {
+export const isChosenBuy = (t: { code: TxCode; plan: PlanState; entity?: boolean }): boolean => {
   const m = TX_CODES[t.code];
-  return m.openMarket && m.acquires && m.discretionary && t.plan === 'discretionary';
+  /* a company or fund buying (a private placement, a strategic stake — Volkswagen's RIVN, SMFG's JEF) is not an
+     insider choosing to buy; it is counted apart as a corporate purchase (the re-audit, 2026-10-22) */
+  return m.openMarket && m.acquires && m.discretionary && t.plan === 'discretionary' && !t.entity;
 };
+
+/** A code-P purchase by a company or a fund: a strategic stake or a private placement, not a person's chosen buy */
+export const isCorporateBuy = (t: { code: TxCode; entity?: boolean }): boolean => t.code === 'P' && !!t.entity;
 
 const EMPTY: InsiderFlow = { ticker: '', trades: [], bought: 0, sold: 0, net: 0, plannedValue: 0, compValue: 0, buyerCluster: 0, openMarketBuys: 0, signal: 'quiet', windowDays: 0 };
 

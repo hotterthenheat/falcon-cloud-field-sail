@@ -61,6 +61,16 @@ export interface FlowPrint {
   alertSides?: { ask: number; bid: number; other: number };
   /** The vendor's name for the alert's rule (RepeatedHits, Sweeps…) */
   alertRule?: string;
+  /** Printed outside the regular session (the vendor's report_flags "extended_hours", or its trading_hours) — read
+      against a post-market quote, so it carries no bullish/bearish read */
+  extended?: boolean;
+  /** A flow alert's own fill window, New York "HH:MM:SS" (its start_time … end_time) — `time` is the first fill */
+  fillEnd?: string;
+  /** Per-share theta, as the vendor sends it on the print (null on most index prints) */
+  theta?: number;
+  /** The CONTRACT's day so far by side — at the ask, on the bid, at the mid or no side (the vendor's ask_vol, bid_vol,
+      mid_vol + no_side_vol on the print) */
+  daySide?: { ask: number; bid: number; mid: number };
 }
 
 // ---- the day book (data/flowBook.ts) ----------------------------------------
@@ -133,6 +143,15 @@ export interface BookContract {
   /** Prior session's volume by 15-min bucket, 26 values normalized 0-1 —
       the shape of the build, not a second volume fact */
   prevSpark: number[];
+  /** The day's contracts by where they traded: at the ask, on the bid, and at the mid or with no side (the vendor's
+      mid_volume + no_side_volume — a cross is no side). The three sum to the day's volume. */
+  sideVol?: { ask: number; bid: number; mid: number };
+  /** The contract expired at the bell of the tape's session — it no longer stands */
+  expired?: boolean;
+  /** The vendor's per-share theta on the screener row */
+  theta?: number;
+  /** The contract's last fill as a New York date and minute, for display */
+  lastDay?: string;
 }
 
 export type PrintSentiment = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
@@ -157,7 +176,6 @@ export interface TapeSummary {
   putCount: number;
   putPremium: number;
   pcRatio: number;
-  rvol: number;
   sweeps: number;
   /** One-leg prints of real size (data/tape printKind) */
   blocks: number;

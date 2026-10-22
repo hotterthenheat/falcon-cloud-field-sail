@@ -23,9 +23,8 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { WINDOWS_PER_DAY, windowLabel, type IntervalWindow } from '../../data/flowBook';
-import { useNameMinutes, type NameMinute } from '../../data/traceLive';
-import { fmtUsd } from '../../data/gex';
+import { windowLabel, type IntervalWindow } from '../../data/flowBook';
+import { SESSION_OPEN, sessionEndLabel, sessionEndMin, sessionPhase, useNameMinutes, usd as fmtUsd, type NameMinute } from '../../data/traceLive';
 import { nyParts } from '../../core/nyTime';
 import type { Column } from '../../components/ui/DataTable';
 import RichRead from '../../components/ui/RichRead';
@@ -63,11 +62,11 @@ interface Quarter {
   minutes: number;
 }
 
-function quartersOf(rows: NameMinute[], nowIdx: number | null): Quarter[] {
+function quartersOf(rows: NameMinute[], nowIdx: number | null, slots: number): Quarter[] {
   const q: Quarter[] = [];
   for (const m of rows) {
     const idx = Math.floor(m.min / 15);
-    if (idx < 0 || idx >= WINDOWS_PER_DAY) continue;
+    if (idx < 0 || idx >= slots) continue;
     let w = q[idx];
     if (!w) {
       w = { idx, label: windowLabel(idx), live: false, vol: 0, callVol: 0, putVol: 0, callAsk: 0, callBid: 0, putAsk: 0, putBid: 0, netCall: 0, netPut: 0, sharePct: 0, minutes: 0 };
@@ -94,16 +93,17 @@ function quartersOf(rows: NameMinute[], nowIdx: number | null): Quarter[] {
 }
 
 /** The quarter hour the New York clock is in during the session, else null */
-function liveQuarter(): number | null {
+function liveQuarter(endMin: number): number | null {
   const p = nyParts(new Date());
   const m = p.hour * 60 + p.minute - 570;
-  return m >= 0 && m < 390 ? Math.floor(m / 15) : null;
+  /* a trading day (the phase is not "closed") inside the name's own session — 16:00 or 16:15 */
+  return sessionPhase() !== 'closed' && m >= 0 && m < endMin - 570 ? Math.floor(m / 15) : null;
 }
 
 const WIDTHS: Record<string, number> = { win: 132, vol: 104, share: 120, calls: 150, puts: 150, ncall: 104, nput: 104, net: 104 };
 const TOOLTIPS: Record<string, string> = {
   vol: 'Calls and puts traded in the quarter hour, every expiry',
-  share: "The quarter hour's share of the session's contracts so far",
+  share: "The quarter hour's share of the session's contracts — so far while the session runs",
   calls: 'Calls traded, and how many of them at the ask against on the bid',
   puts: 'Puts traded, and how many of them at the ask against on the bid',
   ncall: 'Net call premium: call premium at the ask less on the bid — bought leans bullish',
@@ -129,8 +129,12 @@ const Windows = () => {
   const name = (addr.cut.name || activeTicker || 'SPY').toUpperCase();
   const pack = useNameMinutes(name);
   const hold = useHold(pack.rows, name);
-  const nowIdx = liveQuarter();
-  const quarters = useMemo(() => quartersOf(hold.value, hold.paused ? null : nowIdx), [hold.value, hold.paused, nowIdx]);
+  /* THE NAME'S OWN SESSION: to 16:15 for the index and ETF options that trade then (the re-audit, 2026-10-22) */
+  const endMin = sessionEndMin(name);
+  const slots = (endMin - SESSION_OPEN) / 15;
+  const nowIdx = liveQuarter(endMin);
+  const closed = nowIdx == null;
+  const quarters = useMemo(() => quartersOf(hold.value, hold.paused ? null : nowIdx, slots), [hold.value, hold.paused, nowIdx, slots]);
   const windows = useMemo<IntervalWindow[]>(() => quarters.map(q => ({ idx: q.idx, label: q.label, totalVol: q.vol, live: q.live })), [quarters]);
   const state: 'reading' | 'down' | 'in' = quarters.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
 
@@ -159,10 +163,10 @@ const Windows = () => {
     const lean = sel.netCall - sel.netPut;
     return (
       <RichRead
-        text={`Between ${sel.label.replace('–', ' and ')} ET, ${name} traded ${num(sel.vol)} option contracts — ${sel.sharePct.toFixed(0)}% of its session so far — net calls ${signed(sel.netCall)} and ${sel.netPut >= 0 ? `bearish net puts bought ${fmtUsd(sel.netPut)}` : `bullish net puts sold ${fmtUsd(Math.abs(sel.netPut))}`}, so the quarter hour leaned ${lean >= 0 ? 'bullish' : 'bearish'} by ${fmtUsd(Math.abs(lean))}${sel.live ? '. It is still filling' : ''}. Every expiry, from the vendor's minute ticks.`}
+        text={`Between ${sel.label.replace('–', ' and ')} ET, ${name} traded ${num(sel.vol)} option contracts — ${sel.sharePct.toFixed(1)}% of its ${closed ? 'session' : 'session so far'} — net calls ${signed(sel.netCall)} and ${sel.netPut >= 0 ? `bearish net puts bought ${fmtUsd(sel.netPut)}` : `bullish net puts sold ${fmtUsd(Math.abs(sel.netPut))}`}, so the quarter hour leaned ${lean >= 0 ? 'bullish' : 'bearish'} by ${fmtUsd(Math.abs(lean))}${sel.live ? '. It is still filling' : ''}. Every expiry, from the vendor's minute ticks.`}
       />
     );
-  }, [state, sel, name]);
+  }, [state, sel, name, closed]);
 
   const columns = useMemo<Column<Quarter>[]>(
     () => [
@@ -228,15 +232,15 @@ const Windows = () => {
 
   return (
     <>
-      <DayStrip windows={state === 'in' ? windows : []} selectedIdx={winIdx} onSelect={i => setWin(i)} paused={hold.paused} />
+      <DayStrip windows={state === 'in' ? windows : []} selectedIdx={winIdx} onSelect={i => setWin(i)} paused={hold.paused} slots={slots} />
       <TraceBox
         title="A quarter hour of the day"
-        sub={`${name}'s options, every expiry, 09:30–16:00 ET in quarter hours — from the vendor's minute ticks · a row or a bar picks the quarter hour`}
+        sub={`${name}'s options, every expiry, 09:30–${sessionEndLabel(name)} ET in quarter hours — from the vendor's minute ticks · a row or a bar picks the quarter hour`}
         testId="windows"
         data={{ name, window: sel?.label, rows: quarters.length }}
         facts={
           <>
-            <Fact label="The session" testId="session" title={`${name}'s option contracts traded so far in the regular session, every expiry`}>
+            <Fact label="The session" testId="session" title={`${name}'s option contracts traded ${closed ? '' : 'so far '}in the regular session (09:30–${sessionEndLabel(name)} ET), every expiry`}>
               {state !== 'in' ? <span className="text-textMuted">—</span> : <>{num(day.vol)} <span className="text-textSecondary">contracts · lean</span> <span className={callInk(day.netCall - day.netPut)}>{signed(day.netCall - day.netPut)}</span></>}
             </Fact>
             <Fact label="This quarter hour" testId="window">

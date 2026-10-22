@@ -35,7 +35,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
-import { deskBars, useBookMinutes } from '../../data/uwBook';
+import { bookMinuteKind, deskBars, useBookMinutes } from '../../data/uwBook';
 import { expirySpan } from '../../data/bookWindow';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { fmtUsd } from '../../data/gex';
@@ -418,6 +418,13 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     e.preventDefault();
   };
   const plotW = hostRef.current?.clientWidth ?? 0;
+  /* WHICH SERIES THE LINE IS, SAID WHERE IT IS SHOWN (the second re-audit, 2026-10-22) */
+  const kind = vendor ? bookMinuteKind(ticker) : null;
+  const kindWord = kind === 'oi' ? 'Dealer gamma · all expiries, minute by minute' : "Dealer hedging · today's trades";
+  const kindTitle =
+    kind === 'oi'
+      ? "The vendor's open-interest dealer gamma per 1% move on every expiry, re-priced at each minute's price (spot-exposures) — the same measure as the levels' net GEX; in the session its last print is the All-expiries net (after the close it still counts the contracts that settled at 4:00)"
+      : "The vendor's dealer gamma per 1% move from today's trades (volume-based, minute by minute) — a different measure from the open-interest book the levels are read from";
   const bookWords = bookLabel ?? expirySpan(dates);
 
   /* A CLEAR RULE OVER THE BOOK (Noah, 2026-10-14: "the book and the day should have clear cut horizontal line between them
@@ -434,8 +441,8 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {part ? (
               /* NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "'the book' … give me informative names as to what they do"):
                  the dealers' hedging through the day — amplifying or absorbing, as the figure beside it says */
-              <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-through-part-word title="The vendor's dealer gamma per 1% move from today's trades (volume-based, minute by minute) — not the open-interest book the levels are read from">
-                Dealer hedging · today's trades
+              <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-through-part-word title={kindTitle}>
+                {kindWord}
               </span>
             ) : (
               <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">The book through the day</h3>
@@ -446,13 +453,13 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
         </div>
             {part && last && (
           <>
-            <PartFact label="Line now · vendor" title="The line's last print: the vendor's volume-based dealer gamma per 1% move from today's trades (spot-exposures), in the retail sign. Positive (green): dealers long gamma, their hedging absorbs. Negative (red): it amplifies">
+            <PartFact label={kind === 'oi' ? 'Line now · all expiries' : "Line now · today's trades"} title={`The line's last print — ${kindTitle}. In the retail sign: positive (green) dealers long gamma, their hedging absorbs; negative (red) it amplifies`}>
               <span style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
                 {last.net > 0 ? '+' : ''}
                 {fmtUsd(last.net)} · {last.net >= 0 ? 'absorbs' : 'amplifies'}
               </span>
             </PartFact>
-            <PartFact label={`Net GEX${bookWords ? ` · ${bookWords}` : ''}`} title="Net GEX on every strike of the contracts the Levels card reads (open interest) — the Board's, the Agenda's and Compare's figure. It can differ in sign from the line, which is today's trades alone">
+            <PartFact label={`Net GEX${bookWords ? ` · ${bookWords}` : ''}`} title={`Net GEX on every strike of the contracts the Levels card reads (${bookWords ?? 'its scope'}, open interest) — the Board's, the Agenda's and Compare's figure.${kind === 'oi' ? ' The line is the same measure on every expiry, so the two agree when Levels reads All expiries' : ' The line is a different measure (today\'s trades), so it can differ in sign'}`}>
               <span style={{ color: -bookNet >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-book={Math.round(-bookNet)}>
                 {-bookNet > 0 ? '+' : ''}
                 {fmtUsd(-bookNet)}

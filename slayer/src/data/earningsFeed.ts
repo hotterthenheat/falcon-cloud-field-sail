@@ -9,6 +9,7 @@ import { lookup } from './universe';
 import { decide, isKnownName, type ActiveContract, type EarningsDossier, type EarningsEvent, type EarningsQuarter, type NextReport, type ReportSlot } from './earnings';
 import { tickerName } from './tickers';
 import { MARKET_HOLIDAYS } from '../core/calendar';
+import { boardMondayIso } from './nyDate';
 import { uwCall, whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
 
 interface SlotRow {
@@ -83,7 +84,8 @@ const tradingBetween = (from: string, to: string): number => {
 };
 
 const fortnight = (): string[] => {
-  const start = mondayOf(nyToday());
+  /* New York's board Monday — the week's on a weekday, the coming one on a weekend; the board's columns read the same */
+  const start = boardMondayIso(nyToday());
   const out: string[] = [];
   for (let i = 0; i < 14; i++) {
     const iso = addDays(start, i);
@@ -151,6 +153,21 @@ const labelFor = (iso: string): string => {
 };
 
 const slotOf = (raw?: string): ReportSlot => (/pre/i.test(raw || '') ? 'BMO' : 'AMC');
+/* A TIME THE VENDOR DOES NOT HAVE (the re-audit, 2026-10-22): report_time "unknown" read as "after the close". The slot
+   is kept for ordering, and the page says "time not set" */
+const timeKnownOf = (raw?: string | null): boolean => /pre|post|after|before|amc|bmo/i.test(raw || '');
+const estimatedOf = (source?: string | null): boolean => /estimat/i.test(source || '');
+
+/** The minimum past reports before a name's premium is called rich, fair or cheap against its usual move */
+export const MIN_PRICED_PRINTS = 4;
+
+/** Beat, in line or miss: equal to the cent is in line, never a beat (the re-audit, 2026-10-22: BBD's six in-line prints
+    were counted as beats) */
+export const epsResultOf = (actual: number, est: number): 'beat' | 'inline' | 'miss' => {
+  const a = Math.round(actual * 100);
+  const e = Math.round(est * 100);
+  return a > e ? 'beat' : a < e ? 'miss' : 'inline';
+};
 
 function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const ticker = (row.symbol || '').toUpperCase();
@@ -158,7 +175,7 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   if (!ticker || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
   const day = weekdayOf(iso);
   if (day === 0 || day === 6) return null;
-  const thisMonday = mondayOf(today);
+  const thisMonday = boardMondayIso(today);
   const nextMonday = addDays(thisMonday, 7);
   const week = mondayOf(iso);
   const weekIdx: 0 | 1 | null = week === thisMonday ? 0 : week === nextMonday ? 1 : null;
@@ -182,11 +199,16 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
     confirmed: (row.source || '').toLowerCase() === 'company',
     known,
     slot: slotOf(row.report_time),
+    timeKnown: timeKnownOf(row.report_time),
+    estimated: estimatedOf(row.source),
     impliedMovePct: implied,
     marketCap: num(row.marketcap) || null,
-    histAvgMovePct: implied,
+    /* NO HISTORY, NO USUAL MOVE (the re-audit, 2026-10-22: the implied move stood in for the usual one, so CX and FDXF
+       read "1.00× fair") — zero until the name's own past moves land, and nothing is priced against it */
+    histAvgMovePct: 0,
+    histCount: 0,
     pastMoves: [] as { label: string; movePct: number }[],
-    richness: 1,
+    richness: 0,
     beatRate8q: 0,
     revisionTrend: 0,
     ivRank: 0,
@@ -205,27 +227,51 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   };
 }
 
+/* THE LAST EIGHT MOVES AND THE BEATS, EACH ON ITS OWN ROWS (the re-audit, 2026-10-22). The history kept only reports
+   that had an EPS estimate, so GME's four newest reports (no street_mean_est) were skipped and "usually moves ±13.1%" was
+   Q4'23–Q3'25 (the real last eight average ~4.9%). The usual move is the latest eight reports with a next-session move,
+   whatever their EPS rows say; beat / in line / miss is counted over the reports that carry both an actual and an
+   estimate, with its own count. Rich, fair or cheap needs MIN_PRICED_PRINTS moves; a name with none has no usual move. */
+function historyOf(rows: SlotRow[], before: string) {
+  const dated = rows.filter(r => (r.report_date || '') < before).sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''));
+  const moved = dated.filter(r => moveOf(r.post_earnings_move_1d) != null).slice(0, 8).reverse();
+  const pastMoves = moved.map(r => ({ label: qLabel((r.ending_fiscal_quarter || r.report_date || '').slice(0, 10)), movePct: moveOf(r.post_earnings_move_1d) ?? 0 }));
+  const eps = dated.filter(r => r.actual_eps != null && r.actual_eps !== '' && r.street_mean_est != null && r.street_mean_est !== '').slice(0, 8);
+  const results = eps.map(r => epsResultOf(num(r.actual_eps), num(r.street_mean_est)));
+  return {
+    pastMoves,
+    hist: pastMoves.length ? pastMoves.reduce((a, m) => a + Math.abs(m.movePct), 0) / pastMoves.length : 0,
+    beatCount: results.filter(x => x === 'beat').length,
+    inlineCount: results.filter(x => x === 'inline').length,
+    missCount: results.filter(x => x === 'miss').length,
+    epsCount: results.length,
+  };
+}
+
 function withHistory(event: EarningsEvent, rows: SlotRow[]): EarningsEvent {
-  const past = rows
-    .filter(r => (r.report_date || '') < (event.iso || '9999') && r.post_earnings_move_1d != null && r.actual_eps != null && r.street_mean_est != null)
-    .sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''))
-    .slice(0, 8)
-    .reverse();
-  if (!past.length) return { ...event, history: true };
-  const pastMoves = past.map(r => ({
-    label: qLabel((r.ending_fiscal_quarter || r.report_date || '').slice(0, 10)),
-    movePct: moveOf(r.post_earnings_move_1d) ?? 0,
-  }));
-  const hist = pastMoves.reduce((a, m) => a + Math.abs(m.movePct), 0) / pastMoves.length;
-  const beats = past.filter(r => num(r.actual_eps) >= num(r.street_mean_est)).length;
-  const next = {
+  const h = historyOf(rows, event.iso || '9999');
+  const priced = h.pastMoves.length >= MIN_PRICED_PRINTS && h.hist > 0.05;
+  const next: EarningsEvent = {
     ...event,
     history: true,
-    histAvgMovePct: Number(hist.toFixed(2)),
-    richness: hist > 0.05 ? Number((event.impliedMovePct / hist).toFixed(2)) : 1,
-    beatRate8q: Math.round((beats / past.length) * 100),
-    pastMoves,
+    histCount: h.pastMoves.length,
+    histAvgMovePct: h.pastMoves.length ? Number(h.hist.toFixed(2)) : 0,
+    richness: priced ? Number((event.impliedMovePct / h.hist).toFixed(2)) : 0,
+    beatRate8q: h.epsCount ? Math.round((h.beatCount / h.epsCount) * 100) : 0,
+    beatCount: h.beatCount,
+    inlineCount: h.inlineCount,
+    missCount: h.missCount,
+    pastMoves: h.pastMoves,
   };
+  if (!priced) {
+    const n = h.pastMoves.length;
+    return {
+      ...next,
+      verdict: 'SKIP',
+      strategy: n === 0 ? `Options price ±${event.impliedMovePct.toFixed(1)}% into the print. The name has no past move on file to set it against.` : `Options price ±${event.impliedMovePct.toFixed(1)}% into the print, against ±${h.hist.toFixed(1)}% from ${n} past ${n === 1 ? 'print' : 'prints'} — too few to call it rich or cheap.`,
+      rationale: `Rich, fair or cheap needs at least ${MIN_PRICED_PRINTS} past moves on file.`,
+    };
+  }
   return { ...next, ...decide(next) };
 }
 
@@ -249,7 +295,8 @@ function quartersFrom(rows: SlotRow[]): EarningsQuarter[] {
         label: qLabel((r.ending_fiscal_quarter || r.report_date || '').slice(0, 10)),
         epsEst: Number(est.toFixed(2)),
         epsActual: Number(actual.toFixed(2)),
-        epsBeat: actual >= est,
+        epsBeat: epsResultOf(actual, est) === 'beat',
+        epsResult: epsResultOf(actual, est),
         revEstB: 0,
         revActualB: 0,
         revBeat: false,
@@ -426,11 +473,14 @@ export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossie
       confirmed: (row.source || '').toLowerCase() === 'company',
       known: isKnownName(sym),
       slot: slotOf(row.report_time),
+      timeKnown: timeKnownOf(row.report_time),
+      estimated: estimatedOf(row.source),
       impliedMovePct: Number(impliedPct(row.expected_move_perc).toFixed(2)),
       marketCap: num(row.marketcap) || null,
       histAvgMovePct: 0,
+      histCount: 0,
       pastMoves: [],
-      richness: 1,
+      richness: 0,
       beatRate8q: 0,
       revisionTrend: 0,
       ivRank: 0,
@@ -445,15 +495,9 @@ export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossie
     stamped
   );
   const quarters = quartersFrom(stamped);
-  const knownMoves = quarters.filter(q => q.moveKnown !== false);
-  if (knownMoves.length) {
-    const hist = knownMoves.reduce((a, q) => a + Math.abs(q.movePct), 0) / knownMoves.length;
-    event.histAvgMovePct = Number(hist.toFixed(2));
-    event.richness = hist > 0.05 ? Number((event.impliedMovePct / hist).toFixed(2)) : 1;
-    event.pastMoves = knownMoves.map(q => ({ label: q.label, movePct: q.movePct }));
-    event.history = true;
-    Object.assign(event, decide(event));
-  }
+  /* the moves are the event's own last eight (withHistory) — never the EPS table's quarters, which skip a report
+     without an estimate */
+  const knownMoves = event.pastMoves;
   const rank = ivRankOf(sym);
   if (rank > 0) event.ivRank = rank;
   const band = knownMoves.length && event.impliedMovePct > 0
@@ -500,6 +544,12 @@ const emit = () => {
 const subscribe = (fn: () => void) => {
   listeners.add(fn);
   ensureEarnings();
+  return () => listeners.delete(fn);
+};
+/* A NAME'S PAGE READS ITS OWN ROWS ONLY (the re-audit, 2026-10-22: opening one name's earnings page read the whole
+   fortnight and every name's history, ~300 calls). The name hooks listen without starting the fortnight */
+const subscribeQuiet = (fn: () => void) => {
+  listeners.add(fn);
   return () => listeners.delete(fn);
 };
 
@@ -585,6 +635,24 @@ async function enrich(events: EarningsEvent[]) {
   );
 }
 
+/* THE HISTORIES ONLY WHERE THEY ARE SHOWN (the re-audit, 2026-10-22): every page that showed a report date — the News
+   calendar, a name's page — read the whole fortnight's histories too, hundreds of calls. The board asks for them;
+   the rest read the fortnight's dates alone. */
+let historiesWanted = false;
+let enriching = false;
+function startEnrich() {
+  if (enriching || feed.status !== 'live') return;
+  enriching = true;
+  void enrich(feed.events);
+}
+/** The earnings board's own call: read the past reports of the fortnight's known names */
+export function useEarningsHistories(): void {
+  useEffect(() => {
+    historiesWanted = true;
+    startEnrich();
+  }, []);
+}
+
 export function ensureEarnings(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
@@ -632,10 +700,22 @@ export function ensureEarnings(): void {
         }
       }
       if (!events.length) throw new Error('empty');
+      /* A SECOND SHARE CLASS (the re-audit, 2026-10-22: BBDO read "—" everywhere): a symbol that is another symbol on
+         the same day with a class letter added is that company's other class; its history is filed under the first */
+      const byDay = new Map<string, Set<string>>();
+      for (const e of events) {
+        const set = byDay.get(e.iso ?? '') ?? new Set<string>();
+        set.add(e.ticker);
+        byDay.set(e.iso ?? '', set);
+      }
+      for (const e of events) {
+        const base = e.ticker.replace(/[.\-]?[A-Z]$/, '');
+        if (base && base !== e.ticker && base.length >= 2 && byDay.get(e.iso ?? '')?.has(base)) e.classOf = base;
+      }
       events.sort((a, b) => a.daysOut - b.daysOut || Number(b.known) - Number(a.known) || b.impliedMovePct - a.impliedMovePct);
       feed = { status: 'live', events };
       emit();
-      void enrich(events);
+      if (historiesWanted) startEnrich();
     } catch {
       if (feed.status !== 'live') {
         feed = { status: 'sim', events: [] };
@@ -677,8 +757,10 @@ export function useEarningsPending(): boolean {
    said 01/27. The answer is the ONE rule every page uses: the name's own earnings rows, the first report dated today
    or later (nextReportRow). The board's row is used only when it is that same report. */
 export function useNextReport(ticker: string | null): NextReport | null {
-  const events = useEveryReport();
-  const version = useSyncExternalStore(subscribe, () => rev, () => rev);
+  const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
+  /* the board's row when the fortnight is already read — this hook never starts that read */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const events = useMemo(() => (feed.status === 'live' ? feed.events : []), [version]);
   const sym = ticker?.trim().toUpperCase() || '';
   useEffect(() => {
     if (!sym || history.has(sym)) return;
@@ -710,7 +792,7 @@ export function useNextReport(ticker: string | null): NextReport | null {
 
 /** True while a name's own earnings rows are still being read */
 export function useNextReportPending(ticker: string | null): boolean {
-  const version = useSyncExternalStore(subscribe, () => rev, () => rev);
+  const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
   const sym = ticker?.trim().toUpperCase() || '';
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => !!sym && !history.has(sym), [sym, version]);
@@ -718,7 +800,7 @@ export function useNextReportPending(ticker: string | null): boolean {
 
 export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | 'sim'; dossier: EarningsDossier | null } {
   const sym = ticker.trim().toUpperCase();
-  const version = useSyncExternalStore(subscribe, () => rev, () => rev);
+  const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
   useEffect(() => {
     if (!sym) return;
     let dead = false;
@@ -751,7 +833,7 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
       const dossier = dossierFromRows(sym, rows);
       return { status: 'live' as const, dossier };
     }
-    if (rows === 'miss' || feed.status === 'sim') return { status: 'sim' as const, dossier: null };
+    if (rows === 'miss') return { status: 'sim' as const, dossier: null };
     return { status: 'loading' as const, dossier: null };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sym, version]);

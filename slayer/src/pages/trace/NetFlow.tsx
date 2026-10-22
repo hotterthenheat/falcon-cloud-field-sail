@@ -38,7 +38,7 @@ import { useTopNet, useLiveBook, useTide } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { type MoneynessKey } from '../../data/flowBook';
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 import Lean from '../../components/trace/Lean';
 import type { SleeveKey } from '../../types/compass';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -139,7 +139,10 @@ const NetFlow = () => {
      net puts, and the sentence says it that way, each figure in its meaning's ink */
   const market = useMemo(() => {
     const lastPt = tide.rows.length ? tide.rows[tide.rows.length - 1] : null;
-    return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem, at: nyClock(lastPt.time * 1000) } : null;
+    /* THE REAL SPAN (the re-audit, 2026-10-22: "from the open" over a tide that runs 07:30–16:14): the tide's own first
+       and last minute */
+    const firstPt = tide.rows.length ? tide.rows[0] : null;
+    return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem, at: nyClock(lastPt.time * 1000), from: firstPt ? nyClock(firstPt.time * 1000) : null } : null;
   }, [tide.rows]);
   const read = useMemo<ReactNode>(() => {
     if (!facts.top || !facts.bottom) return <RichRead text="The book is still waking up." />;
@@ -150,7 +153,7 @@ const NetFlow = () => {
         {market && (
           <>
             <RichRead text={`The whole market's money leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
-            <Lean v={market.net} /> net to {market.at} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
+            <Lean v={market.net} /> net{market.from ? ` from ${market.from}` : ''} to {market.at} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
           </>
         )}
         <RichRead text={`On the board — the vendor's ${facts.bullish} most bullish and ${facts.bearish} most bearish names — `} />
@@ -182,17 +185,17 @@ const NetFlow = () => {
   return (
     <TraceBox
       title="Which way the money leans"
-      sub="The vendor's most bullish and most bearish names, ranked by net premium — net calls less net puts, from the open · click a name and its session goes on the pane"
+      sub="The vendor's most bullish and most bearish names, ranked by today's net premium — net calls less net puts · click a name and its session goes on the pane"
       testId="net-flow"
       className="md:flex-1 md:min-h-0"
       data={{ picked: sel, names: leaders.length }}
       guide={{ title: 'How to read the board', door: 'What the board, the lines and the floor mean', body: <NetFlowGuide />, testId: 'net-flow-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
         <>
-          <Fact label="Market net · every name" testId="net" title="The vendor's market tide: every name's net call premium less its net put premium, from the open to the last minute">
+          <Fact label="Market net · every name" testId="net" title="The vendor's market tide: every name's net call premium less its net put premium, over the minutes the tide covers — pre-market included">
             {market ? (
               <>
-                <Lean v={market.net} /> <span className="text-textSecondary">· to {market.at} ET</span>
+                <Lean v={market.net} /> <span className="text-textSecondary">· {market.from ? `${market.from}–` : 'to '}{market.at} ET</span>
               </>
             ) : (
               <span className="text-textMuted">—</span>
@@ -248,6 +251,14 @@ const NetFlow = () => {
       <div className="flex max-md:flex-col md:flex-1 md:min-h-0 border-t border-borderSubtle">
         {/* THE BOARD — most bullish at the top, most bearish at the floor */}
         <div ref={boardRef} className="md:w-[304px] shrink-0 md:border-r max-md:border-b max-md:max-h-[306px] border-borderSubtle overflow-y-auto" data-net-board>
+          {/* THE COLUMNS SAY THEMSELVES (the retail pass: "2%", "1%" with no word) */}
+          {leaders.length > 0 && (
+            <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
+              <span className="w-5">#</span>
+              <span className="flex-1">Name · share of the board's lean</span>
+              <span>Net today</span>
+            </div>
+          )}
           {leaders.length === 0 && (
             <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-board-empty>
               {top.fault ? 'This read did not land' : 'No name has leaned yet today'}

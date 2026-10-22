@@ -188,7 +188,7 @@ const MatrixFigure = () => {
   const { mode, paper } = useContext(Paint);
   const rows = [
     { y: 46, k: '496', ink: INK_2, v: -94 },
-    { y: 70, k: '495', ink: SUPREME, v: -256 },
+    { y: 70, k: '495', ink: SUPREME, v: 256 },
     { y: 94, k: '494', ink: INK_2, v: 61 },
     { y: 130, k: '493', ink: PUT_WALL, v: 131 },
   ];

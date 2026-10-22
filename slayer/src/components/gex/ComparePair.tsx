@@ -296,8 +296,8 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
                 that day sat against the usual range and which name was further ahead than usual */}
             {hovering && shown && shownTime != null && (
               <PointerFollowCard start={pointerAt.current} width={248} testId="data-pair-card" testValue={`${shownTime}`} title={shown.today ? 'Today' : dayWords(shownTime)} aside={shown.today && readMarketState().word === 'live' ? 'still moving' : isOutside(shown.ratio) ? 'closed outside the range' : 'closed inside the range'}>
-                <CardRow k={a} v={fmtClose(shown.closeA)} ink={aInk} sub="close" />
-                <CardRow k={b} v={fmtClose(shown.closeB)} ink={bInk} sub="close" />
+                <CardRow k={a} v={fmtClose(shown.closeA)} ink={aInk} sub={shown.today ? 'last' : 'close'} />
+                <CardRow k={b} v={fmtClose(shown.closeB)} ink={bInk} sub={shown.today ? 'last' : 'close'} />
                 <CardRow k={`${a} ÷ ${b}`} v={fmtRatio(shown.ratio)} />
                 {shownPlace && (
                   <span className="col-span-2 mt-0.5 leading-snug" style={{ color: shownPlace.where === 'inside' ? 'rgb(var(--text-secondary))' : warmCss }}>

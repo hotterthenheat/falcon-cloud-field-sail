@@ -43,6 +43,8 @@ export interface StockPick {
   /** Real one-week and one-month moves, percent. Absent on the house screen. */
   weekPct?: number;
   monthPct?: number;
+  /** The 50-day simple average, from the screener; absent on the house screen */
+  sma50?: number | null;
 }
 
 export interface SectorRow {
@@ -53,8 +55,13 @@ export interface SectorRow {
   rs1w: number;
   /** 1-month relative strength, signed % */
   rs1m: number;
-  /** % of members above their trend */
+  /** % of members above their 50-day average (those with one) */
   breadthPct: number;
+  /** Names the sector holds on this board */
+  count: number;
+  /** The members' average one-week and one-month return, signed % — a real return, not relative */
+  ret1w: number | null;
+  ret1m: number | null;
   phase: RotationPhase;
   verdict: SectorVerdict;
   note: string;
@@ -136,6 +143,7 @@ export function pickFromLive(input: {
   weekClose: number | null;
   bullish: number | null;
   bearish: number | null;
+  sma50?: number | null;
 }): StockPick {
   const quiet: (keyof StockSleeves)[] = ['news'];
   const momentum = input.rsi != null ? Math.round(Math.max(0, Math.min(100, input.rsi))) : 50;
@@ -163,8 +171,12 @@ export function pickFromLive(input: {
     trend,
     weekPct: input.weekPct ?? undefined,
     monthPct: input.monthPct ?? undefined,
+    sma50: input.sma50 ?? null,
   };
 }
+
+/** Above its 50-day simple average — null when the screener has no average for the name */
+export const aboveFifty = (p: StockPick): boolean | null => (p.sma50 != null && p.sma50 > 0 && p.price > 0 ? p.price > p.sma50 : null);
 
 // ---- public API ------------------------------------------------------------------
 
@@ -207,8 +219,11 @@ export function buildSectorBoard(picks: StockPick[]): SectorRow[] {
     /* no week or month returns on the feed: relative strength is unknown (0), never a seeded figure */
     const rs1w = liveRs ? avg(members.map(p => p.weekPct ?? 0)) - benchW : 0;
     const rs1m = liveRs ? avg(members.map(p => p.monthPct ?? 0)) - benchM : 0;
-    const scored = members.filter(p => !p.quiet.includes('momentum'));
-    const breadthPct = Math.round((scored.filter(p => p.sleeves.momentum > 50).length / Math.max(scored.length, 1)) * 100);
+    /* ABOVE THE 50-DAY, NOT RSI OVER 50 (the re-audit, 2026-10-22): the breadth is price against the 50-day average */
+    const placed = members.map(aboveFifty).filter((v): v is boolean => v != null);
+    const breadthPct = Math.round((placed.filter(Boolean).length / Math.max(placed.length, 1)) * 100);
+    const weeks = members.map(p => p.weekPct).filter((n): n is number => n != null);
+    const months = members.map(p => p.monthPct).filter((n): n is number => n != null);
     const phase: RotationPhase =
       rs1m >= 0 && rs1w >= 0 ? 'LEADING' : rs1m < 0 && rs1w >= 0 ? 'IMPROVING' : rs1m >= 0 && rs1w < 0 ? 'WEAKENING' : 'LAGGING';
     const verdict: SectorVerdict = score >= 64 && phase !== 'LAGGING' ? 'OVERWEIGHT' : score <= 48 || phase === 'LAGGING' ? 'UNDERWEIGHT' : 'NEUTRAL';
@@ -219,7 +234,7 @@ export function buildSectorBoard(picks: StockPick[]): SectorRow[] {
         : verdict === 'UNDERWEIGHT'
           ? `${phase === 'LAGGING' ? 'Lagging on both windows' : 'Rolling over'} — relative strength argues against fresh exposure.`
           : 'Middle of the pack — own the single names that screen well, not the group.';
-    return { sector, score, rs1w, rs1m, breadthPct, phase, verdict, note, leaders };
+    return { sector, score, rs1w, rs1m, breadthPct, count: members.length, ret1w: weeks.length ? avg(weeks) : null, ret1m: months.length ? avg(months) : null, phase, verdict, note, leaders };
   }).sort((a, b) => b.score - a.score || phaseRank(b.phase) - phaseRank(a.phase));
 }
 

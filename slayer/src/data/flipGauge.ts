@@ -3,6 +3,7 @@ import { buildExposureProfile } from './exposure';
 import { sessionBars } from './levelview';
 import { levelFlip, regimeOfNet } from './flipLevel';
 import { levelTicks } from './levelRecord';
+import { sessionBook } from './bookWindow';
 import type { Candle, GexSnapshot, MarketSnapshot } from '../types/market';
 
 /*
@@ -128,6 +129,23 @@ export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
   const candles = sessionBars(ticker) ?? [];
   if (flip === null || candles.length < GAUGE_MIN_BARS) return { ...base, bars: candles.length };
   return { ...base, crossings: levelTicks(candles, flip, flip >= spot ? 'call' : 'put').length, bars: candles.length };
+}
+
+/**
+ * "FLIP CROSSED TODAY" IS TODAY'S SESSION AGAINST TODAY'S FLIP (the second re-audit, 2026-10-22): after the close the
+ * levels move on to the next session's contracts, and counting Thursday's prices against Friday's flip is a count of
+ * nothing. The flip here is the one of the book the session ran on (data/bookWindow.ts sessionBook); null with `why`
+ * when that book is no longer available.
+ */
+export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): { crossings: number | null; flip: number | null; label: string; why: string | null } {
+  const sb = sessionBook(snapshot, scope);
+  if (!sb.book) return { crossings: null, flip: null, label: sb.label, why: sb.why };
+  const read = levelFlip(sb.book, sb.book.chain);
+  const candles = sessionBars(snapshot.ticker) ?? [];
+  if (read.flip === null) return { crossings: candles.length >= GAUGE_MIN_BARS ? 0 : null, flip: null, label: sb.label, why: null };
+  if (candles.length < GAUGE_MIN_BARS) return { crossings: null, flip: read.flip, label: sb.label, why: null };
+  /* the side rule the Map's report uses (WallReportCard: flip ≥ spot is tested from below) */
+  return { crossings: levelTicks(candles, read.flip, read.flip >= snapshot.spot ? 'call' : 'put').length, flip: read.flip, label: sb.label, why: null };
 }
 
 /** The words the strip prints for a regime — one place, so the strip and its

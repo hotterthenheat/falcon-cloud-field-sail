@@ -97,6 +97,42 @@ export function pickWalls<T extends Struck>(
 }
 
 /**
+ * PINPOINT'S WALLS — THE RETAIL DEFINITION (the second re-audit, 2026-10-22). The call wall is the strike with the most
+ * CALL gamma (the call leg's GEX), the put wall the strike with the most PUT gamma (the put leg's), anywhere on the
+ * book: the definition most GEX tools print, and what the copy has always said ("call wall = most call gamma"). The
+ * net-dominant pick above spot (pickWalls) named SPY 780 the call wall while 770 held the most call gamma, and 760 the
+ * put wall while 769 held the most put gamma. No side-of-spot rule: a call wall below price is a real state (price has
+ * gone through resistance and it may now act as support), and the pages say so.
+ *
+ * @param callOf the strike's call-leg gamma, either sign (its magnitude is read)
+ * @param putOf  the strike's put-leg gamma, either sign
+ * @returns each wall, or null when no strike carries that leg
+ */
+export function pickLegWalls<T extends Struck>(
+  points: readonly T[],
+  callOf: (p: T) => number,
+  putOf: (p: T) => number
+): { callWall: number | null; putWall: number | null } {
+  let callWall: number | null = null;
+  let cwAbs = 0;
+  let putWall: number | null = null;
+  let pwAbs = 0;
+  for (const p of points) {
+    const c = Math.abs(callOf(p));
+    const q = Math.abs(putOf(p));
+    if (c > cwAbs) {
+      cwAbs = c;
+      callWall = p.strike;
+    }
+    if (q > pwAbs) {
+      pwAbs = q;
+      putWall = p.strike;
+    }
+  }
+  return { callWall, putWall };
+}
+
+/**
  * The gamma flip: the sign-change midpoint NEAREST SPOT.
  *
  * ---------------------------------------------------------------------------

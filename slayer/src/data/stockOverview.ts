@@ -58,14 +58,17 @@
 */
 
 import { regimeOfNet } from './flipLevel';
+import { levelsFor } from './levelsFor';
 import { now } from '../core/clock';
 import { readSessionClock } from './moc';
 import { buildExposureProfile } from './exposure';
 import { LEVELS_WINDOW } from './roomLevels';
-import { bookCandles, snapshotOf } from './uwBook';
+import { bookCandles, expiryDateFor, snapshotOf } from './uwBook';
+import { peekQuote, extendedLine } from './liveQuote';
 import { peekLive } from './liveRecord';
-import { peekStockFile, type EarnRow, type StockFile } from './stockFile';
-import { nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
+import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
+import { nyTodayIso } from './nyDate';
+import { epsResultOf, nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
 import { lookup } from './universe';
 import { tickerName } from './tickers';
@@ -134,7 +137,14 @@ export interface MoneyRead {
   netVex: number | null;
   netVanna: number;
   netCharm: number;
+  /** The walls, the flip and the supreme over every listed expiry — Pinpoint's own buildExposureProfile(…, 'ALL') */
   levels: ExposureLevels;
+  /** The same read on today's expiry alone ('0DTE'), when the name lists one today — null otherwise */
+  levelsToday: ExposureLevels | null;
+  /** The expiry date Pinpoint's Today scope reads on this name ("2026-10-23" after the bell), or null */
+  levelsTodayDate: string | null;
+  /** Strikes either side of spot the net figures are summed over */
+  levelsWindow: number;
   /** dealers 'absorbing' (long gamma) or 'amplifying' (short) at spot */
   regime: 'absorbing' | 'amplifying';
   callPremium: number;
@@ -153,6 +163,9 @@ export interface MoneyRead {
   /** Contracts on the book trading at least twice their open interest */
   unusual: number;
   dark: DarkPoolView;
+  /** What the dark-pool read stands on: the read prints (sized, regular session, priced at the quote) of the prints in
+      hand, and the New York clock window they span */
+  darkWindow: { read: number; inHand: number; from: string | null; to: string | null };
   /** Off-exchange prints of 50K shares or more */
   darkBlocks: number;
   /** Today's session minute by minute — the tape the prints are drawn on */
@@ -166,11 +179,11 @@ export interface NewsRead {
   sentiment: number;
   positive: number;
   negative: number;
-  nextEarnings: { label: string; daysOut: number; impliedMovePct: number; confirmed: boolean } | null;
+  nextEarnings: { label: string; daysOut: number; impliedMovePct: number; confirmed: boolean; timeKnown: boolean } | null;
   /** The average absolute move the session after the last reports, and how many reports that is */
   reaction: { pct: number; reports: number } | null;
   /** The last reports, newest first: what it earned against the estimate and how the stock took it */
-  reports: { label: string; epsActual: number; epsEst: number; beat: boolean; movePct: number }[];
+  reports: { label: string; epsActual: number; epsEst: number; beat: boolean; result: 'beat' | 'inline' | 'miss'; movePct: number | null; estOff: boolean }[];
 }
 
 export interface Source {
@@ -206,9 +219,11 @@ export interface Move {
   to: number;
 }
 
+/** A pillar against the read: agrees · argues · in the middle; under a neutral read, the way it pulls — for · against · middle */
+export type AgreeStance = 'agrees' | 'argues' | 'middle' | 'for' | 'against';
 export interface Agreement {
   lean: Lean;
-  pillars: { key: PillarKey; name: string; score: number; agrees: boolean }[];
+  pillars: { key: PillarKey; name: string; score: number; agrees: boolean; stance: AgreeStance }[];
   aligned: number;
   /** Where the read fails first if it fails */
   risk: string;
@@ -246,7 +261,10 @@ export interface StockOverview {
   name: string;
   sector: string | null;
   price: number;
+  /** The regular session's change, percent */
   changePct: number;
+  /** "after hours +0.40%" — the move outside the session, or null */
+  extLine: string | null;
   marketWord: string;
   pillars: Pillar[];
   composite: number;
@@ -521,8 +539,12 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const profile = buildExposureProfile(snapshot, 'ALL', LEVELS_WINDOW);
   const netVanna = profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
   const netCharm = profile.strikes.reduce((a, s) => a + (s.charm?.net ?? 0), 0);
-  /* the regime is the sign of net gamma at spot — the rule every Pinpoint page uses (data/flipLevel.ts) */
-  const regime: MoneyRead['regime'] = regimeOfNet(profile.netGex) === 'SHORT' ? 'amplifying' : 'absorbing';
+  /* NET GEX AND THE REGIME FROM PINPOINT'S OWN READ (the re-audit, 2026-10-22): the profile's netGex sums a ±30-strike
+     window (SPY −$11.6B against Pinpoint's −$14.69B on every strike). levelsFor is the one source both products read;
+     it is in the retail sign, the money read keeps the house sign (the page flips it for print). */
+  const pin = levelsFor(ticker, 'ALL');
+  const houseNet = pin ? -pin.netGex : profile.netGex;
+  const regime: MoneyRead['regime'] = regimeOfNet(houseNet) === 'SHORT' ? 'amplifying' : 'absorbing';
   const screen = file.screen;
   const callPremium = nOr(screen?.bullish_premium) ?? 0;
   const putPremium = nOr(screen?.bearish_premium) ?? 0;
@@ -553,11 +575,18 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const putOI = snapshot.chain.reduce((a, s) => a + (s.putOI ?? 0), 0);
   const darkShares = file.dark.reduce((a, p) => a + p.size, 0);
   const darkNotional = file.dark.reduce((a, p) => a + p.notional, 0);
-  const below = file.dark.filter(p => p.price < snapshot.spot).reduce((a, p) => a + p.notional, 0);
-  const above = file.dark.filter(p => p.price > snapshot.spot).reduce((a, p) => a + p.notional, 0);
-  const netPosturePct = darkNotional > 0 ? ((below - above) / darkNotional) * 100 : 0;
+  /* THE READ, ON TRACE'S CONVENTION (data/stockFile.ts darksFrom): the read prints' dollars paid over their own mid
+     (buyer-initiated) against sold under it (seller-initiated); average-price, reference-price, contingent and
+     extended-hours prints are on the tape but never in the read */
+  const readPrints = file.dark.filter(darkReadable);
+  const readNotional = readPrints.reduce((a, p) => a + p.notional, 0);
+  const bought = readPrints.filter(p => p.intent === 'ACCUMULATION').reduce((a, p) => a + p.notional, 0);
+  const sold = readPrints.filter(p => p.intent === 'DISTRIBUTION').reduce((a, p) => a + p.notional, 0);
+  const netPosturePct = readNotional > 0 ? ((bought - sold) / readNotional) * 100 : 0;
   const posture: DarkPoolView['posture'] = netPosturePct > 15 ? 'ACCUMULATING' : netPosturePct < -15 ? 'DISTRIBUTING' : 'BALANCED';
-  const largest = [...file.dark].sort((a, b) => b.notional - a.notional)[0] ?? null;
+  const largest = [...readPrints].sort((a, b) => b.notional - a.notional)[0] ?? null;
+  const clocks = readPrints.map(p => p.time).filter(Boolean).sort();
+  const darkWindow = { read: readPrints.length, inHand: file.dark.length, from: clocks[0] ?? null, to: clocks[clocks.length - 1] ?? null };
   const dark: DarkPoolView = {
     ticker,
     spot: snapshot.spot,
@@ -566,15 +595,15 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     posture,
     /* the note is the READ, not the rule: it is quoted inside the Why-now lines, where the bare definition ("A print
        under the price counts as buying…") landed mid-sentence and read as the finding (the dossier sweep, 2026-10-22).
-       The house rule stands — a block printed under the market is a buyer working patiently, over it a seller. Kept to
+       The read is Trace's: paid over its own mid is buyer-initiated, sold under it seller-initiated. Kept to
        the verdict alone: the factor's own label and value already say where the money printed. */
-    postureNote: !file.dark.length
+    postureNote: !readPrints.length
       ? ''
       : posture === 'ACCUMULATING'
-        ? 'blocks bought on dips'
+        ? 'blocks paid over the mid — buyer-initiated'
         : posture === 'DISTRIBUTING'
-          ? 'blocks sold into strength'
-          : 'on both sides of the price',
+          ? 'blocks sold under the mid — seller-initiated'
+          : 'on both sides of the mid',
     totalNotional: darkNotional,
     levels: [],
     prints: file.dark,
@@ -583,12 +612,17 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const darkBlocks = file.dark.filter(p => p.size >= 50_000).length;
   const today = (lastBlock ?? []).map(c => ({ time: c.time, close: c.close }));
   const read: MoneyRead = {
-    netGex: profile.netGex,
+    netGex: houseNet,
     netDex: profile.netDex,
     netVex: profile.netVex !== 0 ? profile.netVex : null,
     netVanna,
     netCharm,
     levels: profile.levels,
+    /* TODAY'S LEVELS BESIDE THE WHOLE BOOK'S (the retail pass, 2026-10-22: SPY's Dossier read 760 / 774.65 / 800 on every
+       expiry while Pinpoint opens on Today, 760 / 770.96 / 780) — the same Pinpoint function on the '0DTE' scope */
+    levelsToday: snapshot.liveBook && (snapshot.uwChains?.['0DTE']?.length ?? 0) > 0 ? buildExposureProfile(snapshot, '0DTE', LEVELS_WINDOW).levels : null,
+    levelsTodayDate: expiryDateFor(ticker, '0DTE'),
+    levelsWindow: LEVELS_WINDOW,
     regime,
     callPremium,
     putPremium,
@@ -604,6 +638,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     putOI,
     unusual,
     dark,
+    darkWindow,
     darkBlocks,
     today,
     busiest: { calls: busiestOf(file.contracts, 'C', ticker, snapshot.spot), puts: busiestOf(file.contracts, 'P', ticker, snapshot.spot) },
@@ -614,7 +649,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     const share = callPremium / (callPremium + putPremium);
     factors.push({ key: 'prem', label: 'Call premium against put premium', value: `${Math.round(share * 100)}% calls`, lean: clamp((share - 0.5) * 4), weight: 0.45, note: share >= 0.55 ? 'the money is buying calls' : share <= 0.45 ? 'the money is buying puts' : 'calls and puts are about even' });
   }
-  if (file.dark.length) factors.push({ key: 'dark', label: 'Off-exchange prints', value: posture === 'ACCUMULATING' ? 'under the price' : posture === 'DISTRIBUTING' ? 'over the price' : 'split', lean: clamp(netPosturePct / 40), weight: 0.3, note: dark.postureNote });
+  if (readPrints.length) factors.push({ key: 'dark', label: 'Off-exchange prints', value: posture === 'ACCUMULATING' ? 'over the mid' : posture === 'DISTRIBUTING' ? 'under the mid' : 'split', lean: clamp(netPosturePct / 40), weight: 0.3, note: dark.postureNote });
   return { read, factors };
 };
 
@@ -622,7 +657,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
 
 const wireLive = (ticker: string) => peekLive().news.status === 'live' && peekLive().news.events.some(e => e.item.ticker === ticker);
 
-const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Factor[]; lastReport: { label: string; epsActual: number; epsEst: number; beat: boolean; movePct: number } | null } => {
+const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Factor[]; lastReport: { label: string; epsActual: number; epsEst: number; beat: boolean; result: 'beat' | 'inline' | 'miss'; movePct: number | null } | null } => {
   const feed = peekLive().news;
   const stories = (feed.status === 'live' ? feed.events : [])
     .filter(e => e.item.ticker === ticker)
@@ -632,16 +667,29 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
   const marked = positive + negative;
   const sentiment = marked ? (positive - negative) / marked : 0;
   const past = pastPrints(file.earnings);
+  /* a vendor estimate far off the name's own run of estimates (META's 3.45 for a quarter whose neighbours were 6.6–8.2,
+     against an actual of 7.40) is said to be off, not read as a 114% beat (the retail pass, 2026-10-22) */
+  const ests = past.slice(0, 8).map(r => Math.abs(nOr(r.street_mean_est) ?? 0)).filter(v => v > 0).sort((a, b) => a - b);
+  const medEst = ests.length >= 3 ? ests[Math.floor(ests.length / 2)] : 0;
   const reports: NewsRead['reports'] = past.slice(0, 8).map(r => {
     const actual = nOr(r.actual_eps) ?? 0;
     const est = nOr(r.street_mean_est) ?? 0;
+    const move = nOr(r.post_earnings_move_1d);
+    const result = epsResultOf(actual, est);
+    const estOff = medEst > 0.25 && Math.abs(est) > 0 && (Math.abs(est) < medEst * 0.55 || Math.abs(est) > medEst * 1.8) && Math.abs(actual - est) > Math.abs(est) * 0.5;
     /* the move is a fraction of the price, per the spec ("0.0724" is 7.24%) */
-    return { label: reportDayLabelYear(String(r.report_date || '')), epsActual: actual, epsEst: est, beat: actual >= est, movePct: (nOr(r.post_earnings_move_1d) ?? 0) * 100 };
+    return { label: reportDayLabelYear(String(r.report_date || '')), epsActual: actual, epsEst: est, beat: result === 'beat', result, movePct: move == null ? null : move * 100, estOff };
   });
-  const moved = reports.filter(r => r.movePct !== 0);
-  const reaction = moved.length ? { pct: moved.reduce((a, r) => a + Math.abs(r.movePct), 0) / moved.length, reports: moved.length } : null;
+  /* THE USUAL MOVE ON ITS OWN ROWS: the latest eight reports with a next-session move, whether or not they carry an EPS
+     estimate (the re-audit, 2026-10-22: GME's four newest reports had no estimate and were skipped) */
+  const today = nyTodayIso();
+  const movedRows = file.earnings
+    .filter(r => r.report_date && String(r.report_date) <= today && nOr(r.post_earnings_move_1d) != null)
+    .sort((a, b) => String(b.report_date).localeCompare(String(a.report_date)))
+    .slice(0, 8);
+  const reaction = movedRows.length ? { pct: movedRows.reduce((a, r) => a + Math.abs((nOr(r.post_earnings_move_1d) ?? 0) * 100), 0) / movedRows.length, reports: movedRows.length } : null;
   const last = reports[0];
-  const lastReport = last ? { label: last.label, epsActual: last.epsActual, epsEst: last.epsEst, beat: last.beat, movePct: last.movePct } : null;
+  const lastReport = last ? { label: last.label, epsActual: last.epsActual, epsEst: last.epsEst, beat: last.beat, result: last.result, movePct: last.movePct } : null;
   const upcoming = nextReportRow(file.earnings);
   const nextEarnings = upcoming?.report_date
     ? {
@@ -650,6 +698,7 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
         /* a fraction of the price, per the spec, always */
         impliedMovePct: Math.abs(nOr(upcoming.expected_move_perc) ?? 0) * 100,
         confirmed: String(upcoming.source ?? '').toLowerCase() === 'company',
+        timeKnown: /pre|post|after|before/i.test(String(upcoming.report_time ?? '')),
       }
     : null;
   const read: NewsRead = { stories: stories.slice(0, 6), sentiment, positive, negative, nextEarnings, reaction, reports };
@@ -663,7 +712,7 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
     if (!m || Math.abs(s.item.prediction.expMove1dPct) > Math.abs(m.item.prediction.expMove1dPct)) return s;
     return m;
   }, null);
-  if (biggest) factors.push({ key: 'move', label: 'Session move on the wire', value: pct(biggest.item.prediction.expMove1dPct), lean: clamp(biggest.item.prediction.expMove1dPct / 4), weight: 0.2, note: biggest.item.headline });
+  if (biggest) factors.push({ key: 'move', label: 'Move at publish on the wire', value: pct(biggest.item.prediction.expMove1dPct), lean: clamp(biggest.item.prediction.expMove1dPct / 4), weight: 0.2, note: biggest.item.headline });
   return { read, factors, lastReport };
 };
 
@@ -716,8 +765,16 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   const epsEstimate = last ? nOr(last.street_mean_est) : null;
   /* cents when the estimate is small or the two straddle zero — the same rule as the page's report table (StockName centsGap) */
   const tinyEst = epsEstimate != null && epsActual != null && (Math.abs(epsEstimate) < 0.25 || Math.sign(epsActual) !== Math.sign(epsEstimate));
-  const epsSurprisePct = epsActual != null && epsEstimate != null && epsEstimate !== 0 ? ((epsActual - epsEstimate) / Math.abs(epsEstimate)) * 100 : null;
-  const beats = window.filter(r => (nOr(r.actual_eps) ?? 0) >= (nOr(r.street_mean_est) ?? 0)).length;
+  /* an estimate far off the name's own run of estimates is a vendor slip, not a surprise to size (META's 3.45 against
+     neighbours of 6.6–8.2 read "beat by 114.5%" — the retail pass, 2026-10-22) */
+  const runEsts = window.map(r => Math.abs(nOr(r.street_mean_est) ?? 0)).filter(v => v > 0).sort((a, b) => a - b);
+  const runMed = runEsts.length >= 3 ? runEsts[Math.floor(runEsts.length / 2)] : 0;
+  const estOff = epsEstimate != null && epsActual != null && runMed > 0.25 && Math.abs(epsEstimate) > 0 && (Math.abs(epsEstimate) < runMed * 0.55 || Math.abs(epsEstimate) > runMed * 1.8) && Math.abs(epsActual - epsEstimate) > Math.abs(epsEstimate) * 0.5;
+  const epsSurprisePct = !estOff && epsActual != null && epsEstimate != null && epsEstimate !== 0 ? ((epsActual - epsEstimate) / Math.abs(epsEstimate)) * 100 : null;
+  const results = window.map(r => epsResultOf(nOr(r.actual_eps) ?? 0, nOr(r.street_mean_est) ?? 0));
+  const beats = results.filter(x => x === 'beat').length;
+  const inline = results.filter(x => x === 'inline').length;
+  const misses = results.filter(x => x === 'miss').length;
   const growth = nOr(file.screen?.eps_growth_4q);
   const div = nOr(file.screen?.dividend_yield);
   const cap = nOr(file.screen?.marketcap);
@@ -746,11 +803,11 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   if (window.length) {
     factors.push({
       key: 'beats',
-      label: 'Prints that beat',
-      value: `${beats} of ${window.length}`,
-      lean: clamp((beats / window.length - 0.5) * 2),
+      label: 'Against the estimate',
+      value: `${beats} beat · ${inline} in line · ${misses} missed`,
+      lean: clamp((beats - misses) / window.length),
       weight: 0.2,
-      note: beats >= window.length / 2 ? 'more beats than misses' : 'more misses than beats',
+      note: beats > misses ? 'more beats than misses' : misses > beats ? 'more misses than beats' : 'as many misses as beats',
     });
   }
   return {
@@ -764,6 +821,8 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
       revenueSurprisePct: null,
       beats: window.length ? beats : null,
       beatOf: window.length,
+      inline: window.length ? inline : null,
+      misses: window.length ? misses : null,
       revenueGrowthPct: null,
       epsGrowthPct: growth != null ? growth * 100 : null,
       operatingMarginPct: null,
@@ -839,40 +898,77 @@ const movesOf = (pillars: Pillar[], composite: number): Move[] => {
   }
   return out.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 5);
 };
+/* AGREE, ARGUE OR NEITHER — AND A NEUTRAL READ HAS NO SIDE TO AGREE WITH (the retail pass, 2026-10-22: NVDA read "0 OF 4
+   AGREE" with every pillar "ARGUES", "numbers strong ARGUES" among them, while the text said "the numbers carry it", and
+   "If the numbers are right … the neutral read fails there first"). A pillar's stance is its own side of 50 — for the
+   name (55+), against it (45−) or in the middle. Under a bullish or bearish read a pillar on that side agrees, one on
+   the other side argues, and one in the middle does neither. Under a neutral read nothing agrees or argues: each pillar
+   says which way it pulls, and the sentences say the read is split. */
+const sideOf = (score: number): 'for' | 'against' | 'middle' => (score >= 55 ? 'for' : score <= 45 ? 'against' : 'middle');
+const verbs = (p: Pillar, one: string, many: string) => (p.key === 'numbers' ? many : one);
+const lowerName = (p: Pillar) => p.name.toLowerCase();
+const topFactor = (p: Pillar) => [...p.factors].sort((a, b) => Math.abs(b.lean) * b.weight - Math.abs(a.lean) * a.weight)[0];
+const listWords = (xs: string[]) => (xs.length <= 1 ? xs[0] ?? '' : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 const agreementOf = (pillars: Pillar[], composite: number, news: NewsRead): Agreement => {
   const lean = leanOf(composite);
-  const rows = pillars.map(p => ({ key: p.key, name: p.name, score: p.score, agrees: leanOf(p.score) === lean }));
-  const against = pillars.filter(p => leanOf(p.score) !== lean && leanOf(p.score) !== 'neutral').sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50));
+  const want = lean === 'bullish' ? 'for' : lean === 'bearish' ? 'against' : null;
+  const rows = pillars.map(p => {
+    const side = sideOf(p.score);
+    const stance: AgreeStance = want == null ? side : side === 'middle' ? 'middle' : side === want ? 'agrees' : 'argues';
+    return { key: p.key, name: p.name, score: p.score, agrees: stance === 'agrees', stance };
+  });
+  const priced = news.nextEarnings && news.nextEarnings.impliedMovePct > 0 ? `, ±${news.nextEarnings.impliedMovePct.toFixed(1)}% priced` : '';
+  const event = news.nextEarnings ? `the next test is the report on ${news.nextEarnings.label}${priced}` : 'the next test is a headline the wire has not seen yet';
   let risk: string;
-  if (against.length) {
-    const p = against[0];
-    const f = [...p.factors].sort((a, b) => Math.abs(b.lean) * b.weight - Math.abs(a.lean) * a.weight)[0];
-    const is = /s$/.test(p.name) && !/news$/i.test(p.name) ? 'are' : 'is';
-    risk = f ? `If ${p.name.toLowerCase()} ${is} right — ${f.label.toLowerCase()} ${f.value}, ${f.note} — the ${lean} read fails there first.` : `If ${p.name.toLowerCase()} ${is} right, the ${lean} read fails there first.`;
+  if (want == null) {
+    const pulls = pillars.filter(p => sideOf(p.score) === 'for').map(lowerName);
+    const drags = pillars.filter(p => sideOf(p.score) === 'against').map(lowerName);
+    risk = pulls.length && drags.length
+      ? `The read is split: ${listWords(pulls)} ${pulls.length === 1 && !/^the numbers/.test(pulls[0]) ? 'pulls' : 'pull'} for the name, ${listWords(drags)} against it, and neither side carries it; ${event}.`
+      : pulls.length || drags.length
+        ? `Only ${listWords(pulls.length ? pulls : drags)} ${pulls.length ? 'leans for the name' : 'leans against it'}, not enough to tip the read; ${event}.`
+        : `No pillar leans either way; ${event}.`;
   } else {
-    /* nothing argues — but a pillar that sits in the middle does not AGREE either (SOUN: "1 of 4 agree" over "Every pillar
-       agrees"); the line says which it is */
-    const all = pillars.every(p => leanOf(p.score) === lean);
-    const head = all ? 'Every pillar agrees' : 'No pillar argues against it';
-    const priced = news.nextEarnings && news.nextEarnings.impliedMovePct > 0 ? `, ±${news.nextEarnings.impliedMovePct.toFixed(1)}% priced` : '';
-    risk = news.nextEarnings ? `${head}; the risk is the print on ${news.nextEarnings.label}${priced}.` : `${head}; the risk is a headline the wire has not seen yet.`;
+    const against = pillars.filter(p => sideOf(p.score) !== 'middle' && sideOf(p.score) !== want).sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50));
+    if (against.length) {
+      const p = against[0];
+      const f = topFactor(p);
+      risk = `The case against the ${lean} read is ${lowerName(p)}${f ? ` — ${f.label.toLowerCase()} ${f.value}, ${f.note}` : ''}; if that strengthens, the read turns there first.`;
+    } else {
+      const all = rows.every(r => r.stance === 'agrees');
+      risk = `${all ? 'Every pillar agrees' : 'No pillar argues against it'}; ${event}.`;
+    }
   }
   return { lean, pillars: rows, aligned: rows.filter(r => r.agrees).length, risk };
 };
 const explanationOf = (name: string, composite: number, pillars: Pillar[], numbers: Fundamentals, agreement: Agreement): string => {
-  const ranked = [...pillars].sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50));
-  const top = ranked[0];
-  if (!top) return `${name} has no live read yet. ${agreement.risk}`;
-  const second = ranked[1];
-  const tf = [...top.factors].sort((a, b) => Math.abs(b.lean) * b.weight - Math.abs(a.lean) * a.weight)[0];
-  const many = top.key === 'numbers';
-  const carries = top.score >= 55 ? (many ? 'carry it' : 'carries it') : top.score <= 45 ? (many ? 'drag on it' : 'drags on it') : many ? 'are quiet' : 'is quiet';
-  const lead = `${name} reads ${gradeOfComposite(composite)}, leaning ${agreement.lean}: ${top.name.toLowerCase()} ${carries}${tf ? ` — ${tf.label.toLowerCase()} ${tf.value}, ${tf.note}` : ''}`;
-  if (!second) return `${lead}. ${numbers.sample || numbers.fairValue == null || numbers.vsFairValuePct == null || numbers.valuation == null ? '' : `The numbers put the price ${pct(numbers.vsFairValuePct)} from fair value, ${numbers.valuation}. `}${agreement.risk}`;
-  const secondMany = second.key === 'numbers';
-  const secondWord = leanOf(second.score) === leanOf(top.score) ? (secondMany ? 'agree' : 'agrees') : leanOf(second.score) === 'neutral' ? (secondMany ? 'sit in the middle' : 'sits in the middle') : secondMany ? 'argue' : 'argues';
   const fair = numbers.sample || numbers.fairValue == null || numbers.vsFairValuePct == null || numbers.valuation == null ? '' : ` The numbers put the price ${pct(numbers.vsFairValuePct)} from fair value, ${numbers.valuation}.`;
-  return `${lead}; ${second.name.toLowerCase()} ${secondWord}.${fair} ${agreement.risk}`;
+  if (!pillars.length) return `${name} has no live read yet. ${agreement.risk}`;
+  const grade = gradeOfComposite(composite);
+  const strongest = (side: 'for' | 'against') => [...pillars].filter(p => sideOf(p.score) === side).sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50))[0];
+  const why = (p: Pillar) => {
+    const f = topFactor(p);
+    return f ? ` — ${f.label.toLowerCase()} ${f.value}, ${f.note}` : '';
+  };
+  if (agreement.lean === 'neutral') {
+    const up = strongest('for');
+    const down = strongest('against');
+    const lead = up && down
+      ? `${name} reads ${grade} with no clear lean: ${lowerName(up)} ${verbs(up, 'pulls', 'pull')} for it${why(up)}, while ${lowerName(down)} ${verbs(down, 'pulls', 'pull')} against it${why(down)}.`
+      : up || down
+        ? `${name} reads ${grade} with no clear lean: only ${lowerName((up ?? down)!)} ${verbs((up ?? down)!, 'leans', 'lean')} ${up ? 'for it' : 'against it'}${why((up ?? down)!)}.`
+        : `${name} reads ${grade} with no clear lean: every pillar sits in the middle.`;
+    return `${lead}${fair}`;
+  }
+  const side = agreement.lean === 'bullish' ? 'for' : 'against';
+  const carrier = strongest(side);
+  const lead = carrier
+    ? `${name} reads ${grade}, leaning ${agreement.lean}: ${lowerName(carrier)} ${side === 'for' ? verbs(carrier, 'carries it', 'carry it') : verbs(carrier, 'drags on it', 'drag on it')}${why(carrier)}`
+    : `${name} reads ${grade}, leaning ${agreement.lean}`;
+  const others = pillars.filter(p => p !== carrier);
+  const next = [...others].sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50))[0];
+  const nextWord = next ? (sideOf(next.score) === side ? verbs(next, 'agrees', 'agree') : sideOf(next.score) === 'middle' ? verbs(next, 'sits in the middle', 'sit in the middle') : verbs(next, 'argues', 'argue')) : '';
+  return `${lead}${next ? `; ${lowerName(next)} ${nextWord}` : ''}.${fair} ${agreement.risk}`;
 };
 const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: Pillar[], composite: number, lean: Lean): Method => ({
   observed: [
@@ -880,14 +976,14 @@ const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: P
     `${money.volumeToday != null ? `${fmtCount(money.volumeToday)} shares today` : 'no volume yet today'}${money.volumeAvg != null ? ` against ${fmtCount(money.volumeAvg)} usual` : ''}`,
     `the options book at every strike · ${fmtCount(money.callOI + money.putOI)} open interest`,
     money.callPremium + money.putPremium > 0 ? `${fmtMoney(money.callPremium + money.putPremium)} of premium on the flow book` : 'no option premium on the screener yet',
-    money.dark.prints.length ? `${money.dark.prints.length} off-exchange prints` : 'no off-exchange prints in the recent tape',
+    money.dark.prints.length ? `${money.dark.prints.length} off-exchange ${money.dark.prints.length === 1 ? 'print' : 'prints'}` : 'no off-exchange prints in the recent tape',
     `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} on the wire`,
   ],
   derived: [
     `the 20-day average${trend.sma50 != null ? ', the 50-' : ''}${trend.sma200 != null ? ' and 200-day' : ''} · RSI · ADX · the range percentile · the structure`,
     `GEX · DEX · VEX · vanna · charm, and the walls, the flip and the supreme from them`,
     money.askSharePct != null ? `calls against puts, ${money.askSharePct.toFixed(0)}% of the alert premium on the ask` : 'calls against puts from the screener',
-    money.dark.prints.length ? 'off-exchange prints under or over the price' : 'no off-exchange prints in the recent tape',
+    money.darkWindow.read ? 'off-exchange prints over or under their own quote\'s mid, the regular session\'s sized prints only' : 'no regular-session off-exchange print to read',
     `the wire's lean from the stories' reads and expected moves`,
   ],
   inferred: [
@@ -912,8 +1008,13 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const file = peekStockFile(ticker);
   const blocks = file.days.length >= 5 ? file.days.map(c => [c]) : minute.length >= 2 ? [minute] : [];
 
+  /* THE DAY'S CHANGE IS THE REGULAR SESSION'S (the re-audit, 2026-10-22): after the bell the book's change is the
+     after-hours move alone; the quote (data/liveQuote.ts) carries the session's change and the extended move apart */
+  const quote = peekQuote(ticker);
+  const dayPct = quote ? quote.changePct : snapshot.changePercent;
+  const extLine = extendedLine(quote);
   const trend = trendFor(blocks, snapshot.spot);
-  const money = moneyFor(ticker, snapshot, blocks, file);
+  const money = moneyFor(ticker, { ...snapshot, changePercent: dayPct }, blocks, file);
   const news = newsFor(ticker, file);
   const numbers = numbersFor(file);
   const pillars: Pillar[] = [
@@ -988,7 +1089,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   }
   if (news.lastReport) {
     const q = news.lastReport;
-    timeline.push({ key: `earnings:${q.label}`, when: q.label, kind: 'earnings', text: `${q.beat ? 'beat' : 'missed'} on EPS — ${q.epsActual.toFixed(2)} against ${q.epsEst.toFixed(2)} · ${pct(q.movePct)} the session after`, time: null, score: null });
+    timeline.push({ key: `earnings:${q.label}`, when: q.label, kind: 'earnings', text: `${q.result === 'beat' ? 'beat' : q.result === 'inline' ? 'in line' : 'missed'} on EPS — ${q.epsActual.toFixed(2)} against ${q.epsEst.toFixed(2)}${q.movePct != null ? ` · ${pct(q.movePct)} the session after` : ''}`, time: null, score: null });
   }
 
   const contributions = contributionsOf(livePillars);
@@ -1008,9 +1109,9 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const sources: Source[] = [
     { key: 'price', label: 'Price', status: 'live', stamp: `live · ${stamp}` },
     { key: 'book', label: 'The options book', status: 'live', stamp: `live · ${stamp}` },
-    { key: 'flow', label: 'The flow book', status: file.status === 'live' ? 'live' : 'thin', stamp: file.flow.length ? `${file.flow.length} alerts` : file.status === 'live' ? 'no alerts on this name' : 'reading' },
-    { key: 'tape', label: 'The tape', status: file.status === 'live' ? 'live' : 'thin', stamp: file.flow.length ? `${file.flow.length} prints` : file.status === 'live' ? 'no prints in the recent alerts' : 'reading' },
-    { key: 'dark', label: 'Dark pool', status: file.status === 'live' ? 'live' : 'thin', stamp: file.dark.length ? `${file.dark.length} prints` : file.status === 'live' ? 'nothing recent' : 'reading' },
+    { key: 'flow', label: 'The flow book', status: file.status === 'live' ? 'live' : 'thin', stamp: file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'alert' : 'alerts'}` : file.status === 'live' ? 'no alerts on this name' : 'reading' },
+    { key: 'tape', label: 'The tape', status: file.status === 'live' ? 'live' : 'thin', stamp: file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'print' : 'prints'}` : file.status === 'live' ? 'no prints in the recent alerts' : 'reading' },
+    { key: 'dark', label: 'Dark pool', status: file.status === 'live' ? 'live' : 'thin', stamp: file.dark.length ? `${file.dark.length} ${file.dark.length === 1 ? 'print' : 'prints'}` : file.status === 'live' ? 'nothing recent' : 'reading' },
     { key: 'news', label: 'The wire', status: wireLive(ticker) ? 'live' : 'thin', stamp: news.read.stories.length ? `the newest story ${news.read.stories[0].item.time}` : 'nothing on this name yet' },
     { key: 'sessions', label: 'Sessions', status: sessions >= 20 ? 'live' : 'thin', stamp: `${sessions} on hand` },
     { key: 'fundamentals', label: 'Fundamentals', status: numbers.read.sample ? 'thin' : 'live', stamp: numbers.read.sample ? 'the feed has no print for this name yet' : 'the last print and earnings growth' },
@@ -1023,7 +1124,8 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     name,
     sector,
     price: snapshot.spot,
-    changePct: snapshot.changePercent,
+    changePct: dayPct,
+    extLine,
     marketWord,
     pillars,
     composite,

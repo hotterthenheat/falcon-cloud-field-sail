@@ -26,9 +26,9 @@ import { aheadClock, type AheadClock } from './ahead';
 import { buildBuilding } from './building';
 import { buildExposureProfile } from './exposure';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
-import { buildFlipGauge } from './flipGauge';
+import { buildFlipGauge, sessionFlipCrossings } from './flipGauge';
 import { getBoardNames } from './boardNames';
-import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, ensureScopeDates, scopeDatesPending } from './uwBook';
+import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, ensureScopeDates, scopeDatesPending } from './uwBook';
 import { readLevelsScope } from './levelsScope';
 import { levelsBook } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
@@ -41,7 +41,16 @@ import type { Candle, MarketSnapshot } from '../types/market';
 export interface BoardRow {
   ticker: string;
   spot: number;
+  /** The regular session's change, percent — 0 while `day.dayPct` is not known */
   changePct: number;
+  /** The day's move with the move outside the session kept apart (after hours / pre-market) */
+  day: DayMove | null;
+  /** Why "flip crossed today" has no count (today's book is no longer available), else null */
+  crossWhy: string | null;
+  /** The book "flip crossed today" was counted against ("Today · Oct 22 · this morning's book") */
+  crossLabel: string;
+  /** The flip today's session ran against (may differ from `flip` after the close, which is the next session's) */
+  crossFlip: number | null;
   regime: 'LONG' | 'SHORT' | null;
   flip: number | null;
   /** Signed distance from spot to the flip, percent (+ = the flip is overhead) */
@@ -130,8 +139,19 @@ export function deskAgenda(snapshot: MarketSnapshot, expiry: ExposureExpiry, clo
 }
 
 /** The agenda's #1 for a name — what to watch first (the Board and Compare read it) — the Agenda page's own */
+/* ONE WATCH-FIRST (the second re-audit, 2026-10-22: "Watch first 765" read 86% on the Agenda and the Board and 89% on
+   Compare): the Agenda page built its agenda with the 30-strike calendar surface, the Board and Compare with none, so the
+   wall context (what expires today, the whole book's vanna) differed. Every page now builds the same surface. */
+export const watchSurface = (snapshot: MarketSnapshot): ExposureSurface | null => {
+  try {
+    return buildExposureSurface(snapshot, 30, CALENDAR_DTES);
+  } catch {
+    return null;
+  }
+};
+
 export function watchOf(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock): BoardRow['watch'] {
-  const lead = deskAgenda(snapshot, expiry, clock)?.first[0];
+  const lead = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot))?.first[0];
   return lead ? { strike: lead.strike, role: lead.role, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake } : null;
 }
 
@@ -177,6 +197,7 @@ export function buildBoardRow(ticker: string): BoardRow | null {
   /* WHAT TO WATCH FIRST — the agenda's #1 for this name, so the board is the
      morning list across every name (2026-09-08). ~2ms a name. */
   const watch = watchOf(snapshot, readLevelsScope(), aheadClock(readSessionClock()));
+  const cross = sessionFlipCrossings(snapshot, readLevelsScope());
 
   /* PENDING UNTIL THE SCOPE'S CONTRACTS ARE IN: "Today" needs the front date's strikes and its contract rows (the flip
      re-prices each with its own vol); "All expiries" needs every live date's strikes */
@@ -193,11 +214,15 @@ export function buildBoardRow(ticker: string): BoardRow | null {
     yours: { positions: mine.length, contracts: mine.reduce((s, p) => s + p.contracts, 0) },
     ticker: snapshot.ticker,
     spot,
-    changePct: peekChange(snapshot.ticker) ?? 0,
+    changePct: peekDayMove(snapshot.ticker)?.dayPct ?? 0,
+    day: peekDayMove(snapshot.ticker),
     regime: pending ? null : gauge.regime,
     flip: pending ? null : gauge.flip,
     flipDistPct: pending ? null : gauge.distPct,
-    crossings: pending ? null : gauge.crossings,
+    crossings: pending ? null : cross.crossings,
+    crossWhy: cross.why,
+    crossLabel: cross.label,
+    crossFlip: cross.flip,
     callWall,
     putWall,
     nearest,

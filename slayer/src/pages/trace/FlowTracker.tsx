@@ -49,10 +49,9 @@ import type { DarkPoolPrint } from '../../types/darkpool';
 
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
-import { useLiveBook } from '../../data/traceLive';
+import { dayLean, expiredAtBell, occOf, tapeSessionIso, useContractDays, useLiveBook, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
 import { nyParts } from '../../core/nyTime';
 import { ensureBook, peekSpot, useBookRev } from '../../data/uwBook';
-import { fmtUsd } from '../../data/gex';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -69,8 +68,8 @@ import TraceBox, { Champion, Fact, TraceGrid } from '../../components/trace/Trac
 import { TrackerGuide } from '../../components/trace/TraceGuide';
 
 const num = (v: number) => v.toLocaleString('en-US');
-const signedPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
-const signedNum = (v: number) => `${v >= 0 ? '+' : ''}${num(v)}`;
+const signedPct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
+const signedNum = (v: number) => `${v >= 0 ? '+' : '−'}${num(Math.abs(v))}`;
 const pct = (now: number, then: number) => (then > 0 ? ((now - then) / then) * 100 : 0);
 
 const SOURCE_LABEL: Record<WatchSource, string> = {
@@ -94,13 +93,76 @@ function markedAt(ms: number): string {
 }
 
 /** The lean as the Lean cell would say it, in its ink — for a then → now pair. */
-const leanWord = (askPct: number) => {
-  const bid = 100 - askPct;
-  const mid = Math.abs(askPct - 50) < 6;
+const leanWord = (askPct: number, side?: { ask: number; bid: number; mid: number }) => {
+  if (side) {
+    const l = dayLean({ askPct, volume: side.ask + side.bid + side.mid, sideVol: side });
+    if (l.lean === 'UNSIDED') return { text: Number.isFinite(l.mid) ? `MID ${Math.round(l.mid)}%` : '—', ink: 'text-textMuted' };
+    if (l.lean === 'EVEN') return { text: 'EVEN', ink: 'text-textMuted' };
+    return { text: l.lean === 'ASK' ? `ASK ${Math.round(l.ask)}%` : `BID ${Math.round(l.bid)}%`, ink: 'text-textPrimary' };
+  }
+  const a = Math.round(askPct);
+  const bid = 100 - a;
+  const mid = Math.abs(a - 50) < 6;
   return {
-    text: mid ? 'MID' : bid >= 50 ? `BID ${bid}%` : `ASK ${askPct}%`,
+    text: mid ? 'EVEN' : bid >= 50 ? `BID ${bid}%` : `ASK ${a}%`,
     ink: mid ? 'text-textMuted' : 'text-textPrimary',
   };
+};
+
+/** The OCC symbols a mark may be under — its own, else built from its parts (an index's weekly root first) */
+const WEEKLY_ROOT: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW', VIX: 'VIXW' };
+function occCandidates(w: { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; occ?: string }): string[] {
+  if (w.occ) return [w.occ.toUpperCase()];
+  const roots = WEEKLY_ROOT[w.ticker] ? [WEEKLY_ROOT[w.ticker], w.ticker] : [w.ticker];
+  return roots.map(r => occOf(r, w.strike, w.right, w.expiry)).filter((x): x is string => !!x);
+}
+/** A marked contract as a book row, from its OWN session (the vendor's historic row) — the figures it carries, the rest
+    unknown, never invented */
+function bookOfDay(w: { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; at: { spot: number } }, occ: string, d: ContractDayNow): BookContract {
+  const sided = d.sideVol.ask + d.sideVol.bid;
+  return {
+    key: `own-${occ}`,
+    optionSymbol: occ,
+    ticker: w.ticker,
+    sector: null,
+    sectorColor: null,
+    strike: w.strike,
+    right: w.right,
+    expiry: w.expiry,
+    dte: 0,
+    spot: w.at.spot,
+    otmPct: NaN,
+    last: d.last,
+    chgPct: NaN,
+    lastAt: '—',
+    lastAtMin: 0,
+    volume: d.volume,
+    oi: d.oi,
+    deltaOI: 0,
+    deltaOIPct: 0,
+    premium: d.premium,
+    iv: 0,
+    ivChg: 0,
+    volOverOI: d.oi > 0 ? d.volume / d.oi : 0,
+    sweepPct: 0,
+    multiPct: 0,
+    floorPct: 0,
+    askPct: sided > 0 ? (d.sideVol.ask / sided) * 100 : NaN,
+    prevOI: 0,
+    prevVolume: 0,
+    prevAvgFill: 0,
+    prevPremium: 0,
+    prevAskPct: 0,
+    oiStreak: 0,
+    volGtOiStreak: 0,
+    earnDays: null,
+    prevSpark: [],
+    sideVol: d.sideVol,
+  };
+}
+const isoOfExpiry = (e: string) => {
+  const m = e.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[1]}-${m[2]}` : e.slice(0, 10);
 };
 
 const Dash = () => <span className="text-textSecondary">—</span>;
@@ -129,6 +191,10 @@ interface TrackRow {
   oiDelta: number | null;
   leanThen: number | null;
   leanNow: number | null;
+  /** The contract's day by side now, when its own day was read */
+  sideNow?: { ask: number; bid: number; mid: number };
+  /** Why there is no "now": it expired, or it has not traded today */
+  nowNote?: string;
   /** The sort: the price move when the book can give one, else the underlying's */
   moved: number;
 }
@@ -222,12 +288,17 @@ const FlowTracker = () => {
   const { book, tick } = hold.value;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* Today's book by contract key — the "now" every row is measured against. */
+  /* Today's book by contract key — the "now" every row is measured against when the book carries it */
   const byKey = useMemo(() => {
     const m = new Map<string, BookContract>();
     for (const r of book) m.set(contractKey(r), r);
     return m;
   }, [book]);
+  /* EACH MARK BY ITS OWN CONTRACT (the re-audit, 2026-10-22: a contract marked from the Screener read "off today's book"
+     because this page looked for it in another page's book) — the contract's own session off the vendor */
+  const occs = useMemo(() => options.filter(w => w.kind !== 'structure').flatMap(w => occCandidates(w as { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; occ?: string })), [options]);
+  const days = useContractDays(occs).rows;
+  const todayIso = tapeSessionIso();
 
   const nq = normSymbol(query);
 
@@ -244,9 +315,16 @@ const FlowTracker = () => {
           if (w.kind === 'structure') {
             return { w, live: null, chg: null, spotThen, spotNow, spotChg, volAdded: null, oiDelta: null, leanThen: null, leanNow: null, moved: spotChg ?? 0 };
           }
-          const live = byKey.get(contractKey(w)) ?? null;
+          const cands = occCandidates(w);
+          const occ = cands.find(o => days[o]) ?? cands[0];
+          const own: ContractDayNow | null = occ ? days[occ] ?? null : null;
+          const booked = byKey.get(contractKey(w)) ?? null;
+          /* the contract's own day stands in for a book row the page does not carry */
+          const live: BookContract | null = booked ?? (own && own.iso === todayIso ? bookOfDay(w, occ!, own) : null);
           const then = w.kind === 'contract' ? w.at.last : w.fill;
-          const chg = live ? pct(live.last, then) : null;
+          const chg = live && live.last > 0 ? pct(live.last, then) : null;
+          const expired = expiredAtBell(isoOfExpiry(w.expiry));
+          const nowNote = live ? undefined : expired ? 'expired' : own ? `no print today · last ${own.iso.slice(5).replace('-', '/')}` : undefined;
           return {
             w,
             live,
@@ -254,16 +332,18 @@ const FlowTracker = () => {
             spotThen,
             spotNow,
             spotChg,
-            volAdded: live ? live.volume - w.at.volume : null,
+            volAdded: live ? live.volume - (w.kind === 'contract' ? w.at.volume : w.at.volume) : null,
             oiDelta: live ? live.oi - w.at.oi : null,
             leanThen: w.kind === 'contract' ? w.at.askPct : null,
             leanNow: live ? live.askPct : null,
+            sideNow: live?.sideVol,
+            nowNote,
             moved: chg ?? spotChg ?? 0,
           };
         })
         .sort((a, b) => Math.abs(b.moved) - Math.abs(a.moved)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [options, byKey, nq, tick, bookRev]
+    [options, byKey, nq, tick, bookRev, days, todayIso]
   );
 
   /* Three registers per column, measured over what is on screen. */
@@ -302,7 +382,7 @@ const FlowTracker = () => {
   const keyOf = useCallback((r: TrackRow) => r.w.key, []);
   /* A contract that has left the book dims; a print's contract being off
      the book is the usual case, and a structure never had one — they don't. */
-  const dimGone = useCallback((r: TrackRow) => (r.w.kind === 'contract' && !r.live ? 'opacity-50' : undefined), []);
+  const dimGone = useCallback((r: TrackRow) => (r.w.kind !== 'structure' && r.nowNote === 'expired' ? 'opacity-50' : undefined), []);
 
   const columns = useMemo<Column<TrackRow>[]>(
     () => [
@@ -373,9 +453,9 @@ const FlowTracker = () => {
               </span>
             );
           return (
-            <span className="text-textSecondary">
-              <span className="text-textPrimary">{num(w.size)}×</span> @ <span className="text-textPrimary">${Math.abs(w.net).toFixed(2)}</span>{' '}
-              <span className="text-[11px]">{w.net >= 0 ? 'debit' : 'credit'}</span>
+            <span className="text-textSecondary" title={w.units == null ? 'Marked before the structure was read from its legs — the size and price are the vendor\'s' : `${w.units} units at the net a unit`}>
+              <span className="text-textPrimary">{num(w.size)}×</span> @ <span className="text-textPrimary">{w.net === 0 ? '—' : `$${Math.abs(w.net).toFixed(2)}`}</span>{' '}
+              <span className="text-[11px]">{w.net === 0 ? '' : w.net > 0 ? 'debit' : 'credit'}</span>
             </span>
           );
         },
@@ -387,7 +467,15 @@ const FlowTracker = () => {
         sortValue: r => (r.w.kind === 'contract' ? r.w.at.premium : r.w.premium),
         // The dollars behind the mark: the print's premium, the structure's,
         // a contract's day when it was marked.
-        render: r => <span className="text-textPrimary">{fmtUsd(r.w.kind === 'contract' ? r.w.at.premium : r.w.premium)}</span>,
+        render: r => {
+          const w = r.w;
+          if (w.kind === 'structure') {
+            /* the net that changed hands; a mark taken before the structure was settled carried only the gross */
+            if (w.netPremium != null) return <span className="text-textPrimary" title={w.gross != null ? `${fmtUsd(w.gross)} across every leg` : undefined}>{fmtUsd(Math.abs(w.netPremium))} <span className="text-[11px] text-textSecondary">{w.netPremium > 0 ? 'paid' : 'collected'}</span></span>;
+            return <span className="text-textSecondary" title="Marked before the net was kept — this is the gross of every leg, not what changed hands">{fmtUsd(w.premium)} <span className="text-[11px]">gross</span></span>;
+          }
+          return <span className="text-textPrimary">{fmtUsd(w.kind === 'contract' ? w.at.premium : w.premium)}</span>;
+        },
       },
       {
         key: 'since',
@@ -402,15 +490,8 @@ const FlowTracker = () => {
           ) : r.w.kind === 'structure' ? (
             <Dash />
           ) : (
-            <span
-              className="text-[11px] text-textMuted"
-              title={
-                r.w.kind === 'contract'
-                  ? 'This contract is not on today’s book — it expired, or the day rolled'
-                  : 'The book does not carry this contract today — the underlying’s move is beside it'
-              }
-            >
-              {r.w.kind === 'contract' ? 'off today’s book' : 'not on the book'}
+            <span className="text-[11px] text-textMuted" title={r.nowNote === 'expired' ? 'The contract expired at its bell — it no longer trades' : r.nowNote ? 'The contract has not printed in today’s session' : 'Its day is still being read'}>
+              {r.nowNote ?? '…'}
             </span>
           ),
       },
@@ -451,7 +532,7 @@ const FlowTracker = () => {
         render: r => {
           if (r.leanNow == null && r.leanThen == null) return <Dash />;
           const then = r.leanThen != null ? leanWord(r.leanThen) : null;
-          const now = r.leanNow != null ? leanWord(r.leanNow) : null;
+          const now = r.leanNow != null || r.sideNow ? leanWord(r.leanNow ?? NaN, r.sideNow) : null;
           return (
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wide tnum whitespace-nowrap">
               {then ? <span className={then.ink}>{then.text}</span> : <span className="text-textSecondary">—</span>}
@@ -496,11 +577,11 @@ const FlowTracker = () => {
       counts.structures ? `${counts.structures} structure${counts.structures === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     const what = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
-    const gone = rows.filter(r => r.w.kind === 'contract' && !r.live).length;
+    const gone = rows.filter(r => r.w.kind !== 'structure' && r.nowNote === 'expired').length;
     const m = champs.moved;
     return (
       <>
-        <RichRead text={`${what} under watch${gone ? `, ${gone} no longer on today’s book` : ''}. `} />
+        <RichRead text={`${what} under watch${gone ? `, ${gone} expired` : ''}. `} />
         {m ? (
           <>
             <RichRead text="Moved most since its mark: " />

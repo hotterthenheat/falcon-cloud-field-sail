@@ -256,7 +256,7 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
 
                 {l.now == null ? (
                   <text x={x((lo + hi) / 2)} y={y + 3.5} textAnchor="middle" fontSize={9.5} fill={K.note} fontFamily={SANS}>
-                    none {l.name === 'Call wall' ? 'overhead' : 'underneath'} on this book
+                    none — no {l.name === 'Call wall' ? 'call' : 'put'} gamma on this book
                   </text>
                 ) : (
                   <>

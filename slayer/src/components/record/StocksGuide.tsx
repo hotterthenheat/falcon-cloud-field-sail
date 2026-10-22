@@ -53,7 +53,7 @@ const Bar = ({ x, y, w, v }: { x: number; y: number; w: number; v: number }) => 
 
 /* One row of the grid: the name, the price and the day, the line, four bars, the screen */
 const RowFigure = () => (
-  <Figure label="One row of the grid: NVDA NVIDIA, $138.60, +1.4% in green, a rising thirty-day line, four sleeve bars — three green, one red — and STRONG with a green dot" h={58}>
+  <Figure label="One row of the grid: NVDA NVIDIA, $138.60, +1.4% in green, a rising thirty-day line, four measure bars — three green, one red — and STRONG with a green dot" h={58}>
     <Head x={10} y={12}>NAME</Head>
     <Head x={118} y={12} anchor="end">LAST</Head>
     <Head x={156} y={12} anchor="end">TODAY</Head>
@@ -94,14 +94,14 @@ const RowFigure = () => (
 
 /* The four sleeves: each a bar against the 50 line */
 const SleeveFigure = () => (
-  <Figure label="Two sleeve bars against a marked 50 line: one green past the line reading for the name, one red short of it reading against" h={70}>
+  <Figure label="Two measure bars against a marked 50 line: one green past the line reading for the name, one red short of it reading against" h={70}>
     <line x1={90} x2={90} y1={12} y2={60} stroke="#ffffff" strokeOpacity={0.25} strokeDasharray="2 2" />
     <text x={90} y={68} textAnchor="middle" fontSize={6} letterSpacing={0.8} fill={MUTED} fontFamily={MONO}>
       THE 50 LINE
     </text>
     {[
-      { y: 22, v: 74, word: 'past the line — the sleeve is for the name', ink: BULL },
-      { y: 46, v: 32, word: 'short of it — the sleeve is against the name', ink: BEAR },
+      { y: 22, v: 74, word: 'past the line — the measure is for the name', ink: BULL },
+      { y: 46, v: 32, word: 'short of it — the measure is against the name', ink: BEAR },
     ].map(r => (
       <g key={r.y}>
         <rect x={10} y={r.y - 2} width={160} height={4} rx={2} fill="#ffffff" fillOpacity={0.08} />
@@ -151,7 +151,7 @@ const RotationFigure = () => (
 
 /* Breadth: how many names sit above their trend */
 const BreadthFigure = () => (
-  <Figure label="Ten names as marks on a line: six green above it, four red below it, reading 60% above their trend" h={62}>
+  <Figure label="Ten names as marks on a line: six green above it, four red below it, reading 60% above their 50-day average" h={62}>
     <line x1={10} x2={250} y1={34} y2={34} stroke="#ffffff" strokeOpacity={0.2} />
     {['NVDA', 'AAPL', 'AMD', 'META', 'LLY', 'GS', 'XOM', 'PG', 'NEE', 'BA'].map((t, i) => {
       const up = i < 6;
@@ -169,7 +169,7 @@ const BreadthFigure = () => (
       60%
     </text>
     <text x={266} y={42} fontSize={7} fill={SECOND} fontFamily={SANS}>
-      six of ten with the trend on their side
+      six of ten above their 50-day average
     </text>
   </Figure>
 );
@@ -177,19 +177,19 @@ const BreadthFigure = () => (
 export const StocksGuide = () => (
   <div data-stocks-guide>
     <Section title="A row">
-      <p>One name: the price and the day, its thirty days against the tape, the four sleeves as bars, the screen they add up to, and the read in plain words.</p>
+      <p>One name: the price and the day, its thirty days against the tape, the four measures as bars, the screen they add up to, and the read in plain words.</p>
       <RowFigure />
     </Section>
-    <Section title="The four sleeves">
+    <Section title="The four measures">
       <p>The trend, the numbers, the money and the news, each a bar against the 50 line — green past it, red short of it; the bar is the whole read.</p>
       <SleeveFigure />
     </Section>
     <Section title="The rotation">
-      <p>Every sector ranked by its names' screens; the leader wears magenta, the others the direction of their strength over one week and one month.</p>
+      <p>Every sector ranked by its names' screens; the leader wears magenta. Under each: its names' average return over one week and one month (a real return), then the month against the average of every name on the board (relative), and how many names the sector holds here — one name is one stock, not a sector. The direction word reads the sector against the board over both windows.</p>
       <RotationFigure />
     </Section>
-    <Section title="Above their trend">
-      <p>How many of the names on the page have the trend on their side — the market's own screen.</p>
+    <Section title="Above their 50-day">
+      <p>How many of the names on the page close above their own 50-day simple average (the screener's) — not a momentum reading.</p>
       <BreadthFigure />
     </Section>
   </div>

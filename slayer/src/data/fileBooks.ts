@@ -186,6 +186,8 @@ export interface ShortRow {
   shortVolM: number | null;
   /** Short volume as a percent of that session's volume. Null when the feed does not carry it. */
   shortVolRatio: number | null;
+  /** The session the short volume is from, "YYYY-MM-DD" */
+  shortVolDate?: string;
   /** Fails to deliver, in thousands of shares. Null when the feed does not carry it. */
   ftdK: number | null;
   /** Borrow fee, percent a year. Null when the feed did not price it. */
@@ -524,24 +526,38 @@ export interface HoldingRow {
   memberId: string;
   seat: string;
   ticker: string;
+  /** The asset as filed, for an untickered holding */
+  asset: string;
+  key: string;
   bracket: string;
   owner: string;
 }
 
-/** Open lines: a purchase with no later full sale. The members are the same roster as the tape. */
+/** One key per asset: a named stock by its symbol, an untickered asset by its own full name (a T-bill's maturity
+    included) — an empty ticker let unrelated T-bills and LLCs cancel each other (the re-audit, 2026-10-22) */
+export const holdingAssetKey = (t: CongressTrade): string => {
+  const sym = (t.ticker || '').trim().toUpperCase();
+  return sym ? `t:${sym}` : `a:${(t.assetDescription || '').trim().toLowerCase().replace(/\s+/g, ' ')}`;
+};
+
+/** Purchases with no sale of any kind of the same asset reported since — the vendor's bare "Sell" does not say full or
+    partial, so any sale takes the line off rather than claiming what remains. The same roster as the tape. */
 export function buildHoldings(source?: CongressTrade[]): HoldingRow[] {
   const trades = [...(source ?? [])].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
   const open = new Map<string, (typeof trades)[number]>();
   for (const t of trades) {
-    const key = `${t.member.id}|${t.ticker}|${t.owner}`;
-    if (t.type === 'Purchase' || t.type === 'Exchange') open.set(key, t);
-    if (t.type === 'Sale (Full)') open.delete(key);
+    if (holdingAssetKey(t) === 'a:' || holdingAssetKey(t) === 'a:undisclosed') continue;
+    const key = `${t.member.id}|${holdingAssetKey(t)}|${t.owner}`;
+    if (t.type === 'Purchase') open.set(key, t);
+    else if (t.type !== 'Exchange') open.delete(key);
   }
   return [...open.values()].slice(0, 16).map(t => ({
     member: t.member.name,
     memberId: t.member.id,
     seat: seatLabel(t.member),
     ticker: t.ticker,
+    asset: t.assetDescription,
+    key: `${t.member.id}|${holdingAssetKey(t)}|${t.owner}`,
     bracket: bracketLabel(t.bracket),
     owner: t.owner,
   }));

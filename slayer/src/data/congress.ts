@@ -205,9 +205,9 @@ export function summariseCongress(trades: CongressTrade[], windowDays: number): 
     if (t.bracket === null) unknownAmounts += 1;
     else {
       const b = AMOUNT_BRACKETS[t.bracket];
-      totalLow += b.low;
-      /* An open-ended top rung makes the ceiling unknowable — null, not a guess */
-      if (totalHigh !== null) totalHigh = b.high === null ? null : totalHigh + b.high;
+      totalLow += t.amountOver != null ? t.amountOver + 1 : b.low;
+      /* An open-ended top rung — or an open-ended amount as filed ("over $1,000,000") — makes the ceiling unknowable */
+      if (totalHigh !== null) totalHigh = b.high === null || t.amountOver != null ? null : totalHigh + b.high;
     }
     if (t.type === 'Purchase') purchases += 1;
     else if (t.type !== 'Exchange') sales += 1;

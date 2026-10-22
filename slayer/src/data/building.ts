@@ -43,7 +43,7 @@
 */
 
 import { sessionStarts } from './indicators';
-import { pickWalls } from '../core/walls';
+import { pickLegWalls } from '../core/walls';
 import { DEFAULT_R } from '../core/carry';
 import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate } from '../core/calendar';
@@ -210,8 +210,10 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
   return out;
 }
 
-/** A size change smaller than this share of the biggest wall reads as steady */
-const MATERIAL = 0.05;
+/** A size change smaller than this share of the strike's own size reads as steady */
+const MATERIAL = 0.1;
+/** …and one under this share of the window's biggest strike is rounding, whatever its own size */
+const FLOOR_SHARE = 0.005;
 /** Points on each row's shape */
 const SHAPE_POINTS = 40;
 
@@ -268,6 +270,8 @@ export function buildBuilding(
   const maxAbsBook = Math.max(1, ...profile.strikes.map(s => Math.abs(unit.get(s.strike)?.net ?? 0)));
 
   const rows: BuildRow[] = [];
+  /* each strike's call and put legs at the open and now — the walls are the most call / put gamma (core/walls.ts) */
+  const legsAt = new Map<number, { openC: number; openP: number; nowC: number; nowP: number }>();
   let maxAbs = 1;
   let maxChange = 1;
   for (const s of profile.strikes) {
@@ -289,6 +293,10 @@ export function buildBuilding(
     const callAdded = real ? -(oc?.call ?? 0) : dCall * Math.abs(u.call);
     const putAdded = real ? (oc?.put ?? 0) : dPut * Math.abs(u.put);
     const sizeChange = Math.abs(now) - Math.abs(open);
+    const nowNode = chain.find(x => x.strike === K);
+    const nowC = nowNode?.callGex ?? 0;
+    const nowP = nowNode?.putGex ?? 0;
+    legsAt.set(K, { nowC, nowP, openC: nowC - callAddedSigned, openP: nowP - putAddedSigned });
 
     /* The shape: the wall's size through the day at today's units */
     const series = sampled.map(snap => {
@@ -316,8 +324,13 @@ export function buildBuilding(
       }
     }
 
-    const material = Math.abs(sizeChange) >= MATERIAL * maxAbsBook;
-    const switched = hasOi && Math.sign(now) !== Math.sign(open) && Math.abs(now) >= MATERIAL * maxAbsBook && Math.abs(open) >= MATERIAL * maxAbsBook;
+    /* MOVED IS MEASURED AGAINST THE STRIKE ITSELF (the second re-audit, 2026-10-22: "0 of 41 moved", every row steady,
+       under "built overnight +$146M" — the bar was 5% of the book's biggest wall, which on SPY no single strike's change
+       reached). A strike moved when its size changed by a tenth of what it holds (open or now, the larger), and by more
+       than rounding: half a percent of the biggest wall in the window. */
+    const own = Math.max(Math.abs(now), Math.abs(open));
+    const material = Math.abs(sizeChange) >= MATERIAL * own && Math.abs(sizeChange) >= FLOOR_SHARE * maxAbsBook;
+    const switched = hasOi && Math.sign(now) !== Math.sign(open) && Math.abs(now) >= FLOOR_SHARE * maxAbsBook && Math.abs(open) >= FLOOR_SHARE * maxAbsBook;
     const verdict: BuildVerdict = isNew && material ? 'new' : switched ? 'switched' : material ? (sizeChange > 0 ? 'building' : 'draining') : 'steady';
     const byClose = real ? 0 : (sizeChange / elapsedMin) * minutesLeft;
 
@@ -359,7 +372,15 @@ export function buildBuilding(
         r.words = `New ${day}: nothing sat here ${real ? 'before yesterday’s trading' : 'at the open'}. ${change} — ${stand}.${pace}`;
         break;
       default:
-        r.words = `Steady. ${change} — ${stand}.`;
+        /* steady is "small for this strike" — the change is still printed, with its share of the strike's size */
+        {
+          const own = Math.max(Math.abs(r.now), Math.abs(r.open));
+          const share = own > 0 ? Math.abs(r.sizeChange) / own : 0;
+          r.words =
+            share >= MATERIAL
+              ? `Too small to count. ${change} — under half a percent of the biggest strike here — ${stand}.`
+              : `Little changed for its size. ${change}${own > 0 ? `, ${Math.round(share * 100)}% of what it holds` : ''} — ${stand}.`;
+        }
     }
   }
 
@@ -371,11 +392,15 @@ export function buildBuilding(
   const spotAfter = rows.findIndex(r => r.strike < spot);
 
   /* WHERE THE WALLS ARE HEADING — the levels re-picked on the open's book and on the projected one */
-  const openPts = rows.map(r => ({ strike: r.strike, v: r.open }));
-  const nowPts = rows.map(r => ({ strike: r.strike, v: r.now }));
+  type Pt = { strike: number; v: number; c: number; p: number };
+  const legOf = (r: BuildRow) => legsAt.get(r.strike) ?? { openC: 0, openP: 0, nowC: 0, nowP: 0 };
+  const openPts: Pt[] = rows.map(r => ({ strike: r.strike, v: r.open, c: legOf(r).openC, p: legOf(r).openP }));
+  const nowPts: Pt[] = rows.map(r => ({ strike: r.strike, v: r.now, c: legOf(r).nowC, p: legOf(r).nowP }));
   /* the overnight count is one step between two sessions, not a pace through the day — nothing is projected off it */
-  const closePts = real ? nowPts : rows.map(r => ({ strike: r.strike, v: r.now + ((r.now - r.open) / elapsedMin) * minutesLeft }));
-  const walls = (pts: { strike: number; v: number }[]) => pickWalls(pts, spot, p => p.v);
+  const pace = (a: number, b: number) => b + ((b - a) / elapsedMin) * minutesLeft;
+  const closePts: Pt[] = real ? nowPts : rows.map(r => ({ strike: r.strike, v: pace(r.open, r.now), c: pace(legOf(r).openC, legOf(r).nowC), p: pace(legOf(r).openP, legOf(r).nowP) }));
+  /* the most call gamma and the most put gamma (core/walls.ts pickLegWalls) — the Map's and the Agenda's rule */
+  const walls = (pts: Pt[]) => pickLegWalls(pts, p => p.c, p => p.p);
   const supremeOf = (pts: { strike: number; v: number }[]) => pts.reduce<{ strike: number; v: number } | null>((b, p) => (!b || Math.abs(p.v) > Math.abs(b.v) ? p : b), null)?.strike ?? null;
   const wOpen = walls(openPts);
   const wNow = walls(nowPts);
@@ -386,12 +411,15 @@ export function buildBuilding(
     if (wall == null) return null;
     const w = rows.find(r => r.strike === wall);
     if (!w) return null;
-    const cands = rows.filter(r => r.strike !== wall && (side === 'call' ? r.strike > spot && r.now < 0 : r.strike < spot && r.now > 0) && r.sizeChange > 0);
+    /* a challenger grows the same leg: the most call (or put) gamma added */
+    const legNow = (r: BuildRow) => Math.abs(side === 'call' ? legOf(r).nowC : legOf(r).nowP);
+    const legGrew = (r: BuildRow) => legNow(r) - Math.abs(side === 'call' ? legOf(r).openC : legOf(r).openP);
+    const cands = rows.filter(r => r.strike !== wall && legGrew(r) > 0);
     if (!cands.length) return null;
-    const c = cands.sort((a, b) => b.sizeChange - a.sizeChange)[0];
-    const needs = Math.abs(w.now) - Math.abs(c.now);
+    const c = cands.sort((a, b) => legGrew(b) - legGrew(a))[0];
+    const needs = legNow(w) - legNow(c);
     if (needs <= 0) return null;
-    const rate = (c.sizeChange - w.sizeChange) / elapsedMin;
+    const rate = (legGrew(c) - legGrew(w)) / elapsedMin;
     let by: string | null = null;
     if (!real && rate > 0 && clock.inSession && clock.nowMin != null) {
       const t = needs / rate;
@@ -410,9 +438,9 @@ export function buildBuilding(
             : `at ${fmtStrike(now)} since the open`
           : name === 'Flip'
             ? 'no flip within ±10%'
-            : `none ${name === 'Call wall' ? 'overhead' : 'underneath'}`;
+            : `none — no ${name === 'Call wall' ? 'call' : 'put'} gamma in the window`;
     const ahead = real || close == null || now == null ? '' : close === now ? ` · holds ${horizon}` : ` · ${horizon} it moves to ${fmtStrike(close)}`;
-    const chal = ch ? ` · ${fmtStrike(ch.strike)} grew most ${name === 'Call wall' ? 'above' : 'below'}${real ? ' overnight' : ''}, ${fmtDollars(ch.needs)} short${ch.by ? `, there by ${ch.by} at today's pace` : !real && ch.outrun ? ', but the wall is growing faster' : ''}` : '';
+    const chal = ch ? ` · ${fmtStrike(ch.strike)} grew the most ${name === 'Call wall' ? 'call' : 'put'} gamma${real ? ' overnight' : ''}, ${fmtDollars(ch.needs)} short${ch.by ? `, there by ${ch.by} at today's pace` : !real && ch.outrun ? ', but the wall is growing faster' : ''}` : '';
     return `${moved}${ahead}${chal}`;
   };
 

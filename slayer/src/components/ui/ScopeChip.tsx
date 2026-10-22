@@ -48,7 +48,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
-import { useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, useLiveQuote } from '../../data/liveQuote';
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
 import useFocusTrap from './useFocusTrap';
@@ -186,10 +186,12 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, open: openProp
             <span className="text-[11px] tnum text-textPrimary leading-none" data-scope-price>
               ${price.toFixed(2)}
             </span>
-            <span className={`text-[10px] tnum leading-none ${change >= 0 ? 'text-bull' : 'text-bear'}`}>
-              {change >= 0 ? '+' : ''}
-              {change.toFixed(2)}%
+            {/* the regular session's change; the move outside the session rides beside it, and zero is neutral */}
+            <span className={`text-[10px] tnum leading-none ${Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={extendedLine(live) ? `Today's regular-session change · ${extendedLine(live)}` : "Today's change"}>
+              {change > 0 ? '+' : change < 0 ? '−' : ''}
+              {Math.abs(change).toFixed(2)}%
             </span>
+            {extendedLine(live) && <span className="text-[10px] tnum leading-none text-textMuted whitespace-nowrap">· {extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'pre')}</span>}
           </>
         )}
         {/* THE NAME IS STILL ARRIVING (ui/Working.tsx): the panel keeps its shape and its last numbers, and the chip that names

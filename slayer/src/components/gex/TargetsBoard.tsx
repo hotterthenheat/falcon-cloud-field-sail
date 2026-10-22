@@ -63,9 +63,10 @@ import JingleBell from '../ui/JingleBell';
 import { heatLaneColor } from './heatmap';
 import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import { AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
-import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, weakestLabel, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
-import { chanceLabel, holdLabel, holdShort } from '../../data/wall';
+import { chanceLabel, holdLabel, holdShort, pathFlowWords, pathLean } from '../../data/wall';
+import { GLOSSARY, kindTip } from './glossary';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -109,7 +110,7 @@ const HoldBeam = ({ t, w = 52, h = 6 }: { t: Target; w?: number | string; h?: nu
 const Tags = ({ t, yours }: { t: Target; yours?: string }) => (
   <>
     {(t.role || kindOf(t) !== 'thin') && (
-      <span className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: t.role ? ROLE_INK[t.role] : t.isShelf ? 'rgb(var(--text-muted))' : WARM }} title={t.role ? undefined : t.isShelf ? 'A shelf: dealers are long gamma here, so their hedging slows price' : 'A trapdoor: dealers are short gamma here, so their hedging speeds a move through it'}>
+      <span className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: t.role ? ROLE_INK[t.role] : t.isShelf ? 'rgb(var(--text-muted))' : WARM }} title={kindTip(t.role ?? (t.isShelf ? 'shelf' : 'trapdoor'))}>
         {t.role ?? (t.isShelf ? 'shelf' : 'trapdoor')}
       </span>
     )}
@@ -199,14 +200,14 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
         </CardLine>
         <CardLine label="If it breaks">
           {t.breakTo == null ? (
-            <span className="text-textMuted">no shelf behind it</span>
+            <span className="text-textMuted" title={`Nothing past it on the strikes shown is big enough to slow a move. ${GLOSSARY.shelf}`}>no shelf behind it</span>
           ) : (
             <>
               runs to {fmtStrike(t.breakTo)}
               {t.breakFlow !== 0 && (
-                <span style={{ color: WARM }}>
+                <span style={{ color: pathLean(t.side, t.breakFlow) === 'along' ? WARM : SILVER }} title={pathFlowWords(t.side, t.breakFlow)}>
                   {' '}
-                  · {fmtDollars(Math.abs(t.breakFlow))} {t.breakFlow > 0 ? 'buying' : 'selling'}
+                  · {fmtDollars(Math.abs(t.breakFlow))} {t.breakFlow > 0 ? 'buying' : 'selling'} · {pathLean(t.side, t.breakFlow) === 'along' ? 'pushes it along' : 'leans against it'}
                 </span>
               )}
               {t.pocket && <span className="text-textMuted"> · empty</span>}
@@ -261,7 +262,7 @@ const Actions = ({ t, armed, onChart, onAlert, icons = false }: { t: Target; arm
 
 const breakWords = (t: Target): ReactNode =>
   t.breakTo == null ? (
-    <span className="text-textMuted">no shelf behind it</span>
+    <span className="text-textMuted" title={`Nothing past it on the strikes shown is big enough to slow a move. ${GLOSSARY.shelf}`}>no shelf behind it</span>
   ) : (
     <>
       <span className="text-textSecondary">
@@ -269,9 +270,9 @@ const breakWords = (t: Target): ReactNode =>
         {t.pocket ? ' · empty' : ''}
       </span>
       {t.breakFlow !== 0 && (
-        <span style={{ color: WARM }}>
+        <span style={{ color: pathLean(t.side, t.breakFlow) === 'along' ? WARM : SILVER }} title={pathFlowWords(t.side, t.breakFlow)}>
           {' '}
-          · {fmtDollars(t.breakFlow)} {t.breakFlow > 0 ? 'buying' : 'selling'}
+          · {fmtDollars(t.breakFlow)} {t.breakFlow > 0 ? 'buying' : 'selling'} · {pathLean(t.side, t.breakFlow) === 'along' ? 'pushes it along' : 'leans against it'}
         </span>
       )}
     </>
@@ -498,9 +499,9 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The smallest wall price is likely to reach, sized against the biggest wall on this ticker">Smallest wall in reach</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The smallest wall price is likely to reach, sized against the biggest wall on this ticker (when only one wall is in reach, that one)">{weakestLabel(agenda)}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: SILVER }}>
-              {agenda.weakestWall ? `${fmtStrike(agenda.weakestWall.strike)} · ${holdLabel(agenda.weakestWall.hold)}` : '—'}
+              {agenda.weakestWall ? (agenda.wallsInReach === 1 ? `${fmtStrike(agenda.weakestWall.strike)} · the only one` : `${fmtStrike(agenda.weakestWall.strike)} · ${holdLabel(agenda.weakestWall.hold)}`) : '—'}
             </dd>
           </div>
           <div>
@@ -607,7 +608,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       {card && cardTarget && <RowCard t={cardTarget} at={card} inSession={clock.inSession} onClose={() => setCard(null)} />}
       <p className={`${pad} pb-4 pt-2 text-[12px] leading-relaxed text-textSecondary`} data-targets-foot>
         {lead ? `${fmtStrike(lead.strike)} is ${reachedWord} ${pct(lead.reach)} of the time. ` : ''}
-        {agenda.weakestWall ? `The smallest wall in reach is ${fmtStrike(agenda.weakestWall.strike)}, at ${holdLabel(agenda.weakestWall.hold)}. ` : ''}
+        {agenda.weakestWall ? (agenda.wallsInReach === 1 ? `The only wall in reach is ${fmtStrike(agenda.weakestWall.strike)}. ` : `The smallest wall in reach is ${fmtStrike(agenda.weakestWall.strike)}, at ${holdLabel(agenda.weakestWall.hold)}. `) : ''}
         {agenda.closesNear ? `The close leans to ${fmtStrike(agenda.closesNear.strike)} at ${agenda.closesNear.odds.toFixed(0)}%.` : ''}
       </p>
     </section>

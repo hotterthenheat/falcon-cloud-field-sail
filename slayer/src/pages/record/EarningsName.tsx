@@ -47,11 +47,13 @@ import HoverReadout from '../../components/ui/HoverReadout';
 import { stateOf } from '../../components/earnings/volState';
 import { BULL } from '../../components/gex/paletteInk';
 import { useTicker } from '../../context/MarketDataContext';
-import { fmtDollars } from '../../data/ahead';
+import { dollars3 as fmtDollars } from './money';
 import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
-import { useLiveDossier } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, useLiveDossier } from '../../data/earningsFeed';
+import { useStockCard } from '../../data/liveFiles';
+import { FUND_TYPES } from '../../data/liveFiles';
 import { type ActiveContract, type EarningsDossier } from '../../data/earnings';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { PRICED_INK, PRICED_WORD, SlotMark, slotWord } from './Earnings';
@@ -99,17 +101,35 @@ const Door = ({ onClick, onWarm, children }: { onClick: () => void; onWarm?: () 
    today's price for the move and replay it over the last eight real prints. One bar
    per quarter, the actual move's dollar value minus today's cost. Green above the
    line covered it; red below fell short. (Noah, 2026-08-19: "so simple yet unique") */
+/** Beat · in line · miss over the EPS quarters (equal to the cent is in line, never a beat) */
+const splitOf = (d: EarningsDossier) => {
+  const r = d.quarters.map(q => q.epsResult ?? (q.epsBeat ? 'beat' : 'miss'));
+  return { beat: r.filter(x => x === 'beat').length, inline: r.filter(x => x === 'inline').length, miss: r.filter(x => x === 'miss').length, n: r.length };
+};
+const splitText = (d: EarningsDossier) => {
+  const s = splitOf(d);
+  return s.n ? `${s.beat} beat · ${s.inline} in line · ${s.miss} missed, of ${s.n}` : '—';
+};
+/** The usual move with the count it is the average of */
+const usualText = (e: EarningsDossier['event']) => {
+  const n = e.histCount ?? e.pastMoves.length;
+  if (e.history === false) return '—';
+  if (!n) return 'no past move on file';
+  return `±${e.histAvgMovePct.toFixed(1)}%${n < 8 ? ` · from ${n} ${n === 1 ? 'print' : 'prints'}` : ''}`;
+};
+
 const PriceReplay = ({ d }: { d: EarningsDossier }) => {
   const e = d.event;
   const isPriced = e.impliedMovePct > 0 && e.price > 0;
   const cost = (e.price * e.impliedMovePct) / 100;
+  /* the replay runs on the latest eight reports with a move (the event's own), not the EPS table's quarters */
   const rows = useMemo(
     () =>
-      d.quarters.filter(q => q.moveKnown !== false).map(q => {
+      e.pastMoves.map(q => {
         const moved = (e.price * Math.abs(q.movePct)) / 100;
         return { label: q.label, movePct: q.movePct, moved, pl: moved - cost };
       }),
-    [d.quarters, e.price, cost]
+    [e.pastMoves, e.price, cost]
   );
   const maxAbs = useMemo(() => Math.max(...rows.map(r => Math.abs(r.pl)), 0.01), [rows]);
   const winners = rows.filter(r => r.pl > 0).length;
@@ -128,8 +148,8 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
         </p>
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 pt-3 border-t border-borderSubtle/60">
           <Fact label="Prints on file">{d.quarters.length}</Fact>
-          <Fact label="Beat the estimate">{d.quarters.length ? `${d.quarters.filter(q => q.epsBeat).length} of ${d.quarters.length}` : '—'}</Fact>
-          <Fact label="Usual move">{e.history === false ? '—' : `±${e.histAvgMovePct.toFixed(1)}%`}</Fact>
+          <Fact label="Against the estimate">{splitText(d)}</Fact>
+          <Fact label="Usual move">{usualText(e)}</Fact>
           <Fact label="Up against down">{rows.length ? `${d.probUpPct}% up · ${100 - d.probUpPct}% down` : '—'}</Fact>
         </dl>
       </div>
@@ -200,9 +220,9 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
         ) : (
           <>
             <Fact label="Prints on file">{d.quarters.length}</Fact>
-            <Fact label="Beat the estimate">{d.quarters.filter(q => q.epsBeat).length} of {d.quarters.length || 0}</Fact>
+            <Fact label="Against the estimate">{splitText(d)}</Fact>
             <Fact label="Options price">±{e.impliedMovePct.toFixed(1)}%</Fact>
-            <Fact label="Usual move">{e.history === false ? '—' : `±${e.histAvgMovePct.toFixed(1)}%`}</Fact>
+            <Fact label="Usual move">{usualText(e)}</Fact>
             <Fact label="The stock">${e.price.toFixed(2)}</Fact>
           </>
         )}
@@ -295,6 +315,9 @@ const EarningsName = () => {
   const congress = useMemo(() => [...congressBook.trades].sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressBook]);
   /* the stock now, read before any early return (hooks keep their order) */
   const quote = useLiveQuote(T);
+  /* a fund has no earnings: the page says so, not "no report on the calendar" */
+  const card = useStockCard(T);
+  const isFund = !!card?.issueType && FUND_TYPES.test(card.issueType);
 
   const back = (
     <div className="flex items-center gap-4" data-name-back>
@@ -327,7 +350,7 @@ const EarningsName = () => {
         {back}
         <div className="border border-borderSubtle rounded-md bg-panel h-40 flex flex-col items-center justify-center gap-2" data-name-missing>
           <span className="font-mono text-[13px] font-bold text-textPrimary">{T}</span>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">no report on the next two weeks' calendar</span>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">{isFund ? 'a fund — funds do not report earnings' : 'no report on file for this name'}</span>
         </div>
       </>
     );
@@ -346,10 +369,13 @@ const EarningsName = () => {
   const reported = e.daysOut < 0 || (e.daysOut === 0 && nowNy.hour * 60 + nowNy.minute >= (e.slot === 'AMC' ? 16 * 60 : 9 * 60 + 30));
   const nQ = quarters.length || 0;
   const hasRev = quarters.some(q => q.revEstB > 0);
-  const epsBeats = quarters.filter(q => q.epsBeat).length;
+  const split = splitOf(dossier);
+  const epsBeats = split.beat;
+  const pricedOk = !reported && (e.histCount ?? e.pastMoves.length) >= MIN_PRICED_PRINTS && e.richness > 0;
   const revBeats = quarters.filter(q => q.revBeat).length;
-  const moveData = quarters.filter(q => q.moveKnown !== false).map(q => ({ label: q.label, move: q.movePct }));
-  const epsData = quarters.map(q => ({ label: q.label, est: q.epsEst, actual: q.epsActual, beat: q.epsBeat }));
+  const moveData = e.pastMoves.map(q => ({ label: q.label, move: q.movePct }));
+  const nMoves = moveData.length;
+  const epsData = quarters.map(q => ({ label: q.label, est: q.epsEst, actual: q.epsActual, beat: q.epsBeat, inline: q.epsResult === 'inline' }));
   const maxActiveVol = Math.max(...dossier.activeCalls.map(c => c.volume), ...dossier.activePuts.map(c => c.volume), 1);
   const openOnMap = () => {
     changeTicker(e.ticker);
@@ -388,12 +414,12 @@ const EarningsName = () => {
               </div>
               {/* max-xl:flex-wrap — an inline-flex line does not truncate, it spills; on a phone it folds instead (the phone pass, 2026-09-13) */}
               <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap">
-                {reported ? 'Reported' : 'Reports'} {e.dateLabel} <SlotMark slot={e.slot} className="w-3 h-3" /> {slotWord(e)}
+                {reported ? 'Reported' : 'Reports'} {e.dateLabel} <SlotMark slot={e.slot} timeKnown={e.timeKnown} className="w-3 h-3" /> {slotWord(e)}
                 <span className="text-textMuted">·</span>
                 {reported ? (
                   <span className="text-textMuted">the result lands on the feed once the vendor posts it</span>
                 ) : (
-                  <span className={e.confirmed ? 'text-textMuted' : 'text-warn'}>{e.confirmed ? 'the company has confirmed the date' : 'the date is still an estimate'}</span>
+                  <span className={e.confirmed ? 'text-textMuted' : 'text-warn'}>{e.confirmed ? 'the company has confirmed the date' : 'date estimated — the company has not set it'}</span>
                 )}
                 {e.daysOut === 0 && (
                   <>
@@ -415,22 +441,22 @@ const EarningsName = () => {
               )}
             </Fact>
             <Fact label="Usually moves" testId="usual">
-              {e.history === false ? '—' : `±${e.histAvgMovePct.toFixed(1)}%`}
+              {usualText(e)}
             </Fact>
             <Fact label="Priced" testId="priced">
-              {e.history === false || !isPriced ? <span className="text-textMuted">—</span> : (
+              {!pricedOk || !isPriced ? <span className="text-textMuted" title={reported ? 'Reported — the move is in' : `Rich or cheap needs ${MIN_PRICED_PRINTS} past moves on file`}>—</span> : (
               <span className={PRICED_INK[priced]}>
                 {e.richness.toFixed(2)}× {PRICED_WORD[priced]}
               </span>
               )}
             </Fact>
-            <Fact label="Beat the estimate" testId="beat">
-              {nQ ? <>{epsBeats} of {nQ}{hasRev ? <span className="text-textMuted"> · revenue {revBeats} of {nQ}</span> : null}</> : <span className="text-textMuted">—</span>}
+            <Fact label="Beat · in line · miss" testId="beat">
+              {nQ ? <><span className="text-bull">{split.beat}</span> · {split.inline} · <span className="text-bear">{split.miss}</span> <span className="text-textMuted">of {nQ}</span>{hasRev ? <span className="text-textMuted"> · revenue {revBeats} of {nQ}</span> : null}</> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="Last eight" testId="last8">
-              <span className="inline-flex gap-[3px] align-middle" title="each square one quarter, oldest first — green beat, red missed">
+            <Fact label={`Last ${nQ || ''} with an estimate`} testId="last8">
+              <span className="inline-flex gap-[3px] align-middle" title="each square one quarter with an estimate, oldest first — green beat, grey in line, red missed">
                 {quarters.map(q => (
-                  <span key={q.label} className={`w-2 h-2 rounded-[2px] ${q.epsBeat ? 'bg-bull' : 'bg-bear/60'}`} />
+                  <span key={q.label} className={`w-2 h-2 rounded-[2px] ${q.epsResult === 'inline' ? 'bg-ink/30' : q.epsBeat ? 'bg-bull' : 'bg-bear/60'}`} />
                 ))}
               </span>
             </Fact>
@@ -451,13 +477,13 @@ const EarningsName = () => {
       </div>
 
       {/* TODAY'S PRICE, REPLAYED */}
-      <Box title="Today's price, replayed" sub="What the options charge now, tested against the last eight real prints — hover a bar" testId="replay">
+      <Box title="Today's price, replayed" sub={`What the options charge now, tested against the last ${nMoves || 'few'} real ${nMoves === 1 ? 'print' : 'prints'} with a move — hover a bar`} testId="replay">
         <PriceReplay d={dossier} />
       </Box>
 
       {/* THE RECEIPTS */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="Beats and misses" sub={hasRev ? `Earnings per share, the estimate against the actual · beat ${epsBeats} of ${nQ} on earnings, ${revBeats} of ${nQ} on revenue` : `Earnings per share, the estimate against the actual · beat ${epsBeats} of ${nQ}`} testId="beats">
+        <Box title="Beats and misses" sub={`Earnings per share, the estimate against the actual · ${split.beat} beat, ${split.inline} in line, ${split.miss} missed of ${nQ}${hasRev ? ` · revenue ${revBeats} of ${nQ}` : ''}`} testId="beats">
           <div className="px-5 pb-4">
             <div className="h-[132px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -481,18 +507,18 @@ const EarningsName = () => {
                   <Bar dataKey="est" fill={WHITE_DIM} radius={[2, 2, 0, 0]} barSize={9} isAnimationActive={false} />
                   <Bar dataKey="actual" radius={[2, 2, 0, 0]} barSize={9} isAnimationActive={false}>
                     {epsData.map(q => (
-                      <Cell key={q.label} fill={q.beat ? BULL : BEAR} fillOpacity={q.beat ? 0.9 : 0.8} />
+                      <Cell key={q.label} fill={q.inline ? 'rgb(var(--text-muted))' : q.beat ? BULL : BEAR} fillOpacity={q.beat ? 0.9 : 0.8} />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <p className="mt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">
-              grey the estimate · <span className="text-bull">green beat</span> · <span className="text-bear">red missed</span>
+              grey the estimate · <span className="text-bull">green beat</span> · grey in line · <span className="text-bear">red missed</span>
             </p>
           </div>
         </Box>
-        <Box title="Past moves" sub={`The stock's move the session after each of its last ${nQ || 'few'} reports`} testId="moves">
+        <Box title="Past moves" sub={`The stock's move the session after each of its last ${nMoves || 'few'} reports`} testId="moves">
           <div className="px-5 pb-4">
             <div className="h-[132px]">
               <ResponsiveContainer width="100%" height="100%">

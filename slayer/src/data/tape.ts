@@ -116,7 +116,7 @@ export function enrichPrint(order: TapeOrder, id: number): FlowPrint {
     alert fired on, when the caller passes one. */
 export function bookRowToPrint(
   row: BookContract,
-  clip?: { size: number; fill: number; side: 'ASK' | 'BID' | 'MID'; time: string; bid?: number; ask?: number; premium?: number; multi?: boolean; sweep?: boolean }
+  clip?: { size: number; fill: number; side: 'ASK' | 'BID' | 'MID'; time: string; bid?: number; ask?: number; premium?: number; multi?: boolean; sweep?: boolean; extended?: boolean; theta?: number }
 ): FlowPrint {
   /* NO INVENTED CLIP (the ship pass, 2026-10-22): this stood on hashes — a size drawn from the day's volume, a spread
      and a fill position — and the card said "$1.2M BOUGHT × 205" on a contract whose last print was 2 lots on the bid.
@@ -164,12 +164,16 @@ export function bookRowToPrint(
     volOverOI: row.volOverOI,
     strat: multi ? 'Custom' : '—',
     sweep,
+    extended: clip?.extended || undefined,
+    theta: clip?.theta ?? row.theta,
   };
 }
 
-/** Aggressive call buys / put sells read bullish; the inverse reads bearish. */
+/** THE ONE RULE (the Trace guide's "Bought, sold, bullish, bearish"): a print at the ask was BOUGHT, on the bid SOLD.
+    Calls bought and puts sold read bullish; puts bought and calls sold read bearish; a mid print reads neither — and so
+    does a print outside the regular session, set against a thin post-market quote. */
 export function sentimentOf(p: FlowPrint): PrintSentiment {
-  if (p.side === 'MID') return 'NEUTRAL';
+  if (p.side === 'MID' || p.extended) return 'NEUTRAL';
   return (p.right === 'C' && p.side === 'ASK') || (p.right === 'P' && p.side === 'BID') ? 'BULLISH' : 'BEARISH';
 }
 
@@ -260,7 +264,6 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     putPremium,
     /* PUT PREMIUM AGAINST CALL PREMIUM, as its label says (it divided the COUNTS, so "4C $169.3K / 4P $464.5K" read P/C 1.00) */
     pcRatio: callPremium > 0 ? Number((putPremium / callPremium).toFixed(2)) : 0,
-    rvol: Number((0.55 + h01(`rvol-${prints.length}`) * 0.5).toFixed(2)),
     sweeps,
     blocks,
     multi,

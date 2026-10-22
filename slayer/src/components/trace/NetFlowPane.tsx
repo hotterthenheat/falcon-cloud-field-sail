@@ -58,7 +58,7 @@ import {
   type MoneynessKey,
   type NetFlowSegment,
 } from '../../data/flowBook';
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import CompanyLogo from '../ui/CompanyLogo';
 import { roomBelow } from '../ui/menuRoom';
@@ -119,6 +119,14 @@ const paneInks = (): PaneInks => ({
 /** The plot's ground: the page's inset on paper (read off the box, which wears the page's tokens there), the panel showing through on the dark terminal */
 const paneGround = (host: Element | null): string => (getResolvedTheme() === 'light' ? readToken('--inset', undefined, host) : 'transparent');
 const volInk = (v: number, m: InkMarks, k: PaneInks) => (v >= m.top ? k.volTop : v >= m.bar ? k.volLoud : k.volQuiet);
+/* ONE COLOUR RULE ON THE LINES (the retail pass, 2026-10-22: BAC ranked most bullish, its pane drew a RED line down to
+   −$20M under a green "NET PUTS −$20.3M"): net calls above zero were bought (bullish, green) and below it sold (bearish,
+   red); net puts above zero were bought (bearish, red) and below it sold (bullish, green). Each point wears its meaning. */
+function inkLine(pts: { time: UTCTimestamp; value: number }[], line: 'calls' | 'puts', full: boolean, k: PaneInks) {
+  const up = full ? k.calls : k.callsDim;
+  const down = full ? k.puts : k.putsDim;
+  return pts.map(p => ({ ...p, color: line === 'calls' ? (p.value >= 0 ? up : down) : p.value > 0 ? down : up }));
+}
 const TIP_VOL_BASE = 'ml-auto font-mono text-[11px] tnum';
 
 /** Today's bars for the pane's reference name — falls back to the last 240
@@ -302,6 +310,8 @@ const NetFlowPane = ({
       lands between stamps the exact-time lookup misses, so the card falls back
       to the last value at or before the hovered minute. */
   const volChunksRef = useRef<{ time: number; value: number }[]>([]);
+  /* the money lines' own points, kept so a hover's dim can re-ink them (each point wears its meaning's ink) */
+  const lineDataRef = useRef<{ calls: { time: UTCTimestamp; value: number }[]; puts: { time: UTCTimestamp; value: number }[] }>({ calls: [], puts: [] });
 
   /* The spot ribbon: the picked name's own tape, or SPY's under a cut of the book. */
   const ref = ticker ?? 'SPY';
@@ -414,6 +424,7 @@ const NetFlowPane = ({
     });
     const puts = chart.addSeries(LineSeries, {
       color: k0.puts,
+      lineStyle: LineStyle.Dashed,
       lineWidth: 2,
       lineType: LineType.Simple,
       priceLineVisible: false,
@@ -485,14 +496,13 @@ const NetFlowPane = ({
       if (next === picked) return;
       picked = next;
       const k = paneInks();
-      calls.applyOptions({
-        color: next === null || next === 'calls' ? k.calls : k.callsDim,
-        lineWidth: (next === 'calls' ? 3 : 2) as LineWidth,
-      });
-      puts.applyOptions({
-        color: next === null || next === 'puts' ? k.puts : k.putsDim,
-        lineWidth: (next === 'puts' ? 3 : 2) as LineWidth,
-      });
+      /* each point keeps its MEANING's ink — calls bought green, sold red; puts bought red, sold green — dimmed whole when
+         the other line is the one under the hand */
+      const d = lineDataRef.current;
+      calls.setData(inkLine(d.calls, 'calls', next === null || next === 'calls', k));
+      puts.setData(inkLine(d.puts, 'puts', next === null || next === 'puts', k));
+      calls.applyOptions({ lineWidth: (next === 'calls' ? 3 : 2) as LineWidth });
+      puts.applyOptions({ lineWidth: (next === 'puts' ? 3 : 2) as LineWidth });
       // White at rest, heavier white under the hand — never a different colour.
       spot.applyOptions({ color: k.spot, lineWidth: (next === 'spot' ? 3 : 1) as LineWidth });
       (
@@ -677,8 +687,9 @@ const NetFlowPane = ({
        right edge, and a line that no longer ended where its card said. Three
        setData calls of ~420 points are nothing; a lying line is not. */
     spot.setData(spotData);
-    calls.setData(callData);
-    puts.setData(putData);
+    lineDataRef.current = { calls: callData, puts: putData };
+    calls.setData(inkLine(callData, 'calls', true, inks));
+    puts.setData(inkLine(putData, 'puts', true, inks));
     if (loaded.id !== id) {
       chart.priceScale('right').applyOptions({ autoScale: true });
       chart.priceScale('left').applyOptions({ autoScale: true });
@@ -698,7 +709,11 @@ const NetFlowPane = ({
     });
     spotRef.current?.applyOptions({ color: k.spot });
     callRef.current?.applyOptions({ color: k.calls });
-    putRef.current?.applyOptions({ color: k.puts, lineStyle: vision === 'standard' ? LineStyle.Solid : LineStyle.Dashed });
+    /* the puts are always dashed: the two lines now share inks (each by its meaning), so the style tells them apart */
+    putRef.current?.applyOptions({ color: k.puts, lineStyle: LineStyle.Dashed });
+    const d = lineDataRef.current;
+    callRef.current?.setData(inkLine(d.calls, 'calls', true, k));
+    putRef.current?.setData(inkLine(d.puts, 'puts', true, k));
   }, [appTheme, vision]);
 
   /* data-menu-clip: this box clips its overflow, so the menus in its head

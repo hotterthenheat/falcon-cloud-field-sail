@@ -7,6 +7,7 @@ import { besideDot } from '../gex/besideDot';
 import { hhmm } from '../../data/ahead';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { expirySpan } from '../../data/bookWindow';
+import { bookToday, isoDate } from '../../core/calendar';
 import { uwCall } from '../../data/whales';
 import { useResolvedTheme } from '../../theme/theme';
 import { useVendor, type VendorBook, type VendorRow } from '../../data/vendorFeed';
@@ -169,9 +170,12 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         color: resolveInk(l.ink, host),
         lineWidth: 2,
         priceLineVisible: false,
-        lastValueVisible: i === 0,
+        /* ONE LINE: its last value on the axis. SEVERAL: their names and last values in a legend over the chart (the
+           second re-audit, 2026-10-22: the axis tags stacked — "Vega" sat over the 0.000 tick, and "Puts" had a name and
+           no value) */
+        lastValueVisible: drawn.length === 1,
         crosshairMarkerRadius: 3,
-        title: drawn.length > 1 ? l.name : '',
+        title: '',
         priceFormat: { type: 'custom', formatter, minMove: 0.01 },
       });
       one.setData(l.pts.map(p => ({ time: p.t as UTCTimestamp, value: p.v })));
@@ -210,7 +214,23 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
 
   if (lines.every(l => l.pts.length < 2)) return null;
   const plotW = hostRef.current?.clientWidth ?? 0;
+  const legend = lines.filter(l => l.pts.length >= 2);
+  const fmtLast = (v: number) => (format === 'pct' ? `${v.toFixed(1)}%` : format === 'num' ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2)) : compact(v));
   return (
+    <>
+    {legend.length > 1 && (
+      <div className="px-5 pb-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] tnum" data-house-legend>
+        {legend.map(l => (
+          <span key={l.name} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <span aria-hidden className="inline-block w-2.5 h-[2px] rounded-full self-center" style={{ background: l.ink }} />
+            <span className="text-textMuted">{l.name}</span>
+            {/* a series by expiry is a set of dates, not a clock: its total; a series in time: its last print */}
+            <span style={{ color: l.ink }}>{fmtLast(l.pts[0].label ? l.pts.reduce((a, p) => a + p.v, 0) : l.pts[l.pts.length - 1].v)}</span>
+            <span className="text-textMuted">{l.pts[0].label ? 'total' : 'last'}</span>
+          </span>
+        ))}
+      </div>
+    )}
     <div className="relative w-full" style={{ height }} data-house-chart>
       <div ref={hostRef} className="absolute inset-0" />
       {hover && (
@@ -231,6 +251,7 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -532,7 +553,9 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       </div>
       {flowWaiting ? <Quiet>Reading this window.</Quiet> : chartable(flow) ? (
         <>
-          {windowed && <Head title="Delta and vega" rest={span ?? 'This window'} />}
+          {/* THE CLOCK IT STARTS AT, SAID (the second re-audit, 2026-10-22: the axis began at 08:02 with no word that the
+              first ninety minutes are pre-market) */}
+          <Head title="Delta and vega" rest={`${span ?? 'All expiries'} · ${flowSpanWords(flow)}`} />
           <HouseChart lines={flow} />
         </>
       ) : windowed ? <Quiet>No flow for this window.</Quiet> : waiting ? <Quiet>Reading the session.</Quiet> : null}
@@ -563,6 +586,17 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       ) : null}
     </div>
   );
+}
+
+/** "pre-market 08:02 → 16:00" / "09:30 → 15:12" — the span a minute series covers, with the hours outside the session named */
+function flowSpanWords(lines: LineSpec[]): string {
+  const pts = lines.find(l => l.pts.length >= 2)?.pts ?? [];
+  if (pts.length < 2) return 'the session';
+  const a = nyMinutes(pts[0].t * 1000);
+  const b = nyMinutes(pts[pts.length - 1].t * 1000);
+  const from = a < 9 * 60 + 30 ? `pre-market ${hhmm(a)}` : hhmm(a);
+  const to = b >= 16 * 60 ? `${hhmm(b)} after hours` : hhmm(b);
+  return `${from} → ${to}`;
 }
 
 function stillListed(rows: Record<string, unknown>[], today: string): Record<string, unknown>[] {
@@ -635,11 +669,18 @@ function ContractBoard({ title, rest, rows, testId, volume }: { title: string; r
 export function BuildingArrived({ ticker }: { ticker: string }) {
   const book = useVendor('pinpoint', ticker, '/pinpoint/agenda');
   if (!ticker) return null;
-  const oi = series(taken(book, 'oi-change'))
+  /* NOT THE CONTRACTS THAT HAVE EXPIRED, AND NOT "TODAY" (the second re-audit, 2026-10-22: "the contracts that changed
+     today" listed SPY 776 Call · 10/22 after it settled, and the change is the overnight count, 10/21 → 10/22) */
+  const floor = isoDate(bookToday());
+  const rawOi = series(taken(book, 'oi-change'));
+  const dates = rawOi.reduce<{ from: string; to: string }>((d, r) => ({ from: String(r.last_date ?? '') > d.from ? String(r.last_date) : d.from, to: String(r.curr_date ?? '') > d.to ? String(r.curr_date) : d.to }), { from: '', to: '' });
+  const oi = rawOi
     .map(r => {
       const diff = num(r.oi_diff_plain) ?? num(r.oi_change);
       const symbol = String(r.option_symbol ?? '');
       if (diff == null || diff === 0 || !symbol) return null;
+      const m = symbol.toUpperCase().match(OCC);
+      if (m && `20${m[2]}-${m[3]}-${m[4]}` < floor) return null;
       return { symbol, change: signed(diff), volume: r.volume, oi: r.curr_oi, _abs: Math.abs(diff) };
     })
     .filter((r): r is NonNullable<typeof r> => !!r)
@@ -657,10 +698,21 @@ export function BuildingArrived({ ticker }: { ticker: string }) {
   if (oi.length === 0 && flex.length === 0) return null;
   return (
     <div data-reading="arrived">
-      {oi.length > 0 ? <ContractBoard title="Open interest" rest={`${ticker} · the contracts that changed today`} rows={oi} testId="oi" volume /> : null}
+      {oi.length > 0 ? <ContractBoard title="Open interest" rest={`${ticker} · the overnight count${dates.from && dates.to ? `, ${dates.from.slice(5).replace('-', '/')} → ${dates.to.slice(5).replace('-', '/')}` : ''} · contracts still live`} rows={oi} testId="oi" volume /> : null}
       {flex.length > 0 ? <ContractBoard title="FLEX" rest="Open interest that moved against the prior print" rows={flex} testId="flex" /> : null}
     </div>
   );
+}
+
+/** "Against each expiry's median · 8–35 samples since 09-03" — the span the vendor's medians really cover */
+function medianSpan(rows: Record<string, unknown>[]): string {
+  const n = rows.map(r => Number(r.samples)).filter(x => Number.isFinite(x) && x > 0);
+  const firsts = rows.map(r => String(r.first_date ?? '')).filter(d => /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
+  if (!n.length) return "Against each expiry's own median";
+  const lo = Math.min(...n);
+  const hi = Math.max(...n);
+  const since = firsts[0] ? ` since ${firsts[0].slice(5, 10)}` : '';
+  return `Against each expiry's median · ${lo === hi ? lo : `${lo}–${hi}`} daily samples${since}`;
 }
 
 /** Implied against what the name has done, and the term the print sits on. Nothing until a figure has arrived. */
@@ -702,7 +754,9 @@ export function EarningsVol({ ticker }: { ticker: string }) {
       ) : null}
       {chart ? (
         <>
-          <Head title="Term structure" rest="Against the one-year median" />
+          {/* NOT A ONE-YEAR MEDIAN (the re-audit, 2026-10-22): each expiry's median is over the samples the vendor has for
+              it — 9 since 10-12 on one, 35 since 09-03 on another. The label says the real span */}
+          <Head title="Term structure" rest={medianSpan(termRows)} />
           <HouseChart lines={term} format="pct" />
         </>
       ) : null}
