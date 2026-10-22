@@ -197,14 +197,14 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
     <section className={`relative flex flex-col min-w-0 ${full ? 'h-full min-h-0' : ''}`} data-compare-axis data-ruler={lay.U} data-reach={reach} data-greeks={greekKey} data-offset={target.toFixed(3)} data-scrollable={scrollable || undefined} data-full={full || undefined}>
       {/* THE HEAD */}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap shrink-0">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3 flex-wrap">
             {full && (
               <button type="button" onClick={() => onFull(false)} className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle hover:border-borderMuted font-mono text-[10px] text-textSecondary hover:text-textPrimary transition-colors" title="Back to the page (Esc)" data-axis-back>
                 <ArrowLeft className="w-3 h-3" /> Back
               </button>
             )}
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">The two books on one ruler</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">The two books on one ruler</h3>
             <GuideDoor open={guideOpen} onClick={onGuide} title="What the two sides and the ruler mean" testId="compare-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">

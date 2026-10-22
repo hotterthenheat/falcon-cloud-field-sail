@@ -66,7 +66,9 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
 /* wide enough for their heads */
-const WIDTHS: Record<string, number> = { ticker: 124, contract: 150, dte: 64, otm: 76, doi: 104, doipct: 96, builton: 104, prevavg: 100, prevprem: 92, streak: 84, spark: 96, earn: 92, lean: 96 };
+/** The previous session's columns — dropped when the book does not carry them */
+const PREV_DAY_KEYS = new Set(['builton', 'prevvol', 'prevprem', 'spark']);
+const WIDTHS: Record<string, number> = { ticker: 124, contract: 168, dte: 64, otm: 76, doi: 104, doipct: 86, builton: 104, prevavg: 88, prevprem: 92, streak: 72, spark: 96, earn: 92, lean: 96 };
 const PIN_LEFT = ['ticker', 'contract'];
 const PIN_RIGHT = ['doi'];
 const FOOT_CUTS = createViewStore('slayer_footprints_cuts_v1');
@@ -194,7 +196,7 @@ const Footprints = () => {
           {loudestBuild.ticker} {loudestBuild.strike}
           {loudestBuild.right}
         </ReadDoor>
-        <RichRead text={` [[+${num(loudestBuild.deltaOI)}]], built ${loudestBuild.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}.`} />
+        <RichRead text={` [[+${num(loudestBuild.deltaOI)}]]${loudestBuild.prevVolume > 0 ? `, built ${loudestBuild.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}.`} />
       </>
     );
   }, [book, loudestBuild]);
@@ -229,8 +231,12 @@ const Footprints = () => {
     [shown]
   );
 
+  /* the live screener sends no previous session's volume, premium, side or tape — those columns read 0, "BID 100%" and
+     a flat line on every row; they stand only when the book carries them */
+  const prevKnown = useMemo(() => shown.some(r => r.prevVolume > 0 || r.prevPremium > 0), [shown]);
   const columns = useMemo<Column<BookContract>[]>(
-    () => [
+    () => (
+      [
       {
         key: 'ticker',
         header: 'Ticker',
@@ -375,8 +381,9 @@ const Footprints = () => {
         // A report inside the position's runway is a risk event — warn ink.
         render: r => (r.earnDays == null ? <span className="text-textSecondary">—</span> : <span className={r.earnDays <= 5 ? 'text-warn' : 'text-textPrimary'}>{r.earnDays === 0 ? 'today' : `in ${r.earnDays}d`}</span>),
       },
-    ],
-    [marks]
+      ] as Column<BookContract>[]
+    ).filter(c => prevKnown || !PREV_DAY_KEYS.has(c.key)),
+    [marks, prevKnown]
   );
 
   /* THE TAPE'S HEAD, THIS PAGE'S RULES (Noah, 2026-08-30): the composition

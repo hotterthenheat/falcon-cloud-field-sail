@@ -76,7 +76,8 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'C', label: 'Calls', hint: 'Calls only' },
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 150, dte: 64, reason: 236, clip: 118, clipprem: 92, sideCol: 64, otm: 76, earn: 92 };
+/** the print reads "18,479 @ $1.12" — 118 cut it to "@ $..."; the reason wraps to two lines, so it gives the room */
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 150, clipprem: 92, sideCol: 64, otm: 76, earn: 92 };
 const FLEXES: Record<string, number> = { reason: 3 };
 const PIN_LEFT = ['time', 'ticker', 'contract'];
 const PIN_RIGHT = ['clipprem'];

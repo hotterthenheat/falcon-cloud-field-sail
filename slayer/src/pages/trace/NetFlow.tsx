@@ -138,7 +138,10 @@ const NetFlow = () => {
     const bottom = leaders.length ? leaders[leaders.length - 1] : null;
     const topIsChamp = !!top && !!bottom && Math.abs(top.net) >= Math.abs(bottom.net);
     const busiest = leaders.reduce<(typeof leaders)[number] | null>((a, l) => (a === null || l.volume > a.volume ? l : a), null);
-    return { total, volume, calls, puts, contracts, gross, bullish, bearish: leaders.length - bullish, top, bottom, topIsChamp, busiest };
+    /* the vendor's ranking sends a name and its net premium only — no volume, no count, no call/put split — so the
+       board never prints "P $0 · 0 vol · 1 cons" for figures it was never given */
+    const hasVol = leaders.some(l => l.volume > 0);
+    return { total, volume, calls, puts, contracts, gross, bullish, bearish: leaders.length - bullish, top, bottom, topIsChamp, busiest: hasVol ? busiest : null, hasVol };
   }, [leaders]);
 
   /* ReactNode: both named leaders are doors — clicking puts that name on the pane.
@@ -195,9 +198,11 @@ const NetFlow = () => {
           <Fact label="Names" testId="names">
             {leaders.length} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span>
           </Fact>
-          <Fact label="Contracts traded" testId="volume" title="Volume across the board, and how many contracts carried it">
-            {num(facts.volume)} <span className="text-textSecondary">· {num(facts.contracts)} contracts</span>
-          </Fact>
+          {facts.hasVol && (
+            <Fact label="Contracts traded" testId="volume" title="Volume across the board, and how many contracts carried it">
+              {num(facts.volume)} <span className="text-textSecondary">· {num(facts.contracts)} contracts</span>
+            </Fact>
+          )}
           {facts.busiest && (
             <Champion label="Busiest name" ink="plain" title="Put this name on the pane" onOpen={() => onQuery(facts.busiest!.ticker)} testId="busiest">
               {facts.busiest.ticker} · {num(facts.busiest.volume)} vol
@@ -250,6 +255,11 @@ const NetFlow = () => {
       <div className="flex max-md:flex-col md:flex-1 md:min-h-0 border-t border-borderSubtle">
         {/* THE BOARD — most bullish at the top, most bearish at the floor */}
         <div ref={boardRef} className="md:w-[304px] shrink-0 md:border-r max-md:border-b max-md:max-h-[306px] border-borderSubtle overflow-y-auto" data-net-board>
+          {leaders.length === 0 && (
+            <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-board-empty>
+              {top.fault ? 'This read did not land' : 'No name has leaned yet today'}
+            </p>
+          )}
           {leaders.map((l, i) => {
             const isSel = l.ticker === sel;
             return (
@@ -275,9 +285,13 @@ const NetFlow = () => {
                   <span className="relative h-0.5 flex-1 rounded-full bg-ink/[0.06] overflow-hidden">
                     <span className={`absolute left-0 top-0 h-full ${l.net >= 0 ? 'bg-bull/60' : 'bg-bear/60'}`} style={{ width: `${Math.round((Math.abs(l.net) / maxAbs) * 100)}%` }} />
                   </span>
-                  <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${l.count} contracts traded on ${l.ticker} today`}>
-                    C {fmtUsd(l.netCall)} · P {fmtUsd(l.netPut)} · {num(l.volume)} vol · {l.count} cons
-                  </span>
+                  {facts.hasVol ? (
+                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${l.count} contracts traded on ${l.ticker} today`}>
+                      C {fmtUsd(l.netCall)} · P {fmtUsd(l.netPut)} · {num(l.volume)} vol · {l.count} cons
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[11px] text-textMuted whitespace-nowrap">{l.net >= 0 ? 'net bullish' : 'net bearish'}</span>
+                  )}
                 </span>
               </button>
             );

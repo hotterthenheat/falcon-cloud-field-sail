@@ -241,7 +241,8 @@ async function pullInstitutions() {
       const filed = house.filing_date || house.date || '';
       let holdings: UwHolding[] = [];
       try {
-        const got = await whalesHoldings(name, 80);
+        /* by the filer's CIK when it has one: a few long names ("UBS AM, A DISTINCT BUSINESS UNIT OF …") 404 by name */
+        const got = await whalesHoldings(house.cik?.trim() || name, 80);
         holdings = Array.isArray(got) ? got : [];
       } catch {
         holdings = [];
@@ -257,6 +258,35 @@ async function pullInstitutions() {
     if (snap.institutions.length === 0) emit({ instStatus: 'error' });
   }
 }
+
+/** The vendor's sector words, said in the universe's ten */
+const UW_SECTOR: Record<string, Sector> = {
+  technology: 'Technology',
+  'communication services': 'Communication',
+  communication: 'Communication',
+  'consumer cyclical': 'Consumer Discretionary',
+  'consumer discretionary': 'Consumer Discretionary',
+  'financial services': 'Financials',
+  financial: 'Financials',
+  financials: 'Financials',
+  energy: 'Energy',
+  healthcare: 'Health Care',
+  'health care': 'Health Care',
+  industrials: 'Industrials',
+  'consumer defensive': 'Consumer Staples',
+  'consumer staples': 'Consumer Staples',
+  utilities: 'Utilities',
+  'basic materials': 'Materials',
+  materials: 'Materials',
+};
+const uwSector = (raw: string): Sector | null => UW_SECTOR[raw.trim().toLowerCase()] ?? null;
+/** "SOUNDHOUND AI" → "Soundhound AI": the file shouts; the page does not */
+const titleName = (raw: string): string =>
+  raw
+    .trim()
+    .split(/\s+/)
+    .map(w => (w.length <= 3 && /^[A-Z&.]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()))
+    .join(' ');
 
 function shortFrom(r: UwShort): ShortRow | null {
   const ticker = (r.symbol || '').toUpperCase();
@@ -318,6 +348,22 @@ async function pullShorts() {
     if (!Array.isArray(rows)) throw new Error('shape');
     const out = collapseShorts(rows.map(shortFrom).filter((r): r is ShortRow => !!r));
     emit({ shortStatus: 'live', shorts: out });
+    /* THE SHORT BOOK RUNS PAST THE UNIVERSE (the dossier sweep, 2026-10-22: every row's sector read "—"). The heavy
+       shorts are small caps the universe does not file, so each such name's sector and name are asked of its own file,
+       once a session, and the book is re-emitted as they land. */
+    let filled = 0;
+    for (let i = 0; i < Math.min(out.length, 30); i++) {
+      const r = out[i];
+      if (r.sector !== '—') continue;
+      const info = await whalesStock(r.ticker).catch(() => null);
+      if (!info) continue;
+      const sector = uwSector(typeof info.sector === 'string' ? info.sector : '');
+      const name = typeof info.full_name === 'string' && info.full_name.trim() ? titleName(info.full_name) : undefined;
+      if (!sector && !name) continue;
+      out[i] = { ...r, sector: sector ?? r.sector, name };
+      if (++filled % 8 === 0) emit({ shorts: out.slice() });
+    }
+    if (filled) emit({ shorts: out.slice() });
   } catch {
     if (snap.shorts.length === 0) emit({ shortStatus: 'error' });
   }
@@ -353,6 +399,8 @@ async function pullEtfs() {
         whalesEtfHoldings(e.etf).catch(() => [] as UwEtfHolding[]),
         whalesEtfFlow(e.etf).catch(() => [] as UwEtfFlow[]),
       ]);
+      /* a fund none of whose three reads landed is not a $0 fund — it stays off the book */
+      if (!infoR && !(Array.isArray(holdR) && holdR.length) && !(Array.isArray(flowR) && flowR.length)) continue;
       const info = infoR && !Array.isArray(infoR) ? infoR : null;
       const held = (Array.isArray(holdR) ? holdR : []).map(holdingOf).filter((h): h is EtfHolding => !!h).sort((a, b) => b.weight - a.weight);
       holdings[e.etf] = held;
@@ -381,6 +429,7 @@ async function pullEtfs() {
       });
       emit({ etfStatus: 'live', etfs: rows.slice(), holdings: { ...holdings } });
     }
+    if (rows.length === 0) throw new Error('no fund landed');
     emit({ etfStatus: 'live', etfs: rows, holdings });
   } catch {
     if (snap.etfs.length === 0) emit({ etfStatus: 'error' });

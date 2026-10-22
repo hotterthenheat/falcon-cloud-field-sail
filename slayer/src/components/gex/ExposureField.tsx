@@ -437,7 +437,13 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     const hi = Math.max(lo, Math.min(range.through, last));
     const today = listedDates.find(e => e.dte === 0)?.date;
     const dates = listedDates.slice(lo, hi + 1).map(e => e.date);
-    return afterBell && today ? dates.filter(d => d !== today) : dates;
+    if (!(afterBell && today)) return dates;
+    /* After the bell today's contracts are gone. Dropping them could leave the window EMPTY ("Today" alone), and an
+       empty window falls back to the whole book (the UI sweep, 2026-10-22) — Today rolls to the next listed date */
+    const kept = dates.filter(d => d !== today);
+    if (kept.length) return kept;
+    const next = listedDates.find(e => e.date > today)?.date;
+    return next ? [next] : kept;
   }, [listedDates, range.from, range.through, afterBell]);
   const chosenKey = chosenDates.join(',');
   useEffect(() => {
@@ -1193,7 +1199,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const supremeDoor = (
     <button
       onClick={() => onSelectStrike?.(supreme.strike)}
-      title={`The heaviest strike of the whole book by ${GREEK_LABEL[supremeGreek]} — the one the chart wears in magenta — most of it on ${supremeEx?.date ?? ''} · click to keep the strike`}
+      title={`The heaviest strike of the whole book by ${GREEK_LABEL[supremeGreek]} — every expiry, not only today's — the one the chart wears in magenta — most of it on ${supremeEx?.date ?? ''}. The Agenda, the Board and Compare crown today's contracts (the Levels card), so theirs can differ · click to keep the strike`}
       /* the cards' 28px (it stood 32 on a 28px row), sentence case like them, and a button's hover edge (the audit's M2, M3, L10) */
       /* A QUIET CHIP WITH A MAGENTA MARK (the owner, 2026-10-14: "the loudest thing on the screen is the magenta Supreme
          pill, which is a secondary fact"): the chip is the band's, the dot is the supreme's — the one place magenta stands
@@ -1202,7 +1208,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       data-ledger-supreme={doorCompact('supreme') ? 'compact' : 'full'}
     >
       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
-      <span className="text-[11px] text-textMuted">Supreme</span>
+      {/* "all dates": the whole book's supreme, said on the door — the Agenda and the Board crown today's (the UI sweep,
+          2026-10-22: 760 here beside their 775 read as a contradiction) */}
+      <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && <span className="text-textMuted/70"> · all dates</span>}</span>
       <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
         {fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}

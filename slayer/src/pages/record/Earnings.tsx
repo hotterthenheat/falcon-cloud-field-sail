@@ -47,7 +47,8 @@ import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Moon, Search, Sunrise, X } from 'lucide-react';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
+import { FeedFallback } from '../../components/ui/liveRead';
 import { PageBar } from '../../components/ui/PageBar';
 import DropdownSelect, { CARD, type DropdownOption } from '../../components/ui/DropdownSelect';
 import TickerLookup from '../../components/ui/TickerLookup';
@@ -57,7 +58,7 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { useEarningsPending, useEveryReport, useNextReport } from '../../data/earningsFeed';
+import { useEarningsPending, useEarningsFailed, useEveryReport, useNextReport } from '../../data/earningsFeed';
 import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
 
@@ -259,7 +260,7 @@ const Answer = ({ next, onOpen, onClear }: { next: NextReport; onOpen: (t: strin
 
 const NameCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
@@ -320,6 +321,7 @@ const Earnings = () => {
      you recognise, whatever its size */
   const live = useEveryReport();
   const pending = useEarningsPending();
+  const failed = useEarningsFailed();
   const events = useMemo(() => {
     const mine = new Set(boardNames.map(t => t.toUpperCase()));
     return live.map(e => (e.known || !mine.has(e.ticker) ? e : { ...e, known: true }));
@@ -392,19 +394,21 @@ const Earnings = () => {
         </GuideFocus>
         {/* THE HEAD */}
         <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-[min(18rem,100%)] flex-1">
             <div className="h-6 flex items-center gap-3">
-              <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Who reports</h3>
+              <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">Who reports</h3>
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the doors, the price and the words mean" testId="earnings-guide" />
             </div>
             <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The fortnight's reports · the board holds the day's reports · the figure on a priced name is the move its options charge · click a name for its page</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Reports" testId="reports">
-              {pending ? <span className="text-textMuted">—</span> : <>{events.length} <span className="text-textMuted">· two weeks ·</span> {knownEvents.length} <span className="text-textMuted">known names</span></>}
+              {pending || failed ? <span className="text-textMuted">—</span> : <>{events.length} <span className="text-textMuted">· two weeks ·</span> {knownEvents.length} <span className="text-textMuted">known names</span></>}
             </Fact>
             <Fact label="Priced" testId="priced">
-              {scored.length === 0 ? (
+              {failed ? (
+                <span className="text-textMuted">—</span>
+              ) : scored.length === 0 ? (
                 <span className="text-textMuted">reading the usual moves</span>
               ) : (
                 <>
@@ -433,7 +437,7 @@ const Earnings = () => {
                   {today.length > 3 && <span className="text-textMuted"> · +{today.length - 3} more</span>}
                 </>
               ) : (
-                <span className="text-textMuted">{todayMore > 0 ? 'no known name' : 'nothing reports'}</span>
+                <span className="text-textMuted">{failed ? '—' : todayMore > 0 ? 'no known name' : 'nothing reports'}</span>
               )}
               {todayMore > 0 && <span className="text-textMuted"> · {todayMore} more on the list</span>}
             </Fact>
@@ -447,12 +451,16 @@ const Earnings = () => {
           <NameAsk asked={asked} onAsk={ask} />
         </div>
         {next && <Answer next={next} onOpen={open} onClear={() => setAsked(null)} />}
-        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-earnings-sentence>
-          {pending ? 'Reading the fortnight.' : sentence}
-        </p>
+        {failed ? (
+          <FeedFallback />
+        ) : (
+          <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-earnings-sentence>
+            {pending ? 'Reading the fortnight.' : sentence}
+          </p>
+        )}
 
-        {/* THE WEEK — the board, or a list of days */}
-        {pending ? (
+        {/* THE WEEK — the board, or a list of days; a failed read shows no empty days */}
+        {failed ? null : pending ? (
           <div className="border-t border-borderSubtle" data-earnings-pending>
             <TableSkeleton rows={6} />
           </div>
@@ -612,6 +620,8 @@ const Earnings = () => {
               theme={GRID_THEME}
               domLayout="autoHeight"
               rowData={reportRows}
+              overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No report on this cut')}
+              key={failed ? 'failed' : 'live'}
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
               getRowId={p => `${p.data.ticker}-${p.data.weekIdx}-${p.data.weekday}`}

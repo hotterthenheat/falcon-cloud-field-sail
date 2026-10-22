@@ -69,7 +69,9 @@ export const LiveHold = ({ paused, onToggle, heldAt }: { paused: boolean; onTogg
         paused
           ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]'
           : /* the live signal's own form per theme: a silver glow on the dark terminal, a silver highlighter on paper (tokens.css --live-*) */
-            'tone-live hover:opacity-90 animate-live-breathe'
+            /* the breath is the mark's, not the button's: the whole button falling to 0.3 read as DISABLED on whichever
+               page a glance caught it at its low (the audit, 2026-10-22) */
+            'tone-live hover:opacity-90'
       }`}
     >
       {paused ? (
@@ -78,7 +80,7 @@ export const LiveHold = ({ paused, onToggle, heldAt }: { paused: boolean; onTogg
         </>
       ) : (
         <>
-          <Pause className="w-3 h-3" /> Live
+          <Pause className="w-3 h-3 animate-live-breathe" /> Live
         </>
       )}
     </button>

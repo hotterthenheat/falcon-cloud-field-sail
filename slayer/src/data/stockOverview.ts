@@ -550,7 +550,16 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     dpSharePct: todayVol > 0 && darkShares > 0 ? Math.min(100, (100 * darkShares) / todayVol) : 0,
     netPosturePct,
     posture,
-    postureNote: file.dark.length ? 'The recent off-exchange prints. A print under the price counts as buying, one over it as selling.' : '',
+    /* the note is the READ, not the rule: it is quoted inside the Why-now lines, where the bare definition ("A print
+       under the price counts as buying…") landed mid-sentence and read as the finding (the dossier sweep, 2026-10-22).
+       The house rule stands — a block printed under the market is a buyer working patiently, over it a seller. */
+    postureNote: !file.dark.length
+      ? ''
+      : posture === 'ACCUMULATING'
+        ? 'more of the off-exchange money printed under the price than over it, which reads as buying'
+        : posture === 'DISTRIBUTING'
+          ? 'more of the off-exchange money printed over the price than under it, which reads as selling'
+          : 'the off-exchange money printed on both sides of the price',
     totalNotional: darkNotional,
     levels: [],
     prints: file.dark,

@@ -309,10 +309,20 @@ const SessionsChart = ({ points, kind = 'area', ink, inkBelow, baseline = 0, bar
             : chart.addSeries(AreaSeries, { lineColor: color, topColor: alpha(color, 0.26), bottomColor: alpha(color, 0.02), lineWidth: 2, lineType: curved ? LineType.Curved : LineType.Simple, priceFormat, priceLineVisible: false, lastValueVisible: true, crosshairMarkerRadius: 3 });
     /* the level the baseline turns on, as a hairline */
     if (kind === 'baseline') series.createPriceLine({ price: baseline, color: alpha(resolveInk('rgb(var(--text-primary))', host), 0.28), lineStyle: LineStyle.Solid, lineWidth: 1, axisLabelVisible: false });
+    /* THE AXIS TAGS KEEP APART (the dossier sweep, 2026-10-22: the resistance, the last price and the support tagged
+       343.99 · 343.80 · 342.50 one on top of the other). A level's tag is dropped when it would sit inside a tag's
+       height of the last price or of a tag already placed — the line and its name stay on the plot. */
+    const vals = pointsRef.current.map(p => p.value).concat(lines.map(l => l.price)).filter(v => Number.isFinite(v));
+    const span = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
+    const gap = span * 0.1;
+    const lastPt = pointsRef.current.length ? [...pointsRef.current].sort((a, b) => a.time - b.time)[pointsRef.current.length - 1].value : null;
+    const tagged: number[] = kind === 'line' || kind === 'area' ? (lastPt != null ? [lastPt] : []) : [];
     for (const l of lines) {
       const c = resolveInk(l.color, host);
+      const room = gap <= 0 || tagged.every(t => Math.abs(t - l.price) >= gap);
+      if (room) tagged.push(l.price);
       /* a name inside the plot leaves the axis tag to the figure alone */
-      series.createPriceLine({ price: l.price, color: c, title: l.name === 'plot' ? '' : l.title, lineStyle: STYLE[l.style ?? 'dashed'], lineWidth: 1, lineVisible: l.line !== false, axisLabelVisible: true, axisLabelColor: c, axisLabelTextColor: paper ? '#ffffff' : '#0a0a0a' });
+      series.createPriceLine({ price: l.price, color: c, title: l.name === 'plot' ? '' : l.title, lineStyle: STYLE[l.style ?? 'dashed'], lineWidth: 1, lineVisible: l.line !== false, axisLabelVisible: room, axisLabelColor: c, axisLabelTextColor: paper ? '#ffffff' : '#0a0a0a' });
     }
     const notes = new PlotNotesPrimitive();
     series.attachPrimitive(notes);

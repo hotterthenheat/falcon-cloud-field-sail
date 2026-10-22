@@ -157,10 +157,12 @@ export function buildTraceCompare(a: TraceSide, b: TraceSide): TraceCompare {
     { name: b.ticker },
     `${lean(b)}. `,
     { name: heavier.ticker },
-    ` carries the heavier book — ${fmtUsd(heavier.book.premium)} across ${num(heavier.book.count)} contracts on ${num(heavier.book.volume)} volume — and `,
-    ...(busier === heavier
-      ? [`the busier tape, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
-      : [{ name: busier.ticker }, ` the busier tape, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
+    ` carries the heavier book — ${fmtUsd(heavier.book.premium)} across ${num(heavier.book.count)} contracts on ${num(heavier.book.volume)} volume${busier.tape.prints === 0 ? '. ' : ' — and '}`,
+    ...(busier.tape.prints === 0
+      ? []
+      : busier === heavier
+        ? [`the busier tape, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
+        : [{ name: busier.ticker }, ` the busier tape, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
     `Same-day money: `,
     { name: a.ticker },
     ` ${signedUsd(a.odte.net)}, `,

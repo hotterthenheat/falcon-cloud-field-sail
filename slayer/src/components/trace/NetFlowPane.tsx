@@ -352,13 +352,14 @@ const NetFlowPane = ({
          columns — every line redrawn narrower in front of the reader. The
          axes now own their width from the first frame ("540.00" left,
          "$47.5M" right), so the plot lays out once. */
-      rightPriceScale: { borderVisible: false, minimumWidth: 60 },
-      leftPriceScale: { visible: true, borderVisible: false, minimumWidth: 52 },
+      /* entireTextOnly: a label the pane's edge would cut ("$6.0M" half off the head) is not drawn at all */
+      rightPriceScale: { borderVisible: false, minimumWidth: 60, entireTextOnly: true },
+      leftPriceScale: { visible: true, borderVisible: false, minimumWidth: 52, entireTextOnly: true },
       timeScale: {
         borderVisible: false,
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 3,
+        rightOffset: 14,
         tickMarkFormatter: nyTickMarks,
       },
       crosshair: {
@@ -426,7 +427,7 @@ const NetFlowPane = ({
     /* Room to breathe above and below — the reference's lines never touch an
        edge — and the money owns the full height. */
     /* 0.12 at the top: at 0.08 the right axis's highest label was clipped at the pane's head */
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.12, bottom: 0.2 } });
+    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.16, bottom: 0.2 } });
     /* THE PRICE GETS A BAND, NOT THE PANE. Left to autoscale across the whole
        height, a 3% intraday move becomes a full-height mountain range: the
        price line then carries more ink than both money lines together, purely
@@ -618,7 +619,12 @@ const NetFlowPane = ({
        true counts) and the glide card says the true number. The height is a
        drawing, the colour and the figure are the facts. */
     const inks = paneInks();
-    vol.setData(drawn.map(p => ({ time: p.time as UTCTimestamp, value: Math.sqrt(Math.abs(p.vol)), color: volInk(Math.abs(p.vol), marks, inks) })));
+    /* Twenty empty minutes ahead of the first bar: the axis's first label (09:30) was clipped to "30" against the
+       left price scale — the lead room seats it whole, the right offset does the same for 16:00 */
+    const lead: { time: UTCTimestamp }[] = drawn.length
+      ? Array.from({ length: 20 }, (_, i) => ({ time: (drawn[0].time - (20 - i) * 60) as UTCTimestamp }))
+      : [];
+    vol.setData([...lead, ...drawn.map(p => ({ time: p.time as UTCTimestamp, value: Math.sqrt(Math.abs(p.vol)), color: volInk(Math.abs(p.vol), marks, inks) }))]);
     /* Every bar carries its own value, so the glide card's old containing-
        chunk search has nothing left to search for — it keeps the same shape
        purely as the lookup's fallback path. */
@@ -694,7 +700,10 @@ const NetFlowPane = ({
         {cutCards && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
         {/* the figures wrap on a phone rather than run off the pane (the device sweep, 2026-10-18: the volume cut at 360) */}
         <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-[11px] tnum [&>span]:whitespace-nowrap">
-          <span style={{ color: inksNow.spot }}>{ref}</span>
+          {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
+          <span style={{ color: inksNow.spot }} title={ticker ? undefined : `The white line is ${ref}'s price — the cut's money is every name in it`}>
+            {ticker ? ref : `${ref} price`}
+          </span>
           <span>
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
             <span className={view.ncp >= 0 ? 'text-bull' : 'text-bear'}>{fmtUsd(view.ncp)}</span>
@@ -759,7 +768,8 @@ const NetFlowPane = ({
             </span>
           </span>
         </div>
-        <ResetViewControl onReset={resetView} />
+        {/* up top, clear of the volume floor it used to sit on */}
+        <ResetViewControl onReset={resetView} pillClass="right-16 top-2" />
       </div>
     </div>
   );

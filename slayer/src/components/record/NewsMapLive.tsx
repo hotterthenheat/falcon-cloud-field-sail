@@ -24,11 +24,33 @@ const LAND: Record<'dark' | 'light', string> = { dark: '#2a333c', light: '#f3f0e
 const EDGE: Record<'dark' | 'light', string> = { dark: 'rgba(255,255,255,0.22)', light: 'rgba(20,28,36,0.25)' };
 const INK: Record<NewsGrade, string> = { THREAT: 'rgb(var(--bear))', ALLY: 'rgb(var(--bull))', WATCH: '#8a8f99' };
 
+/* THE DATELINE. The atlas cuts Russia, Fiji and the Aleutians at ±180°, and a ring that steps from 179.9° to -179.9°
+   is drawn by the map as a straight line all the way across the world — the stray horizontal rules over the Arctic
+   and the South Pacific (the dossier sweep, 2026-10-22). A ring is walked and any step longer than half the world is
+   carried on past 180°, so the polygon stays whole on one side. */
+const unwrapRing = (ring: GeoJSON.Position[]): GeoJSON.Position[] => {
+  let shift = 0;
+  return ring.map((pt, i) => {
+    if (i > 0) {
+      const d = pt[0] - ring[i - 1][0];
+      if (d > 180) shift -= 360;
+      else if (d < -180) shift += 360;
+    }
+    return [pt[0] + shift, pt[1]];
+  });
+};
+const unwrapFeature = (f: GeoJSON.Feature): GeoJSON.Feature => {
+  const g = f.geometry;
+  if (g.type === 'Polygon') return { ...f, geometry: { ...g, coordinates: g.coordinates.map(unwrapRing) } };
+  if (g.type === 'MultiPolygon') return { ...f, geometry: { ...g, coordinates: g.coordinates.map(poly => poly.map(unwrapRing)) } };
+  return f;
+};
+
 let land: GeoJSON.FeatureCollection | null = null;
 const landCollection = (): GeoJSON.FeatureCollection => {
   if (!land) {
     const fc = feature(worldAtlas as unknown as Parameters<typeof feature>[0], (worldAtlas as { objects: { countries: Parameters<typeof feature>[1] } }).objects.countries) as unknown as GeoJSON.FeatureCollection;
-    land = { type: 'FeatureCollection', features: fc.features.filter(f => String(f.id) !== '010' && f.geometry) };
+    land = { type: 'FeatureCollection', features: fc.features.filter(f => String(f.id) !== '010' && f.geometry).map(unwrapFeature) };
   }
   return land;
 };
@@ -497,33 +519,66 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       }
     }
     const labeled = new Set<string>();
+    /* THE LABELS KEEP TO THE FRAME AND OFF EACH OTHER (the dossier sweep, 2026-10-22: "Tokyo" ran off the right edge
+       and "Frankfurt 4" sat on "Paris"). A label that would cross the right edge reads leftward from its dot; a quiet
+       city whose label would touch a city carrying news gives way to it. */
+    const frameW = map.getContainer().clientWidth;
+    const boxOf = (c: GazCity, text: string) => {
+      const pt = map.project([c.lng, c.lat]);
+      const w = text.length * 6.4 + 12;
+      const flip = pt.x + w > frameW - 4;
+      return { flip, x0: flip ? pt.x - w : pt.x, x1: flip ? pt.x : pt.x + w, y0: pt.y - 8, y1: pt.y + 8 };
+    };
+    type Box = { x0: number; x1: number; y0: number; y1: number };
+    const hits = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+    /* the news cities place their names busiest first; one that would land on a busier one keeps its dot and
+       gives up its name (zoomed out on a phone, Washington, Philadelphia and Memphis were one smear) */
+    const newsBoxes: Box[] = [];
+    const mute = new Set<string>();
+    /* the open story's own pin is placed first — nothing may sit on the story being read */
+    const openPin = pins.find(p => p.city === selectedCity && !buckets.has(p.city));
+    if (openPin) {
+      const at = map.project([openPin.lng, openPin.lat]);
+      const w = `${openPin.city}  ${openPin.n}`.length * 6.4 + 12;
+      newsBoxes.push(at.x + w > frameW - 4 ? { x0: at.x - w, x1: at.x + 6, y0: at.y - 8, y1: at.y + 8 } : { x0: at.x - 6, x1: at.x + w, y0: at.y - 8, y1: at.y + 8 });
+    }
+    for (const c of shown.filter(x => buckets.has(x.n)).sort((a, b) => buckets.get(b.n)!.n - buckets.get(a.n)!.n)) {
+      const b = boxOf(c, `${c.n}  ${buckets.get(c.n)!.n}`);
+      if (newsBoxes.some(x => hits(x, b))) mute.add(c.n);
+      else newsBoxes.push(b);
+    }
     for (const c of shown) {
       const news = buckets.get(c.n);
+      const box = boxOf(c, news ? `${c.n}  ${news.n}` : c.n);
+      if (!news && newsBoxes.some(b => hits(b, box))) continue;
       if (news) labeled.add(c.n);
       const el = document.createElement(news ? 'button' : 'div');
       el.dataset.newsCityMark = c.n;
       if (news) {
         (el as HTMLButtonElement).type = 'button';
-        el.style.cssText = 'display:flex;align-items:center;gap:4px;background:none;border:0;padding:0;cursor:pointer;';
+        el.style.cssText = `display:flex;align-items:center;gap:4px;background:none;border:0;padding:0;cursor:pointer;${box.flip ? 'flex-direction:row-reverse;' : ''}`;
         el.addEventListener('click', ev => {
           ev.stopPropagation();
           onPickRef.current(news.top);
         });
       } else {
-        el.style.cssText = 'display:flex;align-items:center;gap:4px;pointer-events:none;';
+        el.style.cssText = `display:flex;align-items:center;gap:4px;pointer-events:none;${box.flip ? 'flex-direction:row-reverse;' : ''}`;
       }
       const dot = document.createElement('span');
       dot.style.cssText = news
         ? `width:7px;height:7px;border-radius:999px;background:${INK[news.grade]};box-shadow:0 0 0 1px rgba(0,0,0,0.55);display:block;flex:none;`
         : `width:3px;height:3px;border-radius:999px;background:${softInk};display:block;flex:none;`;
       const name = document.createElement('span');
-      name.textContent = news ? `${c.n}  ${news.n}` : c.n;
+      name.textContent = news ? (mute.has(c.n) ? '' : `${c.n}  ${news.n}`) : c.n;
+      if (news && mute.has(c.n)) el.title = `${c.n} · ${news.n} ${news.n === 1 ? 'story' : 'stories'}`;
       name.dataset.newsCity = c.n;
       name.style.cssText = `font:${news ? 600 : 500} ${news ? 11 : 10}px/1.15 ui-sans-serif,system-ui,sans-serif;color:${news ? nameInk : softInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.8)' : '#0b1016'};`;
       el.append(dot, name);
-      markers.push(new maplibregl.Marker({ element: el, anchor: 'left' }).setLngLat([c.lng, c.lat]).addTo(map));
+      markers.push(new maplibregl.Marker({ element: el, anchor: box.flip ? 'right' : 'left' }).setLngLat([c.lng, c.lat]).addTo(map));
     }
-    for (const p of pins) {
+    /* the loose pins place busiest first too; a pin whose name would land on a placed name keeps its dot alone */
+    const pinPlaced: Box[] = [...newsBoxes];
+    for (const p of [...pins].sort((a, b) => b.n - a.n)) {
       const open = p.city === selectedCity;
       if (labeled.has(p.city)) continue;
       if (claimed.has(p.city) && !open) continue;
@@ -537,10 +592,17 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       const size = open || hot ? 12 : 8;
       dot.style.cssText = `width:${size}px;height:${size}px;border-radius:999px;background:${INK[p.grade]};box-shadow:0 0 0 ${open ? 2 : 1}px ${open ? 'rgb(var(--silver))' : 'rgba(0,0,0,0.65)'};display:block;flex:none;`;
       const name = document.createElement('span');
-      name.textContent = `${p.city}  ${p.n}`;
+      const at = map.project([p.lng, p.lat]);
+      const w = `${p.city}  ${p.n}`.length * 6.4 + 12;
+      const pinFlip = at.x + w > frameW - 4;
+      const pinBox: Box = { x0: pinFlip ? at.x - w : at.x - 6, x1: pinFlip ? at.x + 6 : at.x + w, y0: at.y - 8, y1: at.y + 8 };
+      const quietName = !open && !hot && pinPlaced.some(x => hits(x, pinBox));
+      if (!quietName) pinPlaced.push(pinBox);
+      name.textContent = quietName ? '' : `${p.city}  ${p.n}`;
+      if (quietName) wrap.title = `${p.city} · ${p.n} ${p.n === 1 ? 'story' : 'stories'}`;
       name.dataset.newsCity = p.city;
       name.style.cssText = `font:600 11px/1.15 ui-sans-serif,system-ui,sans-serif;color:${nameInk};white-space:nowrap;text-shadow:0 1px 2px ${quiet ? 'rgba(255,255,255,0.8)' : '#0b1016'};`;
-      wrap.style.cssText = 'display:flex;align-items:center;gap:4px;background:none;border:0;padding:0;cursor:pointer;';
+      wrap.style.cssText = `display:flex;align-items:center;gap:4px;background:none;border:0;padding:0;cursor:pointer;${pinFlip ? 'flex-direction:row-reverse;' : ''}`;
       wrap.append(dot, name);
       wrap.addEventListener('click', ev => {
         ev.stopPropagation();
@@ -548,7 +610,8 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       });
       wrap.addEventListener('mouseenter', () => onHoverRef.current(p));
       wrap.addEventListener('mouseleave', () => onHoverRef.current(null));
-      markers.push(new maplibregl.Marker({ element: wrap, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map));
+      /* the dot sits on the city, the name reads away from it */
+      markers.push(new maplibregl.Marker({ element: wrap, anchor: pinFlip ? 'right' : 'left', offset: [pinFlip ? size / 2 : -size / 2, 0] }).setLngLat([p.lng, p.lat]).addTo(map));
     }
     return () => markers.forEach(m => m.remove());
   }, [ready, pins, selectedCity, hoverCity, zoom, theme, viewId]);

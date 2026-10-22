@@ -63,6 +63,7 @@ import ScopeChip from '../../components/ui/ScopeChip';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { Deferred } from '../../components/ui/Skeleton';
 import { CalendarInner, DayInner, MapPageSkeleton, ReportInner } from './pinpointSkeletons';
+import { BookOrSkeleton } from './BookDown';
 import ExposureField from '../../components/gex/ExposureField';
 import TraderClock from '../../components/gex/TraderClock';
 import WallReportCard from '../../components/gex/WallReportCard';
@@ -232,7 +233,12 @@ const MapDesk = () => {
   useEffect(() => {
     if (!marketData) return;
     const now = Date.now();
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker;
+    /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
+       so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
+       the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
+       at once */
+    const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;
@@ -516,7 +522,7 @@ const MapDesk = () => {
      (Noah, 2026-09-08: a stock skeleton "doesn't take the shape of its
      container") — the same shapes the route's fallback and the deferred
      mounts use, so nothing on the page moves when the book lands. */
-  if (!scan || !data) return <MapPageSkeleton />;
+  if (!scan || !data) return <BookOrSkeleton tickers={[ticker]}><MapPageSkeleton /></BookOrSkeleton>;
 
   const keepTyped = (raw: string) => {
     const want = Number.parseFloat(raw.replace(/[^0-9.]/g, ''));

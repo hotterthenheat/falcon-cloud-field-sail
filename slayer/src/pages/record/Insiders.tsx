@@ -33,7 +33,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
@@ -43,7 +43,8 @@ import { When } from '../../components/record/when';
 import { fmtDollars } from '../../data/ahead';
 import { useBoardNames } from '../../data/boardNames';
 import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, personSlug } from '../../data/insiders';
-import { useInsiderBook, useInsiderBuyers, useInsiderTrades } from '../../data/liveRecord';
+import { useInsiderBook, useInsiderBuyers, useInsidersStatus, useInsiderTrades } from '../../data/liveRecord';
+import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
 import type { InsiderFlow, InsiderRole, InsiderTrade } from '../../types/record';
 import { NAMES_TO_KNOW } from './recordSkeletons';
@@ -95,7 +96,7 @@ const WhenCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <When 
 
 const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
@@ -207,6 +208,11 @@ const Insiders = () => {
 
   /* The feed is the live record when it answers; the cards cut it, the Filter keeps from the cut */
   const feed = useInsiderTrades(window, show === 'market' ? OPEN_MARKET_CODES : ALL_CODES);
+  /* A failed read is not a quiet quarter: the page says the read did not land, the figures go to dashes */
+  const status = useInsidersStatus();
+  const failed = status === 'sim';
+  const waiting = status === 'loading';
+  const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No filing on this cut';
   const cut = useMemo(() => {
     const board = new Set(boardNames);
     return feed.filter(t => (role === 'any' || t.role === role) && (names === 'all' || board.has(t.ticker)));
@@ -297,9 +303,9 @@ const Insiders = () => {
       </GuideFocus>
       {/* THE HEAD */}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">What insiders did</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What insiders did</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a chosen trade and a plan mean" testId="insiders-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -310,19 +316,19 @@ const Insiders = () => {
           <div>
             <dt className="text-[10px] text-textMuted">Filings</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-count>
-              {facts.filings}
+              {failed || waiting ? '—' : facts.filings}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Chosen buying</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
-              {facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
+              {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Sold in the market</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
-              {facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
+              {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
             </dd>
           </div>
           <div>
@@ -341,9 +347,13 @@ const Insiders = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="insiders-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, people and roles on the page right now — tick any number; only those stay" testId="insiders-filter" />
       </div>
-      <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insiders-sentence>
-        {insidersSentence(rows, window)}
-      </p>
+      {failed ? (
+        <FeedFallback />
+      ) : (
+        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insiders-sentence>
+          {waiting ? 'Reading the filings.' : insidersSentence(rows, window)}
+        </p>
+      )}
       {/* THE NAMES TO KNOW */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-insiders-to-know>
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
@@ -352,7 +362,7 @@ const Insiders = () => {
           <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">where someone chose to buy with their own money in the last {window} days, heaviest first · click a name to keep the grid to it</span>
         </div>
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No insider chose to buy in this window</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No insider chose to buy in this window'}</div>
         ) : (
           <div
             /* every name across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
@@ -371,6 +381,9 @@ const Insiders = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows(gridEmpty)}
+            /* the overlay is read once, so a new state is a new grid */
+            key={gridEmpty}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.id}
@@ -498,6 +511,7 @@ export const InsiderFile = () => {
               theme={GRID_THEME}
               domLayout="autoHeight"
               rowData={rows}
+              overlayNoRowsTemplate={noRows('No filing on this book')}
               columnDefs={cols}
               defaultColDef={{ sortable: true, resizable: true, suppressMovable: true }}
               getRowId={p => p.data.id}

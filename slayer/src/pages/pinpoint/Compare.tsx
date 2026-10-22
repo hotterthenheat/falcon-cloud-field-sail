@@ -46,6 +46,7 @@ import CompareTapes from '../../components/gex/CompareTapes';
 import ComparePair from '../../components/gex/ComparePair';
 import CompareGuide from '../../components/gex/CompareGuide';
 import { CompareAxisInner, ComparePageSkeleton, ComparePairInner, CompareTapesInner } from '../../components/gex/compareSkeletons';
+import { BookOrSkeleton } from './BookDown';
 import { aheadClock } from '../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, type Greek, type Reach } from '../../data/compare';
 import { useDistanceUnit } from '../../data/distanceUnits';
@@ -120,7 +121,12 @@ const Compare = () => {
   useEffect(() => {
     if (!marketData) return;
     const now = Date.now();
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker;
+    /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
+       so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
+       the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
+       at once */
+    const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;
@@ -227,7 +233,7 @@ const Compare = () => {
     setB(a);
   };
 
-  if (!scan || !cmp) return <ComparePageSkeleton />;
+  if (!scan || !cmp) return <BookOrSkeleton tickers={[aTicker, bTicker]}><ComparePageSkeleton /></BookOrSkeleton>;
 
   const aBook = peekEntry(aTicker);
   const bBook = peekEntry(bTicker);
