@@ -107,9 +107,11 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
         </GuideFocus>
       )}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        {/* the title keeps a floor: with five facts beside it the column was squeezed until "Which way the money leans"
+            broke over three lines into its own sub — now the facts wrap under it instead */}
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{title}</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{title}</h3>
             {guide && <GuideDoor open={guide.open} onClick={() => guide.onOpen(!guide.open)} title={guide.door} testId={guide.testId} />}
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{sub}</p>
