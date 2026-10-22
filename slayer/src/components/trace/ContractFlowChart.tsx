@@ -80,7 +80,7 @@ const RIGHT_PAD = 6;
 
 /** The moment-marker — the print the drilldown was opened from. White, not
     lime (Noah, 2026-08-18): white = "where", the same voice as the spot rule. */
-const printLine = (min: number, yAxisId: string, withLabel: boolean) => (
+const printLine = (min: number, yAxisId: string, withLabel: boolean, windowMin = Infinity) => (
   <ReferenceLine
     x={min}
     yAxisId={yAxisId}
@@ -89,7 +89,9 @@ const printLine = (min: number, yAxisId: string, withLabel: boolean) => (
     strokeDasharray="4 3"
     label={
       withLabel
-        ? { value: 'This print', position: 'insideTopLeft', fill: PRICE_LINE, fontSize: 11, fontFamily: "'Inter', sans-serif", offset: 8 }
+        ? /* the label reads INTO the plot: right of a line in the window's first half, left of it after — at the right edge
+             it ran under the price axis as "This prin" (the ship pass, 2026-10-22) */
+          { value: 'This print', position: min > windowMin * 0.5 ? 'insideTopRight' : 'insideTopLeft', fill: PRICE_LINE, fontSize: 11, fontFamily: "'Inter', sans-serif", offset: 8 }
         : undefined
     }
   />
@@ -441,7 +443,7 @@ export const FlowPanel = ({ cf, showAvg, onShowAvg, showIv, onShowIv, dayOffset,
               tickLine={false}
               width={Y_LEFT_W}
               domain={premDomain}
-              tickFormatter={(v: number) => fmtUsd(Math.abs(v))}
+              tickFormatter={(v: number) => `${v < 0 ? '−' : ''}${fmtUsd(Math.abs(v))}`}
             />
             {showAvg && (
               <YAxis
@@ -494,7 +496,7 @@ export const FlowPanel = ({ cf, showAvg, onShowAvg, showIv, onShowIv, dayOffset,
                 isAnimationActive={false}
               />
             )}
-            {printMin !== null && printLine(printMin, 'prem', true)}
+            {printMin !== null && printLine(printMin, 'prem', true, cf.windowMin)}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -757,7 +759,7 @@ export const NetPanel = ({
             <ComposedChart data={cf.strikes} margin={{ top: 6, right: RIGHT_PAD + Y_RIGHT_W, bottom: 0, left: 0 }}>
               <CartesianGrid stroke={GRID} vertical={false} />
               <XAxis dataKey="strike" tick={axisTick} stroke={AXIS} tickLine={false} />
-              <YAxis tick={axisTick} stroke={AXIS} tickLine={false} width={Y_LEFT_W} tickFormatter={(v: number) => Math.abs(v).toLocaleString()} />
+              <YAxis tick={axisTick} stroke={AXIS} tickLine={false} width={Y_LEFT_W} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}${Math.abs(v).toLocaleString()}`} />
               <Tooltip content={<StrikeTooltip />} isAnimationActive={false} cursor={{ fill: HOVER_WASH }} />
               <ReferenceLine y={0} stroke={ZERO_LINE} />
               <Bar dataKey="callVol" stackId="k" fill={ASK} fillOpacity={0.75} isAnimationActive={false} />
@@ -787,7 +789,7 @@ export const NetPanel = ({
                 stroke={AXIS}
                 tickLine={false}
                 width={Y_LEFT_W}
-                tickFormatter={(v: number) => (isUsd ? fmtUsd(Math.abs(v)) : Math.abs(v) >= 1000 ? `${Math.round(Math.abs(v) / 1000)}k` : String(Math.abs(v)))}
+                tickFormatter={(v: number) => `${v < 0 ? '−' : ''}${isUsd ? fmtUsd(Math.abs(v)) : Math.abs(v) >= 1000 ? `${Math.round(Math.abs(v) / 1000)}k` : String(Math.abs(v))}`}
               />
               {showPrice && <YAxis yAxisId="px" orientation="right" tick={axisTick} stroke={AXIS} tickLine={false} width={Y_RIGHT_W} domain={['auto', 'auto']} />}
               <Tooltip content={<BarTooltip isUsd={isUsd} />} isAnimationActive={false} cursor={{ fill: HOVER_WASH }} />

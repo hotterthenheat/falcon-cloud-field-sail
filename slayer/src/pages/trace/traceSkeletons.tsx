@@ -460,7 +460,21 @@ export const TracePageSkeleton = ({ pathname }: { pathname: string }) => {
         <TrackerBody />
       </TraceBoxSkeleton>
     );
-  if (pathname.startsWith('/trace/futures')) return <TraceBoxSkeleton title={88} facts={[180, 48, 70]} triggers={[]} right={[]} cols={5} rows={14} />;
+  /* Futures is a "not on this feed" page — its head and a short list of what a futures feed would add, no grid */
+  if (pathname.startsWith('/trace/futures'))
+    return (
+      <TraceBoxSkeleton title={120} facts={[180, 110]} triggers={[]} right={[]} hold={false} door={false}>
+        <div className="border-t border-borderSubtle">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="px-5 py-3 border-t border-borderSubtle/40 first:border-t-0 flex items-center gap-4">
+              <Line w={120} h={11} />
+              <Line w="46%" h={11} />
+              <Line w={90} h={9} className="ml-auto" />
+            </div>
+          ))}
+        </div>
+      </TraceBoxSkeleton>
+    );
   return (
     <TraceBoxSkeleton title={70} facts={[150, 180, 130, 90, 140, 140, 150]} triggers={[70, 170, 100, 150, 100, 110]} right={[60, 130]}>
       <LiveTapeBody />

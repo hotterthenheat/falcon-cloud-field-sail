@@ -55,6 +55,7 @@ import WatchStar from '../../components/trace/WatchStar';
 import { contractKey, watchContract } from '../../context/WatchContext';
 import LeanCell from '../../components/trace/LeanCell';
 import { pctSigned } from '../../core/format';
+import { useIsPhone } from '../../components/ui/useMediaQuery';
 
 const num = (v: number) => v.toLocaleString('en-US');
 
@@ -132,11 +133,17 @@ const Windows = () => {
   const setQuery = (v: string) => addr.set({ q: v });
   /* the field answers first; the grid's cut follows as a lower-priority render (the book, OptionsScreener, 2026-09-20) */
   const cutQuery = useDeferredValue(query);
+  /* the "⋯" fold is for the one desktop row; a phone's grid has a cell for Link and Save each */
+  const isPhone = useIsPhone();
   const cuts = useSavedCuts();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const liveBook = useLiveBook(activeTicker).rows;
+  const bookPack = useLiveBook(activeTicker);
+  const liveBook = bookPack.rows;
+  /* NOT YET / NOT AT ALL is not "nothing traded": before the book lands the head read "0 contracts · $0" and the
+     sentence "Nothing traded between 15:30 and 15:45" (the phone sweep, 2026-10-22) */
+  const bookState: 'reading' | 'down' | 'in' = liveBook.length ? 'in' : bookPack.fault ? 'down' : 'reading';
   // The shared hold (see LiveHold): book and tick freeze together while paused.
   const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
   const { book: heldBook, tick } = hold.value;
@@ -188,8 +195,12 @@ const Windows = () => {
 
   /* ReactNode: the loudest slice's contract is a door into its card. */
   const read = useMemo<ReactNode>(() => {
+    if (bookState === 'reading') return <RichRead text="Reading the day's book." />;
+    if (bookState === 'down') return <RichRead text="This read did not land — the intervals fill when the feed answers." />;
     if (!win || slices.length === 0) return <RichRead text={`Nothing traded between ${win ? win.label.replace('–', ' and ') : 'these minutes'} New York on this cut.`} />;
-    const total = slices.reduce((a, s) => a + s.vol, 0);
+    /* the sentence says the same count as the "In the interval" fact (the strip's own figure when uncut) */
+    const whole = cut === 'all' && side === 'ALL' && cutQuery === '';
+    const total = whole ? win.totalVol : slices.reduce((a, s) => a + s.vol, 0);
     const names = new Set(slices.map(s => s.row.ticker)).size;
     const loud = slices[0];
     return (
@@ -202,7 +213,7 @@ const Windows = () => {
         <RichRead text={`, [[${num(loud.vol)}]] contracts${Number.isFinite(loud.shareOfDayPct) ? ` — ${loud.shareOfDayPct.toFixed(0)}% of its whole day` : ''}${win.live ? '. This interval is still filling' : ''}.`} />
       </>
     );
-  }, [slices, win]);
+  }, [slices, win, cut, side, cutQuery, bookState]);
 
   const activeCut = CUTS.find(c => c.key === cut) ?? CUTS[0];
 
@@ -406,7 +417,8 @@ const Windows = () => {
   return (
     <>
       {/* The session as an instrument — see components/trace/DayStrip. */}
-      <DayStrip windows={windows} selectedIdx={winIdx} onSelect={setWinSel} paused={hold.paused} />
+      {/* no book yet (or none at all): the strip draws its band but no quarter hours — never "· 0 contracts" */}
+      <DayStrip windows={bookState === 'in' ? windows : []} selectedIdx={winIdx} onSelect={setWinSel} paused={hold.paused} />
 
       <TraceBox
         title="A quarter hour of the day"
@@ -417,11 +429,11 @@ const Windows = () => {
         facts={
           <>
             <Fact label="In the interval" testId="window">
-              {num(facts.total)} <span className="text-textSecondary">contracts ·</span> {fmtUsd(facts.prem)}
+              {bookState !== 'in' ? <span className="text-textMuted">—</span> : <>{num(facts.total)} <span className="text-textSecondary">contracts ·</span> {fmtUsd(facts.prem)}</>}
               {win?.live && (hold.paused ? <span className="ml-2 text-[11px] text-warn">held</span> : <span className="ml-2 text-[11px] text-select animate-live-breathe">still filling</span>)}
             </Fact>
             <Fact label="Names" testId="names">
-              {facts.names}
+              {bookState !== 'in' ? <span className="text-textMuted">—</span> : facts.names}
             </Fact>
             {champs.lifted && champs.lifted !== champs.burst && (
               <Champion label="Lifted most" ink="plain" onOpen={() => setOpenKey(champs.lifted!.row.key)} testId="lifted">
@@ -474,7 +486,7 @@ const Windows = () => {
             <DropdownSelect label="Screen" value={cut} options={CUT_OPTIONS} onChange={setCut} title="Which of the interval's flow" testId="windows-cut" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="windows-side" />
             <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="Only contracts on one expiry — or every expiry" testId="windows-expiry" />
-            <SavedCutsControl store={WINDOW_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="windows" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} compact />
+            <SavedCutsControl store={WINDOW_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="windows" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} compact={!isPhone} />
             <div className="ml-auto">
               <ColumnChooser columns={chooserCols} hidden={hidden} onToggle={toggle} onAll={showAll} onNone={() => hideAll(columns.map(c => c.key))} />
             </div>
@@ -504,7 +516,7 @@ const Windows = () => {
             </div>
           )}
           {/* the width is fixed at a quarter hour, so the way out is another interval or a looser card */}
-          <TraceGrid rows={slices} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight animate={false} emptyText="Nothing traded in this interval on this cut — step to another interval, or loosen a card" testId="windows" />
+          <TraceGrid rows={slices} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight animate={false} key={bookState} emptyText={bookState === 'reading' ? 'Reading the day’s book' : bookState === 'down' ? 'This read did not land' : 'Nothing traded in this interval on this cut — step to another interval, or loosen a card'} testId="windows" />
         </div>
       </TraceBox>
 

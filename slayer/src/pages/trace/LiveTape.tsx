@@ -38,7 +38,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { nyIsoToday, useAlertTrades, useExchangeBreak, useFlowAlerts, usePrintStream, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
+import { useAlertTrades, useFlowAlerts, usePrintStream, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { printKey, useWatch, watchPrint } from '../../context/WatchContext';
 import WatchStar from '../../components/trace/WatchStar';
@@ -209,9 +209,13 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary): ReadSeg[] {
   if (rows.length === 0) return ['Awaiting prints…'];
   const zdte = rows.filter(r => r.dte === 0).length;
   const lead = summary.bullPremium >= summary.bearPremium ? 'Bullish' : 'Bearish';
-  const segs: ReadSeg[] = [
-    `${lead} premium leads by ${fmtUsd(Math.abs(summary.netPremium))} — ${fmtUsd(summary.bullPremium)} bullish (calls bought, puts sold) against ${fmtUsd(summary.bearPremium)} bearish (puts bought, calls sold)`,
-  ];
+  /* a cut with no side on it (the mid lean) leads nowhere: never "Bullish premium leads by $0 — $0 against $0" */
+  const segs: ReadSeg[] =
+    summary.bullPremium === 0 && summary.bearPremium === 0
+      ? ['No premium on this cut has a side — every print traded at the mid']
+      : [
+          `${lead} premium leads by ${fmtUsd(Math.abs(summary.netPremium))} — ${fmtUsd(summary.bullPremium)} bullish (calls bought, puts sold) against ${fmtUsd(summary.bearPremium)} bearish (puts bought, calls sold)`,
+        ];
   if (summary.largest) {
     const L = summary.largest;
     const hit = rows.find(r => r.ticker === L.ticker && r.strike === L.strike && r.right === L.right && r.premium === L.premium);
@@ -369,7 +373,6 @@ const LiveTape = () => {
   const [lane, setLane] = useState<'prints' | 'alerts'>('prints');
   const [openAlert, setOpenAlert] = useState<FlowPrint | null>(null);
   const alertTrades = useAlertTrades(lane === 'alerts' && openAlert?.alertId ? openAlert.alertId : null);
-  const breakdown = useExchangeBreak(nyIsoToday());
   const [frozen, setFrozen] = useState<FlowPrint[] | null>(null);
   const hold = useHold(marketData);
   const paused = hold.paused;
@@ -492,12 +495,12 @@ const LiveTape = () => {
   const premOptions = useMemo<DropdownOption<PremKey>[]>(() => {
     const nq = norm(searchQuery);
     const base = cutExpiry(rows).filter(r => (flowFilter === 'ALL' || printKind(r) === flowFilter) && (sentFilter === 'ALL' || sentimentOf(r) === sentFilter) && matchesTape(r, nq));
-    const count = (min: number) => base.reduce((n, r) => n + (r.premium >= min ? 1 : 0), 0);
     return [
       { value: '0', label: 'Any', hint: `No floor · ${base.length} prints` },
       ...PREM_CHIPS.map(c => {
-        const n = count(Number(c.value));
-        return { value: c.value, label: c.label, hint: n === 0 ? 'No print this size on the tape now' : `${n} print${n === 1 ? '' : 's'} on the tape now` };
+        /* the floor goes to the vendor (min_premium) and refills the tape from its whole day — a count of the prints on
+           screen now said "No print this size" and then the pick filled the grid (the ship pass, 2026-10-22) */
+        return { value: c.value, label: c.label, hint: `The day's prints of ${c.label.replace('≥', '')} and up, from the vendor` };
       }),
     ];
   }, [rows, flowFilter, sentFilter, searchQuery, cutExpiry]);
@@ -593,15 +596,25 @@ const LiveTape = () => {
      something. */
   const readEmptyRef = useRef(false);
   useEffect(() => {
-    const now = Date.now();
+    const write = () => {
+      lastScopeRef.current = scopeKey;
+      lastReadRef.current = Date.now();
+      readEmptyRef.current = beamRows.length === 0;
+      /* a tape that did not answer is not an empty tape — the grid's own line says which (the audit, 2026-10-22) */
+      setRead(beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? 'Awaiting the first prints…' : 'No prints in this view.'] : tapeRead(beamRows, beamSummary));
+    };
     const scopeChanged = scopeKey !== lastScopeRef.current;
-    if (!scopeChanged && !readEmptyRef.current && now - lastReadRef.current < READ_INTERVAL_MS && beamRows.length > 3) return;
-    lastScopeRef.current = scopeKey;
-    lastReadRef.current = now;
-    readEmptyRef.current = beamRows.length === 0;
-    /* a tape that did not answer is not an empty tape — the grid's own line says which (the audit, 2026-10-22) */
-    setRead(beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : 'No prints in this view.'] : tapeRead(beamRows, beamSummary));
-  }, [beamRows, beamSummary, scopeKey, tapeDown]);
+    const wait = READ_INTERVAL_MS - (Date.now() - lastReadRef.current);
+    if (scopeChanged || readEmptyRef.current || wait <= 0 || beamRows.length <= 3) {
+      write();
+      return;
+    }
+    /* THE TRAILING READ (the ship pass, 2026-10-22): a held sentence was never rewritten once the prints stopped
+       changing — after the close it kept the first batch's read (900 prints, a $72.6K "largest") under facts that
+       counted 2,000 and named a $176K print. The held sentence now lands once the interval is up. */
+    const t = window.setTimeout(write, wait);
+    return () => window.clearTimeout(t);
+  }, [beamRows, beamSummary, scopeKey, tapeDown, rows.length]);
 
   /* The card's bookmark, by tape id — the card only knows the id, the store
      wants the print; the rows ref keeps this callback stable. */
@@ -1015,41 +1028,6 @@ const LiveTape = () => {
             emptyText={rows.length === 0 ? (tapeDown ? 'This read did not land — the tape will fill when the feed answers' : 'Awaiting first prints…') : 'No prints on this cut — loosen a card: the order, the kind, the lean, the floor or the expiry'}
             testId="live-tape"
           />
-          {breakdown.rows.length > 0 && (
-            <div className="border-t border-borderSubtle" data-exchange-break>
-              <div className="sticky top-0 z-10 bg-chip px-5 py-1.5 flex items-center gap-3">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">Exchange · trade code</span>
-                <StaleMark at={breakdown.at} ttlMs={FLOW_TTL_MS} fault={breakdown.fault} />
-              </div>
-              <table className="w-full text-left">
-                <thead className="sticky top-7 z-10 bg-panel">
-                  <tr className="font-mono text-[10px] uppercase tracking-wider text-textMuted">
-                    <th className="px-5 py-1 font-medium">Name</th>
-                    <th className="px-2 py-1 font-medium">Exchange</th>
-                    <th className="px-2 py-1 font-medium">Code</th>
-                    <th className="px-2 py-1 font-medium text-right">Trades</th>
-                    <th className="px-2 py-1 font-medium text-right">Calls</th>
-                    <th className="px-2 py-1 font-medium text-right">Puts</th>
-                    <th className="px-5 py-1 font-medium text-right">Premium</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {breakdown.rows.slice(0, 12).map(r => (
-                    <tr key={r.key} className="border-t border-borderSubtle/50 font-mono text-[11px] text-textPrimary">
-                      <td className="px-5 py-1">{r.symbol}</td>
-                      <td className="px-2 py-1">{r.exchange}</td>
-                      <td className="px-2 py-1 text-textSecondary">{r.code}</td>
-                      <td className="px-2 py-1 text-right tabular-nums"><TickFigure value={r.trades}>{r.trades.toLocaleString('en-US')}</TickFigure></td>
-                      <td className="px-2 py-1 text-right tabular-nums text-bull">{r.calls.toLocaleString('en-US')}</td>
-                      <td className="px-2 py-1 text-right tabular-nums text-bear">{r.puts.toLocaleString('en-US')}</td>
-                      <td className="px-5 py-1 text-right tabular-nums"><TickFigure value={r.premium}>{fmtUsd(r.premium)}</TickFigure></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {/* the exchange break is a supplement (and plan-gated at the vendor): no rows, no panel — never a second fault line */}
         </div>
       </TraceBox>
 

@@ -59,6 +59,8 @@ export interface FlowPrint {
     (screener, net flow, OI explorer, 0DTE, interval, multi-leg) reads. */
 export interface BookContract {
   /** TICKER-STRIKE-RIGHT-DTE — stable across the day */
+  /** The vendor's OCC option symbol, when the row came from the live screener — the door to the contract's own last trade */
+  optionSymbol?: string;
   key: string;
   ticker: string;
   sector: string | null;

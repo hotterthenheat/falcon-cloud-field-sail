@@ -88,6 +88,7 @@ const KIND_DOT: Record<SpreadKind, string> = {
   strangle: 'rgb(var(--cat-ma))',
   calendar: 'rgb(var(--cat-regulatory))',
   ratio: 'rgb(var(--cat-product))',
+  custom: 'rgb(var(--text-muted))',
 };
 
 const KIND_META = Object.fromEntries(SPREAD_KINDS.map(k => [k.key, k])) as Record<SpreadKind, (typeof SPREAD_KINDS)[number]>;
@@ -145,7 +146,8 @@ const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => voi
       }
       headerActions={
         <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap">
-          {trade.time} · spot ${trade.spot.toFixed(2)}
+          {trade.time}
+          {trade.spot > 0 ? ` · spot $${trade.spot.toFixed(2)}` : ''}
         </span>
       }
     >
@@ -176,7 +178,7 @@ const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => voi
             {fact(
               'Net',
               <>
-                ${Math.abs(trade.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{trade.net >= 0 ? 'debit' : 'credit'}</span>
+                {trade.net === 0 ? '—' : <>${Math.abs(trade.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{trade.net > 0 ? 'debit' : 'credit'}</span></>}
               </>
             )}
             {fact('Size', `${num(trade.size)}×`)}
@@ -188,16 +190,25 @@ const SpreadCard = ({ trade, onClose }: { trade: SpreadTrade; onClose: () => voi
             {fact('Max profit', riskCell(trade.maxProfit, 'profit'))}
             {fact(
               'Delta',
-              <span className={trade.delta >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}>
-                {trade.delta >= 0 ? '+' : ''}
-                {trade.delta.toFixed(2)}
-              </span>
+              /* the vendor sends no greeks on some structures — a missing figure, not a flat 0.00 */
+              trade.delta === 0 && trade.theta === 0 ? (
+                <span className="text-textMuted">—</span>
+              ) : (
+                <span className={trade.delta >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}>
+                  {trade.delta >= 0 ? '+' : ''}
+                  {trade.delta.toFixed(2)}
+                </span>
+              )
             )}
             {fact(
               'Theta',
-              <span className="text-textSecondary">
-                {trade.theta >= 0 ? '+' : '−'}${Math.abs(trade.theta).toFixed(2)} a day
-              </span>
+              trade.delta === 0 && trade.theta === 0 ? (
+                <span className="text-textMuted">—</span>
+              ) : (
+                <span className="text-textSecondary">
+                  {trade.theta >= 0 ? '+' : '−'}${Math.abs(trade.theta).toFixed(2)} a day
+                </span>
+              )
             )}
           </div>
         </div>
@@ -249,7 +260,7 @@ const phoneRow = (t: SpreadTrade) => (
         {fmtUsd(t.premium)}
       </span>,
       <span key="n">
-        ${Math.abs(t.net).toFixed(2)} {t.net >= 0 ? 'debit' : 'credit'}
+        {t.net === 0 ? 'net not printed' : `$${Math.abs(t.net).toFixed(2)} ${t.net > 0 ? 'debit' : 'credit'}`}
       </span>,
       <span key="l">max loss {t.maxLoss === 'uncapped' ? 'uncapped' : t.maxLoss == null ? '—' : fmtUsd(t.maxLoss)}</span>,
     ]}
@@ -282,6 +293,9 @@ const MultiLeg = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   const pack = useSpreads(80);
+  /* NOT YET / NOT AT ALL is not "no structures": before the tape lands, and when it fails, the page had read "No
+     multi-leg trades on the tape yet today" over 0 · 0 (the ship pass, 2026-10-22) */
+  const tapeState: 'reading' | 'down' | 'in' = pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
   const legs = useSpreadLegs(drill?.id ?? null);
   const liveTrades = useMemo(() => pack.rows.map(t => (drill && t.id === drill.id && legs.rows.length ? { ...t, legs: legs.rows } : t)), [pack.rows, drill, legs.rows]);
   // The shared hold (see LiveHold): structures and tick freeze together while paused.
@@ -298,7 +312,7 @@ const MultiLeg = () => {
     return trades.filter(
       t =>
         (kind === 'ALL' || t.kind === kind) &&
-        (money === 'ALL' || (money === 'DEBIT' ? t.net >= 0 : t.net < 0)) &&
+        (money === 'ALL' || (money === 'DEBIT' ? t.net > 0 : t.net < 0)) &&
         // A structure matches on its ticker or ANY of its legs' contracts.
         (nq === '' || normSymbol(t.ticker).includes(nq) || t.legs.some(l => normSymbol(`${t.ticker}${l.strike}${l.right}`).includes(nq)))
     );
@@ -328,29 +342,35 @@ const MultiLeg = () => {
      split second, one supporting fact. No desk-speak ("structures"), no
      colon-headed puzzles ("The largest: a 1,486× …"). */
   const read = useMemo<ReactNode>(() => {
+    if (tapeState === 'reading') return <RichRead text="Reading the tape's structures." />;
+    if (tapeState === 'down') return <RichRead text="This read did not land — the structures fill when the feed answers." />;
     if (trades.length === 0) return <RichRead text="No multi-leg trades on the tape yet today." />;
     const byKind = new Map<SpreadKind, number>();
     const names = new Set<string>();
     let prem = 0;
     let paid = 0;
+    let collected = 0;
     for (const t of trades) {
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
       names.add(t.ticker);
       prem += t.premium;
-      if (t.net >= 0) paid++;
+      /* a structure whose net the vendor left out is neither — it was counted as paid */
+      if (t.net > 0) paid++;
+      else if (t.net < 0) collected++;
     }
+    const unpriced = trades.length - paid - collected;
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
     const big = [...trades].sort((a, b) => b.premium - a.premium)[0];
     return (
       <>
-        <RichRead text={`${fmtUsd(prem)} across ${trades.length} multi-leg trades on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${trades.length - paid} collected. Biggest: `} />
+        <RichRead text={`${fmtUsd(prem)} across ${trades.length} multi-leg trades on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
         <ReadDoor onOpen={() => setDrill(big)}>
           {big.ticker} {KIND_META[big.kind].label.toLowerCase()}
         </ReadDoor>
-        <RichRead text={`, ${num(big.size)} of them for [[${fmtUsd(big.premium)}]] ${big.net >= 0 ? 'paid' : 'collected'}.`} />
+        <RichRead text={`, ${num(big.size)} of them for [[${fmtUsd(big.premium)}]]${big.net > 0 ? ' paid' : big.net < 0 ? ' collected' : ''}.`} />
       </>
     );
-  }, [trades]);
+  }, [trades, tapeState]);
 
   const activeKind = kind === 'ALL' ? null : KIND_META[kind];
 
@@ -453,7 +473,8 @@ const MultiLeg = () => {
         sortValue: t => t.net,
         render: t => (
           <span className="text-textPrimary">
-            ${Math.abs(t.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{t.net >= 0 ? 'debit' : 'credit'}</span>
+            {/* the vendor leaves some structures' net price out — no figure, not "$0.00 debit" */}
+            {t.net === 0 ? <span className="text-textMuted">—</span> : <>${Math.abs(t.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span></>}
           </span>
         ),
       },
@@ -490,30 +511,36 @@ const MultiLeg = () => {
         header: 'Delta',
         align: 'right',
         sortValue: t => t.delta,
-        render: t => (
-          <span className={t.delta >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}>
-            {t.delta >= 0 ? '+' : ''}
-            {t.delta.toFixed(2)}
-          </span>
-        ),
+        render: t =>
+          t.delta === 0 && t.theta === 0 ? (
+            <span className="text-textMuted">—</span>
+          ) : (
+            <span className={t.delta >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}>
+              {t.delta >= 0 ? '+' : ''}
+              {t.delta.toFixed(2)}
+            </span>
+          ),
       },
       {
         key: 'theta',
         header: 'Theta',
         align: 'right',
         sortValue: t => t.theta,
-        render: t => (
-          <span className="text-textPrimary" title="Dollars a day the structure gains (+) or loses (−) to time, a structure">
-            {t.theta >= 0 ? '+' : '−'}${Math.abs(t.theta).toFixed(2)}/day
-          </span>
-        ),
+        render: t =>
+          t.delta === 0 && t.theta === 0 ? (
+            <span className="text-textMuted">—</span>
+          ) : (
+            <span className="text-textPrimary" title="Dollars a day the structure gains (+) or loses (−) to time, a structure">
+              {t.theta >= 0 ? '+' : '−'}${Math.abs(t.theta).toFixed(2)}/day
+            </span>
+          ),
       },
       {
         key: 'stock',
         header: 'Stock',
         align: 'right',
         sortValue: t => t.spot,
-        render: t => <span className="text-textPrimary">${t.spot.toFixed(2)}</span>,
+        render: t => (t.spot > 0 ? <span className="text-textPrimary">${t.spot.toFixed(2)}</span> : <span className="text-textMuted">—</span>),
       },
       {
         key: 'legs',
@@ -531,15 +558,15 @@ const MultiLeg = () => {
      The bull/bear pills only show when they are not the magenta one. */
   const champs = useMemo(() => {
     const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(pick).reduce<SpreadTrade | null>((a, t) => (a === null || t.premium > a.premium ? t : a), null);
-    return { paid: by(t => t.net >= 0), collected: by(t => t.net < 0), all: by(() => true) };
+    return { paid: by(t => t.net > 0), collected: by(t => t.net < 0), all: by(() => true) };
   }, [shown]);
   const facts = useMemo(() => {
     let paid = 0;
     let collected = 0;
     const byKind = new Map<SpreadKind, number>();
     for (const t of trades) {
-      if (t.net >= 0) paid++;
-      else collected++;
+      if (t.net > 0) paid++;
+      else if (t.net < 0) collected++;
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
     }
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -560,8 +587,8 @@ const MultiLeg = () => {
         facts={
           <>
             <Fact label="Structures today" testId="structures">
-              {num(trades.length)}
-              {facts.loudKind && (
+              {tapeState !== 'in' ? <span className="text-textMuted">—</span> : num(trades.length)}
+              {tapeState === 'in' && facts.loudKind && (
                 <span className="text-textSecondary">
                   {' '}
                   · {facts.loudCount} {facts.loudKind.toLowerCase()}
@@ -569,7 +596,7 @@ const MultiLeg = () => {
               )}
             </Fact>
             <Fact label="Paid · collected" testId="money">
-              {facts.paid} <span className="text-textSecondary">·</span> {facts.collected}
+              {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{facts.paid} <span className="text-textSecondary">·</span> {facts.collected}</>}
             </Fact>
             {champs.paid && champs.paid !== champs.all && (
               <Champion label="Largest paid" ink="bull" onOpen={() => setDrill(champs.paid!)} testId="paid">
@@ -615,8 +642,9 @@ const MultiLeg = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill?.id ?? null} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText="No structures on this cut — nothing printed as a spread, a fly or a condor under these cards today" testId="multi-leg" />
-        {pack.fault && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill?.id ?? null} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : 'No structures on this cut — nothing printed as a spread, a fly or a condor under these cards today'} testId="multi-leg" />
+        {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}
+        {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
 
       {drill && <SpreadCard trade={liveTrades.find(t => t.id === drill.id) ?? drill} onClose={() => setDrill(null)} />}

@@ -51,6 +51,8 @@ const ALLOWED = [
   /^\/lit-flow\/recent(?:\?|$)/,
   /^\/screener\/stocks(?:\?|$)/,
   /^\/screener\/option-contracts(?:\?|$)/,
+  /* one contract's last trades — the contract card's anchor print */
+  /^\/option-contract\/[A-Z0-9]{1,30}\/flow(?:\?|$)/,
   /^\/screener\/analysts(?:\?|$)/,
   /^\/institutions(?:\?|$)/,
   /^\/institutions\/latest_filings(?:\?|$)/,

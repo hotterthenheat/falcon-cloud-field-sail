@@ -35,13 +35,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
-import { buildNetFlowView, isNetSegment, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
-import { useLiveBook } from '../../data/traceLive';
+import { isNetSegment, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
+import { useLiveBook, usePaneFlow } from '../../data/traceLive';
 import { fmtUsd } from '../../data/gex';
 import Lean from '../../components/trace/Lean';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
-import NetFlowPane, { paneTimes } from '../../components/trace/NetFlowPane';
+import NetFlowPane from '../../components/trace/NetFlowPane';
 import TraceBox, { Fact } from '../../components/trace/TraceBox';
 import { OdteGuide } from '../../components/trace/TraceGuide';
 
@@ -154,14 +154,24 @@ const Odte = () => {
   const { book, tick } = hold.value;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* The whole same-day book, once, for the head's facts and the sentence */
-  const view = useMemo(() => buildNetFlowView(book, 'all', 'all', paneTimes('SPY')), [book]);
+  /* THE HEAD READS THE SAME SERIES AS THE "EVERYTHING" PANE (2026-10-22): the panes draw the vendor's same-day minutes
+     (/net-flow/expiry, zero_dte); a head summed off the book read −$68.2M of net calls over a pane reading +$3.9M. The
+     book still counts the contracts — today's expiry only, the same day the vendor's minutes cover. */
+  const flow = usePaneFlow({ ticker: null, seg: 'all', mny: 'all', zeroDte: true, enabled: true });
+  const last = flow.rows.length ? flow.rows[flow.rows.length - 1] : null;
+  const ncp = last?.callPrem ?? 0;
+  const npp = last?.putPrem ?? 0;
+  const todayCount = useMemo(() => book.filter(r => r.dte === 0).length, [book]);
   /* awake on MONEY, not on a timeline: a session of empty minutes read "leans bullish" on $0 against "+$0" */
-  const awake = view.points.length > 0 && (view.count > 0 || view.ncp !== 0 || view.npp !== 0);
-  const bullish = view.ncp - view.npp >= 0;
+  const awake = !!last && (ncp !== 0 || npp !== 0);
+  const bullish = ncp - npp >= 0;
   // Signed on purpose — RichRead inks +$/-$ by direction (2026-08-30).
   const signed = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
-  const read = awake ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(view.ncp)} against net puts ${signed(view.npp)} across ${view.count} contracts expiring today or tomorrow.` : 'The same-day book is still waking up.';
+  const read = awake
+    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} against net puts ${signed(npp)} on contracts expiring today${todayCount ? `, ${todayCount} of them on the book` : ''}.`
+    : flow.fault
+      ? 'This read did not land — the same-day minutes fill when the feed answers.'
+      : 'The same-day money is still waking up.';
 
   const setPane = (i: number, patch: Partial<PaneCfg>) =>
     setStore(s => ({ ...s, panes: s.panes.map((p, j) => (j === i ? { ...p, ...patch } : p)) }));
@@ -236,14 +246,14 @@ const Odte = () => {
               <span className={!awake ? 'text-textMuted' : bullish ? 'text-bull' : 'text-bear'}>{awake ? (bullish ? 'bullish' : 'bearish') : '—'}</span>
             </Fact>
             <Fact label="Net calls" testId="calls">
-              {awake ? <Lean v={view.ncp} /> : <span className="text-textMuted">—</span>}
+              {awake ? <Lean v={ncp} /> : <span className="text-textMuted">—</span>}
             </Fact>
             <Fact label="Net puts" testId="puts">
               {/* net puts bought lean bearish and wear red; sold, bullish and green (Lean's `put`) */}
-              {awake ? <Lean v={view.npp} put /> : <span className="text-textMuted">—</span>}
+              {awake ? <Lean v={npp} put /> : <span className="text-textMuted">—</span>}
             </Fact>
             <Fact label="Contracts" testId="contracts">
-              {awake ? view.count : '—'} <span className="text-textSecondary">· expiring today or tomorrow</span>
+              {todayCount || '—'} <span className="text-textSecondary">· expiring today</span>
             </Fact>
           </>
         }

@@ -116,46 +116,54 @@ export function enrichPrint(order: TapeOrder, id: number): FlowPrint {
     alert fired on, when the caller passes one. */
 export function bookRowToPrint(
   row: BookContract,
-  clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string }
+  clip?: { size: number; fill: number; side: 'ASK' | 'BID' | 'MID'; time: string; bid?: number; ask?: number; premium?: number; multi?: boolean; sweep?: boolean }
 ): FlowPrint {
-  const h = (tag: string) => h01(`${row.key}-brp-${tag}`);
+  /* NO INVENTED CLIP (the ship pass, 2026-10-22): this stood on hashes — a size drawn from the day's volume, a spread
+     and a fill position — and the card said "$1.2M BOUGHT × 205" on a contract whose last print was 2 lots on the bid.
+     The anchor is the clip the caller hands in (a flow alert's exact print, or the contract's real last trade via
+     traceLive's useContractLast); without one the card speaks for the DAY — the day's volume and premium at the last
+     price, the spread unknown — never a made-up print. */
   const fill = clip?.fill ?? row.last;
   const side: FlowPrint['side'] = clip?.side ?? (row.askPct >= 55 ? 'ASK' : row.askPct <= 45 ? 'BID' : 'MID');
-  const spreadW = Math.max(0.02, fill * 0.03 * (0.6 + h('spr')));
-  const fillPos = side === 'ASK' ? 0.72 + h('pos') * 0.28 : side === 'BID' ? h('pos') * 0.28 : 0.5;
-  const mid = side === 'ASK' ? fill - spreadW * fillPos : fill + spreadW * (1 - fillPos);
-  const size = clip?.size ?? Math.max(5, Math.round(row.volume * (0.01 + h('sz') * 0.05)));
+  const bidQ = clip?.bid != null && clip.bid > 0 ? clip.bid : fill;
+  const askQ = clip?.ask != null && clip.ask > 0 ? clip.ask : fill;
+  const fillPos = askQ > bidQ ? Math.min(1, Math.max(0, (fill - bidQ) / (askQ - bidQ))) : 0.5;
+  const size = clip?.size ?? row.volume;
   const bidPct = 100 - row.askPct;
+  /* the anchor's own kind: a real clip says what IT was (its OPRA condition) — the day's multi-leg or sweep share only
+     speaks when the card stands for the day, so a single 2-lot never wears "×2 legs · Custom" */
+  const multi = clip ? !!clip.multi : row.multiPct >= 30;
+  const sweep = clip ? !!clip.sweep : row.sweepPct >= 40;
 
   return {
     id: hash(`${row.key}-anchor`),
     time: clip?.time ?? row.lastAt,
     ticker: row.ticker,
-    legs: row.multiPct >= 30 ? 2 : 1,
+    legs: multi ? 2 : 1,
     strike: row.strike,
     right: row.right,
     otmPct: row.otmPct,
     expiry: row.expiry,
     dte: row.dte,
     fill,
-    bid: Number((mid - spreadW / 2).toFixed(2)),
-    ask: Number((mid + spreadW / 2).toFixed(2)),
+    bid: Number(bidQ.toFixed(2)),
+    ask: Number(askQ.toFixed(2)),
     fillPos: Number(fillPos.toFixed(2)),
     side,
-    flowScore:
-      side === 'MID' ? Math.round((h('fs') - 0.5) * 24) : Math.round((side === 'ASK' ? 1 : -1) * (48 + h('fs') * 52)),
-    ratioLabel: side === 'MID' ? 'MID' : bidPct >= 50 ? `BID ${bidPct}%` : `ASK ${row.askPct}%`,
+    /* where the fill sat in its quote, −100 at the bid to +100 at the ask; without a quote, the day's ask share */
+    flowScore: askQ > bidQ ? Math.round((fillPos - 0.5) * 200) : Math.round((row.askPct - 50) * 2),
+    ratioLabel: side === 'MID' ? 'MID' : bidPct >= 50 ? `BID ${Math.round(bidPct)}%` : `ASK ${Math.round(row.askPct)}%`,
     ratioBidPct: bidPct,
     size,
-    premium: Math.round(fill * size * 100),
+    premium: clip ? Math.round(clip.premium ?? fill * size * 100) : Math.round(row.premium),
     volume: row.volume,
     oi: row.oi,
     deltaOI: row.deltaOI,
     spot: row.spot,
     iv: row.iv,
     volOverOI: row.volOverOI,
-    strat: row.multiPct >= 30 ? 'Custom' : '—',
-    sweep: row.sweepPct >= 40,
+    strat: multi ? 'Custom' : '—',
+    sweep,
   };
 }
 

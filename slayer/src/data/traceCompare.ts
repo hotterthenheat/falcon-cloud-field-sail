@@ -103,7 +103,13 @@ export function buildTraceSide(
       callShare: premium > 0 ? Math.round((callPrem / premium) * 100) : 0,
       askPct: Math.round(weighted(rows, r => r.askPct, volume)),
       sweptPct: Math.round(weighted(rows, r => r.sweepPct, volume)),
-      iv: Math.round(weighted(rows, r => r.iv, volume)),
+      /* past today's expiry: a contract in its last hours prints vol in the hundreds (QQQ's read 139% after the bell), so
+         the same-day ones would swamp the read — it falls back to them only when nothing else traded */
+      iv: (() => {
+        const later = rows.filter(r => r.dte >= 1 && r.iv > 0);
+        const pool = later.length ? later : rows;
+        return Math.round(weighted(pool, r => r.iv, pool.reduce((a, r) => a + r.volume, 0)));
+      })(),
       builtToday: rows.filter(r => r.volOverOI >= 1.5).length,
     },
     interest: {
