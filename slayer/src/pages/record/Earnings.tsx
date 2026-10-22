@@ -167,7 +167,7 @@ const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => v
   >
     <CompanyLogo ticker={e.ticker} size={28} />
     <span className="font-mono text-[12px] font-bold text-textPrimary leading-none mt-0.5">{e.ticker}</span>
-    <span className={`font-mono text-[11px] tnum leading-none ${pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{pricedKnown(e) ? moveText(e) : '—'}</span>
+    <span className={`font-mono text-[11px] tnum leading-none ${pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{/* the move the options charge is known before the history lands; only rich/cheap waits on it */}{moveText(e)}</span>
     <SetTag confirmed={e.confirmed} />
   </button>
 );

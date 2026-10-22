@@ -58,6 +58,7 @@ import { StocksGuide } from '../../components/record/StocksGuide';
 import { useBoardNames } from '../../data/boardNames';
 import { buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
 import { useLiveStocks } from '../../data/liveFiles';
+import { peekQuote, useLiveQuote } from '../../data/liveQuote';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
 import { SECTORS, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
@@ -122,8 +123,21 @@ const SectorCell = ({ data }: ICellRendererParams<StockPick>) =>
     </span>
   ) : null;
 
-const LastCell = ({ data }: ICellRendererParams<StockPick>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">${data.price.toFixed(2)}</span> : null);
-const TodayCell = ({ data }: ICellRendererParams<StockPick>) => (data ? <span className={`font-mono text-[11px] tnum ${dirInk(data.changePct)}`}>{signedPct(data.changePct, 2)}</span> : null);
+/* THE PRICE AND THE DAY FROM THE QUOTE (the ship pass, 2026-10-22): the screener's prev_close lags a session — NVDA read
+   +1.29% here (against 216.47) while the quote, the name's own page and Pinpoint's Board read −1.22% (against 221.97).
+   The quote is the one the rest of the terminal reads; the screener's figure stands only until it lands. */
+const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
+  const q = useLiveQuote(data?.ticker);
+  if (!data) return null;
+  const px = q?.spot && q.spot > 0 ? q.spot : data.price;
+  return <span className="font-mono text-[11px] tnum text-textPrimary">${px.toFixed(2)}</span>;
+};
+const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
+  const q = useLiveQuote(data?.ticker);
+  if (!data) return null;
+  const chg = q?.spot && q.spot > 0 ? q.changePct : data.changePct;
+  return <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>;
+};
 const TrendCell = ({ data }: ICellRendererParams<StockPick>) => {
   if (!data || data.trend.length < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
   return <Sparkline data={data.trend} up={data.trend[data.trend.length - 1] >= data.trend[0]} width={72} height={20} />;
@@ -277,9 +291,9 @@ const Stocks = () => {
       /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
       { headerName: 'Name', field: 'ticker', flex: 1.2, minWidth: 150, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
       { headerName: 'Sector', field: 'sector', width: 150, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, type: 'rightAligned', headerTooltip: 'The last price' },
-      { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, type: 'rightAligned', headerTooltip: "Today's change" },
-      { headerName: 'Year', field: 'trend', width: 92, cellRenderer: TrendCell, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
+      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.spot || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The last price' },
+      { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "Today's change" },
+      { headerName: 'Year', field: 'trend', width: 92, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
       { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 88, cellRenderer: sleeveCell('momentum'), headerTooltip: 'RSI — above the 50 line the trend is up, below it is not. A dash is left out of the screen.' },
       { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 88, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. Above the 50 line is growing. A dash means the feed has no growth figure.' },
       { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 88, cellRenderer: sleeveCell('flow'), headerTooltip: 'Call premium against put premium. Above the 50 line the money is buying. A dash means no premium on the feed.' },

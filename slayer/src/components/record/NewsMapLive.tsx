@@ -121,7 +121,9 @@ interface Props {
 }
 
 /** World width at zoom z is 512 * 2^z. Stay a hair inside that so the tiles cover the box. */
-const coverZoom = (w: number, h: number) => Math.log2(Math.max(w, h, 64) / 512) + 0.04;
+/* clamped into MapLibre's own range: a hidden or not-yet-laid-out host (0×0) gave log2(64/512) ≈ −2.96, and
+   setMinZoom threw "minZoom must be between -2 and the current maxZoom" (the ship pass, 2026-10-22) */
+const coverZoom = (w: number, h: number) => Math.min(7.5, Math.max(-2, Math.log2(Math.max(w, h, 64) / 512) + 0.04));
 
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 

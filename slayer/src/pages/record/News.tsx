@@ -29,6 +29,7 @@
 ==================================================
 */
 
+import { tickerName } from '../../data/tickers';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -486,7 +487,8 @@ const News = () => {
     cut.forEach(e => {
       const n = e.item.ticker ?? 'MACRO';
       nameCount.set(n, (nameCount.get(n) ?? 0) + 1);
-      cityCount.set(e.origin.city, (cityCount.get(e.origin.city) ?? 0) + 1);
+      /* a story with no city of its own is on no map pin — it is not a city named "" (the ship pass: it listed as "111") */
+      if (e.origin.city) cityCount.set(e.origin.city, (cityCount.get(e.origin.city) ?? 0) + 1);
     });
     /* a pick whose name has left the cut stays listed so it can be unpicked */
     picks.forEach(p => {
@@ -498,7 +500,7 @@ const News = () => {
     return [
       {
         title: 'Names on the wire',
-        options: [...nameCount.entries()].sort(byCountThenName).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: n === 'MACRO' ? 'Stories with no single name' : lookup(n)?.name, count: c })),
+        options: [...nameCount.entries()].sort(byCountThenName).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: n === 'MACRO' ? 'Stories with no single name' : (lookup(n)?.name ?? (tickerName(n) !== n ? tickerName(n) : undefined)), count: c })),
       },
       {
         title: 'Cities on the map',
