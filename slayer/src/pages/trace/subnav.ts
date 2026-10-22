@@ -1,4 +1,4 @@
-import { Radio, Bookmark, SlidersHorizontal, Footprints, Eye, EyeOff, Clock, Zap, Layers, Scale, Columns2, CandlestickChart, type LucideIcon } from 'lucide-react';
+import { Radio, Bookmark, SlidersHorizontal, Footprints, Eye, EyeOff, Clock, Zap, Layers, Scale, Columns2, type LucideIcon } from 'lucide-react';
 
 /** Trace subpage registry — drives the sub-tab bar and command palette. */
 export interface TraceSubpage {
@@ -86,11 +86,5 @@ export const TRACE_SUBPAGES: TraceSubpage[] = [
     label: 'Tracker',
     subtitle: 'Bookmarked prints & contracts under live watch',
     icon: Bookmark,
-  },
-  {
-    path: '/trace/futures',
-    label: 'Futures',
-    subtitle: 'The CME tape — the contract, the print, the side — and the rates the book is priced against',
-    icon: CandlestickChart,
   },
 ];

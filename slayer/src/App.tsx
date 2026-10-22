@@ -90,7 +90,6 @@ const HouseFile = lazy(() => import('./pages/record/BookFile').then(m => ({ defa
 const ShortFile = lazy(() => import('./pages/record/BookFile').then(m => ({ default: m.ShortFile })));
 const FundFile = lazy(() => import('./pages/record/BookFile').then(m => ({ default: m.FundFile })));
 const MemberFile = lazy(() => import('./pages/record/BookFile').then(m => ({ default: m.MemberFile })));
-const FuturesTape = lazy(() => import('./pages/trace/FuturesTape'));
 
 /** An old earnings link keeps its name on the way to the Dossier */
 const EarningsRedirect = () => {
@@ -297,7 +296,8 @@ const App = () => {
               {/* The old scanner scaffold's slot — its promise became the screener */}
               <Route path="scanner" element={<Navigate to="/trace/screener" replace />} />
               <Route path="tracker" element={<FlowTracker />} />
-              <Route path="futures" element={<FuturesTape />} />
+              {/* Futures and the rate strip are not carried by the data feed — the tab is hidden; old links land on the tape */}
+              <Route path="futures" element={<Navigate to="/trace/live-tape" replace />} />
             </Route>
             <Route path="/liquidity" element={<Navigate to="/trace" replace />} />
             {/* Legacy section paths from before the rebrand */}
