@@ -30,6 +30,7 @@
 ==================================================
 */
 
+import { shownGreek } from './retailSign';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
@@ -160,6 +161,8 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surface, shownIdx]);
   const rampInk = (g: Greek, v: number, max = scale[g]) => heatLaneColor(v, max, mode, 0.35);
+  /* the printed figures in the reader's sign (retailSign.ts); the inks read the kept value */
+  const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const { levels } = surface;
   const verdict = readHeatPattern(levels);
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
@@ -320,7 +323,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
           <Head>The book · {label} · per {unit}</Head>
           <div className="flex items-baseline gap-2">
             {/* the net in the ladder's own ramp — the total against itself, the foot's rule */}
-            <span className="text-[17px] font-semibold" style={{ color: rampInk(greek, net, Math.max(1, Math.abs(net))) }}>{fmtUsd(net)}</span>
+            <span className="text-[17px] font-semibold" style={{ color: rampInk(greek, net, Math.max(1, Math.abs(net))) }}>{fmtUsd(shownGreek(greek, net))}</span>
             {/* the strikes near spot, not the whole book — the Dealer hedging card's "Net now" adds every strike, so the two
                 differ; say which this is (the ship pass, 2026-10-22) */}
             <span className="text-[11px] text-textMuted">net {label} · the {surface.strikes.length} strikes near spot</span>
@@ -333,7 +336,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
                 <button key={l.word} onClick={() => onKeep?.(l.strike)} className="flex items-baseline gap-1.5 text-left hover:opacity-80 transition-opacity" title={`Keep ${fmtStrike(l.strike)}`}>
                   <span className="text-[11px] uppercase tracking-wider" style={{ color: l.ink }}>{l.word}</span>
                   <span className="text-textPrimary font-semibold">{fmtStrike(l.strike)}</span>
-                  <span style={{ color: i >= 0 ? rampInk(greek, at(greek, i, 'net')) : MUTED }}>{i >= 0 ? fmtUsd(at(greek, i, 'net')) : '—'}</span>
+                  <span style={{ color: i >= 0 ? rampInk(greek, at(greek, i, 'net')) : MUTED }}>{i >= 0 ? fmtUsd(shownGreek(greek, at(greek, i, 'net'))) : '—'}</span>
                 </button>
               );
             })}
@@ -351,8 +354,8 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
                 <button key={r.strike} onClick={() => onKeep?.(r.strike)} className="contents text-left" title={`Keep ${fmtStrike(r.strike)}`}>
                   <span className="text-textPrimary font-semibold"><span className="text-textMuted font-normal mr-1.5">{i + 1}</span>{fmtStrike(r.strike)}</span>
                   <span className="text-[11px] uppercase tracking-wider truncate" style={{ color: role?.ink ?? MUTED }}>{role?.word ?? ''}</span>
-                  <span style={{ color: rampInk(greek, now, surface.front.maxAbs[greek]) }}>{fmtUsd(now)}</span>
-                  <span className="text-right"><Change now={now} then={thenAt(winIdx, r.strike)} /></span>
+                  <span style={{ color: rampInk(greek, now, surface.front.maxAbs[greek]) }}>{fmtUsd(shownGreek(greek, now))}</span>
+                  <span className="text-right"><Change now={shownGreek(greek, now)} then={shownThen(thenAt(winIdx, r.strike))} /></span>
                 </button>
               );
             })}
@@ -369,9 +372,9 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
           {legs ? (
             <div className="flex items-baseline gap-3 text-[11px]">
               <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
-              <span style={{ color: PUT_WALL }}>puts {fmtUsd(legs.put)}</span>
-              <span style={{ color: CALL_WALL }}>calls {fmtUsd(legs.call)}</span>
-              <span className="font-semibold" style={{ color: rampInk(greek, legs.net) }}>net {fmtUsd(legs.net)}</span>
+              <span style={{ color: PUT_WALL }}>puts {fmtUsd(shownGreek(greek, legs.put))}</span>
+              <span style={{ color: CALL_WALL }}>calls {fmtUsd(shownGreek(greek, legs.call))}</span>
+              <span className="font-semibold" style={{ color: rampInk(greek, legs.net) }}>net {fmtUsd(shownGreek(greek, legs.net))}</span>
             </div>
           ) : (
             <p className="text-[11px] text-textMuted">Off the book's window.</p>
@@ -381,7 +384,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
               {GREEKS.map(g => (
                 <span key={g} className="flex flex-col">
                   <span className="text-[11px] uppercase tracking-wider text-textMuted">{GREEK_LABEL[g]}</span>
-                  <span className={g === greek ? 'font-semibold' : ''} style={{ color: rampInk(g, at(g, sIdx, 'net')) }}>{fmtUsd(at(g, sIdx, 'net'))}</span>
+                  <span className={g === greek ? 'font-semibold' : ''} style={{ color: rampInk(g, at(g, sIdx, 'net')) }}>{fmtUsd(shownGreek(g, at(g, sIdx, 'net')))}</span>
                 </span>
               ))}
             </div>
@@ -392,7 +395,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
               {WINDOWS.map((w, i) => (
                 <span key={w.key} className="flex flex-col">
                   <span className="text-[11px] text-textMuted">{w.key}</span>
-                  <span>{front ? <Change now={front[greek].net} then={thenAt(i, strike)} /> : <span style={{ color: MUTED }}>—</span>}</span>
+                  <span>{front ? <Change now={shownGreek(greek, front[greek].net)} then={shownThen(thenAt(i, strike))} /> : <span style={{ color: MUTED }}>—</span>}</span>
                 </span>
               ))}
             </div>

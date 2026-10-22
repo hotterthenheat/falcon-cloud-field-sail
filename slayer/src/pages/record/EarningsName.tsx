@@ -57,6 +57,7 @@ import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { PRICED_INK, PRICED_WORD, SlotMark, slotWord } from './Earnings';
 import CompanyFile from '../../components/record/CompanyFile';
 import { EarningsVol } from '../../components/vendor/LiveDesk';
+import { statHelp } from '../../components/record/statHelp';
 
 const AXIS = { stroke: 'transparent', tick: { fill: 'rgb(var(--text-secondary))', fontSize: 10, fontFamily: 'inherit' } };
 const GRID = { stroke: 'rgba(255,255,255,0.05)', vertical: false };
@@ -78,7 +79,7 @@ const Box = ({ title, sub, children, testId, className = '' }: { title: string; 
 
 const Fact = ({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string }) => (
   <div>
-    <dt className="text-[10px] text-textMuted whitespace-nowrap">{label}</dt>
+    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
     <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-name-fact={testId}>
       {children}
     </dd>
@@ -146,7 +147,7 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
           <span className="absolute inset-x-0 top-1/2 h-px bg-ink/25" />
           <span className="absolute left-0 -translate-y-full top-1/2 pb-0.5 font-mono text-[9px] uppercase tracking-widest text-textMuted">covered it</span>
           <span className="absolute left-0 top-1/2 pt-0.5 font-mono text-[9px] uppercase tracking-widest text-textMuted">fell short</span>
-          <div className="absolute inset-y-0 left-24 right-0 flex items-stretch gap-1.5">
+          <div className="absolute inset-y-0 left-24 right-0 flex items-stretch gap-1.5" data-touch-skip>
             {rows.map(r => (
               <button
                 key={r.label}
@@ -638,7 +639,7 @@ const EarningsName = () => {
                   <span className="min-w-0 flex flex-col leading-tight">
                     <span className="text-[11px] font-semibold text-textPrimary truncate">{t.member.name}</span>
                     <span className="text-[9px] text-textMuted truncate">
-                      {seatLabel(t.member)} · {t.committeeOverlap ? `${t.committeeOverlap} · own committee` : t.member.chamber}
+                      {seatLabel(t.member)} · {t.member.chamber}
                     </span>
                   </span>
                   <span className={`font-mono text-[10px] ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}</span>

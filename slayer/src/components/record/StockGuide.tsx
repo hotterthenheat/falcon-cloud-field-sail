@@ -218,7 +218,7 @@ export const StockGuide = ({ view }: { view: StockOverview }) => (
       <p>The read also leans bullish, bearish or neutral. Under "Why now", each pillar is marked as agreeing with that lean or arguing against it, and the line under them names where the read fails first if it fails — the strongest pillar on the other side, or the next report when every pillar agrees.</p>
     </Section>
     <Section title="What is real">
-      <p>The trend reads the name's own sessions, the money reads the book, the flow book and the dark pool, the news reads the wire and the tape's prints. The numbers are a sample until the fundamentals feed lands, and say so. Every source's status and time sits in "Behind the read"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
+      <p>The trend reads the name's own sessions, the money reads the book, the flow book and the dark pool, the news reads the wire and the tape's prints. The numbers read the name's own earnings file and screener row on Unusual Whales; when the feed has no print for a name, the box says so instead of showing a guess. Every source's status and time sits in "Behind the read"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
     </Section>
     <Section title="Today">
       <p>

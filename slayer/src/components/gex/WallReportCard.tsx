@@ -58,6 +58,17 @@ const hhmm = (unix: number) => nyClock(unix * 1000);
 /* THE RULE FOR A TEST AND A BREAK lives in data/levelRecord.ts (`levelTicks`) since 2026-10-13, where the sessions before
    today are graded by the same rule — the base rates under the subtitle */
 
+/** Each level in one plain line — the row's hover */
+const LEVEL_TIPS: Record<string, string> = {
+  'call wall': 'the strike above price with the most call hedging; it tends to slow a rise.',
+  'put wall': 'the strike below price with the most put hedging; it tends to slow a fall.',
+  'gamma flip': 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
+  flip: 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
+  'gamma pin': 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
+  pin: 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
+  supreme: 'the single strike with the most dealer hedging on it.',
+};
+
 interface Row {
   key: string;
   label: string;
@@ -271,7 +282,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
         <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">How the levels held today</h3>
         {scope}
-        {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The expiries these levels are read from — the Map's Expiries card" data-report-span>{span}</span>}
+        {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The contracts these levels are read from — the Levels card at the top of the page, the same as the Board's" data-report-span>{span}</span>}
         <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the rows, the strips and the ticks mean" testId="report-guide" />
         <FoldDoor open={open} onToggle={toggleOpen} what="the report" testId="report" />
         {rates.insideMove.n > 0 && (
@@ -292,16 +303,16 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         <div className="font-mono" role="table" aria-label="Today's levels and how each held" data-level-rows>
           {/* THE COLUMNS, NAMED ONCE (the matrix's own head): a row per level under them */}
           <div className={`${grid} h-8 items-center border-t border-borderSubtle/60 text-[11px] uppercase tracking-wider text-textMuted`} role="row">
-            <span role="columnheader">Level</span>
-            <span role="columnheader" className={`${desk} text-right`}>Strike</span>
+            <span role="columnheader" title="Which level the row is: call wall, put wall, flip, pin or supreme — hover a row for what it means">Level</span>
+            <span role="columnheader" className={`${desk} text-right`} title="The level's price">Strike</span>
             <span role="columnheader" className={desk}>
               Session <span className="normal-case tracking-normal tnum">{first != null ? `${hhmm(first)} → ${last != null ? hhmm(last) : 'now'}` : ''}</span>
             </span>
-            <span role="columnheader" className="text-right">Tests</span>
-            <span role="columnheader" className="text-right">Held</span>
-            <span role="columnheader" className="text-right">Broke</span>
-            <span role="columnheader" className="text-right">Last</span>
-            <span role="columnheader" className={desk}>Gamma since open</span>
+            <span role="columnheader" className="text-right" title="How many one-minute bars reached the level today">Tests</span>
+            <span role="columnheader" className="text-right" title="Tests where the bar closed back on the near side — the level held">Held</span>
+            <span role="columnheader" className="text-right" title="Tests where the bar closed through the level">Broke</span>
+            <span role="columnheader" className="text-right" title="The time price last reached the level">Last</span>
+            <span role="columnheader" className={desk} title="How the hedging at the level has changed since the open: growing, shrinking, flat or new today">Gamma since open</span>
             <span role="columnheader" className={`${desk} text-right whitespace-nowrap`} title={rates.sessions > 0 ? `How often the level's first test held, over the ${rates.sessions} sessions before today — each read off its own open, never a later book` : 'No sessions before today on hand'}>
               Before today
             </span>
@@ -316,7 +327,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
                   type="button"
                   onClick={() => onPick(r.price)}
                   className={`${grid} w-full min-h-10 py-1.5 items-center text-left hover:bg-ink/[0.03] transition-colors group`}
-                  title={`${r.label} ${fmtStrike(r.price)} — ${r.grade.words} · click to keep the strike`}
+                  title={`${r.labels.map(l => `${l.label} ${fmtStrike(r.price)}: ${LEVEL_TIPS[l.label.toLowerCase()] ?? ''}`).join('\n')}\n${r.grade.words} · click to keep the strike`}
                   aria-pressed={isFocus}
                   data-level-pick
                 >

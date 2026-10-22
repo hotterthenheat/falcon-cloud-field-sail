@@ -40,8 +40,10 @@ import { FeedFallback } from '../../components/ui/liveRead';
 
 import { SECTORS, type Sector } from '../../data/universe';
 import { NAMES_TO_KNOW } from './recordSkeletons';
-import { borrowM, moneyB, moneyM, signedM } from './money';
-import { usePagedGrid } from '../../components/record/pagedGrid';
+import { asOfDay, borrowM, moneyB, moneyM, signedM } from './money';
+import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
+import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
+import { statHelp } from '../../components/record/statHelp';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
 const signed = (n: number, digits = 1) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`;
@@ -263,21 +265,21 @@ export const Institutions = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Lines</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Lines")}>Lines</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : <>{facts.lines}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Houses</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Houses")}>Houses</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">
               {failed ? '—' : live.progress ? <span className="text-textSecondary" title="The rest of the houses are still landing">{facts.houses} · reading {live.progress.done} of {live.progress.total}</span> : <>{facts.houses}</>}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Calls · puts</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Calls · puts")}>Calls · puts</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap text-textPrimary">{failed ? '—' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Largest line</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Largest line")}>Largest line</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}</>}</dd>
           </div>
         </dl>
@@ -315,6 +317,7 @@ export const Institutions = () => {
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-institutions-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<InstitutionRow>
+            {...phonePin}
             {...paged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"
@@ -403,8 +406,28 @@ const ShortCard = ({ row, on, onToggle }: { row: ShortRow; on: boolean; onToggle
       <span className="text-[9px] text-textSecondary">of the float</span>
     </span>
     <span className="mt-1 block font-mono text-[9px] tnum text-textSecondary">{row.daysToCover.toFixed(1)} days to cover</span>
+    {(() => {
+      const q = squeezeRead(row);
+      return (
+        <span className="mt-1 block font-mono text-[9px] uppercase tracking-widest truncate" title={`${q.facts.map(f => f.text).join(' · ')}\n${SQUEEZE_TIP}`}>
+          squeeze <span className={`font-semibold ${SQUEEZE_INK[q.word]}`}>{q.word}</span>
+        </span>
+      );
+    })()}
   </button>
 );
+
+/** The squeeze word and the facts behind it, in one cell */
+const ShortSqueeze = ({ data }: ICellRendererParams<ShortRow>) => {
+  if (!data) return null;
+  const q = squeezeRead(data);
+  return (
+    <span className="flex flex-col leading-tight min-w-0" title={`${q.facts.map(f => f.text).join(' · ')}\n${SQUEEZE_TIP}`} data-squeeze={q.word}>
+      <span className={`font-mono text-[10px] font-semibold uppercase tracking-widest ${SQUEEZE_INK[q.word]}`}>{q.word}</span>
+      <span className="text-[10px] text-textMuted truncate">{q.facts.map(f => f.text).slice(0, 2).join(' · ')}</span>
+    </span>
+  );
+};
 
 export const Shorts = () => {
   const navigate = useNavigate();
@@ -441,21 +464,27 @@ export const Shorts = () => {
   const toKnow = useMemo(() => cut.slice(0, NAMES_TO_KNOW), [cut]);
   const facts = useMemo(() => {
     const heavy = rows.filter(r => r.interestPct >= 8);
+    const reads = rows.map(r => squeezeRead(r));
+    const strong = reads.filter(q => q.word === 'strong').length;
+    const building = reads.filter(q => q.word === 'building').length;
+    const asOf = reads.reduce<string | null>((m, q) => (q.asOf && (!m || q.asOf > m) ? q.asOf : m), null);
+    const stale = reads.some(q => q.asOf === asOf && q.stale);
     const lead = [...rows].sort((a, b) => b.interestPct - a.interestPct)[0];
     const days = rows.length ? rows.reduce((s, r) => s + r.daysToCover, 0) / rows.length : 0;
-    return { names: rows.length, heavy: heavy.length, lead, days };
+    return { names: rows.length, heavy: heavy.length, lead, days, strong, building, asOf, stale };
   }, [rows]);
   const hasShortVol = rows.some(r => r.shortVolRatio != null);
   const columnDefs = useMemo<ColDef<ShortRow>[]>(() => {
     const cols: ColDef<ShortRow>[] = [
       { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: ShortName, /* the name lands after the row; the cell redraws when it does */ valueGetter: p => (p.data ? `${p.data.ticker}\u0000${p.data.name ?? ''}` : ''), comparator: (a: string, b: string) => a.localeCompare(b), headerTooltip: 'The company — click the row to open the short file' },
+      { headerName: 'Squeeze setup', colId: 'squeeze', flex: 1.4, minWidth: 200, cellRenderer: ShortSqueeze, valueGetter: p => (p.data ? squeezeRead(p.data).points : 0), headerTooltip: SQUEEZE_TIP },
       { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 150, cellRenderer: ShortSector, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'Percent of the float sold short. Eight percent and above is the heavy book' },
+      { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'The share of the tradable stock (the float) that has been sold short and not bought back. Eight percent and above is the heavy book' },
       { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
-      { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'The short book divided by average volume' },
+      { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'How many days of normal trading it would take the shorts to buy back every share — shares short divided by average daily volume' },
       { headerName: 'Fee', field: 'feeRate', width: 80, cellRenderer: ShortBorrow, type: 'rightAligned', headerTooltip: 'The annualized fee to borrow the shares. A dash means the feed did not price the borrow.' },
       { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{borrowM(data.availableM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares available to borrow. The feed caps the count at 10M — 10M+ means at least that many. A dash means the feed did not say.' },
-      { headerName: 'Float', field: 'floatM', flex: 0.7, minWidth: 90, cellRenderer: ShortFloat, type: 'rightAligned', headerTooltip: 'Shares in the float, in millions' },
+      { headerName: 'Float', field: 'floatM', flex: 0.7, minWidth: 90, cellRenderer: ShortFloat, type: 'rightAligned', headerTooltip: 'Shares free to trade (the float), in millions — insiders’ locked-up shares are not in it' },
     ];
     if (hasShortVol) cols.splice(5, 0, { headerName: 'Short vol', field: 'shortVolRatio', width: 100, cellRenderer: ShortVol, type: 'rightAligned', headerTooltip: 'Short volume as a percent of the session’s volume' });
     return cols;
@@ -485,23 +514,34 @@ export const Shorts = () => {
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">Where the short book sits</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What short interest, days to cover and the fee mean" testId="shorts-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Short interest, the day’s short volume and the borrow, heaviest first · a row opens the short file</p>
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" data-shorts-asof>
+            <span className={facts.stale ? 'text-warn' : ''} title="Short interest settles twice a month and is published about ten days later — the figure is never today's">
+              short interest as of {asOfDay(facts.asOf)}{facts.stale ? ' (stale)' : ''}
+            </span>{' '}
+            · the borrow is today’s · a row opens the short file
+          </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Names</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Names on the grid after the cards">Names</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : <>{facts.names}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">At 8% or more</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={SQUEEZE_TIP}>Squeeze setups</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-squeeze>
+              {failed ? '—' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span></>}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Names with at least 8% of the float sold short">At 8% or more</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{failed ? '—' : <>{facts.heavy}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Heaviest</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The name with the largest share of its float sold short">Heaviest</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Days to cover</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The average, across these names, of the days of normal volume the shorts would need to buy back">Days to cover</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.names ? facts.days.toFixed(1) : '—'}</>}</dd>
           </div>
         </dl>
@@ -538,6 +578,7 @@ export const Shorts = () => {
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-shorts-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<ShortRow>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -690,10 +731,10 @@ export const EtfBook = () => {
   const holdCols = useMemo<ColDef<EtfHolding>[]>(
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: HoldName, headerTooltip: 'A holding. It stays on this page.' },
-      { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 120 },
-      { headerName: 'Country', field: 'country', width: 130 },
-      { headerName: 'Shares', field: 'sharesM', width: 100, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M` },
-      { headerName: 'Weight', field: 'weight', flex: 1, minWidth: 160, cellRenderer: HoldWeight, headerTooltip: 'The weight in the fund' },
+      { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 120, headerTooltip: 'The sector the holding files under' },
+      { headerName: 'Country', field: 'country', width: 130, headerTooltip: 'Where the company is based' },
+      { headerName: 'Shares', field: 'sharesM', width: 100, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M`, headerTooltip: 'Shares the fund holds, millions' },
+      { headerName: 'Weight', field: 'weight', flex: 1, minWidth: 160, cellRenderer: HoldWeight, headerTooltip: "The share of the fund's money in this holding, from the fund's holdings file (date in the strip above)" },
     ],
     [],
   );
@@ -726,19 +767,19 @@ export const EtfBook = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Funds</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Funds")}>Funds</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-etf-count>{failed ? '—' : <>{facts.funds}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Assets</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{assetsB(facts.aum)}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Five-day flow</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Five-day flow")}>Five-day flow</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(facts.net)}`}>{failed ? '—' : <>{signedM(facts.net)}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">In the book</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("In the book")}>In the book</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{focus ? focus.etf : '—'}</>}</dd>
           </div>
         </dl>
@@ -794,6 +835,7 @@ export const EtfBook = () => {
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-etf-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<EtfRow>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -813,12 +855,13 @@ export const EtfBook = () => {
       </div>
       {focus && (
         <>
-          <Strip title={`What ${focus.etf} holds`} rest="the largest fund on this cut, or the one a card kept · the weights stay here" testId="etf-holdings">
+          <Strip title={`What ${focus.etf} holds`} rest={`the largest fund on this cut, or the one a card kept · weights as of ${asOfDay(focus.holdingsAsOf)}, the fund's own holdings file`} testId="etf-holdings">
             <span className="sr-only">{focus.name}</span>
           </Strip>
           <div className="slayer-board border-t border-borderSubtle" data-etf-holdings={focus.etf}>
             <AgGridProvider modules={GRID_MODULES}>
               <AgGridReact<EtfHolding>
+                {...phonePin}
                 {...holdPaged.props}
                 theme={GRID_THEME}
                 domLayout="autoHeight"

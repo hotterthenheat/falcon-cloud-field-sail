@@ -61,7 +61,7 @@ import { roomLevels } from '../../data/roomLevels';
 import { buildVannaCharm } from '../../data/vannacharm';
 import { readSessionClock } from '../../data/moc';
 import { sessionMeta, sessionOfMinute, useDeskSession, minuteInSession, type DeskSession } from '../../data/deskSession';
-import { deskBars } from '../../data/uwBook';
+import { deskBars, peekBellShare } from '../../data/uwBook';
 import { nyMinutes } from '../../core/nyTime';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import ClockGuide from './ClockGuide';
@@ -253,8 +253,13 @@ const PRESSURE_WORDS = { absorbs: 'absorbs moves', amplifies: 'amplifies moves' 
 
 /* A FACT ON THE HEAD'S LINE — its name in tracked capitals, its figure beside it, a hairline before the next (the page
    head's grammar, PinpointLayout's Fact) */
+const CLOCK_TIPS: Record<string, string> = {
+  Now: "The time in New York and the part of the trading day it falls in",
+  Next: 'The next part of the day and how long until it starts',
+  'Expires at the close': "The share of all the name's hedging, every expiry counted, in contracts that expire at 4:00 today",
+};
 const ClockFact = ({ label, children }: { label: string; children: ReactNode }) => (
-  <span className="inline-flex items-baseline gap-2 whitespace-nowrap pr-3 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-borderSubtle [&:not(:first-child)]:pl-3">
+  <span className="inline-flex items-baseline gap-2 whitespace-nowrap pr-3 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-borderSubtle [&:not(:first-child)]:pl-3" title={CLOCK_TIPS[label]}>
     <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
     <span className="text-[13px] font-semibold text-textPrimary">{children}</span>
   </span>
@@ -268,7 +273,7 @@ type Pin = { kind: 'block'; i: number } | { kind: 'phase'; key: string } | null;
     Map's replay (2026-09-08) walks the strip to the minute it is rewound to.
     `onSeek`: while a replay is running, a click moves that replay to the minute
     instead of keeping a block. The playhead on the day charts is this same minute. */
-const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketSnapshot; scope?: ReactNode; at?: number | null; onSeek?: (min: number) => void; /** The expiry dates the book is showing. The share that dies at the close is of THIS window. */ dates?: readonly string[] | null }) => {
+const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketSnapshot; scope?: ReactNode; at?: number | null; onSeek?: (min: number) => void; /** The date the levels are read off (the Levels card). The share that dies at the close is of the whole book. */ dates?: readonly string[] | null }) => {
   const clock = readSessionClock();
   const [hover, setHover] = useState<number | null>(null);
   const [pin, setPin] = useState<Pin>(null);
@@ -387,19 +392,11 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       /* no chain yet */
     }
     try {
-      const today = snapshot.uwExpiries?.find(e => e.dte === 0)?.date;
-      if (dates?.length && snapshot.uwByDate) {
-        let dies = 0;
-        let total = 0;
-        for (const date of dates) {
-          const chain = snapshot.uwByDate[date];
-          if (!chain) continue;
-          let g = 0;
-          for (const n of chain) g += Math.abs(n.netGex);
-          total += g;
-          if (date === today) dies += g;
-        }
-        bellShare = total > 0 ? Math.round((100 * dies) / total) : null;
+      /* THE BOARD'S SHARE (the ship pass, 2026-10-22): the vendor's gamma per expiry, today's date against every live
+         date — one figure on the Board, Compare and here. The older reads below stand in until that list is in. */
+      const vendor = peekBellShare(snapshot.ticker);
+      if (vendor.share != null || vendor.why === 'none') {
+        bellShare = vendor.share;
       } else {
         const surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
         const todayCol = todayColumn(surface);
@@ -420,6 +417,10 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
     }
     return { pin: pinStrike, supreme, flip, charmStrike, charmMoves, bellShare };
   }, [snapshot, dates]);
+
+  /* no share because nothing on the name expires today — said on the figure's hover */
+  const bellPeek = peekBellShare(snapshot.ticker);
+  const bellNone = bellPeek.share == null && bellPeek.why === 'none';
 
   /* Where NOW sits — New York minutes; outside the session there is no lit block */
   const [h, m] = clock.etTime.split(':').map(Number);
@@ -535,7 +536,11 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
           )}
           {/* in the page's ink, not magenta — magenta is the supreme's marker alone (2026-10-14) */}
           <ClockFact label="Expires at the close">
-            <span className="tnum" data-clock-bell>
+            <span
+              className="tnum"
+              data-clock-bell
+              title={facts.bellShare != null ? `${facts.bellShare}% of ${snapshot.ticker}'s gamma sits in contracts that expire at 4:00 today` : bellNone ? `Nothing on ${snapshot.ticker} expires today` : 'Still reading the expiry list'}
+            >
               {facts.bellShare != null ? `${facts.bellShare}%` : '—'}
             </span>
             {facts.bellShare != null && <span className="ml-1.5 font-normal text-textSecondary">of gamma</span>}

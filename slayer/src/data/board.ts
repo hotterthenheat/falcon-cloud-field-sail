@@ -7,8 +7,9 @@
   2026-09-05). Each row is the same four reads the
   Map makes for one name, made for all of them: the
   regime and how far the flip is, the nearest wall,
-  the supreme, the 0DTE book's net, and how much of
-  the book dies at the bell. Nothing is invented
+  the supreme, the net GEX on the Levels card's
+  contracts, and how much of the book dies at the
+  bell. Nothing is invented
   here: the profile builder, the flip gauge and the
   session tape are the ones every other surface
   reads, pointed at each name in turn.
@@ -27,8 +28,9 @@ import { buildExposureProfile } from './exposure';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge } from './flipGauge';
 import { getBoardNames } from './boardNames';
-import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange } from './uwBook';
+import { peekChange, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare } from './uwBook';
 import { readLevelsScope } from './levelsScope';
+import { levelsBook } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
 import { readSessionClock } from './moc';
 import { getPositions } from './positions';
@@ -50,10 +52,17 @@ export interface BoardRow {
   /** The wall nearer to spot, and how far it is */
   nearest: { kind: 'call' | 'put'; strike: number; distPct: number };
   supreme: number;
-  /** The 0DTE book's net gamma in the window — positive amplifies, negative absorbs */
+  /** Net GEX on the Levels card's contracts, in the RETAIL sign (the vendor's): positive = dealers long gamma, their
+      hedging absorbs moves; negative = short gamma, it amplifies them. The house's internal sign is the opposite
+      (core/walls.ts) — `retailNet` turns one into the other. */
   netGex: number;
-  /** Share of the window's gamma that expires today, percent */
+  /** Share of the book's gamma that expires today, percent — null with `bellWhy` saying why */
   bellShare: number | null;
+  /** Why there is no share: nothing on the name expires today, or the listing is not in yet */
+  bellWhy: 'none' | 'wait' | null;
+  /** The Levels card reads "Today" but this name's front-date strikes have not landed: the levels above would be the
+      whole book's, so the Board shows them as loading instead (the ship pass, 2026-10-22) */
+  pending: boolean;
   /** The session's closes, thinned for a sparkline */
   spark: number[];
   /** Your positions on the name: contracts owned or sold (0 = none) */
@@ -63,6 +72,27 @@ export interface BoardRow {
 }
 
 const SPARK_POINTS = 48;
+
+/** The house's net gamma (call-dominant NEGATIVE, core/walls.ts) in the sign a retail reader knows — the vendor's:
+    positive = dealers long gamma = hedging absorbs moves; negative = short gamma = it amplifies them */
+export const retailNet = (house: number): number => (house === 0 ? 0 : -house);
+
+/** NET GEX, ONE NUMBER (the ship pass, 2026-10-22): every strike of the contracts the levels are read from, in the
+    retail sign — the Board's column, Compare's book line and the Map's "Net now · every strike" are this one sum
+    (the profile's own net is its ±30-strike window, which on the whole book left the Board $1B short of the Map) */
+export function netGexOf(chain: readonly { netGex: number }[]): number {
+  let n = 0;
+  for (const s of chain) n += s.netGex;
+  return retailNet(n);
+}
+
+/** The net GEX hover, in words — and, where the book's net and the side of the flip disagree, why both are true */
+export const netGexTitle = (net: number, regime: 'LONG' | 'SHORT' | null): string => {
+  const base = net > 0 ? 'Net positive: dealers are long gamma overall, so their hedging tends to absorb moves' : net < 0 ? 'Net negative: dealers are short gamma overall, so their hedging tends to amplify moves' : 'Balanced';
+  if (net > 0 && regime === 'SHORT') return `${base}. But price is below the flip, so the hedging nearest price amplifies moves for now.`;
+  if (net < 0 && regime === 'LONG') return `${base}. But price is above the flip, so the hedging nearest price absorbs moves for now.`;
+  return `${base}.`;
+};
 
 /** Share of the surface's gamma that expires today, percent — null without a today column */
 export function bellShareOf(surface: ExposureSurface): number | null {
@@ -119,16 +149,14 @@ export function buildBoardRow(ticker: string): BoardRow | null {
   const dPut = ((putWall - spot) / spot) * 100;
   const nearest = Math.abs(dCall) <= Math.abs(dPut) ? { kind: 'call' as const, strike: callWall, distPct: dCall } : { kind: 'put' as const, strike: putWall, distPct: dPut };
 
-  /* The bell's share: today's column against every column of the calendar
-     surface — the SAME number the Calendar's read line and the Trader's Clock
-     print for this name (the 'ALL' lens scales the whole book by one factor
-     and printed one share for every name; the surface's per-expiry desks do
-     not). ~18ms a name, on the scan tier. */
-  let bellShare: number | null = null;
+  /* The bell's share: the vendor's own gamma per expiry (greek-exposure/expiry, kept on the book — data/uwBook.ts
+     peekBellShare): today's date against every live date. The SAME number Compare, the Agenda and the Trader's Clock
+     print, and it needs no per-expiry chains, so a name read for the Board alone has it too. The surface is still
+     built for the watch-first read. */
+  const bell = peekBellShare(ticker);
   let surface: ExposureSurface | null = null;
   try {
     surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-    bellShare = bellShareOf(surface);
   } catch {
     /* no surface for this name yet */
   }
@@ -140,7 +168,10 @@ export function buildBoardRow(ticker: string): BoardRow | null {
      morning list across every name (2026-09-08). ~2ms a name. */
   const watch = watchOf(snapshot, today, surface, bars, aheadClock(readSessionClock()));
 
+  const pending = !!snapshot.liveBook && readLevelsScope() === '0DTE' && !snapshot.uwChains?.['0DTE']?.length;
+
   return {
+    pending,
     watch,
     yours: { positions: mine.length, contracts: mine.reduce((s, p) => s + p.contracts, 0) },
     ticker: snapshot.ticker,
@@ -154,8 +185,9 @@ export function buildBoardRow(ticker: string): BoardRow | null {
     putWall,
     nearest,
     supreme,
-    netGex: today.netGex,
-    bellShare,
+    netGex: snapshot.liveBook ? netGexOf(levelsBook(snapshot, readLevelsScope()).chain) : retailNet(today.netGex),
+    bellShare: bell.share,
+    bellWhy: bell.share == null ? bell.why : null,
     spark: thin(bars.map(b => b.close), SPARK_POINTS),
   };
 }

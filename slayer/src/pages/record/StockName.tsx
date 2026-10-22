@@ -67,6 +67,7 @@ import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import SessionsChart, { type ChartMark, type ChartPoint } from '../../components/record/SessionsChart';
 import type { UTCTimestamp } from 'lightweight-charts';
 import { fmtClockLocal, fmtDayLocal } from '../../components/gex/chartTime';
+import { shownGamma } from '../../components/gex/retailSign';
 import { When } from '../../components/record/when';
 import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
@@ -77,10 +78,13 @@ import { useStockFile } from '../../data/stockFile';
 import type { BookContract, FlowPrint } from '../../types/trace';
 import { StockNameSkeleton } from './recordSkeletons';
 import CompanyFile from '../../components/record/CompanyFile';
+import { NewsFlag } from '../../components/record/impactMark';
+import { untilWords } from '../../data/earningsFeed';
 import NameBooks from '../../components/record/NameBooks';
 import { StockFacts } from '../../components/vendor/LiveDesk';
 import { stockBookKey, useVendorRow } from '../../data/vendorFeed';
 import { nyIsoDate } from '../../core/nyTime';
+import { statHelp } from '../../components/record/statHelp';
 
 const SILVER = 'rgb(var(--silver))';
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
@@ -88,7 +92,7 @@ const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 const GLIDE = `width 520ms ${EASE}, left 520ms ${EASE}`;
 /* the four public words, their inks and their meter are ui/GradeMeter.tsx — shared with the Tracker since 2026-09-19 */
 const LEAN_INK: Record<Lean, string> = { bullish: 'text-bull', neutral: 'text-textPrimary', bearish: 'text-bear' };
-const STATUS_WORD: Record<SourceStatus, string> = { live: 'live', sample: 'sample', thin: 'thin' };
+const STATUS_WORD: Record<SourceStatus, string> = { live: 'live', sample: 'not on the feed', thin: 'thin' };
 const STATUS_INK: Record<SourceStatus, string> = { live: 'text-select', sample: 'text-warn', thin: 'text-textMuted' };
 const KIND_INK: Record<TimelineKind, string> = { earnings: 'text-warn', news: 'text-silver', breakout: 'text-bull', breakdown: 'text-bear', volume: 'text-textSecondary', session: 'text-textSecondary' };
 /** The same kinds as marks on the sessions chart — token inks, resolved on the island */
@@ -201,7 +205,7 @@ const Box = ({ title, sub, aside, testId, children }: { title: string; sub?: Rea
 );
 const Fact = ({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) => (
   <div className="min-w-0">
-    <dt className="text-[10px] text-textMuted whitespace-nowrap">{label}</dt>
+    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
     {/* a figure wraps at its dots rather than being cut to "0…" in a narrow column (the dossier sweep, 2026-10-22) */}
     <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary break-words" data-stock-fact={testId}>
       {children}
@@ -773,7 +777,7 @@ const StockName = () => {
         <Box title="The money" sub="The live book · every listed date" aside={<PillarBarSmall p={byKey.money} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             <Fact label="Net GEX" testId="gex">
-              <Money v={money.netGex} /> <span className="text-textMuted">· {money.regime}</span>
+              <Money v={shownGamma(money.netGex)} /> <span className="text-textMuted">· {money.regime}</span>
             </Fact>
             <Fact label="Net DEX · VEX" testId="dex">
               <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
@@ -953,7 +957,7 @@ const StockName = () => {
                 <button key={s.id} type="button" onClick={() => navigate('/dossier/news', { state: { selectedId: s.id, name: T } })} className="group w-full text-left px-5 h-[34px] grid items-center gap-x-3 border-t border-borderSubtle/40 hover:bg-ink/[0.03] transition-colors" style={{ gridTemplateColumns: '64px minmax(0, 1fr) 64px 56px' }} data-stock-story={s.id}>
                   <span className="font-mono text-[10px] tnum text-textMuted">{ago(s.item.minutesAgo)}</span>
                   <span className="min-w-0 truncate text-[11.5px] text-textSecondary group-hover:text-textPrimary transition-colors">{s.item.headline}</span>
-                  <span className={`font-mono text-[9px] font-semibold uppercase tracking-widest ${s.grade === 'ALLY' ? 'text-bull' : s.grade === 'THREAT' ? 'text-bear' : 'text-textSecondary'}`}>{s.grade === 'ALLY' ? 'positive' : s.grade === 'THREAT' ? 'negative' : 'neutral'}</span>
+                  <NewsFlag major={s.item.major} lean={s.grade === 'ALLY' ? 'positive' : s.grade === 'THREAT' ? 'negative' : null} />
                   <span className={`text-right font-mono text-[11px] font-semibold tnum ${s.item.prediction.measured ? (s.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}`}>{s.item.prediction.measured ? pct(s.item.prediction.expMove1dPct) : '—'}</span>
                 </button>
               ))}
@@ -988,8 +992,8 @@ const StockName = () => {
             <div className="px-5 py-2.5 border-t border-borderSubtle/40 flex items-center gap-3 min-w-0 font-mono text-[10px] tnum" data-stock-next-earnings>
               {news.nextEarnings ? (
                 <span className="text-textSecondary truncate min-w-0">
-                  reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {news.nextEarnings.daysOut === 0 ? 'today' : `in ${news.nextEarnings.daysOut}d`} {news.nextEarnings.impliedMovePct > 0 ? <> · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span></> : <> · not priced yet</>}
-                  {!news.nextEarnings.confirmed && <span className="text-warn"> · date estimated</span>}
+                  reports <span className="text-textPrimary">{news.nextEarnings.label}</span> · {untilWords(news.nextEarnings.daysOut)} {news.nextEarnings.impliedMovePct > 0 ? <> · the options price <span className="text-textPrimary">±{news.nextEarnings.impliedMovePct.toFixed(1)}%</span></> : <> · not priced yet</>}
+                  {!news.nextEarnings.confirmed && <span className="text-warn" title="The company has not announced this date yet — it is Unusual Whales' estimate and can move"> · date estimated</span>}
                   {news.reaction && (
                     <span className="text-textMuted">
                       {' '}
@@ -1251,7 +1255,7 @@ const StockName = () => {
                 <dl className="grid grid-cols-[52px_72px_64px_236px] gap-x-5 max-xl:flex max-xl:flex-wrap max-xl:gap-y-1.5">
                   {r.facts.map(f => (
                     <div key={f.k} className="min-w-0">
-                      <dt className="text-[10px] text-textMuted whitespace-nowrap">{f.k}</dt>
+                      <dt className="text-[10px] text-textMuted whitespace-nowrap" title={statHelp(f.k)}>{f.k}</dt>
                       <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap truncate ${f.cls ?? 'text-textPrimary'}`}>{f.v}</dd>
                     </div>
                   ))}
@@ -1349,7 +1353,7 @@ const StockName = () => {
             {insiderTotal > 0 && <ShareBar left={(100 * insiders.bought) / insiderTotal} />}
           </div>
         </Box>
-        <Box title="What Congress reported" sub="STOCK Act reports naming this stock in the last 180 days · board seats need the feed" testId="congress">
+        <Box title="What Congress reported" sub="STOCK Act reports naming this stock in the last 180 days" testId="congress">
           {congress.length === 0 ? (
             <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the record in 180 days</div>
           ) : (
@@ -1368,7 +1372,7 @@ const StockName = () => {
                   <span className="min-w-0 flex flex-col leading-tight">
                     <span className="text-[11px] font-semibold text-textPrimary truncate">{t.member.name}</span>
                     <span className="text-[9px] text-textMuted truncate">
-                      {seatLabel(t.member)} · {t.committeeOverlap ? <span className="text-warn">{t.committeeOverlap} · own committee</span> : t.member.chamber}
+                      {seatLabel(t.member)} · {t.member.chamber}
                     </span>
                   </span>
                   <span className={`font-mono text-[10px] ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}</span>
@@ -1384,7 +1388,6 @@ const StockName = () => {
             {congress.length > 0 && (
               <span className="text-textSecondary">
                 {congress.filter(t => t.type === 'Purchase').length} purchases · {congress.filter(t => t.type !== 'Purchase' && t.type !== 'Exchange').length} sales
-                {congress.some(t => t.committeeOverlap) && <span className="text-warn"> · {congress.filter(t => t.committeeOverlap).length} from a member whose committee oversees the sector</span>}
               </span>
             )}
             <Link to="/dossier/congress" className="ml-auto inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">

@@ -28,12 +28,12 @@
 */
 
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { usePagedGrid } from '../../components/record/pagedGrid';
+import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
@@ -44,12 +44,13 @@ import { When } from '../../components/record/when';
 import { fmtDollars } from '../../data/ahead';
 import { useBoardNames } from '../../data/boardNames';
 import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, personSlug } from '../../data/insiders';
-import { useInsiderBook, useInsiderBuyers, useInsidersStatus, useInsiderTrades } from '../../data/liveRecord';
+import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
 import type { InsiderFlow, InsiderRole, InsiderTrade } from '../../types/record';
 import { NAMES_TO_KNOW } from './recordSkeletons';
 import { InsiderSectorFlow } from '../../components/record/ExtraFaces';
+import { statHelp } from '../../components/record/statHelp';
 
 type Window = 30 | 90 | 180;
 type Show = 'market' | 'all';
@@ -196,6 +197,38 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
   );
 };
 
+/* ---- what the window really covers ------------------------------------------------- */
+
+const shortDay = (iso: string | null): string => {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+};
+
+/** One honest line: purchases are complete for the window (or since the date the pages reached), the rest is the latest
+    filings the feed sent, with their filing dates */
+const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window: number }) => {
+  const since = new Date(Date.now() - window * 86_400_000).toISOString().slice(0, 10);
+  const restShort = coverage.restSince != null && coverage.restSince > since;
+  const big = `$${(coverage.bigSale / 1e6).toFixed(0)}M`;
+  const paged = (complete: boolean, from: string | null, what: string) =>
+    complete ? `every ${what} filed in the last ${window} days` : from ? `every ${what} filed since ${shortDay(from)} (reading further back)` : 'reading';
+  return (
+    <p className="px-5 pb-2 text-[11px] leading-relaxed text-textMuted" data-insiders-coverage title="Unusual Whales sends at most 500 filings a request, newest filed first">
+      <span className="text-textSecondary">Purchases:</span> {paged(coverage.buysComplete, coverage.buysSince, 'open-market buy')}
+      {' · '}
+      <span className="text-textSecondary">Sales:</span> {paged(coverage.bigSalesComplete, coverage.bigSalesSince, `open-market sale of ${big} or more`)}
+      {' · '}
+      <span className="text-textSecondary">Smaller sales and other filings:</span>{' '}
+      {coverage.restCount === 0
+        ? 'reading'
+        : restShort
+          ? `the latest ${coverage.restCount.toLocaleString()} filed, ${shortDay(coverage.restSince)} – ${shortDay(coverage.restNewest)}`
+          : `every one filed in the last ${window} days`}
+    </p>
+  );
+};
+
 /* ---- the page ------------------------------------------------------------------ */
 
 const Insiders = () => {
@@ -209,6 +242,9 @@ const Insiders = () => {
 
   /* The feed is the live record when it answers; the cards cut it, the Filter keeps from the cut */
   const feed = useInsiderTrades(window, show === 'market' ? OPEN_MARKET_CODES : ALL_CODES);
+  /* purchases are paged back until the window is covered; the line under the controls says what each part covers */
+  useEffect(() => wantInsiderWindow(window), [window]);
+  const coverage = useInsiderCoverage();
   /* A failed read is not a quiet quarter: the page says the read did not land, the figures go to dashes */
   const status = useInsidersStatus();
   const failed = status === 'sim';
@@ -316,25 +352,25 @@ const Insiders = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Filings</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-count>
               {failed || waiting ? '—' : facts.filings}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Chosen buying</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Dollars insiders spent buying shares in the open market with their own money, not on a pre-set plan">Chosen buying</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
               {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Sold in the market</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Dollars of shares insiders sold in the open market — planned or not">Sold in the market</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
               {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Sales on a plan</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The share of those sales that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today">Sales on a plan</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
               {facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}
             </dd>
@@ -349,6 +385,7 @@ const Insiders = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="insiders-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, people and roles on the page right now — tick any number; only those stay" testId="insiders-filter" />
       </div>
+      {!failed && !waiting && <CoverageLine coverage={coverage} window={window} />}
       {failed ? (
         <FeedFallback />
       ) : (
@@ -380,6 +417,7 @@ const Insiders = () => {
       <div className="slayer-board border-t border-borderSubtle" data-insiders-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<InsiderTrade>
+            {...phonePin}
             {...paged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"
@@ -418,9 +456,10 @@ export const InsiderFile = () => {
   const planned = rows.filter(t => t.plan === 'plan').length;
   const cols = useMemo<ColDef<InsiderTrade>[]>(
     () => [
-      { headerName: 'When', field: 'daysAgo', width: 126, cellRenderer: WhenCell, sort: 'asc' },
+      { headerName: 'When', field: 'daysAgo', width: 126, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day of the trade, and how long ago' },
       {
         headerName: 'Name',
+        headerTooltip: 'The company',
         field: 'ticker',
         flex: 1.3,
         minWidth: 160,
@@ -433,11 +472,11 @@ export const InsiderFile = () => {
             </span>
           ) : null,
       },
-      { headerName: 'Trade', field: 'code', flex: 1, minWidth: 140, cellRenderer: TradeCell },
-      { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned' },
-      { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned' },
-      { headerName: 'Value', field: 'value', width: 110, cellRenderer: ValueCell, type: 'rightAligned' },
-      { headerName: 'Chose to?', field: 'plan', width: 104, cellRenderer: PlanCell },
+      { headerName: 'Trade', field: 'code', flex: 1, minWidth: 140, cellRenderer: TradeCell, headerTooltip: 'What the filing says happened — bought or sold in the market, or a grant, exercise, tax withholding or gift' },
+      { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
+      { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The price per share on the filing' },
+      { headerName: 'Value', field: 'value', width: 110, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
+      { headerName: 'Chose to?', field: 'plan', width: 104, cellRenderer: PlanCell, headerTooltip: 'Chosen: the insider decided to trade. Planned: it ran off a 10b5-1 schedule set months earlier. Unstated: the filing ticked neither box' },
     ],
     [],
   );
@@ -476,19 +515,19 @@ export const InsiderFile = () => {
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <div>
-              <dt className="text-[10px] text-textMuted">Filings</dt>
+              <dt className="text-[10px] text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
               <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{rows.length}</dd>
             </div>
             <div>
-              <dt className="text-[10px] text-textMuted">Bought</dt>
+              <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Bought")}>Bought</dt>
               <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bought > 0 ? fmtDollars(bought) : 'none'}</dd>
             </div>
             <div>
-              <dt className="text-[10px] text-textMuted">Sold</dt>
+              <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Sold")}>Sold</dt>
               <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{sold > 0 ? fmtDollars(sold) : 'none'}</dd>
             </div>
             <div>
-              <dt className="text-[10px] text-textMuted">On a plan</dt>
+              <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("On a plan")}>On a plan</dt>
               <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{planned}</dd>
             </div>
           </dl>
@@ -518,6 +557,7 @@ export const InsiderFile = () => {
         <div className="slayer-board border-t border-borderSubtle" data-insider-trades>
           <AgGridProvider modules={GRID_MODULES}>
             <AgGridReact<InsiderTrade>
+              {...phonePin}
               theme={GRID_THEME}
               domLayout="autoHeight"
               rowData={rows}

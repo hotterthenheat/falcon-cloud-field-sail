@@ -12,6 +12,9 @@ import ScrollHome from '../../components/layout/ScrollHome';
 import type { DistanceUnit } from '../../data/atr';
 import { setDistanceUnit, useDistanceUnit } from '../../data/distanceUnits';
 import { LEVELS_OPTIONS, LEVELS_TITLE, setLevelsScope, useLevelsScope } from '../../data/levelsScope';
+
+/** The pages whose named levels follow the Levels card */
+const LEVELS_PAGES = new Set(['/pinpoint/map', '/pinpoint/agenda', '/pinpoint/board', '/pinpoint/compare']);
 import { GEX_SUBPAGES } from './subnav';
 import { useReplayLabel } from './replayState';
 import SessionBook from '../../components/ui/SessionBook';
@@ -165,11 +168,12 @@ const PinpointLayout = () => {
             cards' own width makes `flex-wrap` carry the side to its own line instead. */}
         <div className="flex-[3_1_0%] min-w-[264px] max-sm:basis-full flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
           <div id="pinpoint-head-band" className="empty:hidden min-w-0 flex-1 [&>[data-ledger-toolbar]]:border-0 [&>[data-ledger-toolbar]]:bg-transparent [&>[data-ledger-toolbar]]:p-0" data-shell-band />
-          <div className="ml-auto flex items-center gap-2" data-shell-cards>
+          <div className="ml-auto flex items-center gap-2 [&_:where(button)]:hit" data-shell-cards>
             <SessionBook />
-            {/* ONLY WHERE IT GOVERNS (the ship pass, 2026-10-22): the Agenda, Building and Compare read their own Expiry card,
-                so on them the Levels card changed nothing a reader could see — the Board alone reads it */}
-            {page.path === '/pinpoint/board' && <DropdownSelect label="Levels" icon={Layers} value={levelsScope} options={LEVELS_OPTIONS} onChange={setLevelsScope} title={LEVELS_TITLE} testId="levels-scope" align="end" />}
+            {/* ONE LEVELS CARD FOR THE WHOLE DESK (the ship pass, 2026-10-22): the Map, the Agenda, the Board and Compare all
+                read their supreme, walls, flip and net GEX off the contracts it picks, so one ticker shows one set of
+                levels on every page. A page's own Expiry card can still look at other dates, and says so when it does. */}
+            {LEVELS_PAGES.has(page.path) && <DropdownSelect label="Levels" icon={Layers} value={levelsScope} options={LEVELS_OPTIONS} onChange={setLevelsScope} title={LEVELS_TITLE} testId="levels-scope" align="end" />}
             <DropdownSelect label="Ruler" value={unit} options={RULER_OPTIONS} onChange={setDistanceUnit} title="The unit every distance on Pinpoint is read in" testId="ruler" align="end" />
           </div>
         </div>
@@ -185,7 +189,10 @@ const PinpointLayout = () => {
           /* THE DESK OWNS ITS FIRST SCREEN: top bar 56 + the shell's padding
              and its head ≈ 164. Short pages stretch to a full first screen;
              the footer starts below the fold. */
-          className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)]"
+          /* A FINGER'S HIT AREA ON EVERY PINPOINT CONTROL (the ship pass, 2026-10-22, at 390 wide: the window rails, the
+             strike doors, the row actions were 12–28px tall). `.hit` (index.css) adds an invisible 44px box on a coarse
+             pointer only; nothing a mouse sees changes. */
+          className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] [&_:where(button)]:hit [&_:where(a)]:hit"
         >
           {/* A subpage opens at its head, not where the last one's scroll was (2026-09-11) */}
           <ScrollHome />

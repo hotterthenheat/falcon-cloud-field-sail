@@ -43,10 +43,10 @@ import { hhmm } from '../../data/ahead';
 import { axisForSession } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
 import { nyMinutes } from '../../core/nyTime';
-/* THE BOOK IN THE THERMAL INKS (Noah, 2026-10-15: "the book colors should be matching the thermal colors we already have"):
-   amplifies in the field's warm, absorbs in its cool — the net line, its ground, the head's figure and the pointer's card
-   all read the same two inks as the thermal field on the tape above (the ember/glacier pair was the odd one out) */
-import { THERMAL_COOL, THERMAL_WARM, alpha, resolveInk } from './paletteInk';
+/* THE NET IN THE BOARD'S INKS (the ship pass, 2026-10-22 — it was the thermal pair, warm above zero, on the house's
+   inverted sign): retail sign, green above zero where hedging absorbs, red below where it amplifies — the net line, its
+   ground, the head's figure and the pointer's card */
+import { LONG_GAMMA, SHORT_GAMMA, alpha, resolveInk } from './paletteInk';
 import { readSessionClock } from '../../data/moc';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { setDayHover, clearDayHover, useDayHover } from '../../data/dayHover';
@@ -74,6 +74,8 @@ interface Props {
   at?: number | null;
   /** The expiries the net is sized to — the book's window. The minute path is the whole book; the last print is this window. */
   dates?: readonly string[] | null;
+  /** The contracts the net is read off, in words ("Today · Oct 22", "All expiries") — the Levels card's */
+  bookLabel?: string | null;
 }
 
 interface Minute {
@@ -124,7 +126,7 @@ const isRamp = (values: number[]): boolean => {
   return (sxy * sxy) / (sxx * syy) > 0.97;
 };
 
-const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dates }: Props) => {
+const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dates, bookLabel }: Props) => {
   const paper = useResolvedTheme() === 'light';
   const ticker = snapshot.ticker;
   const desk = useDeskSession();
@@ -165,7 +167,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     if (kept.length >= 2 && !isRamp(kept.map(m => m.net))) {
       const raw = kept[kept.length - 1].net;
       const scale = bookNet !== 0 && raw !== 0 ? bookNet / raw : 1;
-      return kept.map(m => ({ time: m.time, min: m.min, net: m.net * scale, spot: m.spot ?? priceAt.get(m.time) ?? null }));
+      /* IN THE RETAIL SIGN (the ship pass, 2026-10-22): the book is kept call-dominant NEGATIVE (core/walls.ts); the
+         reader sees the vendor's sign — positive = dealers long gamma = absorbs, the Board's and Compare's net GEX */
+      return kept.map(m => ({ time: m.time, min: m.min, net: -(m.net * scale), spot: m.spot ?? priceAt.get(m.time) ?? null }));
     }
     return [];
   }, [bars, vendor, at, bookNet]);
@@ -205,18 +209,19 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     if (!host) return;
     const s = daySurface(host, paper);
     const chart = createChart(host, dayChartOptions(s, { clock: true, logo: true }));
-    const amp = resolveInk(THERMAL_WARM, host);
-    const abs = resolveInk(THERMAL_COOL, host);
-    /* THE NET AS A BASELINE AT ZERO — the library's own two-sided line, Compare's gap band: ember and its ground above
-       (hedging amplifies), glacier and its ground below (it absorbs) — the capsules' own pair */
+    const amp = resolveInk(SHORT_GAMMA, host);
+    const abs = resolveInk(LONG_GAMMA, host);
+    /* THE NET AS A BASELINE AT ZERO — the library's own two-sided line, Compare's gap band, in the retail sign (the ship
+       pass, 2026-10-22): green and its ground above zero (dealers long gamma, hedging absorbs), red below (short gamma,
+       it amplifies) — the Board's net GEX inks */
     const net = chart.addSeries(BaselineSeries, {
       baseValue: { type: 'price', price: 0 },
-      topLineColor: amp,
-      topFillColor1: alpha(amp, paper ? 0.22 : 0.3),
-      topFillColor2: alpha(amp, 0.03),
-      bottomLineColor: abs,
-      bottomFillColor1: alpha(abs, 0.03),
-      bottomFillColor2: alpha(abs, paper ? 0.22 : 0.3),
+      topLineColor: abs,
+      topFillColor1: alpha(abs, paper ? 0.22 : 0.3),
+      topFillColor2: alpha(abs, 0.03),
+      bottomLineColor: amp,
+      bottomFillColor1: alpha(amp, 0.03),
+      bottomFillColor2: alpha(amp, paper ? 0.22 : 0.3),
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: true,
@@ -412,7 +417,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     e.preventDefault();
   };
   const plotW = hostRef.current?.clientWidth ?? 0;
-  const bookWords = expirySpan(dates);
+  const bookWords = bookLabel ?? expirySpan(dates);
 
   /* A CLEAR RULE OVER THE BOOK (Noah, 2026-10-14: "the book and the day should have clear cut horizontal line between them
      distinguishing them, the book is a separate thing"): the part opens with the box's own hairline at full strength */
@@ -440,14 +445,15 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
         </div>
             {part && last && (
           <>
-            {bookWords && <PartFact label="Book">{bookWords}</PartFact>}
-            <PartFact label="Net now · every strike">
-              <span style={{ color: last.net >= 0 ? THERMAL_WARM : THERMAL_COOL }} data-through-net={Math.round(last.net)}>
-                {fmtUsd(last.net)} · {last.net >= 0 ? 'amplifies' : 'absorbs'}
+            {bookWords && <PartFact label="Book" title="The contracts this hedging is read from — the Levels card at the top of the page">{bookWords}</PartFact>}
+            <PartFact label="Net now · every strike" title="Net GEX on every strike of these contracts. Positive (green): dealers are long gamma and their hedging tends to absorb moves. Negative (red): it tends to amplify them">
+              <span style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
+                {last.net > 0 ? '+' : ''}
+                {fmtUsd(last.net)} · {last.net >= 0 ? 'absorbs' : 'amplifies'}
               </span>
             </PartFact>
-            <PartFact label="Changed sign">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>
-            <PartFact label="Books kept">
+            <PartFact label="Changed sign" title="How many times today the net flipped between absorbing and amplifying">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>
+            <PartFact label="Books kept" title="How many minutes of the day have a reading of the book behind this line">
               {minutes.length} {minutes.length === 1 ? 'minute' : 'minutes'}
             </PartFact>
           </>
@@ -459,8 +465,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
           <dl className="grid grid-cols-3 gap-x-6">
             <div>
               <dt className="text-[11px] text-textMuted">Net now</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum whitespace-nowrap" style={{ color: last.net >= 0 ? THERMAL_WARM : THERMAL_COOL }} data-through-net={Math.round(last.net)}>
-                {fmtUsd(last.net)} · {last.net >= 0 ? 'amplifies' : 'absorbs'}
+              <dd className="mt-0.5 font-mono text-[14px] tnum whitespace-nowrap" style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
+                {last.net > 0 ? '+' : ''}
+                {fmtUsd(last.net)} · {last.net >= 0 ? 'absorbs' : 'amplifies'}
               </dd>
             </div>
             <div>
@@ -504,8 +511,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
               data-through-card={hhmm(hm.min)}
             >
               <span className="font-bold tnum text-textPrimary">{hhmm(hm.min)}</span>
-              <span className="ml-2 tnum" style={{ color: hm.net >= 0 ? THERMAL_WARM : THERMAL_COOL }}>
-                {fmtUsd(hm.net)} · {hm.net >= 0 ? 'amplifies' : 'absorbs'}
+              <span className="ml-2 tnum" style={{ color: hm.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }}>
+                {hm.net > 0 ? '+' : ''}
+                {fmtUsd(hm.net)} · {hm.net >= 0 ? 'absorbs' : 'amplifies'}
               </span>
               {hm.spot != null && <span className="ml-2 tnum text-textMuted">spot {hm.spot.toFixed(2)}</span>}
             </div>

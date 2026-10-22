@@ -349,6 +349,59 @@ function shortFrom(r: UwShort): ShortRow | null {
   };
 }
 
+/* A SHORT FILE FOR ANY NAME (the retail pass, 2026-10-22). The short book lists the 80 largest short positions by
+   share count, so GME, a name every squeeze reader asks for, read "That record is not on this book". The file's own
+   reads — /shorts/{t}/interest-float/v2 (every settlement), /shorts/{t}/data (today's borrow), the fails to deliver,
+   the short volume and the short volume by market — build the row instead, and fill what the screener row lacks. */
+export function shortRowFromFile(
+  ticker: string,
+  base: ShortRow | null,
+  reads: { si?: unknown; rebate?: unknown; ftd?: unknown; svr?: unknown; svx?: unknown },
+): ShortRow | null {
+  const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
+  const prints = arr(reads.si).filter(r => r.market_date).sort((a, b) => String(b.market_date).localeCompare(String(a.market_date)));
+  let row = base;
+  if (!row && prints.length) {
+    const made = shortFrom({ ...(prints[0] as UwShort), symbol: ticker });
+    if (made) {
+      const prior = prints[1] ? shortFrom({ ...(prints[1] as UwShort), symbol: ticker }) : null;
+      row = { ...made, history: [...made.history, ...(prior?.history ?? [])] };
+      const h = row.history;
+      if (h.length >= 2 && h[1].sharesM > 0) row.changePct = Number((((h[0].sharesM - h[1].sharesM) / h[1].sharesM) * 100).toFixed(1));
+    }
+  }
+  if (!row) return null;
+  const out: ShortRow = { ...row };
+  const borrow = arr(reads.rebate).sort((a, b) => String(b.timestamp ?? '').localeCompare(String(a.timestamp ?? '')))[0];
+  if (borrow) {
+    out.feeRate = numOr(borrow.fee_rate) ?? out.feeRate;
+    out.rebateRate = numOr(borrow.rebate_rate) ?? out.rebateRate;
+    const avail = numOr(borrow.short_shares_available);
+    if (avail != null) out.availableM = avail / 1e6;
+  }
+  const svrBox = reads.svr && typeof reads.svr === 'object' && !Array.isArray(reads.svr) ? (reads.svr as { si?: unknown }).si : reads.svr;
+  const session = arr(svrBox).sort((a, b) => String(b.market_date ?? '').localeCompare(String(a.market_date ?? '')))[0];
+  if (session) {
+    const ratio = num(session.short_volume_ratio);
+    if (ratio > 0) out.shortVolRatio = ratio <= 1.5 ? ratio * 100 : ratio;
+    const sv = num(session.short_volume);
+    if (sv > 0) out.shortVolM = sv / 1e6;
+  }
+  const fails = arr(reads.ftd).filter(f => f.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  if (fails.length && !out.ftdDays.length) {
+    out.ftdDays = fails.slice(0, 20).map(f => ({ date: String(f.date).slice(0, 10), quantity: num(f.quantity), price: num(f.price) }));
+    out.ftdK = num(fails[0].quantity) / 1000;
+  }
+  const venues = arr(reads.svx);
+  if (venues.length && !out.exchanges.length) {
+    const day = venues.reduce((m, v) => (String(v.date ?? '') > m ? String(v.date ?? '') : m), '');
+    out.exchanges = venues
+      .filter(v => String(v.date ?? '') === day)
+      .map(v => ({ exchange: String(v.exchange_name || v.market_center || '—'), shortM: num(v.short_volume) / 1e6, totalM: num(v.total_volume) / 1e6 }));
+  }
+  return out;
+}
+
 /** The screener returns the same symbol more than once. One row per name, the later report facing, both dates kept. */
 function collapseShorts(rows: ShortRow[]): ShortRow[] {
   const by = new Map<string, ShortRow>();
@@ -369,6 +422,10 @@ function collapseShorts(rows: ShortRow[]): ShortRow[] {
       availableM: face.availableM ?? other.availableM,
       history: [...face.history, ...other.history.filter(h => !seen.has(h.report))],
     });
+    /* two settlements on file: the change in shares short since the prior one */
+    const merged = by.get(r.ticker)!;
+    const prints = [...merged.history].sort((a, b) => b.report.localeCompare(a.report));
+    if (prints.length >= 2 && prints[1].sharesM > 0) merged.changePct = Number((((prints[0].sharesM - prints[1].sharesM) / prints[1].sharesM) * 100).toFixed(1));
   }
   return [...by.values()].sort((a, b) => b.interestPct - a.interestPct);
 }
@@ -432,6 +489,7 @@ const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
       sector: h.sector || (/treasury|t-bill|t-note/i.test(name) ? 'Treasury' : String(h.type || '').toLowerCase() === 'bond' ? 'Corporate bond' : '—'),
       /* a Treasury is the United States' own paper; any other issue keeps what the feed said */
       country: h.country_name || (/treasury|t-bill|t-note/i.test(name) ? 'United States' : 'Not stated'),
+      asOf: h.updated ? String(h.updated).slice(0, 10) : undefined,
     };
   }
   return {
@@ -440,6 +498,7 @@ const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
     sharesM: num(h.shares) / 1e6,
     sector: h.sector || '—',
     country: h.country_name || 'Not stated',
+    asOf: h.updated ? String(h.updated).slice(0, 10) : undefined,
   };
 };
 
@@ -483,6 +542,7 @@ async function pullEtfs() {
         callVol: numOr(info?.call_vol),
         putVol: numOr(info?.put_vol),
         flows: flow.flows,
+        holdingsAsOf: held.reduce<string | null>((m, h) => (h.asOf && (!m || h.asOf > m) ? h.asOf : m), null),
       });
     }
     if (rows.length === 0) throw new Error('no fund landed');

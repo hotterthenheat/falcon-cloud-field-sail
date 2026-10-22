@@ -87,7 +87,7 @@ import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
 import { buildBuilding, type Building as BuildingData } from '../../data/building';
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { readSessionClock } from '../../data/moc';
-import { MAX_PANES, PANE_COLS, newPaneKey, readPanes, writePanes, type Pane } from '../../data/panes';
+import { MAX_PANES, OFF_SCOPE_TITLE, PANE_COLS, newPaneKey, readPanes, usePanesFollowScope, writePanes, type Pane } from '../../data/panes';
 import { usePositions } from '../../data/positions';
 import { BuildingArrived } from '../../components/vendor/LiveDesk';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
@@ -124,12 +124,13 @@ const Building = () => {
     setPanesState(next);
   };
   const patchPane = (key: string, patch: Partial<Pane>) => setPanes(panes.map(p => (p.key === key ? { ...p, ...patch } : p)));
+  const levelsScope = usePanesFollowScope(panes, setPanes);
   const addPane = (ticker: string) => {
     if (panes.length >= MAX_PANES) return;
     const t = ticker.trim().toUpperCase();
     if (!t) return;
     ensureBook(t, 'full');
-    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: '0DTE' }]);
+    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: levelsScope }]);
   };
   const removePane = (key: string) => {
     if (panes.length <= 1) return;
@@ -286,7 +287,12 @@ const Building = () => {
                 onToggleLink={i === 0 ? () => patchPane(p.key, { ticker: linked ? t : undefined }) : undefined}
                 onPick={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
               />
-              <DropdownSelect label="Expiry" value={p.expiry} options={expiryOptionsFor(tickerFor(p))} onChange={e => patchPane(p.key, { expiry: e })} title="Which expiry's hedging this pane reads" testId={`build-expiry-${i}`} size="sm" />
+              <DropdownSelect label="Expiry" value={p.expiry} options={expiryOptionsFor(tickerFor(p))} onChange={e => patchPane(p.key, { expiry: e })} title="Which expiry's hedging this pane reads — it follows the Levels card at the top until you pick another" testId={`build-expiry-${i}`} size="sm" />
+              {p.expiry !== levelsScope && (
+            <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
+              own expiry
+            </span>
+          )}
               {panes.length > 1 && (
                 <button type="button" onClick={() => removePane(p.key)} title="Take this name off" aria-label={`Take ${t} off`} className="inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-build-remove={t}>
                   <X className="w-3 h-3" />

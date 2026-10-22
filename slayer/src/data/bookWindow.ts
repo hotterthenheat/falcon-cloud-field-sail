@@ -1,4 +1,5 @@
 import type { MarketSnapshot, StrikeNode } from '../types/market';
+import { bookToday, isoDate } from '../core/calendar';
 
 /*
 ==================================================
@@ -101,4 +102,40 @@ export function expirySpan(dates: readonly string[] | null | undefined): string 
   };
   if (dates.length === 1) return fmt(dates[0]);
   return `${fmt(dates[0])} → ${fmt(dates[dates.length - 1])}`;
+}
+
+/*
+  THE LEVELS' BOOK — ONE PER SCOPE (the ship pass, 2026-10-22: the Board and the Agenda read SPY's supreme 764 off
+  today's contracts while the Map's card read 760 off the eight dates its matrix showed; a retail reader saw two
+  supremes). Every named level on Pinpoint — supreme, call wall, put wall, flip, pin, net GEX — is read off THIS book:
+  the Levels card's scope, never the matrix's window. "Today" is today's own chain (the first live date when nothing
+  expires today, as uwBook's chainsFor resolves it); "All expiries" is the whole book. The matrix may still draw more
+  dates; anything it sums over its own window is labelled with that window.
+*/
+export function levelsBook(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): MarketSnapshot {
+  const ch = snapshot.uwChains;
+  if (!snapshot.liveBook || !ch) return snapshot;
+  const pick = scope === 'ALL' ? ch.ALL : ch['0DTE']?.length ? ch['0DTE'] : ch.ALL;
+  if (!pick?.length) return snapshot;
+  if (snapshot.chain === pick && ch['0DTE'] === pick) return snapshot;
+  return { ...snapshot, chain: pick, uwChains: { ...ch, '0DTE': pick } };
+}
+
+/** The date the "Today" scope reads (null for the whole book, or before the dates are in) */
+export function levelsDate(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): string | null {
+  if (scope === 'ALL') return null;
+  const front = snapshot.uwChains?.['0DTE'];
+  const by = snapshot.uwByDate;
+  if (!front?.length || !by) return null;
+  return Object.keys(by).find(d => by[d] === front) ?? null;
+}
+
+/** The scope in a reader's words, for a label: "Today · Oct 22", "Oct 23 · next expiry", "All expiries" */
+export function levelsWords(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE', today: string = isoDate(bookToday())): string {
+  if (scope === 'ALL') return 'All expiries';
+  const d = levelsDate(snapshot, scope);
+  /* today's own chain is not in yet: the levels are the whole book's until it lands — say so */
+  if (!d) return 'All expiries · today loading';
+  const span = expirySpan([d]) ?? d;
+  return d === today ? `Today · ${span}` : `${span} · next expiry`;
 }

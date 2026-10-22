@@ -365,11 +365,11 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
   if (top) {
     out.push({
       key: 'lean',
-      title: "Today's lean",
+      title: marked === 0 ? 'Major today' : "Today's lean",
       ink: lean === 'positive' ? 'bull' : lean === 'negative' ? 'bear' : 'neutral',
       read:
         marked === 0
-          ? `${events.length} headlines on the wire, and none of them are marked for or against a name. The heaviest print is ${where}${from}.`
+          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are flagged major by Unusual Whales (the feed sends no positive or negative read). The hardest-landing one is ${where}${from}.`
           : `${positive} positive against ${negative} negative across ${events.length} headlines — the wire is ${
               lean === 'split' ? 'split down the middle' : `net ${lean}`
             }. The heaviest print is ${where}${from}.`,
@@ -382,7 +382,7 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
     key: 'beat',
     title: 'Biggest story type',
     ink: 'neutral',
-    read: `${topCat} carries ${topCatN} of ${events.length} stories today — when one beat crowds the tape, moves cluster around its names and the rest of the board trades quiet.`,
+    read: `${topCat} carries ${topCatN} of ${events.length} stories today.`,
   });
   const macro = events.filter(e => !e.item.ticker);
   const macroLift = macro.filter(e => e.grade === 'ALLY').length;
@@ -392,9 +392,12 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
     key: 'macro',
     title: 'Macro backdrop',
     ink: macroLift > macroPress ? 'bull' : macroPress > macroLift ? 'bear' : 'neutral',
-    read: `${macro.length} index-level prints against ${events.length - macro.length} single names. The macro tape ${
-      macroMarked === 0 ? 'is not marked for or against' : macroLift > macroPress ? 'leans supportive' : macroPress > macroLift ? 'leans heavy' : 'leans neutral'
-    } — single-name stories trade with that wind ${macroLift > macroPress ? 'behind' : macroPress > macroLift ? 'against' : 'beside'} them.`,
+    read:
+      macroMarked === 0
+        ? `${macro.length} stories name no single stock, against ${events.length - macro.length} that do; ${macro.filter(e => e.item.major).length} of the market-wide ones are flagged major.`
+        : `${macro.length} index-level prints against ${events.length - macro.length} single names. The macro tape ${
+            macroLift > macroPress ? 'leans supportive' : macroPress > macroLift ? 'leans heavy' : 'leans neutral'
+          } — single-name stories trade with that wind ${macroLift > macroPress ? 'behind' : macroPress > macroLift ? 'against' : 'beside'} them.`,
   });
   const fresh = events.filter(e => freshnessOf(e) === 'fresh');
   if (fresh.length > 0) {

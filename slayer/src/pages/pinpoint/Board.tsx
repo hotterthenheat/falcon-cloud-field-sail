@@ -36,8 +36,9 @@ import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEv
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
+import { useIsPhone } from '../../components/ui/useMediaQuery';
 import { useBookRev, usePinpointFeed, peekEntry } from '../../data/uwBook';
-import { buildBoardRow, type BoardRow } from '../../data/board';
+import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
 import { tickerName } from '../../data/tickers';
 import TickerLookup from '../../components/ui/TickerLookup';
@@ -92,6 +93,14 @@ const RemoveName = ({ ticker, remove }: { ticker: string; remove: (t: string) =>
   );
 };
 
+/* TODAY'S STRIKES NOT IN YET (the ship pass, 2026-10-22): until a name's front-date chain lands, its "Today" levels
+   would be the whole book's — the cells say they are loading instead of printing the wrong book */
+const Pending = ({ data }: { data: BoardRow }) => (
+  <span className="font-mono text-[11px] text-textMuted" title={`Still loading the contracts that expire today on ${data.ticker} — the levels appear in a moment`} data-board-pending>
+    …
+  </span>
+);
+
 const NameCell = ({ data, context }: ICellRendererParams<BoardRow, unknown, BoardContext>) =>
   data ? (
     <span className="flex items-center gap-2 font-mono w-full">
@@ -121,6 +130,7 @@ const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
 
 const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
+  if (data.pending) return <Pending data={data} />;
   if (!data.regime) return <span className="font-mono text-[10px] text-textMuted">one-sided — no flip</span>;
   const w = REGIME_WORDS[data.regime];
   /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
@@ -134,7 +144,9 @@ const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
 };
 
 const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data && data.flip != null ? (
+  data?.pending ? (
+    <Pending data={data} />
+  ) : data && data.flip != null ? (
     <TickFigure value={data.flip} className="inline-flex items-baseline gap-2 font-mono">
       <span className="text-[11px] font-semibold" style={{ color: FLIP }}>
         {fmtStrike(data.flip)}
@@ -146,7 +158,9 @@ const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
   );
 
 const WallCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data ? (
+  data?.pending ? (
+    <Pending data={data} />
+  ) : data ? (
     <span className="inline-flex items-baseline gap-2 font-mono tnum tabular-nums">
       <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: data.nearest.kind === 'call' ? CALL_WALL : PUT_WALL }}>
         {data.nearest.kind === 'call' ? 'Call wall' : 'Put wall'}
@@ -159,6 +173,7 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) =>
 /** The agenda's #1 for the name: the strike in its kind's ink, reached · holds, the dollars at stake */
 const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
+  if (data.pending) return <Pending data={data} />;
   const w = data.watch;
   if (!w) return <span className="font-mono text-[10px] text-textMuted">—</span>;
   const kind = w.role ?? (w.isShelf ? 'shelf' : w.isWall ? null : 'trapdoor');
@@ -181,33 +196,46 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
 };
 
 const SupremeCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data ? (
+  data?.pending ? (
+    <Pending data={data} />
+  ) : data ? (
     <span className="font-mono text-[11px] font-bold tnum tabular-nums" style={{ color: SUPREME }}>
       {fmtStrike(data.supreme)}
     </span>
   ) : null;
 
+/* NET GEX IN THE RETAIL SIGN (the ship pass, 2026-10-22): positive = dealers long gamma = hedging absorbs moves = green;
+   negative = short gamma = it amplifies them = red. The row carries the vendor's sign (data/board.ts retailNet). When
+   the book's net and the side of the flip disagree, the hover says so in words rather than leaving two reads that look
+   like a contradiction. */
 const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data ? (
-    <TickFigure value={data.netGex} title={data.netGex > 0 ? 'more puts than calls — dealer hedging makes moves bigger' : 'more calls than puts — dealer hedging softens moves'} className={`font-mono text-[11px] font-semibold ${data.netGex > 0 ? 'text-bear' : 'text-bull'}`}>
+  data?.pending ? (
+    <Pending data={data} />
+  ) : data ? (
+    <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`font-mono text-[11px] font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
+      {data.netGex > 0 ? '+' : ''}
       {fmtUsd(data.netGex)}
     </TickFigure>
   ) : null;
 
 const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data && data.bellShare != null ? (
-    <span className="inline-flex items-center gap-2 font-mono tnum tabular-nums w-full">
+    <span className="inline-flex items-center gap-2 font-mono tnum tabular-nums w-full" title={`${data.bellShare}% of ${data.ticker}'s gamma sits in contracts that expire at 4:00 today`}>
       <span className="text-[11px] text-textPrimary w-8 text-right">{data.bellShare}%</span>
       <span className="flex-1 h-[3px] rounded-full bg-ink/[0.06] overflow-hidden">
         <span className="block h-full rounded-full" style={{ width: `${data.bellShare}%`, background: SUPREME, opacity: 0.7 }} />
       </span>
     </span>
   ) : (
-    <span className="font-mono text-[10px] text-textMuted">—</span>
+    <span className="font-mono text-[10px] text-textMuted" title={data?.bellWhy === 'none' ? `Nothing on ${data.ticker} expires today` : 'Still reading the expiry list'}>
+      {data?.bellWhy === 'none' ? '— none today' : '—'}
+    </span>
   );
 
 const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data ? <span className="font-mono text-[11px] tnum tabular-nums text-textSecondary">{data.crossings == null ? '—' : `${data.crossings}×`}</span> : null;
+  data?.pending ? (
+    <Pending data={data} />
+  ) : data ? <span className="font-mono text-[11px] tnum tabular-nums text-textSecondary">{data.crossings == null ? '—' : `${data.crossings}×`}</span> : null;
 
 /** The session's closes as one quiet line — the day's shape, not a chart */
 const SparkCell = ({ data }: ICellRendererParams<BoardRow>) => {
@@ -329,9 +357,13 @@ const Board = () => {
   /* EVERY HEAD EXPLAINS ITSELF ON HOVER (the lock walk, Noah, 2026-09-09: "certain
      row headers like 'expires today' need a brief hover description") — one
      sentence each, the grid's own tooltip, in the house clothes (index.css). */
-  const columnDefs = useMemo<ColDef<BoardRow>[]>(
-    () => [
-      { headerName: 'Name', field: 'ticker', pinned: 'left', width: 130, cellRenderer: NameCell, sortable: true, headerTooltip: 'Click a name to open it on the Map' },
+  /* ON A PHONE (the ship pass, 2026-10-22): the name stays pinned and narrow, and the reads a phone needs first — price,
+     the nearest wall and how far, the flip, the supreme, net GEX — come straight after it; the long ones (watch first,
+     the day's path, crossings, positions) leave the grid there. Anything past the screen scrolls inside the grid. */
+  const phone = useIsPhone();
+  const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
+    const cols: ColDef<BoardRow>[] = [
+      { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 130, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
       { headerName: 'Price', field: 'spot', flex: 1.2, minWidth: 140, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: "The last price and today's change" },
       {
         headerName: 'Watch first',
@@ -340,11 +372,11 @@ const Board = () => {
         minWidth: 290,
         cellRenderer: WatchCell,
         cellDataType: false,
-        headerTooltip: 'The strike to watch first on this name — the one most likely reached with the most at stake — with the odds it is reached, the share of touches walls like it held in the back-test, and the dollars behind it',
+        headerTooltip: 'The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there today; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there',
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
-      { headerName: 'Hedging today', field: 'regime', flex: 1.1, minWidth: 130, cellRenderer: RegimeCell, headerTooltip: 'Which way dealer hedging leans right now: absorbing moves (price above the flip) or amplifying them (price below it)' },
+      { headerName: 'Hedging today', field: 'regime', flex: 1.1, minWidth: 130, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing near the current price: absorbing moves (price above the flip) or amplifying them (price below it)' },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
@@ -352,7 +384,7 @@ const Board = () => {
         minWidth: 140,
         cellRenderer: FlipCell,
         sort: 'asc',
-        headerTooltip: 'The price where dealer hedging switches sides, and how far it is from spot — the names closest to flipping come first',
+        headerTooltip: 'The flip: the price where dealer hedging switches from absorbing moves to amplifying them, and how far it is from the current price. Names closest to their flip come first',
         // Closest to flipping first — the names that can change character next
         comparator: (a: number | null, b: number | null) => Math.abs(a ?? 1e9) - Math.abs(b ?? 1e9),
       },
@@ -363,13 +395,13 @@ const Board = () => {
         minWidth: 190,
         cellRenderer: WallCell,
         cellDataType: false,
-        headerTooltip: 'The closest strike whose hedging pushes back on price, and how far it is',
+        headerTooltip: 'The nearest wall: a strike with a lot of hedging that tends to slow price down. Call walls sit above price, put walls below. Shows how far away it is',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: 'Supreme', field: 'supreme', flex: 0.8, minWidth: 96, cellRenderer: SupremeCell, headerTooltip: 'The heaviest strike on the contracts the Levels card reads (today\'s by default) — the same one the Agenda and Compare crown; the Map crowns the window its Expiries card holds' },
-      { headerName: 'Net GEX today', field: 'netGex', flex: 1.1, minWidth: 120, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'All the hedging on the name added up, per 1% move: positive absorbs moves, negative amplifies them' },
-      { headerName: 'Expires today', field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: "The share of the name's hedging sitting in contracts that expire at 4:00 today — it is gone at the close, and the walls it made go with it" },
-      { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: 'How many times price has crossed the flip today — the more it has, the less either side of it means' },
+      { headerName: 'Supreme', field: 'supreme', flex: 0.8, minWidth: 96, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
+      { headerName: 'Net GEX today', field: 'netGex', flex: 1.1, minWidth: 120, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
+      { headerName: 'Expires today', field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: "The share of the name's hedging in contracts that expire at 4:00 today. It is gone after the close, and the walls it made go with it. A dash means nothing on the name expires today" },
+      { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: 'How many times price has crossed the flip today. The more crossings, the less either side of it means' },
       { headerName: 'Today so far', field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: 'The price path since the open' },
       {
         headerName: 'Your positions',
@@ -381,9 +413,11 @@ const Board = () => {
         headerTooltip: 'The contracts you hold on this name',
         comparator: (a: BoardRow['yours'], b: BoardRow['yours']) => a.contracts - b.contracts,
       },
-    ],
-    []
-  );
+    ];
+    if (!phone) return cols;
+    const order = ['ticker', 'spot', 'nearest', 'flipDistPct', 'supreme', 'netGex', 'bellShare', 'regime'];
+    return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
+  }, [phone]);
   const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip' }), []);
 
   const open = (e: RowClickedEvent<BoardRow>) => {
@@ -412,11 +446,9 @@ const Board = () => {
   const stamps = names.map(n => peekEntry(n));
   const bookAt = stamps.reduce<number | null>((best, e) => (e && e.at > 0 ? (best == null ? e.at : Math.min(best, e.at)) : best), null);
   const bookDown = names.length > 0 && stamps.length > 0 && stamps.every(e => e?.status === 'error');
-  const tall = rows.length > 12;
-
   return (
-    /* A short board is only as tall as its rows. A long one scrolls inside
-       the grid, so the column heads stay put. */
+    /* THE BOARD IS AS TALL AS ITS ROWS (the ship pass, 2026-10-22): a fixed box showed ~15 of 20 names with a row cut
+       at its foot and empty page under it. Every name shows; the page scrolls, never the grid. */
     <div className="border border-borderSubtle rounded-md overflow-clip flex flex-col" data-board>
       <div className="shrink-0 flex items-center gap-3 flex-wrap px-2 py-1.5 bg-panel border-b border-borderSubtle/70" data-board-toolbar>
         <span className="font-mono text-[9px] uppercase tracking-widest text-textSecondary">The names on your board</span>
@@ -430,7 +462,7 @@ const Board = () => {
           placeholder="Filter · SPY QQQ NVDA"
           aria-label="Filter names — as many as you like, spaces or commas between"
           title="As many names as you like, spaces or commas between"
-          className="ml-auto flex-1 min-w-[9rem] sm:flex-none sm:w-44 h-7 bg-transparent border border-borderSubtle rounded-md px-2 font-mono text-[10px] text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-silver/50"
+          className="ml-auto flex-1 min-w-[9rem] sm:flex-none sm:w-44 h-7 max-sm:h-10 bg-transparent border border-borderSubtle rounded-md px-2 font-mono text-[10px] text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-silver/50"
           data-board-filter
         />
         <span ref={addRootRef} className="relative inline-flex">
@@ -440,7 +472,7 @@ const Board = () => {
             onClick={() => setAdding(v => !v)}
             aria-expanded={adding}
             title="Add a name to the board"
-            className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border bg-chip transition-colors font-mono select-none ${adding ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
+            className={`inline-flex items-center gap-1.5 h-7 max-sm:h-10 px-2.5 rounded-md border bg-chip transition-colors font-mono select-none ${adding ? 'border-silver/50' : 'border-borderSubtle hover:border-borderMuted'}`}
             data-board-add
           >
             <Plus className="w-3 h-3 text-textMuted" />
@@ -476,13 +508,13 @@ const Board = () => {
       /* MORE TO THE RIGHT, SAID (the UI sweep, 2026-10-22): twelve columns run past a laptop's width and the last one
          stood cut at the edge ("$354.9", "Net GEX to") as if broken — a fade now says the grid scrolls on, and the
          scrollbar stays up */
-      <div ref={boardWrapRef} className="slayer-board relative" style={tall ? { height: 'min(720px, calc(100dvh - 180px))' } : undefined} data-more-right={moreRight || undefined}>
+      <div ref={boardWrapRef} className="slayer-board relative" data-more-right={moreRight || undefined}>
         {moreRight && <span aria-hidden className="pointer-events-none absolute top-0 right-0 bottom-3 w-16 z-20 bg-gradient-to-l from-panel via-panel/70 to-transparent" />}
         <AgGridProvider modules={MODULES}>
           <AgGridReact<BoardRow>
             ref={gridRef}
             theme={THEME}
-            domLayout={tall ? 'normal' : 'autoHeight'}
+            domLayout="autoHeight"
             rowData={rows}
             onRowDataUpdated={e => {
               if (e.api.getDisplayedRowCount() > 0) e.api.hideOverlay();

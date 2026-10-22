@@ -21,12 +21,12 @@
 ==================================================
 */
 
-import { bookCandles, peekIv } from './uwBook';
+import { bookCandles, peekBellShare, peekIv } from './uwBook';
 import { UNIVERSE } from './universe';
 import { SESSION_MIN, buildCloseOdds, type AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
 import { impliedDaySigma, sessionAtr, type DistanceScales, type DistanceUnit } from './atr';
-import { bellShareOf, watchOf, type BoardRow } from './board';
+import { netGexOf, retailNet, watchOf, type BoardRow } from './board';
 import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from './exposureSurface';
 import { buildFlipGauge, type GammaRegime } from './flipGauge';
@@ -101,10 +101,13 @@ export interface CompareSide {
   putWall: CompareLevel;
   /** The heaviest strike, per greek — the one the Map's supreme follows when the greek changes */
   supreme: Record<Greek, CompareLevel>;
-  /** The window's net: positive amplifies, negative absorbs */
+  /** Net GEX in the RETAIL sign (data/board.ts retailNet): positive = dealers long gamma, hedging absorbs moves;
+      negative = short gamma, it amplifies them — the Board's own figure for the same contracts */
   netGex: number;
-  /** Share of the hedging that expires at the bell, percent */
+  /** Share of the book's gamma that expires today, percent — the Board's figure (uwBook peekBellShare) */
   bellShare: number | null;
+  /** Why there is no share: nothing expires today on this name, or the list is not in yet */
+  bellWhy: 'none' | 'wait' | null;
   watch: BoardRow['watch'];
   /** The most likely close, and its odds in percent */
   closes: { strike: number; odds: number } | null;
@@ -119,6 +122,8 @@ export interface CompareSide {
   read: string;
   /** How many expiries the calendar holds */
   expiryCount: number;
+  /** The contracts this side reads — its history windows must read the same ones */
+  expiry: ExposureExpiry;
 }
 
 export interface Compare {
@@ -176,7 +181,10 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   } catch {
     return null;
   }
-  const gauge = buildFlipGauge(snapshot);
+  /* THE FLIP OFF THE SAME CONTRACTS AS THE WALLS: the snapshot's chain is the Levels card's; with another expiry picked
+     here the gauge read the card's flip beside this expiry's walls */
+  const lens = snapshot.liveBook && snapshot.uwChains?.[expiry]?.length ? { ...snapshot, chain: snapshot.uwChains[expiry]! } : snapshot;
+  const gauge = buildFlipGauge(lens);
   const iv = peekIv(ticker) ?? 0.2;
   const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
   const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
@@ -202,10 +210,9 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   });
 
   let surface: ExposureSurface | null = null;
-  let bellShare: number | null = null;
+  const bell = peekBellShare(ticker);
   try {
     surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-    bellShare = bellShareOf(surface);
   } catch {
     /* no surface for this name yet */
   }
@@ -231,8 +238,9 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     callWall: at(profile.levels.callWall),
     putWall: at(profile.levels.putWall),
     supreme,
-    netGex: profile.netGex,
-    bellShare,
+    netGex: snapshot.liveBook ? netGexOf(lens.chain) : retailNet(profile.netGex),
+    bellShare: bell.share,
+    bellWhy: bell.share == null ? bell.why : null,
     watch,
     closes: top ? { strike: top.strike, odds: top.odds } : null,
     snapshot,
@@ -240,6 +248,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     maxAbs: profile.maxAbs,
     read: readHeatPattern(profile.levels).read,
     expiryCount: surface?.expiries.length ?? 1,
+    expiry,
   };
 }
 

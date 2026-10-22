@@ -91,12 +91,12 @@ const OrderFigure = () => {
 
 /* The row, small: strike and tag, reached, the beam, the break, the build, the stake bar */
 const RowFigure = () => (
-  <Figure label="One row: the strike and its tag, the odds it is reached, the beam for holds, what a break runs to, what was built today, the bar for what is at stake" h={66}>
+  <Figure label="One row: the strike and its tag, the chance it is reached, its wall size, what a break runs to, what was built today, the bar for what is at stake" h={66}>
     <g fontFamily={MONO} fontSize={6.5} fill="#7c8290" letterSpacing={0.6}>
       <text x={10} y={12}>#</text>
       <text x={30} y={12}>STRIKE</text>
       <text x={112} y={12} textAnchor="end">REACHED</text>
-      <text x={172} y={12} textAnchor="end">HOLDS</text>
+      <text x={172} y={12} textAnchor="end">WALL SIZE</text>
       <text x={186} y={12}>IF IT BREAKS</text>
       <text x={300} y={12}>BUILT TODAY</text>
       <text x={362} y={12}>AT STAKE</text>
@@ -193,16 +193,16 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
     <div data-targets-guide>
       <Section title="The order">
         <p>
-          Two questions, multiplied: how likely price gets there {clock.inSession ? 'by the close' : 'next session'}, and how much moves if it does — the hedging sitting at the strike plus what a move through it forces dealers to trade. A far wall ranks low however big; a thin strike at spot ranks low however near.
+          Two questions, multiplied: how likely price gets there {clock.inSession ? 'by the close' : 'next session'}, and how much happens if it does — the hedging at the strike plus the stock a move through it forces dealers to trade. A far wall ranks low however big; a thin strike near price ranks low however close.
         </p>
         <OrderFigure />
       </Section>
       <Section title="The row">
         <p>
-          Each figure is another page's answer for that strike: <Num silver>holds</Num> and <span style={{ color: WARM }}>a break</span> from At the wall, built or drained from Building, "closes here" from Ahead. A <span style={{ color: WARM }}>trapdoor</span> pushes the move along instead of back; its bar is warm. A strike too thin to be a wall shows no odds at all.
+          One strike a row. <Num>Reached</Num> is the chance price touches it {clock.inSession ? 'by the close' : 'next session'}. <Num silver>Wall size</Num> is how big its hedging is next to the biggest wall on this ticker's own chain, which reads 100% — a strike half that size reads 50%, and a dash means it is too thin to be a wall. <span style={{ color: WARM }}>If it breaks</span> says where price runs next and how much stock dealers must trade on the way. <Num>Built today</Num> is hedging added or taken off since the open. <Num>At stake</Num> is the hedging parked there.
         </p>
         <p>
-          <Num silver>The wall</Num> is its size on this chain: the hedging on the strike and its neighbours, against the heaviest strike on the same ticker — the heaviest wall reads 100%, one half its size 50%. Every ticker reads against its own chain only. It measures how big a wall is, not the odds price turns there: a two-year back-test found the biggest strikes pull price in as often as they turn it away.
+          Wall size says how big a wall is, not the chance price turns there. A <span style={{ color: WARM }}>trapdoor</span> pushes a move along instead of slowing it; its bar is warm.
         </p>
         <RowFigure />
       </Section>

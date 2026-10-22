@@ -399,18 +399,18 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
       <div className={`${pad} pt-2 pb-2 overflow-x-auto`} data-build-rows={items.filter(i => i.kind === 'row').length} onPointerLeave={() => setHover(null)}>
         {/* The column template is the skeleton's own (buildingSkeletons.tsx), so the two cannot drift */}
         <div key={cut} className={`grid items-center animate-fade-in ${compact ? 'min-w-[340px] gap-x-[10px]' : 'min-w-[1060px] gap-x-[14px]'}`} style={{ gridTemplateColumns: compact ? LEDGER_COMPACT_COLUMNS : LEDGER_COLUMNS }}>
-          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">Strike</div>
+          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The strike price, its role (call wall, put wall, supreme) and how far it is from the current price">Strike</div>
           {/* the head names the measure — net gamma, in dollars (Noah, 2026-09-13: "what does that number even mean?… can we get
               the 'net gamma' in there somewhere so it doesn't have to be a mystery") — and the full definition on hover */}
           <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap flex items-center gap-2 min-w-0" data-build-measure>
             <Term k="The wall now">The wall now</Term>
             {!compact && <span className="normal-case tracking-normal text-textMuted/70">· net gamma at the strike, in dollars</span>}
           </div>
-          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right">Change</div>
-          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right">Calls</div>}
-          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right">Puts</div>}
-          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">The day</div>}
-          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">What's happening</div>
+          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="Hedging added (+) or taken off (−) at the strike in the latest open-interest count, in dollars">Change</div>
+          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from call contracts">Calls</div>}
+          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from put contracts">Puts</div>}
+          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The wall's size through today's session">The day</div>}
+          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The verdict: building, draining, changed sides, or new today">What's happening</div>
 
           {items.map((it, idx) => {
             if (it.kind === 'spot')

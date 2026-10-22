@@ -53,26 +53,23 @@ import { type NewsCategory } from '../../data/news';
 import { lookup } from '../../data/universe';
 import { buildRoomInsights, clusterByCity, freshnessOf, severityWord, type CityPing, type GeoNewsEvent, type NewsGrade } from '../../data/newsroom';
 import { useEconFeed, useNewsFeed } from '../../data/liveRecord';
-import { ImpactLegend, ImpactMark, tierOf } from '../../components/record/impactMark';
+import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from '../../components/record/impactMark';
 import NewsFeedTabs, { keepInWindow } from '../../components/record/NewsFeedTabs';
-/* `GRADE_INK` here is the story's LEAN (positive · negative); the four words' inks come in under another name */
-import { GRADE_INK as READ_INK } from '../../components/ui/GradeMeter';
-import { gradeOfNewsConfidence } from '../../data/news';
 import NewsCalendar from '../../components/record/NewsCalendar';
 import { useMediaQuery } from '../../components/ui/useMediaQuery';
 import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from './recordSkeletons';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
-const GRADE_INK: Record<NewsGrade, string> = { THREAT: 'text-bear', ALLY: 'text-bull', WATCH: 'text-textSecondary' };
 const GRADE_BAR: Record<NewsGrade, string> = { THREAT: 'bg-bear/85', ALLY: 'bg-bull', WATCH: 'bg-ink/40' };
 /** The grade in the page's words — how the story reads for the name (Noah, 2026-09-09: "positive, negative") */
-const GRADE_WORD: Record<NewsGrade, string> = { THREAT: 'negative', ALLY: 'positive', WATCH: 'neutral' };
+/** A real vendor lean, when the feed ever sends one — Unusual Whales sends "neutral" on every headline today, so this is null */
+const leanOf = (g: NewsGrade): 'positive' | 'negative' | null => (g === 'ALLY' ? 'positive' : g === 'THREAT' ? 'negative' : null);
 
 type CategoryPick = 'all' | NewsCategory;
 type LeanPick = 'any' | NewsGrade;
 type NamesPick = 'all' | 'board' | 'macro';
-type Sort = 'newest' | 'move' | 'sure' | 'loud';
+type Sort = 'matters' | 'newest' | 'move' | 'loud';
 
 const CATEGORY_OPTIONS: DropdownOption<CategoryPick>[] = [
   { value: 'all', label: 'All', hint: 'Every kind of story' },
@@ -96,10 +93,10 @@ const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
   { value: 'macro', label: 'Macro only', hint: 'Stories with no single name' },
 ];
 const SORT_OPTIONS: DropdownOption<Sort>[] = [
+  { value: 'matters', label: 'What matters', hint: 'Major stories on your Board first, then other stories on your Board, then the rest of the major ones — newest first inside each' },
   { value: 'newest', label: 'Newest', hint: 'The latest story first' },
-  { value: 'move', label: 'Biggest move', hint: 'The largest expected one-day move first' },
-  { value: 'sure', label: 'Most sure', hint: 'The reads the model is surest of first' },
-  { value: 'loud', label: 'Loudest', hint: 'The hardest-landing story first' },
+  { value: 'move', label: 'Biggest move', hint: 'The named stock that has moved most so far today first' },
+  { value: 'loud', label: 'Loudest', hint: 'Major stories and big movers first' },
 ];
 
 /* THE IMPACT MARK lives in components/record/impactMark.tsx since 2026-09-13 — the All news box and the month draw the same square */
@@ -339,9 +336,9 @@ const NewsAlertDoor = ({ ticker }: { ticker: string }) => {
   );
 };
 
-const Fact = ({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string }) => (
+const Fact = ({ label, children, testId, tip }: { label: string; children: React.ReactNode; testId?: string; tip?: string }) => (
   <div>
-    <dt className="text-[10px] text-textMuted whitespace-nowrap">{label}</dt>
+    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={tip}>{label}</dt>
     <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap max-w-[22ch] truncate" data-news-fact={testId}>
       {children}
     </dd>
@@ -460,7 +457,9 @@ const News = () => {
   const [category, setCategory] = useState<CategoryPick>('all');
   const [lean, setLean] = useState<LeanPick>('any');
   const [names, setNames] = useState<NamesPick>('all');
-  const [sort, setSort] = useState<Sort>('newest');
+  const [sort, setSort] = useState<Sort>('matters');
+  const boardSet = useMemo(() => new Set(boardNames), [boardNames]);
+  const onBoard = (e: GeoNewsEvent) => (e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : [])).some(t => boardSet.has(t));
   /* THE FILTER reads what the other three cards leave on the wire — every
      name and every city there, with its count — and keeps any number of them
      (Noah: "it should read whats on the current page … so user can select
@@ -513,11 +512,15 @@ const News = () => {
     const kept = picked.size === 0 ? cut : cut.filter(e => picked.has(`name:${e.item.ticker ?? 'MACRO'}`) || picked.has(`city:${e.origin.city}`));
     const by: Record<Sort, (a: GeoNewsEvent, b: GeoNewsEvent) => number> = {
       newest: (a, b) => a.item.minutesAgo - b.item.minutesAgo,
+      matters: (a, b) => {
+        const rank = (e: GeoNewsEvent) => (onBoard(e) ? (e.item.major ? 0 : 1) : e.item.major ? 2 : 3);
+        return rank(a) - rank(b) || a.item.minutesAgo - b.item.minutesAgo;
+      },
       move: (a, b) => Math.abs(b.item.prediction.expMove1dPct) - Math.abs(a.item.prediction.expMove1dPct),
-      sure: (a, b) => b.item.prediction.confidencePct - a.item.prediction.confidencePct,
       loud: (a, b) => b.severity - a.severity,
     };
     return [...kept].sort(by[sort]);
+  
   }, [cut, picks, sort]);
   const pins = useMemo(() => clusterByCity(rows), [rows]);
   /* THE HEAT: where the cut's news lands, every story's zones summed by place */
@@ -618,12 +621,12 @@ const News = () => {
           <div className="min-w-[min(18rem,100%)] flex-1">
             <div className="h-6 flex items-center gap-3">
               <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">The wire</h3>
-              <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the pins, the grade and the numbers mean" testId="news-guide" />
+              <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the pins, the flags and the numbers mean" testId="news-guide" />
             </div>
             <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every story on the wire today · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
-            <Fact label="Stories" testId="stories">
+            <Fact label="Stories" testId="stories" tip="Headlines on the wire after the cards and the filter">
               {news.status === 'loading' && rows.length === 0 ? (
                 <span className="text-textMuted">Reading</span>
               ) : news.status === 'sim' ? (
@@ -635,10 +638,21 @@ const News = () => {
                 </>
               )}
             </Fact>
-            <Fact label="The wire leans" testId="mood">
-              <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.unmarked ? 'unmarked' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
-            </Fact>
-            <Fact label="Biggest move" testId="biggest">
+            {mood.unmarked ? (
+              <>
+                <Fact label="Major" testId="major" tip="Headlines Unusual Whales flags as major">
+                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : rows.filter(r => r.item.major).length}
+                </Fact>
+                <Fact label="On your Board" testId="board" tip="Headlines that name a stock on your Board">
+                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : rows.filter(onBoard).length}
+                </Fact>
+              </>
+            ) : (
+              <Fact label="The wire leans" testId="mood" tip="The vendor's own positive and negative marks, weighed">
+                <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
+              </Fact>
+            )}
+            <Fact label="Biggest move" testId="biggest" tip="The named stock that has moved most so far today, among these stories">
               {biggest ? (
                 <>
                   {biggest.item.ticker} <span className={biggest.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.item.prediction.expMove1dPct)}</span>
@@ -647,7 +661,7 @@ const News = () => {
                 <span className="text-textMuted">—</span>
               )}
             </Fact>
-            <Fact label="Next print" testId="next">
+            <Fact label="Next print" testId="next" tip="The next economic release on today's calendar, the high-impact ones first">
               {nextPrint ? (
                 <>
                   {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
@@ -741,7 +755,7 @@ const News = () => {
                   ) : (
                     <span className="font-mono text-[12px] font-bold text-textPrimary">MACRO</span>
                   )}
-                  <span className={`font-mono text-[9px] font-semibold uppercase tracking-widest ${GRADE_INK[selected.grade]}`}>{GRADE_WORD[selected.grade]}</span>
+                  <NewsFlag major={selected.item.major} onBoard={onBoard(selected)} lean={leanOf(selected.grade)} />
                   <CatTag category={selected.item.category} size={9} />
                   <span className="ml-auto font-mono text-[9px] text-textMuted whitespace-nowrap">
                     {selected.item.source} · {ago(selected.item.minutesAgo)}
@@ -769,7 +783,7 @@ const News = () => {
                     <span className={`block h-full rounded-full ${GRADE_BAR[selected.grade]}`} style={{ width: `${selected.severity * 10}%`, transition: `width 520ms ${EASE}` }} />
                   </div>
                 </div>
-                {/* THE NUMBERS — what the model expects, and what the options book thinks of it */}
+                {/* THE NUMBERS — how the named stock has traded today */}
                 <div data-news-numbers>
                   {selected.item.prediction.measured ? (
                     <Figure label="Session move" tone={selected.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear'}>
@@ -848,10 +862,10 @@ const News = () => {
             of the wire is hundreds of rows and the box is one of three on the page */}
         <div ref={rowsRef} className={`relative border-t border-borderSubtle overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
           {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
-            <span>Time</span>
-            <span>Name</span>
-            <span>Kind</span>
-            <span>Reads</span>
+            <span title="When the headline crossed, New York time">Time</span>
+            <span title="The first stock the headline names; MACRO when it names none">Name</span>
+            <span title="What sort of story it is, read from the headline">Kind</span>
+            <span title={NEWS_FLAG_TIP}>Flag</span>
             <span className="flex items-center gap-4">
               <span>Headline</span>
               {/* the legend sits under the cards line on a narrow page (the head's column has no room for it) */}
@@ -859,8 +873,8 @@ const News = () => {
                 <ImpactLegend />
               </span>
             </span>
-            <span className="text-right">1-day</span>
-            <span className="text-right">Sure</span>
+            <span className="text-right" title="How the named stock has moved so far today — a fact, not a forecast">Today</span>
+            <span className="text-right" title="The other stocks the headline names">Also</span>
           </div>}
           {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
           {rows.map(e => {
@@ -896,7 +910,7 @@ const News = () => {
                     )}
                     <span>·</span>
                     <CatTag category={e.item.category} size={9} />
-                    <span className={`uppercase tracking-widest font-semibold text-[9px] ${GRADE_INK[e.grade]}`}>{GRADE_WORD[e.grade]}</span>
+                    {(e.item.major || onBoard(e) || leanOf(e.grade)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} />}
                     {move != null && <span className={`ml-auto tnum font-semibold ${move >= 0 ? 'text-bull' : 'text-bear'}`}>{signed(move)}</span>}
                   </span>
                 </button>
@@ -926,14 +940,14 @@ const News = () => {
                 <span className="min-w-0 h-5 flex items-center">
                   <CatTag category={e.item.category} size={9} />
                 </span>
-                <span className={`h-5 flex items-center font-mono text-[9px] font-semibold uppercase tracking-widest ${GRADE_INK[e.grade]}`}>{GRADE_WORD[e.grade]}</span>
+                <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} /></span>
                 <span className="min-w-0 flex items-center gap-2">
                   <ImpactMark tier={tierOf(e.severity)} />
                   <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
                 </span>
                 <span className={`h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum ${e.item.prediction.measured ? (e.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}`}>{e.item.prediction.measured ? signed(e.item.prediction.expMove1dPct) : '—'}</span>
-                <span className={`h-5 flex items-center justify-end font-mono text-[10px] font-semibold ${e.item.prediction.measured ? READ_INK[gradeOfNewsConfidence(e.item.prediction.confidencePct)] : 'text-textMuted'}`} data-news-row-sure>
-                  {e.item.prediction.measured ? gradeOfNewsConfidence(e.item.prediction.confidencePct) : '—'}
+                <span className="h-5 flex items-center justify-end font-mono text-[10px] text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
+                  {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
                 </span>
               </button>
             );

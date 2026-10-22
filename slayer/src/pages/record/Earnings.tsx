@@ -58,9 +58,11 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { useEarningsPending, useEarningsFailed, useEveryReport, useNextReport } from '../../data/earningsFeed';
+import { untilWords, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport } from '../../data/earningsFeed';
 import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
+import { statHelp } from '../../components/record/statHelp';
+import { phonePin } from '../../components/record/pagedGrid';
 
 type WeekPick = '0' | '1' | 'both';
 type ShowPick = 'all' | VolState;
@@ -112,7 +114,7 @@ const SetTag = ({ confirmed }: { confirmed: boolean }) => <span className={`font
 
 const Fact = ({ label, children, testId, clip }: { label: string; children: React.ReactNode; testId?: string; clip?: boolean }) => (
   <div className={clip ? 'min-w-0 max-w-[320px]' : undefined}>
-    <dt className="text-[10px] text-textMuted whitespace-nowrap">{label}</dt>
+    <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp(label)}>{label}</dt>
     {/* one line on a desk; on a phone a busy day wraps. A long today line truncates — the board holds the names. */}
     <dd className={`mt-0.5 font-mono text-[12px] tnum text-textPrimary ${clip ? 'truncate' : 'sm:whitespace-nowrap'}`} data-earnings-fact={testId}>
       {children}
@@ -222,7 +224,7 @@ const Answer = ({ next, onOpen, onClear }: { next: NextReport; onOpen: (t: strin
       <span className="text-textMuted">·</span>
       <span>
         reports <span className="font-mono tnum text-textPrimary">{next.dateLabel}</span>
-        <span className="text-textMuted">{next.daysOut === 0 ? ' · today' : next.daysOut < 0 ? ` · ${-next.daysOut}d ago` : ` · in ${next.daysOut}d`}</span>
+        <span className="text-textMuted">{` · ${untilWords(next.daysOut)}`}</span>
       </span>
       <span className="inline-flex items-center gap-1.5">
         <SlotMark slot={next.slot} className="w-2.5 h-2.5" />
@@ -273,7 +275,7 @@ const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
     <span className="flex flex-col leading-tight">
       <span className="font-mono text-[11px] tnum text-textPrimary">
-        {data.dateLabel} <span className="text-textMuted">· {data.daysOut === 0 ? 'today' : data.daysOut < 0 ? `${-data.daysOut}d ago` : `in ${data.daysOut}d`}</span>
+        {data.dateLabel} <span className="text-textMuted">· {untilWords(data.daysOut)}</span>
       </span>
       <span className="inline-flex items-center gap-1.5 text-[10px]">
         <SlotMark slot={data.slot} className="w-2.5 h-2.5" />
@@ -320,7 +322,8 @@ const Earnings = () => {
     return live.map(e => (e.known || !mine.has(e.ticker) ? e : { ...e, known: true }));
   }, [live, boardNames]);
   const knownEvents = useMemo(() => events.filter(e => e.known), [events]);
-  const macro = useMemo(() => macroWindow(new Date(), 10, 20), []);
+  /* the Fed's published FOMC dates and payrolls Friday; the CPI date the engine can only approximate stays off the board */
+  const macro = useMemo(() => macroWindow(new Date(), 10, 20).filter(m => !/approximated/i.test(m.detail)), []);
   const [week, setWeek] = useState<WeekPick>('0');
   const [show, setShow] = useState<ShowPick>('all');
   const [layout, setLayout] = useState<Layout>('board');
@@ -609,6 +612,7 @@ const Earnings = () => {
           ) : (
           <AgGridProvider modules={GRID_MODULES}>
             <AgGridReact<EarningsEvent>
+              {...phonePin}
               theme={GRID_THEME}
               domLayout="autoHeight"
               rowData={reportRows}

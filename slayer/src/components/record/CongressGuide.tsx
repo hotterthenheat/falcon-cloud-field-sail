@@ -50,9 +50,9 @@ const Ladder = ({ x, y, lit }: { x: number; y: number; lit: number }) => (
   </g>
 );
 
-/* One row: filed, the member with their committee, the asset, the type, the ladder, the lag */
+/* One row: filed, the member with their chamber, the asset, the type, the ladder, the lag */
 const RowFigure = () => (
-  <Figure label="One row of the grid: filed 5 days ago, a senator with Finance · own committee under the name, NVDA, Sale in red, the ladder lit to the fifth rung reading $50,001 – $100,000, a lag of 61 days marked late" h={58}>
+  <Figure label="One row of the grid: filed 5 days ago, a senator with Senate under the name, NVDA, Sale in red, the ladder lit to the fifth rung reading $50,001 – $100,000, a lag of 61 days marked late" h={58}>
     <Head x={10} y={12}>FILED</Head>
     <Head x={52} y={12}>MEMBER</Head>
     <Head x={176} y={12}>ASSET</Head>
@@ -67,7 +67,7 @@ const RowFigure = () => (
       Sen. M. Ashford <tspan fontSize={6} fill={MUTED} fontFamily={MONO}>D-VT</tspan>
     </text>
     <text x={52} y={46} fontSize={6} fill={SECOND} fontFamily={SANS}>
-      Finance · <tspan fill={INK}>own committee</tspan>
+      Senate
     </text>
     <rect x={176} y={30} width={14} height={14} rx={3} fill="#1f1f1f" stroke="#2a2a2a" strokeWidth={0.6} />
     <text x={183} y={40} textAnchor="middle" fontSize={4} fontWeight={700} fill={INK} fontFamily={MONO}>
@@ -168,8 +168,8 @@ export const CongressGuide = () => (
       <p>The owner is on every row, because a spouse's managed account under the member's name is the commonest misreading of this data.</p>
       <OwnerFigure />
     </Section>
-    <Section title="Lag, and own committee">
-      <p>Days from the trade to the filing, late past 45; and under a member's name, their committee when the trade sits in a sector it oversees — the reading this data is for.</p>
+    <Section title="Lag">
+      <p>Days from the trade to the filing. The STOCK Act allows 45; a report filed later is marked late, and the head counts them. Median lag is the middle of those days — half the reports came in faster, half slower.</p>
       <LagFigure />
     </Section>
   </div>

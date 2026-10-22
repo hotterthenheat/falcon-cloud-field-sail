@@ -15,7 +15,7 @@ import { h01, hPick, hRange } from '../core/rng';
 import { dayKey } from '../core/rng';
 import type { DeskSession } from './deskSession';
 import { UNIVERSE } from './universe';
-import { bracketLabel, buildCongress, seatLabel } from './congress';
+import { bracketLabel, seatLabel } from './congress';
 import type { CongressTrade } from '../types/record';
 
 export const HOUSES = [
@@ -272,6 +272,8 @@ export interface EtfRow {
   callVol: number | null;
   putVol: number | null;
   flows: EtfFlow[];
+  /** The latest `updated` date on the fund's holdings — the weights are as of this day */
+  holdingsAsOf?: string | null;
 }
 
 const ETFS: { etf: string; name: string; kind: EtfKind }[] = [
@@ -330,6 +332,8 @@ export interface EtfHolding {
   sharesM: number;
   sector: string;
   country: string;
+  /** The day the fund's weights were taken (the holdings row's `updated`), YYYY-MM-DD */
+  asOf?: string;
 }
 
 const COUNTRY: Record<string, string> = {
@@ -521,7 +525,7 @@ export interface HoldingRow {
 
 /** Open lines: a purchase with no later full sale. The members are the same roster as the tape. */
 export function buildHoldings(source?: CongressTrade[]): HoldingRow[] {
-  const trades = [...(source ?? buildCongress(365).trades)].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
+  const trades = [...(source ?? [])].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
   const open = new Map<string, (typeof trades)[number]>();
   for (const t of trades) {
     const key = `${t.member.id}|${t.ticker}|${t.owner}`;

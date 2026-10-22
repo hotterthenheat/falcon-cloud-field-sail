@@ -64,6 +64,7 @@ import { LEVELS_WINDOW } from './roomLevels';
 import { bookCandles, snapshotOf } from './uwBook';
 import { peekLive } from './liveRecord';
 import { peekStockFile, type EarnRow, type StockFile } from './stockFile';
+import { nextReportRow, reportDayLabel, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
 import { lookup } from './universe';
 import { tickerName } from './tickers';
@@ -630,15 +631,13 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
   const reaction = moved.length ? { pct: moved.reduce((a, r) => a + Math.abs(r.movePct), 0) / moved.length, reports: moved.length } : null;
   const last = reports[0];
   const lastReport = last ? { label: last.label, epsActual: last.epsActual, epsEst: last.epsEst, beat: last.beat, movePct: last.movePct } : null;
-  const upcoming = file.earnings
-    .filter(r => r.actual_eps == null && r.report_date && r.report_date >= new Date().toISOString().slice(0, 10))
-    .sort((a, b) => String(a.report_date).localeCompare(String(b.report_date)))[0];
+  const upcoming = nextReportRow(file.earnings);
   const nextEarnings = upcoming?.report_date
     ? {
-        label: upcoming.report_date,
-        daysOut: Math.max(0, Math.round((Date.parse(`${upcoming.report_date}T00:00:00Z`) - Date.now()) / 86_400_000)),
+        label: reportDayLabel(upcoming.report_date),
+        daysOut: Math.max(0, tradingDaysUntil(upcoming.report_date)),
         impliedMovePct: Math.abs(nOr(upcoming.expected_move_perc) ?? 0) <= 1.5 ? (nOr(upcoming.expected_move_perc) ?? 0) * 100 : (nOr(upcoming.expected_move_perc) ?? 0),
-        confirmed: true,
+        confirmed: String(upcoming.source ?? '').toLowerCase() === 'company',
       }
     : null;
   const read: NewsRead = { stories: stories.slice(0, 6), sentiment, positive, negative, nextEarnings, reaction, reports };

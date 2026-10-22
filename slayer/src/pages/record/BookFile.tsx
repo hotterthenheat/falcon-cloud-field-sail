@@ -26,18 +26,21 @@ import {
   type InstitutionRow,
   type PositionStatus,
 } from '../../data/fileBooks';
-import { useEtfFile, useHouseBook, useShortRow } from '../../data/liveFiles';
+import { shortRowFromFile, useEtfFile, useHouseBook, useShortRow } from '../../data/liveFiles';
+import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
+import { useShortReads } from '../../data/shortFile';
 import { tickerName } from '../../data/tickers';
 import { AssetCell, assetKey, assetLine } from './Congress';
-import { borrowM, moneyB, signedM as moneyFlow } from './money';
-import { usePagedGrid } from '../../components/record/pagedGrid';
-import { MEMBERS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/congress';
+import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
+import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
+import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/congress';
 import { useCongressFeed, useLiveRecord } from '../../data/liveRecord';
 import { congressFromWhales } from '../../data/whalesMap';
 import { congressBookKey, useVendor, useVendorRow } from '../../data/vendorFeed';
 import { HouseSectors, ShortHistory } from '../../components/vendor/LiveDesk';
 import type { UwCongress } from '../../data/whales';
 import type { CongressTrade, ReportOwner } from '../../types/record';
+import { statHelp } from '../../components/record/statHelp';
 
 const KNOW = (on: boolean) => `group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`;
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
@@ -134,16 +137,16 @@ export const HouseFile = () => {
   const value = feed.reduce((s, r) => s + r.valueB, 0);
   const cols = useMemo<ColDef<InstitutionRow>[]>(
     () => [
-      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: HouseName },
+      { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: HouseName, headerTooltip: 'The stock' },
       { headerName: 'Side', field: 'book', width: 84, valueFormatter: p => (p.value === 'stock' ? (p.data?.security ?? 'Shares') : p.value === 'calls' ? 'Call' : 'Put'), headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
-      { headerName: 'Change', field: 'status', width: 92, cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${STATUS_INK[data.status]}`}>{positionWord(data.status)}</span> : null) },
-      { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M` },
-      { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : ''}{data.unitsChangeM.toFixed(1)}M</span> : null) },
-      { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)) },
-      { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—') },
-      { headerName: '% of book', field: 'pctOfBook', width: 100, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%` },
-      { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—') },
-      { headerName: 'First buy', field: 'firstBuy', width: 110 },
+      { headerName: 'Change', field: 'status', width: 92, cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${STATUS_INK[data.status]}`}>{positionWord(data.status)}</span> : null), headerTooltip: 'New, added, trimmed, sold out or unchanged since the house\'s prior 13F filing' },
+      { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M`, headerTooltip: 'Shares the house reported holding (for a call or put line, the shares the options cover), millions' },
+      { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : ''}{data.unitsChangeM.toFixed(1)}M</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
+      { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
+      { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'Unusual Whales\' estimate of the average price the house paid' },
+      { headerName: '% of book', field: 'pctOfBook', width: 100, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s share of everything the house reported' },
+      { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
+      { headerName: 'First buy', field: 'firstBuy', width: 110, headerTooltip: 'The first quarter this house reported owning the stock' },
       { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'The close on the day of the first buy. Not a strike.' },
     ],
     [],
@@ -170,19 +173,19 @@ export const HouseFile = () => {
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Value</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Value")}>Value</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(value)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Calls</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Calls")}>Calls</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(callValue)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Puts</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Puts")}>Puts</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(putValue)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Changed</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Changed")}>Changed</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{changed.length}</dd>
           </div>
         </dl>
@@ -219,6 +222,7 @@ export const HouseFile = () => {
       <div className="slayer-board border-t border-borderSubtle" data-house-lines>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<InstitutionRow>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -255,7 +259,10 @@ export const ShortFile = () => {
   const t = ticker.toUpperCase();
   const ok = /^[A-Z.]{1,6}$/.test(t);
   const shortLive = useShortRow(t);
-  const row = ok ? shortLive.row : null;
+  /* the file's own reads build the row for a name off the book, and fill what the screener row lacks */
+  const reads = useShortReads(ok ? t : '');
+  const row = useMemo(() => (ok ? shortRowFromFile(t, shortLive.row, reads) : null), [ok, t, shortLive.row, reads]);
+  const fileWaiting = reads.waiting;
   const [guideOpen, setGuideOpen] = useState(false);
   const [heavy, setHeavy] = useState<'any' | 'heavy'>('any');
   const [picks, setPicks] = useState<string[]>([]);
@@ -269,7 +276,18 @@ export const ShortFile = () => {
   }, [markets, heavy, picks]);
   const toKnow = useMemo(() => [...markets].sort((a, b) => b.ratio - a.ratio).slice(0, 6), [markets]);
   const toggle = (name: string) => setPicks(p => (p.includes(name) ? p.filter(x => x !== name) : [...p, name]));
-  if (ok && shortLive.status === 'loading') return <Reading to="/dossier/shorts" back="Shorts" what="the short print" />;
+  /* the latest session's short volume and the month's fails to deliver feed the squeeze read too */
+  const squeeze = useMemo(() => {
+    if (!row) return null;
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const fails = (Array.isArray(reads.ftd) ? reads.ftd : []) as { date?: string; quantity?: number | string }[];
+    const recent = fails.filter(f => String(f.date ?? '') >= since).map(f => Number(f.quantity) || 0);
+    return squeezeRead(row, {
+      shortVolPct: row.shortVolRatio,
+      maxFtdShares: reads.ftd != null ? (recent.length ? Math.max(...recent) : 0) : null,
+    });
+  }, [row, reads]);
+  if (ok && !row && (shortLive.status === 'loading' || fileWaiting)) return <Reading to="/dossier/shorts" back="Shorts" what="the short print" />;
   if (!row) return <Missing to="/dossier/shorts" label="Shorts" />;
   const heavyBook = row.interestPct >= 8;
   const lead = toKnow[0];
@@ -287,30 +305,47 @@ export const ShortFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What interest, days to cover and the fee mean" testId="short-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {[row.name || (tickerName(t) !== t ? tickerName(t) : ''), row.sector && row.sector !== '—' ? row.sector : ''].filter(Boolean).concat('the latest short-interest print').join(' · ')}
+            {[row.name || (tickerName(t) !== t ? tickerName(t) : ''), row.sector && row.sector !== '—' ? row.sector : ''].filter(Boolean).concat(`short interest as of ${asOfDay(squeeze?.asOf)}${squeeze?.stale ? ' (stale)' : ''} — it settles twice a month`).join(' · ')}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Interest</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The share of the float (the stock free to trade) sold short and not yet bought back">Interest</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${heavyBook ? 'text-bear font-semibold' : 'text-textPrimary'}`}>{row.interestPct.toFixed(2)}%</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Days to cover</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Days of normal trading volume the shorts would need to buy every share back">Days to cover</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{row.daysToCover.toFixed(1)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Fee · rebate</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Fee: what a short seller pays a year to borrow the shares — high means the shares are hard to find. Rebate: the interest the lender pays back on the cash collateral; negative means the short pays more">Fee · rebate</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.feeRate == null ? '—' : `${row.feeRate.toFixed(2)}%`} · {row.rebateRate == null ? '—' : `${row.rebateRate < 0 ? '−' : ''}${Math.abs(row.rebateRate).toFixed(2)}%`}</dd>
           </div>
           {row.shortVolRatio != null ? (
           <div>
-            <dt className="text-[10px] text-textMuted">Short volume</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="Of the last session's volume, the share reported as short sales — market makers' hedges count too, so about half is ordinary">Short volume</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%</dd>
           </div>
           ) : null}
         </dl>
       </div>
+      {squeeze && (
+        <div className="mx-5 mb-3 rounded-md border border-borderMuted bg-card px-4 py-3" data-short-squeeze={squeeze.word}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-textPrimary cursor-help" title={SQUEEZE_TIP}>Squeeze setup</span>
+            <span className={`font-mono text-[13px] font-bold uppercase tracking-widest ${SQUEEZE_INK[squeeze.word]}`}>{squeeze.word}</span>
+            <span className="font-mono text-[10px] text-textMuted">{squeeze.points} {squeeze.points === 1 ? 'point' : 'points'} · rules in the guide</span>
+          </div>
+          <ul className="mt-1.5 text-[12px] leading-relaxed text-textSecondary list-disc pl-4">
+            {squeeze.facts.map(f => (
+              <li key={f.text}>{f.text}</li>
+            ))}
+          </ul>
+          <p className={`mt-1 text-[10px] ${squeeze.stale ? 'text-warn' : 'text-textMuted'}`}>
+            Short interest as of {asOfDay(squeeze.asOf)}{squeeze.stale ? ' — a newer settlement should be out, so the shorts may have moved since' : ' — the latest settlement published; the next lands about seven business days after the 15th or month-end'}. The borrow figures are today’s. A setup is not a forecast: it says the shorts would be squeezed if buyers came, not that they will.
+          </p>
+        </div>
+      )}
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-short-sentence>
         {row.shortSharesM.toFixed(1)}M shares short, {row.interestPct.toFixed(2)}% of a {row.floatM.toFixed(0)}M float, {row.daysToCover.toFixed(1)} days to cover.
         {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : row.availableM >= 10 - 1e-9 ? ' At least 10M shares are available to borrow.' : ` ${borrowM(row.availableM)} shares are available to borrow.`}
@@ -356,6 +391,7 @@ export const ShortFile = () => {
       <div className="slayer-board border-t border-borderSubtle" data-book-grid="short-exchanges">
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={shown}
@@ -402,6 +438,7 @@ export const FundFile = () => {
     () => [
       {
         headerName: 'Name',
+        headerTooltip: 'The holding — a stock, or a bond issue by name',
         field: 'ticker',
         flex: 1.4,
         minWidth: 180,
@@ -420,11 +457,12 @@ export const FundFile = () => {
             )
           ) : null,
       },
-      { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 140 },
-      { headerName: 'Country', field: 'country', width: 140 },
+      { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 140, headerTooltip: 'The sector it files under' },
+      { headerName: 'Country', field: 'country', width: 140, headerTooltip: 'Where the company is based' },
       { headerName: 'Shares', field: 'sharesM', width: 120, type: 'rightAligned', valueFormatter: p => (p.data?.bond ? `${moneyB(Number(p.value) / 1000)} face` : `${Number(p.value).toFixed(1)}M`), headerTooltip: 'Shares held — for a bond line, the face amount' },
       {
         headerName: 'Weight',
+        headerTooltip: "The share of the fund's money in this line, from the fund's own holdings file",
         field: 'weight',
         flex: 1,
         minWidth: 160,
@@ -458,20 +496,20 @@ export const FundFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a weight, a flow and a holding mean" testId="fund-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {fund.company} · {fund.domicile} · since {fund.inception}
+            {fund.company} · {fund.domicile} · since {fund.inception}{fund.holdingsAsOf ? ` · weights as of ${asOfDay(fund.holdingsAsOf)}` : ''}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Assets</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">${fund.aumB.toFixed(0)}B</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Fee</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Fee")}>Fee</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{fund.expensePct == null ? '—' : `${fund.expensePct.toFixed(2)}%`}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Five-day flow</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Five-day flow")}>Five-day flow</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(fund.flow5dM)}`}>{moneyFlow(fund.flow5dM)}</dd>
           </div>
           <div>
@@ -526,6 +564,7 @@ export const FundFile = () => {
       <div className="slayer-board border-t border-borderSubtle" data-fund-holdings>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<EtfHolding>
+            {...phonePin}
             {...fundPaged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"
@@ -564,20 +603,21 @@ const Bar = ({ pct, heavy }: { pct: number; heavy?: boolean }) => (
 type IdRow = { id: string };
 
 const EX_COLS: ColDef<{ id: string; exchange: string; shortM: number; totalM: number; ratio: number }>[] = [
-  { headerName: 'Exchange', field: 'exchange', flex: 1.2, minWidth: 140 },
-  { headerName: 'Short', field: 'shortM', width: 110, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(2)}M` },
-  { headerName: 'Total', field: 'totalM', width: 110, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(2)}M` },
-  { headerName: 'Of that market', field: 'ratio', flex: 1, minWidth: 140, cellRenderer: ({ data }: ICellRendererParams<{ ratio: number }>) => (data ? <Bar pct={data.ratio} heavy={data.ratio >= 50} /> : null) },
+  { headerName: 'Exchange', field: 'exchange', flex: 1.2, minWidth: 140, headerTooltip: 'The trading venue that reported the short volume' },
+  { headerName: 'Short', field: 'shortM', width: 110, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(2)}M`, headerTooltip: 'Shares sold short on that venue in the session, millions' },
+  { headerName: 'Total', field: 'totalM', width: 110, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(2)}M`, headerTooltip: 'All shares traded on that venue in the session, millions' },
+  { headerName: 'Of that market', field: 'ratio', flex: 1, minWidth: 140, cellRenderer: ({ data }: ICellRendererParams<{ ratio: number }>) => (data ? <Bar pct={data.ratio} heavy={data.ratio >= 50} /> : null), headerTooltip: 'Short sales as a share of that venue\'s volume — market makers\' hedges count, so about half is ordinary' },
 ];
 const FTD_COLS: ColDef<{ id: string; date: string; quantity: number; price: number }>[] = [
-  { headerName: 'Day', field: 'date', flex: 1, minWidth: 120 },
-  { headerName: 'Shares', field: 'quantity', width: 120, type: 'rightAligned', valueFormatter: p => Number(p.value).toLocaleString('en-US') },
-  { headerName: 'Close', field: 'price', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—') },
+  { headerName: 'Day', field: 'date', flex: 1, minWidth: 120, headerTooltip: 'The settlement day the shares failed to deliver' },
+  { headerName: 'Shares', field: 'quantity', width: 120, type: 'rightAligned', valueFormatter: p => Number(p.value).toLocaleString('en-US'), headerTooltip: 'Shares sold but not delivered on time' },
+  { headerName: 'Close', field: 'price', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'The stock\'s close that day' },
 ];
 const QUARTER_COLS: ColDef<{ id: string; period: string; unitsM: number }>[] = [
-  { headerName: 'Quarter', field: 'period', flex: 1, minWidth: 120 },
+  { headerName: 'Quarter', field: 'period', flex: 1, minWidth: 120, headerTooltip: 'The 13F quarter the figure is from' },
   {
     headerName: 'Units',
+    headerTooltip: 'Shares the house reported at the end of that quarter',
     field: 'unitsM',
     flex: 1.4,
     minWidth: 180,
@@ -592,9 +632,9 @@ const QUARTER_COLS: ColDef<{ id: string; period: string; unitsM: number }>[] = [
       ) : null,
   },
 ];
-const WEIGHT_BAR: ColDef<{ id: string; name: string; weight: number }> = { headerName: 'Weight', field: 'weight', flex: 1, minWidth: 140, cellRenderer: ({ data }: ICellRendererParams<{ weight: number }>) => (data ? <Bar pct={data.weight} /> : null) };
-const SECTOR_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Sector', field: 'name', flex: 1.2, minWidth: 140 }, WEIGHT_BAR];
-const COUNTRY_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Country', field: 'name', flex: 1.2, minWidth: 140 }, WEIGHT_BAR];
+const WEIGHT_BAR: ColDef<{ id: string; name: string; weight: number }> = { headerName: 'Weight', field: 'weight', flex: 1, minWidth: 140, cellRenderer: ({ data }: ICellRendererParams<{ weight: number }>) => (data ? <Bar pct={data.weight} /> : null), headerTooltip: 'Share of the whole' };
+const SECTOR_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Sector', field: 'name', flex: 1.2, minWidth: 140, headerTooltip: 'The sector it files under' }, WEIGHT_BAR];
+const COUNTRY_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Country', field: 'name', flex: 1.2, minWidth: 140, headerTooltip: 'Where the company is based' }, WEIGHT_BAR];
 
 function Board<T extends IdRow>({ title, rest, testId, rows, cols }: { title: string; rest: string; testId: string; rows: T[]; cols: ColDef<T>[] }) {
   return (
@@ -608,6 +648,7 @@ function Board<T extends IdRow>({ title, rest, testId, rows, cols }: { title: st
       <div className="slayer-board border-t border-borderSubtle" data-book-grid={testId}>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<T>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -650,7 +691,7 @@ export const MemberFile = () => {
   useVendor('dossier', '', `/dossier/congress/${id}`);
   const record = useLiveRecord();
   const feed = useCongressFeed(365);
-  const member = MEMBERS.find(m => m.id === id) ?? feed.trades.find(t => t.member.id === id)?.member ?? null;
+  const member = feed.trades.find(t => t.member.id === id)?.member ?? null;
   const reports = useVendorRow(congressBookKey(id), 'member-reports');
   const [guideOpen, setGuideOpen] = useState(false);
   const [kind, setKind] = useState<TypePick>('any');
@@ -686,18 +727,19 @@ export const MemberFile = () => {
   }, [trades]);
   const cols = useMemo<ColDef<CongressTrade>[]>(
     () => [
-      { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.filedDaysAgo} /> : null) },
+      { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <When days={data.filedDaysAgo} /> : null), headerTooltip: 'The day the report was filed' },
       {
         headerName: 'Asset',
+        headerTooltip: 'The stock the report names',
         field: 'ticker',
         flex: 1.3,
         minWidth: 160,
         cellRenderer: AssetCell,
       },
-      { headerName: 'Type', field: 'type', width: 130, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] ${data.type === 'Purchase' ? 'text-bull' : data.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{data.type}</span> : null) },
-      { headerName: 'Owner', field: 'owner', width: 110 },
-      { headerName: 'Amount', field: 'bracket', flex: 1.2, minWidth: 180, valueFormatter: p => bracketLabel(p.value as number | null) },
-      { headerName: 'Lag', field: 'lagDays', width: 90, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] tnum ${data.late ? 'text-bear' : 'text-textPrimary'}`}>{data.lagDays}d</span> : null) },
+      { headerName: 'Type', field: 'type', width: 130, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] ${data.type === 'Purchase' ? 'text-bull' : data.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{data.type}</span> : null), headerTooltip: 'Purchase, sale (full or partial) or exchange' },
+      { headerName: 'Owner', field: 'owner', width: 110, headerTooltip: 'Whose holding: the member\'s own, a spouse\'s, a joint account or a dependent\'s' },
+      { headerName: 'Amount', field: 'bracket', flex: 1.2, minWidth: 180, valueFormatter: p => bracketLabel(p.value as number | null), headerTooltip: 'The disclosed bracket — members report a range, never an exact figure' },
+      { headerName: 'Lag', field: 'lagDays', width: 90, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] tnum ${data.late ? 'text-bear' : 'text-textPrimary'}`}>{data.lagDays}d</span> : null), headerTooltip: 'Days from the trade to the report; past 45 is late under the STOCK Act' },
     ],
     [],
   );
@@ -732,24 +774,23 @@ export const MemberFile = () => {
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
             {seatLabel(member) || '—'}
             {member.district ? ` · ${member.district}` : ''} · {member.chamber}
-            {member.committees.length > 0 ? ` · ${member.committees.join(' · ')}` : ''}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Reports</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Reports")}>Reports</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{trades.length}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Purchases</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Purchases")}>Purchases</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-bull">{purchases}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Sales</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Sales")}>Sales</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-bear">{sales}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Late</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Late")}>Late</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum ${late ? 'text-bear' : 'text-textPrimary'}`}>{late}</dd>
           </div>
         </dl>
@@ -789,6 +830,7 @@ export const MemberFile = () => {
       <div className="slayer-board border-t border-borderSubtle" data-member-trades>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<CongressTrade>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -814,8 +856,8 @@ export const MemberFile = () => {
 };
 
 const HELD_COLS: ColDef<{ id: string; ticker: string; owner: string; amount: string }>[] = [
-  { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 120 },
-  { headerName: 'Owner', field: 'owner', width: 120 },
-  { headerName: 'Amount', field: 'amount', flex: 1.4, minWidth: 200 },
+  { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 120, headerTooltip: 'The stock' },
+  { headerName: 'Owner', field: 'owner', width: 120, headerTooltip: 'Whose holding: the member\'s own, a spouse\'s, a joint account or a dependent\'s' },
+  { headerName: 'Amount', field: 'amount', flex: 1.4, minWidth: 200, headerTooltip: 'The disclosed bracket — members report a range, never an exact figure' },
 ];
 

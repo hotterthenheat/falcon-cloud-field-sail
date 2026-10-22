@@ -29,6 +29,7 @@
 ==================================================
 */
 
+import { shownGamma } from './retailSign';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { BaselineSeries, createOptionsChart, LineSeries, LineStyle, type IChartApiBase, type ISeriesApi, type LineData } from 'lightweight-charts';
 import { buildExposureCurve } from '../../data/exposureCurve';
@@ -117,16 +118,17 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
     });
     const amp = resolveInk(AMPLIFY, host);
     const abs = resolveInk(ABSORB, host);
-    /* THE TOTAL AS A BASELINE AT ZERO — the book chart's own two-sided line: ember and its ground above (hedging
-       amplifies), glacier and its ground below (it absorbs) */
+    /* THE TOTAL AS A BASELINE AT ZERO — the book chart's own two-sided line, in the READER'S sign (the ship pass,
+       2026-10-22, retailSign.ts): glacier and its ground above zero (dealers long gamma, hedging absorbs), ember and its
+       ground below (it amplifies) — the Board's net GEX convention */
     const total = chart.addSeries(BaselineSeries, {
       baseValue: { type: 'price', price: 0 },
-      topLineColor: amp,
-      topFillColor1: alpha(amp, paper ? 0.2 : 0.26),
-      topFillColor2: alpha(amp, 0.03),
-      bottomLineColor: abs,
-      bottomFillColor1: alpha(abs, 0.03),
-      bottomFillColor2: alpha(abs, paper ? 0.2 : 0.26),
+      topLineColor: abs,
+      topFillColor1: alpha(abs, paper ? 0.2 : 0.26),
+      topFillColor2: alpha(abs, 0.03),
+      bottomLineColor: amp,
+      bottomFillColor1: alpha(amp, 0.03),
+      bottomFillColor2: alpha(amp, paper ? 0.2 : 0.26),
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -150,7 +152,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
         return;
       }
       const x = chart.timeScale().timeToCoordinate(p.spot) ?? param.point.x;
-      const y = total.priceToCoordinate(p.total) ?? param.point.y;
+      const y = total.priceToCoordinate(shownGamma(p.total)) ?? param.point.y;
       setHover({ i, x, y });
     });
     chartRef.current = chart;
@@ -167,13 +169,13 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
   }, [paper, cents, curve.expiries.length]);
 
   /* the data: price along the foot, the figures on the scale */
-  const totalData = useMemo<LineData<number>[]>(() => points.map(p => ({ time: p.spot, value: p.total })), [points]);
+  const totalData = useMemo<LineData<number>[]>(() => points.map(p => ({ time: p.spot, value: shownGamma(p.total) })), [points]);
   useEffect(() => {
     const chart = chartRef.current;
     const total = totalRef.current;
     if (!chart || !total) return;
     total.setData(totalData);
-    datesRef.current.forEach((d, i) => d.setData(points.map(p => ({ time: p.spot, value: p.byExpiry[i] ?? 0 }))));
+    datesRef.current.forEach((d, i) => d.setData(points.map(p => ({ time: p.spot, value: shownGamma(p.byExpiry[i] ?? 0) }))));
     chart.timeScale().fitContent();
   }, [totalData, points, paper, cents]);
 
@@ -187,7 +189,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
       const size = chart.paneSize();
       const xs = points.map(p => chart.timeScale().timeToCoordinate(p.spot) ?? NaN);
       const end = points[points.length - 1];
-      const dateYs = datesRef.current.map((d, i) => d.priceToCoordinate(end.byExpiry[i] ?? 0));
+      const dateYs = datesRef.current.map((d, i) => d.priceToCoordinate(shownGamma(end.byExpiry[i] ?? 0)));
       setGeo(g => (g && g.w === size.width && g.h === size.height && g.xs.length === xs.length && g.xs.every((x, i) => x === xs[i]) && g.dateYs.every((y, i) => y === dateYs[i]) ? g : { w: size.width, h: size.height, xs, dateYs }));
     });
     return () => cancelAnimationFrame(id);
@@ -241,7 +243,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
     const p = points[i];
     if (!chart || !total || !p) return;
     chart.setCrosshairPosition(p.total, p.spot, total);
-    setHover({ i, x: chart.timeScale().timeToCoordinate(p.spot) ?? 0, y: total.priceToCoordinate(p.total) ?? 0 });
+    setHover({ i, x: chart.timeScale().timeToCoordinate(p.spot) ?? 0, y: total.priceToCoordinate(shownGamma(p.total)) ?? 0 });
   };
   const onKeys = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget || !points.length) return;
@@ -296,7 +298,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
         className="relative flex-1 min-h-0 outline-none"
         tabIndex={0}
         role="group"
-        aria-label={`Dealer gamma across spot for ${surface.ticker}: ${fmtUsd(curve.atSpot)} at ${spot.toFixed(2)}${curve.flip != null ? `, zero gamma at ${curve.flip.toFixed(2)}` : ''} — the arrow keys walk the curve, Enter keeps the nearest strike`}
+        aria-label={`Dealer gamma across spot for ${surface.ticker}: ${fmtUsd(shownGamma(curve.atSpot))} at ${spot.toFixed(2)}${curve.flip != null ? `, zero gamma at ${curve.flip.toFixed(2)}` : ''} — the arrow keys walk the curve, Enter keeps the nearest strike`}
         onKeyDown={onKeys}
         onClick={() => {
           if (hover) onSelectStrike?.(nearestStrike(points[hover.i].spot));
@@ -319,12 +321,12 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
               )
             )}
             {/* the sides, named where the scale's figures are (the plot's own words) */}
-            <div className="absolute left-2 font-mono text-[11px]" style={{ top: tagRows * TAG_ROW + 6, color: AMPLIFY }}>
-              amplifies
+            <div className="absolute left-2 font-mono text-[11px]" style={{ top: tagRows * TAG_ROW + 6, color: ABSORB }}>
+              absorbs
             </div>
             {/* over the library's attribution mark in the corner, not on it */}
-            <div className="absolute left-2 bottom-8 font-mono text-[11px]" style={{ color: ABSORB }}>
-              absorbs
+            <div className="absolute left-2 bottom-8 font-mono text-[11px]" style={{ color: AMPLIFY }}>
+              amplifies
             </div>
             {dateTags.map(t => (
               <div key={t.e} className="absolute right-1 -translate-y-1/2 font-mono text-[11px] text-textMuted" style={{ top: t.y }} data-profile-date={t.word}>
@@ -352,13 +354,13 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
             <div className="mt-1 flex items-baseline justify-between gap-2">
               <span className="text-textSecondary">Total</span>
               <span className="font-semibold tnum" style={{ color: hp.total >= 0 ? AMPLIFY : ABSORB }}>
-                {fmtUsd(hp.total)} · {hp.total >= 0 ? 'amplifies' : 'absorbs'}
+                {fmtUsd(shownGamma(hp.total))} · {hp.total >= 0 ? 'amplifies' : 'absorbs'}
               </span>
             </div>
             {curve.expiries.map((e, i) => (
               <div key={e} className="flex items-baseline justify-between gap-2">
                 <span className="text-textMuted">{surface.expiries[e]?.date}</span>
-                <span className="tnum text-textSecondary">{fmtUsd(hp.byExpiry[i])}</span>
+                <span className="tnum text-textSecondary">{fmtUsd(shownGamma(hp.byExpiry[i]))}</span>
               </div>
             ))}
             <div className="mt-1 text-textMuted">click to keep {fmtStrike(nearestStrike(hp.spot))}</div>

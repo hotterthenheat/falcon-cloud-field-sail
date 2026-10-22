@@ -39,10 +39,8 @@ import CatTag from '../news/CatTag';
 import CardTabs from '../ui/CardTabs';
 import CompanyLogo from '../ui/CompanyLogo';
 import TickerLookup from '../ui/TickerLookup';
-import { ImpactLegend, ImpactMark, tierOf } from './impactMark';
-/* `GRADE_INK` here is the story's LEAN (positive · negative); the four words' inks come in under another name */
-import { GRADE_INK as READ_INK } from '../ui/GradeMeter';
-import { gradeOfNewsConfidence } from '../../data/news';
+import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './impactMark';
+import { useBoardNames } from '../../data/boardNames';
 
 export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals';
 export const FEED_TABS = [
@@ -53,8 +51,7 @@ export const FEED_TABS = [
   { value: 'analyst', label: 'Analyst' },
   { value: 'deals', label: 'Deals & product' },
 ] as const;
-const GRADE_INK: Record<NewsGrade, string> = { THREAT: 'text-bear', ALLY: 'text-bull', WATCH: 'text-textSecondary' };
-const GRADE_WORD: Record<NewsGrade, string> = { THREAT: 'negative', ALLY: 'positive', WATCH: 'neutral' };
+const leanOf = (g: NewsGrade): 'positive' | 'negative' | null => (g === 'ALLY' ? 'positive' : g === 'THREAT' ? 'negative' : null);
 /** The wire's columns — the same seven the rows under the map wear */
 export const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
 const signed = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
@@ -89,6 +86,9 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
   const follows = useFollows();
   const ringing = useMemo(() => new Set(follows.filter(f => f.alerts).map(f => f.ticker)), [follows]);
   const followed = useMemo(() => new Set(follows.map(f => f.ticker)), [follows]);
+  const boardNames = useBoardNames();
+  const boardSet = useMemo(() => new Set(boardNames), [boardNames]);
+  const onBoard = (e: GeoNewsEvent) => (e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : [])).some(t => boardSet.has(t));
   const [adding, setAdding] = useState(false);
   /* the open row stays in the window; a tab change starts the window at its head */
   const windowRef = useRef<HTMLDivElement | null>(null);
@@ -208,18 +208,18 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
       {/* THE FEED SCROLLS INSIDE ITS BOX past twenty rows (Noah, 2026-10-13) — the same window as the rows under the map */}
       <div ref={windowRef} className="relative overflow-y-auto overscroll-contain max-lg:overflow-x-auto" style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined}>
       <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
-        <span>Time</span>
-        <span>Name</span>
-        <span>Kind</span>
-        <span>Reads</span>
+        <span title="When the headline crossed, New York time">Time</span>
+        <span title="The first stock the headline names; MACRO when it names none">Name</span>
+        <span title="What sort of story it is, read from the headline">Kind</span>
+        <span title={NEWS_FLAG_TIP}>Flag</span>
         <span className="flex items-center gap-4">
           <span>Headline</span>
           <span className="max-lg:hidden">
             <ImpactLegend />
           </span>
         </span>
-        <span className="text-right">1-day</span>
-        <span className="text-right">Sure</span>
+        <span className="text-right" title="How the named stock has moved so far today — a fact, not a forecast">Today</span>
+        <span className="text-right" title="The other stocks the headline names">Also</span>
       </div>
       {printed.map(p => (
         <div key={p.id} className="px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 max-lg:min-w-[900px]" style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: FEED_COLS }} data-news-print-row={p.id}>
@@ -279,7 +279,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
             <span className="min-w-0 h-5 flex items-center">
               <CatTag category={e.item.category} size={9} />
             </span>
-            <span className={`h-5 flex items-center font-mono text-[9px] font-semibold uppercase tracking-widest ${GRADE_INK[e.grade]}`}>{GRADE_WORD[e.grade]}</span>
+            <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} /></span>
             <span className="min-w-0 flex items-center gap-2">
               <ImpactMark tier={tierOf(e.severity)} />
               <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
@@ -287,8 +287,8 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
             </span>
             {/* an unmeasured story carries no move — the same "—" the wire's own rows show, never "+0.0% · poor" */}
             <span className={`h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum ${e.item.prediction.measured ? (e.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}`}>{e.item.prediction.measured ? signed(e.item.prediction.expMove1dPct) : '—'}</span>
-            <span className={`h-5 flex items-center justify-end font-mono text-[10px] font-semibold ${e.item.prediction.measured ? READ_INK[gradeOfNewsConfidence(e.item.prediction.confidencePct)] : 'text-textMuted'}`} data-news-row-sure>
-              {e.item.prediction.measured ? gradeOfNewsConfidence(e.item.prediction.confidencePct) : '—'}
+            <span className="h-5 flex items-center justify-end font-mono text-[10px] text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
+              {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
             </span>
           </button>
         );

@@ -177,6 +177,9 @@ export const InsidersGuide = () => (
       <p>The trade as a share of what the insider held, so a sale reads against what they kept.</p>
       <StakeFigure />
     </Section>
+    <Section title="The window">
+      <p>Unusual Whales sends at most 500 filings a request, newest filed first. Two reads are paged back until the whole window is covered: every open-market purchase (the rows with one motive), and every open-market sale of $1M or more. Smaller sales, grants and the other filings are far more numerous — thousands a week — so the page reads the latest 1,000 of them, and the line under the controls says exactly which filing dates that covers. Only common stock is read: notes and debentures file a face amount where a share price should be.</p>
+    </Section>
     <Section title="Others">
       <p>How many filers did the same in one name inside thirty days — a cluster of buyers is a stronger read than one.</p>
       <ClusterFigure />

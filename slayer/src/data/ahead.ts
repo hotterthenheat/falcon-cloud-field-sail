@@ -58,6 +58,7 @@ import { inCashSession, sessionBars } from './levelview';
 import { nyMinutes } from '../core/nyTime';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildVannaCharm } from './vannacharm';
+import { peekBellShare } from './uwBook';
 import type { SessionClock } from './moc';
 import type { ExposureProfileData, IvShift, LevelShift } from '../types/gex';
 import type { MarketSnapshot } from '../types/market';
@@ -530,12 +531,14 @@ export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfile
   const remaining = blocks.filter(b => !b.past);
   const biggest = remaining.length ? remaining.reduce((a, b) => (Math.abs(b.flow) > Math.abs(a.flow) ? b : a)) : null;
 
-  let bellShare: number | null = null;
+  /* the Board's share (uwBook peekBellShare — the vendor's gamma per expiry); the surface's stands in until it lands */
+  const vendorBell = peekBellShare(snapshot.ticker);
+  let bellShare: number | null = vendorBell.share;
   let surface: ExposureSurface | null = null;
   try {
     surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
     const today = todayColumn(surface);
-    if (today >= 0) {
+    if (today >= 0 && vendorBell.share == null && vendorBell.why === 'wait') {
       let dies = 0;
       let total = 0;
       for (let e = 0; e < surface.expiries.length; e++)

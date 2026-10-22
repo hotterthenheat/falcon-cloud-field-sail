@@ -22,3 +22,10 @@ export const moneyB = (b: number): string => moneyM(b * 1000);
 /** Shares left to borrow, millions. The borrow feed caps the count at 10,000,000 — a row at the cap reads "10M+", not an
     exact 10.00M (the Dossier ship pass, 2026-10-22: half the short book printed "10.00M"). */
 export const borrowM = (m: number | null): string => (m == null ? '—' : m >= 10 - 1e-9 ? '10M+' : m >= 1 ? `${m.toFixed(2)}M` : `${Math.round(m * 1000)}K`);
+
+/** A vendor date (YYYY-MM-DD) as "Oct 20" — every as-of stamp on the Dossier */
+export const asOfDay = (iso: string | null | undefined): string => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '—';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+};
