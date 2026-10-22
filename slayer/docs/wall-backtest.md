@@ -1,5 +1,11 @@
 # The wall back-test
 
+> **Display change (2026-10-22):** the pages no longer print these fitted hold odds. Per the owner, the wall reading
+> is chain-relative: each wall's weight against the heaviest wall on the same ticker's active chain ("95% of the top
+> wall"), with no per-name constants. This back-test stays as the record of why the label says *size*, not *holds* —
+> wall size did not predict a hold.
+
+
 **Question.** When price reaches a wall the Pinpoint Agenda lists, how often does it turn back, and does the model's
 reading say which walls turn it back more often?
 

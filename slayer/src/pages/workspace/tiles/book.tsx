@@ -37,7 +37,7 @@
 ==================================================
 */
 
-import { holdLabel } from '../../../data/wall';
+import { holdShort } from '../../../data/wall';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import BookRead from '../../../components/gex/BookRead';
 import ExposureLedger from '../../../components/gex/ExposureLedger';
@@ -250,7 +250,7 @@ export const TargetsTile = ({ ctx, state, size }: TileProps) => {
               </span>
               <span className="text-right text-textPrimary">{pct(t.reach)}</span>
               <span className="flex items-center justify-end gap-1.5 font-semibold" style={{ color: t.isShelf ? SILVER : kind === 'trapdoor' ? THERMAL_WARM : 'rgb(var(--text-muted))' }}>
-                {t.isShelf ? holdLabel(t.hold) : '—'}
+                {t.isShelf ? holdShort(t.hold) : '—'}
                 {wide && (
                   <span className="relative block h-[5px] w-[32px] rounded-full bg-ink/[0.06] overflow-hidden" aria-hidden>
                     {kind === 'trapdoor' ? <span className="absolute inset-0 rounded-full" style={{ background: THERMAL_WARM, opacity: 0.35 }} /> : <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(t.isShelf ? t.hold : 0) * 100}%`, background: SILVER, opacity: 0.85 }} />}
