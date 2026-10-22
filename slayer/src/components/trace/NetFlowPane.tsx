@@ -358,7 +358,7 @@ const NetFlowPane = ({
         borderVisible: false,
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 3,
+        rightOffset: 14,
         tickMarkFormatter: nyTickMarks,
       },
       crosshair: {
@@ -426,7 +426,7 @@ const NetFlowPane = ({
     /* Room to breathe above and below — the reference's lines never touch an
        edge — and the money owns the full height. */
     /* 0.12 at the top: at 0.08 the right axis's highest label was clipped at the pane's head */
-    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.12, bottom: 0.2 } });
+    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.16, bottom: 0.2 } });
     /* THE PRICE GETS A BAND, NOT THE PANE. Left to autoscale across the whole
        height, a 3% intraday move becomes a full-height mountain range: the
        price line then carries more ink than both money lines together, purely
@@ -618,7 +618,12 @@ const NetFlowPane = ({
        true counts) and the glide card says the true number. The height is a
        drawing, the colour and the figure are the facts. */
     const inks = paneInks();
-    vol.setData(drawn.map(p => ({ time: p.time as UTCTimestamp, value: Math.sqrt(Math.abs(p.vol)), color: volInk(Math.abs(p.vol), marks, inks) })));
+    /* Twelve empty minutes ahead of the first bar: the axis's first label (09:30) was clipped to "30" against the
+       left price scale — the lead room seats it whole, the right offset does the same for 16:00 */
+    const lead: { time: UTCTimestamp }[] = drawn.length
+      ? Array.from({ length: 12 }, (_, i) => ({ time: (drawn[0].time - (12 - i) * 60) as UTCTimestamp }))
+      : [];
+    vol.setData([...lead, ...drawn.map(p => ({ time: p.time as UTCTimestamp, value: Math.sqrt(Math.abs(p.vol)), color: volInk(Math.abs(p.vol), marks, inks) }))]);
     /* Every bar carries its own value, so the glide card's old containing-
        chunk search has nothing left to search for — it keeps the same shape
        purely as the lookup's fallback path. */
@@ -759,7 +764,8 @@ const NetFlowPane = ({
             </span>
           </span>
         </div>
-        <ResetViewControl onReset={resetView} />
+        {/* up top, clear of the volume floor it used to sit on */}
+        <ResetViewControl onReset={resetView} pillClass="right-16 top-2" />
       </div>
     </div>
   );

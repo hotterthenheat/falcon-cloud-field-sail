@@ -211,7 +211,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const hideTip = () => setTip(null);
 
   const name = lookup(activeTicker)?.name ?? null;
-  const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier');
+  /* Trace reads the live tape too — the simulated quote never belongs beside a live print */
+  const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier') || pathname.startsWith('/trace');
   const live = usePinpointFeed(pathname.startsWith('/pinpoint') ? activeTicker : null);
   const quoted = useLiveQuote(onLiveDesk ? activeTicker : null);
   const spot = onLiveDesk ? (live?.spot ?? quoted?.spot ?? null) : (live?.spot ?? marketData?.spot ?? null);

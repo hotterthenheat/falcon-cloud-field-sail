@@ -212,8 +212,10 @@ const Odte = () => {
 
   // Keyed by count too: a layout switch REMOUNTS the pane so the chart
   // re-fits its new frame instead of hugging the old one's view.
+  // Below lg the desk stacks and the page scrolls, so the frame has no height to split — each pane holds its own
+  // (the phone sweep, 2026-10-22: the charts collapsed to their head strips).
   const renderPane = (i: number, extraClass = '') => (
-    <div key={`${store.count}-${i}`} className={`min-h-0 ${extraClass}`}>
+    <div key={`${store.count}-${i}`} className={`h-[340px] lg:h-auto min-h-0 ${extraClass}`}>
       {pane(i)}
     </div>
   );
