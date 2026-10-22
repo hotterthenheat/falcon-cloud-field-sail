@@ -403,7 +403,7 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
       /* …and a phone's ~140px lane keeps a 52px edge for a chip that says the strike alone (the phone sweep, 2026-10-22: at
          0 the "flip 769.50" chip lay across the capsules) */
       const narrowLane = laneW < 170;
-      const GUTTER = compact ? 0 : laneW >= 420 ? 88 : laneW >= 170 ? 76 : laneW >= 110 ? 52 : 0;
+      const GUTTER = compact ? 0 : laneW >= 420 ? 88 : laneW >= 170 ? 76 : laneW >= 110 ? 28 : 0;
       const span = Math.max(1, laneW - 10 - GUTTER);
       const yOf = (d: number) => PAD + ((off + L.R - d) / (2 * L.R)) * (H - 2 * PAD);
       /* ONE CAPSULE HEIGHT FOR BOTH SIDES, the smaller, from the drawing's own height */
@@ -548,7 +548,8 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
         /* THE FLIP'S CHIP IS PLACED FIRST, so a wall's chip can step aside for it: where the two would touch, the wall's name
            goes inside its capsule (the rule it already had for "no room beside"), and one that cannot is moved clear */
         const flipInView = S.flipD != null && s.flip != null && Math.abs(S.flipD - off) <= reach;
-        const flipWords = flipInView && !compact ? (narrowLane ? fmtStrike(s.flip!) : `flip ${fmtStrike(s.flip!)}`) : null;
+        /* a narrow lane (a phone's) keeps the dashed line only — its strike is named in the axis head instead */
+        const flipWords = flipInView && !compact && !narrowLane ? `flip ${fmtStrike(s.flip!)}` : null;
         const flipW = flipWords ? chipOf(flipWords) : 0;
         const flipChip = flipWords ? { x: left ? 6 : W - 6 - flipW, y: yOf(S.flipD!), w: flipW } : null;
         const hitsFlip = (x0: number, w0: number, y0: number) => flipChip != null && Math.abs(y0 - flipChip.y) < 18 && x0 < flipChip.x + flipChip.w + 6 && x0 + w0 > flipChip.x - 6;

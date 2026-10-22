@@ -58,6 +58,7 @@ import NewsFeedTabs, { keepInWindow } from '../../components/record/NewsFeedTabs
 import { GRADE_INK as READ_INK } from '../../components/ui/GradeMeter';
 import { gradeOfNewsConfidence } from '../../data/news';
 import NewsCalendar from '../../components/record/NewsCalendar';
+import { useMediaQuery } from '../../components/ui/useMediaQuery';
 import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from './recordSkeletons';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -545,6 +546,9 @@ const News = () => {
   const [flyTo, setFlyTo] = useState<FlyTo | null>(null);
   /* the open row stays in the window: a pick from the tape or the map lands below the fold otherwise */
   const rowsRef = useRef<HTMLDivElement | null>(null);
+  /* ON A PHONE THE WIRE STACKS (the owner's call, 2026-10-22): the seven-column table scrolled sideways and the headline —
+     the reason anyone opens the page — started off-screen. Below 640 each story is the headline first, its facts under it */
+  const stacked = useMediaQuery('(max-width: 639.98px)');
   useEffect(() => {
     keepInWindow(rowsRef.current, selectedId ? `[data-news-row="${selectedId}"]` : null);
   }, [selectedId]);
@@ -840,8 +844,8 @@ const News = () => {
             a window of NEWS_WINDOW_H, the column head pinned at its top, the read line under it where it always was — the
             one list in the house that keeps a window (grids grow, the Compass board rule of 2026-09-11), because a day
             of the wire is hundreds of rows and the box is one of three on the page */}
-        <div ref={rowsRef} className="relative border-t border-borderSubtle overflow-y-auto overscroll-contain max-lg:overflow-x-auto" style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined}>
-          <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
+        <div ref={rowsRef} className={`relative border-t border-borderSubtle overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
+          {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
             <span>Time</span>
             <span>Name</span>
             <span>Kind</span>
@@ -855,11 +859,47 @@ const News = () => {
             </span>
             <span className="text-right">1-day</span>
             <span className="text-right">Sure</span>
-          </div>
+          </div>}
           {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
           {rows.map(e => {
             const open = e.id === selectedId;
             const faded = freshnessOf(e) === 'faded';
+            if (stacked) {
+              const move = e.item.prediction.measured ? e.item.prediction.expMove1dPct : null;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => pick(e)}
+                  className={`group w-full text-left px-4 py-2.5 flex flex-col gap-1 border-t border-borderSubtle/40 transition-colors ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+                  data-news-row={e.id}
+                  data-open={open || undefined}
+                >
+                  <span className="flex items-start gap-2 min-w-0">
+                    <span className="mt-[5px] shrink-0">
+                      <ImpactMark tier={tierOf(e.severity)} />
+                    </span>
+                    <span className={`min-w-0 line-clamp-2 text-[12.5px] leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+                  </span>
+                  <span className="min-w-0 flex items-center gap-1.5 font-mono text-[10px] text-textMuted whitespace-nowrap overflow-hidden">
+                    <span className="tnum text-textSecondary">{e.item.time}</span>
+                    <span>·</span>
+                    {e.item.ticker ? (
+                      <span className="inline-flex items-center gap-1 font-bold text-textPrimary">
+                        <CompanyLogo ticker={e.item.ticker} size={12} />
+                        {e.item.ticker}
+                      </span>
+                    ) : (
+                      <span className="text-textSecondary">MACRO</span>
+                    )}
+                    <span>·</span>
+                    <CatTag category={e.item.category} size={9} />
+                    <span className={`uppercase tracking-widest font-semibold text-[9px] ${GRADE_INK[e.grade]}`}>{GRADE_WORD[e.grade]}</span>
+                    {move != null && <span className={`ml-auto tnum font-semibold ${move >= 0 ? 'text-bull' : 'text-bear'}`}>{signed(move)}</span>}
+                  </span>
+                </button>
+              );
+            }
             return (
               <button
                 key={e.id}

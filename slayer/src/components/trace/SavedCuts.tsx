@@ -10,7 +10,7 @@
 */
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Link2, Save, Trash2, X } from 'lucide-react';
+import { Check, Link2, MoreHorizontal, Save, Trash2, X } from 'lucide-react';
 import type { ViewStore } from '../../data/savedViews';
 import { undoable } from '../ui/undo';
 
@@ -31,10 +31,28 @@ export interface SavedCutsProps {
   onSay: (said: string) => void;
 }
 
-/** The three buttons. They belong on the controls line. */
-export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onToggleOpen }: SavedCutsProps & { open: boolean; onToggleOpen: () => void }) => {
+/** The three buttons. They belong on the controls line. `compact` folds them into one "⋯" menu for a line that has
+    no room for three more doors (Intervals at 1440, 2026-10-22: the Columns card wrapped onto a row of its own). */
+export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onToggleOpen, compact = false }: SavedCutsProps & { open: boolean; onToggleOpen: () => void; compact?: boolean }) => {
   const views = store.useViews();
   const [naming, setNaming] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenu(false);
+    };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [menu]);
   const [name, setName] = useState('');
   const nameRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -60,11 +78,37 @@ export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onTo
       onSay(url);
     }
   };
+  const ITEM = 'w-full h-8 px-2.5 inline-flex items-center gap-2 rounded text-left text-[11px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors';
+  if (compact && !naming) {
+    return (
+      <span ref={menuRef} className="relative inline-flex" data-cut-doors data-cut-doors-compact>
+        <button type="button" onClick={() => setMenu(v => !v)} aria-haspopup="menu" aria-expanded={menu} title={`Link, save or open a saved ${noun}`} aria-label={`Link or save this ${noun}`} className={BTN} data-cuts-menu={testId}>
+          <MoreHorizontal className="w-3.5 h-3.5" aria-hidden />
+          {views.length > 0 && <span className="font-mono tnum">{views.length}</span>}
+        </button>
+        {menu && (
+          <span role="menu" className="absolute left-0 top-full mt-1 z-40 w-[176px] p-1 flex flex-col rounded-md border border-borderSubtle bg-panel shadow-lg shadow-black/30">
+            <button type="button" role="menuitem" onClick={() => { setMenu(false); void share(); }} className={ITEM} data-cuts-share={testId}>
+              <Link2 className="w-3 h-3" aria-hidden /> Copy link
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setMenu(false); setName(''); setNaming(true); }} className={ITEM} data-cuts-save={testId}>
+              <Save className="w-3 h-3" aria-hidden /> Save as…
+            </button>
+            {views.length > 0 && (
+              <button type="button" role="menuitem" onClick={() => { setMenu(false); onToggleOpen(); }} className={ITEM} data-cuts-open={testId}>
+                <span className="w-3 text-center font-mono tnum">{views.length}</span> {open ? 'Hide saved' : 'Show saved'}
+              </button>
+            )}
+          </span>
+        )}
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1" data-cut-doors>
-      <button type="button" onClick={share} title={`Copy a link that opens this exact ${noun}`} aria-label={`Copy a link to this ${noun}`} className={BTN} data-cuts-share={testId}>
+      {!compact && <button type="button" onClick={share} title={`Copy a link that opens this exact ${noun}`} aria-label={`Copy a link to this ${noun}`} className={BTN} data-cuts-share={testId}>
         <Link2 className="w-3 h-3" aria-hidden /> Link
-      </button>
+      </button>}
       {/* AN INLINE NAME, NOT THE BROWSER'S PROMPT: Save opens a field in its place — Enter keeps the cut under that
           name, Esc or the × lets it go */}
       {naming ? (
