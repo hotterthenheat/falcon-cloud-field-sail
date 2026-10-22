@@ -9,7 +9,7 @@
 ==================================================
 */
 
-import { holdPct } from '../../data/wall';
+import { holdWord } from '../../data/wall';
 import type { ReactNode } from 'react';
 import { PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
@@ -120,7 +120,7 @@ const RowFigure = () => (
           {r.reach}
         </text>
         <text x={144} y={r.y + 3} textAnchor="end" fontSize={8} fontWeight={600} fill={r.wall ? SILVER : WARM} fontFamily={MONO}>
-          {r.wall ? holdPct(r.hold) : '—'}
+          {r.wall ? holdWord(r.hold) : '—'}
         </text>
         <rect x={148} y={r.y - 1.5} width={26} height={3} rx={1.5} fill="#ffffff" fillOpacity={0.06} />
         {r.wall ? <rect x={148} y={r.y - 1.5} width={26 * r.hold} height={3} rx={1.5} fill={SILVER} fillOpacity={0.85} /> : <rect x={148} y={r.y - 1.5} width={26} height={3} rx={1.5} fill={WARM} fillOpacity={0.35} />}
@@ -214,7 +214,7 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
             {lead.role ? `, the ${lead.role}` : ''}: reached <Num>{pct(lead.reach)}</Num> of the time,{' '}
             {lead.isWall ? (
               <>
-                holds <Num silver>{holdPct(lead.hold)}</Num>
+                reads <Num silver>{holdWord(lead.hold)}</Num>
               </>
             ) : (
               <span style={{ color: WARM }}>a trapdoor</span>
@@ -232,7 +232,7 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
         )}
         {agenda.weakestWall && agenda.closesNear && (
           <p className="mt-1 text-textMuted">
-            The weakest wall in reach is <Num>{fmtStrike(agenda.weakestWall.strike)}</Num>, holding <Num silver>{holdPct(agenda.weakestWall.hold)}</Num>; the close leans to <Num>{fmtStrike(agenda.closesNear.strike)}</Num> at <Num>{agenda.closesNear.odds.toFixed(0)}%</Num>.
+            The weakest wall in reach is <Num>{fmtStrike(agenda.weakestWall.strike)}</Num>, reading <Num silver>{holdWord(agenda.weakestWall.hold)}</Num>; the close leans to <Num>{fmtStrike(agenda.closesNear.strike)}</Num> at <Num>{agenda.closesNear.odds.toFixed(0)}%</Num>.
           </p>
         )}
       </Section>

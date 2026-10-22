@@ -57,7 +57,11 @@ import type { Candle, MarketSnapshot } from '../types/market';
 
 /* ---- the constants, named so they can be calibrated ------------------------------ */
 
-/** The ratio of a wall's hedging to the market's dollars-per-1% at which it is a coin flip */
+/** The ratio of a wall's hedging to a TYPICAL wall on the same book at which it is a coin flip.
+    RELATIVE, NOT AGAINST THE MARKET (the owner's call, 2026-10-22): measured against the market's dollars per 1%, every
+    SPY wall was a few percent of the market and sat on the odds floor — every wall read the same "<10%", the number said
+    nothing. Against the walls on its own book the heavy ones separate from the thin ones again. Until a back-test
+    calibrates it, the reading prints as a word (strong / medium / weak), never as a measured percentage. */
 export const PAR_RATIO = 1;
 /** Logits per doubling of that ratio */
 const A_WEIGHT = 1.0;
@@ -165,10 +169,9 @@ const phi = (x: number) => {
   return x >= 0 ? 1 - p : p;
 };
 const pct = (v: number) => `${Math.round(v * 100)}%`;
-/** Hold odds at the clamp are a bound, not a reading (the Pinpoint sweep, 2026-10-22: on SPY every wall's hedging is
-    a few percent of the market's dollars per 1%, so every shelf sat on the 8% floor and printed "holds 8%" as if
-    measured). The floor and the ceiling print as "<10%" and ">90%". */
-export const holdPct = (v: number) => (v <= ODDS_LO + 1e-9 ? '<10%' : v >= ODDS_HI - 1e-9 ? '>90%' : pct(v));
+/** The hold reading as the word the pages print — the odds are relative and not yet back-tested, so no percentage */
+export type HoldWord = 'strong' | 'medium' | 'weak';
+export const holdWord = (v: number): HoldWord => (v >= 0.62 ? 'strong' : v >= 0.38 ? 'medium' : 'weak');
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 
 /** Tests of a level as VISITS, not bars: a test begins when a bar's range
@@ -262,6 +265,8 @@ interface Ctx {
   bars: Candle[];
   clock: AheadClock;
   marketPer1Pct: number;
+  /** The median weight of the shelves on this book — the yardstick a wall is read against */
+  typicalWall: number;
   sigmaLeft: number;
   speed: number | null;
   printsUp: number;
@@ -325,7 +330,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const volScore = weightEff > 0 ? clamp(volToward / weightEff, -1, 1) : 0;
 
   /* THE ODDS */
-  const ratio = weightEff > 0 ? weightEff / ctx.marketPer1Pct : 0;
+  const ratio = weightEff > 0 ? weightEff / Math.max(1, ctx.typicalWall) : 0;
   const zWeight = weightEff > 0 ? A_WEIGHT * (Math.log2(ratio) - Math.log2(PAR_RATIO)) : -4;
   const zTests = A_TESTS * testsScore;
   const zBuild = A_BUILD * buildScore;
@@ -371,17 +376,17 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
     {
       key: 'weight',
       label: 'What it is made of',
-      fact: weight > 0 ? `${fmtDollars(weightEff)} per 1% · ${ratio.toFixed(1)}× the market` : `${fmtDollars(Math.abs(weight))} the wrong way`,
+      fact: weight > 0 ? `${fmtDollars(weightEff)} per 1% · ${ratio.toFixed(1)}× a typical wall here` : `${fmtDollars(Math.abs(weight))} the wrong way`,
       push: weight > 0 ? clamp(zWeight / 3, -1, 1) : -1,
       words:
         weight > 0
           ? ratio >= 2
-            ? 'pushes back much harder than the market pushes'
+            ? 'one of the heaviest walls on this name'
             : ratio >= 1
-              ? 'pushes back harder than the market pushes'
+              ? 'heavier than a typical wall on this name'
               : ratio >= 0.5
-                ? 'pushes back, but the market pushes harder'
-                : 'thin against what moves this name'
+                ? 'lighter than a typical wall on this name'
+                : 'thin for this name'
           : 'pushes moves along rather than back — a trapdoor, not a wall',
     },
     {
@@ -442,7 +447,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const sentence =
     weight > 0
-      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time and holds ${holdPct(hold)} of the time when it is. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
+      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time, and reads as a ${holdWord(hold)} wall. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
       : `${who} is not a wall: the hedging there pushes moves along rather than back. ${cap(breakPath.words)}.`;
 
   return { strike: K, side, role, weight, weightEff, expiresToday, touches, breaks, build, speed, prints, distanceSigma, reach, hold, factors, breakPath, holdPath, sentence };
@@ -466,6 +471,8 @@ export function buildWallContext(
   const { spot } = snapshot;
   const strikes = profile.strikes; // descending
   const heaviest = Math.max(1, ...strikes.map(s => Math.abs(s.gex.net)));
+  const shelves = strikes.map(s => Math.abs(s.gex.net)).filter(v => v >= SHELF_SHARE * heaviest).sort((a, b) => a - b);
+  const typicalWall = shelves.length ? shelves[Math.floor((shelves.length - 1) / 2)] : heaviest * 0.5;
   const todayBars = bars as Candle[];
   const marketPer1Pct = dollarsPer1Pct(todayBars) ?? 1;
   const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
@@ -483,6 +490,7 @@ export function buildWallContext(
     bars: todayBars,
     clock,
     marketPer1Pct,
+    typicalWall,
     sigmaLeft,
     speed: speedRatio(todayBars, iv),
     printsUp: printsDemand(snapshot, iv),
@@ -546,7 +554,7 @@ export function buildWallBoard(
   const s = walls.find(x => x.strike === strongest);
   const sentence =
     w && s && w.strike !== s.strike
-      ? `The weakest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''}, holding ${holdPct(w.hold)} of the time; the strongest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} at ${holdPct(s.hold)}.`
+      ? `The weakest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''} (${holdWord(w.hold)}); the strongest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} (${holdWord(s.hold)}).`
       : walls.length
         ? `${walls.length} wall${walls.length === 1 ? '' : 's'} on the strikes shown, the nearest at ${fmtStrike(walls[0].strike)}.`
         : 'No wall on the strikes shown.';
