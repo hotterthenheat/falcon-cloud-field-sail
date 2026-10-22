@@ -203,7 +203,11 @@ const severityOf = (n: NewsItem): number =>
   Math.max(1, Math.min(10, Math.round(Math.abs(n.prediction.expMove1dPct) * 1.6 + n.magnitude * 5)));
 
 export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
-  return items.map(item => {
+  /* one story once: the wire is read page by page while it keeps printing, so a story that slid across a page boundary
+     came back twice — two rows, two pins and React's duplicate-key warning on the phone (the Dossier sweep, 2026-10-22) */
+  const seen = new Set<string>();
+  const once = items.filter(item => (seen.has(item.id) ? false : (seen.add(item.id), true)));
+  return once.map(item => {
     const hq = item.ticker ? HQ[item.ticker] ?? null : null;
     const macro = !hq ? MACRO_ORIGINS.find(m => m.re.test(item.headline)) : null;
     const o = hq ?? macro;

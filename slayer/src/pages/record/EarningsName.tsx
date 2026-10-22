@@ -519,10 +519,12 @@ const EarningsName = () => {
       {/* AFTER THE PRINT */}
       <Box title="After the print" sub="What the options lose overnight once the number is out — a long option has to beat the move and this" testId="after">
         <dl className="px-5 pb-4 grid grid-cols-4 gap-x-6">
-          <Fact label="Implied vol deflates" testId="crush">
+          {/* the figure is the median premium a long straddle gave back by the next open on the quiet prints (earningsFeed
+              crushOf) — the option's loss, not the implied vol's; it was labelled as an IV drop (the Dossier sweep, 2026-10-22) */}
+          <Fact label="A quiet print takes" testId="crush">
             {!dossier.live || dossier.crushKnown ? <span className="text-warn">−{dossier.ivCrushPct}%</span> : <span className="text-textMuted">—</span>}
           </Fact>
-          <Fact label="Extrinsic kept by next open">{!dossier.live || dossier.crushKnown ? `~${Math.max(0, 100 - dossier.premiumLostPct)}%` : '—'}</Fact>
+          <Fact label="Straddle kept by next open">{!dossier.live || dossier.crushKnown ? `~${Math.max(0, 100 - dossier.premiumLostPct)}%` : '—'}</Fact>
           <Fact label="Straddle today">{isPriced ? `$${((e.price * e.impliedMovePct) / 100).toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
           <Fact label="The stock">{e.price > 0 ? `$${e.price.toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
         </dl>

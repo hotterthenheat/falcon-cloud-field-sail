@@ -923,9 +923,10 @@ const News = () => {
           <NewsCalendar />
         </div>
         {/* THE READS — across, under the month, however many the wire adds up to */}
-        <div className="grid border-t border-borderSubtle" style={{ gridTemplateColumns: `repeat(${Math.max(1, insights.length)}, minmax(0, 1fr))` }} data-news-reads>
+        {/* on a phone the reads stack two by two — four across left each a word to a line (the Dossier sweep, 2026-10-22) */}
+        <div className="grid border-t border-borderSubtle max-md:!grid-cols-2" style={{ gridTemplateColumns: `repeat(${Math.max(1, insights.length)}, minmax(0, 1fr))` }} data-news-reads>
           {insights.map((i, k) => (
-            <div key={i.key} className={`px-5 py-3 ${k > 0 ? 'border-l border-borderSubtle/40' : ''}`} data-news-read={i.key}>
+            <div key={i.key} className={`px-5 py-3 ${k > 0 ? 'border-l border-borderSubtle/40' : ''} max-md:border-l-0 max-md:[&:nth-child(even)]:border-l max-md:[&:nth-child(n+3)]:border-t max-md:border-borderSubtle/40`} data-news-read={i.key}>
               <div className={`text-[10px] font-semibold uppercase tracking-widest ${i.ink === 'bull' ? 'text-bull' : i.ink === 'bear' ? 'text-bear' : 'text-textPrimary'}`}>{i.title}</div>
               <p className="mt-1 text-[11.5px] leading-relaxed text-textPrimary/85">
                 <RichRead text={i.read} />

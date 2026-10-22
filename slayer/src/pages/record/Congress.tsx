@@ -31,6 +31,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
+import { usePagedGrid } from '../../components/record/pagedGrid';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
@@ -297,6 +298,7 @@ const Congress = () => {
       { title: 'Own committee', options: [...byCommittees.entries()].sort(order).map(([k, c]) => ({ value: `committee:${k}`, label: k, count: c })) },
     ];
   }, [cut, picks]);
+  const paged = usePagedGrid<CongressTrade>();
   const rows = useMemo(() => {
     if (picks.length === 0) return cut;
     const picked = new Set(picks);
@@ -426,6 +428,7 @@ const Congress = () => {
       <div className="slayer-board border-t border-borderSubtle" data-congress-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<CongressTrade>
+            {...paged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -443,6 +446,7 @@ const Congress = () => {
             tooltipHideDelay={8000}
           />
         </AgGridProvider>
+        {paged.bar(rows.length, 'congress-grid')}
       </div>
       <CongressHoldings />
     </div>

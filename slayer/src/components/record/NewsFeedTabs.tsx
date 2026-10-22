@@ -149,7 +149,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
   return (
     <div data-news-feed={tab}>
       {/* THE TABS — the child tier, a hairline gliding between them */}
-      <div className="px-5 h-[38px] border-b border-borderSubtle flex items-center gap-4 flex-wrap" data-news-feed-tabs>
+      <div className="px-5 min-h-[38px] py-1 border-b border-borderSubtle flex items-center gap-x-4 gap-y-1 flex-wrap" data-news-feed-tabs>
         <CardTabs options={tabOptions} value={tab} onChange={setTab} ariaLabel="Which news" />
       </div>
 

@@ -131,7 +131,7 @@ export const HouseFile = () => {
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)) },
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—') },
       { headerName: '% of book', field: 'pctOfBook', width: 100, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%` },
-      { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(2)}%` },
+      { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—') },
       { headerName: 'First buy', field: 'firstBuy', width: 110 },
       { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'The close on the day of the first buy. Not a strike.' },
     ],
@@ -152,7 +152,7 @@ export const HouseFile = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{house}</h3>
+            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{house}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a 13F line means" testId="house-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">This filing, line by line. A call or a put is only the side.</p>
@@ -272,7 +272,7 @@ export const ShortFile = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{t} short</h3>
+            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{t} short</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What interest, days to cover and the fee mean" testId="short-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -439,7 +439,7 @@ export const FundFile = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{fund.etf} · {fund.name}</h3>
+            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{fund.etf} · {fund.name}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a weight, a flow and a holding mean" testId="fund-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -705,7 +705,7 @@ export const MemberFile = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{member.name}</h3>
+            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{member.name}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a report, a bracket and a lag mean" testId="member-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">

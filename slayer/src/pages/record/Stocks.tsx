@@ -116,9 +116,9 @@ const NameCell = ({ data }: ICellRendererParams<StockPick>) =>
 
 const SectorCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-textSecondary">
+    <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-textSecondary" title={data.sector}>
       <SectorMark sector={data.sector} />
-      {data.sector}
+      <span className="min-w-0 truncate">{data.sector}</span>
     </span>
   ) : null;
 

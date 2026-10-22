@@ -400,7 +400,7 @@ const holdingOf = (h: UwEtfHolding): EtfHolding | null => {
     weight,
     sharesM: num(h.shares) / 1e6,
     sector: h.sector || '—',
-    country: h.country_name || '—',
+    country: h.country_name || 'Not stated',
   };
 };
 

@@ -254,7 +254,10 @@ const FactorRow = ({ f }: { f: Factor }) => (
   </div>
 );
 /** How far a print landed from its estimate — a percent, or cents when the estimate is a few cents and a percent explodes */
-const epsGap = (actual: number, est: number) => (Math.abs(est) < 0.05 ? `${Math.round(Math.abs(actual - est) * 100)}¢` : `${Math.abs(((actual - est) / Math.abs(est || 1)) * 100).toFixed(1)}%`);
+/* cents, not a percent, when the estimate is small or the two sit on opposite sides of zero — "beat by 542.9%" on a
+   -0.07 estimate said nothing (the Dossier sweep, 2026-10-22); one rule for the table, the numbers box and the factor */
+export const centsGap = (actual: number, est: number) => Math.abs(est) < 0.25 || Math.sign(actual) !== Math.sign(est);
+const epsGap = (actual: number, est: number) => (centsGap(actual, est) ? `${Math.round(Math.abs(actual - est) * 100)}¢` : `${Math.abs(((actual - est) / Math.abs(est || 1)) * 100).toFixed(1)}%`);
 
 const Money = ({ v, signed = true }: { v: number; signed?: boolean }) => <span className={signed ? (v >= 0 ? 'text-bull' : 'text-bear') : ''}>{fmtMoney(v)}</span>;
 
@@ -566,7 +569,8 @@ const StockName = () => {
       grade,
       facts: [
         { k: 'Marks', v: String(n) },
-        { k: 'Last', v: last?.when ?? '—' },
+        /* a full ISO date (the report's lane) does not fit the narrow column — it read "2026-08…"; month/day as the others */
+        { k: 'Last', v: last?.when ? (/^\d{4}-\d{2}-\d{2}$/.test(last.when) ? `${last.when.slice(5, 7)}/${last.when.slice(8, 10)}` : last.when) : '—' },
         { k: 'Trend then', v: last?.score != null ? gradeOf(last.score) : '—', cls: last?.score != null ? GRADE_INK[gradeOf(last.score)] : undefined },
         { k: 'The last', v: last?.text ?? '—', cls: last ? 'text-textSecondary' : undefined },
       ],
@@ -959,10 +963,11 @@ const StockName = () => {
           {news.reports.length > 0 && (
             <div className="border-t border-borderSubtle/40" data-stock-reports={news.reports.length}>
               <div className="px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: '78px 52px minmax(0, 1fr) 96px' }}>
-                <span>Report</span>
-                <span>EPS</span>
-                <span>Against the estimate</span>
-                <span className="text-right whitespace-nowrap">The session after</span>
+                <span className="whitespace-nowrap">Report</span>
+                <span className="whitespace-nowrap">EPS</span>
+                {/* one line on a phone: the long heads wrapped three deep over the first row (the Dossier sweep, 2026-10-22) */}
+                <span className="min-w-0 truncate">Against the estimate</span>
+                <span className="text-right whitespace-nowrap"><span className="max-sm:hidden">The session after</span><span className="sm:hidden">Day after</span></span>
               </div>
               {news.reports.map(r => (
                 <div key={r.label} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: '78px 52px minmax(0, 1fr) 96px' }} data-stock-report={r.label}>
@@ -1022,7 +1027,7 @@ const StockName = () => {
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             {numbers.epsActual != null && (
             <Fact label="EPS · last print" testId="eps">
-              {numbers.epsActual < 0 ? '−' : ''}${Math.abs(numbers.epsActual).toFixed(2)}{numbers.epsSurprisePct != null && numbers.epsEstimate != null ? <> <span className={numbers.epsSurprisePct >= 0 ? 'text-bull' : 'text-bear'}>{Math.abs(numbers.epsEstimate) < 0.05 ? `${numbers.epsActual - numbers.epsEstimate >= 0 ? '+' : '−'}${Math.round(Math.abs(numbers.epsActual - numbers.epsEstimate) * 100)}¢` : pct(numbers.epsSurprisePct)}</span></> : null}
+              {numbers.epsActual < 0 ? '−' : ''}${Math.abs(numbers.epsActual).toFixed(2)}{numbers.epsSurprisePct != null && numbers.epsEstimate != null ? <> <span className={numbers.epsSurprisePct >= 0 ? 'text-bull' : 'text-bear'}>{centsGap(numbers.epsActual, numbers.epsEstimate) ? `${numbers.epsActual - numbers.epsEstimate >= 0 ? '+' : '−'}${Math.round(Math.abs(numbers.epsActual - numbers.epsEstimate) * 100)}¢` : pct(numbers.epsSurprisePct)}</span></> : null}
             </Fact>
             )}
             {numbers.epsGrowthPct != null && (
@@ -1041,11 +1046,8 @@ const StockName = () => {
               {numbers.dividendYieldPct.toFixed(2)}%
             </Fact>
             )}
-            {numbers.marketCap != null && (
-            <Fact label="Market cap" testId="cap">
-              {fmtMoney(numbers.marketCap)}
-            </Fact>
-            )}
+            {/* no market cap here: "The company" carries it from the name's own card, and the screener's figure beside it
+                disagreed by a few percent ($5.16T against $5.28T — the Dossier sweep, 2026-10-22) */}
             <StockFacts ticker={T} />
           </dl>
           <div className="mt-auto">

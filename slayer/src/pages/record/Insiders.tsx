@@ -33,6 +33,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
+import { usePagedGrid } from '../../components/record/pagedGrid';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
@@ -245,6 +246,7 @@ const Insiders = () => {
       { title: 'Roles', options: [...byRoles.entries()].sort(order).map(([r, c]) => ({ value: `role:${r}`, label: r, count: c })) },
     ];
   }, [cut, picks]);
+  const paged = usePagedGrid<InsiderTrade>();
   const rows = useMemo(() => {
     if (picks.length === 0) return cut;
     const picked = new Set(picks);
@@ -378,6 +380,7 @@ const Insiders = () => {
       <div className="slayer-board border-t border-borderSubtle" data-insiders-grid>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<InsiderTrade>
+            {...paged.props}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -395,6 +398,7 @@ const Insiders = () => {
             tooltipHideDelay={8000}
           />
         </AgGridProvider>
+        {paged.bar(rows.length, 'insiders-grid')}
       </div>
       <InsiderSectorFlow />
     </div>
