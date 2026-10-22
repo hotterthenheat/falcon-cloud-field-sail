@@ -46,7 +46,9 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildExposureProfile } from '../src/data/exposure';
 import { buildAgenda } from '../src/data/agenda';
-import { buildWallContext, holdWord, oddsAt, speedRatio, testEvents, type WallSide } from '../src/data/wall';
+import { buildWallContext, oddsAt, speedRatio, testEvents, type WallSide } from '../src/data/wall';
+/* the strong / medium / weak buckets the pages printed when this back-test was run — kept here to re-read them */
+const holdWord = (v: number): 'strong' | 'medium' | 'weak' => (v >= 0.62 ? 'strong' : v >= 0.38 ? 'medium' : 'weak');
 import { chainFrom } from '../src/data/uwBook';
 import type { Building } from '../src/data/building';
 import type { AheadClock } from '../src/data/ahead';

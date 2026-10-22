@@ -330,7 +330,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.watch.strike} />
                 <span className="text-[10px] text-textMuted">
-                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · holds ${holdLabel(s.watch.hold)}` : ''}
+                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
                 </span>
               </span>
             ) : (

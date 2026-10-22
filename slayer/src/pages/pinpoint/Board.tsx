@@ -173,7 +173,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
       )}
       <span className="text-[10px] text-textSecondary">
         {Math.round(w.reach * 100)}% reached{w.isShelf ? ' · ' : ''}
-        {w.isShelf && <span style={{ color: SILVER }}>holds {holdLabel(w.hold)}</span>}
+        {w.isShelf && <span style={{ color: SILVER }}>{holdLabel(w.hold)}</span>}
       </span>
       <span className="text-[10px] text-textMuted">{fmtDollars(w.stake)}</span>
     </span>
