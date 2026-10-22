@@ -24,7 +24,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
@@ -36,12 +36,20 @@ import { useBoardNames } from '../../data/boardNames';
 import { houseSlug, positionWord, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type ShortRow } from '../../data/fileBooks';
 import { useEtfs, useInstitutions, useShorts } from '../../data/liveFiles';
 import { tickerName } from '../../data/tickers';
+import { FeedFallback } from '../../components/ui/liveRead';
+
 import { SECTORS, type Sector } from '../../data/universe';
 import { NAMES_TO_KNOW } from './recordSkeletons';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
 const signed = (n: number, digits = 1) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`;
-const signedM = (n: number) => `${n > 0 ? '+' : ''}${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}M`;
+/* Money said in dollars at its own scale (the dossier sweep, 2026-10-22: "+4,875M" and "$2086B" read as raw counts) */
+const moneyM = (absM: number) =>
+  absM >= 1_000_000 ? `$${(absM / 1_000_000).toFixed(2)}T` : absM >= 1000 ? `$${(absM / 1000).toFixed(absM >= 100_000 ? 0 : 1)}B` : `$${absM.toFixed(0)}M`;
+const signedM = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${moneyM(Math.abs(n))}`;
+const assetsB = (b: number) => moneyM(b * 1000);
+/** Millions of shares, one way everywhere: a decimal under 100M, whole above, a B past a billion */
+const sharesM = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(2)}B` : m >= 100 ? `${m.toFixed(0)}M` : `${m.toFixed(1)}M`);
 const moneyB = (b: number) => (b >= 1 ? `$${b.toFixed(2)}B` : `$${(b * 1000).toFixed(0)}M`);
 
 const CARD = (on: boolean) => `group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`;
@@ -98,7 +106,7 @@ const BOOK_WORD: Record<InstitutionRow['book'], string> = { calls: 'Call', puts:
 
 const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
@@ -141,6 +149,8 @@ export const Institutions = () => {
   const [guideOpen, setGuideOpen] = useState(false);
   const live = useInstitutions();
   const feed = live.rows;
+  /* a failed read is not an empty filing season */
+  const failed = live.status === 'error';
   const houseOptions = useMemo<DropdownOption<string>[]>(() => [{ value: 'any', label: 'Every house', hint: 'The houses on this cut' }, ...live.houses.map(h => ({ value: h, label: h }))], [live.houses]);
   const board = useMemo(() => new Set(boardNames), [boardNames]);
   const [picks, setPicks] = useState<string[]>([]);
@@ -176,7 +186,8 @@ export const Institutions = () => {
   const toKnow = useMemo(() => {
     const seen = new Set<string>();
     const out: InstitutionRow[] = [];
-    for (const r of cut) {
+    /* the largest reported line in each name, biggest first — as the strip's own words say */
+    for (const r of [...cut].sort((a, b) => b.valueB - a.valueB)) {
       if (seen.has(r.ticker)) continue;
       seen.add(r.ticker);
       out.push(r);
@@ -196,13 +207,15 @@ export const Institutions = () => {
   }, [rows]);
   const columnDefs = useMemo<ColDef<InstitutionRow>[]>(
     () => [
-      { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: InstFiled, sort: 'asc', headerTooltip: 'The day the 13F was filed, and how far back that is' },
+      /* newest filing first, and inside one filing day the biggest line first — the tie fell to feed order, so the
+         grid opened on one house's small lines while the cards above led with another's biggest (2026-10-22) */
+      { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: InstFiled, sort: 'asc', sortIndex: 0, headerTooltip: 'The day the 13F was filed, and how far back that is' },
       { headerName: 'House', field: 'name', flex: 1.2, minWidth: 140, cellRenderer: InstHouse, headerTooltip: 'The filer' },
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: InstName, headerTooltip: 'The holding — click the row to open the house’s filing' },
       { headerName: 'Side', field: 'book', width: 88, cellRenderer: InstBook, headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
       { headerName: 'Status', field: 'status', width: 88, cellRenderer: InstStatus, headerTooltip: 'New, added, cut, closed, or held against the prior 13F' },
       { headerName: 'Shares', field: 'sharesM', width: 96, cellRenderer: InstShares, type: 'rightAligned', headerTooltip: 'Shares reported, in millions' },
-      { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', headerTooltip: 'The reported value' },
+      { headerName: 'Value', field: 'valueB', width: 100, cellRenderer: InstValue, type: 'rightAligned', sort: 'desc', sortIndex: 1, headerTooltip: 'The reported value' },
       { headerName: '% of book', field: 'pctOfBook', width: 96, cellRenderer: InstBookPct, type: 'rightAligned', headerTooltip: 'This line as a percent of the house’s reported book' },
       { headerName: 'Vs last filing', field: 'changePct', width: 120, cellRenderer: InstChange, type: 'rightAligned', headerTooltip: 'Change versus the prior 13F, not versus yesterday' },
     ],
@@ -228,9 +241,9 @@ export const Institutions = () => {
         <InstitutionsGuide />
       </GuideFocus>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">What the houses reported</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What the houses reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a line, a book and the change mean" testId="institutions-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every 13F line in the window · a row opens that house</p>
@@ -238,23 +251,19 @@ export const Institutions = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted">Lines</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>
-              {facts.lines}
-            </dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : <>{facts.lines}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Houses</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{facts.houses}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.houses}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Calls · puts</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap text-textPrimary">
-              {facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts
-            </dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap text-textPrimary">{failed ? '—' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Largest line</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -265,20 +274,21 @@ export const Institutions = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="institutions-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and houses on the page right now — tick any number; only those stay" testId="institutions-filter" />
       </div>
-      <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-institutions-sentence>
+      <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-institutions-sentence>
         {facts.lead ? (
           <>
             <span className="text-textPrimary font-semibold">{facts.lead.name}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
           </>
         ) : live.status === 'loading' ? (
           'Reading the 13Fs.'
-        ) : (
+        ) : failed ? null : (
           'Nothing filed on this cut.'
         )}
       </p>
+      {failed && <FeedFallback />}
       <Strip title="The lines to know" rest="the largest reported line in each name, biggest first · click one to keep the grid to that name" testId="institutions">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No line on this cut</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'No line on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -302,7 +312,8 @@ export const Institutions = () => {
             animateRows={false}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
-            overlayNoRowsTemplate='<span class="font-mono text-[10px] uppercase tracking-widest">No line on this cut</span>'
+            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No line on this cut')}
+            key={failed ? 'failed' : 'live'}
           />
         </AgGridProvider>
       </div>
@@ -323,20 +334,28 @@ const SECTOR_OPTIONS: DropdownOption<SectorPick>[] = [{ value: 'all', label: 'Ev
 
 const ShortName = ({ data }: ICellRendererParams<ShortRow>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
+        {/* the listing's name, else the vendor's; never the ticker said twice */}
+        {(() => {
+          const n = data.name ?? tickerName(data.ticker);
+          return n && n !== data.ticker ? <span className="text-[10px] text-textMuted truncate" title={n}>{n}</span> : null;
+        })()}
       </span>
     </span>
   ) : null;
 const ShortSector = ({ data }: ICellRendererParams<ShortRow>) =>
   data ? (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-textSecondary">
-      <SectorMark sector={data.sector} />
-      {data.sector}
-    </span>
+    data.sector === '—' ? (
+      <span className="text-[11px] text-textMuted" title="The vendor's file does not name a sector">—</span>
+    ) : (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-textSecondary">
+        <SectorMark sector={data.sector} />
+        {data.sector}
+      </span>
+    )
   ) : null;
 const ShortInterest = ({ data }: ICellRendererParams<ShortRow>) => {
   if (!data) return null;
@@ -351,7 +370,7 @@ const ShortInterest = ({ data }: ICellRendererParams<ShortRow>) => {
   );
 };
 const ShortDays = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.daysToCover.toFixed(1)}</span> : null);
-const ShortFloat = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{data.floatM.toLocaleString('en-US')}M</span> : null);
+const ShortFloat = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">{sharesM(data.floatM)}</span> : null);
 const ShortVol = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.shortVolRatio == null ? '—' : `${data.shortVolRatio.toFixed(0)}%`}</span> : null);
 const ShortBorrow = ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.feeRate == null ? '—' : `${data.feeRate.toFixed(2)}%`}</span> : null);
 
@@ -360,7 +379,7 @@ const ShortCard = ({ row, on, onToggle }: { row: ShortRow; on: boolean; onToggle
     <span className="flex items-center gap-2 min-w-0">
       <CompanyLogo ticker={row.ticker} size={18} />
       <span className="font-mono text-[12px] font-bold text-textPrimary">{row.ticker}</span>
-      <span className="text-[10px] text-textSecondary truncate">{tickerName(row.ticker)}</span>
+      {(row.name ?? tickerName(row.ticker)) !== row.ticker && <span className="text-[10px] text-textSecondary truncate">{row.name ?? tickerName(row.ticker)}</span>}
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
       <span className={`text-[13px] font-bold ${row.interestPct >= 8 ? 'text-bear' : 'text-textPrimary'}`}>{row.interestPct.toFixed(1)}%</span>
@@ -378,6 +397,7 @@ export const Shorts = () => {
   const [names, setNames] = useState<NamesPick>('all');
   const [guideOpen, setGuideOpen] = useState(false);
   const liveShorts = useShorts();
+  const failed = liveShorts.status === 'error';
   const feed = liveShorts.rows;
   const board = useMemo(() => new Set(boardNames), [boardNames]);
   const cut = useMemo(
@@ -414,7 +434,7 @@ export const Shorts = () => {
       { headerName: 'Name', field: 'ticker', flex: 1.4, minWidth: 180, cellRenderer: ShortName, headerTooltip: 'The company — click the row to open the short file' },
       { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 150, cellRenderer: ShortSector, headerTooltip: 'The sector the name files under' },
       { headerName: 'Short interest', field: 'interestPct', width: 168, cellRenderer: ShortInterest, headerTooltip: 'Percent of the float sold short. Eight percent and above is the heavy book' },
-      { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.shortSharesM.toFixed(1)}M</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
+      { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
       { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'The short book divided by average volume' },
       { headerName: 'Fee', field: 'feeRate', width: 80, cellRenderer: ShortBorrow, type: 'rightAligned', headerTooltip: 'The annualized fee to borrow the shares. A dash means the feed did not price the borrow.' },
       { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.availableM == null ? '—' : `${data.availableM.toFixed(2)}M`}</span> : null), type: 'rightAligned', headerTooltip: 'Shares available to borrow. A dash means the feed did not say.' },
@@ -443,9 +463,9 @@ export const Shorts = () => {
         <ShortsGuide />
       </GuideFocus>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Where the short book sits</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">Where the short book sits</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What short interest, days to cover and the fee mean" testId="shorts-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Short interest, the day’s short volume and the borrow, heaviest first · a row opens the short file</p>
@@ -453,21 +473,19 @@ export const Shorts = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted">Names</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-count>
-              {facts.names}
-            </dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : <>{facts.names}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">At 8% or more</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{facts.heavy}</dd>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{failed ? '—' : <>{facts.heavy}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Heaviest</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Days to cover</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{facts.names ? facts.days.toFixed(1) : '—'}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.names ? facts.days.toFixed(1) : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -477,18 +495,21 @@ export const Shorts = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="shorts-names" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names on the page right now — tick any number; only those stay" testId="shorts-filter" />
       </div>
-      <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-shorts-sentence>
+      <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-shorts-sentence>
         {facts.lead ? (
           <>
             <span className={`font-semibold ${facts.lead.interestPct >= 8 ? 'text-bear' : 'text-textPrimary'}`}>{facts.lead.ticker}</span> is the heaviest short, {facts.lead.interestPct.toFixed(1)}% of the float and {facts.lead.daysToCover.toFixed(1)} days to cover. <span className="text-bear font-semibold">{facts.heavy}</span> {facts.heavy === 1 ? 'name sits' : 'names sit'} at 8% or more.
           </>
-        ) : (
+        ) : liveShorts.status === 'loading' ? (
+          'Reading the short book.'
+        ) : failed ? null : (
           'Nothing on this cut.'
         )}
       </p>
+      {failed && <FeedFallback />}
       <Strip title="The names to know" rest="the heaviest short interest on this cut · click a name to keep the grid to it" testId="shorts">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No name on this cut</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'No name on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -512,7 +533,8 @@ export const Shorts = () => {
             animateRows={false}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
-            overlayNoRowsTemplate='<span class="font-mono text-[10px] uppercase tracking-widest">No name on this cut</span>'
+            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No name on this cut')}
+            key={failed ? 'failed' : 'live'}
           />
         </AgGridProvider>
       </div>
@@ -540,7 +562,7 @@ const KIND_WORD: Record<EtfKind, string> = { broad: 'Broad', sector: 'Sector', r
 
 const EtfName = ({ data }: ICellRendererParams<EtfRow>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.etf} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.etf}</span>
@@ -549,7 +571,7 @@ const EtfName = ({ data }: ICellRendererParams<EtfRow>) =>
     </span>
   ) : null;
 const EtfKindCell = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[10px] uppercase tracking-widest text-textSecondary">{KIND_WORD[data.kind]}</span> : null);
-const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">${data.aumB.toFixed(0)}B</span> : null);
+const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{assetsB(data.aumB)}</span> : null);
 const EtfFlow = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.flow5dM)}`}>{signedM(data.flow5dM)}</span> : null);
 const EtfFee = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.expensePct == null ? '—' : `${data.expensePct.toFixed(2)}%`}</span> : null);
 const EtfTop = ({ data }: ICellRendererParams<EtfRow>) =>
@@ -564,7 +586,7 @@ const EtfTop = ({ data }: ICellRendererParams<EtfRow>) =>
 
 const HoldName = ({ data }: ICellRendererParams<EtfHolding>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
@@ -605,6 +627,7 @@ export const EtfBook = () => {
   const [kind, setKind] = useState<KindPick>('any');
   const [guideOpen, setGuideOpen] = useState(false);
   const liveEtfs = useEtfs();
+  const failed = liveEtfs.status === 'error';
   const feed = liveEtfs.rows;
   const cut = useMemo(
     () => feed.filter(r => (flow === 'any' || (flow === 'in' ? r.flow5dM > 0 : r.flow5dM < 0)) && (kind === 'any' || r.kind === kind)),
@@ -672,9 +695,9 @@ export const EtfBook = () => {
         <EtfsGuide />
       </GuideFocus>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">What the funds hold</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What the funds hold</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a fund, a flow and a weight mean" testId="etfs-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Assets, the fee, and five-day flow · a row opens the fund</p>
@@ -682,21 +705,19 @@ export const EtfBook = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted">Funds</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-etf-count>
-              {facts.funds}
-            </dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-etf-count>{failed ? '—' : <>{facts.funds}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Assets</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">${facts.aum.toFixed(0)}B</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{assetsB(facts.aum)}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Five-day flow</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(facts.net)}`}>{signedM(facts.net)}</dd>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(facts.net)}`}>{failed ? '—' : <>{signedM(facts.net)}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">In the book</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{focus ? focus.etf : '—'}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{focus ? focus.etf : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -705,7 +726,7 @@ export const EtfBook = () => {
         <DropdownSelect label="Kind" value={kind} options={KIND_OPTIONS} onChange={setKind} title="Which funds" testId="etf-kind" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The funds on the page right now — tick any number; only those stay" testId="etf-filter" />
       </div>
-      <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-etf-sentence>
+      <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-etf-sentence>
         {facts.inflow && facts.outflow ? (
           <>
             {facts.inflow.flow5dM > 0 ? (
@@ -730,13 +751,16 @@ export const EtfBook = () => {
               </>
             ) : null}
           </>
-        ) : (
+        ) : liveEtfs.status === 'loading' ? (
+          'Reading the funds.'
+        ) : failed ? null : (
           'No fund on this cut.'
         )}
       </p>
+      {failed && <FeedFallback />}
       <Strip title="The funds to know" rest="the largest five-day flow, either way · click a fund to keep the grid to it" testId="etfs">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No fund on this cut</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'No fund on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -760,7 +784,8 @@ export const EtfBook = () => {
             animateRows={false}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
-            overlayNoRowsTemplate='<span class="font-mono text-[10px] uppercase tracking-widest">No fund on this cut</span>'
+            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No fund on this cut')}
+            key={failed ? 'failed' : 'live'}
           />
         </AgGridProvider>
       </div>

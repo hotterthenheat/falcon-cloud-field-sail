@@ -694,7 +694,9 @@ export function buildIntervalSlices(rows: BookContract[], idx: number): Interval
       shareOfDayPct: Number(((w[idx] / daySum) * 100).toFixed(1)),
       premium,
       avgFill: Number(Math.max(0.01, premium / (vol * 100)).toFixed(2)),
-      ivChg: Number(((h01(`${seed}-ivd`) - 0.5) * r.iv * 0.1).toFixed(1)),
+      /* the contract's own move in volatility today — the vendor has no per-window figure, and a hashed wobble on 0% IV
+         read "+0.0" on every row */
+      ivChg: Number(r.ivChg.toFixed(1)),
       sweepPct: wobble30(r.sweepPct, `${seed}-sw`),
       multiPct: wobble30(r.multiPct, `${seed}-ml`),
       floorPct: r.floorPct === 0 ? 0 : wobble30(r.floorPct, `${seed}-fl`),

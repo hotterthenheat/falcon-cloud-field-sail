@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { type ColDef, type ICellRendererParams } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME } from '../ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { CONTROLS_LINE } from '../trace/TraceBox';
 import { STATEMENT_PERIODS, buildStatements, type StatementLine } from '../../data/companyFile';
@@ -75,6 +75,7 @@ const Statements = ({ ticker }: { ticker: string }) => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={lines}
+            overlayNoRowsTemplate={noRows('No statement on file')}
             columnDefs={cols}
             defaultColDef={{ sortable: false, resizable: true, suppressMovable: true }}
             getRowId={p => p.data.name}

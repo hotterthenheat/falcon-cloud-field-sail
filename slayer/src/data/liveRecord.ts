@@ -208,6 +208,24 @@ function useInsidersSnap() {
   );
 }
 
+/** Where the insider book stands — 'sim' is a failed read, never "nobody traded" */
+export function useInsidersStatus(): FeedStatus {
+  return useInsidersSnap().status;
+}
+
+/** Where the congress book stands — 'sim' is a failed read */
+export function useCongressStatus(): FeedStatus {
+  return useSyncExternalStore(
+    fn => {
+      const off = listen(fn);
+      ensureCongress();
+      return off;
+    },
+    () => snap.congress.status,
+    () => snap.congress.status,
+  );
+}
+
 export function useInsiderTrades(windowDays: number, codes: readonly TxCode[]): InsiderTrade[] {
   const insiders = useInsidersSnap();
   return useMemo(() => {

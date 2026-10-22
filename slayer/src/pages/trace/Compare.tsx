@@ -121,6 +121,8 @@ interface Row {
   bars?: (s: TraceSide) => Bar[];
 }
 const barInk = (v: number): BarInk => (v > 0 ? 'bull' : v < 0 ? 'bear' : 'mute');
+/** Net PUT premium leans the other way: puts bought are bearish ink, puts sold bullish (Lean's `put`) */
+const putInk = (v: number): BarInk => barInk(-v);
 const CAP_H = 18;
 /** A capsule's fill and figure ink: the direction inks for a signed fact, the silver for an unsigned one, the leader lit
     with its ring — every class written out, since Tailwind only builds what it can read */
@@ -304,7 +306,7 @@ const Compare = () => {
   const aTicker = onBook(aPick) ? aPick : onBook(activeTicker) ? activeTicker : names[0] ?? 'SPY';
   /* Never the same name twice: the second falls to the first's twin, else the next busiest */
   const twin = TWINS[aTicker];
-  const bTicker = onBook(bPick) && bPick !== aTicker ? bPick : onBook(twin) && twin !== aTicker ? twin : names.find(t => t !== aTicker) ?? aTicker;
+  const bTicker = onBook(bPick) && bPick !== aTicker ? bPick : onBook(twin) && twin !== aTicker ? twin : names.find(t => t !== aTicker) ?? (twin ?? (aTicker === 'QQQ' ? 'SPY' : 'QQQ'));
 
   /* Both names read at the tape's last bar — the same instant, the leaders board's rule */
   const sampleAt = useMemo(() => paneTimes('SPY').slice(-1), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -374,7 +376,7 @@ const Compare = () => {
           label: 'Net puts',
           note: the(louder(s => s.netPut), 'the louder on puts'),
           lead: louder(s => s.netPut),
-          bars: s => [{ v: s.netPut, text: signedUsd(s.netPut), ink: barInk(s.netPut) }],
+          bars: s => [{ v: s.netPut, text: signedUsd(s.netPut), ink: putInk(s.netPut) }],
           cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>,
         },
       ],
@@ -397,7 +399,7 @@ const Compare = () => {
           lead: null,
           bars: s => [
             { v: s.odte.calls, text: signedUsd(s.odte.calls), ink: barInk(s.odte.calls), name: 'Same-day calls', desc: 'expiring today or tomorrow' },
-            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: barInk(s.odte.puts), name: 'Same-day puts', desc: 'expiring today or tomorrow' },
+            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: putInk(s.odte.puts), name: 'Same-day puts', desc: 'expiring today or tomorrow' },
           ],
           cell: s => (
             <>
@@ -743,7 +745,8 @@ const Compare = () => {
             {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
           </Champion>
           <Fact label="Busier tape" testId="busier">
-            {cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints
+            {/* the tape window is the market's last 200 prints — neither name on it is "no print", not a winner */}
+            {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints</>}
           </Fact>
         </>
       }
@@ -779,7 +782,7 @@ const Compare = () => {
       {/* THE PANES — each name through the session, on the page's one cut */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 border-t border-borderSubtle p-2" data-compare-panes>
         {[a, b].map((s, i) => (
-          <div key={s.ticker} style={{ height: CMP_PANE_H }} className="min-w-0" data-compare-pane={i === 0 ? 'a' : 'b'}>
+          <div key={`${i}-${s.ticker}`} style={{ height: CMP_PANE_H }} className="min-w-0" data-compare-pane={i === 0 ? 'a' : 'b'}>
             <NetFlowPane book={book} seg="all" mny={mny} onSeg={() => {}} onMny={setMny} tick={tick} ticker={s.ticker} tenor={tenor} onTenor={setTenor} dteMax={Infinity} cutCards={false} />
           </div>
         ))}

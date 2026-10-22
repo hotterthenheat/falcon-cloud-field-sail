@@ -48,6 +48,12 @@ const ContractCell = ({
   /** Signed distance of the strike from that spot, percent */
   otmPct?: number;
 }) => {
+  /* No underlying on the print (the vendor sends none for index options — SPXW, XSP): no spot and no distance, never
+     "spot $0.00 · 0.0%" */
+  if (spot !== undefined && !(spot > 0)) {
+    spot = undefined;
+    otmPct = undefined;
+  }
   const context = dte !== undefined || spot !== undefined || otmPct !== undefined;
   /* leading-none + align-middle on the head too, not just on the compound
      form: a table cell hands its children a 36px line height, so this one

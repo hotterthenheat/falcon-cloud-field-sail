@@ -482,7 +482,8 @@ const FlowTracker = () => {
   }, [rows]);
 
   const read = useMemo<ReactNode>(() => {
-    if (total === 0) return <RichRead text="Nothing under watch yet." />;
+    /* the body below says it, with the doors to the pages that keep a row */
+    if (total === 0) return null;
     const parts = [
       counts.contracts ? `${counts.contracts} contract${counts.contracts === 1 ? '' : 's'}` : '',
       counts.prints ? `${counts.prints} print${counts.prints === 1 ? '' : 's'}` : '',
