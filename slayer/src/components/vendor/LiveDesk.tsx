@@ -241,6 +241,10 @@ interface Field {
 }
 
 /** Rows into line specs. A real timestamp keeps the session clock; anything else is labelled on the axis. */
+/** "2026-10-22" → "Oct 22", the date form every other Pinpoint label wears */
+const shortDay = (iso: string): string =>
+  /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : iso || '—';
+
 function stamps(rows: Record<string, unknown>[], timeKey: string, fields: Field[]): LineSpec[] {
   const base = Math.floor(Date.UTC(2024, 0, 2) / 1000);
   const pts: { t: number; label?: string; vals: Record<string, number> }[] = [];
@@ -263,7 +267,9 @@ function stamps(rows: Record<string, unknown>[], timeKey: string, fields: Field[
       t = base + fake * 86400;
       fake += 1;
     } else if (timeKey !== 'timestamp') {
-      label = String(r[timeKey] ?? '').slice(0, 10);
+      const day = String(r[timeKey] ?? '').slice(0, 10);
+      /* an expiry is a near date — "Oct 22", the form every other label wears; long histories keep the year */
+      label = timeKey === 'expiry' ? shortDay(day) : day;
     }
     pts.push({ t, label, vals });
   }
@@ -516,7 +522,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
         </span>
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
           <span className="text-[11px] uppercase tracking-wider text-textMuted">{windowed ? 'Window' : 'Front'}</span>
-          <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? String(pain.expiry ?? '').slice(0, 10) || '—' : '—'}</span>
+          <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? shortDay(String(pain.expiry ?? '').slice(0, 10)) : '—'}</span>
         </span>
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
           <span className="text-[11px] uppercase tracking-wider text-textMuted">NOPE</span>

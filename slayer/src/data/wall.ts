@@ -57,23 +57,39 @@ import type { Candle, MarketSnapshot } from '../types/market';
 
 /* ---- the constants, named so they can be calibrated ------------------------------ */
 
-/** The ratio of a wall's hedging to a TYPICAL wall on the same book at which it is a coin flip.
-    RELATIVE, NOT AGAINST THE MARKET (the owner's call, 2026-10-22): measured against the market's dollars per 1%, every
-    SPY wall was a few percent of the market and sat on the odds floor — every wall read the same "<10%", the number said
-    nothing. Against the walls on its own book the heavy ones separate from the thin ones again. Until a back-test
-    calibrates it, the reading prints as a word (strong / medium / weak), never as a measured percentage. */
+/* BACK-TESTED (scripts/wall-backtest.ts, docs/wall-backtest.md, 2026-10-22): 496 sessions of SPY, QQQ and NVDA
+   (2024-10-22 → 2026-10-21), the book as of each open, every touch of a listed wall, held vs broke by 0.15%. 2,656
+   resolved touches on the Today (0DTE) book. Fitted on the first year, checked on the second (the model beat one pooled
+   base rate out of sample), then refitted on both for the numbers below. What it found:
+     - the NAME carries most of it: walls held 58% of touches on SPY, 61% on QQQ, 74% on NVDA (base logits below);
+     - a wall's SIZE against the typical wall on its book barely matters (−0.04 logits per doubling — read alone, the
+       heaviest walls held LESS often: big strikes pull price in like a pin as often as they turn it away);
+     - a FAST arrival turns back more often, not less (+0.46 logits per unit of speed over the priced pace);
+     - the day's earlier tests add almost nothing (+0.05).
+   The build, the prints and the vanna term cannot be replayed from the vendor's history (no intraday book, no tape), so
+   A_BUILD, A_PRINTS and A_VOL keep their earlier hand-set values — untested — and they no longer move the printed hold:
+   the hold is the back-tested reading only (name + size + tests + speed), so the percentage the pages print is the one
+   the back-test measured. The three still show in the factor list, each with its push, as context the reader can weigh. */
+
+/** The hold logit of a wall on each back-tested name; any other name takes the touch-weighted mean of the three */
+const BASE_LOGIT: Record<string, number> = { SPY: 0.324, QQQ: 0.439, NVDA: 1.049 };
+const BASE_LOGIT_OTHER = 0.597;
+/** How many touches the hold reading is back-tested on — the guide prints it */
+export const BACKTEST_TOUCHES = 2656;
+/** Kept for the size factor's words: a wall at this ratio of the typical wall reads as typical */
 export const PAR_RATIO = 1;
-/** Logits per doubling of that ratio */
-const A_WEIGHT = 1.0;
-/** Logits for a perfect record of holds today (and against for breaks) */
-const A_TESTS = 1.2;
-/** Logits for a wall that grew by half its size today (and against for draining) */
+/** Logits per doubling of the wall's weight against the typical wall on its book (back-tested) */
+const A_WEIGHT = -0.038;
+/** Logits for a perfect record of holds today (and against for breaks) (back-tested) */
+const A_TESTS = 0.048;
+/** Logits for a wall that grew by half its size today (and against for draining) — not back-testable, hand-set */
 const A_BUILD = 0.8;
-/** Logits against, per unit of speed over the priced pace */
-const A_SPEED = 0.8;
-/** Logits against, for prints handing dealers a wall's worth of stock to push through it */
+/** Logits AGAINST, per unit of speed over the priced pace (back-tested: negative — a fast arrival holds more) */
+const A_SPEED = -0.458;
+/** Logits against, for prints handing dealers a wall's worth of stock to push through it — not back-testable, hand-set */
 const A_PRINTS = 0.6;
-/** Logits against, for a one-point vol drop forcing a wall's worth of dealer stock through it — VANNA (2026-09-09) */
+/** Logits against, for a one-point vol drop forcing a wall's worth of dealer stock through it — VANNA (2026-09-09) —
+    not back-testable, hand-set */
 const A_VOL = 0.6;
 /** How much of a wall's expiring-today part still counts at the close */
 const CHARM_FLOOR = 0.35;
@@ -172,6 +188,8 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** The hold reading as the word the pages print — the odds are relative and not yet back-tested, so no percentage */
 export type HoldWord = 'strong' | 'medium' | 'weak';
 export const holdWord = (v: number): HoldWord => (v >= 0.62 ? 'strong' : v >= 0.38 ? 'medium' : 'weak');
+/** The hold reading as printed: a back-tested share of touches that held, to the nearest 5% */
+export const holdLabel = (v: number): string => `${Math.round(v * 20) * 5}%`;
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 
 /** Tests of a level as VISITS, not bars: a test begins when a bar's range
@@ -253,6 +271,7 @@ export function printsDemand(snapshot: MarketSnapshot, iv: number): number {
 /* ---- the model ------------------------------------------------------------------- */
 
 interface Ctx {
+  ticker: string;
   spot: number;
   strikes: StrikeExposure[]; // descending
   heaviest: number;
@@ -306,7 +325,10 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
       expiresToday = total > 0 ? clamp(today / total, 0, 1) : 0;
     }
   }
-  const fade = clock.inSession ? CHARM_FLOOR + (1 - CHARM_FLOOR) * (clock.minutesLeft / SESSION_MIN) : 0;
+  /* Outside the session the book's "today" contracts are the COMING session's (bookToday rolls at 16:15), alive in
+     full — they used to read as already expired, so before the open every front-expiry wall weighed nothing and sat on
+     the odds floor (the Board printed "holds 10%" on every name) */
+  const fade = clock.inSession ? CHARM_FLOOR + (1 - CHARM_FLOOR) * (clock.minutesLeft / SESSION_MIN) : 1;
   const weightEff = weight * (1 - expiresToday * (1 - fade));
 
   /* THE TESTS today — visits, held or broke */
@@ -331,13 +353,16 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
 
   /* THE ODDS */
   const ratio = weightEff > 0 ? weightEff / Math.max(1, ctx.typicalWall) : 0;
+  const base = BASE_LOGIT[ctx.ticker] ?? BASE_LOGIT_OTHER;
   const zWeight = weightEff > 0 ? A_WEIGHT * (Math.log2(ratio) - Math.log2(PAR_RATIO)) : -4;
   const zTests = A_TESTS * testsScore;
   const zBuild = A_BUILD * buildScore;
-  const zSpeed = -A_SPEED * speedExcess;
+  /* The speed is the pace price ARRIVES at, measured in the session (the back-test read it at the touch). Outside the
+     session the tape is the thin after-hours one, so it does not move the hold until the bell */
+  const zSpeed = clock.inSession ? -A_SPEED * speedExcess : 0;
   const zPrints = -A_PRINTS * printsScore;
   const zVol = -A_VOL * volScore;
-  const hold = weight <= 0 ? ODDS_LO : clamp(sigmoid(zWeight + zTests + zBuild + zSpeed + zPrints + zVol), ODDS_LO, ODDS_HI);
+  const hold = weight <= 0 ? ODDS_LO : clamp(sigmoid(base + zWeight + zTests + zSpeed), ODDS_LO, ODDS_HI);
 
   const distance = Math.abs(K - spot);
   const distanceSigma = ctx.sigmaLeft > 0 ? distance / ctx.sigmaLeft : 99;
@@ -393,7 +418,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
       key: 'tests',
       label: 'Tested today',
       fact: touches === 0 ? 'not yet' : `${touches}× · held ${held} · broke ${breaks}`,
-      push: clamp(zTests / A_TESTS, -1, 1),
+      push: clamp(zTests / Math.abs(A_TESTS), -1, 1),
       words: touches === 0 ? 'price has not reached it today' : breaks === 0 ? `every touch held` : `broke ${breaks} time${breaks === 1 ? '' : 's'} on ${touches} touch${touches === 1 ? '' : 'es'}`,
     },
     {
@@ -424,8 +449,8 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
       key: 'speed',
       label: 'The market’s speed',
       fact: ctx.speed == null ? '—' : `${speed.toFixed(2)}× the pace priced`,
-      push: clamp(zSpeed / A_SPEED, -1, 1),
-      words: speed > 1.3 ? 'running faster than its options priced — walls break more' : speed < 0.7 ? 'a quiet market — walls hold more' : 'about the pace the options priced',
+      push: clamp(zSpeed / Math.abs(A_SPEED), -1, 1),
+      words: !clock.inSession ? 'the pace price arrives at counts once the session opens' : speed > 1.3 ? 'running faster than its options priced — fast arrivals turned back more often in the back-test' : speed < 0.7 ? 'a quiet market — slow arrivals pushed through more often in the back-test' : 'about the pace the options priced',
     },
     {
       key: 'prints',
@@ -447,7 +472,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const sentence =
     weight > 0
-      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time, and reads as a ${holdWord(hold)} wall. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
+      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time; walls read like it held ${holdLabel(hold)} of touches. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
       : `${who} is not a wall: the hedging there pushes moves along rather than back. ${cap(breakPath.words)}.`;
 
   return { strike: K, side, role, weight, weightEff, expiresToday, touches, breaks, build, speed, prints, distanceSigma, reach, hold, factors, breakPath, holdPath, sentence };
@@ -478,6 +503,7 @@ export function buildWallContext(
   const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
   const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   return {
+    ticker: snapshot.ticker,
     spot,
     strikes,
     heaviest,
@@ -554,7 +580,7 @@ export function buildWallBoard(
   const s = walls.find(x => x.strike === strongest);
   const sentence =
     w && s && w.strike !== s.strike
-      ? `The weakest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''} (${holdWord(w.hold)}); the strongest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} (${holdWord(s.hold)}).`
+      ? `The weakest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''} (holds ${holdLabel(w.hold)} of touches); the strongest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} (${holdLabel(s.hold)}).`
       : walls.length
         ? `${walls.length} wall${walls.length === 1 ? '' : 's'} on the strikes shown, the nearest at ${fmtStrike(walls[0].strike)}.`
         : 'No wall on the strikes shown.';

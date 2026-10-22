@@ -46,7 +46,6 @@ import { dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
 import { nyMinutes } from '../../core/nyTime';
 import { armLevel, removeAlert, useAlerts, type LevelName } from './alertStore';
-import { useLevelsScope } from '../../data/levelsScope';
 import { setDayHover, useDayHover } from '../../data/dayHover';
 import { useResolvedTheme } from '../../theme/theme';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
@@ -144,8 +143,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const roomSpot = useRoomSpot(snapshot.ticker);
   const bookRev = useBookRev();
   const bars = useMemo(() => barsProp ?? deskBars(snapshot.ticker) ?? liveBars(snapshot.ticker), [snapshot.ticker, barsProp, bookRev]);
-  /* the levels off today's contracts or every date — the desk's one choice (data/levelsScope.ts) */
-  const levelsScope = useLevelsScope();
+  /* THE BOOK HANDED IN IS ALREADY THE MAP'S WINDOW (bookForDates) — read as it stands, the band's own rule
+     (ExposureField: a dated book is read '0DTE'). The desk's Levels card lives on the Board; read here it re-cut the
+     window to the whole book under a head that still named the window (the ship pass, 2026-10-22). */
+  const levelsScope = '0DTE' as const;
   const levels = useMemo<Level[]>(() => {
     try {
       /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the tags here are the

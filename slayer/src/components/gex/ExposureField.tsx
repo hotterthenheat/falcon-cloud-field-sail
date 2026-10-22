@@ -352,7 +352,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     return kept.length ? kept : (['gex'] as Greek[]);
   }, [pick, noVex]);
   const greekGroups = useMemo(
-    () => (noVex ? [{ title: GREEK_GROUPS[0].title, options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm side by side — the feed carries no vega' } : o)) }] : GREEK_GROUPS),
+    () => (noVex ? [{ title: GREEK_GROUPS[0].title, options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm side by side' } : o)) }] : GREEK_GROUPS),
     [noVex]
   );
   /* THE WINDOW OF EXPIRIES (Noah, 2026-09-22: "it forces you to start from the current date and goes through to the

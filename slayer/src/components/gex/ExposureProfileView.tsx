@@ -368,7 +368,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
       </div>
       {/* what this is, in one line — short enough to stand whole (the paying-user audit's M5) */}
       <p className="shrink-0 truncate px-3 py-1 text-[11px] text-textMuted border-t border-borderSubtle/60">
-        {W >= 760 ? 'Dealer gamma re-priced across spot · above zero hedging amplifies a move, below it absorbs · zero gamma is where it crosses' : W >= 420 ? 'Gamma across spot · above zero amplifies, below absorbs' : 'Gamma across spot'}
+        {W >= 760 ? 'Dealer gamma re-priced across spot · above zero hedging amplifies a move, below it absorbs · zero gamma is where it crosses — the flip in the head is read off the strikes, so the two differ' : W >= 420 ? 'Gamma across spot · above zero amplifies, below absorbs' : 'Gamma across spot'}
       </p>
     </div>
   );

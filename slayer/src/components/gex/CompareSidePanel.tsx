@@ -43,7 +43,7 @@
 ==================================================
 */
 
-import { holdWord } from '../../data/wall';
+import { holdLabel } from '../../data/wall';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { buildExposureProfile } from '../../data/exposure';
@@ -130,6 +130,9 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     return d == null ? '—' : fmtShared(d, U);
   };
   const net = s.rows[greek].reduce((acc, r) => acc + r.value, 0);
+  const flipAt = s.flip;
+  const regimeWord =
+    flipAt == null || !(flipAt > 0) ? (net >= 0 ? 'amplifies' : 'absorbs') : Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.spot > flipAt ? 'absorbs' : 'amplifies';
   const rowOf = (strike: number): StrikeExposure | undefined => s.strikes.find(r => r.strike === strike);
   const valueAt = (strike: number | null, g: Greek = greek): number | null => (strike == null ? null : rowOf(strike)?.[g].net ?? null);
   const roleOf = (strike: number): { word: string; tone: Tone } | null =>
@@ -214,7 +217,10 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           {fmtUsd(net)}
         </span>
         <span className="text-[11px] text-textMuted whitespace-nowrap">net {L}</span>
-        <Tag tone="holo">{net >= 0 ? 'amplifies' : 'absorbs'}</Tag>
+        {/* THE TAG AGREES WITH THE READ (the ship pass, 2026-10-22): it was the net's sign alone, so AAPL wore AMPLIFIES
+            over "dips get absorbed" — spot above its flip absorbs whatever the book nets to. It is the regime at spot
+            (the read's), within a hair of the flip "either way", and only for gamma — amplify/absorb is gamma's word. */}
+        {greek === 'gex' && <Tag tone="holo">{regimeWord}</Tag>}
       </div>
       <p className="pb-1.5 text-[11px] leading-snug text-textSecondary" data-side-read>
         {s.read}
@@ -324,7 +330,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.watch.strike} />
                 <span className="text-[10px] text-textMuted">
-                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · ${holdWord(s.watch.hold)} wall` : ''}
+                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · holds ${holdLabel(s.watch.hold)}` : ''}
                 </span>
               </span>
             ) : (

@@ -43,7 +43,6 @@ import { deskBars, bookHistory, peekIv } from '../../data/uwBook';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { nyClock, nyMinutes } from '../../core/nyTime';
 import { baseRates, levelTicks, sessionRecords, type RecordLevel, type Tick } from '../../data/levelRecord';
-import { useLevelsScope } from '../../data/levelsScope';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import ReportGuide from './ReportGuide';
@@ -167,8 +166,10 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
   const grid = tight ? 'grid gap-x-3 px-3 grid-cols-[minmax(0,1fr)_32px_32px_36px_44px]' : GRID;
   const desk = tight ? 'hidden' : 'max-lg:hidden';
   const phone = tight ? '' : 'lg:hidden';
-  /* the levels off today's contracts or every date — the desk's one choice (data/levelsScope.ts) */
-  const levelsScope = useLevelsScope();
+  /* THE BOOK HANDED IN IS ALREADY THE MAP'S WINDOW (bookForDates) — read as it stands, the band's own rule
+     (ExposureField: a dated book is read '0DTE'). The desk's Levels card lives on the Board; read here it re-cut the
+     window to the whole book under a head that still named the window (the ship pass, 2026-10-22). */
+  const levelsScope = '0DTE' as const;
   const rows = useMemo<Row[]>(() => {
     /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the pin here is the pin
        the band tags (the re-audit's H6) */
@@ -215,7 +216,8 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
             trend = `shrinking ${trendFig}`;
           }
         }
-        lastTouch = ticks.length ? ticks[ticks.length - 1].time : null;
+        /* the tick's time is epoch seconds — the column prints New York's clock, never the raw number */
+        lastTouch = ticks.length ? nyClock(ticks[ticks.length - 1].time * 1000) : null;
       }
       const grade: Row['grade'] =
         tests === 0 ? { words: 'untested', tone: 'quiet' } : broke === 0 ? { words: `held every test`, tone: 'good' } : held === 0 ? { words: 'broke every test', tone: 'bad' } : { words: `broke ${broke} of ${tests}`, tone: broke * 2 >= tests ? 'bad' : 'quiet' };

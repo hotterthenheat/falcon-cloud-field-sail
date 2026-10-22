@@ -154,7 +154,9 @@ const Building = () => {
   /* THE DISTANCE FROM SPOT under every strike, in the shell's own ruler */
   const unit = useDistanceUnit();
   /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
-  const expiryOptions = useMemo<DropdownOption<ExposureExpiry>[]>(() => ladderExpiryOptions().map(o => ({ value: o.value, label: o.label, hint: o.hint })), []);
+  /* each pane's Expiry card names the listing its own name reads (ladderExpiryOptions with a ticker) — re-read as the
+     book lands (bookRev re-renders the page) */
+  const expiryOptionsFor = (t: string): DropdownOption<ExposureExpiry>[] => ladderExpiryOptions(t).map(o => ({ value: o.value, label: o.label, hint: o.hint }));
 
   /* THE CLOCK — New York time, re-read every 15s; the pace runs on it */
   const [clockRaw, setClockRaw] = useState(() => readSessionClock());
@@ -240,6 +242,9 @@ const Building = () => {
     moved += b.rows.filter(r => r.verdict !== 'steady').length;
     total += b.rows.length;
   }
+  /* until any strike carries a change of open interest the book is still being read — "0 of 41 moved" over a
+     loading ledger claimed a quiet day it had not seen (the ship pass, 2026-10-22) */
+  const counted = [...builds.values()].some(b => b.rows.some(r => r.dCall !== 0 || r.dPut !== 0));
 
   /* THE NAMES DOOR — the Map's: "+ Names N", a name from the whole listing, four at most (NamesDoor, Targets' too) */
   const namesDoor = <NamesDoor count={panes.length} onPick={addPane} testId="build" />;
@@ -260,7 +265,7 @@ const Building = () => {
           {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
         </p>
       </div>
-      <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={moved} total={total} />
+      <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={counted ? moved : null} total={total} />
 
       {/* THE PANES — side by side at desk width, a hairline between; stacked on a phone */}
       <div className={`border-t border-borderSubtle grid grid-cols-1 ${PANE_COLS[panes.length] ?? ''} gap-px bg-borderSubtle/60`} data-build-grid>
@@ -281,7 +286,7 @@ const Building = () => {
                 onToggleLink={i === 0 ? () => patchPane(p.key, { ticker: linked ? t : undefined }) : undefined}
                 onPick={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
               />
-              <DropdownSelect label="Expiry" value={p.expiry} options={expiryOptions} onChange={e => patchPane(p.key, { expiry: e })} title="Which expiry's hedging this pane reads" testId={`build-expiry-${i}`} size="sm" />
+              <DropdownSelect label="Expiry" value={p.expiry} options={expiryOptionsFor(tickerFor(p))} onChange={e => patchPane(p.key, { expiry: e })} title="Which expiry's hedging this pane reads" testId={`build-expiry-${i}`} size="sm" />
               {panes.length > 1 && (
                 <button type="button" onClick={() => removePane(p.key)} title="Take this name off" aria-label={`Take ${t} off`} className="inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-build-remove={t}>
                   <X className="w-3 h-3" />

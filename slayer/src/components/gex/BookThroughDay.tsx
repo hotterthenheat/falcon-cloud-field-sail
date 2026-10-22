@@ -441,7 +441,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {part && last && (
           <>
             {bookWords && <PartFact label="Book">{bookWords}</PartFact>}
-            <PartFact label="Net now">
+            <PartFact label="Net now · every strike">
               <span style={{ color: last.net >= 0 ? THERMAL_WARM : THERMAL_COOL }} data-through-net={Math.round(last.net)}>
                 {fmtUsd(last.net)} · {last.net >= 0 ? 'amplifies' : 'absorbs'}
               </span>

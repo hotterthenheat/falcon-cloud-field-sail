@@ -167,7 +167,9 @@ const PinpointLayout = () => {
           <div id="pinpoint-head-band" className="empty:hidden min-w-0 flex-1 [&>[data-ledger-toolbar]]:border-0 [&>[data-ledger-toolbar]]:bg-transparent [&>[data-ledger-toolbar]]:p-0" data-shell-band />
           <div className="ml-auto flex items-center gap-2" data-shell-cards>
             <SessionBook />
-            {page.path !== '/pinpoint/map' && <DropdownSelect label="Levels" icon={Layers} value={levelsScope} options={LEVELS_OPTIONS} onChange={setLevelsScope} title={LEVELS_TITLE} testId="levels-scope" align="end" />}
+            {/* ONLY WHERE IT GOVERNS (the ship pass, 2026-10-22): the Agenda, Building and Compare read their own Expiry card,
+                so on them the Levels card changed nothing a reader could see — the Board alone reads it */}
+            {page.path === '/pinpoint/board' && <DropdownSelect label="Levels" icon={Layers} value={levelsScope} options={LEVELS_OPTIONS} onChange={setLevelsScope} title={LEVELS_TITLE} testId="levels-scope" align="end" />}
             <DropdownSelect label="Ruler" value={unit} options={RULER_OPTIONS} onChange={setDistanceUnit} title="The unit every distance on Pinpoint is read in" testId="ruler" align="end" />
           </div>
         </div>
