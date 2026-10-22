@@ -294,7 +294,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
   return (
     <div
       className={`relative rounded-md border p-3 flex flex-col cursor-pointer transition-colors ${kept ? 'border-silver/60 bg-silver/[0.04]' : pick ? 'border-supreme/40 bg-panel hover:border-supreme/60' : 'border-borderSubtle bg-panel hover:border-borderMuted'}`}
-      style={{ height: CARD_H }}
+      style={{ minHeight: CARD_H }}
       data-target-card={t.strike}
       onClick={() => onPick(t.strike)}
     >
@@ -332,7 +332,8 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
         <span className="text-textMuted">if it {t.isShelf ? 'breaks' : 'goes'} · </span>
         {breakWords(t)}
       </p>
-      <p className="mt-1 h-[15px] font-mono text-[10px] tnum truncate flex items-center gap-3">
+      {/* wraps rather than cuts: three facts on one 15px line ran out of card ("$176K at stake · (") */}
+      <p className="mt-1 font-mono text-[10px] leading-[15px] tnum flex flex-wrap items-center gap-x-3">
         <span className={material ? 'text-textPrimary' : 'text-textMuted'}>{buildWords(t, inSession)}</span>
         {t.closes > 0 && <span className="text-textSecondary">closes here {t.closes.toFixed(0)}%</span>}
         <span className="text-textSecondary">
@@ -570,8 +571,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                   {t.isShelf ? pct(t.hold) : '—'}
                   <HoldBeam t={t} w={wide ? 52 : 36} />
                 </div>
-                {full && <div className="font-mono text-[10px] tnum truncate">{breakWords(t)}</div>}
-                {full && <div className={`font-mono text-[10px] tnum truncate ${material ? 'text-textPrimary' : 'text-textMuted'}`}>{buildWords(t, clock.inSession)}</div>}
+                {full && <div className="font-mono text-[10px] leading-[13px] tnum line-clamp-2">{breakWords(t)}</div>}
+                {full && <div className={`font-mono text-[10px] leading-[13px] tnum line-clamp-2 ${material ? 'text-textPrimary' : 'text-textMuted'}`}>{buildWords(t, clock.inSession)}</div>}
                 {wide && (
                   <div className="relative h-full flex items-center">
                     <span className="absolute inset-y-[12px] left-0 right-14 rounded-full bg-ink/[0.04]" />
@@ -582,7 +583,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                     <span className="absolute right-0 font-mono text-[10px] tnum text-textPrimary">{fmtDollars(t.stake)}</span>
                   </div>
                 )}
-                {full && <div className="text-[10px] text-textMuted truncate">{t.why}</div>}
+                {full && <div className="text-[10px] leading-[13px] text-textMuted line-clamp-2">{t.why}</div>}
                 <Actions t={t} armed={armedAt(t.strike)} onChart={onChart} onAlert={onAlert} icons={!wide} />
               </div>
             );

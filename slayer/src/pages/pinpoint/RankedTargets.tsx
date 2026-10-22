@@ -70,6 +70,7 @@ import TargetsBoard, { TargetsControls, densityFor, type TargetsDensity } from '
 import { TargetsGuide } from '../../components/gex/TargetsGuide';
 import { AgendaSwitch } from './Agenda';
 import { TargetsInner, TargetsPageSkeleton } from '../../components/gex/targetsSkeletons';
+import { BookOrSkeleton } from './BookDown';
 import WatchMenu from '../../components/gex/WatchMenu';
 import { ladderExpiryOptions } from '../../components/gex/ladderControls';
 import { armPrice, removeAlert, useAlerts } from '../../components/gex/alertStore';
@@ -221,7 +222,12 @@ const RankedTargets = () => {
   useEffect(() => {
     if (!marketData) return;
     const now = Date.now();
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker;
+    /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
+       so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
+       the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
+       at once */
+    const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;
@@ -285,7 +291,7 @@ const RankedTargets = () => {
 
   /* The box stands in its own shape while the first read walks in */
   const first = agendas.get(panes[0].key);
-  if (!scan || !first) return <TargetsPageSkeleton rows={window * 2 - 2} />;
+  if (!scan || !first) return <BookOrSkeleton tickers={[activeTicker]}><TargetsPageSkeleton rows={window * 2 - 2} /></BookOrSkeleton>;
 
   const density = densityFor(panes.length);
   let strikes = 0;

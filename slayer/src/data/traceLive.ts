@@ -766,20 +766,45 @@ function spreadLeg(leg: Record<string, unknown>, fallbackExpiry: string): Spread
   };
 }
 
-/* When the vendor leaves the loss out, the structures whose risk is defined by their own strikes still say it: a debit
-   is the most a long structure can lose; a credit vertical loses its width less the credit. Only a credit straddle or
-   strangle (or a shape we cannot read) is truly uncapped. */
-function definedLoss(kind: SpreadKind, net: number, size: number, strikes: number[], side: string, netPremium: number): number | null {
-  const paid = Math.abs(net) * 100 * size;
-  const credit = /bid/i.test(side) || netPremium < 0;
-  const width = strikes.length >= 2 ? Math.max(...strikes) - Math.min(...strikes) : 0;
-  if (kind === 'vertical' || kind === 'butterfly' || kind === 'condor') {
-    if (!credit) return paid > 0 ? paid : null;
-    const span = kind === 'vertical' ? width : width / 2;
-    return span > 0 ? Math.max(0, (span - Math.abs(net)) * 100 * size) : null;
+/* THE LOSS IS WORKED FROM THE MONEY, NOT TAKEN FROM THE VENDOR'S FIGURE (the live sweep, 2026-10-22): its max_loss is
+   signed, sometimes a tenth of the truth on the small-strike names (XSP 766/770, 2 lots at $0.56 → "-11.20" for $112),
+   and absent on unclassified shapes. A debit structure can lose what was paid; a credit vertical or condor loses its
+   width (the condor's wider wing) less the credit. Only a sold straddle or strangle is truly uncapped; anything we cannot
+   read — no net, an "other" shape, a credit that is wider than its strikes — says nothing rather than "$0" or
+   "Uncapped". */
+function definedLoss(kind: SpreadKind, strategy: string, size: number, strikes: number[], side: string, netPremium: number, vendorLoss: number | null): number | 'uncapped' | null {
+  if (!Number.isFinite(netPremium) || netPremium === 0 || /^other$/i.test(strategy)) return null;
+  const debit = netPremium > 0 && !/bid/i.test(side);
+  const credit = netPremium < 0 && !/ask/i.test(side);
+  if (!debit && !credit) return null;
+  if (debit) return netPremium;
+  const got = Math.abs(netPremium);
+  const sorted = [...strikes].sort((x, y) => x - y);
+  if (kind === 'vertical' && sorted.length === 2) {
+    const loss = (sorted[1] - sorted[0]) * 100 * size - got;
+    return loss > 0 ? loss : null;
   }
-  if ((kind === 'straddle' || kind === 'strangle' || kind === 'calendar') && !credit) return paid > 0 ? paid : null;
-  return null;
+  if (kind === 'condor' && sorted.length === 4) {
+    const loss = Math.max(sorted[1] - sorted[0], sorted[3] - sorted[2]) * 100 * size - got;
+    return loss > 0 ? loss : null;
+  }
+  if (kind === 'straddle' || kind === 'strangle') return 'uncapped';
+  return vendorLoss;
+}
+
+/* The profit side of the same arithmetic: a credit keeps what it took in; a debit vertical earns its width less the debit.
+   Other shapes keep the vendor's figure. */
+function definedProfit(kind: SpreadKind, strategy: string, size: number, strikes: number[], side: string, netPremium: number, vendorProfit: number | null): number | 'uncapped' | null {
+  if (/^other$/i.test(strategy)) return null;
+  if (!Number.isFinite(netPremium) || netPremium === 0) return vendorProfit;
+  if ((kind === 'straddle' || kind === 'strangle') && netPremium > 0 && !/bid/i.test(side)) return 'uncapped';
+  if (netPremium < 0 && !/ask/i.test(side)) return Math.abs(netPremium);
+  const sorted = [...strikes].sort((x, y) => x - y);
+  if (kind === 'vertical' && sorted.length === 2 && netPremium > 0 && !/bid/i.test(side)) {
+    const gain = (sorted[1] - sorted[0]) * 100 * size - netPremium;
+    return gain > 0 ? gain : null;
+  }
+  return vendorProfit;
 }
 
 function spreadOf(row: Record<string, unknown>): SpreadTrade {
@@ -792,9 +817,9 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
   const size = num(row.size) || 1;
   /* the vendor signs the loss (max_loss "-11.20") — a defined-risk spread read as "uncapped" on every row because only a
      positive figure counted. Uncapped is an ABSENT figure, never a negative one. */
-  const loss = Math.abs(num(row.max_loss));
-  const lossKnown = row.max_loss != null && row.max_loss !== '';
-  const profit = Math.abs(num(row.max_profit));
+  const vendorLoss = row.max_loss != null && row.max_loss !== '' ? Math.abs(num(row.max_loss)) : null;
+  const netPremium = row.net_premium != null && row.net_premium !== '' ? num(row.net_premium) : NaN;
+  const vendorProfit = row.max_profit != null && row.max_profit !== '' ? Math.abs(num(row.max_profit)) : null;
   /* no legs on the row (txns is a count), so the expiry is the trade's own New York day plus its days to run */
   const dteAtTrade = num(row.min_dte);
   const tradeDay = when.epoch > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(when.epoch * 1000)) : '';
@@ -811,8 +836,8 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     size,
     net,
     premium: num(row.total_premium) || Math.abs(net) * size * 100,
-    maxLoss: lossKnown ? loss : definedLoss(spreadKind(String(row.strategy || '')), net, size, strikes, String(row.net_side || ''), num(row.net_premium)) ?? 'uncapped',
-    maxProfit: row.max_profit != null && row.max_profit !== '' ? profit : null,
+    maxLoss: definedLoss(spreadKind(String(row.strategy || '')), String(row.strategy || ''), size, strikes, String(row.net_side || ''), netPremium, vendorLoss),
+    maxProfit: definedProfit(spreadKind(String(row.strategy || '')), String(row.strategy || ''), size, strikes, String(row.net_side || ''), netPremium, vendorProfit),
     iv: num(row.avg_iv) * (num(row.avg_iv) <= 3 ? 100 : 1),
     delta: num(row.net_delta),
     theta: num(row.net_theta),

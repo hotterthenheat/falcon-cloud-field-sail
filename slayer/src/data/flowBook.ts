@@ -1264,7 +1264,7 @@ export interface SpreadTrade {
   net: number;
   /** |net| × size × 100, dollars */
   premium: number;
-  maxLoss: number | 'uncapped';
+  maxLoss: number | 'uncapped' | null;
   maxProfit: number | 'uncapped' | null;
   iv: number;
   delta: number;

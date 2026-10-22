@@ -357,13 +357,13 @@ const Board = () => {
         headerName: 'Nearest wall',
         field: 'nearest',
         flex: 1.4,
-        minWidth: 160,
+        minWidth: 190,
         cellRenderer: WallCell,
         cellDataType: false,
         headerTooltip: 'The closest strike whose hedging pushes back on price, and how far it is',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: 'Supreme', field: 'supreme', flex: 0.8, minWidth: 96, cellRenderer: SupremeCell, headerTooltip: 'The heaviest strike on the whole book — the one the Map marks in magenta' },
+      { headerName: 'Supreme', field: 'supreme', flex: 0.8, minWidth: 96, cellRenderer: SupremeCell, headerTooltip: 'The heaviest strike on the contracts the Levels card reads (today\'s by default) — the same one the Agenda and Compare crown; the Map\'s band crowns the whole book\'s' },
       { headerName: 'Net GEX today', field: 'netGex', flex: 1.1, minWidth: 120, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'All the hedging on the name added up, per 1% move: positive absorbs moves, negative amplifies them' },
       { headerName: 'Expires today', field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: "The share of the name's hedging sitting in contracts that expire at 4:00 today — it is gone at the close, and the walls it made go with it" },
       { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: 'How many times price has crossed the flip today — the more it has, the less either side of it means' },
@@ -389,6 +389,23 @@ const Board = () => {
     navigate('/pinpoint/map');
   };
 
+  const boardWrapRef = useRef<HTMLDivElement | null>(null);
+  const [moreRight, setMoreRight] = useState(false);
+  const measureRight = useCallback(() => {
+    const vp = boardWrapRef.current?.querySelector<HTMLElement>('.ag-body-horizontal-scroll-viewport');
+    setMoreRight(!!vp && vp.scrollWidth - vp.clientWidth - vp.scrollLeft > 4);
+  }, []);
+  useEffect(() => {
+    const el = boardWrapRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', measureRight, true);
+    window.addEventListener('resize', measureRight);
+    return () => {
+      el.removeEventListener('scroll', measureRight, true);
+      window.removeEventListener('resize', measureRight);
+    };
+  }, [measureRight, rows.length]);
+
   const stamps = names.map(n => peekEntry(n));
   const bookAt = stamps.reduce<number | null>((best, e) => (e && e.at > 0 ? (best == null ? e.at : Math.min(best, e.at)) : best), null);
   const bookDown = names.length > 0 && stamps.length > 0 && stamps.every(e => e?.status === 'error');
@@ -410,7 +427,7 @@ const Board = () => {
           placeholder="Filter · SPY QQQ NVDA"
           aria-label="Filter names — as many as you like, spaces or commas between"
           title="As many names as you like, spaces or commas between"
-          className="ml-auto w-44 h-7 bg-transparent border border-borderSubtle rounded-md px-2 font-mono text-[10px] text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-silver/50"
+          className="ml-auto flex-1 min-w-[9rem] sm:flex-none sm:w-44 h-7 bg-transparent border border-borderSubtle rounded-md px-2 font-mono text-[10px] text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-silver/50"
           data-board-filter
         />
         <span ref={addRootRef} className="relative inline-flex">
@@ -453,7 +470,11 @@ const Board = () => {
       {bookDown && rows.length === 0 ? (
         <FeedFallback fault="failed" />
       ) : (
-      <div className="slayer-board" style={tall ? { height: 'min(720px, calc(100dvh - 180px))' } : undefined}>
+      /* MORE TO THE RIGHT, SAID (the UI sweep, 2026-10-22): twelve columns run past a laptop's width and the last one
+         stood cut at the edge ("$354.9", "Net GEX to") as if broken — a fade now says the grid scrolls on, and the
+         scrollbar stays up */
+      <div ref={boardWrapRef} className="slayer-board relative" style={tall ? { height: 'min(720px, calc(100dvh - 180px))' } : undefined} data-more-right={moreRight || undefined}>
+        {moreRight && <span aria-hidden className="pointer-events-none absolute top-0 right-0 bottom-3 w-16 z-20 bg-gradient-to-l from-panel via-panel/70 to-transparent" />}
         <AgGridProvider modules={MODULES}>
           <AgGridReact<BoardRow>
             ref={gridRef}
@@ -476,6 +497,9 @@ const Board = () => {
             animateRows
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
+            alwaysShowHorizontalScroll
+            onFirstDataRendered={measureRight}
+            onGridSizeChanged={measureRight}
           />
         </AgGridProvider>
       </div>
