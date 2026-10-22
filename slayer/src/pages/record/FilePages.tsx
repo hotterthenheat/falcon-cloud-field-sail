@@ -40,7 +40,7 @@ import { FeedFallback } from '../../components/ui/liveRead';
 
 import { SECTORS, type Sector } from '../../data/universe';
 import { NAMES_TO_KNOW } from './recordSkeletons';
-import { moneyB, moneyM, signedM } from './money';
+import { borrowM, moneyB, moneyM, signedM } from './money';
 import { usePagedGrid } from '../../components/record/pagedGrid';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
@@ -118,7 +118,7 @@ const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
 
 const InstFiled = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <When days={data.filedDaysAgo} /> : null);
 const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary truncate">{data.name}</span> : null);
-const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${BOOK_INK[data.book]}`}>{BOOK_WORD[data.book]}</span> : null);
+const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${BOOK_INK[data.book]}`}>{data.book === 'stock' && data.security ? data.security : BOOK_WORD[data.book]}</span> : null);
 const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
 const InstValue = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{moneyB(data.valueB)}</span> : null);
 const InstChange = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.changePct)}`}>{signed(data.changePct)}%</span> : null);
@@ -268,7 +268,9 @@ export const Institutions = () => {
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Houses</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.houses}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">
+              {failed ? '—' : live.progress ? <span className="text-textSecondary" title="The rest of the houses are still landing">{facts.houses} · reading {live.progress.done} of {live.progress.total}</span> : <>{facts.houses}</>}
+            </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Calls · puts</dt>
@@ -452,7 +454,7 @@ export const Shorts = () => {
       { headerName: 'Shares short', field: 'shortSharesM', width: 120, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{sharesM(data.shortSharesM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares sold short, in millions' },
       { headerName: 'Days to cover', field: 'daysToCover', width: 120, cellRenderer: ShortDays, type: 'rightAligned', headerTooltip: 'The short book divided by average volume' },
       { headerName: 'Fee', field: 'feeRate', width: 80, cellRenderer: ShortBorrow, type: 'rightAligned', headerTooltip: 'The annualized fee to borrow the shares. A dash means the feed did not price the borrow.' },
-      { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.availableM == null ? '—' : `${data.availableM.toFixed(2)}M`}</span> : null), type: 'rightAligned', headerTooltip: 'Shares available to borrow. A dash means the feed did not say.' },
+      { headerName: 'Available', field: 'availableM', width: 110, cellRenderer: ({ data }: ICellRendererParams<ShortRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{borrowM(data.availableM)}</span> : null), type: 'rightAligned', headerTooltip: 'Shares available to borrow. The feed caps the count at 10M — 10M+ means at least that many. A dash means the feed did not say.' },
       { headerName: 'Float', field: 'floatM', flex: 0.7, minWidth: 90, cellRenderer: ShortFloat, type: 'rightAligned', headerTooltip: 'Shares in the float, in millions' },
     ];
     if (hasShortVol) cols.splice(5, 0, { headerName: 'Short vol', field: 'shortVolRatio', width: 100, cellRenderer: ShortVol, type: 'rightAligned', headerTooltip: 'Short volume as a percent of the session’s volume' });
@@ -590,12 +592,13 @@ const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span classNam
 const EtfFlow = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.flow5dM)}`}>{signedM(data.flow5dM)}</span> : null);
 const EtfFee = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.expensePct == null ? '—' : `${data.expensePct.toFixed(2)}%`}</span> : null);
 const EtfTop = ({ data }: ICellRendererParams<EtfRow>) =>
-  /* a bond fund's lines carry no ticker or weight on the feed — a dash, not "— · 0.0%" */
+  /* a fund with no line on the feed — a dash, not "— · 0.0%" */
   data && (!data.topHolding || data.topHolding === '—' || !(data.topWeight > 0)) ? (
     <span className="font-mono text-[11px] text-textMuted">—</span>
   ) : data ? (
-    <span className="inline-flex items-center gap-1.5 min-w-0">
-      <CompanyLogo ticker={data.topHolding} size={14} />
+    <span className="inline-flex items-center gap-1.5 min-w-0" title={`${data.topHolding} · ${data.topWeight.toFixed(1)}%`}>
+      {/* a bond fund's largest line is an issue name, not a symbol — no logo for it */}
+      {/^[A-Z][A-Z0-9.]{0,5}$/.test(data.topHolding) && <CompanyLogo ticker={data.topHolding} size={14} />}
       <span className="font-mono text-[11px] tnum text-textSecondary truncate">
         {data.topHolding} · {data.topWeight.toFixed(1)}%
       </span>

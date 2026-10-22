@@ -39,7 +39,7 @@ import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
-import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, congressSentence, seatLabel, summariseCongress } from '../../data/congress';
+import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, congressSentence, seatLabel, summariseCongress } from '../../data/congress';
 import { useCongressFeed, useCongressStatus } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
@@ -216,7 +216,7 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
     {/* the bracket as its words — the ladder lives in the grid; at six across it pushed the label off the card */}
     <span className="mt-1.5 flex items-center gap-2 font-mono tnum">
       <span className={`text-[11px] ${typeInk(t)}`}>{typeWord(t)}</span>
-      <span className="text-[11px] font-bold text-textPrimary truncate">{bracketLabel(t.bracket)}</span>
+      <span className="text-[11px] font-bold text-textPrimary truncate" title={bracketLabel(t.bracket)}>{bracketShort(t.bracket)}</span>
       {t.late && <span className="ml-auto text-[8px] uppercase tracking-widest text-bear">late</span>}
     </span>
     <span className="mt-1 block font-mono text-[8px] uppercase tracking-widest text-textSecondary truncate">
@@ -322,7 +322,7 @@ const Congress = () => {
   const columnDefs = useMemo<ColDef<CongressTrade>[]>(
     () => [
       { headerName: 'Filed', field: 'filedDaysAgo', width: 126, cellRenderer: FiledCell, sort: 'asc', headerTooltip: 'The day the report was filed, and how far back that is — newest first' },
-      { headerName: 'Member', field: 'member', flex: 1.7, minWidth: 220, cellRenderer: MemberCell, comparator: (a: CongressTrade['member'], b: CongressTrade['member']) => a.name.localeCompare(b.name), headerTooltip: 'A row opens this member’s book' },
+      { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.7, minWidth: 220, cellRenderer: MemberCell, comparator: (a: CongressTrade['member'], b: CongressTrade['member']) => a.name.localeCompare(b.name), headerTooltip: 'A row opens this member’s book' },
       { headerName: 'Asset', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: AssetCell, headerTooltip: 'The stock the report names' },
       { headerName: 'Type', field: 'type', flex: 0.8, minWidth: 110, cellRenderer: TypeCell, headerTooltip: 'Purchase, sale (full or partial), or an exchange' },
       { headerName: 'Owner', field: 'owner', flex: 0.7, minWidth: 96, cellRenderer: OwnerCell, headerTooltip: "Whose holding the report covers — the member's own, their spouse's, a joint account or a dependent's" },

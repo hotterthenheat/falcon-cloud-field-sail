@@ -66,6 +66,8 @@ export interface InstitutionRow {
   firstBuy: string;
   sharesOutM: number;
   book: 'calls' | 'puts' | 'stock';
+  /** The filing's security type when it is not plain shares ("Pref", "Note") — one house can file two lines on a ticker */
+  security?: string;
   status: PositionStatus;
   /** The quarter the report covers */
   report: string;
@@ -319,7 +321,11 @@ export function etfFile(etf: string): EtfRow | null {
 }
 
 export interface EtfHolding {
+  /** The stock's symbol — a bond line has none, and wears a row key instead (see `bond`) */
   ticker: string;
+  /** A bond line (TLT, HYG): no symbol, `name` is the issue and `sharesM` is millions of face value */
+  bond?: boolean;
+  name?: string;
   weight: number;
   sharesM: number;
   sector: string;

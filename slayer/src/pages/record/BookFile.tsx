@@ -29,7 +29,7 @@ import {
 import { useEtfFile, useHouseBook, useShortRow } from '../../data/liveFiles';
 import { tickerName } from '../../data/tickers';
 import { AssetCell, assetKey, assetLine } from './Congress';
-import { moneyB, signedM as moneyFlow } from './money';
+import { borrowM, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid } from '../../components/record/pagedGrid';
 import { MEMBERS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/congress';
 import { useCongressFeed, useLiveRecord } from '../../data/liveRecord';
@@ -60,6 +60,17 @@ const Missing = ({ to, label }: { to: string; label: string }) => (
     <WayBack to={to} label={label} />
     <Page testId="missing">
       <p className="px-5 py-4 text-[12px] text-textSecondary">That record is not on this book.</p>
+    </Page>
+  </>
+);
+
+/** Still reading — never "not on this book" while the read is out (the ship pass, 2026-10-22: a slow filing read as a
+    missing one) */
+const Reading = ({ to, back, what }: { to: string; back: string; what: string }) => (
+  <>
+    <WayBack to={to} label={back} />
+    <Page testId="reading">
+      <p className="px-5 py-4 text-[12px] text-textSecondary">Reading {what}…</p>
     </Page>
   </>
 );
@@ -124,7 +135,7 @@ export const HouseFile = () => {
   const cols = useMemo<ColDef<InstitutionRow>[]>(
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: HouseName },
-      { headerName: 'Side', field: 'book', width: 84, valueFormatter: p => (p.value === 'stock' ? 'Shares' : p.value === 'calls' ? 'Call' : 'Put'), headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
+      { headerName: 'Side', field: 'book', width: 84, valueFormatter: p => (p.value === 'stock' ? (p.data?.security ?? 'Shares') : p.value === 'calls' ? 'Call' : 'Put'), headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
       { headerName: 'Change', field: 'status', width: 92, cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${STATUS_INK[data.status]}`}>{positionWord(data.status)}</span> : null) },
       { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M` },
       { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : ''}{data.unitsChangeM.toFixed(1)}M</span> : null) },
@@ -137,7 +148,7 @@ export const HouseFile = () => {
     ],
     [],
   );
-  if (bookLive.status === 'loading' && !house) return <Missing to="/dossier/institutions" label="Reading the filing" />;
+  if (bookLive.status === 'loading' && !house) return <Reading to="/dossier/institutions" back="Institutions" what="the filing" />;
   if (!house) return <Missing to="/dossier/institutions" label="Institutions" />;
   const focused = rows.find(r => r.ticker === focus) ?? rows[0] ?? null;
   const callValue = feed.filter(r => r.book === 'calls').reduce((s, r) => s + r.valueB, 0);
@@ -258,7 +269,7 @@ export const ShortFile = () => {
   }, [markets, heavy, picks]);
   const toKnow = useMemo(() => [...markets].sort((a, b) => b.ratio - a.ratio).slice(0, 6), [markets]);
   const toggle = (name: string) => setPicks(p => (p.includes(name) ? p.filter(x => x !== name) : [...p, name]));
-  if (ok && shortLive.status === 'loading') return <Missing to="/dossier/shorts" label="Reading the short print" />;
+  if (ok && shortLive.status === 'loading') return <Reading to="/dossier/shorts" back="Shorts" what="the short print" />;
   if (!row) return <Missing to="/dossier/shorts" label="Shorts" />;
   const heavyBook = row.interestPct >= 8;
   const lead = toKnow[0];
@@ -290,7 +301,7 @@ export const ShortFile = () => {
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Fee · rebate</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.feeRate == null ? '—' : `${row.feeRate.toFixed(2)}%`} · {row.rebateRate == null ? '—' : `${row.rebateRate.toFixed(2)}%`}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.feeRate == null ? '—' : `${row.feeRate.toFixed(2)}%`} · {row.rebateRate == null ? '—' : `${row.rebateRate < 0 ? '−' : ''}${Math.abs(row.rebateRate).toFixed(2)}%`}</dd>
           </div>
           {row.shortVolRatio != null ? (
           <div>
@@ -302,7 +313,7 @@ export const ShortFile = () => {
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-short-sentence>
         {row.shortSharesM.toFixed(1)}M shares short, {row.interestPct.toFixed(2)}% of a {row.floatM.toFixed(0)}M float, {row.daysToCover.toFixed(1)} days to cover.
-        {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : ` ${row.availableM.toFixed(2)}M shares are available to borrow.`}
+        {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : row.availableM >= 10 - 1e-9 ? ' At least 10M shares are available to borrow.' : ` ${borrowM(row.availableM)} shares are available to borrow.`}
         {lead ? (
           <>
             {' '}
@@ -396,6 +407,9 @@ export const FundFile = () => {
         minWidth: 180,
         cellRenderer: ({ data }: ICellRendererParams<EtfHolding>) =>
           data ? (
+            data.bond ? (
+              <span className="text-[12px] text-textPrimary truncate" title={data.name}>{data.name}</span>
+            ) : (
             <span className="inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={data.ticker} size={16} />
               <span className="flex flex-col leading-tight min-w-0">
@@ -403,11 +417,12 @@ export const FundFile = () => {
                 <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
               </span>
             </span>
+            )
           ) : null,
       },
       { headerName: 'Sector', field: 'sector', flex: 1, minWidth: 140 },
       { headerName: 'Country', field: 'country', width: 140 },
-      { headerName: 'Shares', field: 'sharesM', width: 110, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M` },
+      { headerName: 'Shares', field: 'sharesM', width: 120, type: 'rightAligned', valueFormatter: p => (p.data?.bond ? `${moneyB(Number(p.value) / 1000)} face` : `${Number(p.value).toFixed(1)}M`), headerTooltip: 'Shares held — for a bond line, the face amount' },
       {
         headerName: 'Weight',
         field: 'weight',
@@ -426,7 +441,7 @@ export const FundFile = () => {
     ],
     [],
   );
-  if (fundLive.status === 'loading' && !fund) return <Missing to="/dossier/etfs" label="Reading the fund" />;
+  if (fundLive.status === 'loading' && !fund) return <Reading to="/dossier/etfs" back="ETFs" what="the fund" />;
   if (!fund) return <Missing to="/dossier/etfs" label="ETFs" />;
   const lead = toKnow[0];
   return (
@@ -475,7 +490,7 @@ export const FundFile = () => {
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-fund-sentence>
         {lead ? (
           <>
-            <span className="text-textPrimary font-semibold">{lead.ticker}</span> is the largest line, {lead.weight.toFixed(1)}% of {fund.etf}. Five sessions: {fund.flows.map(f => `${f.day} ${moneyFlow(f.flowM)}`).join(', ')}.
+            <span className="text-textPrimary font-semibold">{lead.bond ? lead.name : lead.ticker}</span> is the largest line, {lead.weight.toFixed(1)}% of {fund.etf}. Five sessions: {fund.flows.map(f => `${f.day} ${moneyFlow(f.flowM)}`).join(', ')}.
           </>
         ) : (
           'Nothing in this book on this cut.'
@@ -490,9 +505,15 @@ export const FundFile = () => {
           {toKnow.map(h => (
             <button key={h.ticker} type="button" onClick={() => toggle(h.ticker)} aria-pressed={picks.includes(h.ticker)} className={KNOW(picks.includes(h.ticker))} data-fund-know={h.ticker}>
               <span className="flex items-center gap-2 min-w-0">
-                <CompanyLogo ticker={h.ticker} size={18} />
-                <span className="font-mono text-[12px] font-bold text-textPrimary">{h.ticker}</span>
-                <span className="text-[10px] text-textSecondary truncate">{tickerName(h.ticker)}</span>
+                {h.bond ? (
+                  <span className="text-[12px] font-bold text-textPrimary truncate" title={h.name}>{h.name}</span>
+                ) : (
+                  <>
+                    <CompanyLogo ticker={h.ticker} size={18} />
+                    <span className="font-mono text-[12px] font-bold text-textPrimary">{h.ticker}</span>
+                    <span className="text-[10px] text-textSecondary truncate">{tickerName(h.ticker)}</span>
+                  </>
+                )}
               </span>
               <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
                 <span className="text-[13px] font-bold text-textPrimary">{h.weight.toFixed(1)}%</span>
@@ -738,7 +759,7 @@ export const MemberFile = () => {
         <DropdownSelect label="Owner" value={owner} options={OWNER_FILE_OPTIONS} onChange={setOwner} title="Whose holding" testId="member-owner" />
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-member-sentence>
-        {trades.length} reports in the last year. {late} filed past {STOCK_ACT_DEADLINE_DAYS} days. What they still hold is the annual disclosure, a range and nothing finer.
+        {trades.length} {trades.length === 1 ? 'report' : 'reports'} in the last year. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days. What they still hold is the annual disclosure, a range and nothing finer.
       </p>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="member-know">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">

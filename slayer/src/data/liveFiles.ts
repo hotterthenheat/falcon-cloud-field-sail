@@ -86,6 +86,8 @@ const SECTORS = new Set<string>([
 interface Snap {
   instStatus: FileStatus;
   institutions: InstitutionRow[];
+  /** Houses read so far of those asked, while the book is still landing; null once whole */
+  instProgress: { done: number; total: number } | null;
   shortStatus: FileStatus;
   shorts: ShortRow[];
   etfStatus: FileStatus;
@@ -99,6 +101,7 @@ interface Snap {
 
 const empty: Snap = {
   instStatus: 'loading',
+  instProgress: null,
   institutions: [],
   shortStatus: 'loading',
   shorts: [],
@@ -219,8 +222,12 @@ function rowFromHolding(house: string, filed: string, h: UwHolding): Institution
   const changePct = prior > 0 ? ((sharesM - prior) / prior) * 100 : sharesM > 0 ? 100 : 0;
   const report = quarterOf(h.date);
   const book = bookOf(h);
+  const sec = typeof h.security_type === 'string' ? h.security_type.trim() : '';
+  const security = sec && !/^share/i.test(sec) ? sec : undefined;
   return {
-    id: `${house}-${ticker}-${book}`,
+    /* the security type is part of the key: CAPITAL WORLD filed GOOGL as shares AND as "Pref" — two lines, one id */
+    id: `${house}-${ticker}-${book}${security ? `-${security}` : ''}`,
+    security,
     name: house,
     ticker,
     sector: sectorOf(ticker, h.sector),
@@ -245,30 +252,40 @@ function rowFromHolding(house: string, filed: string, h: UwHolding): Institution
   };
 }
 
+/** Run `job` over `items`, `size` at a time, calling `after` once each batch has landed */
+async function inBatches<T>(items: readonly T[], size: number, job: (item: T) => Promise<void>, after?: () => void): Promise<void> {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.all(items.slice(i, i + size).map(it => job(it).catch(() => undefined)));
+    after?.();
+  }
+}
+
 async function pullInstitutions() {
   try {
     const houses = await whalesInstitutions(40);
     if (!Array.isArray(houses) || houses.length === 0) throw new Error('shape');
     const rows: InstitutionRow[] = [];
-    for (const house of houses as UwInstitution[]) {
+    /* ten houses at a time, the book published once whole — one by one, the head counted "6 houses · 0 calls" for the
+       half-minute the rest took (the ship pass, 2026-10-22) */
+    const list = houses as UwInstitution[];
+    let done = 0;
+    await inBatches(list, 10, async house => {
+      done += 1;
       const name = (house.name || house.short_name || '').trim();
-      if (!name) continue;
+      if (!name) return;
       const filed = house.filing_date || house.date || '';
-      let holdings: UwHolding[] = [];
-      try {
-        /* by the filer's CIK when it has one: a few long names ("UBS AM, A DISTINCT BUSINESS UNIT OF …") 404 by name */
-        const got = await whalesHoldings(house.cik?.trim() || name, 80);
-        holdings = Array.isArray(got) ? got : [];
-      } catch {
-        holdings = [];
-      }
-      for (const h of holdings) {
+      /* by the filer's CIK when it has one: a few long names ("UBS AM, A DISTINCT BUSINESS UNIT OF …") 404 by name */
+      const got = await whalesHoldings(house.cik?.trim() || name, 80).catch(() => [] as UwHolding[]);
+      for (const h of Array.isArray(got) ? got : []) {
         const row = rowFromHolding(name, filed, h);
         if (row) rows.push(row);
       }
-      emit({ instStatus: 'live', institutions: rows.slice().sort((a, b) => b.valueB - a.valueB) });
-    }
-    emit({ instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB) });
+    }, () => {
+      /* the rows land a batch at a time, so the grid fills in seconds; the head says how many houses are in */
+      if (rows.length) emit({ instStatus: 'live', institutions: rows.slice().sort((a, b) => b.valueB - a.valueB), instProgress: done < list.length ? { done, total: list.length } : null });
+    });
+    if (rows.length === 0) throw new Error('no house landed');
+    emit({ instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB), instProgress: null });
   } catch {
     if (snap.institutions.length === 0) emit({ instStatus: 'error' });
   }
@@ -366,18 +383,24 @@ async function pullShorts() {
     /* THE SHORT BOOK RUNS PAST THE UNIVERSE (the dossier sweep, 2026-10-22: every row's sector read "—"). The heavy
        shorts are small caps the universe does not file, so each such name's sector and name are asked of its own file,
        once a session, and the book is re-emitted as they land. */
+    /* in parallel, eight at a time — one by one, the first screen of the page still read "—" ten seconds in */
     let filled = 0;
-    for (let i = 0; i < Math.min(out.length, 30); i++) {
+    const want = out.map((r, i) => i).filter(i => out[i].sector === '—' || !out[i].name);
+    await inBatches(want, 8, async i => {
       const r = out[i];
-      if (r.sector !== '—') continue;
-      const info = await whalesStock(r.ticker).catch(() => null);
-      if (!info) continue;
-      const sector = uwSector(typeof info.sector === 'string' ? info.sector : '');
+      /* a transient miss (a 503 on /stock/QS/info in the ship pass) is asked once more before the row keeps its dash */
+      const info =
+        (await whalesStock(r.ticker).catch(() => null)) ??
+        (await new Promise(res => setTimeout(res, 1500)).then(() => whalesStock(r.ticker).catch(() => null)));
+      if (!info) return;
+      const rawSector = typeof info.sector === 'string' ? info.sector.trim() : '';
+      /* a sector the house list does not carry (Real Estate) keeps the vendor's own word rather than a dash */
+      const sector = uwSector(rawSector) ?? (rawSector || null);
       const name = typeof info.full_name === 'string' && info.full_name.trim() ? titleName(info.full_name) : undefined;
-      if (!sector && !name) continue;
-      out[i] = { ...r, sector: sector ?? r.sector, name };
-      if (++filled % 8 === 0) emit({ shorts: out.slice() });
-    }
+      if (!sector && !name) return;
+      out[i] = { ...out[i], sector: sector ?? out[i].sector, name: out[i].name ?? name };
+      filled += 1;
+    }, () => emit({ shorts: out.slice() }));
     if (filled) emit({ shorts: out.slice() });
   } catch {
     if (snap.shorts.length === 0) emit({ shortStatus: 'error' });
@@ -391,10 +414,26 @@ const flow5 = (rows: UwEtfFlow[]): { flow5dM: number; flows: EtfRow['flows'] } =
   return { flow5dM: flows.reduce((s, f) => s + f.flowM, 0), flows };
 };
 
-const holdingOf = (h: UwEtfHolding): EtfHolding | null => {
+/* A BOND FUND'S LINES CARRY NO SYMBOL (the ship pass, 2026-10-22: TLT's 47 Treasury lines and HYG's 250 issues were
+   all dropped, and the fund read "no holding on file"). They keep their name and face amount, keyed by position. */
+const titleIssue = (raw: string) => raw.trim().toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase());
+const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
   const ticker = (h.ticker || '').toUpperCase();
-  if (!ticker) return null;
   const weight = num(h.weight);
+  if (!ticker) {
+    const name = (h.name || '').trim();
+    if (!name || !(weight > 0)) return null;
+    return {
+      ticker: `#${i + 1}`,
+      bond: true,
+      name: titleIssue(name),
+      weight,
+      sharesM: num(h.shares) / 1e6,
+      sector: h.sector || (/treasury|t-bill|t-note/i.test(name) ? 'Treasury' : String(h.type || '').toLowerCase() === 'bond' ? 'Corporate bond' : '—'),
+      /* a Treasury is the United States' own paper; any other issue keeps what the feed said */
+      country: h.country_name || (/treasury|t-bill|t-note/i.test(name) ? 'United States' : 'Not stated'),
+    };
+  }
   return {
     ticker,
     weight,
@@ -408,12 +447,15 @@ async function pullEtfs() {
   try {
     const rows: EtfRow[] = [];
     const holdings: Record<string, EtfHolding[]> = {};
-    for (const e of ETF_LIST) {
-      const [infoR, holdR, flowR] = await Promise.all([
+    /* every fund asked at once — one by one, the head read "6 funds" for the half-minute the rest took to land */
+    const reads = await Promise.all(ETF_LIST.map(e => Promise.all([
         whalesEtfInfo(e.etf).catch(() => null as UwEtfInfo | null),
         whalesEtfHoldings(e.etf).catch(() => [] as UwEtfHolding[]),
         whalesEtfFlow(e.etf).catch(() => [] as UwEtfFlow[]),
-      ]);
+      ])));
+    for (let k = 0; k < ETF_LIST.length; k++) {
+      const e = ETF_LIST[k];
+      const [infoR, holdR, flowR] = reads[k];
       /* a fund none of whose three reads landed is not a $0 fund — it stays off the book */
       if (!infoR && !(Array.isArray(holdR) && holdR.length) && !(Array.isArray(flowR) && flowR.length)) continue;
       const info = infoR && !Array.isArray(infoR) ? infoR : null;
@@ -428,7 +470,7 @@ async function pullEtfs() {
         kind: e.kind,
         aumB: num(info?.aum) / 1e9,
         flow5dM: flow.flow5dM,
-        topHolding: top?.ticker ?? '—',
+        topHolding: top ? (top.bond ? (top.name ?? '—') : top.ticker) : '—',
         topWeight: top?.weight ?? 0,
         equityPct: held.length ? Math.min(100, Math.round(equity)) : e.kind === 'rates' ? 0 : 0,
         expensePct: numOr(info?.expense_ratio),
@@ -442,7 +484,6 @@ async function pullEtfs() {
         putVol: numOr(info?.put_vol),
         flows: flow.flows,
       });
-      emit({ etfStatus: 'live', etfs: rows.slice(), holdings: { ...holdings } });
     }
     if (rows.length === 0) throw new Error('no fund landed');
     emit({ etfStatus: 'live', etfs: rows, holdings });
@@ -573,10 +614,10 @@ export function useLiveFiles(): Snap {
   return useSyncExternalStore(subscribe, peek, peek);
 }
 
-export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[] } {
+export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[]; progress: { done: number; total: number } | null } {
   const s = useLiveFiles();
   const houses = [...new Set(s.institutions.map(r => r.name))];
-  return { status: s.instStatus, rows: s.institutions, houses };
+  return { status: s.instStatus, rows: s.institutions, houses, progress: s.instProgress };
 }
 
 export function houseNameFromSlug(slug: string): string | null {

@@ -118,6 +118,13 @@ export function overlapFor(member: Member, ticker: string): string | null {
 
 /** A bracket's label, with the unparsed case named rather than blanked */
 export const bracketLabel = (i: number | null): string => (i === null ? 'not disclosed' : AMOUNT_BRACKETS[i].label);
+const kShort = (v: number) => (v >= 1_000_000 ? `$${v / 1_000_000}M` : `$${Math.round(v / 1_000)}K`);
+/** The bracket in short form for the cards ("$250K – $500K"): the full rungs ran past a card at six across */
+export const bracketShort = (i: number | null): string => {
+  if (i === null) return 'not disclosed';
+  const b = AMOUNT_BRACKETS[i];
+  return b.high == null ? `Over ${kShort(b.low - 1)}` : `${kShort(b.low - 1)} – ${kShort(b.high)}`;
+};
 
 export const EMPTY_CONGRESS: CongressFeed = { trades: [], totalLow: 0, totalHigh: 0, unknownAmounts: 0, purchases: 0, sales: 0, lateFilings: 0, overlaps: 0, medianLag: 0, windowDays: 0 };
 

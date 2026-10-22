@@ -47,7 +47,7 @@ export const CongressHoldings = () => {
   }, [record.congress]);
   const columnDefs = useMemo<ColDef<HoldingRow>[]>(
     () => [
-      { headerName: 'Member', field: 'member', flex: 1.2, minWidth: 140, cellRenderer: MemberCell, headerTooltip: 'Who still holds it, from the filings in this window' },
+      { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.2, minWidth: 140, cellRenderer: MemberCell, headerTooltip: 'Who still holds it, from the filings in this window' },
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: HoldName, headerTooltip: 'The holding' },
       { headerName: 'Bracket', field: 'bracket', flex: 1.2, minWidth: 180, cellRenderer: BracketCell, headerTooltip: 'The disclosed bracket — never a midpoint' },
       { headerName: 'Owner', field: 'owner', width: 100, cellRenderer: OwnerCell, headerTooltip: "Whose holding — the member's own, or a joint account" },

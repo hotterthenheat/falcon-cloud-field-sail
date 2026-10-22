@@ -76,7 +76,8 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
           <Fact label="Largest house">{largest ? largest.name : own?.state === 'loading' ? '…' : '—'}</Fact>
           <Fact label="Short interest">{short ? <TickFigure value={short.interestPct}>{`${short.interestPct.toFixed(2)}%`}</TickFigure> : shortLive.status === 'loading' ? '…' : '—'}</Fact>
           <Fact label="Largest fund">{fund ? fund.name : held?.state === 'loading' ? '…' : '—'}</Fact>
-          <Fact label="Holders">{own?.state === 'live' || own?.okAt ? own?.n ?? '—' : '—'}</Fact>
+          {/* the ownership read answers fifty houses a page — fifty is the page, not the count, so it reads "50+" */}
+          <Fact label="Holders">{own?.state === 'live' || own?.okAt ? (own?.n == null ? '—' : own.n >= 50 ? '50+' : own.n) : own?.state === 'loading' || !own ? '…' : '—'}</Fact>
         </dl>
       </div>
       {missed ? (
