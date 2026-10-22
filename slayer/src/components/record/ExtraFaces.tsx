@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME } from '../ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../ui/houseGrid';
 import CompanyLogo from '../ui/CompanyLogo';
 import { tickerName } from '../../data/tickers';
 import { lookup } from '../../data/universe';
@@ -26,7 +26,7 @@ const MemberCell = ({ data }: ICellRendererParams<HoldingRow>) =>
 
 const HoldName = ({ data }: ICellRendererParams<HoldingRow>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
@@ -72,6 +72,7 @@ export const CongressHoldings = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows('No holding on this cut')}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={p => `${p.data.member}-${p.data.ticker}`}
@@ -134,6 +135,7 @@ export const InsiderSectorFlow = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows('No sector on this cut')}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.sector}

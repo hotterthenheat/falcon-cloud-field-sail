@@ -104,7 +104,8 @@ const ConvictionCell = ({ value, intent }: { value: number; intent: DarkPoolInte
   </span>
 );
 
-const WIDTHS: Record<string, number> = { mark: 40, name: 112, time: 80, price: 88, vs: 96, shares: 96, dollars: 96, venue: 108, exec: 64, shelf: 96, read: 128, conviction: 120 };
+/** venue is a code ("L", "D") — at 108 the row ran past a laptop's box and "Says" stood half under its edge */
+const WIDTHS: Record<string, number> = { mark: 40, name: 112, time: 80, price: 88, vs: 84, shares: 96, dollars: 96, venue: 72, exec: 64, shelf: 80, read: 116, conviction: 120 };
 const TOOLTIPS: Record<string, string> = {
   vs: 'Cents through the quote at the print. A percent only when the fill left the spread.',
   exec: 'Where the print sat in the NBBO — at or above the ask, at or below the bid',
@@ -498,8 +499,15 @@ const DarkPool = () => {
         guide={{ title: 'How to read the dark pool', door: 'What the shelves, the reads and the conviction mean', body: <DarkPoolGuide />, testId: 'dark-pool-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
+            {/* the market's tape carries no share of volume (only a name's book does) — no "0% of volume" beside $49M crossed */}
             <Fact label="Off-exchange" testId="share">
-              {head.dpSharePct.toFixed(0)}% <span className="text-textMuted">of volume</span>
+              {head.dpSharePct > 0 ? (
+                <>
+                  {head.dpSharePct.toFixed(0)}% <span className="text-textMuted">of volume</span>
+                </>
+              ) : (
+                <span className="text-textMuted">—</span>
+              )}
             </Fact>
             <Fact label="Posture" testId="posture">
               {/* which side leads, then how far it leans in the four words — never the figure (data/darkpool.ts gradeOfPosture).

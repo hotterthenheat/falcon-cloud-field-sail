@@ -265,6 +265,8 @@ export const whalesOptionContracts = (ticker: string, expiry?: string, priority 
   uw<UwContract[]>(`/stock/${enc(ticker)}/option-contracts?limit=1000${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}`, priority);
 
 export interface UwInstitution {
+  /** SEC filer id — the holdings door takes it where some long names 404 (UBS AM, …) */
+  cik?: string;
   name?: string;
   short_name?: string;
   date?: string;

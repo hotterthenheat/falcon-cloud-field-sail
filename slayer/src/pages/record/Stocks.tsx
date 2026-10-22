@@ -46,7 +46,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSPropertie
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
+import { FeedFallback } from '../../components/ui/liveRead';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
@@ -104,7 +105,7 @@ const listPhrase = (items: string[]) => (items.length <= 1 ? (items[0] ?? '') : 
 
 const NameCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
@@ -203,6 +204,11 @@ const Stocks = () => {
   /* The board is deterministic per session day; the rotation rolls it up */
   const liveBoard = useLiveStocks();
   const picks = liveBoard.picks;
+  /* no names, no rotation: with nothing landed the sector ladder was ranking empty sectors ("LEADING" on all ten) and
+     the sentence called the leader — the page now says the read did not land, or that it is still reading */
+  const failed = liveBoard.status === 'error' || (liveBoard.status === 'live' && picks.length === 0);
+  const waiting = liveBoard.status === 'loading' && picks.length === 0;
+  const quiet = failed || waiting;
   const sectors = useMemo(() => buildSectorBoard(picks), [picks]);
   const top = sectors[0];
   const bottom = sectors[sectors.length - 1];
@@ -268,19 +274,20 @@ const Stocks = () => {
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [
-      { headerName: 'Name', field: 'ticker', flex: 1.2, minWidth: 180, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
-      { headerName: 'Sector', field: 'sector', width: 190, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Last', field: 'price', width: 96, cellRenderer: LastCell, type: 'rightAligned', headerTooltip: 'The last price' },
-      { headerName: 'Today', field: 'changePct', width: 88, cellRenderer: TodayCell, type: 'rightAligned', headerTooltip: "Today's change" },
-      { headerName: 'Year', field: 'trend', width: 100, cellRenderer: TrendCell, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
-      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 104, cellRenderer: sleeveCell('momentum'), headerTooltip: 'RSI — above the 50 line the trend is up, below it is not. A dash is left out of the screen.' },
-      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 104, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. Above the 50 line is growing. A dash means the feed has no growth figure.' },
-      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 104, cellRenderer: sleeveCell('flow'), headerTooltip: 'Call premium against put premium. Above the 50 line the money is buying. A dash means no premium on the feed.' },
+      /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
+      { headerName: 'Name', field: 'ticker', flex: 1.2, minWidth: 150, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
+      { headerName: 'Sector', field: 'sector', width: 150, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
+      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, type: 'rightAligned', headerTooltip: 'The last price' },
+      { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, type: 'rightAligned', headerTooltip: "Today's change" },
+      { headerName: 'Year', field: 'trend', width: 92, cellRenderer: TrendCell, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
+      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 88, cellRenderer: sleeveCell('momentum'), headerTooltip: 'RSI — above the 50 line the trend is up, below it is not. A dash is left out of the screen.' },
+      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 88, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. Above the 50 line is growing. A dash means the feed has no growth figure.' },
+      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 88, cellRenderer: sleeveCell('flow'), headerTooltip: 'Call premium against put premium. Above the 50 line the money is buying. A dash means no premium on the feed.' },
     ];
-    if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 104, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
+    if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 88, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
     cols.push(
       { headerName: 'Screen', field: 'verdict', width: 100, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The sleeves that have a number, rolled into one word. What the data says, never an instruction.' },
-      { headerName: 'Why', field: 'thesis', flex: 2, minWidth: 260, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
+      { headerName: 'Why', field: 'thesis', flex: 2, minWidth: 150, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
     );
     return cols;
   }, [newsQuiet]);
@@ -315,9 +322,9 @@ const Stocks = () => {
       </GuideFocus>
       {/* THE HEAD */}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">How every name screens</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the sleeves, the screen and the rotation mean" testId="stocks-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -328,29 +335,29 @@ const Stocks = () => {
           <div>
             <dt className="text-[10px] text-textMuted">Names</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-stocks-names>
-              {facts.names} <span className="text-textMuted">·</span> <span className="text-bull font-semibold">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-bull">{facts.good} good</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.mixed} caution</span> <span className="text-textMuted">·</span> <span className="text-bear">{facts.weak} poor</span>
+              {quiet ? '—' : <>{facts.names} <span className="text-textMuted">·</span> <span className="text-bull font-semibold">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-bull">{facts.good} good</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.mixed} caution</span> <span className="text-textMuted">·</span> <span className="text-bear">{facts.weak} poor</span></>}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Above their trend</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
-              {facts.breadth}%
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
+              {quiet ? '—' : `${facts.breadth}%`}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Leading sector</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-leader>
-              <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="font-mono text-[12px] tnum text-supreme font-semibold hover:underline underline-offset-2">
+              {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="font-mono text-[12px] tnum text-supreme font-semibold hover:underline underline-offset-2">
                 {top.sector}
-              </button>
+              </button>}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Trailing sector</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
-              <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-[12px] tnum text-bear hover:underline underline-offset-2">
+              {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-[12px] tnum text-bear hover:underline underline-offset-2">
                 {bottom.sector}
-              </button>
+              </button>}
             </dd>
           </div>
         </dl>
@@ -362,9 +369,13 @@ const Stocks = () => {
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="stocks-names" />
         <DropdownMulti label="Filter" values={filter} groups={filterGroups} onChange={setFilter} title="The names on the page right now — tick any number; only those stay" testId="stocks-filter" />
       </div>
-      <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-stocks-sentence>
-        {sentence}
-      </p>
+      {failed ? (
+        <FeedFallback />
+      ) : (
+        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-stocks-sentence>
+          {waiting ? 'Reading the screens.' : sentence}
+        </p>
+      )}
       {/* THE ROTATION */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-stocks-rotation>
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
@@ -374,11 +385,17 @@ const Stocks = () => {
         </div>
         {/* every sector across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
             2026-10-18: eleven across at 360 left a card 30px wide and cut its two windows, and at 1024 still 70px) */}
-        <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-[repeat(var(--sectors),minmax(0,1fr))]" style={{ '--sectors': ROTATION_SECTORS } as CSSProperties}>
+        {/* five across from a laptop up (the dossier sweep, 2026-10-22: ten across left each card ~105px, the names cut to
+            "Tech…" and the 1m figure past the card's edge) — two rows of five, ranked left to right */}
+        {quiet ? (
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'Reading the screens'}</div>
+        ) : (
+        <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-5" data-sectors={ROTATION_SECTORS}>
           {sectors.map((s, i) => (
             <SectorCard key={s.sector} s={s} rank={i + 1} leader={s.score === top.score} top={top.score} on={sector === s.sector} onToggle={() => toggleSector(s.sector)} />
           ))}
         </div>
+        )}
       </div>
       {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-stocks-grid>
@@ -396,7 +413,8 @@ const Stocks = () => {
             animateRows={false}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
-            overlayNoRowsTemplate='<span class="font-mono text-[10px] uppercase tracking-widest text-textMuted">No name on this cut</span>'
+            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : waiting ? 'Reading the screens' : 'No name on this cut')}
+            key={failed ? 'failed' : waiting ? 'waiting' : 'live'}
           />
         </AgGridProvider>
       </div>

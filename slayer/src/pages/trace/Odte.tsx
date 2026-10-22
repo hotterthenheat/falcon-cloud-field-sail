@@ -156,7 +156,8 @@ const Odte = () => {
 
   /* The whole same-day book, once, for the head's facts and the sentence */
   const view = useMemo(() => buildNetFlowView(book, 'all', 'all', paneTimes('SPY')), [book]);
-  const awake = view.points.length > 0;
+  /* awake on MONEY, not on a timeline: a session of empty minutes read "leans bullish" on $0 against "+$0" */
+  const awake = view.points.length > 0 && (view.count > 0 || view.ncp !== 0 || view.npp !== 0);
   const bullish = view.ncp - view.npp >= 0;
   // Signed on purpose — RichRead inks +$/-$ by direction (2026-08-30).
   const signed = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;

@@ -135,13 +135,18 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
           row of its own, the cards in rows of two in the page's order, then the doors: Link and Save on one row, Columns
           and the live hold on the last. The cards had kept their own widths inside the cells, so a row read "Most active"
           beside "Both" and Columns stood alone at the right. */}
-      <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-trace-controls>
-        {controls}
-      </div>
+      {controls != null && controls !== false && (
+        <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-trace-controls>
+          {controls}
+        </div>
+      )}
       {/* a div, not a p: the saved cuts' chips and the status line stand inside the sentence (2026-10-13) */}
-      <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
-        {sentence}
-      </div>
+      {/* no sentence, no line — a page whose body already says it (the Tracker's empty desk) never says it twice */}
+      {sentence != null && sentence !== false && (
+        <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
+          {sentence}
+        </div>
+      )}
       {children}
     </div>
   );
@@ -185,8 +190,15 @@ export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, w
       resizable: true,
       suppressMovable: true,
     };
-    if (fixed) def.width = fixed;
-    else {
+    /* A SET WIDTH IS A SHARE, NOT A WALL (the audit, 2026-10-22): fixed widths summed past the box at a laptop width, so
+       the last column stood half under the box's edge ("W", "Prev $", "V") behind a scroll nobody saw. Each column now
+       takes its width as its floor and its share of the room — never narrower than its cells (a squeezed cell paints a
+       clipped ellipsis), growing to fill a wide box; the pages keep their widths inside a laptop's box. */
+    if (fixed) {
+      def.width = fixed;
+      def.flex = fixed;
+      def.minWidth = fixed;
+    } else {
       def.flex = flexes[c.key] ?? 1;
       /* 92, not 84: the house's widest standard cell (the Lean bar) is 64px and the grid's own padding is 24, so 84
          guaranteed a four-pixel overflow — and an overflowing cell paints a CLIPPED ELLIPSIS, a stray ".." at the

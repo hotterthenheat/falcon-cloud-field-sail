@@ -31,7 +31,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
-import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
+import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
@@ -39,7 +39,8 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
 import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, congressSentence, summariseCongress } from '../../data/congress';
-import { useCongressFeed } from '../../data/liveRecord';
+import { useCongressFeed, useCongressStatus } from '../../data/liveRecord';
+import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
 import type { Chamber, CongressTrade, ReportOwner } from '../../types/record';
 import { REPORTS_TO_KNOW } from './recordSkeletons';
@@ -116,9 +117,10 @@ const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   if (!data) return null;
   const line = assetLine(data);
   return (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    /* a full-width flex, so a long asset name ends in an ellipsis instead of being sheared mid-word at the cell edge */
+    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>
       {line.sym ? <CompanyLogo ticker={line.sym} size={16} /> : null}
-      <span className="flex flex-col leading-tight min-w-0">
+      <span className="flex flex-col leading-tight min-w-0 flex-1">
         <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.title}</span>
         {line.sub ? <span className="text-[10px] text-textMuted truncate">{line.sub}</span> : null}
       </span>
@@ -224,6 +226,12 @@ const Congress = () => {
 
   /* The feed is the live record when it answers, otherwise the session's book */
   const feed = useCongressFeed(window);
+  /* a failed read is not a quiet quarter — the figures go to dashes and the page says the read did not land */
+  const status = useCongressStatus();
+  const failed = status === 'sim';
+  const waiting = status === 'loading';
+  const quiet = failed || waiting;
+  const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut';
   const cut = useMemo(
     () =>
       feed.trades.filter(t => {
@@ -322,9 +330,9 @@ const Congress = () => {
       </GuideFocus>
       {/* THE HEAD */}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">What Congress reported</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What Congress reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every report in the window, newest filing first · a row opens that member’s book</p>
@@ -333,25 +341,25 @@ const Congress = () => {
           <div>
             <dt className="text-[10px] text-textMuted">Reports</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-count>
-              {stats.trades.length} <span className="text-textMuted">· {stats.purchases} bought · {stats.sales} sold</span>
+              {quiet ? '—' : <>{stats.trades.length} <span className="text-textMuted">· {stats.purchases} bought · {stats.sales} sold</span></>}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Median lag</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-lag>
-              {stats.medianLag}d
+              {quiet || stats.trades.length === 0 ? '—' : `${stats.medianLag}d`}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">Past the deadline</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${stats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
-              {stats.lateFilings}
+              {quiet ? '—' : stats.lateFilings}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted">In own committee</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-overlap>
-              {stats.overlaps}
+              {quiet ? '—' : stats.overlaps}
             </dd>
           </div>
         </dl>
@@ -364,9 +372,13 @@ const Congress = () => {
         <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names, members and committees on the page right now — tick any number; only those stay" testId="congress-filter" />
       </div>
-      <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
-        {congressSentence(stats)}
-      </p>
+      {failed ? (
+        <FeedFallback />
+      ) : (
+        <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
+          {waiting ? 'Reading the reports.' : congressSentence(stats)}
+        </p>
+      )}
       {/* THE REPORTS TO KNOW */}
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-congress-to-know>
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
@@ -375,7 +387,7 @@ const Congress = () => {
           <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">trades in a sector the member's own committee oversees, the biggest bracket first · click one to keep the grid to that member</span>
         </div>
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No trade in a member's own committee on this cut</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : "No trade in a member's own committee on this cut"}</div>
         ) : (
           <div
             /* every report across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
@@ -396,6 +408,9 @@ const Congress = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
+            overlayNoRowsTemplate={noRows(gridEmpty)}
+            /* the overlay is read once, so a new state is a new grid */
+            key={gridEmpty}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.id}

@@ -260,7 +260,8 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
         <ChevronLeft className="w-3.5 h-3.5" />
       </button>
       <div
-        className="relative flex-1 min-w-0 h-full overflow-hidden select-none cursor-grab active:cursor-grabbing"
+        /* the strip fades at both ends, so a headline running past an arrow dissolves instead of starting mid-word */
+        className="relative flex-1 min-w-0 h-full overflow-hidden select-none cursor-grab active:cursor-grabbing [mask-image:linear-gradient(to_right,transparent,black_28px,black_calc(100%-28px),transparent)]"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -433,7 +434,7 @@ const News = () => {
   const calendar = useMemo(() => (econ.status === 'live' ? econ.events : []), [econ, wireRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const mood = useMemo(() => {
     if (news.status !== 'live' || events.length === 0) {
-      return { score: 0, label: 'MIXED' as const, unmarked: true, pending: news.status === 'loading', note: news.status === 'loading' ? 'Reading the wire.' : 'The wire came back with nothing in this window.' };
+      return { score: 0, label: 'MIXED' as const, unmarked: true, pending: news.status === 'loading', note: news.status === 'loading' ? 'Reading the wire.' : news.status === 'sim' ? 'This read did not land — the wire did not answer, so nothing here is a quiet day.' : 'The wire came back with nothing in this window.' };
     }
     const markedFor = events.filter(e => e.grade === 'ALLY').length;
     const markedAgainst = events.filter(e => e.grade === 'THREAT').length;
@@ -608,9 +609,9 @@ const News = () => {
         </GuideFocus>
         {/* THE HEAD */}
         <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-[min(18rem,100%)] flex-1">
             <div className="h-6 flex items-center gap-3">
-              <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">The wire</h3>
+              <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">The wire</h3>
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the pins, the grade and the numbers mean" testId="news-guide" />
             </div>
             <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every story on the wire today · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
@@ -619,6 +620,8 @@ const News = () => {
             <Fact label="Stories" testId="stories">
               {news.status === 'loading' && rows.length === 0 ? (
                 <span className="text-textMuted">Reading</span>
+              ) : news.status === 'sim' ? (
+                <span className="text-textMuted">—</span>
               ) : (
                 <>
                   {rows.length}
@@ -627,7 +630,7 @@ const News = () => {
               )}
             </Fact>
             <Fact label="The wire leans" testId="mood">
-              <span className={moodInk}>{mood.pending ? 'reading' : mood.unmarked ? 'unmarked' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
+              <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.unmarked ? 'unmarked' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
             </Fact>
             <Fact label="Biggest move" testId="biggest">
               {biggest ? (
@@ -826,7 +829,7 @@ const News = () => {
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the wire for these cards</div>
+              <div className="flex-1 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the wire for these cards'}</div>
             )}
           </div>
         </div>
@@ -853,7 +856,7 @@ const News = () => {
             <span className="text-right">1-day</span>
             <span className="text-right">Sure</span>
           </div>
-          {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the tape for these cards</div>}
+          {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
           {rows.map(e => {
             const open = e.id === selectedId;
             const faded = freshnessOf(e) === 'faded';

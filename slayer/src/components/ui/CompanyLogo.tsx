@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface CompanyLogoProps {
   ticker: string;
@@ -69,13 +69,85 @@ const DEEP_MARKS: Record<string, string> = {
    wears the quiet grey tile. It is the list's anchor, and it is never asked of the server. */
 const FUND_MARKS = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'SPX', 'NDX', 'RUT', 'VIX']);
 
+/* A FILE THAT IS NOT A MARK (the dossier sweep, 2026-10-22). Most of the fetched set are favicons wrapped in an SVG: a
+   raster, not a shape. Two of those fail on the page: a favicon that is one flat colour (NEM's is a white 16px square)
+   draws a blank tile, and an ink mark drawn as a MASK (AAPL, PLTR) has no transparency to cut, so the mask is the whole
+   square — a white block where the apple should be. Each file is read once, off screen: a flat one falls back to the
+   letters, an opaque one is shown as the picture it is instead of masked. */
+type Probe = 'flat' | 'opaque' | 'dark' | 'ok';
+const PROBED = new Map<string, Probe>();
+const PROBING = new Map<string, Promise<Probe>>();
+const probeLogo = (sym: string): Promise<Probe> => {
+  const had = PROBED.get(sym);
+  if (had) return Promise.resolve(had);
+  const busy = PROBING.get(sym);
+  if (busy) return busy;
+  const run = new Promise<Probe>(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const n = 24;
+        const c = document.createElement('canvas');
+        c.width = n;
+        c.height = n;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        if (!g) return resolve('ok');
+        g.drawImage(img, 0, 0, n, n);
+        const d = g.getImageData(0, 0, n, n).data;
+        let seen = 0;
+        let opaque = 0;
+        let lo = 765;
+        let hi = 0;
+        let sum = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 24) continue;
+          seen++;
+          if (d[i + 3] > 250) opaque++;
+          const v = d[i] + d[i + 1] + d[i + 2];
+          /* the brightest channel is what shows on black: a red T is plain to see, a navy shield is not */
+          sum += Math.max(d[i], d[i + 1], d[i + 2]);
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        const total = n * n;
+        if (seen === 0 || (seen > total * 0.9 && hi - lo < 18)) return resolve('flat');
+        if (opaque > total * 0.97) return resolve('opaque');
+        /* a navy or near-black mark on a clear ground (GE, LMT, PM, LRCX) sinks into the dark terminal: it is seated on
+           a pale tile, the way a brand sits on its own app icon */
+        resolve(sum / seen < 150 ? 'dark' : 'ok');
+      } catch {
+        resolve('ok');
+      }
+    };
+    img.onerror = () => resolve('flat');
+    img.src = `/logos/${sym}.svg`;
+  }).then(r => {
+    PROBED.set(sym, r);
+    PROBING.delete(sym);
+    return r;
+  });
+  PROBING.set(sym, run);
+  return run;
+};
+
 const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) => {
   const sym = ticker.toUpperCase();
   const [failedFor, setFailedFor] = useState<string | null>(null);
   const fund = FUND_MARKS.has(sym);
-  const failed = fund || failedFor === sym || NO_LOGO.has(sym);
+  const [probe, setProbe] = useState<Probe | undefined>(() => PROBED.get(sym));
+  useEffect(() => {
+    if (fund || NO_LOGO.has(sym)) return;
+    let live = true;
+    const known = PROBED.get(sym);
+    if (known) setProbe(known);
+    else void probeLogo(sym).then(r => live && setProbe(r));
+    return () => {
+      live = false;
+    };
+  }, [sym, fund]);
+  const failed = fund || failedFor === sym || NO_LOGO.has(sym) || probe === 'flat';
   const deep = DEEP_MARKS[sym];
-  const masked = deep !== undefined || INK_MARKS.has(sym);
+  const masked = (deep !== undefined || INK_MARKS.has(sym)) && probe !== 'opaque';
   const shape = `url(/logos/${sym}.svg) center / contain no-repeat`;
 
   return (
@@ -98,6 +170,9 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
         >
           {sym.slice(0, 4)}
         </span>
+      ) : masked && probe === undefined ? (
+        /* a mask waits for its file to be read — drawn early, an opaque file flashes as a solid square */
+        <span className="block h-full w-full" />
       ) : masked ? (
         <span
           className="block h-full w-full"
@@ -117,7 +192,7 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
             NO_LOGO.add(sym);
             setFailedFor(sym);
           }}
-          className="block h-full w-full"
+          className={`block h-full w-full ${probe === 'opaque' ? 'rounded-[4px]' : probe === 'dark' ? 'rounded-[4px] bg-[#f2f2f2] p-[1.5px]' : ''}`}
         />
       )}
     </span>

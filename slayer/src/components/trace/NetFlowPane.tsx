@@ -352,8 +352,9 @@ const NetFlowPane = ({
          columns — every line redrawn narrower in front of the reader. The
          axes now own their width from the first frame ("540.00" left,
          "$47.5M" right), so the plot lays out once. */
-      rightPriceScale: { borderVisible: false, minimumWidth: 60 },
-      leftPriceScale: { visible: true, borderVisible: false, minimumWidth: 52 },
+      /* entireTextOnly: a label the pane's edge would cut ("$6.0M" half off the head) is not drawn at all */
+      rightPriceScale: { borderVisible: false, minimumWidth: 60, entireTextOnly: true },
+      leftPriceScale: { visible: true, borderVisible: false, minimumWidth: 52, entireTextOnly: true },
       timeScale: {
         borderVisible: false,
         timeVisible: true,
@@ -618,10 +619,10 @@ const NetFlowPane = ({
        true counts) and the glide card says the true number. The height is a
        drawing, the colour and the figure are the facts. */
     const inks = paneInks();
-    /* Twelve empty minutes ahead of the first bar: the axis's first label (09:30) was clipped to "30" against the
+    /* Twenty empty minutes ahead of the first bar: the axis's first label (09:30) was clipped to "30" against the
        left price scale — the lead room seats it whole, the right offset does the same for 16:00 */
     const lead: { time: UTCTimestamp }[] = drawn.length
-      ? Array.from({ length: 12 }, (_, i) => ({ time: (drawn[0].time - (12 - i) * 60) as UTCTimestamp }))
+      ? Array.from({ length: 20 }, (_, i) => ({ time: (drawn[0].time - (20 - i) * 60) as UTCTimestamp }))
       : [];
     vol.setData([...lead, ...drawn.map(p => ({ time: p.time as UTCTimestamp, value: Math.sqrt(Math.abs(p.vol)), color: volInk(Math.abs(p.vol), marks, inks) }))]);
     /* Every bar carries its own value, so the glide card's old containing-
@@ -699,7 +700,10 @@ const NetFlowPane = ({
         {cutCards && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
         {/* the figures wrap on a phone rather than run off the pane (the device sweep, 2026-10-18: the volume cut at 360) */}
         <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-[11px] tnum [&>span]:whitespace-nowrap">
-          <span style={{ color: inksNow.spot }}>{ref}</span>
+          {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
+          <span style={{ color: inksNow.spot }} title={ticker ? undefined : `The white line is ${ref}'s price — the cut's money is every name in it`}>
+            {ticker ? ref : `${ref} price`}
+          </span>
           <span>
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
             <span className={view.ncp >= 0 ? 'text-bull' : 'text-bear'}>{fmtUsd(view.ncp)}</span>

@@ -638,7 +638,12 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
     deltaOI: num(row.open_interest) - num(row.prev_oi),
     deltaOIPct: num(row.prev_oi) > 0 ? ((oi - num(row.prev_oi)) / num(row.prev_oi)) * 100 : 0,
     premium,
-    iv: num(row.iv) * (num(row.iv) <= 3 ? 100 : 1),
+    /* the screener sends no `iv` — only yesterday's and the change since (prev_iv + iv_change); reading `iv` alone put 0% on
+       every row of the Screener */
+    iv: (() => {
+      const v = num(row.iv) || (row.prev_iv != null ? num(row.prev_iv) + num(row.iv_change) : 0);
+      return v * (v <= 3 ? 100 : 1);
+    })(),
     ivChg: num(row.iv_change) * (Math.abs(num(row.iv_change)) <= 3 ? 100 : 1),
     volOverOI: oi > 0 ? volume / oi : 0,
     sweepPct: volume > 0 ? (num(row.sweep_volume) / volume) * 100 : 0,
@@ -672,8 +677,11 @@ export function useLiveBook(ticker?: string | null): LivePack<BookContract[]> {
       const out: BookContract[] = [];
       for (const row of b.concat(a)) {
         const mapped = contractRow(row, out.length);
-        if (!mapped.ticker || seen.has(mapped.key)) continue;
-        seen.add(mapped.key);
+        /* one contract once: the name's page and the market's page overlap, and the key carries the row's index, so it
+           never caught the repeat — the same SPY 773 call sat on Footprints twice */
+        const id = String(row.option_symbol || `${mapped.ticker}-${mapped.strike}-${mapped.right}-${mapped.expiry}`);
+        if (!mapped.ticker || seen.has(id)) continue;
+        seen.add(id);
         out.push(mapped);
       }
       return out;
@@ -758,16 +766,39 @@ function spreadLeg(leg: Record<string, unknown>, fallbackExpiry: string): Spread
   };
 }
 
+/* When the vendor leaves the loss out, the structures whose risk is defined by their own strikes still say it: a debit
+   is the most a long structure can lose; a credit vertical loses its width less the credit. Only a credit straddle or
+   strangle (or a shape we cannot read) is truly uncapped. */
+function definedLoss(kind: SpreadKind, net: number, size: number, strikes: number[], side: string, netPremium: number): number | null {
+  const paid = Math.abs(net) * 100 * size;
+  const credit = /bid/i.test(side) || netPremium < 0;
+  const width = strikes.length >= 2 ? Math.max(...strikes) - Math.min(...strikes) : 0;
+  if (kind === 'vertical' || kind === 'butterfly' || kind === 'condor') {
+    if (!credit) return paid > 0 ? paid : null;
+    const span = kind === 'vertical' ? width : width / 2;
+    return span > 0 ? Math.max(0, (span - Math.abs(net)) * 100 * size) : null;
+  }
+  if ((kind === 'straddle' || kind === 'strangle' || kind === 'calendar') && !credit) return paid > 0 ? paid : null;
+  return null;
+}
+
 function spreadOf(row: Record<string, unknown>): SpreadTrade {
   const ticker = String(row.ticker || '').toUpperCase();
   const when = clock(row.executed_at);
   const txns = Array.isArray(row.txns) ? (row.txns as Record<string, unknown>[]) : [];
   const strikes = Array.isArray(row.strikes) ? row.strikes.map(s => num(s)).filter(n => n > 0) : [];
-  const legs = txns.length ? txns.map(leg => spreadLeg(leg, '')) : strikes.map(strike => spreadLeg({ strike, type: 'call' }, ''));
+  const legs = txns.length ? txns.map(leg => spreadLeg(leg, '')) : strikes.map(strike => spreadLeg({ strike, type: /put/i.test(String(row.strategy || '')) && !/call/i.test(String(row.strategy || '')) ? 'put' : 'call' }, ''));
   const net = num(row.net_price);
   const size = num(row.size) || 1;
-  const loss = num(row.max_loss);
-  const profit = num(row.max_profit);
+  /* the vendor signs the loss (max_loss "-11.20") — a defined-risk spread read as "uncapped" on every row because only a
+     positive figure counted. Uncapped is an ABSENT figure, never a negative one. */
+  const loss = Math.abs(num(row.max_loss));
+  const lossKnown = row.max_loss != null && row.max_loss !== '';
+  const profit = Math.abs(num(row.max_profit));
+  /* no legs on the row (txns is a count), so the expiry is the trade's own New York day plus its days to run */
+  const dteAtTrade = num(row.min_dte);
+  const tradeDay = when.epoch > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(when.epoch * 1000)) : '';
+  const expiryIso = tradeDay ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + dteAtTrade * 86_400_000).toISOString().slice(0, 10) : '';
   return {
     id: String(row.id || `${ticker}-${when.epoch}-${strikes.join('-')}`),
     minute: when.minute,
@@ -775,13 +806,13 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     ticker,
     kind: spreadKind(String(row.strategy || '')),
     strikesLabel: (strikes.length ? strikes : legs.map(l => l.strike)).filter(n => n > 0).join(' / ') || '—',
-    expiry: legs[0]?.expiry || '—',
-    dte: num(row.min_dte) || legs[0]?.dte || 0,
+    expiry: (legs[0]?.expiry && legs[0].expiry !== '—' ? legs[0].expiry : '') || (expiryIso ? expiryLabel(expiryIso) : '—'),
+    dte: expiryIso ? dteOf(expiryIso) : dteAtTrade || legs[0]?.dte || 0,
     size,
     net,
     premium: num(row.total_premium) || Math.abs(net) * size * 100,
-    maxLoss: loss > 0 ? loss : 'uncapped',
-    maxProfit: profit > 0 ? profit : null,
+    maxLoss: lossKnown ? loss : definedLoss(spreadKind(String(row.strategy || '')), net, size, strikes, String(row.net_side || ''), num(row.net_premium)) ?? 'uncapped',
+    maxProfit: row.max_profit != null && row.max_profit !== '' ? profit : null,
     iv: num(row.avg_iv) * (num(row.avg_iv) <= 3 ? 100 : 1),
     delta: num(row.net_delta),
     theta: num(row.net_theta),
