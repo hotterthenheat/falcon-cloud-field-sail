@@ -32,7 +32,7 @@ import { TRACE_SUBPAGES } from './subnav';
    sweep the whole universe, and the Tracker lists the reader's marks across
    every name with its own names-only search — a single-ticker picker would
    mislead on all of them. */
-const NO_PICKER = /^\/trace\/(live-tape|dark-pool|screener|net-flow|footprints|watchers|windows|odte|multi-leg|compare|tracker|futures)/;
+const NO_PICKER = /^\/trace\/(live-tape|dark-pool|screener|net-flow|footprints|watchers|windows|odte|multi-leg|compare|tracker)/;
 
 const TraceLayout = () => {
   const { activeTicker, changeTicker } = useMarketData();
