@@ -57,11 +57,12 @@ import { SectorMark } from '../../components/trace/SectorMark';
 import { StocksGuide } from '../../components/record/StocksGuide';
 import { useBoardNames } from '../../data/boardNames';
 import { aboveFifty, buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
-import { useLiveStocks } from '../../data/liveFiles';
+import { batchMisses, peekBatchQuote, useBatchQuote, useLiveStocks, useScreenerQuotes, type BatchQuote } from '../../data/liveFiles';
 import { extendedLine, priceWords, peekQuote, useLiveQuote } from '../../data/liveQuote';
+import { nyClock } from '../../core/nyTime';
 import { shortDay as shortDayWord } from '../../data/nyDate';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
-import { SECTORS, type Sector } from '../../data/universe';
+import { SECTORS, UNIVERSE, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
 import { statHelp } from '../../components/record/statHelp';
 import { phonePin } from '../../components/record/pagedGrid';
@@ -132,27 +133,41 @@ const SectorCell = ({ data }: ICellRendererParams<StockPick>) =>
 /* THE PRICE AND THE DAY FROM THE QUOTE (the ship pass, 2026-10-22): the screener's prev_close lags a session — NVDA read
    +1.29% here (against 216.47) while the quote, the name's own page and Pinpoint's Board read −1.22% (against 221.97).
    The quote is the one the rest of the terminal reads; the screener's figure stands only until it lands. */
+/* THE ROWS' PRICES IN BULK (round 9): the index asked every row's own quote every fifteen seconds (73–170 calls a
+   minute); the screener answers the whole list in three calls with the live close and its time, read every 45 seconds
+   in the session (liveFiles.useScreenerQuotes, on liveQuote's screenerRead rule). A name the screener has no row for
+   reads its own quote. */
+const batchWords = (b: BatchQuote): string => {
+  if (b.live) return `${b.price.toFixed(2)}${b.tapeAt ? ` · ${nyClock(b.tapeAt)} ET` : ''}`;
+  return b.ext != null ? `${b.price.toFixed(2)} close · ${b.ext.toFixed(2)} outside the session${b.tapeAt ? ` ${nyClock(b.tapeAt)} ET` : ''}` : `${b.price.toFixed(2)} close`;
+};
+const batchExt = (b: BatchQuote): string | null => (b.live || b.extPct == null ? null : `${sessionWord()} ${b.extPct >= 0 ? '+' : '−'}${Math.abs(b.extPct).toFixed(2)}%`);
+const sessionWord = () => {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+  return h < 12 ? 'pre-market' : 'after hours';
+};
 const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
-  const q = useLiveQuote(data?.ticker);
+  const b = useBatchQuote(data?.ticker);
+  const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
   if (!data) return null;
-  /* ONE QUOTE, SAID AS WHICH PRICE (liveQuote.priceWords): outside the session the regular close, the extended print
-     and its clock in the title — the same figure the name's page leads with */
-  const words = priceWords(q);
-  /* until the quote lands, the screener's REGULAR price — its after-hours print apart, in the title (audit round 5) */
+  const words = b ? { lead: b.price, line: batchWords(b) } : priceWords(q);
+  /* until the read lands, the screener's REGULAR price from the list's own read — its after-hours print apart */
   const px = words?.lead ?? data.price;
   const fallbackTitle = data.extPrice != null ? `${data.price.toFixed(2)} close · ${data.extPrice.toFixed(2)} outside the session (the screener's)` : 'the screener’s price';
   return <span className="font-mono text-[11px] tnum text-textPrimary" title={words?.line ?? fallbackTitle}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 };
 const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
-  const q = useLiveQuote(data?.ticker);
+  const b = useBatchQuote(data?.ticker);
+  const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
   if (!data) return null;
   /* before the open the session has not moved: the last session's change, dated */
-  const pre = q?.phase === 'pre' && q.lastSessionPct != null;
-  const chg = pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
-  /* the extended move from the quote, else the screener's — every row the same convention (audit round 5: META) */
-  const ext = q ? extendedLine(q) : data.extPct != null ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
+  const pre = b ? !b.live : q?.phase === 'pre' && q.lastSessionPct != null;
+  const chg = b ? b.pct ?? data.changePct : pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
+  /* the extended move kept apart — every row the same convention (audit round 5: META) */
+  const ext = b ? batchExt(b) : q ? extendedLine(q) : data.extPct != null ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
+  const day = b && !b.live ? ` (${b.date})` : q?.regDate ? ` (${q.regDate})` : '';
   return (
-    <span className="flex flex-col items-end leading-tight" title={`${pre ? `The last session's change${q?.regDate ? ` (${q.regDate})` : ''}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
+    <span className="flex flex-col items-end leading-tight" title={`${pre ? `The last session's change${day}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
       <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
       {ext ? <span className="font-mono text-[8px] tnum text-textMuted whitespace-nowrap">{ext.replace('after hours', 'AH').replace('pre-market', 'pre')}</span> : null}
     </span>
@@ -372,16 +387,19 @@ const Stocks = () => {
   const newsQuiet = picks.length > 0 && picks.every(p => p.quiet.includes('news'));
   /* THE DAY COLUMN NAMES ITS DAY (audit round 7: "Today" held Oct 22's change before the open) — in the session it is
      today; outside it, the last session's date, off the market's own quote */
-  const spyQuote = useLiveQuote('SPY');
-  const dayHead = spyQuote && spyQuote.phase !== 'regular' && spyQuote.regDate ? shortDayWord(spyQuote.regDate) : 'Today';
+  useScreenerQuotes(useMemo(() => ['SPY', ...picks.map(p => p.ticker)], [picks]));
+  /* a house name the screener has no row for (BYDDY) is said, never silently dropped */
+  const unscreened = useMemo(() => (liveBoard.status === 'live' && picks.length ? UNIVERSE.filter(u => !picks.some(p => p.ticker === u.ticker)).map(u => u.ticker) : []), [liveBoard.status, picks]);
+  const spyBatch = useBatchQuote('SPY');
+  const dayHead = spyBatch && !spyBatch.live ? shortDayWord(spyBatch.date) : 'Today';
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [
       /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
       { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 140, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
       { headerName: 'Sector', field: 'sector', width: 132, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (priceWords(peekQuote(p.data.ticker))?.lead || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The regular close outside the session (hover for the after-hours or pre-market print and its time, ET); the last price in it' },
-      { headerName: dayHead, field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — in the session today's, outside it the last session's (the date in the head) — its close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
+      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (peekBatchQuote(p.data.ticker)?.price || priceWords(peekQuote(p.data.ticker))?.lead || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The regular close outside the session (hover for the after-hours or pre-market print and its time, ET); the last price in it' },
+      { headerName: dayHead, field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekBatchQuote(p.data.ticker)?.pct ?? peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — in the session today's, outside it the last session's (the date in the head) — its close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
       { headerName: 'Year', field: 'trend', width: 104, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
       { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 112, cellRenderer: sleeveCell('momentum'), headerTooltip: "The trend: the price against its 20-day EMA, RSI, ADX with the week's direction, and the month — the screener's. The word is its grade; hover for the figures. A dash is left out of the screen." },
       { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 112, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. The word is its grade; hover for the figure. A dash means the feed has no growth figure.' },
@@ -431,7 +449,7 @@ const Stocks = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the measures, the screen and the rotation mean" testId="stocks-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            The {picks.length || 'house list’s'} names the terminal files — not the whole market — each read on the trend, the numbers and the money from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
+            The {picks.length || 'house list’s'} names the terminal files{unscreened.length ? ` (${unscreened.join(', ')}: no row on the vendor's screener, so not screened)` : ''} — not the whole market — each read on the trend, the numbers and the money from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">

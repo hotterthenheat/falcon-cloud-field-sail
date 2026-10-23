@@ -1043,6 +1043,11 @@ export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | nul
   return oneFund.get(t) ?? { status: 'loading', row: null, holdings: [], cover: null };
 }
 
+/* the vendor's three sector schemes on /etfs/{t}/weights (one list, overlapping) — see useEtfWeights */
+const SECTOR_SCHEME_MAIN = ['Basic Materials', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Energy', 'Financial Services', 'Healthcare', 'Industrials', 'Real Estate', 'Technology', 'Utilities'];
+const SECTOR_SCHEME_GICS = ['Communication Services', 'Consumer Discretionary', 'Consumer Staples', 'Energy', 'Financials', 'Health Care', 'Industrials', 'Information Technology', 'Materials', 'Real Estate', 'Utilities'];
+const SECTOR_SCHEME_FINE = ['Commercial Services', 'Communications', 'Consumer Durables', 'Consumer Non-Durables', 'Consumer Services', 'Distribution Services', 'Electronic Technology', 'Energy Minerals', 'Finance', 'Health Services', 'Health Technology', 'Industrial Services', 'Non-Energy Minerals', 'Process Industries', 'Producer Manufacturing', 'Retail Trade', 'Technology Services', 'Transportation', 'Utilities', 'Miscellaneous', 'Government'];
+const SECTOR_SCHEME_EXTRA = ['Cash', 'Cash and/or Derivatives', 'Other', 'Mutual fund'];
 /** A fund's whole-book sector and country weights (/etfs/{t}/weights) — the fund's own split, not the lines read */
 export function useEtfWeights(etf: string): { status: FileStatus; sectors: { name: string; weight: number }[]; countries: { name: string; weight: number }[] } {
   const t = etf.toUpperCase();
@@ -1053,10 +1058,7 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
     void uwCall(`/etfs/${encodeURIComponent(t)}/weights`).then(res => {
       if (dead) return;
       const d = (res.data && typeof res.data === 'object' ? res.data : {}) as { sector?: { sector?: string; weight?: string }[]; country?: { country?: string; weight?: string }[] };
-      const list = (rows: { name?: string; weight?: string }[]) =>
-      {
-        /* the vendor's finer sectors fold into one house name ("Electronic Technology" and "Technology Services" are
-           both Technology) — add them up, never two rows under one name (the sixth sweep: duplicate grid rows on SPY) */
+      const list = (rows: { name?: string; weight?: string }[]) => {
         const sum = new Map<string, number>();
         for (const r of rows) {
           const name = houseSector(String(r.name || '')) || '—';
@@ -1064,9 +1066,24 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
         }
         return [...sum.entries()].map(([name, weight]) => ({ name, weight })).filter(r => r.weight >= 0.05).sort((a, b) => b.weight - a.weight);
       };
+      /* ONE SECTOR SCHEME, NEVER THREE ADDED UP (round 9: SPY's table summed to 255% — the vendor sends the same fund
+         under three overlapping schemes in one list: "Technology" 32.6% and "Information Technology" 32.6%, a finer
+         "Electronic Technology" / "Technology Services" split, "Financial Services" and "Financials" both 12.5%…). The
+         page keeps one: the eleven-sector scheme that is complete on every fund read (it adds to 100%), said in the
+         house's sector words. The GICS-named rows are not used — the vendor sends no Consumer Staples or Health Care
+         under them, so they never cover the fund. The finer scheme is the fallback only when neither adds up. */
+      const sectorsOf = (rows: { name?: string; weight?: string }[]) => {
+        const at = (names: string[]) => rows.filter(r => names.includes(String(r.name || '').trim()));
+        const total = (rs: { weight?: string }[]) => rs.reduce((a, r) => a + num(r.weight), 0);
+        if (Math.abs(total(rows) - 1) <= 0.06) return list(rows); /* one scheme sent (iShares' EFA, TLT, GLD) — as it is */
+        const schemes = [SECTOR_SCHEME_MAIN, SECTOR_SCHEME_GICS, SECTOR_SCHEME_FINE].map(names => at(names));
+        const fits = schemes.find(rs => rs.length && Math.abs(total(rs) + total(at(SECTOR_SCHEME_EXTRA)) - 1) <= 0.06);
+        const pick = fits ?? [...schemes].sort((a, b) => Math.abs(total(a) - 1) - Math.abs(total(b) - 1))[0] ?? [];
+        return list([...pick, ...at(SECTOR_SCHEME_EXTRA)]);
+      };
       setGot({
         status: res.error ? 'error' : 'live',
-        sectors: list((d.sector ?? []).map(r => ({ name: r.sector, weight: r.weight }))),
+        sectors: sectorsOf((d.sector ?? []).map(r => ({ name: r.sector, weight: r.weight }))),
         countries: list((d.country ?? []).map(r => ({ name: r.country, weight: r.weight }))),
       });
     });
@@ -1176,3 +1193,116 @@ export function useStockCard(ticker: string): StockCard | null | undefined {
   }, [t]);
   return t in s.cards ? s.cards[t] : undefined;
 }
+
+/* ---- A SET'S PRICES IN BULK, FROM THE SCREENER (round 9) ----------------------------------------------------------
+   The Stocks index asked every row's quote on its own — the stock-state and the quote each fifteen seconds, one name at
+   a time (73 calls a minute with the stall rule, ~170 without). /screener/stocks answers a dozen names a call with the
+   live close, prev_close and quote_time, so the set is read in bulk (three calls for the index) and again every 45
+   seconds in the session, every five minutes outside it. Each row is read on liveQuote's own rule (screenerRead):
+   in the session the last print against the prior close; outside it the regular close off the name's daily rows, the
+   extended print apart. A name the screener has no row for is listed in `missing`, for the page to read alone. */
+export interface BatchQuote {
+  /** the regular price: the last print in the session, the last regular close outside it */
+  price: number;
+  /** the regular session's change, percent (null when the close before it is not in hand) */
+  pct: number | null;
+  /** the New York session price and pct belong to */
+  date: string;
+  /** true while the row is the live session's */
+  live: boolean;
+  ext: number | null;
+  extPct: number | null;
+  /** epoch ms of the vendor's quote */
+  tapeAt: number | null;
+}
+const BATCH_LIVE_MS = 45_000;
+const BATCH_IDLE_MS = 5 * 60_000;
+const batchQuotes = new Map<string, BatchQuote>();
+const batchSettled = new Map<string, number>();
+const batchMissing = new Set<string>();
+const batchRunning = new Map<string, Promise<void>>();
+let batchRev = 0;
+const batchListeners = new Set<() => void>();
+const bumpBatch = () => {
+  batchRev += 1;
+  batchListeners.forEach(fn => fn());
+};
+const subscribeBatch = (fn: () => void) => {
+  batchListeners.add(fn);
+  return () => {
+    batchListeners.delete(fn);
+  };
+};
+const batchRevOf = () => batchRev;
+const sessionLive = (): boolean => {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const wd = p.find(x => x.type === 'weekday')?.value ?? '';
+  const m = Number(p.find(x => x.type === 'hour')?.value ?? 0) * 60 + Number(p.find(x => x.type === 'minute')?.value ?? 0);
+  return wd !== 'Sat' && wd !== 'Sun' && m >= 9 * 60 + 30 && m < 16 * 60 + 2;
+};
+function readBatch(key: string): Promise<void> {
+  const running = batchRunning.get(key);
+  if (running) return running;
+  const p = readBatchNow(key);
+  batchRunning.set(key, p);
+  return p;
+}
+async function readBatchNow(key: string): Promise<void> {
+  try {
+    const names = key.split(',');
+    const got = new Set<string>();
+    for (let i = 0; i < names.length; i += 12) {
+      const part = await whalesScreener(names.slice(i, i + 12)).catch(() => null);
+      for (const row of Array.isArray(part) ? part : []) {
+        const t = String(row.ticker || '').toUpperCase();
+        if (!t) continue;
+        const closes = screenerNeedsCloses(row) ? await loadRegularCloses(t).catch(() => null) : null;
+        const r = screenerRead(row, closes);
+        if (!r) continue;
+        const qt = Number(row.quote_time);
+        got.add(t);
+        batchMissing.delete(t);
+        batchQuotes.set(t, { price: r.regular, pct: r.pct, date: r.date, live: !screenerNeedsCloses(row), ext: r.ext, extPct: r.extPct, tapeAt: Number.isFinite(qt) && qt > 0 ? qt : null });
+      }
+    }
+    for (const t of names) if (!got.has(t) && !batchQuotes.has(t)) batchMissing.add(t);
+    batchSettled.set(key, Date.now());
+  } finally {
+    batchRunning.delete(key);
+    bumpBatch();
+  }
+}
+/** The set's prices off the screener in bulk, refreshed every 45 s in the session (five minutes outside it) while a page
+    holds it. `settled` once the first read is back; `missing` the names the screener gave no row for. */
+export function useScreenerQuotes(tickers: readonly string[]): { settled: boolean; missing: ReadonlySet<string>; rev: number } {
+  const key = [...new Set(tickers.map(t => t.toUpperCase()).filter(Boolean))].sort().join(',');
+  useEffect(() => {
+    if (!key || typeof window === 'undefined') return;
+    let dead = false;
+    let id = 0;
+    const tick = () => {
+      if (dead) return;
+      const last = batchSettled.get(key) ?? 0;
+      const every = sessionLive() ? BATCH_LIVE_MS : BATCH_IDLE_MS;
+      const wait = Math.max(0, last + every - Date.now());
+      id = window.setTimeout(() => {
+        if (dead) return;
+        void readBatch(key).finally(tick);
+      }, wait);
+    };
+    tick();
+    return () => {
+      dead = true;
+      window.clearTimeout(id);
+    };
+  }, [key]);
+  const rev = useSyncExternalStore(subscribeBatch, batchRevOf, batchRevOf);
+  return { settled: !!key && batchSettled.has(key), missing: batchMissing, rev };
+}
+/** One name's price from the bulk read (null until it lands, or when the screener has no row for it) */
+export function useBatchQuote(ticker: string | null | undefined): BatchQuote | null {
+  useSyncExternalStore(subscribeBatch, batchRevOf, batchRevOf);
+  return ticker ? batchQuotes.get(ticker.toUpperCase()) ?? null : null;
+}
+export const peekBatchQuote = (ticker: string): BatchQuote | null => batchQuotes.get(ticker.toUpperCase()) ?? null;
+export const batchMisses = (ticker: string): boolean => batchMissing.has(ticker.toUpperCase());
