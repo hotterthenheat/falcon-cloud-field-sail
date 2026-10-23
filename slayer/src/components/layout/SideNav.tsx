@@ -221,7 +221,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
      move outside the session in the hover; zero in the neutral ink */
   const move = live?.liveBook ? dayMoveOfSnapshot(live) : quoted ? { dayPct: quoted.changePct, extPct: quoted.extPct, phase: quoted.phase } : null;
   const moveWords = onLiveDesk ? dayMoveWords(move) : null;
-  const change = onLiveDesk ? (move ? (move.phase === 'pre' ? move.extPct : move.dayPct) : null) : (live?.changePercent ?? marketData?.changePercent ?? 0);
+  const change = onLiveDesk ? (move ? move.dayPct : null) : (live?.changePercent ?? marketData?.changePercent ?? 0);
   const open = clock.phase === 'OPEN' || clock.phase === 'AUCTION';
   const priceText = spot != null ? `$${spot.toFixed(2)}` : '—';
   const changeText = spot != null && change != null ? (moveWords ? moveWords.main : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`) : '';

@@ -220,27 +220,40 @@ function expiryLabel(iso: string): string {
   return `${m[2]}/${m[3]}/${m[1]}`;
 }
 
-/** THE TAPE'S SESSION — the New York trading day the vendor's prints belong to: today once the day's tape opens (04:00
-    New York, a session day), otherwise the last session before it. Overnight and on a closed day every row on Trace is
-    the last session's, and its days-to-expiry count from that day (the ship pass, 2026-10-22: at 00:54 on Oct 22 the
-    Oct 23 contracts read "1d" while the Oct 21 ones, expired at the bell, read "0d" — two clocks on one grid). */
-export function tapeSessionIso(): string {
-  const p = nyParts(new Date());
+/** THE TAPE'S SESSION — the last options session with data: the New York trading day the vendor's option prints belong
+    to. The option tape has no pre-market, so a trading day becomes the session at the 09:30 open — never at 04:00 or
+    midnight; before it, and on a weekend or holiday (src/core/calendar.ts), the session is the last trading day before
+    (audit round 6, 2026-10-23: rolled at 04:00, every Trace figure at 04:15 ET on Fri Oct 23 — days to expiry, the 0DTE
+    share, the contract card's date, Compare's same-day expiry, the cross card's bars, every relative-day word — was
+    counted against an Oct 23 that had no option prints; the data was still Thu Oct 22's). EVERY Trace consumer reads
+    this one rule — tapeSessionIso() for now, sessionIsoAt(ms) for any instant. */
+export function sessionIsoAt(ms: number): string {
+  const p = nyParts(new Date(ms));
   const d = new Date(p.year, p.month - 1, p.day);
-  if (!(isTradingDay(d) && p.hour >= 4)) {
+  const open = p.hour * 60 + p.minute >= SESSION_OPEN_MIN_ET;
+  if (!(isTradingDay(d) && open)) {
     d.setDate(d.getDate() - 1);
     for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
   }
   return isoDate(d);
 }
-
-function dteOf(iso: string): number {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return 0;
-  const day = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const today = Date.parse(`${tapeSessionIso()}T00:00:00Z`);
-  return Math.max(0, Math.round((day - today) / 86_400_000));
+const SESSION_OPEN_MIN_ET = 9 * 60 + 30;
+export function tapeSessionIso(): string {
+  return sessionIsoAt(Date.now());
 }
+
+/** Calendar days from a trade day (YYYY-MM-DD, default the tape's session) to an expiry — a print's DTE counts from its
+    own trade date, never from the clock */
+export function dteFrom(iso: string, fromIso: string = tapeSessionIso()): number {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const f = fromIso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m || !f) return 0;
+  const day = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const from = Date.UTC(Number(f[1]), Number(f[2]) - 1, Number(f[3]));
+  return Math.max(0, Math.round((day - from) / 86_400_000));
+}
+/** Days to expiry from the tape's session */
+const dteOf = (iso: string): number => dteFrom(iso);
 
 export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true): LivePack<T> {
   const [box, setBox] = useState<CacheBox<T> | null>(null);
@@ -449,7 +462,9 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     right,
     otmPct: otmOf(right, strike, spot, spotIsIndexLevel(row, ticker)),
     expiry: expiryLabel(expiryIso),
-    dte: dteOf(expiryIso),
+    /* from the print's own trade date, never the clock (audit round 6: at 04:15 on Oct 23 the Oct 22 and Oct 23 expiries
+       both read "0d" and the 0DTE share counted Oct 23's) — the vendor's own dte where the row carries one */
+    dte: row.dte != null && row.dte !== '' && Number.isFinite(Number(row.dte)) ? Math.max(0, Number(row.dte)) : dteFrom(expiryIso, when.ms > 0 ? nyDateOf(when.ms) : tapeSessionIso()),
     fill,
     bid,
     ask,
@@ -1588,7 +1603,8 @@ function spreadLeg(leg: Record<string, unknown>, fallbackExpiry: string, structS
     strike: occ ? Number(occ[1]) / 1000 : rawStrike >= 100000 ? rawStrike / 1000 : rawStrike,
     right: String(leg.type || leg.option_type || '').toLowerCase().startsWith('p') ? 'P' : 'C',
     expiry: expiryLabel(expiryIso),
-    dte: dteOf(expiryIso) || num(leg.dte),
+    /* the vendor's own days to run where the leg carries them, else from the session */
+    dte: leg.dte != null && leg.dte !== '' && Number.isFinite(Number(leg.dte)) ? Math.max(0, Number(leg.dte)) : dteOf(expiryIso),
     fill: num(leg.price || leg.fill || leg.avg_price),
     theta: leg.theta != null ? num(leg.theta) : undefined,
     occ: leg.option_symbol ? String(leg.option_symbol) : undefined,
@@ -2029,7 +2045,9 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     shapeOfVendor: shapeName(strategy),
     strikesLabel: strikes.length ? strikes.join(' / ') : '—',
     expiry: expiryIso ? expiryLabel(expiryIso) : '—',
-    dte: expiryIso ? dteOf(expiryIso) : dteAtTrade,
+    /* the vendor's min_dte — counted from the trade's own day (audit round 6: XSP Oct 26 read "3d" against min_dte 4,
+       SPY Nov 20 "28d" against 29 — counted from the clock's Oct 23) */
+    dte: row.min_dte != null && row.min_dte !== '' ? dteAtTrade : expiryIso ? dteFrom(expiryIso, tradeDay || tapeSessionIso()) : 0,
     /* the vendor's size is its LARGEST leg — the units come from the legs (settleSpread) */
     size,
     net: 0,
@@ -2153,7 +2171,7 @@ export function useFlowPerExpiry(ticker: string | null): LivePack<ExpiryFlow[]> 
         const expiry = String(r.expiry || '').slice(0, 10);
         return {
           expiry,
-          dte: dteOf(expiry),
+          dte: dteFrom(expiry, typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r.date) ? r.date.slice(0, 10) : tapeSessionIso()),
           callNet: num(r.call_premium_ask_side) - num(r.call_premium_bid_side),
           putNet: num(r.put_premium_ask_side) - num(r.put_premium_bid_side),
           callVol: num(r.call_volume),
@@ -2529,17 +2547,6 @@ export function useMarkNow(marks: { key: string; kind: string; ticker: string; s
     {},
     list.length > 0
   );
-}
-
-/** The New York trading day an instant's tape belongs to (tapeSessionIso's rule, for any instant) */
-export function sessionIsoAt(ms: number): string {
-  const p = nyParts(new Date(ms));
-  const d = new Date(p.year, p.month - 1, p.day);
-  if (!(isTradingDay(d) && p.hour >= 4)) {
-    d.setDate(d.getDate() - 1);
-    for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
-  }
-  return isoDate(d);
 }
 
 /** A contract's OCC symbol from its parts — "SPY", 763, P, "10/22/2026" → SPY261022P00763000; an index's weekly root

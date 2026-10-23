@@ -915,7 +915,13 @@ export function dayMoveWords(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | n
   if (!m) return null;
   const ext = m.extPct != null && Number.isFinite(m.extPct) ? `${m.phase === 'pre' ? 'pre-market' : 'after hours'} ${fmtPct(m.extPct, digits)}` : null;
   if (m.phase === 'pre') {
-    return { main: ext ?? '—', ext: null, title: `Before the open: the pre-market move against ${longDayOf(recordIso())}’s regular close. The session has not started.` };
+    /* before the open the lead figure is the last session's change, the pre-market move beside it (the sixth audit:
+       one page read "0.00%", another only the pre-market move, for the same name at the same minute) */
+    return {
+      main: m.dayPct != null && Number.isFinite(m.dayPct) ? fmtPct(m.dayPct, digits) : '…',
+      ext,
+      title: `${longDayOf(recordIso())}’s regular-session change (its 4:00 close against the close before). The session has not opened${ext ? `; ${ext} against that close` : ''}.`,
+    };
   }
   if (m.dayPct == null) return { main: '…', ext, title: 'The day’s change is loading (the regular closes are read once a day)' };
   /* the session named by its date when it is not New York's today (the fifth audit: "Today's regular-session change" at

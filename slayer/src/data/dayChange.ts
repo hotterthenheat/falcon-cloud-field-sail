@@ -96,7 +96,19 @@ export function dayChangeOf(state: StateLike, closes: readonly { date: string; c
     }
   }
   if (phase === 'pre') {
-    return { dayPct: 0, extPct: prevClose > 0 && last > 0 ? ((last - prevClose) / prevClose) * 100 : null, phase, base: prevClose };
+    /* BEFORE THE OPEN THE DAY'S CHANGE IS THE LAST SESSION'S (the sixth audit, 2026-10-23: "SPY $763.96 0.00% · pre
+       764.40" beside the Oct 22 close, which closed −1.18%): the last regular close against the one before it; the
+       pre-market move is kept apart, against that close */
+    const today = nyIsoDate();
+    const sessions = (closes ?? []).filter(c => c.date < today);
+    const lastClose = sessions[0]?.close ?? prevClose;
+    const before = sessions[1];
+    return {
+      dayPct: before && before.close > 0 && lastClose > 0 ? ((lastClose - before.close) / before.close) * 100 : 0,
+      extPct: lastClose > 0 && last > 0 ? ((last - lastClose) / lastClose) * 100 : null,
+      phase,
+      base: before?.close ?? prevClose,
+    };
   }
   return { dayPct: prevClose > 0 && last > 0 ? ((last - prevClose) / prevClose) * 100 : 0, extPct: null, phase, base: prevClose };
 }

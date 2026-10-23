@@ -137,7 +137,7 @@ const NameCell = ({ data, context }: ICellRendererParams<BoardRow, unknown, Boar
 const DayChange = ({ data, compact = false }: { data: BoardRow; compact?: boolean }) => {
   const w = dayMoveWords(data.day);
   if (!w) return null;
-  const main = data.day?.phase === 'pre' ? data.day.extPct : data.day?.dayPct;
+  const main = data.day?.dayPct;
   return (
     <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-[11px]' : 'text-[10px]'} whitespace-nowrap`} title={w.title} data-day-change>
       <span style={{ color: changeInk(main) }}>{w.main}</span>
