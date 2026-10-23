@@ -217,7 +217,8 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             </span>
             {extendedLine(live) && (
               <span className="text-[10px] tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
-                · {pre ? extendedLine(live) : closeOutside && live?.extPrice != null ? `AH ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH')}
+                {/* the chip's room is a title row's: "pre" and "AH" stand for the words, which the hover spells out */}
+                · {pre ? extendedLine(live)!.replace('pre-market', 'pre') : closeOutside && live?.extPrice != null ? `AH ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH')}
               </span>
             )}
           </>

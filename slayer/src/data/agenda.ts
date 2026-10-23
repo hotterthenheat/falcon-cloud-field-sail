@@ -41,6 +41,7 @@
 ==================================================
 */
 
+import { aheadWord } from './bookWindow';
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
 import { buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
@@ -87,6 +88,8 @@ export interface Target {
   distanceSigma: number;
   /** Odds price touches it by the close (or by `horizon`), 0..1 */
   reach: number;
+  /** Within half a strike step of price — reached already: the rows say "at price", and "Most likely reached" skips it */
+  atPrice?: boolean;
   /** "by Nov 20" when the odds run to a later expiry than the coming session — null for the close */
   horizon: string | null;
   /** Odds it holds when reached, 0..1 — the floor for a trapdoor */
@@ -195,7 +198,7 @@ function whyOf(t: Target, order: AgendaOrder, marketPer1Pct: number): string {
     case 'reached':
       return `${pct(t.reach)} reached · ${t.distanceSigma.toFixed(1)}× the expected move away`;
     case 'weakest':
-      return t.isShelf ? `${holdLabel(t.hold)} · ${pct(t.reach)} reached` : t.isWall ? 'too thin to be a wall' : t.role === 'put wall' ? 'the put wall — short gamma, so a break can accelerate' : 'a trapdoor — pushes the move along';
+      return t.isShelf ? `${holdLabel(t.hold)} · ${pct(t.reach)} reached` : t.isWall ? 'too thin to be a wall' : t.flat && !t.role ? 'too thin to be a trapdoor' : t.role === 'put wall' ? 'the put wall — short gamma, so a break can accelerate' : 'a trapdoor — pushes the move along';
     case 'biggest':
       return `${fmtDollars(Math.abs(t.weight))} here + ${fmtDollars(Math.abs(t.breakFlow))} on the way through · ${ratio.toFixed(1)}× the market`;
   }
@@ -216,7 +219,7 @@ function besideOf(strikes: readonly { strike: number; gex: { net: number } }[], 
   return `part of a shelf with ${names}`;
 }
 
-function wordsOf(o: WallOdds, shelf: boolean): string {
+function wordsOf(o: WallOdds, shelf: boolean, flat = false): string {
   const dir = o.side === 'call' ? 'above' : 'below';
   const to = o.breakPath.to;
   const run = to == null ? `has no shelf behind it on the strikes shown` : `runs to ${fmtStrike(to)}${o.breakPath.pocket ? ' with almost nothing in between' : ''}${flowWords(o.breakPath.flow, o.side)}`;
@@ -224,7 +227,9 @@ function wordsOf(o: WallOdds, shelf: boolean): string {
     ? `${holdLabel(o.hold)}; a break ${dir} ${run}`
     : o.weight > 0
       ? `too thin to be a wall; a move ${dir} ${run}`
-      : o.role === 'put wall'
+      : flat && !o.role
+        ? `too thin to be a trapdoor; a move ${dir} ${run}`
+        : o.role === 'put wall'
         ? `put wall: ${putWallWordsAt(o.side === 'call' ? 'above' : 'below')}; a move ${dir} ${run}`
         : `a trapdoor (dealers short gamma) — a move ${dir} through it ${run}`;
 }
@@ -294,7 +299,7 @@ export function buildAgenda(
         stake,
         matters: (o.reach * stake) / Math.max(1, marketPer1Pct),
         why: '',
-        words: wordsOf(o, isShelf),
+        words: wordsOf(o, isShelf, Math.abs(s.gex.net) < FLAT_SHARE * heaviestNet),
         odds: o,
         oi: { calls: node?.callOI ?? 0, puts: node?.putOI ?? 0 },
         beside: besideOf(asc, i),
@@ -339,6 +344,9 @@ export function buildAgenda(
   const steps = asc.slice(1).map((x, i) => x.strike - asc[i].strike).filter(d => d > 0);
   const step = steps.length ? Math.min(...steps) : spot * 0.002;
   const onPrice = (t: Target) => Math.abs(t.strike - spot) < Math.max(step / 2, spot * 0.0005);
+  /* …and the rows say so, so the head's "most likely reached" and the table read off the same set (the sixth audit's
+     retail test: "Most likely reached 763 · 84%" over a row of 764 at 99%) */
+  for (const t of ordered) t.atPrice = onPrice(t);
   const reachable = ordered.filter(t => !onPrice(t));
   const mostReached = reachable.length ? reachable.reduce((a, b) => (b.reach > a.reach ? b : a)) : null;
   /* THE WALLS IN REACH ARE EVERY WALL THE TABLE NAMES (the retail test, 2026-10-23: "Only wall in reach 770 · the only
@@ -356,7 +364,7 @@ export function buildAgenda(
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.roles.length ? `, the ${lead.roles.join(' and the ')}` : lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time ${ctx.horizon ?? (clock.inSession ? 'by the close' : 'by the next close')}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall || lead.flat ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.roles.length ? `, the ${lead.roles.join(' and the ')}` : lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time ${ctx.horizon ?? (clock.inSession ? 'by the close' : aheadWord() === 'today' ? "by today's close" : 'by the next close')}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall ? 'too thin to be a wall' : lead.flat && !lead.role ? 'too thin to be a trapdoor' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';

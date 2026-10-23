@@ -30,10 +30,11 @@
 ==================================================
 */
 
+import { levelRoles, type LevelRole } from '../../core/walls';
 import { expirySpan, todayScopeLabel } from '../../data/bookWindow';
 import { useLevelsScope } from '../../data/levelsScope';
 import { useLevelsFor } from '../../data/levelsFor';
-import { peekDaySigma, peekScopeMove } from '../../data/uwBook';
+import { peekDaySigma, peekEntry, peekScopeMove } from '../../data/uwBook';
 import { shownGreek } from './retailSign';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -179,13 +180,14 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   const { levels } = surface;
   const verdict = readRegime(levels);
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
-  const roleOf = (strike: number): { word: string; ink: string } | null =>
-    strike === levels.supreme ? { word: 'supreme', ink: SUPREME }
-    : strike === levels.callWall ? { word: 'call wall', ink: CALL_WALL }
-    : strike === levels.putWall ? { word: 'put wall', ink: PUT_WALL }
-    : levels.flipFound !== false && strike === levels.flip ? { word: 'flip', ink: FLIP }
-    : strike === pinStrike ? { word: 'pin', ink: MUTED }
-    : null;
+  /* EVERY ROLE, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" dropped its put wall):
+     "supreme · put wall", in the first role's ink */
+  const roleOf = (strike: number): { word: string; ink: string } | null => {
+    const roles = levelRoles(strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? null : levels.flip });
+    if (roles.length) return { word: roles.join(' · '), ink: ROLE_INKS[roles[0]] };
+    return strike === pinStrike ? { word: 'pin', ink: MUTED } : null;
+  };
+  const ROLE_INKS: Record<LevelRole, string> = { supreme: SUPREME, 'call wall': CALL_WALL, 'put wall': PUT_WALL, flip: FLIP };
   /* the one order (core/walls.ts levelRoles): supreme · call wall · put wall, then the flip */
   const levelRows = [
     { word: 'supreme', strike: levels.supreme, ink: SUPREME },
@@ -366,13 +368,22 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
             {levelRows.map(l => {
               const i = idxOf(l.strike);
               /* GEX: the level's own figure on the Levels card's contracts (Compare's); another greek: the matrix rows' */
-              const scoped = greek === 'gex' ? (lvReady ? lv!.netAt(l.strike) : undefined) : undefined;
+              /* A WALL BY ITS OWN LEG, LABELLED (the sixth audit's m7: CALL WALL 770 "$32.7M" — the strike's net — here,
+                 "CALLS +$222.7M" on Compare): the call wall prints its calls, the put wall its puts, the supreme its net */
+              const leg: 'call' | 'put' | 'net' = l.word === 'call wall' ? 'call' : l.word === 'put wall' ? 'put' : 'net';
+              const legs = greek === 'gex' ? (lvReady ? lv!.legsAt(l.strike) : undefined) : undefined;
+              const scoped = legs === undefined ? undefined : legs == null ? null : legs[leg];
               if (greek === 'gex')
                 return (
-                  <button key={l.word} onClick={() => onKeep?.(l.strike)} className="flex items-baseline gap-1.5 text-left hover:opacity-80 transition-opacity" title={`Keep ${fmtStrike(l.strike)} — net GEX on ${lv?.scopeLabel ?? 'the Levels card'}`}>
+                  <button key={l.word} onClick={() => onKeep?.(l.strike)} className="flex items-baseline gap-1.5 text-left hover:opacity-80 transition-opacity" title={`Keep ${fmtStrike(l.strike)} — ${leg === 'net' ? 'net GEX' : `the ${leg} leg's GEX, the leg that makes it the ${l.word}`}${legs ? ` (net ${fmtUsd(legs.net)})` : ''} on ${lv?.scopeLabel ?? 'the Levels card'}`}>
                     <span className="text-[11px] uppercase tracking-wider" style={{ color: l.ink }}>{l.word}</span>
                     <span className="text-textPrimary font-semibold">{fmtStrike(l.strike)}</span>
-                    {l.word !== 'flip' && <span style={{ color: scoped != null ? rampInk(greek, -scoped) : MUTED }}>{scoped === undefined ? '…' : scoped == null ? '—' : fmtUsd(scoped)}</span>}
+                    {l.word !== 'flip' && (
+                      <span style={{ color: scoped != null ? rampInk(greek, -scoped) : MUTED }}>
+                        <span className="text-[9px] uppercase tracking-wider text-textMuted mr-1">{leg === 'call' ? 'calls' : leg === 'put' ? 'puts' : 'net'}</span>
+                        {scoped === undefined ? '…' : scoped == null ? '—' : `${scoped > 0 ? '+' : ''}${fmtUsd(scoped)}`}
+                      </span>
+                    )}
                   </button>
                 );
               return (
@@ -436,7 +447,17 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
               {GREEKS.map(g => (
                 <span key={g} className="flex flex-col">
                   <span className="text-[11px] uppercase tracking-wider text-textMuted cursor-help" title={GREEK_EXPLAIN[g]}>{GREEK_LABEL[g]}</span>
-                  <span className={g === greek ? 'font-semibold' : ''} style={{ color: rampInk(g, at(g, sIdx, 'net')) }}>{fmtUsd(shownGreek(g, at(g, sIdx, 'net')))}</span>
+                  {(() => {
+                    const v = at(g, sIdx, 'net');
+                    /* NEVER A FALSE $0 (the sixth audit's m9: "VEX $0" before vega lands): vega comes off the contract rows
+                       alone, so a zero while the drawn dates' rows are still out reads "…", and once they are in, "—" */
+                    if (g === 'vex' && v === 0) {
+                      const facts = peekEntry(snapshot.ticker)?.factsDates;
+                      const waiting = shownIdx.some(i => { const d = surface.expiries[i]?.date; return !!d && !facts?.has(d); });
+                      return <span style={{ color: MUTED }} title={waiting ? 'Vega is still loading — it is read off the contract rows' : 'No vega on these contracts at this strike'}>{waiting ? '…' : '—'}</span>;
+                    }
+                    return <span className={g === greek ? 'font-semibold' : ''} style={{ color: rampInk(g, v) }}>{fmtUsd(shownGreek(g, v))}</span>;
+                  })()}
                 </span>
               ))}
             </div>
@@ -456,11 +477,11 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
 
         {/* TO THE CLOSE */}
         <section data-read-section="close" className="flex flex-col gap-2">
-          <Head>{multi && moveDate ? `By ${expirySpan([moveDate])}` : shut ? 'The next session' : 'To the close'} · expected move</Head>
+          <Head>{multi && moveDate ? `By ${expirySpan([moveDate])}` : shut ? (todayScopeLabel() === 'Today' ? "Today's session" : 'Next session') : 'To the close'} · expected move</Head>
           <div className="flex items-baseline gap-2">
             <span className="text-[17px] font-semibold text-textPrimary" data-read-move={w1 != null ? w1.toFixed(2) : undefined}>{w1 != null ? `±${w1.toFixed(2)}` : '…'}</span>
             <span className="text-[11px] text-textMuted" data-read-move-source={scopeMove?.source}>
-              one expected move · {multi && moveDate ? `by ${expirySpan([moveDate])}, the expiry the levels read` : shut ? 'the next session' : `${Math.round(minLeft)} min left`} · {multi ? moveWords : scopeMove?.source === 'vendor' || !scopeMove ? moveWords : `one session of ${moveWords}`}
+              one expected move · {multi && moveDate ? `by ${expirySpan([moveDate])}, the expiry the levels read` : shut ? (todayScopeLabel() === 'Today' ? "today's session" : 'the next session') : `${Math.round(minLeft)} min left`} · {multi ? moveWords : scopeMove?.source === 'vendor' || !scopeMove ? moveWords : `one session of ${moveWords}`}
             </span>
           </div>
           {/* one column: "one move down · 512.34 · 512 put wall" wrapped to two lines in half the card (the audit's H6) */}

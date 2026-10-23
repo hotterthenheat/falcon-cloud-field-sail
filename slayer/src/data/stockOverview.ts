@@ -69,7 +69,7 @@ import { peekQuote, extendedLine, priceWords, screenerRead } from './liveQuote';
 import { peekLive } from './liveRecord';
 import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
 import { nyTodayIso } from './nyDate';
-import { nyClock, nyIsoDate } from '../core/nyTime';
+import { nyClock, nyIsoDate, nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { peekRegularCloses, phaseOf } from './dayChange';
 import { epsResultOf, nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
@@ -175,6 +175,8 @@ export interface MoneyRead {
   rvol: number | null;
   volumeToday: number | null;
   volumeAvg: number | null;
+  /** True when volumeAvg is the screener's 30-session average (avg30_volume), else the sessions in hand */
+  volumeAvgIs30: boolean;
   /** Where today's close sits in its own range, 0 (the low) to 1 (the high) */
   closeInRange: number | null;
   callOI: number;
@@ -763,7 +765,15 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     largest,
   };
   const darkBlocks = ownTermsOut.filter(p => p.size >= 50_000).length;
-  const today = (lastBlock ?? []).map(c => ({ time: c.time, close: c.close }));
+  /* THE SESSION'S OWN MINUTES (the retail test, round 6: NVDA's "Oct 22 tape" drew the one daily bar — a 212.10–212.25
+     axis on a 7.62 range, no line — because the blocks are daily bars once five sessions are in). The line is the book's
+     one-minute cash bars of the dark tape's session; the blocks only when they are minutes themselves. */
+  const sessionMinutes = (bookCandles(ticker) ?? []).filter(c => {
+    const at = c.time * 1000;
+    const m = nyMinutes(at);
+    return (!file.session || nyIsoDate(at) === file.session) && m >= SESSION_OPEN_MIN && m <= SESSION_CLOSE_MIN;
+  });
+  const today = (sessionMinutes.length > 1 ? sessionMinutes : lastBlock && lastBlock.length > 1 ? lastBlock : []).map(c => ({ time: c.time, close: c.close }));
   const read: MoneyRead = {
     netGex: houseNet,
     netDex: profile.netDex,
@@ -787,6 +797,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     rvol,
     volumeToday: todayVol > 0 ? todayVol : null,
     volumeAvg: avgVol > 0 ? avgVol : null,
+    volumeAvgIs30: avg30 != null,
     closeInRange,
     callOI,
     putOI,
@@ -1328,9 +1339,11 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const sources: Source[] = [
     { key: 'price', label: 'Price', status: quote ? 'live' : 'thin', stamp: quote ? `last print ${nyClock(quote.tapeAt, { zone: true })}` : 'reading the quote' },
     { key: 'book', label: 'The options book', status: 'live', stamp: `read ${stamp}` },
-    { key: 'flow', label: 'The flow book', status: file.status === 'live' ? 'live' : 'thin', stamp: file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'alert' : 'alerts'}` : file.status === 'live' ? 'no alerts on this name' : 'reading' },
-    { key: 'tape', label: 'The tape', status: file.status === 'live' ? 'live' : 'thin', stamp: file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'print' : 'prints'}` : file.status === 'live' ? 'no prints in the recent alerts' : 'reading' },
-    { key: 'dark', label: 'Dark pool', status: file.status === 'live' ? 'live' : 'thin', stamp: file.dark.length ? `${file.dark.length} ${file.dark.length === 1 ? 'print' : 'prints'}` : file.status === 'live' ? 'nothing recent' : 'reading' },
+    /* the tapes' own read, not the file's head (the retail test, round 6: "The flow book LIVE · no alerts on this name"
+       beside "READING THE FLOW ALERTS…") — nothing is "none" until the tapes are in */
+    { key: 'flow', label: 'The flow book', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'alert' : 'alerts'}` : file.tapes === 'live' ? 'no alerts on this name' : 'the read did not land' },
+    { key: 'tape', label: 'The tape', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'print' : 'prints'}` : file.tapes === 'live' ? 'no prints in the recent alerts' : 'the read did not land' },
+    { key: 'dark', label: 'Dark pool', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.dark.length ? `${file.dark.length} ${file.dark.length === 1 ? 'print' : 'prints'}` : file.tapes === 'live' ? 'nothing recent' : 'the read did not land' },
     { key: 'news', label: 'The wire', status: wireLive(ticker) ? 'live' : 'thin', stamp: news.read.stories.length ? `the newest story ${news.read.stories[0].item.time}` : 'nothing on this name yet' },
     { key: 'sessions', label: 'Sessions', status: sessions >= 20 ? 'live' : 'thin', stamp: `${sessions} on hand` },
     { key: 'fundamentals', label: 'Fundamentals', status: numbers.read.sample ? 'thin' : 'live', stamp: numbers.read.sample ? 'the feed has no print for this name yet' : 'the last print and earnings growth' },

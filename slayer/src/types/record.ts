@@ -106,7 +106,7 @@ export type InsiderKind = 'BUY' | 'SELL';
 export type TxCode = 'P' | 'S' | 'A' | 'M' | 'F' | 'G' | 'D';
 /** Under a 10b5-1 plan, chosen, or from a filing that never carried the box */
 export type PlanState = 'plan' | 'discretionary' | 'unknown';
-export type InsiderSignal = 'accumulating' | 'distributing' | 'scheduled selling' | 'quiet';
+export type InsiderSignal = 'accumulating' | 'distributing' | 'flat' | 'scheduled selling' | 'quiet';
 
 export interface TxCodeMeta {
   code: TxCode;
@@ -171,6 +171,8 @@ export interface InsiderTrade {
 export interface InsiderFlow {
   ticker: string;
   trades: InsiderTrade[];
+  /** The name's read: 'loading' until it lands — nothing is said to be "none" before then */
+  status?: 'loading' | 'live' | 'sim';
   /** Dollars bought and sold on the market in the window */
   bought: number;
   sold: number;

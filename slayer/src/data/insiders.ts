@@ -143,7 +143,11 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
      unstated sales while chosen buying leaves unstated buys out; both sides now count only what the filing marks chosen */
   const discretionarySold = chosenSold;
   let signal: InsiderSignal = 'quiet';
+  /* FLAT READS FLAT (the retail test, round 6: FOX "ACCUMULATING · against $10.3M sold by choice" on $10.3M bought and
+     $10.3M sold): chosen buying and chosen selling within a tenth of each other is neither side */
+  const evenly = openMarketBuys > 0 && discretionarySold > 0 && Math.abs(openMarketBuys - discretionarySold) <= 0.1 * Math.max(openMarketBuys, discretionarySold);
   if (trades.length === 0) signal = 'quiet';
+  else if (evenly) signal = 'flat';
   else if (openMarketBuys > 0 && openMarketBuys >= discretionarySold) signal = 'accumulating';
   else if (discretionarySold > 0 && discretionarySold >= sold * 0.4) signal = 'distributing';
   else if (sold > 0) signal = 'scheduled selling';
@@ -210,7 +214,11 @@ export function insiderFlow(ticker: string, windowDays = 90, day = dayKey()): In
   /* The verdict, in the order that is the argument: a chosen buy first and against the smallest bar */
   const discretionarySold = chosenSold;
   let signal: InsiderSignal = 'quiet';
+  /* FLAT READS FLAT (the retail test, round 6: FOX "ACCUMULATING · against $10.3M sold by choice" on $10.3M bought and
+     $10.3M sold): chosen buying and chosen selling within a tenth of each other is neither side */
+  const evenly = openMarketBuys > 0 && discretionarySold > 0 && Math.abs(openMarketBuys - discretionarySold) <= 0.1 * Math.max(openMarketBuys, discretionarySold);
   if (trades.length === 0) signal = 'quiet';
+  else if (evenly) signal = 'flat';
   else if (openMarketBuys > 0 && openMarketBuys >= discretionarySold) signal = 'accumulating';
   else if (discretionarySold > 0 && discretionarySold >= sold * 0.4) signal = 'distributing';
   else if (sold > 0) signal = 'scheduled selling';

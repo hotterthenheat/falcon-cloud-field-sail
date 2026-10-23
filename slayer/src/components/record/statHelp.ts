@@ -38,6 +38,8 @@ const HELP: Record<string, string> = {
   'Shares out': 'Shares the company has issued and outstanding',
   Beta: 'How much the stock tends to move with the market: 1 moves with it, above 1 swings more',
   'Average volume': 'Shares traded on a typical day, averaged over recent sessions',
+  'Average volume · company file': "The vendor's company file's own average daily volume (/stock/{t}/info) — its window is the vendor's, not the 30 sessions the volume card uses",
+  'Volume · 30-day avg': "The session's shares traded · the screener's 30-session average (avg30_volume) · the ratio of the two",
   'Volume · usual': 'Shares traded today · on a normal day · today as a multiple of normal',
   Unusual: 'Option contracts trading at least twice their open interest today — fresh positioning, not old bets',
   Dividend: 'Whether the company pays a dividend',

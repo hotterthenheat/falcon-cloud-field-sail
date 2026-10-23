@@ -1272,7 +1272,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
       {/* the window it is crowned over, said on the door — the Agenda and the Board crown the Levels card's (today's), so
           a wider window here can name another strike (the UI sweep, 2026-10-22) */}
-      <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && supremeGreek === 'gex' && <span className="text-textMuted/70"> · {levelsLabel}</span>}</span>
+      {/* THE SCOPE NEVER FOLDS AWAY (the sixth audit's retail test: NVDA's Map "SUPREME 210" beside the Dossier's All
+          expiries "230 SUPREME" read as a contradiction) — the compact door keeps a short scope word */}
+      <span className="text-[11px] text-textMuted">Supreme{supremeGreek === 'gex' && <span className="text-warn/90" data-supreme-scope> · {doorCompact('supreme') ? (levelsScope === 'ALL' ? 'All exp.' : todayScopeLabel()) : levelsLabel}</span>}</span>
       <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
         {supremePending ? '…' : fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}
@@ -1794,7 +1796,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     data-column-supreme={sup.strike}
                   >
                     <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
-                    <span className="text-[11px] text-textMuted">Supreme</span>
+                    <span className="text-[11px] text-textMuted">Supreme <span className="text-warn/90">· {levelsScope === 'ALL' ? 'All exp.' : todayScopeLabel()}</span></span>
                     <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
                       {fmtStrike(sup.strike)}
                       {!tight && (

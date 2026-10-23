@@ -93,6 +93,7 @@ const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
 const SIGNAL_WORD: Record<InsiderFlow['signal'], { word: string; ink: string }> = {
   accumulating: { word: 'accumulating', ink: 'text-bull' },
   distributing: { word: 'distributing', ink: 'text-bear' },
+  flat: { word: 'flat', ink: 'text-textSecondary' },
   'scheduled selling': { word: 'scheduled selling', ink: 'text-textMuted' },
   quiet: { word: 'quiet', ink: 'text-textMuted' },
 };
@@ -266,7 +267,7 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
      contradiction): the word weighs chosen buying against chosen selling in the same window, so the selling is shown */
   /* chosen selling on the rule chosen buying uses: what the filing marks chosen — unstated sales are neither */
   const chosenSold = f.chosenSold;
-  const why = f.signal === 'distributing' ? ` · ${fmtDollars(chosenSold)} sold by choice outweighs it` : f.signal === 'accumulating' && chosenSold > 0 ? ` · against ${fmtDollars(chosenSold)} sold by choice` : '';
+  const why = f.signal === 'distributing' ? ` · ${fmtDollars(chosenSold)} sold by choice outweighs it` : f.signal === 'accumulating' && chosenSold > 0 ? ` · against ${fmtDollars(chosenSold)} sold by choice` : f.signal === 'flat' ? ` · as much sold by choice (${fmtDollars(chosenSold)})` : '';
   return (
     <button
       type="button"

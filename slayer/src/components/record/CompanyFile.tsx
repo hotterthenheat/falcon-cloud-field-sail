@@ -80,7 +80,7 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="Market cap"><TickFigure value={card.marketCap}>{money(card.marketCap)}</TickFigure></Fact>
             <Fact label="Shares out"><TickFigure value={card.outstanding}>{count(card.outstanding)}</TickFigure></Fact>
             <Fact label="Beta">{card.beta != null ? <TickFigure value={card.beta}>{card.beta.toFixed(2)}</TickFigure> : '—'}</Fact>
-            <Fact label="Average volume"><TickFigure value={card.avgVolume}>{count(card.avgVolume)}</TickFigure></Fact>
+            <Fact label="Average volume · company file"><TickFigure value={card.avgVolume}>{count(card.avgVolume)}</TickFigure></Fact>
             <Fact label="Next earnings">{next && next.daysOut >= 0 ? <span title={next.confirmed ? 'Date set by the company' : 'Not announced yet — Unusual Whales’ estimate'}>{next.dateLabel} · {untilWords(next.daysOut)}{next.confirmed ? '' : ' · est.'}</span> : '—'}</Fact>
             <Fact label="Dividend">{card.hasDividend == null ? '—' : card.hasDividend ? 'Pays one' : 'None'}</Fact>
             <Fact label="Dividend yield">{yieldPct != null ? <TickFigure value={yieldPct}>{`${yieldPct.toFixed(2)}%`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>

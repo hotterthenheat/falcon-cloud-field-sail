@@ -85,7 +85,7 @@ import { untilWords } from '../../data/earningsFeed';
 import NameBooks from '../../components/record/NameBooks';
 import { StockFacts } from '../../components/vendor/LiveDesk';
 import { stockBookKey, useVendorRow } from '../../data/vendorFeed';
-import { nyIsoDate } from '../../core/nyTime';
+import { nyIsoDate, nyWallTime } from '../../core/nyTime';
 import { statHelp } from '../../components/record/statHelp';
 import { useLiveQuote } from '../../data/liveQuote';
 
@@ -535,8 +535,8 @@ const StockName = () => {
   /* the levels named INSIDE the plot at their left end — the axis keeps the figures alone (four named tags collided there) */
   const sessionLines = [
     ...(trend.ema20 != null ? [{ price: trend.ema20, color: SILVER, title: '20-day EMA', style: 'dashed' as const, name: 'plot' as const }] : []),
-    ...(money.levelsAll?.putWall != null ? [{ price: money.levelsAll.putWall, color: 'rgb(var(--bear))', title: 'support', style: 'dashed' as const, name: 'plot' as const }] : []),
-    ...(money.levelsAll?.callWall != null ? [{ price: money.levelsAll.callWall, color: 'rgb(var(--bull))', title: 'resistance', style: 'dashed' as const, name: 'plot' as const }] : []),
+    ...(money.levelsAll?.complete && money.levelsAll.putWall != null ? [{ price: money.levelsAll.putWall, color: 'rgb(var(--bear))', title: 'support', style: 'dashed' as const, name: 'plot' as const }] : []),
+    ...(money.levelsAll?.complete && money.levelsAll.callWall != null ? [{ price: money.levelsAll.callWall, color: 'rgb(var(--bull))', title: 'resistance', style: 'dashed' as const, name: 'plot' as const }] : []),
   ];
   /* the scale holds the line and any level near it (within a quarter of the line's own span past either end), with a
      little air — a wall far from the line is left off the scale rather than flattening thirty sessions into a thread */
@@ -552,7 +552,7 @@ const StockName = () => {
   })();
   /* THE DARK PRINTS ON TODAY'S TAPE: the session minute by minute as the line, the off-exchange prints summed per minute as bars under
      it at their true minute (a print's clock matched to the bar of that minute), the biggest of each minute kept for the card */
-  const todayPoints: ChartPoint[] = money.today.map(c => ({ time: c.time, value: c.close }));
+  const todayPoints: ChartPoint[] = [...new Map(money.today.map(c => [c.time, { time: c.time, value: c.close }])).values()].sort((a, b) => a.time - b.time);
   const minuteOf = new Map(money.today.map(c => [clockOf(c.time), c.time]));
   const darkMinutes = (() => {
     const byMin = new Map<string, { time: number; value: number; n: number; biggest: (typeof money.dark.prints)[number] }>();
@@ -561,16 +561,19 @@ const StockName = () => {
       if (time == null) {
         const [h, m] = p.time.split(':').map(Number);
         if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
-        const d = new Date();
-        d.setHours(h, m, 0, 0);
-        time = Math.floor(d.getTime() / 1000);
+        /* the print's minute on ITS session's New York clock — the browser's today stamped them a day on (the stray "23") */
+        const [y, mo, dd] = (file.session || nyIsoDate()).split('-').map(Number);
+        time = Math.floor(nyWallTime(y, mo, dd, h, m) / 1000);
       }
-      const had = byMin.get(p.time);
+      /* one bar per minute, keyed by the minute itself (two clocks in one minute drew two bars at one time — the chart
+         refuses an unordered series) */
+      const key = String(time);
+      const had = byMin.get(key);
       if (had) {
         had.value += p.size;
         had.n += 1;
         if (p.size > had.biggest.size) had.biggest = p;
-      } else byMin.set(p.time, { time, value: p.size, n: 1, biggest: p });
+      } else byMin.set(key, { time, value: p.size, n: 1, biggest: p });
     }
     return [...byMin.values()].sort((a, b) => a.time - b.time);
   })();
@@ -832,7 +835,7 @@ const StockName = () => {
             <Fact label="Open interest" testId="oi">
               <OpenInterest ticker={view.ticker} fallbackCall={money.callOI} fallbackPut={money.putOI} />
             </Fact>
-            <Fact label="Volume · usual" testId="volume">
+            <Fact label={money.volumeAvgIs30 ? "Volume · 30-day avg" : "Volume · usual"} testId="volume">
               {money.volumeToday != null ? count(money.volumeToday) : '—'} <span className="text-textMuted">· {money.volumeAvg != null ? count(money.volumeAvg) : '—'}</span>
               {money.rvol != null && <span className={money.rvol >= 1.3 ? 'text-silver' : 'text-textMuted'}> · {money.rvol.toFixed(2)}×</span>}
             </Fact>
@@ -874,40 +877,57 @@ const StockName = () => {
               −$73.9M · amplifying" and read as a contradiction). Both are Pinpoint's levelsFor, each under its own header —
               the nearest expiry first, then the whole book — and the one line under them says why their signs can differ. */}
           <div className="px-5 pb-2 flex flex-col gap-2" data-stock-gex-scopes>
-            <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope={money.levelsToday ? (money.levelsToday.date == null ? 'today-pending' : 'today') : 'today-none'} title="Pinpoint's nearest-expiry scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
+            {/* NO PROVISIONAL FIGURE, PINPOINT'S RULE (the Pinpoint audit, round 6): the nearest expiry printed the ATM-vol
+                flip and then another (SPY 771.26 → 772.17), the whole book printed before the expired contracts came off
+                (SPY −$17.7B and "no flip", true −$14.7B and 776.60). Every level reads "…" until levelsFor says the scope is
+                complete, and the scope's own label (levelsFor.scopeLabel) heads it, verbatim. */}
+            <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope={money.levelsToday ? (money.levelsToday.complete ? 'today' : 'today-pending') : 'today-none'} data-complete={money.levelsToday?.complete ? 'yes' : 'no'} title="Pinpoint's nearest-expiry scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">{money.levelsToday?.date ? `${view.marketWord === 'market open' || view.marketWord === 'the closing auction' ? 'Today' : 'Next session'} (${shortDay(money.levelsToday.date)}) · nearest expiry` : 'Nearest expiry'}</span>
-                {money.levelsToday?.date ? (
+                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold" data-stock-scope-label>{money.levelsToday ? `${money.levelsToday.scopeLabel} · nearest expiry` : 'Nearest expiry'}</span>
+                {money.levelsToday ? (
                   <span className="font-mono text-[11px] tnum" data-stock-gex-next>
-                    net GEX <Money v={money.levelsToday.netGex} /> {money.levelsToday.regime ? <span className="text-textMuted">· {money.levelsToday.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span> : null}
+                    net GEX{' '}
+                    {money.levelsToday.complete ? (
+                      <>
+                        <Money v={money.levelsToday.netGex} /> {money.levelsToday.regime ? <span className="text-textMuted">· {money.levelsToday.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span> : null}
+                      </>
+                    ) : (
+                      <span className="text-textMuted">…</span>
+                    )}
                   </span>
                 ) : null}
               </div>
-              {money.levelsToday && money.levelsToday.date == null ? (
-                <p className="mt-1 font-mono text-[10px] text-textMuted">Still reading this name's front expiry.</p>
+              {money.levelsToday && !money.levelsToday.complete ? (
+                <p className="mt-1 font-mono text-[10px] tnum text-textMuted" data-stock-levels-provisional>put wall … · flip … · call wall … · supreme … <span className="normal-case">— reading this name's front expiry</span></p>
               ) : money.levelsToday ? (
                 <p className="mt-1 font-mono text-[10px] tnum text-textSecondary">
                   put wall <span className="text-bear">{money.levelsToday.putWall ?? '—'}</span> · flip {money.levelsToday.flip != null ? money.levelsToday.flip.toFixed(2) : 'none within ±10%'} · call wall <span className="text-bull">{money.levelsToday.callWall ?? '—'}</span> · supreme {money.levelsToday.supreme}
                 </p>
               ) : (
-                <p className="mt-1 font-mono text-[10px] text-textMuted">No book on this name's nearest expiry yet.</p>
+                <p className="mt-1 font-mono text-[10px] text-textMuted">Reading the options book…</p>
               )}
             </div>
             <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope="all" data-complete={money.levelsAll?.complete ? 'yes' : 'no'}>
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">All expiries · every listed date</span>
+                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">{money.levelsAll ? money.levelsAll.scopeLabel : 'All expiries'} · every listed date</span>
                 <span className="font-mono text-[11px] tnum" data-stock-gex-all title="Net gamma exposure over every strike of every listed expiry — the figure Pinpoint shows on All expiries. Positive: dealers are long gamma and their hedging absorbs moves; negative: it amplifies them">
-                  net GEX <Money v={money.levelsAll ? money.levelsAll.netGex : shownGamma(money.netGex)} /> <span className="text-textMuted">· {money.regime}</span>
+                  net GEX{' '}
+                  {money.levelsAll?.complete ? (
+                    <>
+                      <Money v={money.levelsAll.netGex} /> <span className="text-textMuted">· {money.levelsAll.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span>
+                    </>
+                  ) : (
+                    <span className="text-textMuted">…</span>
+                  )}
                 </span>
               </div>
-              {money.levelsAll ? (
+              {money.levelsAll?.complete ? (
                 <>
                   <LevelsScale spot={view.price} putWall={money.levelsAll.putWall} flip={money.levelsAll.flip} callWall={money.levelsAll.callWall} supreme={money.levelsAll.supreme} />
                   {money.levelsAll.flip == null && <p className="font-mono text-[10px] text-textMuted" data-stock-flip="none">No flip within ±10% — net gamma stays {money.levelsAll.regime === 'SHORT' ? 'short' : 'long'} across the range.</p>}
-                  {!money.levelsAll.complete && <p className="font-mono text-[10px] text-textMuted" data-stock-levels-provisional>Provisional — the later expiries are still landing; the figures settle when they are in.</p>}
                 </>
               ) : (
-                <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>The levels land with the options book.</p>
+                <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>put wall … · flip … · call wall … · supreme … — the levels are given once every listed expiry is in.</p>
               )}
             </div>
             <p className="text-[10.5px] leading-relaxed text-textMuted" data-stock-gex-note>
@@ -971,7 +991,8 @@ const StockName = () => {
           </div>
           )}
           {/* Today's session, from the live book. Off-exchange prints only when the feed has them. */}
-          {(todayPoints.length > 1 || darkPoints.length > 1) && (
+          {/* the line is the chart: without the session's minutes there is no price to set the prints under */}
+          {todayPoints.length > 1 && (
             <div className="px-5 pb-3" data-stock-dark-prints={darkPoints.length}>
               <div className="mb-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-widest text-textMuted">
                 <span>{darkPoints.length > 1 ? `${sessionWord} tape · the off-exchange prints of 10K shares or $500K+ under it, shares by minute` : `${sessionWord} tape`}</span>
@@ -1428,7 +1449,7 @@ const StockName = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Busiest calls" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="calls">
           <div className="pb-2 mt-auto">
-            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No call volume on the book on {sessionWord}</div>}
+            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{money.levelsAll ? <>No call volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
             {money.busiest.calls.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onWarm={warm} onOpen={() => weigh(c)} />
             ))}
@@ -1436,7 +1457,7 @@ const StockName = () => {
         </Box>
         <Box title="Busiest puts" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="puts">
           <div className="pb-2 mt-auto">
-            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No put volume on the book on {sessionWord}</div>}
+            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{money.levelsAll ? <>No put volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
             {money.busiest.puts.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onWarm={warm} onOpen={() => weigh(c)} />
             ))}
@@ -1446,9 +1467,11 @@ const StockName = () => {
 
       {/* ON THE RECORD */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch" data-name-record>
-        <Box title="What its insiders did" sub={`Open-market trades in the last 90 days · ${insiders.trades.length ? insiders.signal : 'nothing filed'}`} testId="insiders">
+        {/* NOTHING IS "NOTHING" UNTIL THE READ IS IN (the retail test, round 6: NVDA "nothing on the record · bought nothing ·
+            sold nothing" at 25s, "sold $968M" at 45s) */}
+        <Box title="What its insiders did" sub={`Open-market trades in the last 90 days · ${insiders.status === 'loading' ? 'reading…' : insiders.status === 'sim' ? 'the read did not land' : insiders.trades.length ? insiders.signal : 'nothing filed'}`} testId="insiders">
           {marketInsiders.length === 0 ? (
-            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the record in 90 days</div>
+            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-name-insiders-empty={insiders.status ?? 'live'}>{insiders.status === 'loading' ? 'Reading the filings…' : insiders.status === 'sim' ? 'This read did not land' : 'Nothing on the record in 90 days'}</div>
           ) : (
             <>
               {/* On a phone: when, who, the trade and its value — the shares and the plan go (the phone pass, 2026-09-13) */}

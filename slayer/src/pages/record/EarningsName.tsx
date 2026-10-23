@@ -635,9 +635,9 @@ const EarningsName = () => {
           think thats a design flaw to push publicly?" — it was). The rows sit at
           the top, the door at the foot, the room between reads as room. */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch" data-name-record>
-        <Box title="What its insiders did" sub={`Open-market trades in the last 90 days · ${insiders.trades.length ? insiders.signal : 'nothing filed'}`} testId="insiders">
+        <Box title="What its insiders did" sub={`Open-market trades in the last 90 days · ${insiders.status === 'loading' ? 'reading…' : insiders.status === 'sim' ? 'the read did not land' : insiders.trades.length ? insiders.signal : 'nothing filed'}`} testId="insiders">
           {marketInsiders.length === 0 ? (
-            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the record in 90 days</div>
+            <div className="px-5 pb-5 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{insiders.status === 'loading' ? 'Reading the filings…' : insiders.status === 'sim' ? 'This read did not land' : 'Nothing on the record in 90 days'}</div>
           ) : (
             <>
               {/* Below lg: when, who, the trade and its value — the shares and the plan go (the phone pass, 2026-09-13) */}

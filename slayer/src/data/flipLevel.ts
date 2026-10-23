@@ -18,15 +18,20 @@
   contract's OI × Γ × 100 × S² × 1%, data/uwBook.ts), so
   re-pricing a leg is pricing those contracts outright:
   G(S) = G₀ · Γ(S)S² / Γ(S₀)S₀², exact at spot, with no
-  constant carried. The vol a leg is re-priced with: its
-  own contract's implied vol (option-contracts) on the
-  front date and on every date holding 0.5% or more of
-  the dates' gross gamma (uwBook ownIvDates — the Map and
-  a Board-only name both read those dates' contracts);
-  a leg with no printed vol takes its expiry's smile at
-  that strike (smileOf), and the smallest dates their
-  at-the-money vol off the term structure — never a far
-  wing at the ATM vol (the fifth audit). The
+  constant carried. THE VOL RULE, AS THE CODE RUNS IT
+  (FLIP_RULE below is the same rule in a reader's words,
+  printed on the Map's data card — the sixth audit's m4):
+  · the front date and every date holding 0.5% or more of
+    the dates' gross gamma (uwBook ownIvDates): each leg at
+    its own contract's implied vol (option-contracts);
+  · on those dates a leg whose contract prints no vol: the
+    same expiry's smile at that strike (smileOf — the
+    out-of-the-money side's vols, linear between strikes,
+    flat past the last), and such a stand-in leg is capped
+    at what its open interest can hold (core/gammaFlip.ts);
+  · every other date (under 0.5%): its at-the-money vol off
+    the term structure — never a far wing at the ATM vol on
+    a date that matters (the fifth audit). The
   same ticker and scope must give the
   same flip whichever page loaded it first (the second
   re-audit, 2026-10-22: NVDA All expiries read 205.38 on
@@ -54,6 +59,10 @@ import { ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
 import { registeredDates } from './chainDates';
 import { callWallWords, putWallWords, wallPlace } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
+
+/** The flip's rule in a reader's words — the one statement of it on the pages (keep it the code's: see the head) */
+export const FLIP_RULE =
+  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero (the nearest crossing within ±10%). Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold; the smaller expiries take their at-the-money vol off the term structure.";
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
 

@@ -70,7 +70,7 @@ import { chanceLabel, holdLabel, holdShort, pathFlowWords, pathLean } from '../.
 import { GLOSSARY, kindTip } from './glossary';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useDistanceUnit } from '../../data/distanceUnits';
-import { longDay, recordDay } from '../../data/bookWindow';
+import { longDay, recordDay, aheadWord } from '../../data/bookWindow';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
 import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
 
@@ -218,7 +218,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
       </div>
       <dl className="mt-1.5 grid gap-x-3" style={{ gridTemplateColumns: '84px minmax(0, 1fr)' }}>
         <CardLine label={t.horizon ? 'Reached' : inSession ? 'Reached' : 'Reached next'}>
-          {pct(t.reach)}
+          {t.atPrice ? 'at price' : pct(t.reach)}
           {t.horizon && <span className="text-textMuted"> {t.horizon}</span>}
           {t.closes > 0 && (
             <span className="text-textMuted">
@@ -228,7 +228,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
           )}
         </CardLine>
         <CardLine label="Wall size">
-          {kind === 'trapdoor' ? <span style={{ color: WARM }}>{notWallWords(t)}</span> : kind === 'thin' ? <span className="text-textMuted">too thin to be a wall</span> : <span style={{ color: SILVER }}>{holdLabel(t.hold)}</span>}
+          {kind === 'trapdoor' ? <span style={{ color: WARM }}>{notWallWords(t)}</span> : kind === 'thin' ? <span className="text-textMuted">{t.isWall ? 'too thin to be a wall' : 'too thin to be a trapdoor'}</span> : <span style={{ color: SILVER }}>{holdLabel(t.hold)}</span>}
         </CardLine>
         <CardLine label="If it breaks">
           {t.breakTo == null ? (
@@ -356,7 +356,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
       </div>
       <div className="mt-2 flex items-center justify-between h-[14px] font-mono text-[9px] uppercase tracking-widest text-textMuted">
         <span>
-          Reached <span className="normal-case tracking-normal text-[11px] text-textPrimary tnum">{pct(t.reach)}</span>
+          Reached <span className="normal-case tracking-normal text-[11px] text-textPrimary tnum">{t.atPrice ? 'at price' : pct(t.reach)}</span>
         </span>
         <span>
           {kindOf(t) === 'named' || kindOf(t) === 'shelf' ? (
@@ -366,7 +366,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
           ) : kindOf(t) === 'trapdoor' ? (
             <span style={{ color: WARM }}>{notWallWords(t)}</span>
           ) : (
-            <span>too thin to be a wall</span>
+            <span>{t.isWall ? 'too thin to be a wall' : 'too thin to be a trapdoor'}</span>
           )}
         </span>
       </div>
@@ -515,7 +515,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
     return (t: Target) => fmtDistance(t.strike - agenda.spot, agenda.spot, unit, scales);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, agenda.spot, unit, rev]);
-  const reachedWord = agenda.horizon ? `reached ${agenda.horizon}` : clock.inSession ? 'reached by the close' : 'reached next session';
+  const reachedWord = agenda.horizon ? `reached ${agenda.horizon}` : clock.inSession ? 'reached by the close' : `reached ${aheadWord()}`;
   const cols = COLS[density];
   const full = density === 'full';
   const wide = density !== 'tight';
@@ -547,7 +547,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : 'next session')}, and the chance — strikes price is already on are left out`}>Most likely reached</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : aheadWord())}, and the chance — strikes price is already on are left out`}>Most likely reached <span className="text-textMuted/70">· not at price</span></dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
           {/* THE NEAREST WALL ON EACH SIDE (the fifth audit, 2026-10-23: "Nearest wall in reach 769 · supreme · put wall"
@@ -574,7 +574,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike the close is most likely to land on, and the chance — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>The close leans to</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike the close is most likely to land on, and the chance — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* "the close leans to no clear lean" read as broken grammar (the retail test) — the label says what the figure is */}Likeliest close</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${agenda.closesNear ? 'text-textPrimary' : 'text-textMuted'}`} data-close-lean>{closeLeanWords(agenda)}</dd>
           </div>
         </dl>
@@ -618,7 +618,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
           {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
-          {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the vendor's implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : 'The chance price touches this strike next session')}
+          {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the vendor's implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
           {full && headCell(agenda.targets[0]?.buildOvernight ? `Built ${agenda.targets[0].buildWhen.replace(/^in /, '').replace(/'s trading$/, '')}` : clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
@@ -650,7 +650,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
 {fromSpot(t)}
                   </div>
                 )}
-                <div className="text-right font-mono text-[11px] tnum text-textPrimary">{pct(t.reach)}</div>
+                <div className="text-right font-mono text-[11px] tnum text-textPrimary" title={t.atPrice ? `Price is on ${fmtStrike(t.strike)} already — ${pct(t.reach)} by the odds, left out of "Most likely reached"` : undefined}>{t.atPrice ? 'at price' : pct(t.reach)}</div>
                 {/* THE COLUMN SAYS SOMETHING ON EVERY ROW (the retail test, 2026-10-23: "—" on every row but 770): the strike's
                     own net gamma, signed and in the one gamma ink, the wall's share of the top wall as its bar */}
                 <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-[11px] tnum font-semibold" style={{ color: kindOf(t) === 'thin' ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `${holdShort(t.hold)} of the top wall` : undefined} data-target-net={Math.round(t.net)}>

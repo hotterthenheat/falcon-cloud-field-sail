@@ -9,6 +9,7 @@
 ==================================================
 */
 
+import { aheadWord } from '../../data/bookWindow';
 import { holdLabel } from '../../data/wall';
 import type { ReactNode } from 'react';
 import { LONG_GAMMA, PUT_WALL, SHORT_GAMMA, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
@@ -193,13 +194,13 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
     <div data-targets-guide>
       <Section title="The order">
         <p>
-          Two questions, multiplied: how likely price gets there {clock.inSession ? 'by the close' : 'next session'}, and how much happens if it does — the hedging at the strike plus the stock a move through it forces dealers to trade. A far wall ranks low however big; a thin strike near price ranks low however close.
+          Two questions, multiplied: how likely price gets there {clock.inSession ? 'by the close' : aheadWord()}, and how much happens if it does — the hedging at the strike plus the stock a move through it forces dealers to trade. A far wall ranks low however big; a thin strike near price ranks low however close.
         </p>
         <OrderFigure />
       </Section>
       <Section title="The row">
         <p>
-          One strike a row. <Num>Reached</Num> is the chance price touches it {clock.inSession ? 'by the close' : 'next session'}. <Num silver>Net gamma</Num> is the hedging at the strike itself, on the contracts the Levels card reads — green and positive where dealers are long gamma and slow price, red and negative where they are short gamma and speed a move through; its bar is a wall's size next to the biggest wall on this ticker (100%). <span style={{ color: WARM }}>If it breaks</span> says where price runs next and how much stock dealers must trade on the way. <Num>Built today</Num> is hedging added or taken off since the open. <Num>At stake</Num> is the hedging parked there.
+          One strike a row. <Num>Reached</Num> is the chance price touches it {clock.inSession ? 'by the close' : aheadWord()}. <Num silver>Net gamma</Num> is the hedging at the strike itself, on the contracts the Levels card reads — green and positive where dealers are long gamma and slow price, red and negative where they are short gamma and speed a move through; its bar is a wall's size next to the biggest wall on this ticker (100%). <span style={{ color: WARM }}>If it breaks</span> says where price runs next and how much stock dealers must trade on the way. <Num>Built today</Num> is hedging added or taken off since the open. <Num>At stake</Num> is the hedging parked there.
         </p>
         <p>
           Size is not the chance price turns there. A <span style={{ color: WARM }}>trapdoor</span> (a strike with real negative net gamma) pushes a move along instead of slowing it; its bar is warm. A strike with almost no net gamma is neither, and carries no tag.

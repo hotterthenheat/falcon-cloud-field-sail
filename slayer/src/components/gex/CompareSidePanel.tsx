@@ -63,6 +63,9 @@ import type { ExposureProfileData, StrikeExposure } from '../../types/gex';
 import { Change, READ_WINDOWS } from './ChangeMark';
 import { toneBadge, type Tone } from '../ui/tones';
 import Fact from '../ui/Fact';
+import { levelRoles, type LevelRole } from '../../core/walls';
+
+const ROLE_TONE: Record<LevelRole, Tone> = { supreme: 'supreme', 'call wall': 'bull', 'put wall': 'bear', flip: 'white' };
 
 /** The panel's width open, and its tab's width folded */
 export const SIDE_W = 320;
@@ -172,18 +175,18 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     if (leg !== 'net' && g === 'gex') return n[LEG_KEY[leg].gex] ?? null;
     return leg === 'net' ? (n[NODE_KEY[g]] ?? null) : null;
   };
-  const roleOf = (strike: number): { word: string; tone: Tone } | null =>
-    strike === s.levels.supreme ? { word: 'supreme', tone: 'supreme' }
-    : strike === s.levels.callWall ? { word: 'call wall', tone: 'bull' }
-    : strike === s.levels.putWall ? { word: 'put wall', tone: 'bear' }
-    : s.flip != null && strike === s.flip ? { word: 'flip', tone: 'white' }
-    : s.strikes.find(r => r.pin)?.strike === strike ? { word: 'pin', tone: 'neutral' }
-    : null;
+  /* EVERY ROLE A STRIKE HAS, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" with its put
+     wall dropped): supreme · call wall · put wall · flip, then the pin */
+  const rolesOf = (strike: number): { word: string; tone: Tone }[] => {
+    const out: { word: string; tone: Tone }[] = levelRoles(strike, { supreme: s.levels.supreme, callWall: s.levels.callWall, putWall: s.levels.putWall, flip: s.flip }).map(r => ({ word: r, tone: ROLE_TONE[r] }));
+    if (!out.length && s.strikes.find(r => r.pin)?.strike === strike) out.push({ word: 'pin', tone: 'neutral' });
+    return out;
+  };
   const heaviest = useMemo(() => [...s.strikes].sort((x, y) => Math.abs(y[greek].net) - Math.abs(x[greek].net)).slice(0, 6), [s, greek]);
   const strike = focus ?? s.supreme[greek].strike;
   const kept = focus != null;
   const front = rowOf(strike);
-  const watchKind = s.watch ? (s.watch.role ?? (s.watch.isShelf ? 'shelf' : s.watch.isWall ? 'thin' : 'trapdoor')) : '';
+  const watchKind = s.watch ? (s.watch.roles?.length ? s.watch.roles.join(' · ') : s.watch.role ?? (s.watch.isShelf ? 'shelf' : s.watch.isWall ? 'thin' : 'trapdoor')) : '';
   const others = GREEKS.filter(g => g !== greek);
 
   /* EVERY FIGURE IN THE PRIMARY INK — a missing one muted; no ramp, no family colour on a number */
@@ -263,7 +266,8 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     <div className="flex flex-col gap-0.5 px-3 pb-3" data-side-body>
       {/* THE BOOK — the net on one line, its word the sheet's one accent */}
       <Cap tip={GLOSSARY.book}>
-        The book · {L} · per {GREEK_UNIT[greek]}
+        {/* the scope beside the supreme and the walls, always (the sixth audit's retail test) */}
+        The book · {L} · per {GREEK_UNIT[greek]} · <span className="text-warn/90" data-side-scope>{scopeWords}</span>
       </Cap>
       <div className="pt-2 flex items-center gap-2 min-w-0">
         <span
@@ -284,12 +288,13 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         {s.read}
       </p>
       <div className="flex flex-col" data-side-levels>
-        <Level word="put wall" tone="bear" k={s.putWall.strike} />
-        <Level word="call wall" tone="bull" k={s.callWall.strike} />
-        <Level word="flip" tone="white" k={s.flip} />
+        {/* THE ONE ORDER (core/walls.ts LEVEL_ORDER): supreme · call wall · put wall · flip */}
         {(greeks && greeks.length > 1 ? greeks : [greek]).map(g => (
           <Level key={g} word={greeks && greeks.length > 1 ? GREEK_LABEL[g] : 'supreme'} tone="supreme" k={s.supreme[g].strike} g={g} />
         ))}
+        <Level word="call wall" tone="bull" k={s.callWall.strike} />
+        <Level word="put wall" tone="bear" k={s.putWall.strike} />
+        <Level word="flip" tone="white" k={s.flip} />
       </div>
 
       {/* HEAVIEST TODAY — a hairline table: rank · strike · dollars · the window's change */}
@@ -304,13 +309,15 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           <span className="text-right">Change</span>
         </div>
         {heaviest.map((r, i) => {
-          const role = roleOf(r.strike);
+          const roles = rolesOf(r.strike);
           return (
             <div key={r.strike} className={HEAVY_COLS} data-side-heavy={r.strike}>
               <span className="font-mono text-[10px] tnum tabular-nums text-textMuted">{i + 1}</span>
               <span className="min-w-0 flex items-center gap-1.5 whitespace-nowrap">
                 <Door k={r.strike} />
-                {role && <Tag tone={role.tone}>{role.word}</Tag>}
+                {roles.map(role => (
+                  <Tag key={role.word} tone={role.tone}>{role.word}</Tag>
+                ))}
               </span>
               <span className="text-right"><Money v={r[greek].net} /></span>
               <span className="font-mono text-[10px] tnum tabular-nums text-right text-textPrimary whitespace-nowrap">
@@ -336,6 +343,24 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           </span>
           <span className={`ml-auto font-bold text-[12px] ${greek === 'gex' ? (shownGreek(greek, front[greek].net) > 0 ? 'text-bull' : 'text-bear') : ''}`}>{fmtUsd(shownGreek(greek, front[greek].net))}</span>
         </div>
+      ) : greek === 'gex' && sideChain.some(x => Math.abs(x.strike - strike) < 1e-9) ? (
+        /* OFF THE DRAWN WINDOW, STILL ON THE BOOK (the sixth audit's B1: META's All-expiries supreme 750 read "Off the
+           book's window"): its legs off the side's whole chain */
+        (() => {
+          const n = sideChain.find(x => Math.abs(x.strike - strike) < 1e-9)!;
+          return (
+            <div className="pt-1.5 flex items-baseline gap-2 font-mono text-[11px] tnum tabular-nums whitespace-nowrap text-textPrimary" data-side-legs>
+              <span className="text-[9px] uppercase tracking-wider text-textMuted">{L}</span>
+              <span>
+                <span className="text-textMuted">puts</span> {fmtUsd(shownGreek(greek, n.putGex))}
+              </span>
+              <span>
+                <span className="text-textMuted">calls</span> {fmtUsd(shownGreek(greek, n.callGex))}
+              </span>
+              <span className={`ml-auto font-bold text-[12px] ${shownGreek(greek, n.netGex) > 0 ? 'text-bull' : 'text-bear'}`}>{fmtUsd(shownGreek(greek, n.netGex))}</span>
+            </div>
+          );
+        })()
       ) : (
         <p className="pt-1.5 text-[11px] text-textMuted">Off the book's window.</p>
       )}
@@ -359,7 +384,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* TO THE CLOSE */}
-      <Cap tip={`The expected move is ${s.moveWords}`}>{s.horizon ? s.horizon.replace(/^by/, 'By') : cmp.inSession ? 'To the close' : 'The next session'}</Cap>
+      <Cap tip={`The expected move is ${s.moveWords}`}>{s.horizon ? s.horizon.replace(/^by/, 'By') : cmp.inSession ? 'To the close' : todayScopeLabel() === 'Today' ? "Today's session" : 'Next session'}</Cap>
       <div className="pt-1 flex flex-col gap-0.5">
         <Fact
           label="Expected move"
@@ -389,7 +414,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             s.watch ? (
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.watch.strike} />
-                <span className="text-[10px] text-textMuted" title={kindTip(watchKind)}>
+                <span className="text-[10px] text-textMuted" title={kindTip(s.watch.roles?.[0] ?? watchKind)}>
                   {watchKind} · {pct(s.watch.reach)} reached{s.watch.horizon ? ` ${s.watch.horizon}` : ''}{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
                 </span>
               </span>

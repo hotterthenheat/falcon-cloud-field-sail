@@ -53,6 +53,8 @@
 ==================================================
 */
 
+import { levelsFor } from '../../data/levelsFor';
+import { readLevelsScope } from '../../data/levelsScope';
 import { bellNone as bellNoneWords, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import FoldDoor from './FoldDoor';
@@ -380,6 +382,12 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
         pinStrike = levels.pinFound === false ? null : levels.pin;
         supreme = levels.supreme;
         flip = levels.flipFound === false ? null : levels.flip;
+      }
+      /* THE NAMED LEVELS ARE levelsFor's, in the Levels card's scope (the sixth audit's B1) — the pin stays today's */
+      const lv = snapshot.liveBook ? levelsFor(snapshot.ticker, readLevelsScope()) : null;
+      if (lv) {
+        supreme = lv.supreme;
+        flip = lv.flip;
       }
     } catch {
       /* no chain yet */

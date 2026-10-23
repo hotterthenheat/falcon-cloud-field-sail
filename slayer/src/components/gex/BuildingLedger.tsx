@@ -366,7 +366,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
         <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">{head}</div>
         <dl className={`flex flex-wrap gap-y-2 ${compact ? 'gap-x-4' : 'gap-x-6'}`} data-build-facts>
           <div>
-            <dt className="text-[10px] text-textMuted whitespace-nowrap" title={data.overnight ? `Hedging added in ${changeWhen(data).long} — the overnight open-interest count, each contract valued at its own gamma at today's price${changeWhen(data).pending ? ` · ${changeWhen(data).pending}` : ''}` : undefined}>{changeWhen(data).head}</dt>
+            <dt className="text-[10px] text-textMuted whitespace-nowrap" title={data.overnight ? `Hedging added in ${changeWhen(data).long} — the overnight open-interest count, each contract valued at the same pricing as the wall now (the live book's own price and minute)${changeWhen(data).pending ? ` · ${changeWhen(data).pending}` : ''}` : undefined}>{changeWhen(data).head}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-built>
               {counted ? `+${fmtDollars(data.built)}` : data.loading ? '…' : '—'}
             </dd>

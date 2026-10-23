@@ -190,6 +190,9 @@ export interface ShortRow {
   shortVolRatio: number | null;
   /** The session the short volume is from, "YYYY-MM-DD" */
   shortVolDate?: string;
+  /** Where the short volume was read: the vendor's short volume and ratio, or the by-market rows (FINRA CNMS) when that
+      read came back empty */
+  shortVolSource?: string;
   /** The session the short volume by market is from (YYYY-MM-DD) — it can be a day behind the latest short volume */
   exchangesDate?: string;
   /** Fails to deliver, in thousands of shares. Null when the feed does not carry it. */
@@ -570,3 +573,32 @@ export function buildHoldings(source?: CongressTrade[]): HoldingRow[] {
     owner: t.owner,
   }));
 }
+/* ONE SET OF SECTOR NAMES (the retail test, round 6: "Health Care / Consumer Discretionary" on one page, the vendor's
+   "Healthcare / Consumer Cyclical" on the ETF page). Every vendor spelling is said in the house's GICS-style words; a
+   word that is not a sector (a fund's "Cash", "Treasury") is left as it is. */
+const HOUSE_SECTOR: Record<string, string> = {
+  technology: 'Technology',
+  'information technology': 'Technology',
+  'communication services': 'Communication',
+  communication: 'Communication',
+  telecommunications: 'Communication',
+  'consumer cyclical': 'Consumer Discretionary',
+  'consumer discretionary': 'Consumer Discretionary',
+  'financial services': 'Financials',
+  financial: 'Financials',
+  financials: 'Financials',
+  energy: 'Energy',
+  healthcare: 'Health Care',
+  'health care': 'Health Care',
+  industrials: 'Industrials',
+  'consumer defensive': 'Consumer Staples',
+  'consumer staples': 'Consumer Staples',
+  utilities: 'Utilities',
+  'basic materials': 'Materials',
+  materials: 'Materials',
+  'real estate': 'Real Estate',
+};
+export const houseSector = (raw: string | null | undefined): string => {
+  const t = (raw ?? '').trim();
+  return t ? HOUSE_SECTOR[t.toLowerCase()] ?? t : t;
+};
