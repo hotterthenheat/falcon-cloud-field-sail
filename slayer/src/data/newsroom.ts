@@ -383,7 +383,7 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
       ink: lean === 'positive' ? 'bull' : lean === 'negative' ? 'bear' : 'neutral',
       read:
         marked === 0
-          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are flagged major by Unusual Whales (the feed sends no positive or negative read). The hardest-landing one is ${where}${from}.`
+          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are major — flagged so by Unusual Whales, about a named listed company or the economy, and not house-keeping (call dates, routine dividends); the feed sends no positive or negative read. The hardest-landing one is ${where}${from}.`
           : `${positive} positive against ${negative} negative across ${events.length} headlines — the wire is ${
               lean === 'split' ? 'split down the middle' : `net ${lean}`
             }. The heaviest print is ${where}${from}.`,

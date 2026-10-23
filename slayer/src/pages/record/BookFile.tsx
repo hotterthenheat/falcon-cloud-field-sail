@@ -27,6 +27,8 @@ import {
   type InstitutionRow,
   type PositionStatus,
 } from '../../data/fileBooks';
+import { extendedLine, priceWords, useLiveQuote } from '../../data/liveQuote';
+import { shortDay as shortDayOf } from '../../data/nyDate';
 import { FUND_TYPES, shortRowFromFile, useCompanyName, useEtfFile, useEtfWeights, useHouseBook, useShortRow, useStockCard } from '../../data/liveFiles';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { useShortReads } from '../../data/shortFile';
@@ -156,11 +158,11 @@ export const HouseFile = () => {
       { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M`, headerTooltip: 'Shares the house reported holding (for a call or put line, the shares the options cover), millions' },
       { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{unitsDelta(data.unitsChangeM)}</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
-      { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'Unusual Whales\' estimate of the average price the house paid' },
+      { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "Unusual Whales' estimate of the average price the house paid — '—' where it rests on a first buy the filing contradicts" },
       { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales\' perc_of_share_value) — over the whole filing, not only the lines read here' },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
-      { headerName: 'First buy', field: 'firstBuy', width: 110, headerTooltip: 'The first quarter this house reported owning the stock' },
-      { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'The close on the day of the first buy. Not a strike.' },
+      { headerName: 'First buy', field: 'firstBuy', width: 110, headerTooltip: "The first quarter this house reported owning the stock — '—' where the vendor's date is contradicted by the filing itself (units held in earlier quarters, or a first price far off the filing's own)" },
+      { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "The close on the day of the first buy. Not a strike. '—' where the vendor's first buy cannot be trusted (see First buy)" },
     ],
     [],
   );
@@ -193,13 +195,15 @@ export const HouseFile = () => {
             <dt className="text-[10px] text-textMuted cursor-help" title={`The ${feed.length} largest lines read here, by value`}>Top {feed.length} lines</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(value)}{bookLive.totalB ? <span className="text-textMuted"> · {Math.round((100 * value) / bookLive.totalB)}%</span> : null}</dd>
           </div>
+          {/* THE WHOLE FILING'S CALLS AND PUTS (audit round 7: the cards read "Calls $0 · Puts $0" off the top 80 lines while
+              BlackRock's 13F carries $12.8B of calls and $4.16B of puts — the vendor's own call_value / put_value) */}
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Calls")}>Calls</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(callValue)}</dd>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`Calls on the whole 13F as Unusual Whales totals it (call_value) — the market value of the shares the call lines cover${callValue > 0 ? `; ${moneyB(callValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a call`}`}>Calls · whole 13F</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.calls) : '—'}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Puts")}>Puts</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(putValue)}</dd>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`Puts on the whole 13F as Unusual Whales totals it (put_value)${putValue > 0 ? `; ${moneyB(putValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a put`}`}>Puts · whole 13F</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.puts) : '—'}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Changed")}>Changed</dt>
@@ -212,7 +216,7 @@ export const HouseFile = () => {
         <DropdownSelect label="Change" value={status} options={STATUS_OPTIONS} onChange={setStatus} title="What happened versus the prior 13F" testId="house-status" />
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-house-sentence>
-        {house} reported {bookLive.totalB != null ? moneyB(bookLive.totalB) : 'its book'} on its latest 13F. The {feed.length} largest lines, shown here, are {moneyB(value)}{bookLive.totalB ? ` (${Math.round((100 * value) / bookLive.totalB)}% of it)` : ''}: calls {moneyB(callValue)}, puts {moneyB(putValue)}, and {changed.length} of them changed size by more than 2% versus the prior quarter.
+        {house} reported {bookLive.totalB != null ? moneyB(bookLive.totalB) : 'its book'} on its latest 13F. The {feed.length} largest lines, shown here, are {moneyB(value)}{bookLive.totalB ? ` (${Math.round((100 * value) / bookLive.totalB)}% of it)` : ''}{bookLive.optionsB ? <>; the whole filing holds {moneyB(bookLive.optionsB.calls)} of calls and {moneyB(bookLive.optionsB.puts)} of puts, {callValue + putValue > 0 ? `${moneyB(callValue)} and ${moneyB(putValue)} of them in these lines` : 'none of them among these lines'}</> : <>: calls {moneyB(callValue)}, puts {moneyB(putValue)}</>}; {changed.length} of them changed size by more than 2% versus the prior quarter.
         {line ? <> The line you opened is {line}.</> : null}
         {focused ? (focused.quarters.length > 1 ? <> {focused.quarters.length} quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units in {focused.quarters[0]?.period} and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : <> One quarter of {focused.ticker} is on file, {focused.quarters[0]?.unitsM.toFixed(1)}M units.</>) : null}
       </p>
@@ -280,6 +284,9 @@ export const ShortFile = () => {
   const reads = useShortReads(ok ? t : '');
   const card = useStockCard(ok ? t : '');
   const coName = useCompanyName(ok ? t : '', true);
+  /* THE PRICE ON THE SHORT FILE (the retail test, round 7: GME's file had none) — the quote every page leads with */
+  const quote = useLiveQuote(ok ? t : null);
+  const priced = priceWords(quote);
   const isFund = card?.issueType ? FUND_TYPES.test(card.issueType) : undefined;
   const row = useMemo(() => {
     const made = ok ? shortRowFromFile(t, shortLive.row, reads) : null;
@@ -339,6 +346,20 @@ export const ShortFile = () => {
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
+          <div>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The stock's price now: in the session the last print; outside it the regular close, with the pre-market or after-hours print beside it">Price</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-short-price>
+              {priced ? (
+                <>
+                  ${priced.lead.toFixed(2)}
+                  {quote && Number.isFinite(quote.changePct) ? <span className={quote.changePct >= 0 ? 'text-bull' : 'text-bear'}> {quote.changePct >= 0 ? '+' : '−'}{Math.abs(quote.changePct).toFixed(2)}%{quote.phase !== 'regular' && quote.regDate ? <span className="text-textMuted"> {shortDayOf(quote.regDate)}</span> : null}</span> : null}
+                  {extendedLine(quote) ? <span className="text-textMuted"> · {extendedLine(quote)}</span> : null}
+                </>
+              ) : (
+                <span className="text-textMuted">reading</span>
+              )}
+            </dd>
+          </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="The share of the float (the stock free to trade) sold short and not yet bought back">Interest</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${heavyBook ? 'text-bear font-semibold' : 'text-textPrimary'}`}>{row.interestPct.toFixed(2)}%</dd>
@@ -865,7 +886,7 @@ export const MemberFile = () => {
           <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the largest bracket on this cut · click one to keep the grid to it</span>
         </div>
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">No report on this cut</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{book.status === 'loading' ? 'Reading their reports' : book.status === 'sim' ? 'This read did not land' : 'No report on this cut'}</div>
         ) : (
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
             {toKnow.map(t => {

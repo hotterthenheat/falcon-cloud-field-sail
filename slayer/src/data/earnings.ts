@@ -272,6 +272,8 @@ export interface ActiveContract {
   ivPct: number;
   /** Strike distance from spot, signed % */
   fromSpotPct: number;
+  /** What "spot" is: the last price in the session, else the last regular close ("the Oct 22 close") */
+  spotWord?: string;
   /** Move needed by expiry to break even on the mid, % */
   breakevenPct: number;
   /** The contract's expiry as a date key ("2026-09-18") — a row is carried to

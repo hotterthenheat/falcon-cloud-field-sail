@@ -49,6 +49,7 @@ import { GLOSSARY, kindTip } from './glossary';
 import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { bookDatesIn } from '../../data/uwBook';
 import { holdLabel } from '../../data/wall';
+import { LEAN_MIN } from '../../data/agenda';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { buildExposureProfile } from '../../data/exposure';
@@ -404,7 +405,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
                 <span className="text-[10px] text-textMuted">{s.closes.odds.toFixed(0)}% of the time</span>
               </span>
             ) : (
-              <span className="text-textMuted">none</span>
+              <span className="text-textMuted" title={s.closeTop ? `No strike reaches ${LEAN_MIN}% — the best, ${s.closeTop.strike}, is ${s.closeTop.odds.toFixed(0)}%` : undefined}>{s.closeTop ? 'no clear lean' : '—'}</span>
             )
           }
         />

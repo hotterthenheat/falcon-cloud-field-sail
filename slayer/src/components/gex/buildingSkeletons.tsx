@@ -32,7 +32,7 @@ import { Skeleton } from '../ui/Skeleton';
 /* ---- the ledger's geometry, shared with BuildingLedger.tsx ---------------------- */
 
 /** The grid's one column template (2026-09-13, the rows redrawn): strike · the wall now · change · calls · puts · the day · what's happening */
-export const LEDGER_COLUMNS = '150px minmax(260px,1fr) 92px 78px 78px 110px 230px';
+export const LEDGER_COLUMNS = '150px minmax(260px,1fr) 112px 78px 78px 110px 230px';
 /** A pane beside others (2026-10-14): the strike, the wall, the change, the word's chip */
 export const LEDGER_COMPACT_COLUMNS = '84px minmax(84px,1fr) 64px 80px';
 /** A row is two lines tall: the figure line and the words under it */

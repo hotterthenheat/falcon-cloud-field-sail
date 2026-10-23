@@ -7,7 +7,7 @@
 */
 
 import { isoDate, isTradingDay } from '../../core/calendar';
-import { LEAN_EDGE, nyDateOf, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
+import { LEAN_EDGE, nextSessionIso, nyDateOf, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const parse = (iso: string) => {
@@ -137,12 +137,14 @@ export function oiRowTitle(r: OiRow): string {
   if (!r.oiDay) return 'Open interest as of the last count';
   const set = `Open interest after ${shortDay(r.oiDay)}'s trading (counted the morning after); ΔOI is what ${shortDay(r.oiDay)}'s trading built or unwound`;
   if (!r.oiPending || !r.volDay || r.volDay === r.oiDay) return set;
-  return `${set} — the count after ${isLiveDay(r.volDay) ? "today's" : `${shortDay(r.volDay)}'s`} trading, the volume shown, is ${isLiveDay(r.volDay) ? 'set tomorrow morning' : 'not out for this contract yet'}`;
+  return `${set} — the count after ${isLiveDay(r.volDay) ? "today's" : `${shortDay(r.volDay)}'s`} trading, the volume shown, is ${isLiveDay(r.volDay) ? `set the morning of ${nextCountDay(r.volDay)}` : 'not out for this contract yet'}`;
 }
 /** The pending note for a page's sub-line: "" when the counts pair with the volume */
 export function oiPendingWords(cover: OiCover): string {
   if (!cover.day) return '';
-  if (cover.allPending && cover.volDay && cover.volDay !== cover.day) return `${isLiveDay(cover.volDay) ? "today's" : `${shortDay(cover.volDay)}'s`} build is counted ${isLiveDay(cover.volDay) ? 'tomorrow morning' : 'once the vendor publishes it'}`;
+  if (cover.allPending && cover.volDay && cover.volDay !== cover.day) return `${isLiveDay(cover.volDay) ? "today's" : `${shortDay(cover.volDay)}'s`} build is counted ${isLiveDay(cover.volDay) ? `the morning of ${nextCountDay(cover.volDay)}` : 'once the vendor publishes it'}`;
   if (cover.lagging) return `${cover.lagging} contract${cover.lagging === 1 ? '' : 's'} still on the count before (marked) — kept out of the sums`;
   return '';
 }
+/** The day a session's open-interest count comes out: the next session's morning ("Oct 26" after a Friday) */
+export const nextCountDay = (sessionIso: string) => shortDay(nextSessionIso(sessionIso));

@@ -518,6 +518,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       }
     }
     const rolled = zoom < 3.9;
+    const ROLL_KM = 150;
     const claimed = new Set<string>();
     const buckets = new Map<string, { city: string; lat: number; lng: number; n: number; grade: NewsGrade; top: CityPing }>();
     if (rolled) {
@@ -531,7 +532,10 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
             host = c;
           }
         }
-        if (!host) continue;
+        /* A CITY'S COUNT IS ITS OWN METRO (audit round 7: at world zoom "Paris 32" and "Shanghai 23" took in London,
+           Berlin, Frankfurt, Beijing and Tokyo — every pin went to the nearest named city however far). A pin rolls
+           into a named city only within ROLL_KM of it; farther, it keeps its own dot, name and count. */
+        if (!host || best > ROLL_KM) continue;
         claimed.add(p.city);
         const had = buckets.get(host.n);
         if (!had) buckets.set(host.n, { city: host.n, lat: host.lat, lng: host.lng, n: p.n, grade: p.grade, top: p });

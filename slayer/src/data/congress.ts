@@ -196,7 +196,9 @@ export function buildCongress(windowDays = 90, day = dayKey(), count = Math.roun
     them by default and say how many they hid (audit round 5, 2026-10-23) */
 export const isTreasuryBill = (t: CongressTrade): boolean => {
   const d = `${t.assetDescription || ''} ${t.ticker || ''}`;
-  return /\btreasury bills?\b|\bt-?bills?\b|\bus treasury bill|\bunited states treasury bill/i.test(d);
+  /* the filers' own spellings (audit round 7: Steve Cohen's "US Treas Bills Int Rate 0.000% MAT 8/5/2027" and "U.S. Tres
+     Bill …" were counted as reports): Treasury, Treas, Tres or Trsy, then Bill(s) */
+  return /\b(?:treasury|treas|tres|trsy|tsy)\.?\s*bills?\b|\bt-?bills?\b|\bus treasury bill|\bunited states treasury bill/i.test(d);
 };
 
 /** The feed's figures over any set of reports — the page re-sums whatever its cards leave */

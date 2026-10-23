@@ -32,7 +32,7 @@ import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
+import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
@@ -183,25 +183,18 @@ const stakeWords = (t: InsiderTrade): string => {
 /* AN INDIRECT LINE'S STAKE IS THAT LINE'S (the fourth audit, 2026-10-23): "100.0%" on a sale held by a trust is the trust's
    line alone — the filer's direct holding is another line of the filing. Said so on the cell and in its words. */
 const stakeTip = (t: InsiderTrade): string => (t.indirect ? `${stakeWords(t)} — of the shares held indirectly (${t.indirect.toLowerCase()}) only; the filer's direct holding is a separate line and is not counted` : stakeWords(t));
+/* newest first under a "↓" (the retail test, round 7): recency descending, ties by the filing day, then the id */
+const byRecency = (a: number, b: number, na: IRowNode<InsiderTrade>, nb: IRowNode<InsiderTrade>): number =>
+  b - a || String(na.data?.filedOn ?? '').localeCompare(String(nb.data?.filedOn ?? '')) || String(nb.data?.id ?? '').localeCompare(String(na.data?.id ?? ''));
 const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={stakeTip(data)}>
-      {/* PLAIN WORDS AT THE ENDS (audit round 5: "100.0% of line" read as nothing): a buy into an empty holding is the first
-          purchase, a sale of everything an exit; between them the share of the holding (of that account, when indirect) */}
-      {data.stakePct < 0
-        ? '—'
-        : data.stakePct >= 99.95
-          ? data.kind === 'BUY'
-            ? data.indirect
-              ? 'first buy in this account'
-              : 'first purchase'
-            : data.indirect
-              ? 'sold the whole account'
-              : 'sold all they held'
-          : data.stakePct < 0.1
-            ? '<0.1%'
-            : `${data.stakePct.toFixed(1)}%`}
-      {data.indirect && data.stakePct >= 0 && data.stakePct < 99.95 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> of account</span> : null}
+      {/* ONE FORMAT (the retail test, round 7: "first purchase", "sold all they held", "<0.1%" and "12.3% of account" in one
+          column read as four kinds of figure): always the share of the holding as a percent, the plain word for the ends
+          and the account mark beside it, small */}
+      {data.stakePct < 0 ? '—' : data.stakePct >= 99.95 ? '100%' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
+      {data.stakePct >= 99.95 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> · {data.kind === 'BUY' ? 'first buy' : 'all sold'}</span> : null}
+      {data.indirect && data.stakePct >= 0 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> · of account</span> : null}
     </span>
   ) : null;
 
@@ -343,7 +336,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
       {setAside > 0 ? (
         <span title="Swaps, preferreds and other non-share securities on an open-market row, and rows whose filed price is ten times the stock's own or whose value is over a quarter of the company — a unit mix-up, not a trade">
           {' · '}
-          {setAside.toLocaleString()} {setAside === 1 ? 'row' : 'rows'} set aside ({coverage.notShares} not common shares, {coverage.implausible} impossible for the company's size)
+          {setAside.toLocaleString()} {setAside === 1 ? 'row' : 'rows'} set aside ({coverage.notShares} not common shares, {coverage.implausible} whose price or size no trade can have — a price ten times off the stock's own, or one trade worth over a quarter of the company)
         </span>
       ) : null}
     </p>
@@ -447,14 +440,14 @@ const Insiders = () => {
 
   const columnDefs = useMemo<ColDef<InsiderTrade>[]>(
     () => [
-      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day the trade happened, and how far back that is — newest first' },
+      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'desc', comparator: byRecency, headerTooltip: 'The day the trade happened, and how far back that is — newest first' },
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 150, cellRenderer: NameCell, headerTooltip: 'The company' },
       { headerName: 'Who', field: 'person', flex: 1.4, minWidth: 160, cellRenderer: WhoCell, headerTooltip: 'A row opens this person’s book' },
       { headerName: 'Trade', field: 'code', flex: 0.9, minWidth: 120, cellRenderer: TradeCell, headerTooltip: 'Bought or sold in the market; with Every filing on, the grants, conversions and withholdings are named for what they are' },
       { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
       { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
       { headerName: 'Value', field: 'value', width: 104, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
-      { headerName: 'Of holding', field: 'stakePct', width: 176, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was — \"first purchase\" when they held none before, \"sold all they held\" when nothing was left; an indirect line (a trust, a fund) counts that account alone" },
+      { headerName: 'Of holding', field: 'stakePct', width: 176, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was, as a percent — 100% · first buy when they held none before, 100% · all sold when nothing was left; · of account marks an indirect line (a trust, a fund), which counts that account alone" },
       {
         headerName: 'Chose to?',
         field: 'plan',
@@ -518,6 +511,7 @@ const Insiders = () => {
             <dt className="text-[10px] text-textMuted cursor-help" title="Code-P purchases by a company or a fund (Volkswagen buying Rivian, a bank buying into a broker): strategic stakes and private placements, not an insider choosing to buy">Company &amp; fund buys</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-corporate>
               {failed || waiting ? '—' : facts.corporate > 0 ? fmtDollars(facts.corporate) : 'none'}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
             </dd>
           </div>
           <div>
@@ -534,6 +528,7 @@ const Insiders = () => {
             <dt className="text-[10px] text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${bigWord(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
               {facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
             </dd>
           </div>
         </dl>
@@ -605,7 +600,7 @@ const Insiders = () => {
         </>
         )}
       </div>
-      <InsiderSectorFlow trades={rows} windowDays={window} />
+      <InsiderSectorFlow trades={rows} windowDays={window} state={failed ? 'failed' : waiting || reading ? 'reading' : 'read'} />
     </div>
   );
 };
@@ -624,7 +619,7 @@ export const InsiderFile = () => {
   const planned = rows.filter(t => t.plan === 'plan').length;
   const cols = useMemo<ColDef<InsiderTrade>[]>(
     () => [
-      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'asc', headerTooltip: 'The day of the trade, and how long ago' },
+      { headerName: 'When', field: 'daysAgo', width: 146, cellRenderer: WhenCell, sort: 'desc', comparator: byRecency, headerTooltip: 'The day of the trade, and how long ago' },
       {
         headerName: 'Name',
         headerTooltip: 'The company',
@@ -694,11 +689,11 @@ export const InsiderFile = () => {
             </div>
             <div>
               <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Bought")}>Bought</dt>
-              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bought > 0 ? fmtDollars(bought) : 'none'}</dd>
+              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bought > 0 ? fmtDollars(bought) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'BUY') ? 'not in USD' : 'none'}</dd>
             </div>
             <div>
               <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Sold")}>Sold</dt>
-              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{sold > 0 ? fmtDollars(sold) : 'none'}</dd>
+              <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{sold > 0 ? fmtDollars(sold) : rows.some(t => t.foreignPrice && TX_CODES[t.code].openMarket && t.kind === 'SELL') ? 'not in USD' : 'none'}</dd>
             </div>
             <div>
               <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("On a plan")}>On a plan</dt>

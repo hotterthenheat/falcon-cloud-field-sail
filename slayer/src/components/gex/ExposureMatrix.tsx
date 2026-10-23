@@ -86,6 +86,8 @@ interface ExposureMatrixProps {
   levelLegsAt?: ((strike: number) => { put: number; call: number; net: number } | null) | null;
   /** The Levels card's contracts in words ("Today · Oct 23") — for the marked cells' hover */
   levelsWords?: string | null;
+  /** The rows are coloured by the window's own levels (not the Levels card's) — the head says so */
+  windowLevels?: boolean;
   onNatural?: (px: number) => void;
 }
 
@@ -160,7 +162,7 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
   );
 };
 
-const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural, windowLabel = null, levelLegsAt = null, levelsWords = null }: ExposureMatrixProps) => {
+const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural, windowLabel = null, levelLegsAt = null, levelsWords = null, windowLevels = false }: ExposureMatrixProps) => {
   const mode: HeatMode = palette === 'thermal' ? 'thermal-yellow' : HEAT_MODE;
   const paper = useResolvedTheme() === 'light';
   const shownGreeks = useMemo(() => GREEKS.filter(g => greeks.includes(g)), [greeks]);
@@ -644,7 +646,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                 data-matrix-group={g}
                 data-lead={g === lead || undefined}
                 /* the silver head is the greek the pointer card reads — said, not left to be guessed (the audit's L8) */
-                title={`${g === lead && shownGreeks.length > 1 ? `The greek the card reads · ${GREEK_UNIT[g]}` : GREEK_UNIT[g]}${windowLabel ? ` · each row adds up the matrix window, ${windowLabel} (the Expiries card) — not the Levels card's contracts, so a level's row can differ from the level's own figure` : ''}`}
+                title={`${g === lead && shownGreeks.length > 1 ? `The greek the card reads · ${GREEK_UNIT[g]}` : GREEK_UNIT[g]}${windowLabel ? (windowLevels ? ` · each row adds up the matrix window, ${windowLabel} (the Expiries card), and the coloured rows are that window's own call wall, put wall and supreme — the Levels card (${levelsWords ?? 'its scope'}) names its own on the rest of the page` : ` · each row adds up the matrix window, ${windowLabel} (the Expiries card) — not the Levels card's contracts, so a level's row can differ from the level's own figure`) : ''}`}
               >
                 {/* ONE LEG, ONE HEAD (the audit's M4, 2026-10-13): with the net alone on the table the leg's name rides the
                     greek's head — "GEX · net · 1% move" — and the row that said "NET" five times is gone; it comes back

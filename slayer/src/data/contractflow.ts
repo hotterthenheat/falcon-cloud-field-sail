@@ -140,7 +140,8 @@ export interface CardDay {
   vol: number;
   /** Open interest standing that session */
   oi: number;
-  /** Against the session before; null for the oldest row */
+  /** What this session's trading did to open interest — the next session's count less this one's (counted the morning
+      after); null for the newest session, whose next count is not out */
   oiChange: number | null;
   /** The regular session's close when the session's prints are in hand (index and ETF options to 16:15, stock options to
       16:00); else the vendor's last_price, which can be an after-hours fill (closeBasis says which) */
@@ -367,7 +368,10 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
   const panelMinutes = fromPrints ? minutesFromPrints(prints) : minutes;
 
   const hist = rows(histRaw, 'chains').map(dayRow).filter(d => d.iso).sort((a, b) => b.iso.localeCompare(a.iso));
-  for (let i = 0; i < hist.length; i++) hist[i].oiChange = i + 1 < hist.length ? hist[i].oi - hist[i + 1].oi : null;
+  /* THE CHANGE THIS SESSION'S TRADING MADE (audit round 7: the row's change was its open against the open before — the
+     session before's build, beside this session's volume): a row's count is set the morning OF it, so what its own volume
+     did is the next row's count less its own; the newest session's is not counted until the next morning (null) */
+  for (let i = 0; i < hist.length; i++) hist[i].oiChange = i > 0 ? hist[i - 1].oi - hist[i].oi : null;
   /* the card's session, when every one of its prints is in hand: its side split and premium are its own prints' — the
      cancelled ones already dropped — so the history row, the session strip and the card's facts are one window */
   const own = hist.find(d => d.iso === dateIso);

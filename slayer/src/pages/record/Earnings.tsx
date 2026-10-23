@@ -375,7 +375,6 @@ const Earnings = () => {
   /* EVERY REPORT, the known names marked — and the reader's own board names count as known: a name you follow is one
      you recognise, whatever its size */
   const live = useEveryReport();
-  useEarningsHistories();
   const pending = useEarningsPending();
   const failed = useEarningsFailed();
   const events = useMemo(() => {
@@ -410,6 +409,20 @@ const Earnings = () => {
      page in view. Every row goes in and the grid's own pagination pages it, as on Insiders and Congress — a sort runs
      over every report. A new cut starts on the first page. */
   const paged = usePagedGrid<EarningsEvent>();
+  /* the grid page in view names its rows, so their past reports are read (audit round 7: every known name's history
+     was read up front) */
+  const [onPage, setOnPage] = useState<string[]>([]);
+  const notePage = (api: { paginationGetCurrentPage: () => number; paginationGetPageSize: () => number; getDisplayedRowAtIndex: (i: number) => { data?: EarningsEvent } | undefined }) => {
+    const size = api.paginationGetPageSize();
+    const from = api.paginationGetCurrentPage() * size;
+    const out: string[] = [];
+    for (let i = from; i < from + size; i++) {
+      const d = api.getDisplayedRowAtIndex(i)?.data;
+      if (!d) break;
+      if (d.known) out.push(d.ticker);
+    }
+    setOnPage(prev => (prev.join(',') === out.join(',') ? prev : out));
+  };
   useEffect(() => {
     paged.props.ref.current?.api?.paginationGoToPage(0);
   }, [week, show, asked, paged.props.ref]);
@@ -421,7 +434,7 @@ const Earnings = () => {
   const ahead = weekKnown.filter(e => !e.reported);
   /* the week's known names whose past reports have not landed — the same names the head counts, so the figure is the
      progress of one stated set, never a fortnight-wide number that moved between loads (the retail test, 2026-10-23) */
-  const weekHistOut = weekKnown.filter(e => e.history === false && !historyMissed(e.ticker)).length;
+  const weekHistOut = ahead.filter(e => e.history === false && !historyMissed(e.ticker)).length;
   const scored = ahead.filter(pricedKnown);
   const cover = useEarningsCoverage();
   const rich = scored.filter(e => stateOf(e) === 'RICH').length;
@@ -429,6 +442,7 @@ const Earnings = () => {
   const fair = scored.length - rich - cheap;
   const biggest = ahead.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
   const today = rankEvents(knownEvents.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
+  useEarningsHistories([...ahead.map(e => e.ticker), ...today.map(e => e.ticker), ...onPage]);
   const todayMore = events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()).length - today.length;
 
   const weeks: (0 | 1)[] = week === 'both' ? [0, 1] : [Number(week) as 0 | 1];
@@ -444,7 +458,7 @@ const Earnings = () => {
   const sentence = useMemo(() => {
     const parts = [
       `${weekEvents.length.toLocaleString('en-US')} reports ${weekWords}, ${weekKnown.length.toLocaleString('en-US')} of them known names, ${ahead.length.toLocaleString('en-US')} of those still to report`,
-      `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${weekKnown.length - weekHistOut} of ${weekKnown.length} read)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
+      `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${ahead.length - weekHistOut} of ${ahead.length} read)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
     if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
     parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
@@ -713,6 +727,10 @@ const Earnings = () => {
             <AgGridReact<EarningsEvent>
               {...phonePin}
               {...paged.props}
+              onPaginationChanged={e => {
+                paged.props.onPaginationChanged(e);
+                notePage(e.api);
+              }}
               theme={GRID_THEME}
               domLayout="autoHeight"
               rowData={shown}

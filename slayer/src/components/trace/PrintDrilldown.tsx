@@ -124,7 +124,7 @@ function tapeVerdict(rows: CardDay[], dateIso: string): { state: TapeState; read
   const sweptTypical = med(past.map(p => p.sweepPct));
   const sweptDelta = today.sweepPct - sweptTypical;
   const state: TapeState = volX >= 2.5 || sweptDelta >= 25 ? 'UNUSUAL' : volX >= 1.4 ? 'BUSY' : 'ORDINARY';
-  const oi = today.oiChange == null ? '' : ` · open interest ${today.oiChange >= 0 ? '+' : '−'}${Math.abs(today.oiChange).toLocaleString('en-US')} on the session before`;
+  const oi = today.oiChange == null ? ' · its own open-interest change is counted the morning after' : ` · open interest ${today.oiChange >= 0 ? '+' : '−'}${Math.abs(today.oiChange).toLocaleString('en-US')} from this session's trading`;
   const medVol = med(past.map(p => p.vol));
   const quiet = past.filter(p => p.vol === 0).length;
   const bits = `${medVol > 0 ? `${volX.toFixed(1)}× its median volume (${medVol.toLocaleString('en-US')})` : `${today.vol.toLocaleString('en-US')} contracts against a median of 0`} over the ${past.length} sessions before${quiet ? `, ${quiet} of them with no trade` : ''} · swept ${Math.round(today.sweepPct)}% vs ${Math.round(sweptTypical)}% typical${oi}`;
@@ -877,8 +877,8 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
           <tr className="bg-inset">
             <th className={`${th} text-left`}>Date</th>
             <th className={`${th} text-right`}>Volume</th>
-            <th className={`${th} text-right`} title="Open interest standing that session">Open int.</th>
-            <th className={`${th} text-right`} title="Against the session before">OI change</th>
+            <th className={`${th} text-right`} title="Open interest standing at the session's open — counted after the session before traded">Open int.</th>
+            <th className={`${th} text-right`} title="What the session's own trading did to open interest: the next morning's count less its open's — beside its own volume. The newest session's is not counted until the next morning">OI change</th>
             <th className={`${th} text-right`} title="The regular session's close — 16:15 for index and ETF options, 16:00 for stock options. This session's is read off its own prints; the other sessions show the vendor's last price, which can be an after-hours fill (marked ≈)">Close</th>
             <th className={`${th} text-right`}>Avg</th>
             <th className={`${th} text-left`} title="The session's volume on the bid, at the mid or no side, and at the ask">Bid · mid · ask</th>

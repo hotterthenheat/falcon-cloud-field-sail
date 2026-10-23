@@ -736,7 +736,7 @@ const News = () => {
                   {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} ET · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
                 </>
               ) : (
-                <span className="text-textMuted">nothing ahead on the calendar</span>
+                <span className="text-textMuted">{econ.status === 'loading' ? 'reading the calendar' : econ.status === 'sim' ? 'the calendar did not answer' : 'nothing ahead on the calendar'}</span>
               )}
             </Fact>
           </dl>
@@ -905,7 +905,7 @@ const News = () => {
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the wire for these cards'}</div>
+              <div className="flex-1 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the wire for these cards'}</div>
             )}
           </div>
         </div>
@@ -932,7 +932,7 @@ const News = () => {
             <span className="text-right" title="How the named stock had moved on the session when the story crossed — a snapshot at publish, not today's move now">At publish</span>
             <span className="text-right" title="The other stocks the headline names">Also</span>
           </div>}
-          {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
+          {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
           {rows.map(e => {
             const open = e.id === selectedId;
             const faded = freshnessOf(e) === 'faded';
@@ -1021,7 +1021,7 @@ const News = () => {
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The same wire as above, a tab per kind — it opens on the earnings stories; All repeats the list above · follow a name and ring the bell on it · a click opens the story beside the map</p>
         </div>
         <div className="border-t border-borderSubtle">
-          <NewsFeedTabs events={events} calendar={calendar} selectedId={selectedId} onPick={pick} />
+          <NewsFeedTabs events={events} calendar={calendar} selectedId={selectedId} onPick={pick} wire={news.status === 'loading' || coverage.reading ? 'reading' : news.status === 'sim' ? 'failed' : 'read'} />
         </div>
       </div>
 

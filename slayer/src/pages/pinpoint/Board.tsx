@@ -332,7 +332,7 @@ const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
   );
 
 const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data?.pending ? (
+  data?.pending || data?.crossPending ? (
     <Pending data={data} />
   ) : data ? (
     <span
@@ -383,12 +383,15 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
       className="px-3 py-2.5 border-b border-borderSubtle/60 active:bg-ink/[0.04] font-mono"
       data-board-card={row.ticker}
     >
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-start gap-2 min-w-0">
         <CompanyLogo ticker={row.ticker} size={18} />
-        <span className="text-[13px] font-bold text-textPrimary">{row.ticker}</span>
-        <span className="text-[13px] text-textPrimary tnum">${row.spot.toFixed(2)}</span>
-        <span className="min-w-0 truncate">
-          <DayChange data={row} compact />
+        {/* the day's change wraps under the price rather than cut (the seventh audit's retail finding: "pre-market +") */}
+        <span className="min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-[13px] font-bold text-textPrimary">{row.ticker}</span>
+          <span className="text-[13px] text-textPrimary tnum">${row.spot.toFixed(2)}</span>
+          <span className="min-w-0">
+            <DayChange data={row} compact />
+          </span>
         </span>
         <button
           type="button"
@@ -578,6 +581,7 @@ const Board = () => {
      the day's path, crossings, positions) leave the grid there. Anything past the screen scrolls inside the grid. */
   const phone = useIsPhone();
   const levelsScope = useLevelsScope();
+  const recKey = `${recordDay().date}|${recordDay().isToday}|${recordDay().done}|${bellDay().head}|${todayScopeLabel()}`;
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
       { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 104, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
@@ -591,7 +595,7 @@ const Board = () => {
         minWidth: 132,
         cellRenderer: FlipCell,
         sort: 'asc',
-        headerTooltip: "The flip: the price where the name's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves — and how far it is from the current price. Names closest to their flip come first; \"none nearby\" means no crossing within 10%, and those come last",
+        headerTooltip: "The flip: the price where the name's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves — and how far it is from the current price. Names closest to their flip — as a share of price, whatever the ruler prints — come first; \"none nearby\" means no crossing within 10%, and those come last",
         // Closest to flipping first — the names that can change character next
         comparator: (a: number | null, b: number | null) => Math.abs(a ?? 1e9) - Math.abs(b ?? 1e9),
       },
@@ -619,7 +623,7 @@ const Board = () => {
       },
       { headerName: bellDay().head, field: 'bellShare', flex: 0.9, minWidth: 108, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
       /* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23): before today's open these are the last session's */
-      { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${recordDay().date.slice(5).replace('-', '/')}`, field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session — the flip of the contracts that were live in it (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
+      { headerName: recordDay().isToday ? 'Times price crossed the flip today' : `Times price crossed the flip · ${longDay(recordDay().date)}`, field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session — the flip of the contracts that were live in it (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
       { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
       {
         headerName: 'Your positions',
@@ -635,7 +639,9 @@ const Board = () => {
     if (!phone) return cols;
     const order = ['ticker', 'spot', 'regime', 'netGex', 'flipDistPct', 'nearest', 'supreme', 'bellShare'];
     return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
-  }, [phone, levelsScope]);
+    // the heads name the session on record and the bell's day — they roll at the open and the close (recKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, levelsScope, recKey]);
   /* a long head ("Supreme · all exp.", "Net GEX · today") wraps to two lines rather than cut (the sixth audit's m11) */
   const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip', wrapHeaderText: true, autoHeaderHeight: true }), []);
 
@@ -673,7 +679,7 @@ const Board = () => {
         <span className="font-mono text-[9px] uppercase tracking-widest text-textSecondary">The names on your board</span>
         <StaleMark at={bookAt} ttlMs={BOARD_TTL_MS} fault={bookDown ? 'failed' : null} />
         <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum tabular-nums" data-board-count>
-          {rows.length < names.length ? `still reading ${names.filter(n => !rows.some(r => r.ticker === n)).slice(0, 4).join(' ')}` : `${names.length} names`} · closest to its flip first · click a name to open it on the map
+          {rows.length < names.length ? `still reading ${names.filter(n => !rows.some(r => r.ticker === n)).slice(0, 4).join(' ')}` : `${names.length} names`} · closest to its flip (as a % of price) first · click a name to open it on the map
         </span>
         <input
           value={quick}

@@ -362,7 +362,25 @@ function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma): StrikeNod
   in 13 pages, AAPL's 23 in 4, CROX's 8 in 1. Each date's rows are kept exactly as the per-date ask keeps them (the same
   per-row price and minute, the same cache), so a date read either way is the same chain. Null when a page fails.
 */
-async function liveGammaAll(ticker: string, priority = false): Promise<Map<string, LiveGamma> | null> {
+/* ONE WALK SHARED (audit round 7: a stock page walked SPY's pages 0–10 twice — the Board dates' read and the levels'
+   far dates each started their own walk seconds apart). A walk in flight, or one finished in the last WALK_REUSE_MS, is
+   the walk: the second caller takes its answer. */
+const WALK_REUSE_MS = 15_000;
+const walks = new Map<string, { at: number; p: Promise<Map<string, LiveGamma> | null> }>();
+function liveGammaAll(ticker: string, priority = false): Promise<Map<string, LiveGamma> | null> {
+  const key = ticker.toUpperCase();
+  const hit = walks.get(key);
+  if (hit && Date.now() - hit.at < WALK_REUSE_MS) return hit.p;
+  const p = liveGammaWalk(ticker, priority);
+  const entry = { at: Date.now(), p };
+  walks.set(key, entry);
+  void p.then(got => {
+    if (got == null) walks.delete(key);
+    else entry.at = Date.now();
+  });
+  return p;
+}
+async function liveGammaWalk(ticker: string, priority = false): Promise<Map<string, LiveGamma> | null> {
   const t = encodeURIComponent(ticker);
   const rowsBy = new Map<string, Record<string, unknown>[]>();
   for (let page = 0; page < 60; page++) {
@@ -389,6 +407,38 @@ async function liveGammaAll(ticker: string, priority = false): Promise<Map<strin
     out.set(date, live);
   }
   return out;
+}
+
+/*
+  THE DATES' GAMMA KEPT LIVE (the seventh audit's live pass, 2026-10-23): the whole book's gamma is now the dates' own rows
+  added up (oneSnapshot), and a date's chain was read once — the Board's never again, the full book's every three minutes —
+  so in the session the All-expiries levels would have stood still. Every live date's gamma is read again in one walk of
+  every expiry's rows (liveGammaAll, kept a minute) whenever the book refreshes, and laid onto the chains in hand; each
+  chain's other greeks and its contracts' facts stay as they were.
+*/
+const datesGammaAt = new Map<string, number>();
+async function refreshDatesGamma(entry: Entry, token: number): Promise<void> {
+  if (!entry.gammaLive) return;
+  const t = entry.ticker;
+  if (Date.now() - (datesGammaAt.get(t) ?? 0) < LIVE_GAMMA_MS) return;
+  datesGammaAt.set(t, Date.now());
+  const walked = await liveGammaAll(t, isHot(t)).catch(() => null);
+  if (!walked || gen.get(t) !== token) return;
+  const cur = cache.get(t);
+  if (!cur) return;
+  const floor = isoDate(bookToday());
+  const byDate = { ...cur.byDate };
+  let changed = false;
+  for (const [d, live] of walked) {
+    if (d < floor || !byDate[d]?.length) continue;
+    byDate[d] = withLiveGamma(byDate[d], live);
+    changed = true;
+  }
+  if (!changed) return;
+  cur.byDate = byDate;
+  cur.at = Date.now();
+  cache.set(t, cur);
+  emit();
 }
 
 /** One date's chain. With the greeks: the vendor's strike rows (delta, vanna, charm) carrying the live gamma. Without:
@@ -447,6 +497,10 @@ function candlesFrom(bars: UwBar[]): { cash: Candle[]; tape: Candle[] } {
   const lastCash = [...parsed].reverse().find(inCash);
   const lastDay = lastCash ? nyIsoDate(lastCash.time * 1000) : null;
   const prior = lastDay && lastDay !== day ? parsed.filter(b => inCash(b) && nyIsoDate(b.time * 1000) === lastDay) : [];
+  /* ONCE TODAY'S SESSION HAS ITS FIRST BAR IT IS THE SESSION, HOWEVER SHORT (the seventh audit's live pass: at 09:35 on
+     five-minute bars today had one cash bar, so the Board fell back to Thursday's bars and counted "NVDA 15×" against
+     Friday's live flip under "today") — the counts wait for their own minimum of bars instead */
+  if (session.length >= 1 && day === nyIsoDate()) return { cash: session, tape: tape.length ? tape : parsed };
   const cash = session.length >= 2 ? session : prior.length >= 2 ? prior : tape.filter(b => nyIsoDate(b.time * 1000) === day);
   return { cash: cash.length >= 2 ? cash : parsed, tape: tape.length ? tape : parsed };
 }
@@ -557,11 +611,13 @@ function carryFacts(next: StrikeNode[], prev: readonly StrikeNode[] | undefined)
       putIv: n.putIv || o.putIv,
       callGamma: n.callGamma || o.callGamma,
       putGamma: n.putGamma || o.putGamma,
-      callOI: n.callOI || o.callOI,
-      putOI: n.putOI || o.putOI,
-      callVex: n.callVex || o.callVex,
-      putVex: n.putVex || o.putVex,
-      netVex: (n.callVex || o.callVex) + (n.putVex || o.putVex),
+      /* the contracts' own open interest and vega, as painted, until they are read again — the greek rows' open
+         interest is another count, and Building values each contract against it (the seventh audit's M3) */
+      callOI: o.callOI || n.callOI,
+      putOI: o.putOI || n.putOI,
+      callVex: o.callVex || n.callVex,
+      putVex: o.putVex || n.putVex,
+      netVex: (o.callVex || n.callVex) + (o.putVex || n.putVex),
     };
   });
 }
@@ -1623,7 +1679,10 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   const allScope = readLevelsScope() === 'ALL';
   const haveFront = Object.keys(entry.byDate).some(d => d >= today && entry.byDate[d]?.length);
   const fresh = !!entry.totalsAt && Date.now() - entry.totalsAt < FRONT_MS;
-  if (fresh && haveFront && !!entry.frontFacts && (!allScope || datesComplete(entry))) return;
+  if (fresh && haveFront && !!entry.frontFacts && (!allScope || datesComplete(entry))) {
+    if (allScope) await refreshDatesGamma(entry, token);
+    return;
+  }
   /* THE BOARD'S FRONT DATE AHEAD OF THE QUEUE (the retail test, 2026-10-22: 16 of 20 names sat on "…" at 22s): the
      three calls that fill a row's "Today" levels jump the key's queue, so each name's row fills as its own core lands
      rather than after every name's */
@@ -1684,6 +1743,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     if (cur && !cur.byDate[ny]?.length && !emptyDates.get(entry.ticker)?.has(ny)) {
       /* this morning's rows for the session's report, and their live rows to come off the whole book (dateChain) */
       const chain = await dateChain(entry.ticker, ny, cur.spot, false).catch(() => null);
+      recordAsked.add(`${entry.ticker}|${ny}`);
       if (!still()) return;
       const after = cache.get(entry.ticker);
       if (after && chain) {
@@ -1692,9 +1752,34 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
         emit();
       }
     }
+    /* …and that session's own contracts (the seventh audit's M2): its flip re-prices them with their own vols, and is
+       final — "Flip crossed", "How the levels held" — only once they are read */
+    const had = cache.get(entry.ticker);
+    if (had && had.byDate[ny]?.length && !had.factsDates?.has(ny)) {
+      const rows = await whalesOptionContractsPaged(entry.ticker, ny, hot).catch(() => null);
+      if (!still()) return;
+      const after = cache.get(entry.ticker);
+      if (after && rows) {
+        const book = foldContracts(rows, ny);
+        const have = after.byDate[ny];
+        if (book.size && have?.length) after.byDate = { ...after.byDate, [ny]: paintLegs(have, book, true) };
+        after.factsDates = new Set([...(after.factsDates ?? []), ny]);
+        after.at = Date.now();
+        emit();
+      }
+    }
   }
   /* "All expiries" on the Board: every live date's strikes, so the flip can re-price each date at its own clock */
   if (readLevelsScope() === 'ALL') await loadBoardDates(entry.ticker, token, listed);
+}
+
+/** The session on record's own date has been asked for (its chain landed, or the ask came back) — until then a page
+    that needs that book says "…", never "not available" (the seventh audit's m1) */
+const recordAsked = new Set<string>();
+export function peekRecordAsked(ticker: string, date: string): boolean {
+  const e = cache.get(ticker.toUpperCase());
+  if (!e) return false;
+  return recordAsked.has(`${e.ticker}|${date}`) || !!e.byDate[date]?.length || !!emptyDates.get(e.ticker)?.has(date) || (e.status === 'live' && !!e.expiries.length && !e.expiries.some(x => x.date === date));
 }
 
 /** The own-vol dates (ownIvDates) whose contracts are not read yet */
@@ -1742,9 +1827,10 @@ const emptyDates = new Map<string, Set<string>>();
 */
 const datesQueue: { ticker: string; run: () => Promise<void>; done: () => void }[] = [];
 let datesRunning = 0;
-/* three names at a time (the sixth audit's M3): each name's dates are now one paged walk, so three names fill the key's
-   three slots — the name on screen still first */
-const DATES_AT_ONCE = 3;
+/* five names at a time (the sixth audit's M3; five since the seventh's m11, with five asks in flight from the browser —
+   whales.ts MAX_INFLIGHT): each name's walk is one page after another, so five names keep the proxy's queue fed — the
+   name on screen still first */
+const DATES_AT_ONCE = 5;
 function pumpDates(): void {
   while (datesRunning < DATES_AT_ONCE && datesQueue.length) {
     const i = Math.max(0, datesQueue.findIndex(q => isHot(q.ticker)));
@@ -1885,6 +1971,7 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
     /* an own-vol date whose contracts failed to read is asked again here, not left provisional until the next listing */
     const missing = horizonFactsMissing(entry);
     if (missing.length) void fillExpiryFacts(entry, token, missing);
+    void refreshDatesGamma(entry, token);
     return;
   }
   let listed: { date: string; dte: number }[] = [];
@@ -2069,10 +2156,56 @@ const oiChangeWait = new Set<string>();
    every date's change at a strike, and Building then valued that sum at the selected scope's per-contract gamma — SPY
    767 read "+42,691 puts" on today's chain when 1,921 of them were 10/22 and 36,716 were 10/27. Each row keeps its
    expiry, strike and side; Building picks the contracts in scope and values each with its own gamma. */
+/** The last session that has finished: today's after its 4:00 close, else the trading day before today */
+function finishedSessionIso(): string {
+  const iso = nyIsoDate();
+  const [y, m, d] = iso.split('-').map(Number);
+  if (isTradingDay(new Date(y, m - 1, d)) && nyMinutes() >= CLOSE_MIN) return iso;
+  for (let back = 1; back < 12; back++) {
+    const p = new Date(y, m - 1, d - back);
+    if (isTradingDay(p)) return isoDate(p);
+  }
+  return iso;
+}
+/* THE NEXT COUNT AS SOON AS IT IS OUT (the seventh audit's retail finding: "BUILT OCT 21" with "Oct 22's count is not out
+   yet" at 07:25 on Oct 23, and nothing said when it would be): while the count in hand does not yet cover the last
+   finished session, the vendor's first page is asked every five minutes, and the whole count is read again the moment it
+   carries a newer date */
+const OI_STALE_MS = 5 * 60_000;
+const oiChangeChecked = new Map<string, number>();
+/** When the open-interest count was last asked for (epoch ms), and whether it is behind the last finished session */
+export function peekOiChangeCheck(ticker: string): { at: number | null; behind: boolean } {
+  const t = ticker.toUpperCase();
+  const c = oiChangeCache.get(t);
+  return { at: oiChangeChecked.get(t) ?? oiChangeAt.get(t) ?? null, behind: !!c?.lastDate && c.lastDate < finishedSessionIso() };
+}
 export function ensureOiChange(ticker: string): void {
   const t = ticker.toUpperCase();
   if (!t || oiChangeWait.has(t)) return;
-  if (oiChangeCache.has(t) && Date.now() - (oiChangeAt.get(t) ?? 0) < OI_CHANGE_MS) return;
+  const held = oiChangeCache.get(t);
+  const behind = !!held?.lastDate && held.lastDate < finishedSessionIso();
+  const age = Date.now() - Math.max(oiChangeAt.get(t) ?? 0, oiChangeChecked.get(t) ?? 0);
+  if (held && age < (behind ? OI_STALE_MS : OI_CHANGE_MS)) return;
+  oiChangeWait.add(t);
+  if (held && behind) {
+    /* a probe: the first page's dates — the whole count is read again only when they move */
+    void (async () => {
+      const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=0&order=desc`, isHot(t), !isHot(t));
+      oiChangeChecked.set(t, Date.now());
+      const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+      const newer = rows.some(r => String(r.curr_date ?? '') > (held.currDate ?? ''));
+      oiChangeWait.delete(t);
+      if (newer) {
+        oiChangeAt.delete(t);
+        oiChangeChecked.delete(t);
+        readOiChange(t);
+      } else emit();
+    })().catch(() => oiChangeWait.delete(t));
+    return;
+  }
+  readOiChange(t);
+}
+function readOiChange(t: string): void {
   oiChangeWait.add(t);
   void (async () => {
     const out: OiChangeRow[] = [];
@@ -2105,6 +2238,7 @@ export function ensureOiChange(ticker: string): void {
     if (!out.length && oiChangeCache.has(t)) return;
     oiChangeCache.set(t, { rows: out, lastDate, currDate });
     oiChangeAt.set(t, Date.now());
+    oiChangeChecked.set(t, Date.now());
     emit();
   })().finally(() => {
     oiChangeWait.delete(t);

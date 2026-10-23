@@ -75,7 +75,7 @@ import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { bracketLabel, seatLabel } from '../../data/congress';
-import { useInsiderFlow, useNewsFeed, useTickerCongress } from '../../data/liveRecord';
+import { useInsiderFlow, useNewsCoverage, useNewsFeed, useTickerCongress } from '../../data/liveRecord';
 import { useStockFile } from '../../data/stockFile';
 import type { BookContract, FlowPrint } from '../../types/trace';
 import { StockNameSkeleton } from './recordSkeletons';
@@ -185,7 +185,9 @@ const JUMPS: [string, string][] = [
 const pct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 /** A chart point's seconds, said as the reader's day or minute */
 const dayOf = (t: number) => fmtDayLocal(t as UTCTimestamp);
-const clockOf = (t: number) => fmtClockLocal(t as UTCTimestamp);
+/* THE PRINTS SPEAK NEW YORK'S CLOCK (audit round 7: "19:20 122K" under a heading of "09:30–15:59 ET" was the reader's
+   own zone — the print crossed at 15:20 ET). The session's tape and its prints are the market's day. */
+const clockOf = (t: number) => `${fmtClockLocal(t as UTCTimestamp, 'ny')} ET`;
 const ago = (m: number) => (m < 1 ? 'just now' : m < 60 ? `${Math.round(m)}m ago` : `${Math.floor(m / 60)}h ${Math.round(m % 60)}m ago`);
 const count = (v: number) => (v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${Math.round(v)}`);
 /** "09/18/2026" → "2026-09-18", the Weigher's date key */
@@ -509,12 +511,18 @@ const StockName = () => {
   }, []);
   /* the wire only (round 6): the whole record (congress and insider books) is not this page's */
   const recordNews = useNewsFeed();
+  const newsCover = useNewsCoverage();
+  /* the wire's empty line waits for the read to settle (audit round 7: "NOTHING ON THE WIRE TODAY" showed mid-read) */
+  const wireReading = recordNews.status === 'loading' || newsCover.reading;
   const file = useStockFile(T);
   /* the quote carries the regular session's change and the extended-hours move apart (data/liveQuote.ts) */
   const quote = useLiveQuote(T);
   const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, recordNews, bookRev, file, quote]);
   const insiders = useInsiderFlow(T, 90);
-  const marketInsiders = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket).sort((a, b) => (b.tradedOn ?? '').localeCompare(a.tradedOn ?? '') || a.daysAgo - b.daysAgo).slice(0, 5), [insiders]);
+  const marketAll = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket), [insiders]);
+  /* the rows are the newest five; the foot's totals are every open-market trade of the 90 days — said so (the retail
+     test, round 7: "sold $95.5M" under five rows that add to far less read as a mismatch) */
+  const marketInsiders = useMemo(() => [...marketAll].sort((a, b) => (b.tradedOn ?? '').localeCompare(a.tradedOn ?? '') || a.daysAgo - b.daysAgo).slice(0, 5), [marketAll]);
   /* the name's own Congress reports, not the market book's latest few weeks */
   const congressBook = useTickerCongress(T, 180);
   const congressAll = useMemo(() => [...congressBook.trades].sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressBook]);
@@ -569,6 +577,10 @@ const StockName = () => {
   const sidePrem = money.bullishPremium + money.bearishPremium;
   const bullShare = sidePrem > 0 ? (100 * money.bullishPremium) / sidePrem : 50;
   const sessionWord = file.session ? shortDay(file.session) : 'the session';
+  /* THE SCREENER'S FIGURES WEAR THE SCREENER ROW'S OWN DATE (audit round 7: on a Saturday the Oct 22 row read "option
+     premium · Oct 23" — the label took the clock's session, not the data's) */
+  const screenDay = typeof file.screen?.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(file.screen.date) ? String(file.screen.date).slice(0, 10) : null;
+  const screenWord = screenDay ? shortDay(screenDay) : sessionWord;
   const up = view.changePct >= 0;
   const live = view.sources.filter(s => s.status === 'live').length;
   const maxPts = Math.max(0.1, ...view.contributions.map(c => Math.abs(c.points)));
@@ -806,7 +818,7 @@ const StockName = () => {
               <Fact label="RSI · ADX" testId="rsi" tip="RSI and ADX over 14 sessions — the screener's rsi_14 and adx_14, the same figures the factors below score">
                 {trend.rsi14 != null ? trend.rsi14.toFixed(0) : '—'} <span className="text-textMuted">·</span> {trend.adx14 != null ? trend.adx14.toFixed(0) : '—'}
               </Fact>
-              <Fact label={`Range · ${sessionWord}`} testId="atr">
+              <Fact label={`Range · ${screenWord}`} testId="atr">
                 {trend.atrPercentile != null ? (
                   <>
                     {trend.rangeToday != null ? trend.rangeToday.toFixed(2) : ''} <span className="text-textMuted">· {ordinal(trend.atrPercentile)} pct</span>
@@ -990,7 +1002,7 @@ const StockName = () => {
           <div className="px-5 pb-2" data-stock-flow>
             <div className="flex items-center justify-between gap-2 font-mono text-[10px] tnum">
               <span className={callShare >= 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>calls {fmtMoney(money.callPremium)}</span>
-              <span className="text-[9px] uppercase tracking-widest text-textMuted text-center" title="The screener's call_premium and put_premium: every dollar paid for calls and for puts">option premium · {sessionWord} · {Math.round(callShare)}% calls</span>
+              <span className="text-[9px] uppercase tracking-widest text-textMuted text-center" title="The screener's call_premium and put_premium: every dollar paid for calls and for puts">option premium · {screenWord} · {Math.round(callShare)}% calls</span>
               <span className={callShare < 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>puts {fmtMoney(money.putPremium)}</span>
             </div>
             <div className="mt-1.5">
@@ -1052,6 +1064,7 @@ const StockName = () => {
               </div>
               <SessionsChart
                 testId="dark-prints"
+                zone="ny"
                 kind="line"
                 height={132}
                 ink="rgb(var(--text-secondary))"
@@ -1139,9 +1152,9 @@ const StockName = () => {
       <CompanyFile ticker={T} />
       <NameBooks ticker={T} />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="The news" sub={`The wire on ${T} · ${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today${news.reports.length ? ` · the last ${news.reports.length} reports` : ''}`} aside={<PillarBarSmall p={byKey.news} />} testId="news">
+        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} reports` : ''}`} aside={<PillarBarSmall p={byKey.news} />} testId="news">
           {news.stories.length === 0 ? (
-            <div className="px-5 pb-4 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the wire today</div>
+            <div className="px-5 pb-4 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{wireReading ? 'Reading the wire' : recordNews.status === 'sim' ? 'This read did not land' : 'Nothing on the wire today'}</div>
           ) : (
             <div>
               {news.stories.map(s => (
@@ -1560,6 +1573,12 @@ const StockName = () => {
                 bought <span className={insiders.bought > 0 ? 'text-bull' : 'text-textMuted'}>{insiders.bought > 0 ? fmtMoney(insiders.bought) : 'nothing'}</span> · sold{' '}
                 <span className={insiders.sold > 0 ? 'text-bear' : 'text-textMuted'}>{insiders.sold > 0 ? fmtMoney(insiders.sold) : 'nothing'}</span>
                 {insiders.buyerCluster > 1 && <span className="text-silver"> · {insiders.buyerCluster} buyers inside a month</span>}
+                {marketAll.length > marketInsiders.length && (
+                  <span className="text-textMuted">
+                    {' '}
+                    · over all {marketAll.length} open-market trades of the 90 days — the newest {marketInsiders.length} shown above
+                  </span>
+                )}
               </span>
               <Link to="/dossier/insiders" className="ml-auto inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors">
                 <ArrowUpRight className="w-3 h-3" /> every insider

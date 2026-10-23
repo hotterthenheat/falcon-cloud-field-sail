@@ -31,6 +31,7 @@
 */
 
 import { PublishMove } from './publishMove';
+import { useMediaQuery } from '../ui/useMediaQuery';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, Plus, X } from 'lucide-react';
 import { freshnessOf, type EconEvent, type GeoNewsEvent, type NewsGrade } from '../../data/newsroom';
@@ -82,9 +83,11 @@ interface Props {
   calendar: EconEvent[];
   selectedId: string | null;
   onPick: (e: GeoNewsEvent) => void;
+  /** 'reading' while the wire is still being read — the empty line waits for it; 'failed' when it did not answer */
+  wire?: 'reading' | 'failed' | 'read';
 }
 
-const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
+const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: Props) => {
   const [tab, setTabState] = useState<FeedTab>(tabMemory);
   const setTab = (t: FeedTab) => {
     tabMemory = t;
@@ -97,6 +100,10 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
   const boardSet = useMemo(() => new Set(boardNames), [boardNames]);
   const onBoard = (e: GeoNewsEvent) => (e.item.tickers ?? (e.item.ticker ? [e.item.ticker] : [])).some(t => boardSet.has(t));
   const [adding, setAdding] = useState(false);
+  /* ON A PHONE THE ROWS STACK (the retail test, round 7: at 390px each row squeezed its headline column to nothing — the
+     headline broke a letter a line, rows 1,000–1,800px tall, and the box read as an empty black band). The same two-line
+     row as the wire's own under the map: the headline, then time · name · kind · flag · move */
+  const stacked = useMediaQuery('(max-width: 639.98px)');
   /* the open row stays in the window; a tab change starts the window at its head */
   const windowRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -213,8 +220,8 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
 
       {/* THE ROWS — the wire's grammar; below lg they scroll sideways inside the box at a readable width (the phone pass, 2026-09-13) */}
       {/* THE FEED SCROLLS INSIDE ITS BOX past twenty rows (Noah, 2026-10-13) — the same window as the rows under the map */}
-      <div ref={windowRef} className="relative overflow-y-auto overscroll-contain max-lg:overflow-x-auto" style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined}>
-      <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
+      <div ref={windowRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-feed-window={rows.length + printed.length > NEWS_WINDOW_ROWS || undefined} data-news-feed-stacked={stacked || undefined}>
+      {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-[9px] uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: FEED_COLS }}>
         <span title="When the headline crossed, New York time">Time</span>
         <span title="The first stock the headline names; MACRO for an economy or market story that names none; NO TICKER for a company story the wire left untagged">Name</span>
         <span title="What sort of story it is, read from the headline">Kind</span>
@@ -227,7 +234,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
         </span>
         <span className="text-right" title="How the named stock has moved so far today — a fact, not a forecast">Today</span>
         <span className="text-right" title="The other stocks the headline names">Also</span>
-      </div>
+      </div>}
       {printed.map(p => (
         <div key={p.id} className="px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 max-lg:min-w-[900px]" style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: FEED_COLS }} data-news-print-row={p.id}>
           <span className="font-mono text-[10px] tnum text-textSecondary">{p.timeLabel}</span>
@@ -255,12 +262,48 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
       ))}
       {rows.length === 0 && printed.length === 0 && (
         <div className="px-5 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted" data-news-feed-empty>
-          {tab === 'following' ? 'Nothing yet on the names you follow' : 'Nothing on the wire here today'}
+          {wire === 'reading' ? 'Reading the wire' : wire === 'failed' ? 'This read did not land' : tab === 'following' ? 'Nothing yet on the names you follow' : 'Nothing on the wire here today'}
         </div>
       )}
       {rows.map(e => {
         const open = e.id === selectedId;
         const faded = freshnessOf(e) === 'faded';
+        if (stacked)
+          return (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => onPick(e)}
+              className={`group w-full text-left px-4 py-2.5 flex flex-col gap-1 border-t border-borderSubtle/40 transition-colors ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+              data-news-feed-row={e.id}
+              data-open={open || undefined}
+            >
+              <span className="flex items-start gap-2 min-w-0">
+                <span className="mt-[5px] shrink-0">
+                  <ImpactMark tier={tierOf(e.severity)} />
+                </span>
+                <span className={`min-w-0 line-clamp-2 text-[12.5px] leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+              </span>
+              <span className="min-w-0 flex items-center gap-1.5 font-mono text-[10px] text-textMuted whitespace-nowrap overflow-hidden">
+                <span className="tnum text-textSecondary">{e.item.time}</span>
+                <span>·</span>
+                {e.item.ticker ? (
+                  <span className="inline-flex items-center gap-1 font-bold text-textPrimary">
+                    <CompanyLogo ticker={e.item.ticker} size={12} />
+                    {e.item.ticker}
+                  </span>
+                ) : (
+                  <span className="text-textSecondary">{nameWord(e.item)}</span>
+                )}
+                <span>·</span>
+                <CatTag category={e.item.category} size={9} />
+                {(e.item.major || onBoard(e) || leanOf(e.grade)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} />}
+                <span className="ml-auto tnum font-semibold">
+                  <PublishMove p={e.item.prediction} short />
+                </span>
+              </span>
+            </button>
+          );
         return (
           <button
             key={e.id}

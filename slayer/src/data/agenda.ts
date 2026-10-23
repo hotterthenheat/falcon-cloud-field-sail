@@ -45,8 +45,8 @@ import { aheadWord } from './bookWindow';
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
 import { buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
-import { changeWhen, type Building, type BuildVerdict } from './building';
-import { levelRoles, putWallWordsAt, type LevelRole } from '../core/walls';
+import { changeWhen, sizeWords, type Building, type BuildVerdict } from './building';
+import { levelRoles, putWallWordsAt, wallPlace, type LevelRole } from '../core/walls';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
@@ -341,9 +341,9 @@ export function buildAgenda(
   const first = byMatters.slice(0, 3).map(t => ordered.find(x => x.strike === t.strike) ?? t);
   /* NOT A STRIKE PRICE IS ALREADY ON (the fifth audit, 2026-10-23: "Most likely reached 764 · 99%" with spot at 763.96):
      strikes within half a strike step of price are taken as reached already and left out */
-  const steps = asc.slice(1).map((x, i) => x.strike - asc[i].strike).filter(d => d > 0);
-  const step = steps.length ? Math.min(...steps) : spot * 0.002;
-  const onPrice = (t: Target) => Math.abs(t.strike - spot) < Math.max(step / 2, spot * 0.0005);
+  /* ONE "AT PRICE" (the seventh audit's m5: half a strike step called CROX's 120 "at price" 0.82% away): the Board's
+     and the read's own tolerance, core/walls.ts wallPlace — within 0.05% of price */
+  const onPrice = (t: Target) => wallPlace(t.strike, spot) === 'at';
   /* …and the rows say so, so the head's "most likely reached" and the table read off the same set (the sixth audit's
      retail test: "Most likely reached 763 · 84%" over a row of 764 at 99%) */
   for (const t of ordered) t.atPrice = onPrice(t);
@@ -396,4 +396,4 @@ export const closeLeanWords = (a: Pick<Agenda, 'closesNear' | 'closeTop'>): stri
 
 /** Building's word for today's change at a strike, for the row */
 export const buildWords = (t: Target, inSession: boolean): string =>
-  t.buildLoading ? '…' : t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} · ${signed(t.build)}${t.buildOvernight ? ` ${t.buildWhen}` : inSession ? '' : ' last session'}`;
+  t.buildLoading ? '…' : t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} · ${sizeWords(t.build)}${t.buildOvernight ? ` ${t.buildWhen}` : inSession ? '' : ' last session'}`;

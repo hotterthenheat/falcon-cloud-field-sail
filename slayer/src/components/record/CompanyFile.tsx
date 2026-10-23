@@ -48,7 +48,7 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
   const card = useStockCard(ticker);
   const file = useStockFile(ticker);
   /* the one next-earnings rule (data/earningsFeed.ts) — the same date the stock page and the earnings file show */
-  const nextRow = nextReportRow(file.earnings);
+  const nextRow = nextReportRow(file.earnings, { skipOut: true });
   const next = nextRow?.report_date
     ? { dateLabel: reportDayLabel(nextRow.report_date), daysOut: tradingDaysUntil(nextRow.report_date), confirmed: String(nextRow.source ?? '').toLowerCase() === 'company' }
     : null;

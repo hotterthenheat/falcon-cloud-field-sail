@@ -155,7 +155,7 @@ const COMPANY_RE = UNIVERSE.filter(u => u.name.length >= 4 && u.name !== u.ticke
    "CPI", "FUTURE" (FutureFuel), "Tesla Eyes" (Second Sight). A tag stands when the headline writes it as a symbol
    ($T, (T), NASDAQ: T) or names the company by its distinctive word; otherwise it is dropped — a missing tag costs
    less than a story filed under the wrong company. */
-const GENERIC = new Set(['first', 'second', 'general', 'united', 'american', 'national', 'global', 'international', 'international', 'new', 'the', 'great', 'western', 'eastern', 'southern', 'northern', 'capital', 'financial']);
+const GENERIC = new Set(['first', 'second', 'general', 'united', 'american', 'national', 'global', 'international', 'new', 'the', 'great', 'western', 'eastern', 'southern', 'northern', 'capital', 'financial', 'world', 'canada', 'china', 'japan', 'india', 'europe', 'asia']);
 function borneOut(t: string, headline: string): boolean {
   const T = esc(t);
   if (new RegExp(`\\$${T}\\b|\\(${T}\\)|\\b(?:NASDAQ|NYSE|AMEX|OTC)\\s*:\\s*${T}\\b`, 'i').test(headline)) return true;
@@ -221,7 +221,18 @@ export function storyLeadTicker(headline: string, tickers: readonly string[] | u
    story from such a source is not a market story and is dropped, counted. */
 const SPAM_RE =
   /\b(?:criminal defense|defense lawyers?|defense attorneys?|personal injury|injury (?:lawyers?|attorneys?)|dui (?:lawyers?|attorneys?)|divorce (?:lawyers?|attorneys?)|hellonation|law offices? of|accident (?:lawyers?|attorneys?)|estate planning attorney)\b|\|\s*[^|]{0,60}\b(?:lawyers?|attorneys?|law firm|law group)\s*$/i;
-export const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline);
+/* NOISE ON THE WIRE (the retail test, round 7: token-price bot posts — "Lido DAO struggles at $0.39 on Binance, below key
+   moving averages. MACD at zero…" — a market-research advert, an essay-writing advert and a marathon runner's doping
+   suspension filed under WKC sat among the day's stories) */
+const NOISE_RE =
+  /\bon binance\b[^.]{0,80}?(?:macd|stochastic|bollinger|moving averages?|rsi|pivot|oversold|overbought)|\b(?:macd|stochastic|bollinger)\b[^.]{0,80}\bbinance\b|\bmarket worth \$?[\d.,]+ ?(?:billion|million) by 20\d\d\b|\|\s*marketsandmarkets|\bessay writing service\b|\b(?:marathon|athletics integrity|olympic) (?:champion|unit|gold)/i;
+export const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline) || NOISE_RE.test(headline);
+
+/* "MAJOR" IS EARNED (the retail test, round 7: 138 of 270 stories read MAJOR — the vendor flags conference-call dates,
+   "to speak at" notices, routine dividends and press releases on private companies). A story is major when the vendor
+   says so AND it is about a named listed company or the economy, AND it is not house-keeping. */
+const ROUTINE_RE =
+  /\bconference call\b|\b(?:earnings|results) (?:release|date|call)\b|\b(?:to|will) (?:host|hold|report|announce|release)\b[^.]{0,60}\b(?:results|earnings)\b|\bannounces? (?:the )?(?:date|timing)\b|\btiming of\b[^.]{0,40}\bresults\b|\bto (?:speak|present|participate) at\b|\binvestor (?:conference|day)\b|\b(?:declares?|announces?)\b[^.]{0,30}\b(?:quarterly|regular|monthly|cash) (?:cash )?dividend\b|\bdividend payout\b|\bnames?\b[^.]{0,40}\b(?:vice president|vp|manager|director)\b/i;
 
 /** The regular close before a date, from the name's regular closes when they are in hand — or null */
 export type PriorClose = (ticker: string, before: string) => number | null;
@@ -232,9 +243,10 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
     const headline = decodeEntities(r.headline || '');
     const at = Date.parse(r.created_at);
     const sent = sentimentOf(r.sentiment);
-    const major = !!r.is_major;
     const { tickers, mentions } = storyTickers(headline, r.tickers);
     const ticker = tickers[0] ?? null;
+    const category = categoryOf(headline, r.tags, !!ticker);
+    const major = !!r.is_major && (!!ticker || category === 'Macro') && !ROUTINE_RE.test(headline);
     const pm = publishMove(r.meta, ticker, priorClose, r.created_at);
     const moved = pm.day;
     const move = moved ?? 0;
@@ -250,7 +262,7 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
       mentions,
       headline,
       body: [`Reported by ${r.source || 'the wire'}.`],
-      category: categoryOf(headline, r.tags, !!ticker),
+      category,
       sentiment: sent,
       magnitude: major ? 0.8 : 0.45,
       major,
@@ -763,12 +775,15 @@ const marketPriced = (r: UwInsiderRow): boolean => {
   const code = (r.transaction_code || '').toUpperCase();
   return !EXERCISE_CODES.has(code) && !DERIVATIVE_LINE.test(r.security_title || '') && (Number(r.price) || 0) > 0 && (Number(r.stock_price) || 0) > 0;
 };
-/** Issuers with a market-priced row FOREIGN_OFF times over the listing — the live record reads their issuer record */
+/** Issuers with a market-priced row of $250K+ (as filed) FOREIGN_OFF times over the listing — the live record reads their
+ *  issuer record */
 export function foreignSuspects(rows: UwInsiderRow[]): string[] {
   const out = new Set<string>();
   for (const r of rows) {
     const t = (r.ticker || '').toUpperCase();
     if (!t || knownForeign.has(t) || !marketPriced(r)) continue;
+    /* only a row big enough to move a total is worth the look-up — $250K or more as filed */
+    if (Math.abs(Number(r.amount) || 0) * Number(r.price) < 250_000) continue;
     if (over(Number(r.price), Number(r.stock_price), FOREIGN_OFF)) out.add(t);
   }
   return [...out];

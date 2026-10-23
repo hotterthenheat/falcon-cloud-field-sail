@@ -49,6 +49,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import WatchStar from '../../components/trace/WatchStar';
 import { contractKey, watchContract } from '../../context/WatchContext';
+import LeanCell from '../../components/trace/LeanCell';
 import RichRead from '../../components/ui/RichRead';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
@@ -77,7 +78,7 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
 /** the print reads "18,479 @ $1.12" — 118 cut it to "@ $..."; the reason wraps to two lines, so it gives the room */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 132, clipprem: 100, sideCol: 72, otm: 76, earn: 128 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 132, clipprem: 100, sideCol: 92, otm: 76, earn: 128 };
 const FLEXES: Record<string, number> = { reason: 3 };
 const PIN_LEFT = ['time', 'ticker', 'contract'];
 const PIN_RIGHT = ['clipprem'];
@@ -350,7 +351,8 @@ const Watchers = () => {
         align: 'right',
         sortValue: a => a.row.askPct,
         // The tape's rule: the side in one ink
-        render: a => <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : a.side === 'MID' ? 'mid/no side' : 'even'}</span>,
+        /* THE LEAN PRINTS ITS FIGURE (audit round 7: "bid", "ask", "even" with no share) — the house lean cell, the one rule */
+        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{a.side === 'ASK' ? `ask ${Math.round(a.row.askPct)}%` : a.side === 'BID' ? `bid ${Math.round(100 - a.row.askPct)}%` : a.side === 'MID' ? 'mid/no side' : `even · ask ${Math.round(a.row.askPct)}%`}</span>),
       },
       {
         key: 'vol',
