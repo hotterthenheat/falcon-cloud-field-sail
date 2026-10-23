@@ -184,19 +184,24 @@ export function pickFlip<T extends Struck>(
    SPY's 769 read "PUT WALL" on the Agenda's row and the Board, "supreme" on the Map, and the Agenda's head said the only
    wall in reach was 770. A strike that is several levels is all of them, said in one order everywhere:
    supreme · call wall · put wall. */
-export type LevelRole = 'supreme' | 'call wall' | 'put wall';
+export type LevelRole = 'supreme' | 'call wall' | 'put wall' | 'flip';
+/** THE CANONICAL ORDER, every page (the sixth audit, 2026-10-23): supreme · call wall · put wall · flip */
+export const LEVEL_ORDER: readonly LevelRole[] = ['supreme', 'call wall', 'put wall', 'flip'];
 export interface NamedLevels {
   supreme?: number | null;
   callWall?: number | null;
   putWall?: number | null;
+  /** The flip — named only when the caller hands it (a strike is rarely exactly the flip) */
+  flip?: number | null;
 }
 const same = (a: number | null | undefined, b: number) => a != null && Math.abs(a - b) < 1e-9;
-/** Every level a strike is, in the one order: supreme, call wall, put wall */
+/** Every level a strike is, in the one order: supreme, call wall, put wall, flip */
 export function levelRoles(strike: number, levels: NamedLevels): LevelRole[] {
   const out: LevelRole[] = [];
   if (same(levels.supreme, strike)) out.push('supreme');
   if (same(levels.callWall, strike)) out.push('call wall');
   if (same(levels.putWall, strike)) out.push('put wall');
+  if (same(levels.flip, strike)) out.push('flip');
   return out;
 }
 /** "769 · supreme · put wall" — the strike and every level it is (the strike alone when it is none) */

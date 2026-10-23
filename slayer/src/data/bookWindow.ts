@@ -190,6 +190,9 @@ export function bellDay(): { date: string; head: string; clock: string; tip: (ti
 /** The Levels card's "Today" option in the words the clock stands at: "Today" in or before the session, "Next session"
     after the close */
 export const todayScopeLabel = (): string => (sessionDay().closed ? 'Next session' : 'Today');
+/** THE ONE PHASE WORD for the session ahead, outside it (the sixth audit's m8): "today" before a trading day's open,
+    "next session" after its close or on a day with none — the Levels card's own word, lower case */
+export const aheadWord = (): 'today' | 'next session' => (todayScopeLabel() === 'Today' ? 'today' : 'next session');
 
 /** The scope in a reader's words, for a label: "Today · Oct 22", "Next session · Oct 23", "Oct 26 · next expiry",
     "All expiries" */

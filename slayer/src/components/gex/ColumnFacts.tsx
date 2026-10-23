@@ -98,7 +98,8 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const priceW = ch(spot.toFixed(2), 14);
   /* the move outside the session rides with the day's change ("−1.18% · after hours +0.05%"): the change sheds it last */
   const extPct = snapshot.dayMove?.extPct;
-  const changeW = 6 + ch(`${change > 0 ? '+' : ''}${change.toFixed(2)}%`, 11);
+  /* outside the session the change is named by its date ("−1.18% Oct 22", DayMoveText) */
+  const changeW = 6 + ch(`${change > 0 ? '+' : ''}${change.toFixed(2)}%`, 11) + (snapshot.dayMove && snapshot.dayMove.phase !== 'regular' ? 6 + ch('Oct 22', 11) : 0);
   const extW = extPct != null ? 8 + ch(`· after hours +${Math.abs(extPct).toFixed(2)}%`, 11) : 0;
   const flipW = GROUP + ch('Flip', 11, true) + 6 + ch(flip != null ? fmt(flip) : 'none', 12);
   const distW = flip != null && lead ? 6 + ch(atSpot ? 'at spot' : `${lead} ${away! > 0 ? 'above' : 'below'}`, 11) : 0;
@@ -118,6 +119,9 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
     if (core + dealersLabelW + heldW <= room) [shed, showExt] = [0, true];
     else if (core + dealersLabelW <= room) [shed, showExt] = [1, true];
     else if (core <= room) [shed, showExt] = [2, true];
+    /* the pre-market or after-hours move outranks the flip's distance too — every price on the desk reads
+       "−1.18% Oct 22 · pre-market +0.12%" (the sixth audit's M1) */
+    else if (base + changeW + extW <= room) [shed, showExt] = [3, true];
   }
   const regimeInk = !hasRegime ? undefined : absorb ? ABSORB : AMPLIFY;
 

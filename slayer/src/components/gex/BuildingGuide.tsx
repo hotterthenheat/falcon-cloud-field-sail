@@ -10,6 +10,7 @@
 ==================================================
 */
 
+import { aheadWord } from '../../data/bookWindow';
 import { oiWhen } from '../../data/building';
 import type { ReactNode } from 'react';
 import { BULL, CALL_WALL, FLIP, PUT_WALL, SUPREME, alpha } from './paletteInk';
@@ -345,7 +346,7 @@ export const HeadingGuide = ({ data, clock }: { data: Building; clock: AheadCloc
   <div data-heading-guide>
     <Section title="The four levels, moving">
       <p>
-        One row per level on the strike axis. A hollow dot is where it stood at the open, the filled dot is where it is now, the dashed ring is where {clock.inSession ? "today's pace" : "the last session's pace"} puts it {clock.inSession ? 'by the close' : 'next session'}. A wall that holds shows one dot. The diamond is the strike growing fastest on that side, tied to the wall by how far short it is.
+        One row per level on the strike axis. A hollow dot is where it stood at the open, the filled dot is where it is now, the dashed ring is where {clock.inSession ? "today's pace" : "the last session's pace"} puts it {clock.inSession ? 'by the close' : aheadWord()}. A wall that holds shows one dot. The diamond is the strike growing fastest on that side, tied to the wall by how far short it is.
       </p>
       <HeadingFigure />
     </Section>
@@ -377,7 +378,7 @@ export const BuildingGuide = ({ data, clock }: { data: Building; clock: AheadClo
       <DayFigure />
     </Section>
     <Section title="Where the number comes from">
-      <p>Open interest is counted once a day, overnight. The change shown is the latest count against the one before it — the contracts opened or closed in <b>{oiWhen(data.oiDates).trade ?? 'the last session'}</b>{oiWhen(data.oiDates).pending ? ` (${oiWhen(data.oiDates).pending})` : ''}, not today's — contract by contract (each expiry, strike and side apart), and only the contracts the Levels card reads (today's expiry, or every live one). Each contract's change is valued at its own gamma at today's price. Until that count has loaded the page estimates it from today's trades. A change counts as building or draining only past 5% of the biggest wall shown; under that it is steady.</p>
+      <p>Open interest is counted once a day, overnight. The change shown is the latest count against the one before it — the contracts opened or closed in <b>{oiWhen(data.oiDates).trade ?? 'the last session'}</b>{oiWhen(data.oiDates).pending ? ` (${oiWhen(data.oiDates).pending})` : ''}, not today's — contract by contract (each expiry, strike and side apart), and only the contracts the Levels card reads (today's expiry, or every live one). Each contract's change is valued at the same pricing as the wall now — the live book's own price and minute — so "was" and "now" are priced alike. Until that count has loaded the page estimates it from today's trades. A change counts as building or draining only past 5% of the biggest wall shown; under that it is steady.</p>
       <FloorFigure />
     </Section>
     <Section title="Today">

@@ -5,7 +5,7 @@
 */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { houseSlug, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
+import { houseSector, houseSlug, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
@@ -159,7 +159,7 @@ const sectorOf = (ticker: string, raw?: string): string => {
   const known = UNIVERSE.find(u => u.ticker === ticker)?.sector;
   if (known) return known;
   if (raw && SECTORS.has(raw)) return raw;
-  return raw && raw.trim() ? raw : '—';
+  return raw && raw.trim() ? houseSector(raw) : '—';
 };
 const asSector = (ticker: string, raw?: string): Sector => {
   const s = sectorOf(ticker, raw);
@@ -411,6 +411,7 @@ export function shortRowFromFile(
     if (session.market_date) out.shortVolDate = String(session.market_date).slice(0, 10);
     const sv = num(session.short_volume);
     if (sv > 0) out.shortVolM = sv / 1e6;
+    out.shortVolSource = 'Unusual Whales short volume and ratio (FINRA CNMS, the consolidated tape)';
   }
   const fails = arr(reads.ftd).filter(f => f.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   if (fails.length && !out.ftdDays.length) {
@@ -424,6 +425,19 @@ export function shortRowFromFile(
     out.exchanges = venues
       .filter(v => String(v.date ?? '') === day)
       .map(v => ({ exchange: String(v.exchange_name || v.market_center || '—'), shortM: num(v.short_volume) / 1e6, totalM: num(v.total_volume) / 1e6 }));
+  }
+  /* THE SOURCE ON THE CARD (audit round 6: WOLF's "Short volume 55% · Oct 22" was FINRA CNMS alone — the ratio read came
+     back empty and the by-market rows stood in, unsaid). When the ratio read is empty the by-market rows' latest day is
+     the figure, and the card names them */
+  if (out.shortVolRatio == null && out.exchanges.length) {
+    const short = out.exchanges.reduce((a, v) => a + v.shortM, 0);
+    const total = out.exchanges.reduce((a, v) => a + v.totalM, 0);
+    if (total > 0) {
+      out.shortVolRatio = (short / total) * 100;
+      out.shortVolM = short;
+      out.shortVolDate = out.exchangesDate;
+      out.shortVolSource = `the by-market short volume (${[...new Set(out.exchanges.map(v => v.exchange))].join(', ')}) — the vendor's short volume and ratio came back empty`;
+    }
   }
   return out;
 }
@@ -498,7 +512,7 @@ async function pullShorts() {
       if (!f) return r;
       const rawSector = typeof f.sector === 'string' ? f.sector.trim() : '';
       const fund = FUND_TYPES.test(String(f.issue_type ?? ''));
-      return { ...r, sector: uwSector(rawSector) ?? (rawSector || (fund ? 'Fund' : r.sector)), fund };
+      return { ...r, sector: uwSector(rawSector) ?? (houseSector(rawSector) || (fund ? 'Fund' : r.sector)), fund };
     });
     /* ONE READ, SHOWN WHOLE (the retail test, 2026-10-23: "2 strong · 22 building", then "19 building" minutes apart on
        a Sep 30 settlement). The book was shown before the prior settlement landed, so the change-in-shares point arrived
@@ -561,7 +575,7 @@ const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
       name: titleIssue(name),
       weight,
       sharesM: num(h.shares) / 1e6,
-      sector: h.sector || (/treasury|t-bill|t-note/i.test(name) ? 'Treasury' : String(h.type || '').toLowerCase() === 'bond' ? 'Corporate bond' : '—'),
+      sector: houseSector(h.sector) || (/treasury|t-bill|t-note/i.test(name) ? 'Treasury' : String(h.type || '').toLowerCase() === 'bond' ? 'Corporate bond' : '—'),
       /* a Treasury is the United States' own paper; any other issue keeps what the feed said */
       country: h.country_name || (/treasury|t-bill|t-note/i.test(name) ? 'United States' : 'Not stated'),
       asOf: nyDayOfUtcStamp(h.updated ? String(h.updated) : null) ?? undefined,
@@ -571,7 +585,7 @@ const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
     ticker,
     weight,
     sharesM: num(h.shares) / 1e6,
-    sector: h.sector || '—',
+    sector: houseSector(h.sector) || '—',
     country: h.country_name || 'Not stated',
     asOf: nyDayOfUtcStamp(h.updated ? String(h.updated) : null) ?? undefined,
   };
@@ -749,7 +763,7 @@ export function ensureStockCard(ticker: string): void {
           [t]: {
             ticker: t,
             name: String(row.full_name || row.short_name || t),
-            sector: String(row.sector || '—'),
+            sector: houseSector(String(row.sector || '')) || '—',
             description: String(row.short_description || ''),
             marketCap: numOr(row.marketcap),
             beta: numOr(row.beta),
@@ -858,7 +872,7 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
       if (dead) return;
       const d = (res.data && typeof res.data === 'object' ? res.data : {}) as { sector?: { sector?: string; weight?: string }[]; country?: { country?: string; weight?: string }[] };
       const list = (rows: { name?: string; weight?: string }[]) =>
-        rows.map(r => ({ name: String(r.name || '—'), weight: num(r.weight) * 100 })).filter(r => r.weight >= 0.05).sort((a, b) => b.weight - a.weight);
+        rows.map(r => ({ name: houseSector(String(r.name || '')) || '—', weight: num(r.weight) * 100 })).filter(r => r.weight >= 0.05).sort((a, b) => b.weight - a.weight);
       setGot({
         status: res.error ? 'error' : 'live',
         sectors: list((d.sector ?? []).map(r => ({ name: r.sector, weight: r.weight }))),

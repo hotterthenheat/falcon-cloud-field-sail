@@ -165,7 +165,7 @@ const TrendCell = ({ data }: ICellRendererParams<StockPick>) => {
   return (
     <span className="flex items-center gap-1.5 cursor-help" title={`The closes a year ago, six, three and one month ago, a week ago and now: ${data.trend.map(v => v.toFixed(2)).join(' → ')} — ${signedPct(chg)} over the span`}>
       <Sparkline data={data.trend} up={last >= first} width={56} height={20} />
-      <span className={`font-mono text-[9px] tnum ${dirInk(chg)}`}>{signedPct(chg, 0)}</span>
+      <span className={`font-mono text-[9px] tnum ${dirInk(chg)}`}>{signedPct(chg, 1)}</span>
     </span>
   );
 };

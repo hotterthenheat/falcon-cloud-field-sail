@@ -57,7 +57,7 @@ import { chanceLabel } from '../../data/wall';
 import { nyClock } from '../../core/nyTime';
 import { useLevelsScope } from '../../data/levelsScope';
 import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
-import { levelRoles } from '../../core/walls';
+import { callWallWordsAt, levelRoles, putWallWordsAt, wallPlace } from '../../core/walls';
 import { BOARD_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { kindTip } from '../../components/gex/glossary';
 
@@ -134,10 +134,18 @@ const NameCell = ({ data, context }: ICellRendererParams<BoardRow, unknown, Boar
 
 /* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22: SPY −0.00% on a −1.18% day): the regular
    session's change, with the move outside the session on its own labelled line; a zero change is neutral, never green */
-const DayChange = ({ data, compact = false }: { data: BoardRow; compact?: boolean }) => {
+const DayChange = ({ data, compact = false, lead = false, extOnly = false }: { data: BoardRow; compact?: boolean; /** the change alone */ lead?: boolean; /** the move outside the session alone */ extOnly?: boolean }) => {
   const w = dayMoveWords(data.day);
   if (!w) return null;
   const main = data.day?.dayPct;
+  if (extOnly) return w.ext ? <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title={w.title}>{w.ext}</span> : null;
+  if (lead)
+    return (
+      <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-[11px]' : 'text-[10px]'} whitespace-nowrap`} title={w.title} data-day-change>
+        <span style={{ color: changeInk(main) }}>{w.main}</span>
+        {w.when && <span className="text-textMuted">{w.when}</span>}
+      </span>
+    );
   return (
     <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-[11px]' : 'text-[10px]'} whitespace-nowrap`} title={w.title} data-day-change>
       <span style={{ color: changeInk(main) }}>{w.main}</span>
@@ -153,9 +161,14 @@ const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
      the after-hours or pre-market print is named in the hover */
   const ext = peekExtLast(data.ticker);
   return (
-    <TickFigure value={data.spot} title={ext ? `${data.spot.toFixed(2)} regular close · ${ext.price.toFixed(2)} ${ext.word}. The levels, and every distance here, are read at the close` : undefined} className="inline-flex items-baseline gap-2 font-mono text-[12px]">
-      <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
-      <DayChange data={data} />
+    /* TWO LINES OUTSIDE THE SESSION (the sixth audit's m11: the key columns cut at 1440): the price and the day's change,
+       then the pre-market or after-hours move under them — the words stay whole, the column narrows */
+    <TickFigure value={data.spot} title={ext ? `${data.spot.toFixed(2)} regular close · ${ext.price.toFixed(2)} ${ext.word}. The levels, and every distance here, are read at the close` : undefined} className="flex flex-col justify-center leading-[14px] font-mono text-[12px]">
+      <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
+        <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
+        <DayChange data={data} lead />
+      </span>
+      <DayChange data={data} extOnly />
     </TickFigure>
   );
 };
@@ -209,8 +222,17 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
   const roles = levelRoles(data.nearest.strike, { supreme: data.supreme, callWall: data.callWall, putWall: data.putWall });
   const ink = (r: string) => (r === 'supreme' ? SUPREME : r === 'call wall' ? CALL_WALL : PUT_WALL);
+  /* WHERE THE WALL SITS, IN WORDS (the sixth audit's retail test: "769 · supreme · put wall" above price beside "Watch
+     first 765" confused a new reader — a put wall above price is overhead hedging, not a floor; only Compare said so) */
+  const place = wallPlace(data.nearest.strike, data.spot);
+  const placeWords = [
+    `${fmtStrike(data.nearest.strike)} · ${roles.join(' · ')} · ${place === 'at' ? 'at price' : `${place} price`}`,
+    ...(roles.includes('call wall') ? [`Call wall: ${callWallWordsAt(place)}.`] : []),
+    ...(roles.includes('put wall') ? [`Put wall: ${putWallWordsAt(place)}.`] : []),
+    ...(roles.includes('supreme') ? ['Supreme: the strike with the most hedging of all — price is drawn to it near expiry.'] : []),
+  ].join('\n');
   const label = (
-    <span className="text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title={roles.join(' · ')}>
+    <span className="text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title={placeWords}>
       {roles.map((r, i) => (
         <span key={r} style={{ color: ink(r) }}>
           {i > 0 && <span className="text-textMuted"> · </span>}
@@ -220,18 +242,14 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
     </span>
   );
   const figs = (
-    <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
+    <span className="inline-flex items-baseline gap-2 whitespace-nowrap" title={placeWords}>
       <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(data.nearest.strike)}</span>
       <span className="text-[10px] text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.nearest.distPct} /></span>
     </span>
   );
-  return roles.length > 1 ? (
+  /* always two lines — the role words, then the strike and how far — so nothing cuts at 1440 (the sixth audit's m11) */
+  return (
     <span className="flex flex-col justify-center leading-[14px] font-mono tnum tabular-nums min-w-0">
-      {label}
-      {figs}
-    </span>
-  ) : (
-    <span className="inline-flex items-baseline gap-2 font-mono tnum tabular-nums">
       {label}
       {figs}
     </span>
@@ -244,15 +262,16 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (data.pending) return <Pending data={data} />;
   const w = data.watch;
   if (!w) return <span className="font-mono text-[10px] text-textMuted">—</span>;
-  const kind = w.role ?? (w.isShelf ? 'shelf' : w.isWall ? null : 'trapdoor');
-  const ink = w.role ? ROLE_INK[w.role] : w.isShelf ? 'rgb(var(--text-muted))' : w.isWall ? undefined : WARM;
+  /* every level the strike is, in the one order (the sixth audit's m5) */
+  const kind = w.roles?.length ? w.roles.join(' · ') : w.role ?? (w.isShelf ? 'shelf' : w.isWall ? null : 'trapdoor');
+  const ink = w.roles?.length ? ROLE_INK[w.roles[0]] : w.role ? ROLE_INK[w.role] : w.isShelf ? 'rgb(var(--text-muted))' : w.isWall ? undefined : WARM;
   /* TWO LINES, so nothing truncates ("$8(" at 1440): the strike and its kind, then the chance, the size and the dollars */
   return (
     <span className="flex flex-col justify-center leading-[14px] font-mono tnum tabular-nums min-w-0">
       <span className="inline-flex items-baseline gap-2">
         <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(w.strike)}</span>
         {kind && (
-          <span className="text-[8px] uppercase tracking-widest" style={{ color: ink }} title={kindTip(kind)}>
+          <span className="text-[8px] uppercase tracking-widest" style={{ color: ink }} title={kindTip(w.roles?.[0] ?? kind)}>
             {kind}
           </span>
         )}
@@ -433,7 +452,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
             </span>
           </div>
           <div className="flex flex-col min-w-0">
-            {label('Supreme', 'The single strike with the most hedging on it')}
+            {label(readLevelsScope() === 'ALL' ? 'Supreme · all exp.' : todayScopeLabel() === 'Today' ? 'Supreme · today' : 'Supreme · next', `The single strike with the most hedging on it, on ${readLevelsScope() === 'ALL' ? 'every listed expiry' : todayScopeLabel() === 'Today' ? "today's contracts" : "the next session's contracts"} (the Levels card)`)}
             <span className="font-bold" style={{ color: SUPREME }}>
               {fmtStrike(row.supreme)}
             </span>
@@ -561,15 +580,15 @@ const Board = () => {
   const levelsScope = useLevelsScope();
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
-      { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 130, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
-      { headerName: 'Price', field: 'spot', flex: 1.6, minWidth: 250, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
-      { headerName: levelsScope === 'ALL' ? 'Hedging · all expiries' : todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 1.1, minWidth: 170, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
-      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : `Net GEX · ${todayScopeLabel().toLowerCase()}`, field: 'netGex', flex: 1.1, minWidth: 150, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
+      { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 104, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
+      { headerName: 'Price', field: 'spot', flex: 1, minWidth: 156, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
+      { headerName: levelsScope === 'ALL' ? 'Hedging · all expiries' : todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 0.8, minWidth: 116, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
+      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : `Net GEX · ${todayScopeLabel().toLowerCase()}`, field: 'netGex', flex: 0.9, minWidth: 100, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
-        flex: 1.2,
-        minWidth: 140,
+        flex: 1.1,
+        minWidth: 132,
         cellRenderer: FlipCell,
         sort: 'asc',
         headerTooltip: "The flip: the price where the name's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves — and how far it is from the current price. Names closest to their flip come first; \"none nearby\" means no crossing within 10%, and those come last",
@@ -579,26 +598,26 @@ const Board = () => {
       {
         headerName: 'Nearest wall',
         field: 'nearest',
-        flex: 1.3,
-        minWidth: 170,
+        flex: 1.2,
+        minWidth: 148,
         cellRenderer: WallCell,
         cellDataType: false,
         headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: 'Supreme', field: 'supreme', flex: 0.7, minWidth: 84, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
+      { headerName: levelsScope === 'ALL' ? 'Supreme · all exp.' : todayScopeLabel() === 'Today' ? 'Supreme · today' : 'Supreme · next', field: 'supreme', flex: 0.7, minWidth: 90, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
       {
         headerName: 'Watch first',
         field: 'watch',
-        flex: 1.6,
-        minWidth: 220,
+        flex: 1.4,
+        minWidth: 188,
         cellRenderer: WatchCell,
         cellDataType: false,
         headerTooltip: `The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'}; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there`,
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
-      { headerName: bellDay().head, field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
+      { headerName: bellDay().head, field: 'bellShare', flex: 0.9, minWidth: 108, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
       /* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23): before today's open these are the last session's */
       { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${recordDay().date.slice(5).replace('-', '/')}`, field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session — the flip of the contracts that were live in it (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
       { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
@@ -617,7 +636,8 @@ const Board = () => {
     const order = ['ticker', 'spot', 'regime', 'netGex', 'flipDistPct', 'nearest', 'supreme', 'bellShare'];
     return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
   }, [phone, levelsScope]);
-  const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip' }), []);
+  /* a long head ("Supreme · all exp.", "Net GEX · today") wraps to two lines rather than cut (the sixth audit's m11) */
+  const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip', wrapHeaderText: true, autoHeaderHeight: true }), []);
 
   const open = (e: RowClickedEvent<BoardRow>) => {
     if (!e.data) return;

@@ -37,6 +37,7 @@
 ==================================================
 */
 
+import { levelRoles, type LevelRole } from '../../core/walls';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { HEAT_MODE, heatLadderColor, type HeatMode } from './heatmap';
 import RoomSpotRule from './RoomSpotRule';
@@ -227,13 +228,14 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   }, [rows, shownGreeks, LEGS]);
   const cents = useMemo(() => hasCents(rows.map(r => r.strike)), [rows]);
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
-  const tagFor = (strike: number): { word: string; ink: string } | null =>
-    strike === levels.supreme ? { word: 'supreme', ink: SUPREME }
-    : strike === levels.callWall ? { word: 'call wall', ink: CALL_WALL }
-    : strike === levels.putWall ? { word: 'put wall', ink: PUT_WALL }
-    : levels.flipFound !== false && strike === levels.flip ? { word: 'flip', ink: FLIP }
-    : strike === pinStrike ? { word: 'pin', ink: 'rgb(var(--text-muted))' }
-    : null;
+  /* EVERY ROLE, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" dropped its put wall):
+     "supreme · put wall", in the first role's ink */
+  const tagFor = (strike: number): { word: string; ink: string } | null => {
+    const roles = levelRoles(strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? null : levels.flip });
+    if (roles.length) return { word: roles.join(' · '), ink: ROLE_INKS[roles[0]] };
+    return strike === pinStrike ? { word: 'pin', ink: 'rgb(var(--text-muted))' } : null;
+  };
+  const ROLE_INKS: Record<LevelRole, string> = { supreme: SUPREME, 'call wall': CALL_WALL, 'put wall': PUT_WALL, flip: FLIP };
 
   /* THE KEPT STRIKE — the ladder's rule: no card while one is kept; a click anywhere off the rows lets it go */
   const keptStrike = selectedStrike ?? null;

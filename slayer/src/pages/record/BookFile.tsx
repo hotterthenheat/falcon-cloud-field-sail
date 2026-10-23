@@ -46,6 +46,15 @@ import { HouseSectors, ShortHistory } from '../../components/vendor/LiveDesk';
 import type { CongressTrade, ReportOwner } from '../../types/record';
 import { statHelp } from '../../components/record/statHelp';
 
+/* A UNIT CHANGE NEVER READS "−0.0M" (the retail test, round 6): no change says "unchanged"; a change under 50K units is
+   said in thousands */
+const unitsDelta = (m: number): string => {
+  if (!Number.isFinite(m) || m === 0) return 'unchanged';
+  const sign = m > 0 ? '+' : '−';
+  const a = Math.abs(m);
+  return a < 0.05 ? `${sign}${Math.max(1, Math.round(a * 1000))}K` : `${sign}${a.toFixed(1)}M`;
+};
+
 const KNOW = (on: boolean) => `group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`;
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
 const defaultColDef = { sortable: true, resizable: true, suppressMovable: true };
@@ -145,7 +154,7 @@ export const HouseFile = () => {
       { headerName: 'Side', field: 'book', width: 84, valueFormatter: p => (p.value === 'stock' ? (p.data?.security ?? 'Shares') : p.value === 'calls' ? 'Call' : 'Put'), headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
       { headerName: 'Change', field: 'status', width: 92, cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${STATUS_INK[data.status]}`}>{positionWord(data.status)}</span> : null), headerTooltip: 'Against the house\'s prior 13F: new, added (2% more units or over), cut (2% fewer or over), sold out, or held (within 2% either way — NVDA +1.6% reads held)' },
       { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M`, headerTooltip: 'Shares the house reported holding (for a call or put line, the shares the options cover), millions' },
-      { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : data.unitsChangeM < 0 ? '−' : ''}{Math.abs(data.unitsChangeM).toFixed(1)}M</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
+      { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{unitsDelta(data.unitsChangeM)}</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'Unusual Whales\' estimate of the average price the house paid' },
       { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales\' perc_of_share_value) — over the whole filing, not only the lines read here' },
@@ -221,7 +230,7 @@ export const HouseFile = () => {
               </span>
               <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
                 <span className="text-[13px] font-bold text-textPrimary">{moneyB(r.valueB)}</span>
-                <span className={`text-[9px] ${ink(r.unitsChangeM)}`}>{r.unitsChangeM > 0 ? '+' : r.unitsChangeM < 0 ? '−' : ''}{Math.abs(r.unitsChangeM).toFixed(1)}M</span>
+                <span className={`text-[9px] ${ink(r.unitsChangeM)}`}>{unitsDelta(r.unitsChangeM)}</span>
               </span>
             </button>
           ))}
@@ -344,8 +353,10 @@ export const ShortFile = () => {
           </div>
           {row.shortVolRatio != null ? (
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Of the last session's volume, the share reported as short sales — market makers' hedges count too, so about half is ordinary">Short volume</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`Of the last session's volume, the share reported as short sales — market makers' hedges count too, so about half is ordinary. Source: ${row.shortVolSource ?? 'Unusual Whales short volume and ratio (FINRA)'}`}>Short volume</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%{row.shortVolDate ? <span className="text-textMuted"> · {asOfDay(row.shortVolDate)}</span> : null}</dd>
+            {/* the source named on the card (audit round 6) */}
+            <dd className="font-mono text-[9px] text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'FINRA CNMS · by-market rows' : 'FINRA CNMS · short volume read'}</dd>
           </div>
           ) : null}
         </dl>

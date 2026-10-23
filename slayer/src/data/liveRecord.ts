@@ -12,7 +12,7 @@ import type { CongressFeed, CongressTrade, InsiderFlow, InsiderTrade, TxCode } f
 import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwInsider, type UwNews, type UwPolitician } from './whales';
 import { nyIsoDaysBack } from './nyDate';
 import { loadRegularCloses, peekRegularCloses } from './dayChange';
-import { congressFromWhales, econFromWhales, insidersFromWhales, newsFromWhales, readInsiders, rollCongress } from './whalesMap';
+import { congressFromWhales, econFromWhales, insidersFromWhales, newsFromWhales, readInsiders, rollCongress, storyLeadTicker } from './whalesMap';
 
 export type FeedStatus = 'loading' | 'live' | 'sim';
 
@@ -100,9 +100,9 @@ function wantCloses(rows: UwNews[]): void {
   for (const r of rows) {
     /* ONLY THE STORY'S OWN NAME (round 6, the Trace fixer: every symbol in the meta was asked — USD, P, FOR, OUT, AI —
        on the key's three slots). publishMove reads the close for the story's lead ticker alone, a symbol the vendor
-       tagged and the headline bears out, never a currency code; and only one on the listing or named by the vendor */
+       tagged (its ticker field) and the headline bears out, never a currency code or a plain word */
     const t = storyLeadTicker(r.headline || '', r.tickers);
-    if (!t || !(isListed(t) || hasVendorName(t))) continue;
+    if (!t) continue;
     const m = (r.meta ?? {})[t];
     const mt = String((m as { curr?: { mt?: string } } | undefined)?.curr?.mt ?? '').toLowerCase();
     /* after-hours and pre-market stories both need the close before their last session (publishMove's `last`) */
@@ -693,7 +693,7 @@ export function useInsiderFlow(ticker: string, windowDays = 90): InsiderFlow {
   );
   return useMemo(() => {
     const trades = box.status === 'live' ? box.trades.filter(t => t.daysAgo <= windowDays) : [];
-    return summariseFlow(sym, trades, windowDays);
+    return { ...summariseFlow(sym, trades, windowDays), status: box.status };
   }, [box, sym, windowDays]);
 }
 

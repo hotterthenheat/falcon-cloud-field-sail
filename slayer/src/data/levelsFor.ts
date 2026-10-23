@@ -42,6 +42,9 @@ export interface TickerLevels {
   complete: boolean;
   /** One strike's net GEX on these contracts, RETAIL sign — null when the strike is not on them */
   netAt: (strike: number) => number | null;
+  /** One strike's call leg, put leg and net on these contracts, RETAIL sign — a wall is printed by the leg that makes
+      it (calls for the call wall, puts for the put wall), the supreme by its net (the sixth audit's m7) */
+  legsAt: (strike: number) => { call: number; put: number; net: number } | null;
 }
 
 /** One name's levels for a scope — null until its book is live */
@@ -89,6 +92,11 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
     netAt: (k: number) => {
       const n = book.chain.find(x => x.strike === k);
       return n ? (n.netGex === 0 ? 0 : -n.netGex) : null;
+    },
+    legsAt: (k: number) => {
+      const n = book.chain.find(x => x.strike === k);
+      const r = (v: number) => (v === 0 ? 0 : -v);
+      return n ? { call: r(n.callGex), put: r(n.putGex), net: r(n.netGex) } : null;
     },
     complete: flip.complete && !scopeDatesPending(t, scope) && (scope === 'ALL' || levelsDate(snap, scope) != null),
   };

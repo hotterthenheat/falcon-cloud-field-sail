@@ -156,7 +156,7 @@ const MapJumps = () => {
     return () => obs.disconnect();
   }, []);
   return (
-    <nav className="sm:hidden sticky top-9 z-20 -mx-4 px-4 py-1.5 border-b border-borderSubtle/60 bg-panel/95 backdrop-blur-sm" aria-label="Jump to a box" data-map-jumps={at}>
+    <nav className="sm:hidden sticky top-9 z-30 isolate -mx-4 px-4 py-1.5 border-b border-borderSubtle/60 bg-panel shadow-[0_1px_0_rgb(var(--border-subtle))]" aria-label="Jump to a box" data-map-jumps={at}>
       <FilterTabs
         options={MAP_JUMPS}
         value={at}

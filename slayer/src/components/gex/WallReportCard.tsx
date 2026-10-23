@@ -274,6 +274,9 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       r.labels.sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
       r.label = r.labels.map(l => l.label).join(' · ');
     }
+    /* THE ROWS IN THE ONE ORDER TOO (the sixth audit, 2026-10-23: Compare, the Dossier and this card listed the levels
+       three ways) — supreme · call wall · put wall · flip, then the pin; a shared strike sits where its first name does */
+    merged.sort((a, b) => ORDER.indexOf(a.labels[0]?.label ?? '') - ORDER.indexOf(b.labels[0]?.label ?? ''));
     return merged;
   }, [snapshot, bars, levelsScope, session, oiAt]);
   /* the flip's tip off THIS book's orientation (data/flipLevel.ts flipSidesWords) */

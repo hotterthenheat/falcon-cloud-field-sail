@@ -46,7 +46,7 @@ import { ThermalFieldPrimitive, type FieldPoint, type Rgb } from './thermalField
 import { dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
-import { dayRef, longDay } from '../../data/bookWindow';
+import { dayRef, longDay, todayScopeLabel } from '../../data/bookWindow';
 import { armLevel, removeAlert, useAlerts, type LevelName } from './alertStore';
 import { setDayHover, useDayHover } from '../../data/dayHover';
 import { useResolvedTheme } from '../../theme/theme';
@@ -236,6 +236,11 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const minLeft = Math.max(0, CLOSE_MIN - nowMin);
   const daySigma = snapshot.liveBook ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
   const w1 = daySigma != null ? daySigma * Math.sqrt(Math.min(minLeft, SESSION_MIN) / SESSION_MIN) : spot * iv * Math.sqrt(minLeft / YEAR_MINUTES);
+  /* ONE PHASE VOCABULARY (the sixth audit's m8: "closed" here, "The next session" on the Read, "Today" on the Levels
+     card, all before Friday's open): outside the session the move is the coming session's — "today" before a trading
+     day's open, "next session" after its close (bookWindow todayScopeLabel, the Levels card's own word) */
+  const aheadWord = todayScopeLabel() === 'Today' ? 'today' : 'next session';
+  const shutMove = daySigma != null ? `${aheadWord} ±${daySigma.toFixed(2)}` : aheadWord;
   const dayStart = bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
   /* THE THERMAL FIELD (thermalFieldPrimitive.ts): where price is likelier to be from now to the close, by the Ahead
      model's corridor (data/ahead.ts) — the odds curve's centre pulled by the strikes, one and two expected moves round
@@ -620,8 +625,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
           <PartFact label="Session">
             {session.lo.toFixed(2)} – {session.hi.toFixed(2)}
           </PartFact>
-          <PartFact label="One move" title="One expected move from here to the close, on the name's vol — the thermal field's width">
-            <span data-tape-move={w1.toFixed(2)}>{minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} min left` : 'closed'}</span>
+          <PartFact label="One move" title="One expected move from here to the close, on the name's vol — the thermal field's width; outside the session, the coming session's whole move">
+            <span data-tape-move={w1.toFixed(2)}>{minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} min left` : shutMove}</span>
           </PartFact>
         </>
       )}
@@ -674,7 +679,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             <div>
               <dt className="text-[11px] text-textMuted">One move to the close</dt>
               <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-move={w1.toFixed(2)}>
-                {minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} ${minLeft === 1 ? 'minute' : 'minutes'} left` : 'closed'}
+                {minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} ${minLeft === 1 ? 'minute' : 'minutes'} left` : shutMove}
               </dd>
             </div>
           </dl>

@@ -362,7 +362,7 @@ const ProfileWords = ({ surface, mode }: { surface: ExposureSurface; mode?: Heat
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The profile · the book's gamma at every price</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Price runs left to right. The line is the dealers' total gamma if price stood at that level, every drawn expiry added together; the quiet lines are the expiries one by one. Above the zero line dealers are long gamma and their hedging absorbs a move; below it, it amplifies one. Where the line crosses zero is the zero-gamma level: the price where the book changes character. It is not the same number as the flip strike on the band, which is the strike where the net by strike changes sign.
+          Price runs left to right. The line is the dealers' total gamma if price stood at that level, every drawn expiry added together; the quiet lines are the expiries one by one. Above the zero line dealers are long gamma and their hedging absorbs a move; below it, it amplifies one. Where the line crosses zero is the zero-gamma level: the price where the book changes character. The flip on the band is the same idea read off the Levels card's contracts (its scope), each re-priced from the minute the vendor priced it — so it can sit a little apart from this line, which adds up the drawn expiries.
         </p>
         <FigureBox>
           <ProfileFigure />
