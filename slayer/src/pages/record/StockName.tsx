@@ -85,7 +85,8 @@ import { untilWords } from '../../data/earningsFeed';
 import NameBooks from '../../components/record/NameBooks';
 import { StockFacts } from '../../components/vendor/LiveDesk';
 import { stockBookKey, useVendorRow } from '../../data/vendorFeed';
-import { nyClock, nyIsoDate, nyWallTime } from '../../core/nyTime';
+import { nyClock, nyIsoDate, nySessionPhase, nyWallTime } from '../../core/nyTime';
+import { isTradingDay, today as nyTodayDate } from '../../core/calendar';
 import { LEVEL_ORDER, type LevelRole } from '../../core/walls';
 import type { TickerLevels } from '../../data/levelsFor';
 import { statHelp } from '../../components/record/statHelp';
@@ -1020,7 +1021,7 @@ const StockName = () => {
                 complete, and the scope's own label (levelsFor.scopeLabel) heads it, verbatim. */}
             <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope={money.levelsToday ? (money.levelsToday.complete ? 'today' : 'today-pending') : 'today-none'} data-complete={money.levelsToday?.complete ? 'yes' : 'no'} title="Pinpoint's nearest-expiry scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold" data-stock-scope-label>{money.levelsToday ? `${money.levelsToday.scopeLabel} · nearest expiry` : 'Nearest expiry'}</span>
+                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold" data-stock-scope-label>{money.levelsToday ? money.levelsToday.scopeLabel : 'Nearest expiry'}</span>
                 {money.levelsToday ? (
                   <span className="font-mono text-[11px] tnum" data-stock-gex-next>
                     net GEX{' '}
@@ -1077,7 +1078,7 @@ const StockName = () => {
               )}
             </div>
             <p className="text-[10.5px] leading-relaxed text-textMuted" data-stock-gex-note>
-              The two scopes can differ in sign: the nearest expiry's dealers can be short gamma (amplifying) while the whole book is long (absorbing), or the reverse. Each figure is right for its own contracts; the nearest expiry drives the next session, the whole book the weeks after.
+              The two scopes can differ in sign: the nearest expiry's dealers can be short gamma (amplifying) while the whole book is long (absorbing), or the reverse. Each figure is right for its own contracts; the nearest expiry drives {isTradingDay(nyTodayDate()) && nySessionPhase() === 'open' ? 'the rest of today' : 'the next session'}, the whole book the weeks after.
             </p>
           </div>
           {prem > 0 ? (

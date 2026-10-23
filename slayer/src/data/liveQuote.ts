@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { peekSpot, subscribeBook } from './uwBook';
-import { whalesScreener, whalesState } from './whales';
+import { whalesQuote, whalesScreener, whalesState } from './whales';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
 import { nyClock, nyIsoDate, nySessionPhase } from '../core/nyTime';
 import { isTradingDay, today as nyTodayDate } from '../core/calendar';
@@ -116,8 +116,21 @@ export function ensureQuote(ticker: string): void {
       const prev = Number(s?.prev_close);
       if (!(close > 0)) return;
       const mt = typeof s?.market_time === 'string' ? s.market_time : undefined;
-      const tape = Date.parse(String((s as { tape_time?: string } | null)?.tape_time ?? ''));
-      raw.set(t, { close, prev_close: prev > 0 ? prev : 0, market_time: mt, tapeAt: Number.isFinite(tape) ? tape : Date.now(), at: Date.now() });
+      let tape = Date.parse(String((s as { tape_time?: string } | null)?.tape_time ?? ''));
+      let px = close;
+      /* A STALLED STOCK-STATE IN THE SESSION (2026-10-23: the vendor's stock-state sat at its 10:35 print on every name
+         for more than an hour while the quote's last trade ran on): when the state's print is over two minutes old in
+         the regular session, the quote's last trade is the price, if it is newer */
+      if ((mt ?? '').toLowerCase().startsWith('reg') && nySessionPhase() === 'open' && Number.isFinite(tape) && Date.now() - tape > 120_000) {
+        const q = await whalesQuote(t).catch(() => null);
+        const qp = Number(q?.last_trade?.price);
+        const qt = Number(q?.last_trade?.time);
+        if (qp > 0 && Number.isFinite(qt) && qt > tape) {
+          px = qp;
+          tape = qt;
+        }
+      }
+      raw.set(t, { close: px, prev_close: prev > 0 ? prev : 0, market_time: mt, tapeAt: Number.isFinite(tape) ? tape : Date.now(), at: Date.now() });
       emit();
       /* outside the session the day's change needs the regular close before today — read once a New York day */
       const stale = Number.isFinite(tape) && nyIsoDate(tape) < nyIsoDate();
