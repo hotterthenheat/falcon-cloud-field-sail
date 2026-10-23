@@ -872,7 +872,16 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
       if (dead) return;
       const d = (res.data && typeof res.data === 'object' ? res.data : {}) as { sector?: { sector?: string; weight?: string }[]; country?: { country?: string; weight?: string }[] };
       const list = (rows: { name?: string; weight?: string }[]) =>
-        rows.map(r => ({ name: houseSector(String(r.name || '')) || '—', weight: num(r.weight) * 100 })).filter(r => r.weight >= 0.05).sort((a, b) => b.weight - a.weight);
+      {
+        /* the vendor's finer sectors fold into one house name ("Electronic Technology" and "Technology Services" are
+           both Technology) — add them up, never two rows under one name (the sixth sweep: duplicate grid rows on SPY) */
+        const sum = new Map<string, number>();
+        for (const r of rows) {
+          const name = houseSector(String(r.name || '')) || '—';
+          sum.set(name, (sum.get(name) ?? 0) + num(r.weight) * 100);
+        }
+        return [...sum.entries()].map(([name, weight]) => ({ name, weight })).filter(r => r.weight >= 0.05).sort((a, b) => b.weight - a.weight);
+      };
       setGot({
         status: res.error ? 'error' : 'live',
         sectors: list((d.sector ?? []).map(r => ({ name: r.sector, weight: r.weight }))),
