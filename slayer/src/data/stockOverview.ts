@@ -65,7 +65,7 @@ import { readSessionClock } from './moc';
 import { buildExposureProfile } from './exposure';
 import { LEVELS_WINDOW } from './roomLevels';
 import { bookCandles, snapshotOf } from './uwBook';
-import { peekQuote, extendedLine, priceWords, screenerRead } from './liveQuote';
+import { peekQuote, extendedLine, priceWords, screenerRead, screenerNeedsCloses } from './liveQuote';
 import { peekLive } from './liveRecord';
 import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
 import { nyTodayIso } from './nyDate';
@@ -172,7 +172,10 @@ export interface MoneyRead {
   putVolume: number;
   askSharePct: number | null;
   sweepSharePct: number | null;
+  /** Relative volume as the read uses it: paced to the clock in the session (pacedRelVolume), null when not read */
   rvol: number | null;
+  /** The paced read in full — the vendor's figure, the basis and the label the page prints */
+  rvolPaced: PacedVolume | null;
   volumeToday: number | null;
   volumeAvg: number | null;
   /** True when volumeAvg is the screener's 30-session average (avg30_volume), else the sessions in hand */
@@ -328,6 +331,9 @@ export interface StockOverview {
   sources: Source[];
   /** How much of the page is live, 0–100 */
   completeness: number;
+  /** The sources the read stands on that are still being read — while any is, the read is provisional and the page holds
+      its words (the round-8 audit: AAPL said "Reads strong · The money good" at "5 of 9 sources live", then "good · poor") */
+  settling: string[];
 }
 
 /* the board's own weights and cuts (stocks.ts) */
@@ -399,6 +405,108 @@ export interface ScreenPillars {
   /** The close the trend factors set the averages against */
   refClose: number | null;
 }
+/* ---- RELATIVE VOLUME, PACED TO THE CLOCK ------------------------------------------------
+   The round-8 audit (2026-10-23): the screener's relative_volume is the session's volume SO FAR over a full day's
+   30-session average — AAPL read 0.22× "quiet" at 10:07, SPY 0.13× — and the lean (rvol − 1) × the day's sign then
+   called every morning up name bearish and every down name bullish. Now the session's volume is paced: set against the
+   share of a full day a typical session has traded by this minute (the U-shaped intraday curve — a heavy open, a quiet
+   midday, the close and its auction heaviest), so 1.00× means "on pace for an ordinary day". The first half hour is
+   too early to pace and is shown, never scored; a premarket row is not in the read either. And quiet volume is never
+   evidence for either side: it only says no conviction is behind the move, so only volume ABOVE pace leans. */
+/** Each half hour's share of a typical session's volume, 09:30 to 16:00 (sums to 1) */
+const HALF_HOUR_SHARE = [0.11, 0.075, 0.065, 0.06, 0.055, 0.05, 0.045, 0.045, 0.05, 0.055, 0.065, 0.085, 0.24];
+/** The share of a typical full day traded by `minutes` into the regular session */
+export const sessionVolumeShare = (minutes: number): number => {
+  if (minutes <= 0) return 0;
+  if (minutes >= 390) return 1;
+  let cum = 0;
+  for (let i = 0; i < HALF_HOUR_SHARE.length; i++) {
+    const from = i * 30;
+    if (minutes >= from + 30) cum += HALF_HOUR_SHARE[i];
+    else return cum + HALF_HOUR_SHARE[i] * ((minutes - from) / 30);
+  }
+  return 1;
+};
+/** Minutes into the session before relative volume is paced and scored */
+export const RVOL_PACE_FROM_MIN = 30;
+export interface PacedVolume {
+  /** The figure the read uses: paced in the session, the whole day's after it; null when it is not read */
+  value: number | null;
+  /** The vendor's own figure: the volume so far over a full day's average */
+  raw: number;
+  basis: 'paced' | 'full' | 'early' | 'premarket';
+  /** The share of a typical day traded by now (1 after the close) */
+  share: number;
+  /** True when it is scored */
+  inRead: boolean;
+  /** "1.31× paced" · "0.92× full day" · "0.10× of a full day so far" */
+  label: string;
+}
+/** The screener row's relative volume, made fair to the time of day */
+export function pacedRelVolume(raw: number | null | undefined, rowDate: string | null | undefined, at: Date | number = now()): PacedVolume | null {
+  if (raw == null || !(raw > 0)) return null;
+  const today = nyIsoDate(at);
+  const m = nyMinutes(at);
+  const sameDay = !rowDate || String(rowDate).slice(0, 10) === today;
+  if (!sameDay || m >= SESSION_CLOSE_MIN) return { value: raw, raw, basis: 'full', share: 1, inRead: true, label: `${raw.toFixed(2)}× full day` };
+  if (m < SESSION_OPEN_MIN) return { value: null, raw, basis: 'premarket', share: 0, inRead: false, label: `${raw.toFixed(2)}× before the open` };
+  const into = m - SESSION_OPEN_MIN;
+  const share = sessionVolumeShare(into);
+  if (into < RVOL_PACE_FROM_MIN) return { value: null, raw, basis: 'early', share, inRead: false, label: `${raw.toFixed(2)}× of a full day so far` };
+  const v = raw / share;
+  return { value: v, raw, basis: 'paced', share, inRead: true, label: `${v.toFixed(2)}× paced` };
+}
+/** The relative-volume factor: only volume above pace leans, in the day's direction; quiet volume is no evidence */
+export function rvolFactor(pv: PacedVolume | null, up: boolean): Factor | null {
+  if (!pv) return null;
+  const label = pv.basis === 'paced' ? 'Relative volume, paced to the clock' : 'Relative volume';
+  if (!pv.inRead || pv.value == null) {
+    return { key: 'rvol', label, value: pv.label, lean: 0, weight: 0, context: true, note: pv.basis === 'premarket' ? 'before the open — not read until the session trades' : `${Math.round(pv.share * 100)}% of a usual day trades by now — too early in the session to read` };
+  }
+  const v = pv.value;
+  const heavy = v >= 1.3;
+  return {
+    key: 'rvol',
+    label,
+    value: pv.basis === 'paced' ? `${pv.label} · ${pv.raw.toFixed(2)}× of a full day so far` : pv.label,
+    lean: v > 1 ? clamp((v - 1) * (up ? 1 : -1)) : 0,
+    weight: 0.25,
+    note: heavy ? `heavy for the name, ${up ? 'on an up day' : 'on a down day'}` : v <= 0.7 ? 'quiet — no conviction behind the move either way' : 'ordinary — no conviction either way',
+  };
+}
+/** The side of the trade is a lean only past this distance from even (a 49/51 split is no lean) */
+const SIDE_DEADBAND = 0.05;
+
+/* THE SIDE LEADS, THE KIND FOLLOWS (the round-8 audit: GME read "The money: strong / leans bullish" beside "bullish
+   $1.02M vs bearish $1.07M · 49% bullish" — the call/put kind and a quiet down day carried it). Call premium counts calls
+   sold at the bid too, so the kind of contract says nothing on its own: it leans only where the side of the trade leans
+   the same way, and a split within five points of even is no lean at all. */
+export function premiumFactors(bull: number, bear: number, calls: number, puts: number): Factor[] {
+  const out: Factor[] = [];
+  let sideDir = 0;
+  if (bull + bear > 0) {
+    const side = bull / (bull + bear);
+    const off = side - 0.5;
+    sideDir = Math.abs(off) < SIDE_DEADBAND ? 0 : Math.sign(off);
+    out.push({ key: 'side', label: 'Bullish premium against bearish', value: `${Math.round(side * 100)}% bullish`, lean: sideDir === 0 ? 0 : clamp(off * 4), weight: 0.3, note: sideDir > 0 ? 'calls bought at the ask and puts sold at the bid lead' : sideDir < 0 ? 'puts bought at the ask and calls sold at the bid lead' : 'the two sides are about even — no lean' });
+  }
+  if (calls + puts > 0) {
+    const share = calls / (calls + puts);
+    const off = share - 0.5;
+    const dir = Math.abs(off) < SIDE_DEADBAND ? 0 : Math.sign(off);
+    const backed = dir !== 0 && dir === sideDir;
+    out.push({
+      key: 'prem',
+      label: 'Call premium against put premium',
+      value: `${Math.round(share * 100)}% calls`,
+      lean: backed ? clamp(off * 4) : 0,
+      weight: 0.15,
+      note: dir === 0 ? 'calls and puts are about even' : backed ? (dir > 0 ? 'more of the premium is on calls, and the side of the trade agrees' : 'more of the premium is on puts, and the side of the trade agrees') : `more of the premium is on ${dir > 0 ? 'calls' : 'puts'}, but the side of the trade does not back it — no lean`,
+    });
+  }
+  return out;
+}
+
 /** The scored factors, from the screener row alone */
 export function screenFactors(row: ScreenRow): ScreenPillars {
   /* THE SESSION'S CLOSE, NOT THE AFTER-HOURS PRINT (the round-3 audit, 2026-10-22): after the bell the screener's
@@ -433,27 +541,15 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
   const growth = rowNum(row, 'eps_growth_4q');
   if (growth != null) numbers.push({ key: 'growth', label: 'Earnings growth, year over year', value: pct(growth * 100, 2), lean: clamp(growth / 0.25), weight: 0.4, note: growth >= 0 ? 'earnings are growing' : 'earnings are shrinking' });
   const money: Factor[] = [];
-  const rvol = rowNum(row, 'relative_volume');
-  if (rvol != null && rvol > 0) {
-    const up = (day ?? 0) >= 0;
-    money.push({ key: 'rvol', label: 'Relative volume', value: `${rvol.toFixed(2)}×`, lean: clamp((rvol - 1) * (up ? 1 : -1)), weight: 0.25, note: rvol >= 1.3 ? `heavy for the name, ${up ? 'on an up day' : 'on a down day'}` : rvol <= 0.7 ? 'quiet' : 'ordinary' });
-  }
+  const rv = rvolFactor(pacedRelVolume(rowNum(row, 'relative_volume'), typeof row?.date === 'string' ? (row.date as string) : null), (day ?? 0) >= 0);
+  if (rv) money.push(rv);
   /* THE MONEY'S SIDE, NOT ITS KIND (the third audit, 2026-10-23): a put sold at the bid is a bullish trade, so the side of
      the trade (bullish against bearish premium) carries most of the weight; the call/put split is a smaller second read,
      named for what it is — premium spent on calls, not "buying". It was read off bullish_premium alone and printed as
      calls (WOLF "94% calls" on a 6%-calls day). */
   const bull = rowNum(row, 'bullish_premium') ?? 0;
   const bear = rowNum(row, 'bearish_premium') ?? 0;
-  if (bull + bear > 0) {
-    const side = bull / (bull + bear);
-    money.push({ key: 'side', label: 'Bullish premium against bearish', value: `${Math.round(side * 100)}% bullish`, lean: clamp((side - 0.5) * 4), weight: 0.3, note: side >= 0.55 ? 'calls bought at the ask and puts sold at the bid lead' : side <= 0.45 ? 'puts bought at the ask and calls sold at the bid lead' : 'the two sides are about even' });
-  }
-  const calls = rowNum(row, 'call_premium') ?? 0;
-  const puts = rowNum(row, 'put_premium') ?? 0;
-  if (calls + puts > 0) {
-    const share = calls / (calls + puts);
-    money.push({ key: 'prem', label: 'Call premium against put premium', value: `${Math.round(share * 100)}% calls`, lean: clamp((share - 0.5) * 4), weight: 0.15, note: share >= 0.55 ? 'more of the premium is on calls' : share <= 0.45 ? 'more of the premium is on puts' : 'calls and puts are about even' });
-  }
+  money.push(...premiumFactors(bull, bear, rowNum(row, 'call_premium') ?? 0, rowNum(row, 'put_premium') ?? 0));
   return { trend, numbers, money, refClose: last };
 }
 /** The scored factors' weight — a pillar with none of it is left out of the read */
@@ -700,7 +796,10 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const todayVol = stockVol ?? vols[vols.length - 1] ?? 0;
   const past = vols.slice(0, -1);
   const avgVol = avg30 ?? (past.length ? past.reduce((a, b) => a + b, 0) / past.length : 0);
-  const rvol = rel != null && rel > 0 ? rel : avgVol > 0 && todayVol > 0 ? todayVol / avgVol : null;
+  const rawRvol = rel != null && rel > 0 ? rel : avgVol > 0 && todayVol > 0 ? todayVol / avgVol : null;
+  /* paced to the clock, as the read scores it (pacedRelVolume) */
+  const rvolPaced = pacedRelVolume(rawRvol, typeof screen?.date === 'string' ? (screen.date as string) : null);
+  const rvol = rvolPaced?.value ?? null;
   const lastBlock = blocks[blocks.length - 1];
   let closeInRange: number | null = null;
   if (lastBlock && lastBlock.length > 1) {
@@ -795,6 +894,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     askSharePct,
     sweepSharePct,
     rvol,
+    rvolPaced,
     volumeToday: todayVol > 0 ? todayVol : null,
     volumeAvg: avgVol > 0 ? avgVol : null,
     volumeAvgIs30: avg30 != null,
@@ -810,18 +910,12 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     busiest: { calls: busiestOf(file.contracts, 'C', ticker, snapshot.spot), puts: busiestOf(file.contracts, 'P', ticker, snapshot.spot) },
   };
   const factors: Factor[] = [];
-  if (rvol != null) factors.push({ key: 'rvol', label: 'Relative volume', value: `${rvol.toFixed(2)}×`, lean: clamp((rvol - 1) * (snapshot.changePercent >= 0 ? 1 : -1)), weight: 0.25, note: rvol >= 1.3 ? `heavy for the name, ${snapshot.changePercent >= 0 ? 'on an up day' : 'on a down day'}` : rvol <= 0.7 ? 'quiet' : 'ordinary' });
+  const rvf = rvolFactor(rvolPaced, snapshot.changePercent >= 0);
+  if (rvf) factors.push(rvf);
   /* THE MONEY'S SIDE, NOT ITS KIND (the third audit, 2026-10-23). A put sold at the bid is a bullish trade and a call
      sold at the bid a bearish one, so the side of the trade (bullish against bearish premium) carries most of the weight;
      the plain call/put split is a smaller second read, named for what it is — premium spent on calls, not buying. */
-  if (bullishPremium + bearishPremium > 0) {
-    const side = bullishPremium / (bullishPremium + bearishPremium);
-    factors.push({ key: 'side', label: 'Bullish premium against bearish', value: `${Math.round(side * 100)}% bullish`, lean: clamp((side - 0.5) * 4), weight: 0.3, note: side >= 0.55 ? 'calls bought at the ask and puts sold at the bid lead' : side <= 0.45 ? 'puts bought at the ask and calls sold at the bid lead' : 'the two sides are about even' });
-  }
-  if (callPremium + putPremium > 0) {
-    const share = callPremium / (callPremium + putPremium);
-    factors.push({ key: 'prem', label: 'Call premium against put premium', value: `${Math.round(share * 100)}% calls`, lean: clamp((share - 0.5) * 4), weight: 0.15, note: share >= 0.55 ? 'more of the premium is on calls' : share <= 0.45 ? 'more of the premium is on puts' : 'calls and puts are about even' });
-  }
+  factors.push(...premiumFactors(bullishPremium, bearishPremium, callPremium, putPremium));
   if (readPrints.length) factors.push({ key: 'dark', label: 'Off-exchange prints', value: posture === 'ACCUMULATING' ? 'over the mid' : posture === 'DISTRIBUTING' ? 'under the mid' : 'split', lean: clamp(netPosturePct / 40), weight: 0.3, note: dark.postureNote });
   return { read, factors };
 };
@@ -1365,6 +1459,10 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     { key: 'record', label: 'Insiders and Congress', status: record.insiders.status === 'live' || record.congress.status === 'live' ? 'live' : 'thin', stamp: insiderN || congressN ? `${insiderN} insider ${insiderN === 1 ? 'trade' : 'trades'} · ${congressN} congress ${congressN === 1 ? 'report' : 'reports'} in the latest feed` : 'the name\'s own filings below' },
   ];
   const completeness = Math.round((100 * sources.filter(s => s.status === 'live').length) / sources.length);
+  const settling: string[] = [];
+  if (!quote) settling.push('the quote');
+  if (file.screen && screenerNeedsCloses(file.screen) && peekRegularCloses(ticker) == null) settling.push('the regular closes');
+  if (file.tapes === 'loading') settling.push('the flow and dark-pool tapes');
 
   return {
     ticker,
@@ -1404,5 +1502,6 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     history,
     sources,
     completeness,
+    settling,
   };
 }
