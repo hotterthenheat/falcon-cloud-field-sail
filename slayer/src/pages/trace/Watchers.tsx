@@ -40,8 +40,8 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { buildCatches, floorPackaged, FRESH_VOL_OI, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
-import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
-import { dayAdv, dayPos, earnWords } from '../../components/trace/dayWords';
+import { dayLean, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
+import { dayAdv, dayPos, earnWords, shyPct } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -69,6 +69,14 @@ import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/
 import { createViewStore } from '../../data/savedViews';
 import { expiryLabel, pctSigned } from '../../core/format';
 
+/** A day's lean with the figure it is called on (audit round 7: "bid", "ask", "even" with no share) — the one lean rule */
+const leanText = (r: Parameters<typeof dayLean>[0]): string => {
+  const l = dayLean(r);
+  if (l.lean === 'ASK') return `ask ${Math.round(l.askSided)}%`;
+  if (l.lean === 'BID') return `bid ${Math.round(l.bidSided)}%`;
+  if (l.lean === 'UNSIDED') return Number.isFinite(l.mid) ? `mid ${Math.round(l.mid)}%` : 'no side';
+  return `even · ${l.askSided >= 50 ? `ask ${shyPct(l.askSided)}%` : `bid ${shyPct(l.bidSided)}%`}`;
+};
 const num = (v: number) => v.toLocaleString('en-US');
 
 /* THE CARDS (the walk, 2026-09-09) */
@@ -123,7 +131,7 @@ const phoneRow = (a: Catch) => (
         {fmtUsd(a.premium)} {dayAdv()}
       </span>,
       <span key="s">last ${a.last.toFixed(2)} at {a.time}</span>,
-      <span key="z">{num(a.row.volume)} vol · {a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : a.side === 'MID' ? 'mid/no side' : 'even'}</span>,
+      <span key="z">{num(a.row.volume)} vol · {leanText(a.row)}</span>,
     ]}
   />
 );
@@ -253,7 +261,7 @@ const Watchers = () => {
   /* The Reason card: every reason, the desk's then yours */
   const reasonOptions = useMemo<DropdownOption<string>[]>(
     () => [
-      { value: 'ALL', label: 'Every reason', hint: "The desk's watchers and yours" },
+      { value: 'ALL', label: 'Every reason', short: 'All', hint: "The desk's watchers and yours" },
       ...WATCHERS.map(r => ({ value: r.key, label: r.label, hint: r.hint })),
       ...myReasons.map(r => ({ value: r.id, label: r.name, hint: reasonSentence(r) })),
     ],
@@ -352,7 +360,7 @@ const Watchers = () => {
         sortValue: a => a.row.askPct,
         // The tape's rule: the side in one ink
         /* THE LEAN PRINTS ITS FIGURE (audit round 7: "bid", "ask", "even" with no share) — the house lean cell, the one rule */
-        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{a.side === 'ASK' ? `ask ${Math.round(a.row.askPct)}%` : a.side === 'BID' ? `bid ${Math.round(100 - a.row.askPct)}%` : a.side === 'MID' ? 'mid/no side' : `even · ask ${Math.round(a.row.askPct)}%`}</span>),
+        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
       },
       {
         key: 'vol',

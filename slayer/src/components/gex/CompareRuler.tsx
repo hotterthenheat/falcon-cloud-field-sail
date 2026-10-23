@@ -599,7 +599,10 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
                 ctx.fillText(fig, innerX, p.y + 0.5);
               }
             } else {
-              chipsLater.push({ words: lvl.words, c: lvl.c, x: clearOfFlip(left ? Math.max(6, x) : Math.min(W - 6 - chipW, x + len - chipW), chipW, p.y), y: p.y, w: chipW });
+              /* KEPT INSIDE ITS OWN LANE (the seventh audit's retail finding: on a phone the "Call wall" pill sat over the
+                 strike labels at 770/771 — a short capsule pushed its chip across the axis) */
+              const inLane = left ? Math.min(Math.max(6, x), laneA.from - chipW) : Math.max(laneB.from, Math.min(W - 6 - chipW, x + len - chipW));
+              chipsLater.push({ words: lvl.words, c: lvl.c, x: clearOfFlip(inLane, chipW, p.y), y: p.y, w: chipW });
             }
           } else {
             if (canPrint && textW(fig, FIG) + 12 <= len) {
