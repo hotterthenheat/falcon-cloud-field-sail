@@ -208,13 +208,32 @@ async function load(path, key) {
     }
     return { status: upstream.status, body: buf, type };
   })();
-  inflight.set(path, job);
+  /* NO ASK WAITS FOREVER (the tenth Pinpoint pass, 2026-10-23: one page of SPY's expiry walk sat unanswered here for
+     100s+ on every ask while the vendor answered the same URL in 0.6s — every later ask for the path joined the stuck
+     job). After 30s the job is let go: the path is free for a fresh ask, and this one gets the last good copy or a 504. */
+  /* a job let go may still fail later: that failure is nobody's to handle, and must not take the server down */
+  job.catch(() => {});
+  let timer;
+  const capped = Promise.race([
+    job,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), JOB_MS);
+    }),
+  ]);
+  inflight.set(path, capped);
   try {
-    return await job;
+    return await capped;
+  } catch (e) {
+    const stale = cache.get(path);
+    if (stale) return { status: stale.status, body: stale.body, type: stale.type };
+    if (e instanceof Error && e.message === 'timeout') return { status: 504, body: Buffer.from(JSON.stringify({ error: 'unusual whales timed out' })), type: 'application/json' };
+    throw e;
   } finally {
-    inflight.delete(path);
+    clearTimeout(timer);
+    if (inflight.get(path) === capped) inflight.delete(path);
   }
 }
+const JOB_MS = 30_000;
 
 /** Connect, Express, and the Vercel node function all hand us a Node response. */
 export async function proxyUw(req, res) {
