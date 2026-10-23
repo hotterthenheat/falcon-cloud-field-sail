@@ -135,9 +135,24 @@ export function ensureQuote(ticker: string): void {
       const close = Number(s?.close);
       const prev = Number(s?.prev_close);
       if (!(close > 0)) return;
-      const mt = typeof s?.market_time === 'string' ? s.market_time : undefined;
+      let mt = typeof s?.market_time === 'string' ? s.market_time : undefined;
       let tape = Date.parse(String((s as { tape_time?: string } | null)?.tape_time ?? ''));
       let px = close;
+      /* A STALLED STATE STILL SAYING "REGULAR" AFTER THE BELL (2026-10-23 17:26 ET: SPY's stock-state read regular, its
+         10:35 print, while the quote said postmarket at 761.05 and the regular close was 759.85): outside the session a
+         "regular" state older than two minutes is not believed — the quote's phase and last trade are */
+      const sessionOpen = isTradingDay(nyTodayDate()) && nySessionPhase() === 'open';
+      if ((mt ?? '').toLowerCase().startsWith('reg') && !sessionOpen && Number.isFinite(tape) && Date.now() - tape > 120_000) {
+        const q = await whalesQuote(t).catch(() => null);
+        const qp = Number(q?.last_trade?.price);
+        const qt = Number(q?.last_trade?.time);
+        const qm = typeof q?.market_time === 'string' ? q.market_time : undefined;
+        if (qp > 0 && Number.isFinite(qt) && qt > tape && qm && !qm.toLowerCase().startsWith('reg')) {
+          px = qp;
+          tape = qt;
+          mt = qm;
+        }
+      }
       /* A STALLED STOCK-STATE IN THE SESSION (2026-10-23: the vendor's stock-state sat at its 10:35 print on every name
          for more than an hour while the quote's last trade ran on): when the state's print is over two minutes old in
          the regular session, the quote's last trade is the price, if it is newer */

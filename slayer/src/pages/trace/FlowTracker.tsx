@@ -72,6 +72,9 @@ const num = (v: number) => v.toLocaleString('en-US');
 const signedPct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
 const signedNum = (v: number) => `${v >= 0 ? '+' : '−'}${num(Math.abs(v))}`;
 const pct = (now: number, then: number) => (then > 0 ? ((now - then) / then) * 100 : 0);
+/** The floor for ranking a % move: a price of 5¢ and up that moved 5¢ or more */
+const MIN_MOVE_PRICE = 0.05;
+const MIN_MOVE_ABS = 0.05;
 
 const SOURCE_LABEL: Record<WatchSource, string> = {
   tape: 'Live Tape',
@@ -381,7 +384,7 @@ const FlowTracker = () => {
           }
           const then = w.kind === 'contract' ? w.at.last : w.fill;
           const chg = nowPrice != null && then > 0 ? pct(nowPrice, then) : null;
-          const expired = expiredAtBell(isoOfExpiry(w.expiry));
+          const expired = expiredAtBell(isoOfExpiry(w.expiry), w.ticker);
           const nowNote = nowPrice != null ? undefined : expired ? 'expired' : own ? `no print today · last ${own.iso.slice(5).replace('-', '/')}` : undefined;
           /* VOLUME ADDED IS NEVER NEGATIVE: within the mark's own session it is now less then, one field; a mark from an
              earlier session has today's whole volume added, and says so */
@@ -652,7 +655,14 @@ const FlowTracker = () => {
   const champs = useMemo(() => {
     const label = (r: TrackRow) => (r.w.kind === 'structure' ? `${r.w.ticker} ${r.w.strikesLabel}` : `${r.w.ticker} ${r.w.strike}${r.w.right}`);
     const priced = rows.filter(r => r.chg != null);
-    const moved = priced.reduce<TrackRow | null>((a, r) => (Math.abs(r.chg!) >= 0.05 && (a === null || Math.abs(r.chg!) > Math.abs(a.chg!)) ? r : a), null);
+    /* A PENNY IS NOT A MOVE (audit round 10, minor 8: "Moved most NVDA 215C +100.0%" was $0.01 → $0.02): a % move is
+       ranked only on a price of MIN_MOVE_PRICE and up that moved MIN_MOVE_ABS or more */
+    const thenOf = (r: TrackRow): number | null => (r.w.kind === 'contract' ? r.w.at.last : r.w.kind === 'print' ? r.w.fill : null);
+    const real = (r: TrackRow) => {
+      const then = thenOf(r);
+      return then != null && r.nowPrice != null && then >= MIN_MOVE_PRICE && Math.abs(r.nowPrice - then) >= MIN_MOVE_ABS - 1e-9;
+    };
+    const moved = priced.filter(real).reduce<TrackRow | null>((a, r) => (Math.abs(r.chg!) >= 0.05 && (a === null || Math.abs(r.chg!) > Math.abs(a.chg!)) ? r : a), null);
     const building = priced.reduce<TrackRow | null>((a, r) => ((r.oiDelta ?? 0) > 0 && (a === null || r.oiDelta! > a.oiDelta!) ? r : a), null);
     const unwinding = priced.reduce<TrackRow | null>((a, r) => ((r.oiDelta ?? 0) < 0 && (a === null || r.oiDelta! < a.oiDelta!) ? r : a), null);
     return { moved, building, unwinding, label };
@@ -679,7 +689,7 @@ const FlowTracker = () => {
             <RichRead text={`, [[${signedPct(m.chg!)}]] ${m.w.kind === 'print' ? "— the contract's newest fill against the print's" : "— the screener's close now against its close at the mark"}.`} />
           </>
         ) : (
-          <RichRead text="Nothing has moved since its mark yet." />
+          <RichRead text="Nothing has moved since its mark yet — a move is ranked once a price of 5¢ and up has moved 5¢ or more." />
         )}
       </>
     );

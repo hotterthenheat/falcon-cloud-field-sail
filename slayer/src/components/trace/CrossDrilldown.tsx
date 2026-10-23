@@ -405,7 +405,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
             <div className="flex items-center gap-x-5 gap-y-2 flex-wrap px-4 py-3" data-print-money>
               <span className="flex items-baseline gap-2.5">
                 <span className={`font-mono text-[22px] font-bold tnum leading-none ${print.notional >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{fmtUsd(print.notional)}</span>
-                {sideLabel(print) && <span className={`font-mono text-[13px] font-bold ${print.exec === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{sideLabel(print)}</span>}
+                {/* no side word beside "no read" (audit round 10, minor 7: BOUGHT beside NO READ · SMALL) */}
+                {print.intent !== 'ROTATION' && sideLabel(print) && <span className={`font-mono text-[13px] font-bold ${print.exec === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{sideLabel(print)}</span>}
                 {print.sized && <span className="font-mono text-[11px] uppercase font-semibold text-textPrimary">Sized</span>}
               </span>
               {frac != null && (

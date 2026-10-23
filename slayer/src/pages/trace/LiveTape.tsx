@@ -713,7 +713,7 @@ const LiveTape = () => {
             ]
           : lane === 'prints' && anchor && dayNet
           ? [
-              `The whole ${shortDay(anchor.iso)} session (${regularOnly ? '09:30–16:15 ET' : 'after the close'}): the market's net premium [[${dayNet.net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.net))}]] — net calls ${dayNet.calls >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.calls))} less net puts ${dayNet.puts >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.puts))} (the vendor's market tide, spread legs and floor packages in it; the whole-day panel below has the contracts and alerts). `,
+              `The whole ${shortDay(anchor.iso)} session (${regularOnly ? `09:30–16:15 ET; the vendor's market tide runs ${nyClock(dayNet.first * 1000)}–${nyClock(dayNet.last * 1000)} ET, its last minute` : 'after the close'}): the market's net premium [[${dayNet.net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.net))}]] — net calls ${dayNet.calls >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.calls))} less net puts ${dayNet.puts >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.puts))} (the vendor's market tide, spread legs and floor packages in it; the whole-day panel below has the contracts and alerts). `,
             ]
           : [];
       const lead: ReadSeg[] = lane === 'prints' && anchor ? [`The regular session has closed — on the Regular session card the tape is its last stretch, walked back from the 16:15 ET close${anchor.iso !== tapeIsoToday() ? ` of ${shortDay(anchor.iso)}` : ''} (the prints after it are under Extended hours on the Session card). `] : [];
@@ -1021,13 +1021,16 @@ const LiveTape = () => {
         guide={{ title: 'How to read the tape', door: 'What a print, its fill and its conviction mean', body: <LiveTapeGuide />, testId: 'live-tape-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label={lane === 'prints' ? `These figures cover · last ${rows.length.toLocaleString('en-US')} prints${spanLength(rows) ? ` · ${spanLength(rows)}` : ''} · not the day` : 'These figures cover · the alerts in hand'} testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick Extended hours on the Session card for what prints after it` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
+            <Fact label={lane === 'prints' ? headReading || rows.length === 0 ? 'These figures cover · reading the prints…' : `These figures cover · last ${rows.length.toLocaleString('en-US')} prints${spanLength(rows) ? ` · ${spanLength(rows)}` : ''} · not the day` : 'These figures cover · the alerts in hand'} testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick Extended hours on the Session card for what prints after it` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
               {headReading ? <span className="text-textMuted">—</span> : windowSpan ? `${windowSpan} ET` : '—'}
               {cutSpan && cutSpan !== windowSpan && <span className="text-textSecondary" title="The span of the prints this cut keeps"> · this cut {cutSpan}</span>}
               {lane === 'prints' && anchor && <span className="text-textSecondary"> · regular session, to the {anchor.iso !== tapeIsoToday() ? `${shortDay(anchor.iso)} close` : 'close'}</span>}
             </Fact>
             <Fact label={lane === 'alerts' ? 'Alerts' : 'Prints'} testId="prints" title={lane === 'alerts' ? "The vendor's newest flow alerts — each one an aggregate of a contract's prints in one burst" : 'The prints in hand — the newest stretch of the tape, unbroken, up to 2,000 — not the whole day'}>
-              {headReading ? <span className="text-textMuted">—</span> : <>{filtered.length}{' '}
+              {headReading ? <span className="text-textMuted">—</span> : searchQuery.trim() && filtered.length === 0 && rows.length > 0 ? (
+                /* a search that matched nothing says so — never "0 of 2,000 · at the max" (audit round 10, minor 1) */
+                <span className="text-textSecondary" data-tape-search-none>no {lane === 'alerts' ? 'alerts' : 'prints'} for {searchQuery.trim()} in this window</span>
+              ) : <>{filtered.length}{' '}
               <span className="text-textSecondary">
                 of {rows.length}{lane === 'alerts' ? ' alerts' : ''}
                 {lane === 'prints' && stream.hasOlder ? ' · older still coming' : ''}
@@ -1059,7 +1062,7 @@ const LiveTape = () => {
               {headReading ? <span className="text-textMuted">—</span> : <><span className="text-textPrimary">{(Math.round(zdteShare * 1000 + 1e-9) / 10).toFixed(1)}%</span> <span className="text-textSecondary">of {lane === 'alerts' ? 'alerts' : 'prints'} · {beamRows.filter(r => r.dte === 0).length.toLocaleString('en-US')} of {beamRows.length.toLocaleString('en-US')}</span></>}
             </Fact>
             {tickerOnly && topDay.rows.length > 0 && (
-              <Fact label={`${tickerOnly} · biggest with a clear side ${dayAdv(dayIso)} · whole day`} testId="name-day" title={`${tickerOnly}'s biggest contracts WITH A CLEAR SIDE ${dayAdv(dayIso)}, the whole day — not the biggest by premium (the Screener's "Largest"), which is named after them when it differs — the vendor's screener, not the window of prints above. Ranked and shown by the day's premium — the Screener's figure — among the contracts whose day leaned to one side (55% or more of the contracts traded on a side); a contract whose day was even (no side holding 55% of the sided contracts), mostly at the mid, mostly floor-traded multi-leg packages, half or more legs of multi-leg orders (spread legs), or deep in the money and long-dated (stock-like) has no directional read and is not ranked${nameDay.packs.length ? `. Set apart: ${nameDay.packs.map(c => `${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} ${notABetWord(c)}`).join(', ')}` : ''}`}>
+              <Fact label={`${tickerOnly} · biggest with a clear side ${dayAdv(dayIso)} · whole day`} testId="name-day" wrap title={`${tickerOnly}'s biggest contracts WITH A CLEAR SIDE ${dayAdv(dayIso)}, the whole day — not the biggest by premium (the Screener's "Largest"), which is named after them when it differs — the vendor's screener, not the window of prints above. Ranked and shown by the day's premium — the Screener's figure — among the contracts whose day leaned to one side (55% or more of the contracts traded on a side); a contract whose day was even (no side holding 55% of the sided contracts), mostly at the mid, mostly floor-traded multi-leg packages, half or more legs of multi-leg orders (spread legs), or deep in the money and long-dated (stock-like) has no directional read and is not ranked${nameDay.packs.length ? `. Set apart: ${nameDay.packs.map(c => `${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} ${notABetWord(c)}`).join(', ')}` : ''}`}>
                 {nameDay.sided.length === 0 ? (
                   <span className="text-textSecondary">no clear side — {tickerOnly}'s heaviest contracts traded even, at the mid, in floor packages or as spread legs</span>
                 ) : (
@@ -1158,7 +1161,7 @@ const LiveTape = () => {
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-textPrimary">The whole day</span>
                 <span className="text-[11px] text-textMuted">
-                  {dayAdv(dayIso) === 'today' ? 'Today' : shortDay(dayIso)} · {regularOnly ? (anchor ? '09:30–16:15 ET, the regular session' : 'the regular session so far, from 09:30 ET') : 'outside the regular session'} — day-level figures from the vendor's market tide, its screener and its flow alerts, not the {rows.length.toLocaleString('en-US')} prints below
+                  {dayAdv(dayIso) === 'today' ? 'Today' : shortDay(dayIso)} · {regularOnly ? (anchor ? `09:30–16:15 ET, the regular session${dayNet ? ` (the tide's minutes ${nyClock(dayNet.first * 1000)}–${nyClock(dayNet.last * 1000)})` : ''}` : 'the regular session so far, from 09:30 ET') : 'outside the regular session'} — day-level figures from the vendor's market tide, its screener and its flow alerts, not the {rows.length ? `${rows.length.toLocaleString('en-US')} ` : ''}prints below
                 </span>
               </div>
               <div className="grid gap-x-8 gap-y-2 md:grid-cols-3 text-[11px]">

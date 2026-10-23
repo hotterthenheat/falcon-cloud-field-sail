@@ -385,12 +385,36 @@ function liveGammaAll(ticker: string, priority = false): Promise<Map<string, Liv
   });
   return p;
 }
+/*
+  NO READ WAITS FOREVER (the tenth audit's B3, 2026-10-23 16:50 ET: one page of SPY's every-expiry walk — page 9 — sat in
+  the proxy unanswered for minutes while the vendor itself answered it in 0.6s, so the walk never ended, the full book's
+  far dates were never asked, and SPY's All-expiries levels never finished on any page). A walk page, and a date's
+  chain, that has not answered in its time is taken as failed: the walk gives way to each date's own ask, and a date is
+  asked again on the next pass.
+*/
+const WALK_PAGE_MS = 25_000;
+const DATE_READ_MS = 40_000;
+function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise(resolve => {
+    const id = setTimeout(() => resolve(null), ms);
+    p.then(
+      v => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(id);
+        resolve(null);
+      },
+    );
+  });
+}
 async function liveGammaWalk(ticker: string, priority = false): Promise<Map<string, LiveGamma> | null> {
   const t = encodeURIComponent(ticker);
   const rowsBy = new Map<string, Record<string, unknown>[]>();
   for (let page = 0; page < 60; page++) {
-    const res = await uwCall(`/stock/${t}/spot-exposures/expiry-strike?limit=500&page=${page}`, priority);
-    if (res.error || !Array.isArray(res.data)) return null;
+    const res = await within(uwCall(`/stock/${t}/spot-exposures/expiry-strike?limit=500&page=${page}`, priority), WALK_PAGE_MS);
+    if (!res || res.error || !Array.isArray(res.data)) return null;
     const rows = res.data as Record<string, unknown>[];
     for (const r of rows) {
       const d = String(r.expiry ?? '');
@@ -2018,7 +2042,7 @@ async function loadBoardDatesNow(ticker: string, token: number, listed?: { date:
       const got = date >= floorDay ? walked?.get(date) : undefined;
       if (got) return [date, withLiveGamma([], got)] as const;
       try {
-        return [date, await dateChain(ticker, date, e.spot, false, isHot(ticker))] as const;
+        return [date, await within(dateChain(ticker, date, e.spot, false, isHot(ticker)), DATE_READ_MS)] as const;
       } catch {
         return [date, null] as const;
       }
@@ -2112,7 +2136,6 @@ export function peekBellShare(ticker: string): { share: number } | { share: null
 */
 const expWalking = new Set<string>();
 async function loadExpiries(entry: Entry, token: number): Promise<void> {
-  console.debug('[fix10dbg] loadExpiries', entry.ticker, expWalking.has(entry.ticker));
   if (expWalking.has(entry.ticker)) return;
   expWalking.add(entry.ticker);
   try {
@@ -2153,7 +2176,7 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   const pull = (list: string[], first = list === near) =>
     mapLimit(list, 3, async date => {
       try {
-        return [date, await dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && first)] as const;
+        return [date, await within(dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && first), DATE_READ_MS)] as const;
       } catch {
         return [date, null] as const;
       }
@@ -2200,7 +2223,6 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   const frontFacts = atFront ? fillExpiryFacts(atFront, liveToken(), front) : null;
   const walk = dates.length > 6 ? liveGammaAll(entry.ticker, isHot(entry.ticker)).catch(() => null) : null;
   const nearGot = await pull(near.slice(1), true);
-  console.debug('[fix10dbg] near got', entry.ticker, nearGot.map(([d, c]) => `${d}:${c?.length ?? 'null'}`).join(' '), still());
   if (!still()) return;
   const retryNear = dates.length <= 6 ? nearGot.filter(([, c]) => c == null).map(([d]) => d) : [];
   apply(nearGot, dates.length <= 6 && !retryNear.length);
@@ -2211,12 +2233,9 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
   const first = cache.get(entry.ticker);
   if (first) void fillExpiryFacts(first, liveToken(), near.slice(1));
   if (dates.length > 6) {
-    console.debug('[fix10dbg] before walk', entry.ticker);
     await walk;
-    console.debug('[fix10dbg] after walk', entry.ticker, still());
     if (!still()) return;
     const farGot = await pull(dates.slice(6));
-    console.debug('[fix10dbg] far got', entry.ticker, farGot.length);
     if (!still()) return;
     /* a far date whose read failed is asked once more before the walk calls the book whole */
     const retry = [...nearGot, ...farGot].filter(([, c]) => c == null).map(([d]) => d);

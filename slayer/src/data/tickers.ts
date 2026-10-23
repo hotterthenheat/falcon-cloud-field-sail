@@ -120,7 +120,7 @@ const BRAND_CASE: Record<string, string> = {
   datadog: 'Datadog', moneylion: 'MoneyLion', sofi: 'SoFi', robinhood: 'Robinhood', ipg: 'IPG', directv: 'DirecTV', duPont: 'DuPont', dupont: 'DuPont',
   'at&t': 'AT&T', 'p&g': 'P&G', 'h&r': 'H&R', 'l3harris': 'L3Harris', 'iheartmedia': 'iHeartMedia', 'irobot': 'iRobot', 'iqiyi': 'iQIYI', 'nextera': 'NextEra',
   'globalfoundries': 'GlobalFoundries', 'marketaxess': 'MarketAxess', 'firstenergy': 'FirstEnergy', 'centerpoint': 'CenterPoint', 'novocure': 'NovoCure',
-  nasdaq: 'Nasdaq',
+  nasdaq: 'Nasdaq', tsmc: 'TSMC', asml: 'ASML', xpeng: 'XPeng', unitedhealth: 'UnitedHealth', ge: 'GE',
 };
 const CONNECTORS = new Set(['of', 'and', 'the', 'for', 'de', 'la', 'du', 'des', 'del', 'et', 'und', 'on', 'in', 'at', 'by', 'to']);
 const casedWord = (w: string): string => {
