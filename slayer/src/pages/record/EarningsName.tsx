@@ -370,7 +370,10 @@ const EarningsName = () => {
      "Reports Wed 10/21" at 00:40 on the 22nd, its options price quoted as if the move were still to come) */
   /* the stock NOW — the calendar row's price is the one the options were priced against, stale once the print is out
      (TSLA read $386.55 after closing the night at $373.63) */
-  const spotNow = quote?.spot && quote.spot > 0 ? quote.spot : e.price;
+  /* THE REGULAR PRICE (audit round 6: NVDA read $214.81 here at 04:30, the pre-market print, unlabelled, against a
+     212.21 close) — the quote's regularPrice, the one every page leads with; the extended print beside it, named */
+  const spotNow = quote?.regularPrice && quote.regularPrice > 0 ? quote.regularPrice : e.price;
+  const extNow = quote?.extPrice != null && quote.extPrice > 0 ? { px: quote.extPrice, word: quote.phase === 'pre' ? 'pre-market' : 'after hours' } : null;
   /* the board's own rule (earningsFeed.reportedNow), so the two never disagree on whether a print is out */
   const reported = reportedNow(e);
   const nQ = quarters.length || 0;
@@ -587,7 +590,16 @@ const EarningsName = () => {
           </Fact>
           <Fact label="Straddle kept by next open">{!dossier.live || dossier.crushKnown ? `~${Math.max(0, 100 - dossier.premiumLostPct)}%` : '—'}</Fact>
           <Fact label={reported ? 'Straddle priced' : 'Straddle today'}>{isPriced ? `$${((e.price * e.impliedMovePct) / 100).toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
-          <Fact label="The stock">{spotNow > 0 ? `$${spotNow.toFixed(2)}` : <span className="text-textMuted">—</span>}</Fact>
+          <Fact label={quote && quote.phase !== 'regular' ? 'The stock · close' : 'The stock'}>
+            {spotNow > 0 ? (
+              <>
+                ${spotNow.toFixed(2)}
+                {extNow ? <span className="block text-[10px] text-textMuted" data-name-fact="ext">{extNow.word} ${extNow.px.toFixed(2)}</span> : null}
+              </>
+            ) : (
+              <span className="text-textMuted">—</span>
+            )}
+          </Fact>
         </dl>
       </Box>
 

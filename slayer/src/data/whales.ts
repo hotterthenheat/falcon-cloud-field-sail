@@ -68,20 +68,26 @@ let inflight = 0;
 const waiters: (() => void)[] = [];
 const MAX_INFLIGHT = 3;
 
-function takeSlot(priority = false): Promise<void> {
-  if (inflight < MAX_INFLIGHT) {
+/* THE BACKGROUND LANE (the sixth audit's M3, 2026-10-23): reads no row waits on (a Board name's open-interest change,
+   ~170 pages across twenty names) took the key's three slots in turn with the levels' own reads. A low ask runs only
+   when no ordinary or priority ask is waiting; the default lane is unchanged for every existing caller. */
+const lowWaiters: (() => void)[] = [];
+
+function takeSlot(priority = false, low = false): Promise<void> {
+  if (inflight < MAX_INFLIGHT && (!low || !waiters.length)) {
     inflight += 1;
     return Promise.resolve();
   }
   return new Promise(resolve => {
-    if (priority) waiters.unshift(resolve);
+    if (low) lowWaiters.push(resolve);
+    else if (priority) waiters.unshift(resolve);
     else waiters.push(resolve);
   });
 }
 
 function releaseSlot(): void {
   inflight -= 1;
-  const next = waiters.shift();
+  const next = waiters.shift() ?? lowWaiters.shift();
   if (next) {
     inflight += 1;
     next();
@@ -114,11 +120,11 @@ const copyOf = (a: UwAnswer): UwAnswer => {
 };
 
 /** One GET, with the vendor's status and message. Does not invent a body. */
-export async function uwCall(path: string, priority = false): Promise<UwAnswer> {
+export async function uwCall(path: string, priority = false, low = false): Promise<UwAnswer> {
   const now = Date.now();
   const hit = shared.get(path);
   if (hit && (!hit.done || (!LIVE_PATH.test(path.split('?')[0]) && now - hit.at < REUSE_MS))) return copyOf(await hit.p);
-  const entry = { at: now, done: false, p: uwFetch(path, priority) };
+  const entry = { at: now, done: false, p: uwFetch(path, priority && !low, low) };
   shared.set(path, entry);
   const got = await entry.p;
   entry.done = true;
@@ -128,8 +134,8 @@ export async function uwCall(path: string, priority = false): Promise<UwAnswer> 
   return copyOf(got);
 }
 
-async function uwFetch(path: string, priority: boolean): Promise<UwAnswer> {
-  await takeSlot(priority);
+async function uwFetch(path: string, priority: boolean, low = false): Promise<UwAnswer> {
+  await takeSlot(priority, low);
   try {
     let res = await fetch(`/api/uw${path}`);
     /* one retry for a rate limit or a passing gateway hiccup (the ship sweep, 2026-10-22: a single 503 on a route that
@@ -302,7 +308,22 @@ export const whalesDailyLong = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(t
 export const whalesDarkTicker = (ticker: string) => uw<Record<string, unknown>[]>(`/darkpool/${enc(ticker)}?limit=80`, true);
 export const whalesFlowTicker = (ticker: string) =>
   uw<Record<string, unknown>[]>(`/option-trades/flow-alerts?ticker_symbol=${enc(ticker)}&limit=40`, true);
-/** One expiry's listed contracts, or the chain's busiest when no expiry is given. */
+/** EVERY CONTRACT, PAGED (the sixth audit, 2026-10-23: `limit=1000` is past the spec's 500 and SPY's Nov 30, Dec 18
+    and Dec 31 and QQQ's Dec 18 and Dec 31 stopped at 500 rows). One expiry's contracts, or — no expiry — every listed
+    contract of the name, walked 500 at a time until a short page. Null when the first page fails; a later page that
+    fails ends the walk with an error, so a caller never takes a cut list for the whole. */
+export async function whalesOptionContractsPaged(ticker: string, expiry?: string, priority = false, maxPages = 60): Promise<UwContract[] | null> {
+  const out: UwContract[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const got = await uwCall(`/stock/${enc(ticker)}/option-contracts?limit=500${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}&page=${page}`, priority);
+    if (got.error || !Array.isArray(got.data)) return null;
+    const rows = got.data as UwContract[];
+    out.push(...rows);
+    if (rows.length < 500) return out;
+  }
+  return out;
+}
+/** One expiry's listed contracts, or the chain's busiest when no expiry is given (one page, as before — see the paged walk above). */
 export const whalesOptionContracts = (ticker: string, expiry?: string, priority = false) =>
   uw<UwContract[]>(`/stock/${enc(ticker)}/option-contracts?limit=1000${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}`, priority);
 

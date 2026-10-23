@@ -37,7 +37,7 @@ import { holdingAssetKey } from '../../data/fileBooks';
 import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, isTreasuryBill, seatLabel } from '../../data/congress';
-import { memberFromRoster, useCongressCoverage, useCongressFeed, useLiveRecord, useMemberBook } from '../../data/liveRecord';
+import { memberFromRoster, useCongressCoverage, useCongressFeed, useCongressStatus, useMemberBook } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { reportDayLabelYear } from '../../data/earningsFeed';
 import { congressFromWhales, ownerWord } from '../../data/whalesMap';
@@ -723,7 +723,7 @@ export const MemberFile = () => {
   const { member: id = '' } = useParams();
   const phone = usePhoneCards();
   useVendor('dossier', '', `/dossier/congress/${id}`);
-  const record = useLiveRecord();
+  const congressStatus = useCongressStatus();
   const feed = useCongressFeed(365);
   const fromFeed = feed.trades.find(t => t.member.id === id)?.member ?? null;
   const roster = memberFromRoster(id);
@@ -784,7 +784,7 @@ export const MemberFile = () => {
     ],
     [],
   );
-  if ((record.congress.status === 'loading' || coverage.reading) && !member) {
+  if ((congressStatus === 'loading' || coverage.reading) && !member) {
     return (
       <>
         <WayBack to="/dossier/congress" label="Congress" />

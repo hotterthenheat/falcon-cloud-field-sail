@@ -52,6 +52,12 @@ import { extendedLine, priceWords, useLiveQuote, type LiveQuote } from '../../da
 import { DayRef } from '../../data/bookWindow';
 
 /** "Today's" in the session; outside it the last regular session named by its date ("Thu Oct 22's") */
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "Oct 22" */
+const shortMonDay = (iso: string): string => {
+  const [, m, d] = iso.split('-').map(Number);
+  return m && d ? `${MON3[m - 1]} ${d}` : iso;
+};
 const sessionWord = (q: LiveQuote | null | undefined): string => {
   const d = q && q.phase !== 'regular' ? q.regDate : null;
   const w = d ? DayRef(d) : 'Today';
@@ -147,7 +153,12 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
   /* The live quote. A dash until stock-state answers. Never the simulator. */
   const live = useLiveQuote(quote && (!follows || full) ? ticker : null);
   const price = closeOutside ? priceWords(live)?.lead : live?.spot;
-  const change = live?.changePct;
+  /* BEFORE THE OPEN THE LEAD IS THE LAST SESSION'S CHANGE (the sixth audit's M1, 2026-10-23: "$763.96 0.00% · pre
+     764.83" beside the Dossier's "−1.18% Oct 22"): dayMoveWords' lead — the last regular session's change, named by its
+     date, with the pre-market move beside it; "…" until the daily rows say it */
+  const pre = live?.phase === 'pre';
+  const change = pre ? live?.lastSessionPct ?? null : live?.changePct;
+  const changeDay = pre && live?.regDate ? shortMonDay(live.regDate) : null;
 
   const menu =
     open &&
@@ -192,7 +203,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
       >
         <CompanyLogo ticker={ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary leading-none">{ticker}</span>
-        {price != null && change != null && (
+        {price != null && live != null && (
           <>
             <span className="text-[11px] tnum text-textPrimary leading-none" data-scope-price>
               ${price.toFixed(2)}
@@ -200,13 +211,13 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             {/* the regular session's change; the move outside the session rides beside it, and zero is neutral — the
                 session named by its own date outside the session (the fifth audit: "Today's regular-session change" at
                 01:00 Friday over Thursday's close) */}
-            <span className={`text-[10px] tnum leading-none ${Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`}>
-              {change > 0 ? '+' : change < 0 ? '−' : ''}
-              {Math.abs(change).toFixed(2)}%
+            <span className={`text-[10px] tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${pre ? ' — the session has not opened' : ''}${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`} data-scope-change>
+              {change == null ? '…' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`}
+              {changeDay && <span className="text-textMuted"> {changeDay}</span>}
             </span>
             {extendedLine(live) && (
               <span className="text-[10px] tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
-                · {closeOutside && live?.extPrice != null ? `${live.phase === 'pre' ? 'pre' : 'AH'} ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'pre')}
+                · {pre ? extendedLine(live) : closeOutside && live?.extPrice != null ? `AH ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH')}
               </span>
             )}
           </>

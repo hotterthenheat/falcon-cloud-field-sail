@@ -33,7 +33,7 @@ import {
   whalesIvRank,
   whalesInterpIv,
   whalesOiStrike,
-  whalesOptionContracts,
+  whalesOptionContractsPaged,
   whalesState,
   whalesTermStructure,
   type UwBar,
@@ -355,6 +355,42 @@ function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma): StrikeNod
   return out;
 }
 
+/*
+  EVERY DATE'S LIVE GAMMA IN ONE WALK (the sixth audit's M3, 2026-10-23: the Board on All expiries had 2 of 20 rows at
+  41s — each name asked spot-exposures/expiry-strike once per listed date, ~25 asks a name, 514 across the Board). The
+  same route without `expirations[]` returns every expiry's rows, one per strike and expiry, 500 a page — SPY's 34 dates
+  in 13 pages, AAPL's 23 in 4, CROX's 8 in 1. Each date's rows are kept exactly as the per-date ask keeps them (the same
+  per-row price and minute, the same cache), so a date read either way is the same chain. Null when a page fails.
+*/
+async function liveGammaAll(ticker: string, priority = false): Promise<Map<string, LiveGamma> | null> {
+  const t = encodeURIComponent(ticker);
+  const rowsBy = new Map<string, Record<string, unknown>[]>();
+  for (let page = 0; page < 60; page++) {
+    const res = await uwCall(`/stock/${t}/spot-exposures/expiry-strike?limit=500&page=${page}`, priority);
+    if (res.error || !Array.isArray(res.data)) return null;
+    const rows = res.data as Record<string, unknown>[];
+    for (const r of rows) {
+      const d = String(r.expiry ?? '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+      const list = rowsBy.get(d) ?? [];
+      list.push(r);
+      rowsBy.set(d, list);
+    }
+    if (rows.length < 500) break;
+  }
+  const out = new Map<string, LiveGamma>();
+  const now = Date.now();
+  for (const [date, rows] of rowsBy) {
+    const live: LiveGamma = new Map();
+    const stamp = { price: 0, at: 0 };
+    liveGammaRows(rows, live, stamp);
+    if (stamp.price > 0 && stamp.at > 0) gammaPriced.set(`${ticker.toUpperCase()}|${date}`, stamp);
+    liveGammaCache.set(`${ticker}|${date}`, { at: now, rows: live });
+    out.set(date, live);
+  }
+  return out;
+}
+
 /** One date's chain. With the greeks: the vendor's strike rows (delta, vanna, charm) carrying the live gamma. Without:
     the live gamma alone (one call — the Board reads nothing else off a date), the strike rows only if it fails. */
 async function dateChain(ticker: string, date: string, spot: number, withGreeks: boolean, priority = false): Promise<StrikeNode[] | null> {
@@ -569,19 +605,48 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
   return out;
 }
 
+/* every contract of a name, one walk shared a minute — the near and the far dates' facts, and a second page asking the
+   same name, read one walk rather than three (the sixth audit's M3) */
+const contractsAll = new Map<string, { at: number; p: Promise<UwContract[] | null> }>();
+function allContracts(ticker: string, priority: boolean): Promise<UwContract[] | null> {
+  const hit = contractsAll.get(ticker);
+  if (hit && Date.now() - hit.at < 60_000) return hit.p;
+  const p = whalesOptionContractsPaged(ticker, undefined, priority, 80).catch(() => null);
+  contractsAll.set(ticker, { at: Date.now(), p });
+  void p.then(rows => {
+    if (!rows && contractsAll.get(ticker)?.p === p) contractsAll.delete(ticker);
+  });
+  return p;
+}
+
 /** Open interest and vega the greek-by-expiry rows do not carry. One request a date. */
 async function fillExpiryFacts(entry: Entry, token: number, only?: readonly string[]): Promise<void> {
   const still = () => gen.get(entry.ticker) === token;
   const dates = only ? only.filter(d => d in entry.byDate) : Object.keys(entry.byDate);
   if (!dates.length) return;
-  const books = await mapLimit(dates, 3, async date => {
+  /* THE FEWER ASKS (the sixth audit's M3): one expiry's contracts a page of 500 at a time, or every contract of the name
+     in one walk — whichever needs fewer pages. A date's contracts are about twice its strikes; the whole walk covers
+     every listed date. The rows are the same either way, so the vols the flip reads do not depend on the path. */
+  const floor = isoDate(bookToday());
+  const pagesOf = (strikes: number) => Math.max(1, Math.ceil((2 * strikes + 1) / 500));
+  const perDate = dates.reduce((a, d) => a + pagesOf(entry.byDate[d]?.length ?? 0), 0);
+  const allStrikes = Object.keys(entry.byDate).filter(d => d >= floor).reduce((a, d) => a + (entry.byDate[d]?.length ?? 0), 0);
+  const whole = pagesOf(allStrikes);
+  const hot = isHot(entry.ticker);
+  let books: (readonly [string, Map<number, LegBook>])[] | null = null;
+  if (dates.length > 1 && whole < perDate) {
+    const rows = await allContracts(entry.ticker, hot);
+    if (rows) books = dates.map(date => [date, foldContracts(rows, date)] as const);
+  }
+  if (!books)
+    books = await mapLimit(dates, 3, async date => {
       try {
-        const rows = await whalesOptionContracts(entry.ticker, date);
+        const rows = await whalesOptionContractsPaged(entry.ticker, date, hot);
         return [date, Array.isArray(rows) ? foldContracts(rows, date) : new Map<number, LegBook>()] as const;
       } catch {
         return [date, new Map<number, LegBook>()] as const;
       }
-  });
+    });
   if (!still()) return;
   const current = cache.get(entry.ticker);
   if (!current) return;
@@ -812,7 +877,29 @@ function liveListing(expiries: Entry['expiries']): Entry['expiries'] {
   return live.length ? live : expiries;
 }
 
+/*
+  ONE SNAPSHOT PER BOOK STATE (the sixth audit's M3, 2026-10-23): every page asked for a name's snapshot on every book
+  event — dozens a second while a Board's dates land — and each ask summed every date's chain again and re-read the flip,
+  so the main thread was busy over half the time and the next reads went out late. A name's snapshot is now built once
+  per state of its own book (the arrays it is made of, the price, the day's move, the clock's minute) and handed out
+  again until one of them changes; another name's book landing leaves it alone.
+*/
+const snapMemo = new WeakMap<Entry, Map<LevelsScope, { sig: string; refs: unknown[]; snap: MarketSnapshot }>>();
 function materialize(entry: Entry, scope: LevelsScope): MarketSnapshot {
+  const refs: unknown[] = [entry.byDate, entry.all, entry.expiries, entry.candles, entry.termIv, entry.totals, entry.factsDates, entry.state, entry.flow, entry.history];
+  const sig = [entry.at, entry.spot, entry.changePct, entry.extPct, entry.phase, entry.dayKnown, entry.iv, entry.gammaLive, entry.full, entry.frontFacts, entry.factsDates?.size ?? 0, entry.candles.length, entry.candles[entry.candles.length - 1]?.close, isoDate(bookToday()), Math.floor(Date.now() / 60_000), settledLive.size, gammaPriced.size].join('|');
+  let byScope = snapMemo.get(entry);
+  const hit = byScope?.get(scope);
+  if (hit && hit.sig === sig && hit.refs.every((r, i) => r === refs[i])) return hit.snap;
+  const snap = materializeNow(entry, scope);
+  if (!byScope) {
+    byScope = new Map();
+    snapMemo.set(entry, byScope);
+  }
+  byScope.set(scope, { sig, refs, snap });
+  return snap;
+}
+function materializeNow(entry: Entry, scope: LevelsScope): MarketSnapshot {
   const uwChains = chainsFor(entry);
   const today = uwChains['0DTE'];
   const chain = scope === 'ALL' ? (uwChains.ALL ?? entry.all) : today && today.length ? today : (uwChains.ALL ?? entry.all);
@@ -885,11 +972,14 @@ function applyDay(entry: Entry): void {
   const st = entry.state;
   if (!st) return;
   const ph = dayChangeOf(st, null).phase;
-  const after = ph === 'post' || ph === 'closed';
-  const closes = after ? peekRegularCloses(entry.ticker) : null;
+  /* THE CLOSES IN EVERY PHASE (the sixth audit's M1, 2026-10-23): before the open the lead figure is the last session's
+     change, which needs the regular closes as much as after the bell does — handed only to post/closed, the pre-market
+     read got null and printed 0.00%. In the session the quote's own prev_close is the base and the closes change nothing. */
+  const needsCloses = ph !== 'regular';
+  const closes = peekRegularCloses(entry.ticker);
   const ch = dayChangeOf(st, closes);
   entry.phase = ch.phase;
-  entry.dayKnown = !after || !!closes?.length;
+  entry.dayKnown = !needsCloses || !!closes?.length;
   entry.changePct = entry.dayKnown ? ch.dayPct : 0;
   entry.extPct = ch.extPct;
 }
@@ -911,7 +1001,15 @@ function needDay(entry: Entry): void {
 export const fmtPct = (v: number, digits = 2): string => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(digits)}%`;
 
 /** The day's move in words: "−1.18% · after hours +0.05%", "pre-market +0.40%", or "−1.18%" in the session */
-export function dayMoveWords(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | null | undefined, digits = 2): { main: string; ext: string | null; title: string } | null {
+export function dayMoveWords(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | null | undefined, digits = 2): { main: string; ext: string | null; title: string; when: string | null } | null {
+  const w = dayMoveWordsOf(m, digits);
+  if (!w) return null;
+  /* THE SESSION NAMED BY ITS DATE when it is not today's (the sixth audit's M1: "−1.18% Oct 22 · pre-market +0.12%",
+     the Dossier's words) — before the open, and on a weekend or a holiday */
+  const rec = recordIso();
+  return { ...w, when: m && m.dayPct != null && rec !== nyIsoDate() ? monDayOf(rec) : null };
+}
+function dayMoveWordsOf(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | null | undefined, digits = 2): { main: string; ext: string | null; title: string } | null {
   if (!m) return null;
   const ext = m.extPct != null && Number.isFinite(m.extPct) ? `${m.phase === 'pre' ? 'pre-market' : 'after hours'} ${fmtPct(m.extPct, digits)}` : null;
   if (m.phase === 'pre') {
@@ -1506,13 +1604,13 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   /* the front date's contracts: open interest, each contract's own vol and gamma — the flip re-prices with them and
      Building values the open-interest change with them (one call a name) */
   if (chain.length) {
-    const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/option-contracts?limit=1000&expiry=${encodeURIComponent(front)}`, hot);
+    const rows = await whalesOptionContractsPaged(entry.ticker, front, hot).catch(() => null);
     if (!still()) return;
     current = cache.get(entry.ticker);
     if (!current || current.full) return;
     current.factsDates = new Set([...(current.factsDates ?? []), front]);
-    if (!rows.error && Array.isArray(rows.data)) {
-      const book = foldContracts(rows.data as UwContract[], front);
+    if (rows) {
+      const book = foldContracts(rows, front);
       const have = current.byDate[front] ?? chain;
       if (book.size && have.length) current.byDate = { ...current.byDate, [front]: paintLegs(have, book, true) };
       current.frontFacts = true;
@@ -1589,7 +1687,9 @@ const emptyDates = new Map<string, Set<string>>();
 */
 const datesQueue: { ticker: string; run: () => Promise<void>; done: () => void }[] = [];
 let datesRunning = 0;
-const DATES_AT_ONCE = 1;
+/* three names at a time (the sixth audit's M3): each name's dates are now one paged walk, so three names fill the key's
+   three slots — the name on screen still first */
+const DATES_AT_ONCE = 3;
 function pumpDates(): void {
   while (datesRunning < DATES_AT_ONCE && datesQueue.length) {
     const i = Math.max(0, datesQueue.findIndex(q => isHot(q.ticker)));
@@ -1629,7 +1729,15 @@ async function loadBoardDatesNow(ticker: string, token: number, listed?: { date:
   }
   datesWait.add(ticker);
   try {
+    /* the live dates in one walk of every expiry's rows (liveGammaAll); a date the walk does not carry, a settled one,
+       or a walk that failed is asked on its own as before */
+    const floorDay = isoDate(bookToday());
+    const liveWant = want.filter(d => d >= floorDay);
+    const walked = liveWant.length >= 3 ? await liveGammaAll(ticker, isHot(ticker)).catch(() => null) : null;
+    if (!still()) return;
     const fetched = await mapLimit(want, 3, async date => {
+      const got = date >= floorDay ? walked?.get(date) : undefined;
+      if (got) return [date, withLiveGamma([], got)] as const;
       try {
         return [date, await dateChain(ticker, date, e.spot, false, isHot(ticker))] as const;
       } catch {
@@ -1764,11 +1872,16 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
   /* THE NEAR DATES' OPEN INTEREST AT ONCE (the ship pass, 2026-10-22): the by-expiry rows carry no open interest, and
      it was filled only after all ~40 dates had landed — on Building (today's expiry by default) every strike's change
      read +$0 for the better part of a minute. The dates on screen get theirs as soon as they are in. */
+  /* the far dates' live gamma in one walk of every expiry (liveGammaAll — the sixth audit's M3), read beside the near
+     dates; each far date then asks only its greek rows, its live rows already in hand */
+  const walk = dates.length > 6 ? liveGammaAll(entry.ticker, isHot(entry.ticker)).catch(() => null) : null;
   apply(await pull(near), dates.length <= 6);
   if (!still()) return;
   const first = cache.get(entry.ticker);
   if (first) void fillExpiryFacts(first, token, near);
   if (dates.length > 6) {
+    await walk;
+    if (!still()) return;
     apply(await pull(dates.slice(6)), true);
     if (!still()) return;
     const current = cache.get(entry.ticker);
@@ -1910,7 +2023,8 @@ export function ensureOiChange(ticker: string): void {
     const seen = new Set<string>();
     for (const order of ['desc', 'asc'] as const) {
       for (let page = 0; page < OI_PAGES; page++) {
-        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`, isHot(t));
+        /* a name off screen reads its change in the background lane — no row's levels wait on it (the sixth audit's M3) */
+        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`, isHot(t), !isHot(t));
         const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
         let reachedZero = false;
         for (const r of rows) {

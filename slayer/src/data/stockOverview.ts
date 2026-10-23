@@ -65,7 +65,7 @@ import { readSessionClock } from './moc';
 import { buildExposureProfile } from './exposure';
 import { LEVELS_WINDOW } from './roomLevels';
 import { bookCandles, snapshotOf } from './uwBook';
-import { peekQuote, extendedLine, priceWords } from './liveQuote';
+import { peekQuote, extendedLine, priceWords, screenerRead } from './liveQuote';
 import { peekLive } from './liveRecord';
 import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
 import { nyTodayIso } from './nyDate';
@@ -186,7 +186,9 @@ export interface MoneyRead {
       hand, and the New York clock window they span */
   /** The read's prints and the window the tape in hand truly covers: `complete` when it was paged back to the open;
       otherwise `cover` is the oldest instant in hand (HH:MM ET) and nothing before it was read */
-  darkWindow: { read: number; inHand: number; from: string | null; to: string | null; complete: boolean; cover: string | null; ownTerms: number };
+  /** `read`/`readNotional`: the prints the posture read is on (the regular session's, at the quote); `outsideRead`: the
+      card's prints left out of that read — extended-hours and unquoted ones */
+  darkWindow: { read: number; readNotional: number; outsideRead: number; inHand: number; from: string | null; to: string | null; complete: boolean; cover: string | null; ownTerms: number };
   /** The window the session's flow alerts truly cover: `complete` when paged back to the session's start */
   flowWindow: { alerts: number; complete: boolean; from: string | null; to: string | null };
   /** Off-exchange prints of 50K shares or more */
@@ -401,15 +403,18 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
      close is the post-market price, so the scored "price against its 20-day average" read GME −1.3% while the page's
      trend box, from the regular bars, read −0.3%. The last regular close (dayChange's daily rows) is used when read. */
   const tk = typeof row?.ticker === 'string' ? (row.ticker as string) : '';
-  const latestRegular = tk ? peekRegularCloses(tk)?.[0] : undefined;
-  /* only today's finished session: in the session the screener's close is the live price */
-  const regular = latestRegular && latestRegular.date === nyIsoDate() && phaseOf(String(row?.market_time ?? 'post')) !== 'regular' ? latestRegular.close : undefined;
+  /* (round 6) on liveQuote's screenerRead rule: the row's own session's regular close off the daily rows outside the
+     session — before the open too, when the last session is yesterday's — and the row's close in it */
+  const regular = row ? screenerRead(row, tk ? peekRegularCloses(tk) : null)?.regular : undefined;
   const last = regular != null && regular > 0 ? regular : rowNum(row, 'close');
   const ema20 = rowNum(row, 'ema_20');
   const rsi14 = rowNum(row, 'rsi_14');
   const adx14 = rowNum(row, 'adx_14');
-  const week = rowNum(row, 'one_week_perc');
-  const month = rowNum(row, 'one_month_perc');
+  /* the week and the month off the same regular close (the vendor's percents run to the last print) */
+  const weekRef = rowNum(row, 'one_week_close');
+  const week = weekRef != null && weekRef > 0 && last != null && last > 0 ? last / weekRef - 1 : rowNum(row, 'one_week_perc');
+  const monthRef = rowNum(row, 'one_month_close');
+  const month = monthRef != null && monthRef > 0 && last != null && last > 0 ? last / monthRef - 1 : rowNum(row, 'one_month_perc');
   const day = rowNum(row, 'one_day_perc');
   const trend: Factor[] = [];
   if (ema20 != null && ema20 > 0 && last != null && last > 0) {
@@ -725,6 +730,8 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const clocks = readPrints.map(p => p.time).filter(Boolean).sort();
   const darkWindow = {
     read: readPrints.length,
+    readNotional,
+    outsideRead: ownTermsOut.filter(p => !darkReadable(p)).length,
     inHand: file.dark.length,
     from: clocks[0] ?? null,
     to: clocks[clocks.length - 1] ?? null,
@@ -1166,8 +1173,11 @@ const screenTrend = (bars: TrendRead, row: ScreenRow): TrendRead => {
   const sma200 = rowNum(row, 'sma_200');
   const rsi14 = rowNum(row, 'rsi_14');
   const adx14 = rowNum(row, 'adx_14');
-  const week = rowNum(row, 'one_week_perc');
-  const month = rowNum(row, 'one_month_perc');
+  /* the week and the month off the same regular close (the vendor's percents run to the last print) */
+  const weekRef = rowNum(row, 'one_week_close');
+  const week = weekRef != null && weekRef > 0 && f.refClose != null && f.refClose > 0 ? f.refClose / weekRef - 1 : rowNum(row, 'one_week_perc');
+  const monthRef = rowNum(row, 'one_month_close');
+  const month = monthRef != null && monthRef > 0 && f.refClose != null && f.refClose > 0 ? f.refClose / monthRef - 1 : rowNum(row, 'one_month_perc');
   const ref = f.refClose ?? bars.refClose;
   const averages = [ema20, sma50, sma200].filter((a): a is number => a != null && a > 0);
   return {

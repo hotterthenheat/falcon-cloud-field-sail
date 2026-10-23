@@ -63,7 +63,14 @@ const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boo
   if (/\$MACRO\b/i.test(s)) return 'Macro';
   /* a broker's note is the analyst beat even when it names a quarter ("HSBC cuts target price on X after Q3") */
   if (/\btarget price\b|\bprice targets?\b|\bupgrades?\b|\bupgraded\b|\bdowngrades?\b|\bdowngraded\b/i.test(headline)) return 'Analyst';
-  if (GUIDANCE_RE.test(s)) return 'Guidance';
+  /* THE DATA BEFORE THE OUTLOOK (audit round 6): "EUROZONE OCTOBER COMPOSITE PMI DROPS TO 51.9, LOWER THAN EXPECTED
+     FORECAST…" filed under Guidance on the word "forecast" — the guidance rule ran before the macro rules. An economic
+     release, a central bank or a rate with no company as its subject is Macro first; guidance and the earnings beat's
+     "tops forecasts" need a company to be about. */
+  const hardMacro = /\b(?:fed|fomc|cpi|ppi|pce|gdp|payrolls?|pmi|ecb|boj|boe|tariffs?)\b/i.test(s);
+  if (!hasTicker && (DATA_RE.test(s) || ((MACRO_RE.test(s) || RATES_RE.test(s) || GEO_RE.test(s)) && !EARNINGS_RE.test(s) && !MA_RE.test(s)))) return 'Macro';
+  if (hasTicker && hardMacro && DATA_RE.test(s) && !EARNINGS_RE.test(headline)) return 'Macro';
+  if (hasTicker && GUIDANCE_RE.test(s)) return 'Guidance';
   if (EARNINGS_RE.test(s)) return 'Earnings';
   if (ANALYST_RE.test(s)) return 'Analyst';
   if (MA_RE.test(s)) return 'M&A';
@@ -199,6 +206,14 @@ function storyTickers(headline: string, tags: readonly string[] | undefined): { 
     (re && re.test(leadText(headline)) ? subject : mentions).push(t);
   }
   return { tickers: subject.slice(0, 1), mentions: [...new Set([...subject.slice(1), ...mentions])].slice(0, 4) };
+}
+
+/** The one name a story's move at publish is read on (newsFromWhales' lead ticker) — the only symbol the wire needs a
+    regular close for. A currency code or a plain word the vendor tagged ("USD", "P", "FOR", "OUT") is not one. */
+const FX_CODES = /^(?:USD|EUR|JPY|GBP|CNY|CNH|CAD|AUD|NZD|CHF|HKD|SGD|KRW|INR|MXN|BRL|ZAR|SEK|NOK|DKK|TRY|RUB|PLN|BTC|ETH)$/;
+export function storyLeadTicker(headline: string, tickers: readonly string[] | undefined): string | null {
+  const lead = storyTickers(decodeEntities(headline || ''), tickers).tickers[0] ?? null;
+  return lead && !FX_CODES.test(lead) ? lead : null;
 }
 
 /* NOT MARKET NEWS (the re-audit, 2026-10-22): the press-release wires carry paid placements — a criminal-defense firm's
@@ -342,13 +357,16 @@ const typeOf = (raw?: string): ReportType | null => {
   return null;
 };
 
-const ownerOf = (notes?: string, issuer?: string): ReportOwner => {
-  const s = `${notes || ''} ${issuer || ''}`.toLowerCase();
-  if (s.includes('dependent') || s.includes('child')) return 'Dependent';
-  if (s.includes('spouse')) return 'Spouse';
-  if (/\bjoint\b/.test(s)) return 'Joint';
+/* THE OWNER IS THE ISSUER FIELD'S OWN WORD (audit round 6): "Independent Bank Corp." read owner "Dependent" — a
+   substring of the notes and the issuer together. The vendor's `issuer` carries the owner (self, spouse, joint, child,
+   undisclosed); it is read alone, word by word, and an asset's name there never names an owner. */
+const ownerOf = (_notes?: string, issuer?: string): ReportOwner => {
+  const s = (issuer || '').toLowerCase().trim();
+  if (/^(?:dependent(?: child)?|child|dc)$/.test(s)) return 'Dependent';
+  if (/^(?:spouse|sp)$/.test(s)) return 'Spouse';
+  if (/^(?:joint|js)$/.test(s)) return 'Joint';
   /* "undisclosed" is the filing not saying whose it is — never the member's own (the third audit, 2026-10-23) */
-  if (/\bself\b/.test((issuer || '').toLowerCase())) return 'Self';
+  if (/^self$/.test(s)) return 'Self';
   return 'Undisclosed';
 };
 
@@ -433,7 +451,30 @@ const namedAsset = (issuer?: string, ticker?: string, notes?: string): string =>
   return maturity(t) || t;
 };
 
+/* THE FILING'S OWN ASSET-TYPE TAG, READ BEFORE THE NOTES ARE CLEANED (audit round 6): Pelosi's "Apple Inc. - Common
+   Stock (AAPL) [OP]" — a call option, $250K–$500K — read "AAPL · Apple Inc. · Purchase", a share trade: the tag was cut
+   off by cleanNotes and "Common Stock" in the notes vetoed the option. The House's PTR codes name the kind outright. */
+const TAG_KIND: Record<string, AssetKind> = {
+  ST: 'Stock',
+  PS: 'Stock',
+  RS: 'Stock',
+  OP: 'Stock Option',
+  GS: 'Other',
+  CS: 'Corporate Bond',
+  AB: 'Corporate Bond',
+  MF: 'Fund',
+  EF: 'Fund',
+  ET: 'Fund',
+  CT: 'Crypto',
+};
+export const assetTagOf = (notes?: string): string | null => {
+  const head = (notes || '').split(/FILING STATUS:|SUBHOLDING OF:|DESCRIPTION:/i)[0];
+  const tags = [...head.matchAll(/\[([A-Za-z]{2})\]?/g)].map(m => m[1].toUpperCase());
+  return tags.length ? tags[tags.length - 1] : null;
+};
 const assetKindOf = (notes?: string, issuer?: string): AssetKind => {
+  const tag = assetTagOf(notes);
+  if (tag && TAG_KIND[tag]) return TAG_KIND[tag];
   const s = `${notes || ''} ${issuer || ''}`;
   if (/\btreasury\b|\bt-?bills?\b|\[GS\]/i.test(s)) return 'Other';
   if (/\b(call|put)\b|\boptions?\b/i.test(s) && !/common stock/i.test(s)) return 'Stock Option';
@@ -467,10 +508,11 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
   const seen = new Set<string>();
   let unread = 0;
   let notMembers = 0;
+  const notMemberAges: number[] = [];
+  const seenOut = new Set<string>();
   for (const r of rows) {
     /* the vendor's congress feed also carries executive-branch filers (the President's OGE reports, most of them
        filed past 45 days) — this is the Congress page, so only House and Senate members are read */
-    if (r.member_type && !/house|senate/i.test(r.member_type)) continue;
     const traded = daysAgo(r.transaction_date);
     if (traded > windowDays) continue;
     const filed = daysAgo(r.filed_at_date);
@@ -478,16 +520,28 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
     const filedDay = nyDayOf(r.filed_at_date);
     const lag = tradedDay && filedDay ? daysBetween(tradedDay, filedDay) : filed - traded;
     const who = r.politician_id ? roster.get(r.politician_id) : undefined;
-    /* A MEMBER IS ON THE ROSTER AS ONE (audit round 5, 2026-10-23): a row the vendor tags house or senate whose person the
-       politician list files in the executive branch, or with neither a chamber nor a Congress directory (bioguide) id, is
-       not a member's report and is left out, counted. A member the roster carries without a chamber yet (a new
-       appointee: Alan Armstrong, bioguide A000383, first report 2026-03-24, after Sen. Mullin moved to the executive list)
-       keeps the chamber the report itself names. */
-    if (roster.size && who && (/executive/i.test(who.chamber || '') || (!/house|senate/i.test(who.chamber || '') && !who.bioguide_id))) {
-      notMembers += 1;
+    /* A MEMBER IS WHO THE REPORT SAYS FILED AS ONE (audit round 6, 2026-10-23). The roster's chamber is where the person
+       sits NOW: Rep. Van Epps (bioguide V000139, every row member_type "house") is filed "executive" on it, and the old
+       roster test dropped his 13 reports silently. The row's own member_type decides: house or senate is a member's
+       report and is read; executive is an executive-branch filing (the President's OGE reports, a cabinet secretary's)
+       and is left out, counted. A row that names no type is a member's when the person has a Congress directory
+       (bioguide) id or a House or Senate seat on the roster — a new appointee (Sen. Alan Armstrong, A000383, first
+       report 2026-03-24) keeps the chamber the report names. */
+    const rowType = (r.member_type || '').toLowerCase();
+    const rowMember = /house|senate/.test(rowType);
+    const known = !!who && (!!who.bioguide_id || /house|senate/i.test(who.chamber || ''));
+    if (!rowMember && (rowType || (roster.size && who && !known))) {
+      /* once per filing — the paging re-reads the cursor's day */
+      const k = rowKey(r as unknown as Record<string, unknown>);
+      if (!seenOut.has(k)) {
+        seenOut.add(k);
+        notMembers += 1;
+        notMemberAges.push(traded);
+      }
       continue;
     }
-    const chamber = chamberOf(/house|senate/i.test(who?.chamber || '') ? who?.chamber : r.member_type);
+    /* the chamber the report itself names; the roster's only when the row names none */
+    const chamber = chamberOf(rowMember ? r.member_type : who?.chamber);
     const place = placeOf(who?.district, chamber);
     const member: Member = {
       id: r.politician_id || r.name || 'member',
@@ -531,7 +585,7 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
       filedOn: filedDay ?? undefined,
     });
   }
-  return { ...rollCongress(trades, windowDays), unreadTypes: unread, notMembers };
+  return { ...rollCongress(trades, windowDays), unreadTypes: unread, notMembers, notMemberAges };
 }
 
 export function rollCongress(trades: CongressTrade[], windowDays: number): CongressFeed {
@@ -668,8 +722,34 @@ function dedupeFilings(rows: { t: InsiderTrade; filed: string; cik: string; amen
   return { trades, merged };
 }
 
+/* AN EXERCISE IS PRICED AT ITS STRIKE (audit round 6): Slootman's code-M rows at $8.88 against SNOW's $313.96 read
+   "NOT USD", twenty of them out of the dollar totals — an option's strike is in dollars and far under the stock by
+   design. Exercise and conversion codes (M, X, C, O and the derivative lines) never take the currency test. */
+const EXERCISE_CODES = new Set(['M', 'X', 'C', 'O', 'E', 'H']);
+const DERIVATIVE_LINE = /option|warrant|right to buy|convertible|\brsus?\b|restricted stock unit|performance share|phantom/i;
+/* A FOREIGN LISTING IS A FACT OF THE ISSUER, not of one row's price: its lines are depositary or ordinary shares (TAK's
+   "American Depositary Shares"), or two or more of its market-priced rows sit ten times off the stock's price */
+const DEPOSITARY_LINE = /american depositary|\bads\b|\badrs?\b|ordinary shares?/i;
+const tenfoldOff = (price: number, spot: number): boolean => spot > 0 && price > 0 && (price > spot * 10 || price * 10 < spot);
+function foreignIssuers(rows: UwInsiderRow[]): Set<string> {
+  const depositary = new Set<string>();
+  const off = new Map<string, number>();
+  for (const r of rows) {
+    const t = (r.ticker || '').toUpperCase();
+    if (!t) continue;
+    if (DEPOSITARY_LINE.test(r.security_title || '')) depositary.add(t);
+    const code = (r.transaction_code || '').toUpperCase();
+    if (EXERCISE_CODES.has(code) || DERIVATIVE_LINE.test(r.security_title || '')) continue;
+    if (tenfoldOff(Number(r.price) || 0, Number(r.stock_price) || 0)) off.set(t, (off.get(t) ?? 0) + 1);
+  }
+  const out = new Set(depositary);
+  for (const [t, n] of off) if (n >= 2) out.add(t);
+  return out;
+}
+
 export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
   const out: InsiderTrade[] = [];
+  const abroad = foreignIssuers(rows);
   const meta2: { t: InsiderTrade; filed: string; cik: string; amended: boolean; indirect: boolean }[] = [];
   let notShares = 0;
   let implausible = 0;
@@ -708,7 +788,8 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
        yen — beside the US listing's $20.36, and MARAGANORE JOHN read "$5.68M" for ¥5.68M. A grant, award or withholding
        row whose price is ten times the listing's own (or a tenth of it) is a home-market price: it stays on the row,
        flagged, and its value is out of every dollar total. */
-    const foreign = !meta.openMarket && spot > 0 && price > 0 && (price > spot * 10 || price * 10 < spot);
+    const foreign =
+      !meta.openMarket && !EXERCISE_CODES.has(code) && !DERIVATIVE_LINE.test(r.security_title || '') && abroad.has((r.ticker || '').toUpperCase()) && tenfoldOff(price, spot);
     const held = Number(r.shares_owned_after) || 0;
     const before = Number(r.shares_owned_before) || 0;
     const plan = r.is_10b5_1 === true ? 'plan' : r.is_10b5_1 === false ? 'discretionary' : 'unknown';

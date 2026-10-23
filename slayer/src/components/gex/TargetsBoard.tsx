@@ -540,8 +540,10 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
         <dl className={`flex flex-wrap gap-x-5 gap-y-2 ${full ? 'ml-auto' : 'basis-full'}`}>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="The one strike to watch first: likely to be reached, with the most at stake">Watch first</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: lead?.role ? ROLE_INK[lead.role] : 'rgb(var(--text-primary))' }} data-watch-first>
-              {lead ? fmtStrike(lead.strike) : '—'} {lead?.role && <span className="text-[9px] uppercase tracking-widest">{lead.role}</span>}
+            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: lead?.roles[0] ? ROLE_INK[lead.roles[0]] : lead?.role ? ROLE_INK[lead.role] : 'rgb(var(--text-primary))' }} data-watch-first>
+              {/* EVERY LEVEL THE STRIKE IS, in the one order (core/walls.ts levelRoles — the sixth audit: "Watch first 760 PUT
+                  WALL" over a row tagged SUPREME · PUT WALL) */}
+              {lead ? fmtStrike(lead.strike) : '—'} {lead && (lead.roles.length ? <span className="text-[9px] uppercase tracking-widest">{lead.roles.join(' · ')}</span> : lead.role ? <span className="text-[9px] uppercase tracking-widest">{lead.role}</span> : null)}
             </dd>
           </div>
           <div>
@@ -651,7 +653,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                 <div className="text-right font-mono text-[11px] tnum text-textPrimary">{pct(t.reach)}</div>
                 {/* THE COLUMN SAYS SOMETHING ON EVERY ROW (the retail test, 2026-10-23: "—" on every row but 770): the strike's
                     own net gamma, signed and in the one gamma ink, the wall's share of the top wall as its bar */}
-                <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-[11px] tnum font-semibold" style={{ color: t.flat ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `${holdShort(t.hold)} of the top wall` : undefined} data-target-net={Math.round(t.net)}>
+                <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-[11px] tnum font-semibold" style={{ color: kindOf(t) === 'thin' ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `${holdShort(t.hold)} of the top wall` : undefined} data-target-net={Math.round(t.net)}>
                   {t.net > 0 ? '+' : t.net < 0 ? '−' : ''}
                   {fmtDollars(Math.abs(t.net))}
                   {wide && <HoldBeam t={t} w={28} />}

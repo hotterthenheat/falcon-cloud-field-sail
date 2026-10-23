@@ -66,6 +66,7 @@ import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useLevelsScope } from '../../data/levelsScope';
 import ColumnFacts from './ColumnFacts';
 import { roomLevels } from '../../data/roomLevels';
+import { levelsFor } from '../../data/levelsFor';
 import { expirySpan, levelsBook, levelsDate, levelsWords, todayScopeLabel } from '../../data/bookWindow';
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
@@ -479,16 +480,22 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
        supreme, the walls and the flip it names are read off the Levels card's contracts — the Board's, the Agenda's and
        Compare's book — so SPY's supreme is one strike on every page. The magenta row is that strike. */
     const lvBook = levelsBook(snap, levelsScope);
-    const levels = roomLevels(lvBook, '0DTE');
-    if (!levels) return surf;
+    const room = roomLevels(lvBook, '0DTE');
+    if (!room) return surf;
+    /* EVERY NAMED LEVEL IS levelsFor's (the sixth audit's B1, 2026-10-23: META All expiries read 750 · +$290.7M off the
+       raw book, the Map's door 650 · −$76.9M — the front column's, kept because 750 sat outside the drawn strikes). The
+       supreme, the walls and the flip are levelsFor(ticker, scope)'s whether or not their strike is drawn. */
+    const lv = snap.liveBook ? levelsFor(snap.ticker, levelsScope) : null;
+    const levels = lv
+      ? { ...room, supreme: lv.supreme, callWall: lv.callWall ?? room.callWall, putWall: lv.putWall ?? room.putWall, flip: lv.flip ?? room.flip, flipFound: lv.flip != null, complete: room.complete && lv.complete }
+      : room;
     let out = surf;
     const si = surf.strikes.indexOf(levels.supreme);
-    let supreme = surf.supreme;
+    const dtes = new Set((snap.uwExpiries ?? []).filter(e => dates.includes(e.date)).map(e => e.dte));
+    let e = -1;
+    let value = 0;
+    let total = 0;
     if (si >= 0) {
-      const dtes = new Set((snap.uwExpiries ?? []).filter(e => dates.includes(e.date)).map(e => e.dte));
-      let e = 0;
-      let value = 0;
-      let total = 0;
       for (let i = 0; i < surf.expiries.length; i++) {
         if (dtes.size && !dtes.has(surf.expiries[i].dte)) continue;
         const v = surf.net.gex[i]?.[si] ?? 0;
@@ -498,10 +505,13 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           e = i;
         }
       }
-      /* the door's amount is the strike's net on the Levels card's contracts, not the window's sum */
-      const node = lvBook.chain.find(n => n.strike === levels.supreme);
-      supreme = { ...surf.supreme, gex: { strike: levels.supreme, e, value, total: node ? node.callGex + node.putGex : total } };
     }
+    /* the door's amount is the strike's net on the Levels card's contracts, not the window's sum — and it stands even
+       when the strike is off the drawn window (no row is crowned then; the door still names levelsFor's supreme) */
+    const node = lvBook.chain.find(n => n.strike === levels.supreme);
+    const retail = lv?.netAt(levels.supreme);
+    const levelNet = retail != null ? (retail === 0 ? 0 : -retail) : node ? node.callGex + node.putGex : total;
+    const supreme = { ...surf.supreme, gex: { strike: levels.supreme, e: e >= 0 ? e : 0, value: si >= 0 ? value : levelNet, total: levelNet } };
     out = { ...surf, levels, supreme };
     scopedCache.current.set(surf, { key, out });
     return out;

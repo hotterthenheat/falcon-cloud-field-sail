@@ -252,9 +252,18 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
     const vendorGamma = call ? n?.callGamma : n?.putGamma;
     const oi = call ? n?.callOI : n?.putOI;
     const gex = call ? n?.callGex : n?.putGex;
+    /* ONE PRICING FOR "NOW" AND THE CHANGE (the sixth audit, 2026-10-23): "now" is the vendor's live-book row — its
+       gamma priced at the row's own price and minute (Thursday's 16:15 after the close) — but the change was valued at
+       option-contracts' per-contract gamma, which the vendor re-prices live before the open, so "was" drifted between
+       loads. The change is valued at the row's own pricing: the row's dollar gamma per contract (its exposure over the
+       open interest it was computed on); a contract with no row exposure is priced by Black-Scholes at the row's price
+       and minute. The vendor's live per-contract gamma is the last resort. */
     let dg = 0;
-    if (vendorGamma && vendorGamma > 0) dg = vendorGamma * per1;
-    else if (oi && oi > 0 && gex) dg = Math.abs(gex) / oi;
+    if (oi && oi > 0 && gex) dg = Math.abs(gex) / oi;
+    else if (n?.gexPx && n.gexPx > 0) {
+      const iv = (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || entry?.iv || 0;
+      dg = dollarGammaPerContract(n.gexPx, r.strike, yearsTo(r.expiry, n.gexAt ?? undefined), iv, DEFAULT_R);
+    } else if (vendorGamma && vendorGamma > 0) dg = vendorGamma * per1;
     else {
       const iv = (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || entry?.iv || 0;
       dg = dollarGammaPerContract(spot, r.strike, yearsTo(r.expiry), iv, DEFAULT_R);

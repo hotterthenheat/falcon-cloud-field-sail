@@ -75,7 +75,7 @@ import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { bracketLabel, seatLabel } from '../../data/congress';
-import { useInsiderFlow, useLiveRecord, useTickerCongress } from '../../data/liveRecord';
+import { useInsiderFlow, useNewsFeed, useTickerCongress } from '../../data/liveRecord';
 import { useStockFile } from '../../data/stockFile';
 import type { BookContract, FlowPrint } from '../../types/trace';
 import { StockNameSkeleton } from './recordSkeletons';
@@ -456,11 +456,12 @@ const StockName = () => {
     const id = window.setInterval(() => setTick(t => t + 1), 10_000);
     return () => window.clearInterval(id);
   }, []);
-  const record = useLiveRecord();
+  /* the wire only (round 6): the whole record (congress and insider books) is not this page's */
+  const recordNews = useNewsFeed();
   const file = useStockFile(T);
   /* the quote carries the regular session's change and the extended-hours move apart (data/liveQuote.ts) */
   const quote = useLiveQuote(T);
-  const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, record.news, bookRev, file, quote]);
+  const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, recordNews, bookRev, file, quote]);
   const insiders = useInsiderFlow(T, 90);
   const marketInsiders = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket).sort((a, b) => (b.tradedOn ?? '').localeCompare(a.tradedOn ?? '') || a.daysAgo - b.daysAgo).slice(0, 5), [insiders]);
   /* the name's own Congress reports, not the market book's latest few weeks */
@@ -853,10 +854,16 @@ const StockName = () => {
                 <span className="text-textMuted">—</span>
               )}
             </Fact>
-            <Fact label={file.tapes === 'loading' || money.darkWindow.complete ? `Dark · ${sessionWord}` : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out`}>
+            <Fact label={file.tapes === 'loading' || money.darkWindow.complete ? `Dark · ${sessionWord}` : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints, extended hours included. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out. The buyer/seller read under it is on the regular session's prints at the quote alone${money.darkWindow.outsideRead ? ` — ${money.darkWindow.read.toLocaleString('en-US')} prints, ${fmtMoney(money.darkWindow.readNotional)}; the other ${money.darkWindow.outsideRead.toLocaleString('en-US')} (extended hours, or no quote to read against) are on the card, not in the read` : ''}`}>
               {money.dark.prints.length ? (
                 <>
                   {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length.toLocaleString('en-US')}</span>
+                  {/* the card's set and the read's set, both stated (audit round 6: "$806M · 648" beside a read of 630) */}
+                  {money.darkWindow.outsideRead ? (
+                    <span className="block text-[10px] text-textMuted" data-name-fact="darkread">
+                      read: {money.darkWindow.read.toLocaleString('en-US')} in session · {fmtMoney(money.darkWindow.readNotional)}
+                    </span>
+                  ) : null}
                 </>
               ) : (
                 <span className="text-textMuted">—</span>
@@ -1508,7 +1515,7 @@ const StockName = () => {
                       {seatLabel(t.member)} · {t.member.chamber}
                     </span>
                   </span>
-                  <span className={`font-mono text-[10px] ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}</span>
+                  <span className={`font-mono text-[10px] ${t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : t.type === 'Sale (Partial)' ? 'Sale · partial' : 'Sale'}{t.assetKind === 'Stock Option' ? <span className="text-textMuted" data-name-congress-option> · option</span> : null}</span>
                   <span className="font-mono text-[10px] tnum text-textPrimary truncate max-xl:hidden">{bracketLabel(t.bracket)}</span>
                   <span className={`text-right font-mono text-[10px] tnum max-xl:hidden ${t.late ? 'text-bear' : 'text-textSecondary'}`}>
                     {t.lagDays}d{t.late ? ' late' : ''}
