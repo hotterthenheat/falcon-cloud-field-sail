@@ -213,10 +213,9 @@ export const REASON_FIELDS: Record<ReasonField, FieldMeta> = {
     fmt: v => `${v}%`,
     clause: (c, v) =>
       c === 'atLeast' ? `at least ${v}% out of the money` : `no more than ${v}% out of the money`,
-    /* Right-aware, because the row's raw otmPct is a SIGNED distance from spot:
-       +5% is out of the money on a call and in the money on a put. The reader
-       asked about moneyness, so the field answers in moneyness. */
-    read: r => (r.right === 'C' ? r.otmPct : -r.otmPct),
+    /* otmPct is already the distance PAST the stock on both sides (+ out of the money for a call and a put — audit round
+       7: this negated puts, so "at least 5% out of the money" took 5% in-the-money puts) */
+    read: r => r.otmPct,
   },
   last: {
     label: 'Contract price',

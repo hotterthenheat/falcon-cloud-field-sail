@@ -35,13 +35,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
-import { buildNetFlowView, isNetSegment, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
-import { useLiveBook } from '../../data/traceLive';
-import { fmtUsd } from '../../data/gex';
+import { isNetSegment, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
+import { useLiveBook, usePaneFlow } from '../../data/traceLive';
+import { tapeSessionIso } from '../../data/traceLive';
+import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
+import { isLiveDay, sameDayWords, shortDay } from '../../components/trace/dayWords';
+import { usd as fmtUsd } from '../../data/traceLive';
+import { nyClock } from '../../core/nyTime';
 import Lean from '../../components/trace/Lean';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
-import NetFlowPane, { paneTimes } from '../../components/trace/NetFlowPane';
+import NetFlowPane from '../../components/trace/NetFlowPane';
 import TraceBox, { Fact } from '../../components/trace/TraceBox';
 import { OdteGuide } from '../../components/trace/TraceGuide';
 
@@ -66,23 +70,27 @@ interface OdteStore {
   panes: PaneCfg[];
 }
 
-/* The default desk keeps its old four faces: the whole book, SPY, QQQ, the
-   stocks alone — SPY and QQQ now as picked NAMES, which is what they were. */
+/* THE DEFAULT DESK IS SAME-DAY MONEY ON EVERY PANE (the audit, 2026-10-22): the SPY and QQQ panes drew each name's money
+   across ALL expiries (the vendor has no same-day minute series for one name), and "Stocks only" drew nothing (the
+   vendor's equity_only same-day series is empty). The four faces are now the vendor's same-day cuts — everything, the
+   index funds, the index options — and SPY, labelled on its pane as every expiry. */
 const DEFAULT_STORE: OdteStore = {
   count: 4,
   panes: [
     { seg: 'all', mny: 'all', ticker: null },
-    { seg: 'all', mny: 'all', ticker: 'SPY' },
-    { seg: 'all', mny: 'all', ticker: 'QQQ' },
-    { seg: 'stocks', mny: 'all', ticker: null },
+    { seg: 'index-funds', mny: 'all', ticker: null },
+    { seg: 'indexes', mny: 'all', ticker: null },
+    /* NOT SPY ACROSS EVERY EXPIRY (the retail pass, 2026-10-22: the same-day desk's fourth pane was "SPY · EVERY EXPIRY"):
+       the vendor has no same-day minute series for one name, so every pane is a same-day cut — the fourth, the whole
+       market's out-of-the-money same-day money */
+    { seg: 'all', mny: 'otm', ticker: null },
   ],
 };
+/** The cuts the vendor has same-day minutes for: no sector (a sector's tide spans every expiry) and no stocks-only */
+const SAME_DAY_CUTS = (seg: NetFlowSegment) => seg === 'all' || seg === 'index-funds' || seg === 'indexes';
 
 const MNYS: MoneynessKey[] = ['all', 'itm', 'otm', 'atm'];
 
-/** The same-day complex — the names a desk pane may be put on. */
-const SAME_DAY_COMPLEX = new Set(['SPY', 'QQQ', 'IWM']);
-const onTheComplex = (t: string) => SAME_DAY_COMPLEX.has(t);
 
 /* Stored lenses from the six-way days migrate: SPY/QQQ were names, Tech was
    the Technology sector. */
@@ -102,9 +110,11 @@ function loadStore(): OdteStore {
       const cfg = Array.isArray(p.panes) ? (p.panes[i] as Partial<PaneCfg> & { seg?: string }) : undefined;
       if (!cfg) return d;
       const legacy = typeof cfg.seg === 'string' ? LEGACY[cfg.seg] : undefined;
-      const seg: NetFlowSegment = legacy?.seg ?? (isNetSegment(cfg.seg) ? cfg.seg : d.seg);
-      const ticker =
-        legacy?.ticker ?? (typeof cfg.ticker === 'string' && /^[A-Z0-9.]{1,6}$/.test(cfg.ticker) ? cfg.ticker : null);
+      const stored: NetFlowSegment = legacy?.seg ?? (isNetSegment(cfg.seg) ? cfg.seg : d.seg);
+      const seg: NetFlowSegment = SAME_DAY_CUTS(stored) ? stored : d.seg;
+      /* a stored name pane (every expiry) goes back to its slot's same-day cut — this desk draws same-day money only */
+      if (legacy?.ticker || (typeof cfg.ticker === 'string' && cfg.ticker)) return d;
+      const ticker = null;
       return {
         seg,
         mny: MNYS.includes(cfg.mny as MoneynessKey) ? (cfg.mny as MoneynessKey) : d.mny,
@@ -147,37 +157,41 @@ const Odte = () => {
     };
   }, [fsIdx]);
 
-  const liveBook = useLiveBook(activeTicker).rows;
+  const odteBookPack = useLiveBook(activeTicker);
+  const liveBook = odteBookPack.rows;
   // The shared hold (see LiveHold): book and tick freeze together while
   // paused, so every pane stops on the same bar.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !(odteBookPack.waiting && liveBook.length === 0));
   const { book, tick } = hold.value;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* The whole same-day book, once, for the head's facts and the sentence */
-  const view = useMemo(() => buildNetFlowView(book, 'all', 'all', paneTimes('SPY')), [book]);
+  /* THE HEAD READS THE SAME SERIES AS THE "EVERYTHING" PANE (2026-10-22): the panes draw the vendor's same-day minutes
+     (/net-flow/expiry, zero_dte); a head summed off the book read −$68.2M of net calls over a pane reading +$3.9M. The
+     book still counts the contracts — today's expiry only, the same day the vendor's minutes cover. */
+  const flow = usePaneFlow({ ticker: null, seg: 'all', mny: 'all', zeroDte: true, enabled: true });
+  const last = flow.rows.length ? flow.rows[flow.rows.length - 1] : null;
+  const ncp = last?.callPrem ?? 0;
+  const npp = last?.putPrem ?? 0;
+  /* the head's instant — the last minute the vendor has a figure for */
+  const asOf = last ? nyClock(last.time * 1000) : null;
   /* awake on MONEY, not on a timeline: a session of empty minutes read "leans bullish" on $0 against "+$0" */
-  const awake = view.points.length > 0 && (view.count > 0 || view.ncp !== 0 || view.npp !== 0);
-  const bullish = view.ncp - view.npp >= 0;
+  const awake = !!last && (ncp !== 0 || npp !== 0);
+  const bullish = ncp - npp >= 0;
   // Signed on purpose — RichRead inks +$/-$ by direction (2026-08-30).
   const signed = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
-  const read = awake ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(view.ncp)} against net puts ${signed(view.npp)} across ${view.count} contracts expiring today or tomorrow.` : 'The same-day book is still waking up.';
+  /* ONE COLOUR RULE: net puts bought lean bearish — said in words and inked as the direction they lean, never a green "+" */
+  const putWords = (v: number) => (v >= 0 ? `bearish net puts bought ${fmtUsd(v)}` : `bullish net puts sold ${fmtUsd(Math.abs(v))}`);
+  /* calls and puts leaning the same way are joined by "and", opposed by "against" (audit round 6: "net calls −$13.0M
+     against bearish net puts bought $3.4M" — both bearish) */
+  const read = awake
+    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} ${(ncp >= 0) === (npp < 0) ? 'and' : 'against'} ${putWords(npp)} on every contract ${sameDayWords()}, from the bell to ${asOf} ET.${isLiveDay() ? '' : ` That is the ${shortDay(tapeSessionIso())} session's same-day book — it expired at that bell.`}`
+    : flow.fault
+      ? 'This read did not land — the same-day minutes fill when the feed answers.'
+      : 'The same-day money is still waking up.';
 
   const setPane = (i: number, patch: Partial<PaneCfg>) =>
     setStore(s => ({ ...s, panes: s.panes.map((p, j) => (j === i ? { ...p, ...patch } : p)) }));
 
-  /* THE DOOR (see the header): the typed name, if the book knows it, rides
-     to Net Flow with the 0DTE clock; an unknown or empty query opens Net
-     Flow on that clock with its leader up. */
-  const known = useMemo(() => new Set(book.map(r => r.ticker)), [book]);
-  const door = useMemo(
-    () => ({
-      label: (q: string) => (q && known.has(q) ? `${q} — on Net Flow's 0DTE clock` : "Any other name — on Net Flow's 0DTE clock"),
-      onOpen: (q: string) =>
-        navigate('/trace/net-flow', { state: { ticker: q && known.has(q) ? q : null, tenor: 'odte' } }),
-    }),
-    [known, navigate]
-  );
 
   /* The desk fills the frame: the grid takes every pixel down to the viewport
      floor and splits it EQUALLY — 2×2 for four panes, halves for two, one tall
@@ -200,10 +214,7 @@ const Odte = () => {
         // Picking a cut is a way back from a name too: the pane returns to the book.
         onSeg={seg => setPane(i, { seg, ticker: null })}
         onMny={mny => setPane(i, { mny })}
-        ticker={cfg.ticker ?? undefined}
-        onTicker={ticker => setPane(i, { ticker })}
-        searchNames={onTheComplex}
-        searchDoor={door}
+        segments={SAME_DAY_CUTS}
         tick={tick}
         onExpand={() => setFsIdx(expanded ? null : i)}
         expanded={expanded}
@@ -235,21 +246,21 @@ const Odte = () => {
             <Fact label="Leans" testId="lean">
               <span className={!awake ? 'text-textMuted' : bullish ? 'text-bull' : 'text-bear'}>{awake ? (bullish ? 'bullish' : 'bearish') : '—'}</span>
             </Fact>
-            <Fact label="Net calls" testId="calls">
-              {awake ? <Lean v={view.ncp} /> : <span className="text-textMuted">—</span>}
+            <Fact label="Net calls" testId="calls" title={VENDOR_TOTAL_NOTE}>
+              {awake ? <Lean v={ncp} /> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="Net puts" testId="puts">
+            <Fact label="Net puts" testId="puts" title={VENDOR_TOTAL_NOTE}>
               {/* net puts bought lean bearish and wear red; sold, bullish and green (Lean's `put`) */}
-              {awake ? <Lean v={view.npp} put /> : <span className="text-textMuted">—</span>}
+              {awake ? <Lean v={npp} put /> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="Contracts" testId="contracts">
-              {awake ? view.count : '—'} <span className="text-textSecondary">· expiring today or tomorrow</span>
+            <Fact label="As of" testId="as-of" title={`The last minute the vendor's same-day series (/net-flow/expiry, zero_dte) has a figure for. ${VENDOR_TOTAL_NOTE}`}>
+              {asOf ? `${asOf} ET` : '—'} <span className="text-textSecondary">· every contract {sameDayWords()}</span>
             </Fact>
           </>
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <DropdownSelect label="Panes" value={store.count} options={PANE_OPTIONS} onChange={n => setStore(s => ({ ...s, count: n }))} title="How many charts on the desk" testId="odte-panes" />
           </>
         }

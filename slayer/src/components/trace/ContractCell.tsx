@@ -22,6 +22,7 @@
 
 import { DOOR, DOOR_GROUP_TEXT } from './door';
 import { expiryLabel, pctSigned } from '../../core/format';
+import { indexRoot } from '../../data/traceLive';
 
 /* The COLUMN is right-aligned (header included), so header and endings share
    one edge and read as one parent — the cell itself just hugs its content.
@@ -37,7 +38,10 @@ const ContractCell = ({
   dte,
   spot,
   otmPct,
+  ticker,
 }: {
+  /** The underlying's symbol — an index's level is whole points (its spot-exposure minutes), so it prints as one */
+  ticker?: string;
   strike: number;
   right: 'C' | 'P';
   expiry: string;
@@ -49,10 +53,11 @@ const ContractCell = ({
   otmPct?: number;
 }) => {
   /* No underlying on the print (the vendor sends none for index options — SPXW, XSP): no spot and no distance, never
-     "spot $0.00 · 0.0%" */
+     "spot $0.00 · 0.0%". The sub-line goes whole: left with only the days, it repeated the DTE column beside it. */
   if (spot !== undefined && !(spot > 0)) {
     spot = undefined;
     otmPct = undefined;
+    dte = undefined;
   }
   const context = dte !== undefined || spot !== undefined || otmPct !== undefined;
   /* leading-none + align-middle on the head too, not just on the compound
@@ -65,7 +70,7 @@ const ContractCell = ({
       <span className={`font-mono text-[11px] font-semibold ${right === 'C' ? 'text-bull' : 'text-bear'} ${DOOR_GROUP_TEXT}`}>
         {right === 'C' ? 'call' : 'put'}
       </span>
-      <span className={`font-mono text-[11px] text-textMuted tnum ${DOOR_GROUP_TEXT}`}>{context ? expiryLabel(expiry) : expiry}</span>
+      <span className={`font-mono text-[11px] text-textMuted tnum ${DOOR_GROUP_TEXT}`}>{expiryLabel(expiry)}</span>
     </span>
   );
   /* Without context the cell is EXACTLY what it always was — one line, one
@@ -83,9 +88,12 @@ const ContractCell = ({
       <span className="inline-flex items-baseline gap-1 font-mono text-[11px] leading-none tnum text-textSecondary whitespace-nowrap">
         {dte !== undefined && <span>{dte}d</span>}
         {dte !== undefined && (spot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
-        {spot !== undefined && <span>spot ${spot.toFixed(2)}</span>}
+        {/* THE STOCK AT THE PRINT, SAID SO (audit round 5: "spot $704.72" on the Live Tape beside a $703.29 elsewhere read as
+            two prices for one QQQ — it is the underlying at the print's own instant, not the close) */}
+        {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points, from its spot-exposure minutes' : "The stock's price at the moment of this print — not the day's close, which the name's quote carries"}>{ticker && indexRoot(ticker) ? `index ${Math.round(spot).toLocaleString('en-US')}` : `$${spot.toFixed(2)} at print`}</span>}
         {spot !== undefined && otmPct !== undefined && <span aria-hidden>·</span>}
-        {otmPct !== undefined && <span>{pctSigned(otmPct, 1)}</span>}
+        {/* an index's level is whole points: its distance is about that, and says so; a small index's is not stated */}
+        {otmPct !== undefined && <span title={!Number.isFinite(otmPct) ? 'The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)' : ticker && indexRoot(ticker) ? 'Against a whole-point index level — approximate' : undefined}>{Number.isFinite(otmPct) ? `${ticker && indexRoot(ticker) ? '≈' : ''}${pctSigned(otmPct, 1)}` : '—'}</span>}
       </span>
     </span>
   );

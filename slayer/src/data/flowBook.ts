@@ -2,42 +2,27 @@
 ==================================================
   SLAYER TERMINAL - THE DAY BOOK (data/flowBook.ts)
 
-  Every contract that traded today, rolled up — the
-  ONE generator behind the whole flow family. The
-  screener reads it whole; net flow, the OI explorer,
-  0DTE, interval and multi-leg views are CUTS of the
-  same book, so seven surfaces can never quote seven
-  different days. (The live tape is a different fact:
-  a per-print stream that only exists while the app
-  listens — flowBars.ts. This is the day's totals.)
-
-  Deterministic per (day, minute) through the engine
-  clock — the DRIP's contract: numbers GROW through
-  the session for real, replay re-derives the same
-  book, and everything memoizes on the clock's
-  minute. Placeholder physics — a real per-contract
-  aggregation feed fills the same rows later.
-
-  The fill model mirrors data/tape.ts enrichPrint
-  (intrinsic + gaussian time value) so the book and
-  the tape price a contract alike.
+  The shared vocabulary of Trace's day book: the
+  screens, the footprint screens, the watchers'
+  reasons and their catches, the net-flow cuts and
+  moneyness, the spread shapes, the reader filters,
+  and the session's quarter-hour clock. The ROWS are
+  the vendor's (data/traceLive.ts) — nothing in this
+  file generates a figure (the audit, 2026-10-22:
+  the hashed book, clip table, interval weights and
+  spread generator that lived here are gone).
 ==================================================
 */
 
-import { h01, hRange } from '../core/rng';
 import { now } from '../core/clock';
 import { isTradingDay } from '../core/calendar';
 import { minuteLabel, nyParts, nyWallTime, SESSION_CLOSE_MIN, SESSION_LENGTH_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { SECTOR_LIST, sectorOf } from './darkpool';
-import { buildEarningsCalendar } from './earnings';
 import { sleeveForDte } from './compass';
 import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons';
 import type { SleeveKey } from '../types/compass';
-import type { UniverseQuote } from '../types/compass';
 import type { BookContract } from '../types/trace';
-
-/** Expiry runway the book quotes on — short end dense, the tape's own skew. */
-const DTE_POOL = [0, 1, 2, 5, 9, 16, 30, 44, 72, 102, 183] as const;
+import { dayLean, usd } from './traceLive';
 
 /* THE BOOK KEEPS NEW YORK'S SESSION (2026-10-13, from the partner's build at Noah's word): every minute in here is New
    York's minute of the day, and the book's day is the cash session, 09:30 to 16:00. It used to be the machine's
@@ -85,202 +70,8 @@ export function bookSession(at: Date | number = now()): BookSession {
   };
 }
 
-/** The session's seed — the book of one session is the same book whenever it is read */
-const sessionKey = (s: BookSession) => `${s.year}-${s.month}-${s.day}`;
-
-/** How much of the day's flow has landed by New York minute m — front-loaded like a real session, monotonic so
-    cumulative columns never shrink. */
-function accruedFrac(minute: number): number {
-  const fm = Math.min(1, Math.max(0, (minute - SESSION_OPEN_MIN) / SESSION_LENGTH_MIN));
-  return Math.pow(fm, 0.85);
-}
-
-/** MM/DD/YYYY, counted from the session's own date */
-function expiryLabel(s: BookSession, dte: number): string {
-  const d = new Date(s.year, s.month - 1, s.day + dte);
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
-}
-
 /** A New York minute of the day, spoken — "14:30" */
 const clockOf = (minute: number) => minuteLabel(minute);
-/** An epoch second's New York minute of the day */
-const nyMinuteOf = (sec: number) => {
-  const p = nyParts(sec * 1000);
-  return p.hour * 60 + p.minute;
-};
-
-let bookCache: { key: string; rows: BookContract[] } | null = null;
-
-/** The whole market's option day, one row per contract. Pass the same
-    universe the Compass sweeps (Simulator.universeQuotes) — a replay harness
-    hands historical quotes through the same parameter. */
-export function buildFlowBook(quotes: UniverseQuote[]): BookContract[] {
-  const session = bookSession();
-  const day = sessionKey(session);
-  const nowMin = session.minute;
-  /* THE UNIVERSE IS PART OF THE KEY: the active name joins the list (Simulator.universeQuotes), so a name picked from
-     outside the roster used to wait up to a minute for a book that had it */
-  const cacheKey = `${day}-${nowMin}-${quotes.map(q => q.ticker).join(',')}`;
-  if (bookCache?.key === cacheKey) return bookCache.rows;
-
-  // Quarter-hour bucket — intraday wobble steps deterministically, not per render.
-  const q = Math.floor(nowMin / 15);
-  const frac = accruedFrac(nowMin);
-  const rows: BookContract[] = [];
-
-  // Sessions-to-earnings from the Earnings desk's own calendar — one source.
-  const earnMap = new Map<string, number>();
-  for (const e of buildEarningsCalendar()) {
-    if (!earnMap.has(e.ticker)) earnMap.set(e.ticker, e.daysOut);
-  }
-
-  for (const quote of quotes) {
-    const t = quote.ticker;
-    const sec = sectorOf(t);
-    // Per-ticker day weight — leadership rotates day to day.
-    const dayW = Math.pow(hRange(`${day}-fbw-${t}`, 0.45, 1.55), 1.6);
-
-    for (const dte of DTE_POOL) {
-      // Short-dated contracts almost always print; the long end is sparse.
-      const liveProb = dte <= 2 ? 0.92 : dte <= 16 ? 0.72 : dte <= 72 ? 0.5 : 0.34;
-      if (h01(`${day}-fb-on-${t}-${dte}`) > liveProb) continue;
-
-      const nStrikes = 2 + Math.floor(h01(`${day}-fb-ns-${t}-${dte}`) * 3);
-      // Two draws can land the same strike+right — ONE row per contract, ever
-      // (a duplicate key double-quotes the day and corrupts row reconciliation).
-      const taken = new Set<string>();
-      for (let si = 0; si < nStrikes; si++) {
-        const seed = `${day}-fb-${t}-${dte}-${si}`;
-        const h = (tag: string) => h01(`${seed}-${tag}`);
-
-        // Strike near the money with a slight OTM lean — where flow lives.
-        const offset = Math.round((h('off') - 0.42) * 9);
-        const strike = Number((Math.round(quote.price / quote.step) * quote.step + offset * quote.step).toFixed(2));
-        if (strike <= 0) continue;
-        const right: 'C' | 'P' = h('right') < 0.55 ? 'C' : 'P';
-        if (taken.has(`${strike}-${right}`)) continue;
-        taken.add(`${strike}-${right}`);
-        const money = (strike - quote.price) / quote.price;
-
-        // Pricing first — the tape's fill model, so both surfaces quote alike.
-        const ivFrac = quote.iv * (0.8 + h('iv') * 0.55);
-        const intrinsic = right === 'C' ? Math.max(quote.price - strike, 0) : Math.max(strike - quote.price, 0);
-        const timeValue =
-          quote.price * ivFrac * 0.08 * Math.exp(-Math.pow(money * 18, 2) / 2) * (0.5 + Math.sqrt((dte + 1) / 30));
-        const openFill = Math.max(0.05, intrinsic * 0.98 + timeValue);
-
-        // Day volume target: power-law so a handful of contracts carry the
-        // tape, damped by PRICE — a $20 contract cannot trade like a $0.30
-        // one, and without this the book prints billion-dollar rows.
-        const dteBoost = dte <= 1 ? 1.6 : dte <= 6 ? 1.15 : dte <= 44 ? 0.75 : 0.42;
-        const priceDamp = 1 / Math.pow(1 + openFill / 1.2, 0.9);
-        const target = (500 + Math.pow(h('vt'), 2.2) * 200000) * dayW * dteBoost * priceDamp;
-        // Accrual with a per-contract quarter-hour wobble — grows, never shrinks.
-        const wobble = 0.92 + 0.16 * h01(`${seed}-ph-${q}`);
-        const volume = Math.round(target * frac * wobble);
-        if (volume < 60) continue; // quiet contracts don't make the book
-
-        /* The overnight ledger — OI is what STAYED. A few contracts each day
-           are OPENERS (yesterday's volume became standing interest), a few are
-           UNWINDS (positions closed out), the rest drift. Volume is loud and
-           gone; this is the fat-tailed fact Footprints ranks by. */
-        const opener = h('opn') > 0.955;
-        const closer = !opener && h('cls') > 0.945;
-        let prevOI = Math.max(25, Math.round(target * hRange(`${seed}-poi`, 0.3, 2.2)));
-        let deltaOI: number;
-        let prevVolume: number;
-        if (opener) {
-          // A fresh build sometimes lands on a near-empty contract — the
-          // percentage is the scream, not the count.
-          if (h('fresh') > 0.6) prevOI = Math.max(5, Math.round(hRange(`${seed}-poi2`, 5, 900)));
-          prevVolume = Math.round(target * (1.5 + Math.pow(h('opv'), 2) * 6.5));
-          deltaOI = Math.round(prevVolume * hRange(`${seed}-carry`, 0.55, 0.95));
-        } else if (closer) {
-          deltaOI = -Math.round(prevOI * hRange(`${seed}-unw`, 0.15, 0.6));
-          prevVolume = Math.round(Math.abs(deltaOI) * hRange(`${seed}-unv`, 1.1, 1.8));
-        } else {
-          deltaOI = h('doi') > 0.32 ? Math.round((h('doi2') - 0.42) * prevOI * 0.35) : 0;
-          prevVolume = Math.round(target * hRange(`${seed}-pv`, 0.5, 1.5));
-        }
-        const oi = Math.max(25, prevOI + deltaOI);
-
-        // Ask-side share first; the day's price change leans the same way the
-        // aggressors did, plus noise — buyers lifting tends to mark it up.
-        const askPct = Math.round(15 + h('ask') * 70);
-        const chgPct = Number((((askPct - 50) / 50) * 38 + (h01(`${seed}-chg-${q}`) - 0.5) * 44).toFixed(1));
-        const last = Number(Math.max(0.05, openFill * (1 + chgPct / 100)).toFixed(2));
-
-        // Most recent print: heavy contracts print constantly, quiet ones lag.
-        const gapCap = volume > 20000 ? 3 : volume > 3000 ? 25 : 240;
-        const gap = Math.round(Math.pow(1 - h01(`${seed}-la-${q}`), 2) * gapCap);
-        const lastAtMin = Math.max(SESSION_OPEN_MIN + 1, nowMin - gap);
-
-        // Yesterday's texture — fill, side, and the 15-min shape of the day.
-        const prevAvgFill = Number(Math.max(0.05, openFill * hRange(`${seed}-pf`, 0.75, 1.2)).toFixed(2));
-        const prevAskPct = Math.round(15 + h('pask') * 70);
-        const spark: number[] = [];
-        const buildAt = Math.floor(h('sw0') * 22);
-        for (let b = 0; b < 26; b++) {
-          let v = Math.pow(h01(`${seed}-sp-${b}`), 3);
-          // An opener's build shows as a burst window, the reference's own tell.
-          if (opener && b >= buildAt && b < buildAt + 3) v += 0.7 + h01(`${seed}-spk-${b}`) * 0.3;
-          spark.push(v);
-        }
-        const sparkMax = Math.max(...spark, 0.001);
-
-        rows.push({
-          key: `${t}-${strike}-${right}-${dte}`,
-          ticker: t,
-          sector: sec?.sector ?? null,
-          sectorColor: sec?.color ?? null,
-          strike,
-          right,
-          expiry: expiryLabel(session, dte),
-          dte,
-          spot: Number(quote.price.toFixed(2)),
-          otmPct: Number((money * 100).toFixed(1)),
-          last,
-          chgPct,
-          lastAt: clockOf(lastAtMin),
-          lastAtMin,
-          volume,
-          oi,
-          deltaOI,
-          deltaOIPct: Number(((deltaOI / prevOI) * 100).toFixed(1)),
-          premium: Math.round(volume * last * 100 * hRange(`${seed}-pj`, 0.85, 1.15)),
-          iv: Number((ivFrac * 100).toFixed(1)),
-          ivChg: Number(((h('ivd') - 0.42) * ivFrac * 100 * 0.25).toFixed(1)),
-          volOverOI: Number((volume / oi).toFixed(2)),
-          sweepPct: Math.round(Math.pow(h('sw'), 1.5) * 70),
-          multiPct: Math.round(Math.pow(h('ml'), 2) * 55),
-          // Floor crosses: most contracts none, some a slice, a rare few
-          // trade ENTIRELY on the floor — one institution's day.
-          floorPct:
-            h('flr3') > 0.96
-              ? 90 + Math.round(h('flr4') * 10)
-              : h('flr') > 0.72
-                ? Math.round(Math.pow(h('flr2'), 2) * 70)
-                : 0,
-          askPct,
-          prevOI,
-          prevVolume,
-          prevAvgFill,
-          prevPremium: Math.round(prevVolume * prevAvgFill * 100),
-          prevAskPct,
-          oiStreak: deltaOI > 0 ? 1 + Math.floor(Math.pow(h('stk'), 1.6) * 9) : 0,
-          volGtOiStreak: prevVolume > prevOI ? 1 + Math.floor(h('vstk') * 3) : 0,
-          earnDays: earnMap.get(t) ?? null,
-          prevSpark: spark.map(v => Number((v / sparkMax).toFixed(3))),
-        });
-      }
-    }
-  }
-
-  rows.sort((a, b) => b.volume - a.volume);
-  bookCache = { key: cacheKey, rows };
-  return rows;
-}
-
 // ---- screens ----------------------------------------------------------------
 
 /* A screen is a QUESTION asked of the book — a filter and an ordering, never a
@@ -306,10 +97,10 @@ export interface FlowScreen {
 }
 
 export const FLOW_SCREENS: FlowScreen[] = [
-  { key: 'active', label: 'Most active', hint: 'The whole book, heaviest volume first' },
+  { key: 'active', label: 'Most active', hint: 'Heaviest volume first' },
   { key: 'bullish', label: 'Unusually bullish', hint: 'Calls being bought and puts being sold, ranked by premium', tone: 'bull' },
   { key: 'bearish', label: 'Unusually bearish', hint: 'Puts being bought and calls being sold, ranked by premium', tone: 'bear' },
-  { key: 'fresh', label: 'New positioning', hint: 'Volume running past open interest — positions built today' },
+  { key: 'fresh', label: 'New positioning', hint: 'Volume running past open interest — positions built in the session' },
   { key: 'conviction-calls', label: 'Conviction calls', hint: 'Out-of-the-money calls with heavy sweep share', tone: 'bull' },
   { key: 'conviction-puts', label: 'Conviction puts', hint: 'Out-of-the-money puts with heavy sweep share', tone: 'bear' },
   { key: 'cheap', label: 'Cheap calls', hint: 'Low-priced out-of-the-money calls the crowd is trading', tone: 'bull' },
@@ -317,31 +108,36 @@ export const FLOW_SCREENS: FlowScreen[] = [
 ];
 
 /** Aggressive call flow reads bullish; put flow bought at the ask reads
-    bearish — sentimentOf's rule, applied to the day's dominant side. */
+    bearish — sentimentOf's rule, applied to the day's dominant side, and only where the day HAS a side (dayLean: at
+    least half the volume on a side — a day that was mostly a no-side cross leans nowhere). */
 function leansBull(r: BookContract): boolean {
-  return r.right === 'C' ? r.askPct >= 58 : r.askPct <= 42;
+  if (notABet(r)) return false; // a floor package or a day of spread legs leans nowhere (audit round 8)
+  const l = dayLean(r).lean;
+  return r.right === 'C' ? l === 'ASK' : l === 'BID';
 }
 function leansBear(r: BookContract): boolean {
-  return r.right === 'P' ? r.askPct >= 58 : r.askPct <= 42;
+  if (notABet(r)) return false;
+  const l = dayLean(r).lean;
+  return r.right === 'P' ? l === 'ASK' : l === 'BID';
 }
 
 export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] {
   switch (key) {
     case 'active':
-      return rows; // the book's own order — volume desc
+      return [...rows].sort((a, b) => b.volume - a.volume); // heaviest volume first, as the screen says
     case 'bullish':
       return rows.filter(r => leansBull(r) && r.volOverOI >= 0.8).sort((a, b) => b.premium - a.premium);
     case 'bearish':
       return rows.filter(r => leansBear(r) && r.volOverOI >= 0.8).sort((a, b) => b.premium - a.premium);
     case 'fresh':
-      return rows.filter(r => r.volOverOI >= 1.5).sort((a, b) => b.volOverOI - a.volOverOI);
+      return rows.filter(r => r.volOverOI >= FRESH_VOL_OI).sort((a, b) => b.volOverOI - a.volOverOI);
     case 'conviction-calls':
       return rows
         .filter(r => r.right === 'C' && r.sweepPct >= 25 && r.otmPct >= 0)
         .sort((a, b) => b.premium - a.premium);
     case 'conviction-puts':
       return rows
-        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct <= 0)
+        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct >= 0) /* otmPct is + out of the money on both sides (audit round 7: this took ITM puts) */
         .sort((a, b) => b.premium - a.premium);
     case 'cheap':
       return rows.filter(r => r.right === 'C' && r.last <= 1.5 && r.otmPct >= 3).sort((a, b) => b.volume - a.volume);
@@ -371,12 +167,12 @@ export interface FootprintScreen {
 }
 
 export const FOOTPRINT_SCREENS: FootprintScreen[] = [
-  { key: 'builds', label: 'Biggest builds', hint: 'The most new interest standing since yesterday' },
+  { key: 'builds', label: 'Biggest builds', hint: 'The most new interest standing since the session before' },
   { key: 'fresh', label: 'Fresh positions', hint: 'Built on near-empty contracts — the loudest percentage jumps' },
   { key: 'bought', label: 'Bought to open', hint: 'Builds that lifted the ask — buyers opened these' },
   { key: 'sold', label: 'Sold to open', hint: 'Builds that hit the bid — these were written, not bought' },
   { key: 'carryover', label: 'Carryover', hint: "Yesterday's heaviest volume that became standing interest" },
-  { key: 'unwinds', label: 'Unwinds', hint: 'Interest that left — positions closed out overnight' },
+  { key: 'unwinds', label: 'Unwinds', hint: 'Interest that left — positions closed out since the session before' },
   { key: 'streaks', label: 'Building streaks', hint: 'Interest climbing three sessions or more in a row' },
 ];
 
@@ -434,8 +230,11 @@ export const WATCHERS: WatcherRule[] = [
   {
     key: 'big-money',
     label: 'Big money',
-    reason: 'One print carried outsized money',
-    hint: 'A single print big enough to move the day',
+    /* the rule is the contract's DAY premium — it never looked at one print. RELATIVE, so it stays rare (the third audit,
+       2026-10-22: "$25M and up" fired on 146 of the book's 174 — the book IS the day's heaviest contracts): the top tenth
+       of the book's own premium today, and $25M at the least */
+    reason: "In the top tenth of the book's premium in the session ($25M at the least)",
+    hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M",
   },
   {
     key: 'into-earnings',
@@ -446,60 +245,179 @@ export const WATCHERS: WatcherRule[] = [
   {
     key: 'climbing',
     label: 'Climbing fills',
-    reason: 'Kept printing at higher and higher prices',
+    reason: 'Up 8% or more on the day, a quarter swept, leaning to the ask',
     hint: 'Buying that keeps coming back, each fill higher — chasers',
   },
   {
     key: 'falling',
     label: 'Falling fills',
-    reason: 'Kept printing at lower and lower prices',
+    reason: 'Down 8% or more on the day, a quarter swept, leaning to the bid',
     hint: 'Fills stepping lower while the volume keeps coming',
   },
   {
     key: 'fresh-size',
     label: 'Fresh size',
-    reason: 'Volume ran far past the standing interest',
-    hint: 'Trading many times its open interest — positions built today',
+    reason: 'Volume 1.5× its open interest or more, on $300K or more',
+    hint: 'Trading many times its open interest — positions built in the session',
   },
   {
     key: 'hammering',
     label: 'Hammering',
-    reason: 'The same contract hit over and over',
+    reason: '12,000 contracts or more, 30% of them swept',
     hint: 'One contract absorbing hit after hit all session',
   },
 ];
 
-/** One row the desk's (or the reader's) watcher caught */
+/** One row the desk's (or the reader's) watcher caught — a contract on the live book that meets a reason, told by its
+    own day: when it last printed, at what fill, how much money it carried, and which side its volume leaned. ONE ROW A
+    CONTRACT (the retail pass, 2026-10-22: QQQ 725C sat twice in "362 catches", once per reason) — its reasons together. */
 export interface Catch {
   id: string;
-  /** A house reason's key, or one of the reader's own reasons' ids. */
+  /** The contract's loudest reason — a house reason's key, or one of the reader's own reasons' ids. */
   rule: string;
-  /** True when the reader wrote this reason — the feed is one feed, but it
-      always says whose watcher caught the row. */
+  /** Every reason it meets, loudest first */
+  rules: string[];
+  /** True when the reader wrote the loudest reason */
   mine: boolean;
-  /** Minute-of-day the rule tripped */
+  /** Minute-of-day of the contract's last print */
   minute: number;
-  /** HH:MM of the trip */
+  /** HH:MM New York of the contract's last print */
   time: string;
-  /** The print that tripped it — sized within the contract's own day */
-  clipSize: number;
-  clipFill: number;
-  clipPremium: number;
-  side: 'ASK' | 'BID';
+  /** The contract's last fill */
+  last: number;
+  /** The contract's premium today */
+  premium: number;
+  /** Which side its day's volume leaned (dayLean): at the ask, on the bid, even, or MID — mostly mid or no side */
+  side: 'ASK' | 'BID' | 'EVEN' | 'MID' | 'LEGS';
   row: BookContract;
 }
 
-function rulesFor(r: BookContract): WatcherKey[] {
+/** A house reason said with the contract's OWN figure, not its threshold (the re-audit, 2026-10-22: "Volume 1.8× its
+    open interest" beside a Vol/OI of 30.14) */
+export function reasonPhrase(key: WatcherKey, r: BookContract): string {
+  switch (key) {
+    case 'big-money':
+      return `Carried ${usd(r.premium)} of premium in the session — the top tenth of the book${floorPackaged(r) ? `; ${Math.round(r.floorPct)}% of it floor-traded multi-leg packages, the shape of compression, not a bet` : spreadLegDay(r) ? `; ${Math.round(r.multiPct)}% of it legs of multi-leg orders — spread legs, not a single bet` : ''}`;
+    case 'into-earnings':
+      return `Reports in ${r.earnDays === 0 ? 'this session' : `${r.earnDays} session${r.earnDays === 1 ? '' : 's'}`}, open interest +${r.deltaOI.toLocaleString('en-US')} on ${r.volume.toLocaleString('en-US')} contracts`;
+    case 'climbing':
+      return `Up ${r.chgPct.toFixed(0)}% on the day, ${Math.round(r.sweepPct)}% swept, leaning to the ask`;
+    case 'falling':
+      return `Down ${Math.abs(r.chgPct).toFixed(0)}% on the day, ${Math.round(r.sweepPct)}% swept, leaning to the bid`;
+    case 'fresh-size':
+      return `Volume ${r.volOverOI >= 10 ? r.volOverOI.toFixed(0) : r.volOverOI.toFixed(1)}× its open interest, on ${usd(r.premium)}`;
+    case 'hammering':
+      return `${r.volume.toLocaleString('en-US')} contracts, ${Math.round(r.sweepPct)}% of them swept`;
+  }
+}
+
+/** A DAY THAT WAS MOSTLY FLOOR PACKAGES (the third audit, 2026-10-22: "Most money today SPX 7000C · $1.6B" was 16,950 of
+    21,494 contracts on the floor in multi-leg packages — the cbmo compression the tape labels; the screener carries no
+    per-print condition, so the day's floor and multi-leg shares are what say it): half the day or more on the floor AND
+    half or more in multi-leg packages. Such a contract is not crowned "most money" without saying so. */
+export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
+  return r.floorPct >= 50 && r.multiPct >= 50;
+}
+
+/** A DAY THAT WAS MOSTLY SPREAD LEGS IS NOT A SINGLE BET (audit round 8, major 1: "Largest VRT 185P $13.6M ask 100%" was
+    10,840 of its 10,847 contracts legs of multi-leg orders — the other leg, VRT Mar 19 '27 150P, all multi-leg on the bid;
+    CCJ Mar 19 '27 65P, 39,000 of 39,000 multi-leg, read "Most money · bid-leaning"; 83 of the book's 200 were 90% legs or
+    more). THE LINE IS HALF: at 50% or more of the day's contracts in multi-leg orders, most of what the contract traded —
+    and most of its side — is one leg of a package whose other legs sit on other contracts, and a leg's side says how the
+    package was filled, not which way the money leans (a call spread bought prints its short leg on the bid). Under half,
+    the single-leg trading carries the day and its lean stands. Such a contract is shown and counted as a spread leg —
+    never crowned the biggest single bet, never given a lean, kept out of the app's directional totals. */
+export const SPREAD_LEG_PCT = 50;
+/** Mostly legs of multi-leg orders, and not a floor package (that has its own label) */
+export function spreadLegDay(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
+  return !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT;
+}
+/** A DAY THAT WAS MOSTLY CROSSES (audit round 9, minor 2: "Largest PLTR 175C Dec 18" was one 25,000-lot cross — cross_volume
+    25,000 of 25,028, report_flags ["cross_trade"] — crowned on the Live Tape, the Screener and Watchers): a cross is a
+    pre-arranged trade printed between two parties at one price, no side taken on the screen. Half the day or more in
+    crosses and the contract is set apart like a floor package — out of the crowns, the leans and the directional totals,
+    said as "a cross". */
+export const CROSS_PCT = 50;
+export function crossDay(r: { crossPct?: number }): boolean {
+  return (r.crossPct ?? 0) >= CROSS_PCT;
+}
+export const crossHint = (r: { crossPct?: number; volume?: number }) =>
+  `${Math.round(r.crossPct ?? 0)}% of its day${r.volume ? ` (${Math.round(((r.crossPct ?? 0) / 100) * r.volume).toLocaleString('en-US')} of ${r.volume.toLocaleString('en-US')} contracts)` : ''} printed as cross trades — pre-arranged between two parties at one price, not bought or sold on the screen — so it gets no lean and is never ranked as the biggest single bet (${CROSS_PCT}% or more of the day in crosses)`;
+/** Not a single bet: a floor package, a day of spread legs or a day of crosses — set apart wherever the book crowns or leans */
+export function notABet(r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number }): boolean {
+  return floorPackaged(r) || r.multiPct >= SPREAD_LEG_PCT || crossDay(r);
+}
+/** Why a spread-leg day carries no read, in its own figure */
+export const spreadLegHint = (r: Pick<BookContract, 'multiPct'>) =>
+  `${Math.round(r.multiPct)}% of its day traded as legs of multi-leg orders — one leg of spreads whose other legs sit on other contracts. A leg's side says how the package was filled, not which way the money leans, so it gets no lean and is never ranked as the biggest single bet (${SPREAD_LEG_PCT}% or more of the day in multi-leg orders)`;
+/** One word for why a row is not a bet */
+export const notABetWord = (r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number }) => (floorPackaged(r) ? 'floor package' : r.multiPct >= SPREAD_LEG_PCT ? 'spread legs' : crossDay(r) ? 'a cross' : 'spread legs');
+
+/** Why a not-a-bet row is set apart, in full (the hover) */
+export const notABetHint = (r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number; volume?: number }) =>
+  floorPackaged(r)
+    ? `${Math.round(r.floorPct)}% of its day traded on the floor and ${Math.round(r.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down, not a directional bet`
+    : r.multiPct >= SPREAD_LEG_PCT
+      ? spreadLegHint(r)
+      : crossHint(r);
+/** The set's label: "Floor packages", "Spread legs", "Crosses", or "Packages, legs & crosses" when mixed */
+export function notABetLabel(rows: (Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number })[]): string {
+  const kinds = new Set(rows.map(r => (floorPackaged(r) ? 'f' : r.multiPct >= SPREAD_LEG_PCT ? 'l' : 'c')));
+  if (kinds.size > 1) return 'Packages, legs & crosses';
+  return kinds.has('f') ? 'Floor packages' : kinds.has('l') ? 'Spread legs' : rows.length === 1 ? 'One cross' : 'Crosses';
+}
+
+/** ONE FLOOR FOR "FRESH" VOLUME ACROSS TRACE (audit round 5: Watchers' fresh size used 1.8× open interest, the Screener and
+    Compare 1.5×): volume at least this many times the open interest reads as positions built in the session */
+export const FRESH_VOL_OI = 1.5;
+/** Vol/OI as a cell — "new" when the contract had no open interest (nothing to divide by), never 0.00 (audit round 5) */
+export function volOiText(r: Pick<BookContract, 'oi' | 'volume' | 'volOverOI'>): string {
+  /* volOverOI is against the count at the session's open — a row may now show the newer count (usePairedOi), so the
+     ratio itself says whether there was one */
+  /* never "0.00x" for 21 on 5,164 (audit round 8) — under a hundredth says so */
+  if (r.volOverOI > 0) return r.volOverOI < 0.01 ? '<0.01' : r.volOverOI.toFixed(2);
+  return r.volume > 0 ? 'new' : '—';
+}
+/** A ΔOI's tail: "new" only when there was nothing (or next to nothing against the change) before; a percentage when it
+    means something; nothing otherwise (audit round 8: CCJ 65P 64 → 66 read "+2 new") */
+export function doiTail(r: Pick<BookContract, 'prevOI' | 'deltaOI' | 'deltaOIPct'>): string {
+  if (r.deltaOI === 0) return '';
+  if (r.prevOI <= 0 || (r.deltaOI > 0 && r.prevOI * 20 < r.deltaOI)) return 'new';
+  if (!Number.isFinite(r.deltaOIPct) || Math.abs(r.deltaOIPct) > 999) return '';
+  const p = Math.round(r.deltaOIPct);
+  return `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`;
+}
+/** A DEEP-IN-THE-MONEY, LONG-DATED CONTRACT IS LIKELY NOT A BET (retail, 2026-10-23: NVDA's top "bet" on the Live Tape was a
+    2028 put 88.5% in the money, ΔOI +57): 25% or more in the money with six months or more to run trades like the
+    stock — a stock replacement, a roll or a financing leg — not a directional view. Flagged wherever bets are crowned. */
+/* A MONTH, NOT SIX (audit round 9, minor 8: Compare listed SPY 520C Dec 18 — 32% in the money, delta .99, 56 days — as a
+   bet): 25% or more in the money with a month or more to run already moves one-for-one with the stock */
+export const STOCK_LIKE_DTE = 30;
+export function stockLike(r: { otmPct: number; dte: number }): boolean {
+  return Number.isFinite(r.otmPct) && r.otmPct <= -25 && r.dte >= STOCK_LIKE_DTE;
+}
+export const STOCK_LIKE_HINT = 'Deep in the money (25% or more) with a month or more to run — it trades like the stock (delta near 1): likely a stock replacement, a roll or a financing leg, not a directional bet';
+
+/** The book's big-money line: its 90th-percentile premium, $25M at the least */
+export function bigMoneyLine(rows: BookContract[]): number {
+  if (!rows.length) return 25_000_000;
+  const s = rows.map(r => r.premium).sort((a, b) => a - b);
+  return Math.max(25_000_000, s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
+}
+
+function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
   const out: WatcherKey[] = [];
   // "Big enough to move the day" has to stay RARE or the words mean nothing.
-  if (r.premium >= 25_000_000) out.push('big-money');
+  if (r.premium >= bigLine) out.push('big-money');
   if (r.earnDays != null && r.earnDays <= 5 && r.deltaOI > 0 && r.volume >= 3000) out.push('into-earnings');
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
-  if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && r.askPct >= 55) out.push('climbing');
-  else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && r.askPct <= 45) out.push('falling');
-  if (r.volOverOI >= 1.8 && r.premium >= 300_000) out.push('fresh-size');
+  /* a day of spread legs has no lean to chase or sell on (audit round 8) */
+  const lean = notABet(r) ? 'UNSIDED' : dayLean(r).lean;
+  if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
+  else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
+  if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI && r.premium >= 300_000) out.push('fresh-size');
   if (r.volume >= 12000 && r.sweepPct >= 30) out.push('hammering');
-  return out.slice(0, 2); // a very loud contract reports at most twice
+  return out;
 }
 
 /** The reader's own reasons this row meets — same per-row ceiling as the house
@@ -508,104 +426,58 @@ function myReasonsFor(r: BookContract, reasons: UserReason[]): string[] {
   const out: string[] = [];
   for (const reason of reasons) {
     if (reasonMatches(reason, r)) out.push(reason.id);
-    if (out.length === 2) break;
   }
   return out;
 }
 
-let catchCache: { key: string; rows: BookContract[]; catches: Catch[] } | null = null;
+let catchCache: { rows: BookContract[]; sig: string; catches: Catch[] } | null = null;
 
 /**
- * Every reason trip that has LANDED so far today, newest first — the desk's six
- * and the reader's own in ONE feed. A reader-made reason drips through the
- * session on the same clock and quotes the same book, so it can no more invent
- * a number than a house rule can.
+ * EVERY CATCH IS A REAL CONTRACT'S REAL DAY (the audit, 2026-10-22): a catch's trip time was the open plus a hash, its
+ * "print" a hashed share of the day's volume at a hashed fill — "SPY 766C 14:28 42,914 @ $0.09" where the largest real
+ * print was 777. A catch is now a contract on the live book that meets a reason (the desk's six, or the reader's own),
+ * stamped with the contract's own last print and day — newest last print first. Nothing is scheduled or invented.
  */
 export function buildCatches(rows: BookContract[], reasons: UserReason[] = []): Catch[] {
-  const session = bookSession();
-  const day = sessionKey(session);
-  const nowMin = session.minute;
-  // The reader's shelf is part of the key: edit a reason and the feed must
-  // re-derive now, not at the next minute boundary.
-  const cacheKey = `${day}-${nowMin}-${reasonsSignature(reasons)}`;
-  /* THE ROWS ARE PART OF THE KEY: keyed on the minute alone, a page that cut its book got the whole book's catches back
-     until the minute turned. The rows are the caller's own memoised list, so the list itself is the key. */
-  if (catchCache?.key === cacheKey && catchCache.rows === rows) return catchCache.catches;
-
+  const sig = reasonsSignature(reasons);
+  if (catchCache && catchCache.rows === rows && catchCache.sig === sig) return catchCache.catches;
   const catches: Catch[] = [];
+  const bigLine = bigMoneyLine(rows);
   for (const r of rows) {
-    const house = rulesFor(r);
+    const house = rulesFor(r, bigLine);
     const mine = myReasonsFor(r, reasons);
-    for (const rule of [...house, ...mine]) {
-      const isMine = !house.includes(rule as WatcherKey);
-      const seed = `${day}-fa-${r.key}-${rule}`;
-      // The trip is scheduled through the session — the drip's contract — inside New York's 09:30 to 16:00.
-      const minute = SESSION_OPEN_MIN + 1 + Math.floor(h01(`${seed}-t`) * (SESSION_LENGTH_MIN - 2));
-      if (minute > nowMin) continue; // not tripped yet
-      const clipSize = Math.max(10, Math.round(r.volume * hRange(`${seed}-cs`, 0.02, 0.18)));
-      const clipFill = Number(Math.max(0.05, r.last * hRange(`${seed}-cf`, 0.9, 1.1)).toFixed(2));
-      const side: Catch['side'] =
-        rule === 'climbing' ? 'ASK' : rule === 'falling' ? 'BID' : r.askPct >= 50 ? 'ASK' : 'BID';
-      catches.push({
-        id: seed,
-        rule,
-        mine: isMine,
-        minute,
-        time: clockOf(minute),
-        clipSize,
-        clipFill,
-        clipPremium: Math.round(clipSize * clipFill * 100),
-        side,
-        row: r,
-      });
-    }
+    const all = [...house, ...mine];
+    if (!all.length) continue;
+    const lean = dayLean(r).lean;
+    catches.push({
+      id: r.key,
+      rule: all[0],
+      rules: all,
+      mine: !house.includes(all[0] as WatcherKey),
+      minute: r.lastAtMin,
+      time: r.lastAt,
+      last: r.last,
+      premium: r.premium,
+      /* a day of spread legs (or a floor package) carries no side of its own (audit round 8) */
+      side: notABet(r) ? 'LEGS' : lean === 'UNSIDED' ? 'MID' : lean,
+      row: r,
+    });
   }
-
-  catches.sort((a, b) => b.minute - a.minute);
-  catchCache = { key: cacheKey, rows, catches };
+  catches.sort((a, b) => b.minute - a.minute || b.premium - a.premium);
+  catchCache = { rows, sig, catches };
   return catches;
 }
 
 // ---- the day in windows -----------------------------------------------------
 
-/* The tape cut into quarter-hours. Every contract's day volume distributes
-   across the session's 26 windows (09:30 to 16:00 New York — 96 from midnight on the machine's clock until
-   2026-10-13) by day-stable weights — a few contracts
-   BURST (one window carries most of their whole day: somebody acted all at
-   once), the rest dribble. Slices always sum back to the book's own day
-   volume, so this page and the screener can never disagree about a day. */
+/* The session cut into quarter hours, 09:30 to 16:00 New York — the Intervals page's clock (its figures are the
+   vendor's minute ticks, pages/trace/Windows.tsx). */
 
 const WINDOW_MIN = 15;
 /** 26: the session's quarter hours. Window 0 is 09:30–09:45 New York. */
 export const WINDOWS_PER_DAY = SESSION_LENGTH_MIN / WINDOW_MIN;
 /** The New York minute window `idx` opens on */
 export const windowStart = (idx: number) => SESSION_OPEN_MIN + idx * WINDOW_MIN;
-/** The window New York minute m falls in — clamped to the session's first and last */
-const windowOf = (m: number) => Math.max(0, Math.min(WINDOWS_PER_DAY - 1, Math.floor((m - SESSION_OPEN_MIN) / WINDOW_MIN)));
-
-export interface IntervalSlice {
-  key: string;
-  /** Window index, 0-25 — 0 opens at 09:30 New York */
-  window: number;
-  /** Contracts traded inside this window */
-  vol: number;
-  /** This window's share of the contract's WHOLE day, 0-100 — the burst tell */
-  shareOfDayPct: number;
-  /** Dollars traded inside the window. Derives from the day's premium by
-      share, so window premiums SUM BACK to the book's own number. */
-  premium: number;
-  /** The window's average fill — premium ÷ (vol × 100), so the triple
-      (vol, fill, $) can never contradict itself. */
-  avgFill: number;
-  /** IV drift inside the window, signed points */
-  ivChg: number;
-  sweepPct: number;
-  multiPct: number;
-  floorPct: number;
-  askPct: number;
-  volOverOI: number;
-  row: BookContract;
-}
 
 export interface IntervalWindow {
   idx: number;
@@ -622,133 +494,10 @@ export function windowLabel(idx: number): string {
   return `${clockOf(windowStart(idx))}–${clockOf(windowStart(idx) + WINDOW_MIN)}`;
 }
 
-/** Day-stable per-window weights for one contract — long-tailed, with a rare
-    burst window that swallows most of the day when it lands. */
-const weightsCache = new Map<string, number[]>();
-let weightsCacheDay = '';
-
-function windowWeights(day: string, rowKey: string): number[] {
-  if (weightsCacheDay !== day) {
-    weightsCache.clear();
-    weightsCacheDay = day;
-  }
-  const hit = weightsCache.get(rowKey);
-  if (hit) return hit;
-  const w: number[] = [];
-  let baseSum = 0;
-  for (let i = 0; i < WINDOWS_PER_DAY; i++) {
-    const v = 0.05 + Math.pow(h01(`${day}-ivw-${rowKey}-${i}`), 3);
-    w.push(v);
-    baseSum += v;
-  }
-  if (h01(`${day}-ivb-${rowKey}`) > 0.88) {
-    // The whole day in one window — the burst weight is sized against the
-    // REST of the day, so the share lands 55-86% regardless of window count.
-    const burstAt = Math.floor(h01(`${day}-ivb2-${rowKey}`) * WINDOWS_PER_DAY);
-    w[burstAt] += baseSum * hRange(`${day}-ivb3-${rowKey}`, 1.2, 6);
-  }
-  weightsCache.set(rowKey, w);
-  return w;
-}
-
-const wobble30 = (base: number, seed: string) =>
-  Math.max(0, Math.min(100, Math.round(base + (h01(seed) - 0.5) * 30)));
-
-let sliceCache: { key: string; rows: BookContract[]; slices: IntervalSlice[] } | null = null;
-
-/** Every contract that traded inside window `idx`, heaviest first. */
-export function buildIntervalSlices(rows: BookContract[], idx: number): IntervalSlice[] {
-  const session = bookSession();
-  const day = sessionKey(session);
-  const nowMin = session.minute;
-  const qNow = windowOf(nowMin);
-  const cacheKey = `${day}-${nowMin}-${idx}`;
-  /* the rows are part of the key: a cut is other rows in the same minute */
-  if (sliceCache?.key === cacheKey && sliceCache.rows === rows) return sliceCache.slices;
-
-  // A window's price level relative to the contract's last — the wobble that
-  // makes fills vary window to window while premiums still conserve.
-  const fillW = (rowKey: string, i: number) => 0.85 + h01(`${day}-ivf-${rowKey}-${i}`) * 0.3;
-
-  const slices: IntervalSlice[] = [];
-  for (const r of rows) {
-    const w = windowWeights(day, r.key);
-    let landedSum = 0;
-    let landedDollarW = 0;
-    for (let i = 0; i <= qNow; i++) {
-      landedSum += w[i];
-      landedDollarW += w[i] * fillW(r.key, i);
-    }
-    let daySum = 0;
-    for (let i = 0; i < WINDOWS_PER_DAY; i++) daySum += w[i];
-    const vol = Math.round((r.volume * w[idx]) / landedSum);
-    if (vol < 10) continue;
-    // Dollar-weighted share of the day's premium — Σ over landed windows
-    // returns r.premium exactly; the fill is read back OUT of the premium.
-    const premium = Math.round((r.premium * (w[idx] * fillW(r.key, idx))) / landedDollarW);
-    const seed = `${day}-ivs-${r.key}-${idx}`;
-    slices.push({
-      key: `${r.key}-${idx}`,
-      window: idx,
-      vol,
-      shareOfDayPct: Number(((w[idx] / daySum) * 100).toFixed(1)),
-      premium,
-      avgFill: Number(Math.max(0.01, premium / (vol * 100)).toFixed(2)),
-      /* the contract's own move in volatility today — the vendor has no per-window figure, and a hashed wobble on 0% IV
-         read "+0.0" on every row */
-      ivChg: Number(r.ivChg.toFixed(1)),
-      sweepPct: wobble30(r.sweepPct, `${seed}-sw`),
-      multiPct: wobble30(r.multiPct, `${seed}-ml`),
-      floorPct: r.floorPct === 0 ? 0 : wobble30(r.floorPct, `${seed}-fl`),
-      askPct: Math.max(5, Math.min(95, Math.round(r.askPct + (h01(`${seed}-ask`) - 0.5) * 30))),
-      volOverOI: Number((vol / r.oi).toFixed(2)),
-      row: r,
-    });
-  }
-
-  slices.sort((a, b) => b.vol - a.vol);
-  sliceCache = { key: cacheKey, rows, slices };
-  return slices;
-}
-
-let navCache: { key: string; rows: BookContract[]; windows: IntervalWindow[] } | null = null;
-
-/** The session so far as a navigator — total volume per landed window. */
-export function intervalWindows(rows: BookContract[], scope = ''): IntervalWindow[] {
-  const session = bookSession();
-  const day = sessionKey(session);
-  const nowMin = session.minute;
-  const qNow = windowOf(nowMin);
-  /* `scope` names the cut the rows came through, as buildNetLeaders' does; the rows themselves are the rest of the key */
-  const cacheKey = `${day}-${nowMin}-${scope}`;
-  if (navCache?.key === cacheKey && navCache.rows === rows) return navCache.windows;
-
-  const totals = new Array(qNow + 1).fill(0);
-  for (const r of rows) {
-    const w = windowWeights(day, r.key);
-    let landedSum = 0;
-    for (let i = 0; i <= qNow; i++) landedSum += w[i];
-    for (let i = 0; i <= qNow; i++) totals[i] += (r.volume * w[i]) / landedSum;
-  }
-  const windows: IntervalWindow[] = totals.map((v, idx) => ({
-    idx,
-    label: windowLabel(idx),
-    totalVol: Math.round(v),
-    live: session.live && idx === qNow,
-  }));
-  navCache = { key: cacheKey, rows, windows };
-  return windows;
-}
-
 // ---- net premium through the session ----------------------------------------
 
-/* The running answer to "which way is the money leaning" — cumulative net
-   call and net put premium (bought minus sold) through the day, per cut of
-   the book. Built on the SAME window weights the Windows page walks, sampled
-   along whatever timeline the caller's chart already draws, and premiums
-   scale to the book's own day numbers — one more reader of the one book.
-   The 0DTE desk reads it with dteMax 1; a whole-book net-flow surface reads
-   it with no cap. */
+/* The net-flow cuts: which part of the market a pane's vendor minutes read (/net-flow/expiry's tide types, a sector's
+   tide) and which strikes (moneyness). */
 
 /* THE CUT, in plain English (Noah, 2026-09-03: "i dont get what 'single
    names' mean… are the dropdowns reasonable? i am struggling to figure out
@@ -759,7 +508,7 @@ export function intervalWindows(rows: BookContract[], scope = ''): IntervalWindo
    the index funds alone) or the book by SECTOR (every sector the terminal
    files, index funds excluded). One name is not a cut at all — it is the
    pane's ticker mode, reached through the name search in its head. */
-export type NetFlowSegment = 'all' | 'stocks' | 'index-funds' | `sector:${string}`;
+export type NetFlowSegment = 'all' | 'stocks' | 'index-funds' | 'indexes' | `sector:${string}`;
 
 export interface NetSegmentMeta {
   key: NetFlowSegment;
@@ -774,6 +523,8 @@ export const NET_SEGMENTS: NetSegmentMeta[] = [
   { key: 'all', label: 'Everything', group: 'The book' },
   { key: 'stocks', label: 'Stocks only', group: 'The book' },
   { key: 'index-funds', label: 'Index funds only', group: 'The book' },
+  /* the vendor's index_only tide — SPX, NDX, XSP, RUT, VIX options */
+  { key: 'indexes', label: 'Index options only', group: 'The book' },
   ...SECTOR_LIST.map(s => ({ key: `sector:${s.sector}` as const, label: s.sector, group: 'Sectors' as const })),
 ];
 
@@ -794,431 +545,29 @@ export const MONEYNESS: { key: MoneynessKey; label: string; hint: string }[] = [
 export function segmentFilter(r: BookContract, seg: NetFlowSegment): boolean {
   if (seg === 'all') return true;
   if (seg === 'index-funds') return INDEX_FUNDS.has(r.ticker);
+  if (seg === 'indexes') return /^(SPXW?|NDXP?|XSP|RUTW?|VIXW?|XND|DJX|MRUT)$/.test(r.ticker);
   if (seg === 'stocks') return !INDEX_FUNDS.has(r.ticker);
   /* A sector is a cut of the STOCKS: the sector map files SPY/QQQ/IWM under
      Financial Services, and they would swallow that sector on a 0DTE day. */
   return r.sector === seg.slice('sector:'.length) && !INDEX_FUNDS.has(r.ticker);
 }
 
+/* MONEYNESS, ONE CONVENTION (audit round 7, the blocker: "Out of the money" returned CRWV 78P −40.3% and dropped the OTM
+   NVDA 210P +1.0%): otmPct is the strike's distance PAST the stock — positive out of the money for calls AND puts (call:
+   strike above spot; put: strike below spot; traceLive otmOf, spreadLegRow). So in the money is otmPct < 0 on both sides.
+   A distance that is not known (NaN — a whole-point small index) is neither in nor out. */
+export const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
+export const isOutOfTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct > 0;
+
 /** A contract's or a print's place against the stock — both carry the same two fields */
 export function moneynessFilter(r: Pick<BookContract, 'otmPct' | 'right'>, m: MoneynessKey): boolean {
   if (m === 'all') return true;
+  if (!Number.isFinite(r.otmPct)) return false;
   if (m === 'atm') return Math.abs(r.otmPct) <= 1;
-  const itm = r.right === 'C' ? r.otmPct < 0 : r.otmPct > 0;
-  return m === 'itm' ? itm : !itm;
+  return m === 'itm' ? isInTheMoney(r) : !isInTheMoney(r);
 }
 
-export interface NetFlowPoint {
-  /** Epoch seconds — the caller's own chart timeline */
-  time: number;
-  /** Cumulative net call premium, signed dollars */
-  callPrem: number;
-  /** Cumulative net put premium, signed dollars */
-  putPrem: number;
-  /** Contracts traded in the bar */
-  vol: number;
-  /** The bar's own lean — inked green when the flow ran bullish */
-  volUp: boolean;
-}
-
-export interface NetFlowView {
-  points: NetFlowPoint[];
-  /** Day-to-now net call premium */
-  ncp: number;
-  /** Day-to-now net put premium */
-  npp: number;
-  vol: number;
-  /** Contracts in the cut */
-  count: number;
-}
-
-/** Cumulative net premium sampled at the given times (epoch seconds).
-    `ticker` narrows to one name (and replaces the segment cut); `tenor`
-    narrows to a sleeve — the Net Flow page's axes. */
-/*
-  ── PRINTS, NOT EXPECTATIONS ─────────────────────────────────────────────────
-
-  Noah, 2026-08-30, first: "why are my net call and put lines so straight and
-  lack any movement to them?" — and, after a first repair, again: "they are
-  literally straight lines that look like a kid was drawing. no diversity...
-  do they even match their cards".
-
-  The first repair added minute tables (a lumpy share of each window's flow,
-  and a common mood shock) and measured its success by counting direction
-  changes. It genuinely flipped sign every other minute — and still read as
-  a ruler, because the flips were dust against the day's range. The reason is
-  structural: the curve was an EXPECTATION. Each contract's premium was spread
-  across the day as a smooth share, its lean applied as a fraction, and the
-  mood folded in as a shift to that fraction. Averages are smooth, a sum of
-  averages is smoother, and integrating the mood against the flow low-passed
-  the one thing that could have bent it.
-
-  A net-premium line is a running sum of PRINTS. It is flat while nobody
-  trades, steps when someone does, and steps the other way when the other
-  side trades. So the view now lands realised clips:
-
-    per contract, per window   one to four clips, sizes heavy-tailed (one
-                               clip often carries most of the window), each
-                               dropped on a minute of its own
-    per clip                   a realised SIDE — bought at the ask (+) or
-                               sold on the bid (−) — drawn with probability
-                               = the contract's own ask share, pushed by the
-                               day's mood at that minute. The mood is what
-                               makes a whole stretch of clips lean one way
-                               and then the other, which is what an
-                               aggregate reversal IS.
-
-  What survives from before: window weights still shape the day (the
-  screener, the windows page and the leader board keep agreeing to the
-  dollar, because a contract's clips inside a window sum to that window's
-  weight), the mood walk still supplies the common tide, and the curve is
-  still normalised so it ENDS on the book's own totals — the header cards
-  read the last point, by construction.
-
-  Cost: day-stable clip tables cached per contract; a lookup is one window
-  prefix plus at most four clip reads. Same order as the tables it replaces.
-*/
-const MINUTES_PER_DAY = 1440;
-
-/*
-  THE MOOD IS A WALK, NOT A STAIRCASE. The first attempt at this kept the shock
-  mean-zero inside each window, which guaranteed it disturbed nothing — and
-  looked it: the curve was pinned back onto its backbone every quarter hour, so
-  it read as a smooth trend wearing fuzz rather than as a tape. A price line
-  looks like a price line because its deviations PERSIST.
-
-  So the mood is now an AR(1) walk sampled every minute, and its contribution is
-  folded into the window prefixes themselves — the curve wanders for hours and
-  the day still ends where the day's premium says it ends. Nothing downstream
-  reads the net curve's window knots (the interval pages compute their own
-  totals from windowWeights, and the leader board reads this very function), so
-  there was no reason to pin them beyond my own caution.
-
-  TWO SCALES, BOTH NEEDED. A pure AR(1) is smooth minute to minute, so on its
-  own it just traded one wrong picture for another: big graceful swings and no
-  texture at all (2 direction changes per 100 points, where the first attempt
-  managed 50). A price line has roughness at EVERY scale, so the mood carries a
-  slow component for the session's swings and an independent per-minute one for
-  the chop. Integrated against the flow, the fast part is what makes the
-  cumulative curve walk rather than glide.
-
-    phi 0.965   half-life ≈ 20 minutes — swings that outlast a bar, and still
-                cross zero often enough that a whole day is not one-way
-    fast        iid per minute; large enough to out-vote the book's own lean,
-                which is what actually flips the slope
-    clamped     a lean is a share of flow; it cannot run away
-*/
-const MOOD_PHI = 0.965;
-const MOOD_STEP = 0.3;
-const MOOD_FAST = 2;
-/** The mood's pull in LEAN units (lean spans -1 at the bid to +1 at the ask). */
-const MOOD_LEAN = 0.5;
-
-interface DayTables {
-  /** The day's mood, one value per minute, detrended — the common tide every
-      clip's side is drawn against. */
-  mood: number[];
-}
-
-let tabDay = '';
-let tabs: DayTables | null = null;
-
-function dayTables(day: string): DayTables {
-  if (tabDay === day && tabs) return tabs;
-  // The day's mood, one value per minute, mean-reverting so it swings without
-  // wandering off. Common to every contract — independent noise cancels across
-  // a hundred rows, a shared factor does not. That is the whole mechanism.
-  const mood = new Array<number>(MINUTES_PER_DAY);
-  let x = 0;
-  let sum = 0;
-  for (let m = 0; m < MINUTES_PER_DAY; m++) {
-    x = x * MOOD_PHI + (h01(`${day}-nfw-${m}`) - 0.5) * 2 * MOOD_STEP;
-    const fast = (h01(`${day}-nff-${m}`) - 0.5) * 2 * MOOD_FAST;
-    /* SQUASHED, not clipped. A hard clamp on a loud fast term spends most of
-       its time pinned at the rail, which turns the chop into a square wave and
-       — because the rails are hit unevenly — quietly drags the day's average
-       off centre. tanh keeps the signal inside the same bounds while leaving
-       every wiggle its relative size. */
-    mood[m] = Math.tanh((x + fast) * 0.6);
-    sum += mood[m];
-  }
-  /* DETRENDED, and that is what lets the mood be loud. Left alone, a day that
-     happened to draw a bullish walk would add its whole average onto the day's
-     net premium — and then a contract the tables call "ASK 61%" could finish
-     with net premium pointing the other way. Centred, the mood only ever moves
-     the PATH: the day still ends exactly where the book's own lean says it
-     ends, so the leader board, the drilldown and this curve keep agreeing while
-     the line in between is free to wander. */
-  /* centred over the SESSION's minutes — the only ones a clip lands on */
-  sum = 0;
-  for (let m = SESSION_OPEN_MIN; m < SESSION_CLOSE_MIN; m++) sum += mood[m];
-  const mean = sum / SESSION_LENGTH_MIN;
-  for (let m = 0; m < MINUTES_PER_DAY; m++) mood[m] -= mean;
-  tabs = { mood };
-  tabDay = day;
-  return tabs;
-}
-
-/* ── the clip tables ─────────────────────────────────────────────────────── */
-
-interface Clip {
-  /** Minute of day the clip landed */
-  m: number;
-  /** Its share of the contract's day (window weight × its share of the window) */
-  size: number;
-  /** +1 bought at the ask, −1 sold on the bid */
-  side: 1 | -1;
-}
-interface ClipTable {
-  /** Per window, sorted by minute */
-  clips: Clip[][];
-  /** Weight landed BEFORE window i */
-  wPre: number[];
-  /** Signed weight landed BEFORE window i */
-  sPre: number[];
-}
-
-/** Two to four clips per contract per window. Never one: the book's burst
-    windows (one quarter-hour carrying most of a name's day) would otherwise
-    land as a single minute, and a burst is a sweep over minutes, not a bang. */
-const CLIPS_MIN = 2;
-const CLIPS_MAX = 4;
-/** The tail on clip sizes. Measured, not guessed: at 0.8 with a 0.02 floor one
-    clip could be 92% of a name's whole range and one minute 300× the median
-    volume — a needle, not a tape. 0.5 over a 0.08 floor keeps a clip to at
-    most ~55% of its window; the burst windows supply the rest of the drama. */
-const CLIP_TAIL = 0.5;
-const CLIP_FLOOR = 0.08;
-
-const clipCache = new Map<string, ClipTable>();
-let clipCacheDay = '';
-
-function clipTable(day: string, r: BookContract, mood: number[]): ClipTable {
-  if (clipCacheDay !== day) {
-    clipCache.clear();
-    clipCacheDay = day;
-  }
-  const hit = clipCache.get(r.key);
-  if (hit) return hit;
-
-  const w = windowWeights(day, r.key);
-  const dir: 1 | -1 = r.right === 'C' ? 1 : -1;
-  const clips: Clip[][] = [];
-  const wPre = [0];
-  const sPre = [0];
-  for (let i = 0; i < WINDOWS_PER_DAY; i++) {
-    const n = CLIPS_MIN + Math.floor(h01(`${day}-npn-${r.key}-${i}`) * (CLIPS_MAX - CLIPS_MIN + 1));
-    const raw: number[] = [];
-    let sum = 0;
-    for (let j = 0; j < n; j++) {
-      const x = Math.pow(h01(`${day}-nps-${r.key}-${i}-${j}`) + CLIP_FLOOR, -CLIP_TAIL);
-      raw.push(x);
-      sum += x;
-    }
-    const win: Clip[] = [];
-    let sw = 0;
-    for (let j = 0; j < n; j++) {
-      const m = windowStart(i) + Math.floor(h01(`${day}-npm-${r.key}-${i}-${j}`) * WINDOW_MIN);
-      /* The side is DRAWN, not averaged: the contract's own ask share, pushed
-         by the mood at that minute — a bullish stretch lifts call buying and
-         leans put flow to the bid. Clamped so no contract is ever one-way. */
-      const pBuy = Math.max(0.08, Math.min(0.92, r.askPct / 100 + MOOD_LEAN * dir * mood[m]));
-      const side: 1 | -1 = h01(`${day}-npb-${r.key}-${i}-${j}`) < pBuy ? 1 : -1;
-      const size = (w[i] * raw[j]) / sum;
-      win.push({ m, size, side });
-      sw += side * size;
-    }
-    win.sort((a, b) => a.m - b.m);
-    clips.push(win);
-    wPre.push(wPre[i] + w[i]);
-    sPre.push(sPre[i] + sw);
-  }
-  const t = { clips, wPre, sPre };
-  clipCache.set(r.key, t);
-  return t;
-}
-
-/** Weight and signed weight landed by minute m — window prefix plus that
-    window's own clips up to the minute. Written to the two scratch slots below
-    rather than returned as a tuple: this runs ~200k times per view. */
-let landedW = 0;
-let landedS = 0;
-function landedAt(t: ClipTable, m: number): void {
-  /* before the open nothing has landed */
-  if (m < SESSION_OPEN_MIN) {
-    landedW = 0;
-    landedS = 0;
-    return;
-  }
-  const i = windowOf(m);
-  let w = t.wPre[i];
-  let s = t.sPre[i];
-  const win = t.clips[i];
-  for (let j = 0; j < win.length; j++) {
-    const c = win[j];
-    if (c.m > m) break;
-    w += c.size;
-    s += c.side * c.size;
-  }
-  landedW = w;
-  landedS = s;
-}
-
-export function buildNetFlowView(
-  rows: BookContract[],
-  seg: NetFlowSegment,
-  mny: MoneynessKey,
-  times: number[],
-  dteMax = 1,
-  ticker: string | null = null,
-  tenor: SleeveKey | 'all' = 'all'
-): NetFlowView {
-  const day = sessionKey(bookSession());
-  /* THE TAPE IS THE CLOCK (Noah, 2026-08-30: the 0DTE panes "look horrid
-     and unfinished" — every line went dead flat after ~18:00 while the
-     candles ran on to 22:35). The simulator's bar time advances ~15× wall
-     speed, but this view was accruing on the WALL clock and clamping every
-     minute past wall-now flat — so the longer the app stayed open, the
-     longer the dead tail; his screenshot had four and a half hours of it.
-     A view drawn ON a tape must live at that tape's own now: the minute of
-     the LAST bar it was handed. The wall clock survives only as the
-     empty-timeline fallback, and the leaders board samples at this same
-     instant, so the board and the chart still cannot disagree. */
-  const lastT = times.length ? times[times.length - 1] : Math.floor(now().getTime() / 1000);
-  /* New York's minute of the day — the book's own clock (bookSession) */
-  const nowMin = nyMinuteOf(lastT);
-
-  const cut = rows.filter(
-    r =>
-      r.dte <= dteMax &&
-      (ticker ? r.ticker === ticker : segmentFilter(r, seg)) &&
-      moneynessFilter(r, mny) &&
-      (tenor === 'all' || sleeveForDte(r.dte) === tenor)
-  );
-
-  /* Per row: its day-stable clip table, and how much of it has landed by the
-     tape's now. That landed weight is the denominator that pins the curve's
-     END to the book's own totals — the header cards read exactly those. */
-  const T = dayTables(day);
-  const pre = cut.map(r => {
-    const t = clipTable(day, r, T.mood);
-    landedAt(t, nowMin);
-    return { r, t, landed: landedW, isCall: r.right === 'C' };
-  });
-
-  const points: NetFlowPoint[] = [];
-  let prevCall = 0;
-  let prevPut = 0;
-  let prevVol = 0;
-  for (const t of times) {
-    const m = Math.min(nowMin, nyMinuteOf(t));
-    let callPrem = 0;
-    let putPrem = 0;
-    let vol = 0;
-    for (let k = 0; k < pre.length; k++) {
-      const p = pre[k];
-      if (p.landed <= 0) continue;
-      landedAt(p.t, m);
-      // Bought clips push the line up, sold clips pull it back — the walk.
-      const signed = (landedS / p.landed) * p.r.premium;
-      if (p.isCall) callPrem += signed;
-      else putPrem += signed;
-      vol += (landedW / p.landed) * p.r.volume;
-    }
-    // The first bar is an OPENING BALANCE, not a bar — everything before the
-    // chart's left edge. Charting it would dwarf every real bar to nothing.
-    const barVol = points.length === 0 ? 0 : Math.max(0, Math.round(vol - prevVol));
-    points.push({
-      time: t,
-      callPrem: Math.round(callPrem),
-      putPrem: Math.round(putPrem),
-      vol: barVol,
-      volUp: callPrem - prevCall - (putPrem - prevPut) >= 0,
-    });
-    prevCall = callPrem;
-    prevPut = putPrem;
-    prevVol = vol;
-  }
-
-  const last = points[points.length - 1];
-  return {
-    points,
-    ncp: last?.callPrem ?? 0,
-    npp: last?.putPrem ?? 0,
-    vol: Math.round(points.reduce((a, p) => a + p.vol, 0)),
-    count: cut.length,
-  };
-}
-
-// ---- the net-flow board -----------------------------------------------------
-
-/* Every name ranked by which way its money leans TODAY. Each leader's number
-   comes out of buildNetFlowView ITSELF (sampled at this instant), so the
-   board and the chart it opens can never quote two different leans. */
-
-export interface NetLeader {
-  ticker: string;
-  sector: string | null;
-  sectorColor: string | null;
-  /** Bullish lean, signed dollars: net calls minus net puts */
-  net: number;
-  netCall: number;
-  netPut: number;
-  /** The name's whole day volume — the book's own fact */
-  volume: number;
-  /** Contracts in the name's book */
-  count: number;
-}
-
-let leadersCache: { key: string; rows: BookContract[]; leaders: NetLeader[] } | null = null;
-
-/** `sampleTime` = the chart tape's LAST bar (epoch seconds) — pass the same
-    timeline end the pane beside the board draws with, so both read the same
-    instant of the same curve. Falls back to the wall clock only when no tape
-    is on screen to borrow a clock from. */
-export function buildNetLeaders(rows: BookContract[], sampleTime?: number, scope = ''): NetLeader[] {
-  const day = sessionKey(bookSession());
-  const nowSec = sampleTime ?? Math.floor(now().getTime() / 1000);
-  const nowMin = nyMinuteOf(nowSec);
-  /* `scope` names the cut the rows came through — the same minute on a different cut is a different board */
-  const cacheKey = `${day}-${nowMin}-${scope}`;
-  if (leadersCache?.key === cacheKey && leadersCache.rows === rows) return leadersCache.leaders;
-
-  const byTicker = new Map<string, BookContract[]>();
-  for (const r of rows) {
-    const arr = byTicker.get(r.ticker);
-    if (arr) arr.push(r);
-    else byTicker.set(r.ticker, [r]);
-  }
-
-  const leaders: NetLeader[] = [...byTicker.entries()].map(([t, own]) => {
-    const v = buildNetFlowView(rows, 'all', 'all', [nowSec], Infinity, t);
-    return {
-      ticker: t,
-      sector: own[0].sector,
-      sectorColor: own[0].sectorColor,
-      net: v.ncp - v.npp,
-      netCall: v.ncp,
-      netPut: v.npp,
-      volume: own.reduce((a, r) => a + r.volume, 0),
-      count: own.length,
-    };
-  });
-
-  leaders.sort((a, b) => b.net - a.net);
-  leadersCache = { key: cacheKey, rows, leaders };
-  return leaders;
-}
-
-// ---- multi-leg structures ---------------------------------------------------
-
-/* The tape reconstructed into STRUCTURES — spreads, not single prints. Each
-   trade is a package: legs built on the strike grid, priced with the same
-   fill model as everything else, with the package's own defined-risk math
-   (max loss / max profit) and a plain-English line saying what the shape
-   DOES. Dripped through the session like the wire and the alerts. */
-
-export type SpreadKind = 'vertical' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio';
+export type SpreadKind = 'vertical' | 'diagonal' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio' | 'synthetic' | 'riskReversal' | 'custom';
 
 export interface SpreadKindDef {
   key: SpreadKind;
@@ -1228,17 +577,38 @@ export interface SpreadKindDef {
 }
 
 export const SPREAD_KINDS: SpreadKindDef[] = [
-  { key: 'vertical', label: 'Vertical', read: 'One strike bought, the next sold — a lane between them, risk capped both ways.' },
-  { key: 'condor', label: 'Iron condor', read: 'Both sides sold, wings bought for cover — collects if the name goes nowhere.' },
-  { key: 'butterfly', label: 'Butterfly', read: 'Wings bought, the body sold twice — pays most if it pins the middle strike.' },
-  { key: 'straddle', label: 'Straddle', read: 'Call and put at the same strike — a position on movement itself, either direction.' },
-  { key: 'strangle', label: 'Strangle', read: 'Call above, put below — movement either way, cheaper than the straddle.' },
-  { key: 'calendar', label: 'Calendar', read: 'Same strike on two clocks — the near expiry sold, the far one bought.' },
+  /* THE FAMILY, NEVER ITS DIRECTION (the re-audit, 2026-10-22: "wings bought, body sold" was printed over short flies):
+     these say what the shape is, both ways round; each structure's own sentence is worked from its settled legs
+     (traceLive describeStructure) */
+  { key: 'vertical', label: 'Vertical', read: 'Two strikes on one side and one expiry, one bought and one sold — the risk capped both ways.' },
+  { key: 'condor', label: 'Iron condor', read: 'Four legs, two inner strikes and two outer — sold inner, it gains if the name stays between; bought inner, it gains on a move out.' },
+  { key: 'butterfly', label: 'Butterfly', read: 'Three strikes, the middle one twice — long (wings bought), it pays most at the middle; short (wings sold), it gains on a move away.' },
+  { key: 'straddle', label: 'Straddle', read: 'A call and a put at one strike — bought, a position on a move either way; sold, on no move.' },
+  { key: 'strangle', label: 'Strangle', read: 'A call above and a put below — bought, a move either way; sold, the name staying between.' },
+  { key: 'calendar', label: 'Calendar', read: 'Same strike on two clocks — one expiry bought, the other sold.' },
+  { key: 'diagonal', label: 'Diagonal', read: 'Two strikes on two clocks — a vertical and a calendar in one.' },
+  { key: 'riskReversal', label: 'Risk reversal', read: 'A call one way and a put the other, on two strikes — a directional stance financed by the other side.' },
+  { key: 'synthetic', label: 'Synthetic', read: 'A call and a put at one strike, one bought and one sold — it moves like the stock itself.' },
   { key: 'ratio', label: 'Ratio', read: 'Unbalanced legs — extra contracts written on one side, risk open past the far strike.' },
+  /* the vendor's "other": legs that print together but match no named shape — never relabelled a vertical */
+  { key: 'custom', label: 'Custom', read: 'Legs that printed together but match no named shape — read the legs.' },
 ];
 
 export interface SpreadLeg {
-  side: 'BUY' | 'SELL';
+  /** null when the vendor's record cannot say which way the leg went */
+  side: 'BUY' | 'SELL' | null;
+  /** Contracts on this leg */
+  contracts?: number;
+  /** Per-share theta, as the vendor sends it */
+  theta?: number;
+  /** The leg's OCC symbol */
+  occ?: string;
+  /** The leg contract's day volume and open interest, and its IV (%) */
+  volume?: number;
+  oi?: number;
+  iv?: number;
+  bid?: number;
+  ask?: number;
   ratio: number;
   strike: number;
   right: 'C' | 'P';
@@ -1250,7 +620,19 @@ export interface SpreadLeg {
 
 export interface SpreadTrade {
   id: string;
+  /** OPRA's condition code on the structure (mlet, mlat, mesl, cbmo…) */
+  code?: string;
+  /** A compression package (cbmo / mctp) — a floor package that nets open interest down between members: labelled,
+      never read bullish or bearish, never a champion */
+  compression?: boolean;
   minute: number;
+  /** The trade's New York day, YYYY-MM-DD, and its instant */
+  day?: string;
+  epochMs?: number;
+  /** Filled outside the name's regular session (before 09:30, or from its 16:00 / 16:15 close) */
+  extended?: boolean;
+  /** Repeats of this structure the vendor sent under other ids — the same legs, size, money and second — folded in */
+  repeats?: number;
   time: string;
   ticker: string;
   kind: SpreadKind;
@@ -1259,219 +641,96 @@ export interface SpreadTrade {
   /** Near leg's expiry & DTE */
   expiry: string;
   dte: number;
+  /** A structure over two expiries (a diagonal, a calendar): its far leg's expiry and DTE, from the vendor's max_dte */
+  farExpiry?: string;
+  farDte?: number;
   size: number;
-  /** Per-structure price: positive = debit paid, negative = credit collected */
+  /** Per-UNIT price (net premium over units × 100): positive = debit paid, negative = credit collected; 0 = not known */
   net: number;
+  /** The shape's name — from the settled legs once they are in hand (traceLive nameFromLegs), else the vendor's, spelled
+      out ("put diagonal spread", "time butterfly") */
+  shape: string;
+  /** The vendor's own name, kept when the legs name the structure otherwise */
+  vendorShape?: string;
+  /** The vendor's own name, always (the row's `shape` may be the legs' once they settle) */
+  shapeOfVendor?: string;
+  /** Signed net premium: + paid, − collected (the vendor's net_premium); premium is the gross of every leg */
+  netPremium: number;
+  /** How many legs the vendor counted */
+  legCount?: number;
   /** |net| × size × 100, dollars */
   premium: number;
+  /** The expiry payoff of the settled legs — null when the legs cannot be settled, or run to two expiries */
   maxLoss: number | 'uncapped' | null;
   maxProfit: number | 'uncapped' | null;
   iv: number;
   delta: number;
+  /** Whose name the shape wears: 'legs' when the app named it from the legs as they were bought and sold, 'vendor' when it
+      is the vendor's label (its legs not read, or not settled into one textbook shape) — said so on the row */
+  namedBy?: 'legs' | 'vendor';
+  /** The position's dollars a day to time (traceLive positionTheta) — capped at what the position is worth */
   theta: number;
+  /** True when the vendor's rate ran past what the legs are worth and the figure is the cap: a near-expiry position
+      whose remaining value goes to zero by the bell */
+  thetaCapped?: boolean;
   spot: number;
   legs: SpreadLeg[];
+  /** False when the vendor printed no net premium at all */
+  netKnown?: boolean;
+  /** The size of the net when its way is not known — the shape's canonical signs, either way */
+  netAbs?: number;
+  /** Units: the GCD of the legs' contracts — "5 flies" of S5/B10/S5 */
+  units?: number;
+  /** Every leg's contracts together */
+  contracts?: number;
+  /** "S1/B2/S1" — each leg's direction and its ratio, low strike first */
+  ratioLabel?: string;
+  /** Why the risk is not drawn: the legs did not settle, they run to two expiries, or the net is not known */
+  riskNote?: 'unsettled' | 'expiries' | 'no-net';
+  /** The structure in a sentence, from its settled legs */
+  read?: string;
+  /** Whether its legs are in hand */
+  legsState?: 'pending' | 'in' | 'none';
+  /** A PIECE OF A SPLIT ORDER (retail, round 10: MDB 290/430/490/640 Mar '28 stood as "long call condor, paid $23.92" and,
+      the same second, "calls bought · 4 strikes, paid $433.98, uncapped" — crowned Largest): the vendor printed it in the
+      same second, on the same strikes and expiry, under the same name as another structure whose legs DO make that shape,
+      while its own legs make another. The shape that structure's legs make; shown, explained, never crowned. */
+  splitOf?: string;
 }
 
-const SPREAD_DTE_POOL = [0, 1, 2, 5, 9, 16, 30, 44, 72, 102] as const;
-
-/** The tape's fill model — the one price shape every flow surface shares. */
-function legFill(spot: number, strike: number, right: 'C' | 'P', dte: number, ivFrac: number): number {
-  const money = (strike - spot) / spot;
-  const intrinsic = right === 'C' ? Math.max(spot - strike, 0) : Math.max(strike - spot, 0);
-  const timeValue = spot * ivFrac * 0.08 * Math.exp(-Math.pow(money * 18, 2) / 2) * (0.5 + Math.sqrt((dte + 1) / 30));
-  return Number(Math.max(0.05, intrinsic * 0.98 + timeValue).toFixed(2));
-}
-
-const SPREADS_PER_DAY = 90;
-let spreadCache: { key: string; trades: SpreadTrade[] } | null = null;
-
-/** Every multi-leg structure that has landed so far today, newest first. */
-export function buildSpreadFlow(quotes: UniverseQuote[]): SpreadTrade[] {
-  const session = bookSession();
-  const day = sessionKey(session);
-  const nowMin = session.minute;
-  /* the universe is part of the key, as the book's is (buildFlowBook) */
-  const cacheKey = `${day}-${nowMin}-${quotes.map(q => q.ticker).join(',')}`;
-  if (spreadCache?.key === cacheKey) return spreadCache.trades;
-
-  const trades: SpreadTrade[] = [];
-  for (let i = 0; i < SPREADS_PER_DAY; i++) {
-    const seed = `${day}-ml-${i}`;
-    const h = (tag: string) => h01(`${seed}-${tag}`);
-    const minute = SESSION_OPEN_MIN + Math.floor(h('t') * SESSION_LENGTH_MIN);
-    if (minute > nowMin) continue; // the drip
-
-    // Index names lead multi-leg tape share — the universe's front is heavier.
-    const q = quotes[Math.floor(Math.pow(h('tk'), 1.5) * quotes.length)];
-    const spot = q.price;
-    const st = q.step;
-    const ivFrac = q.iv * (0.85 + h('iv') * 0.4);
-    const atm = Math.round(spot / st) * st;
-    const w = st * (1 + Math.floor(h('w') * 3));
-    const dte = SPREAD_DTE_POOL[Math.floor(Math.pow(h('dte'), 1.4) * SPREAD_DTE_POOL.length)];
-    const kindRoll = h('kind');
-    const kind: SpreadKind =
-      kindRoll < 0.4
-        ? 'vertical'
-        : kindRoll < 0.55
-          ? 'condor'
-          : kindRoll < 0.65
-            ? 'butterfly'
-            : kindRoll < 0.75
-              ? 'straddle'
-              : kindRoll < 0.85
-                ? 'strangle'
-                : kindRoll < 0.93
-                  ? 'calendar'
-                  : 'ratio';
-
-    const exp = expiryLabel(session, dte);
-    const mk = (side: 'BUY' | 'SELL', ratio: number, strike: number, right: 'C' | 'P', legDte: number = dte): SpreadLeg => ({
-      side,
-      ratio,
-      strike: Number(strike.toFixed(2)),
-      right,
-      expiry: expiryLabel(session, legDte),
-      dte: legDte,
-      fill: legFill(spot, strike, right, legDte, ivFrac),
-    });
-
-    let legs: SpreadLeg[];
-    let maxLossOf: (net: number, size: number) => number | 'uncapped';
-    let maxProfitOf: (net: number, size: number) => number | 'uncapped' | null;
-    const width = w;
-    switch (kind) {
-      case 'vertical': {
-        const right: 'C' | 'P' = h('r') < 0.55 ? 'C' : 'P';
-        const k1 = atm;
-        const k2 = right === 'C' ? atm + width : atm - width;
-        const debit = h('dc') < 0.7;
-        legs = [mk(debit ? 'BUY' : 'SELL', 1, k1, right), mk(debit ? 'SELL' : 'BUY', 1, k2, right)];
-        maxLossOf = (net, size) => (net > 0 ? net * 100 * size : Math.max(0, (width - Math.abs(net)) * 100 * size));
-        maxProfitOf = (net, size) => (net > 0 ? Math.max(0, (width - net) * 100 * size) : Math.abs(net) * 100 * size);
-        break;
-      }
-      case 'condor': {
-        const kc = atm + width;
-        const kp = atm - width;
-        legs = [mk('SELL', 1, kp, 'P'), mk('BUY', 1, kp - width, 'P'), mk('SELL', 1, kc, 'C'), mk('BUY', 1, kc + width, 'C')];
-        maxLossOf = (net, size) => Math.max(0, (width - Math.abs(net)) * 100 * size);
-        maxProfitOf = (net, size) => Math.abs(net) * 100 * size;
-        break;
-      }
-      case 'butterfly': {
-        const right: 'C' | 'P' = h('r') < 0.6 ? 'C' : 'P';
-        legs = [mk('BUY', 1, atm - width, right), mk('SELL', 2, atm, right), mk('BUY', 1, atm + width, right)];
-        maxLossOf = (net, size) => Math.abs(net) * 100 * size;
-        maxProfitOf = (net, size) => Math.max(0, (width - Math.abs(net)) * 100 * size);
-        break;
-      }
-      case 'straddle': {
-        const long = h('ls') < 0.65;
-        legs = [mk(long ? 'BUY' : 'SELL', 1, atm, 'C'), mk(long ? 'BUY' : 'SELL', 1, atm, 'P')];
-        maxLossOf = (net, size) => (net > 0 ? net * 100 * size : 'uncapped');
-        maxProfitOf = (net, size) => (net > 0 ? 'uncapped' : Math.abs(net) * 100 * size);
-        break;
-      }
-      case 'strangle': {
-        const long = h('ls') < 0.65;
-        legs = [mk(long ? 'BUY' : 'SELL', 1, atm + width, 'C'), mk(long ? 'BUY' : 'SELL', 1, atm - width, 'P')];
-        maxLossOf = (net, size) => (net > 0 ? net * 100 * size : 'uncapped');
-        maxProfitOf = (net, size) => (net > 0 ? 'uncapped' : Math.abs(net) * 100 * size);
-        break;
-      }
-      case 'calendar': {
-        const right: 'C' | 'P' = h('r') < 0.6 ? 'C' : 'P';
-        const far = dte + [16, 30, 44][Math.floor(h('far') * 3)];
-        legs = [mk('SELL', 1, atm, right, dte), mk('BUY', 1, atm, right, far)];
-        maxLossOf = (net, size) => Math.abs(net) * 100 * size;
-        maxProfitOf = () => null; // depends where the near clock leaves it
-        break;
-      }
-      case 'ratio': {
-        const right: 'C' | 'P' = h('r') < 0.6 ? 'C' : 'P';
-        const k2 = right === 'C' ? atm + width : atm - width;
-        legs = [mk('BUY', 1, atm, right), mk('SELL', 2, k2, right)];
-        maxLossOf = () => 'uncapped';
-        maxProfitOf = (net, size) => Math.max(0.05, (width - net) * 100 * size);
-        break;
-      }
-    }
-
-    let net = 0;
-    for (const l of legs) net += (l.side === 'BUY' ? 1 : -1) * l.fill * l.ratio;
-    net = Number((Math.abs(net) < 0.05 ? 0.05 * Math.sign(net || 1) : net).toFixed(2));
-    const size = Math.round(5 + Math.pow(h('sz'), 2.5) * 1500);
-    const strikes = [...new Set(legs.map(l => l.strike))].sort((a, b) => a - b);
-
-    // Package greeks: directional shapes carry delta, premium-sellers carry
-    // positive theta — plausible placeholder physics, one convention.
-    const dir = legs[0].right === 'C' ? 1 : -1;
-    const delta =
-      kind === 'vertical' || kind === 'ratio'
-        ? Number((dir * Math.sign(net) * (0.12 + h('dl') * 0.35)).toFixed(2))
-        : Number(((h('dl') - 0.5) * 0.2).toFixed(2));
-    const theta = Number(((net > 0 ? -1 : 1) * (0.01 + h('th') * 0.05) * Math.max(1, Math.abs(net))).toFixed(2));
-
-    trades.push({
-      id: seed,
-      minute,
-      time: clockOf(minute),
-      ticker: q.ticker,
-      kind,
-      strikesLabel: strikes.join(' / '),
-      expiry: exp,
-      dte,
-      size,
-      net,
-      premium: Math.round(Math.abs(net) * size * 100),
-      maxLoss: maxLossOf(net, size),
-      maxProfit: maxProfitOf(net, size),
-      iv: Number((ivFrac * 100).toFixed(1)),
-      delta,
-      theta,
-      spot: Number(spot.toFixed(2)),
-      legs,
-    });
+/** Mark the pieces of split orders (SpreadTrade.splitOf): same ticker, second, expiry and vendor name as a structure whose
+    legs agree with the vendor's name, while this one's legs name it otherwise */
+export function markSplitOrders(list: SpreadTrade[]): SpreadTrade[] {
+  const groups = new Map<string, SpreadTrade[]>();
+  const keyOf = (t: SpreadTrade) => `${t.ticker}|${Math.floor((t.epochMs ?? 0) / 1000) || t.time}|${t.expiry}|${t.shapeOfVendor ?? ''}|${t.strikesLabel}`;
+  for (const t of list) {
+    const k = keyOf(t);
+    const g = groups.get(k);
+    if (g) g.push(t);
+    else groups.set(k, [t]);
   }
-
-  trades.sort((a, b) => b.minute - a.minute);
-  spreadCache = { key: cacheKey, trades };
-  return trades;
+  const split = new Map<string, string>();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const agree = g.filter(t => t.legsState === 'in' && !t.vendorShape && !t.compression).sort((a, b) => (b.units ?? 0) - (a.units ?? 0))[0];
+    if (!agree) continue;
+    for (const t of g) if (t !== agree && t.legsState === 'in' && t.vendorShape) split.set(t.id, agree.shape);
+  }
+  return split.size ? list.map(t => (split.has(t.id) ? { ...t, splitOf: split.get(t.id) } : t)) : list;
 }
 
-/**
- * One leg of a structure, spoken as a day-book row (Noah, 2026-08-30: "the
- * multi leg tape doesnt follow the same rule as the others with the highlighted
- * blue for the cons and takes them to the tape con page").
- *
- * The multi-leg page's own fact is the STRUCTURE, so a row click still opens
- * the structure card. But a strike inside it is a contract like any other, and
- * on every other flow surface a contract is a blue-underlined door to the tape.
- * Turning the leg into a `BookContract` is what lets it walk through that same
- * door — `BookDrill` then mounts the identical card, with ↑/↓ stepping between
- * the structure's own legs.
- *
- * The leg carries the facts that matter (strike, right, expiry, fill, side);
- * the rest of a book row is dressed here, deterministically per structure and
- * leg, in the same idiom the book itself uses. `multiPct` is pinned high on
- * purpose: this contract IS one leg of a spread, and the card should say so.
- */
+/** One leg as a book row — every figure the vendor's legs route sends for it (its day volume, open interest, fill,
+    IV and quote); what the route does not carry (the day's side split, sweeps, history) is left unknown, never drawn
+    (the audit, 2026-10-22: this row was hashed — volume, open interest, its change, sweeps, sides). The card it opens
+    reads the contract's own tape by its symbol. */
 export function spreadLegRow(trade: SpreadTrade, i: number): BookContract {
   const l = trade.legs[i];
-  const seed = `${trade.id}-leg${i}`;
-  const h = (tag: string) => h01(`${seed}-${tag}`);
-  const volume = Math.max(1, Math.round(trade.size * l.ratio * hRange(`${seed}-v`, 1.05, 2.6)));
-  const prevOI = Math.max(25, Math.round(volume * hRange(`${seed}-poi`, 0.6, 4)));
-  const deltaOI = Math.round(volume * hRange(`${seed}-doi`, 0.1, 0.7));
-  const oi = Math.max(25, prevOI + deltaOI);
-  const prevVolume = Math.round(volume * hRange(`${seed}-pv`, 0.4, 1.6));
-  const prevAvgFill = Number(Math.max(0.05, l.fill * hRange(`${seed}-pf`, 0.75, 1.25)).toFixed(2));
+  const volume = l.volume ?? 0;
+  const oi = l.oi ?? 0;
+  const otm = trade.spot > 0 ? ((l.right === 'C' ? l.strike - trade.spot : trade.spot - l.strike) / trade.spot) * 100 : NaN;
   return {
-    // Unique per (structure, leg): a calendar has two legs on ONE strike, so a
-    // strike-based key would collide and the stepper would loop on itself.
     key: `${trade.id}-l${i}`,
+    optionSymbol: l.occ,
     ticker: trade.ticker,
     sector: sectorOf(trade.ticker)?.sector ?? null,
     sectorColor: sectorOf(trade.ticker)?.color ?? null,
@@ -1480,34 +739,32 @@ export function spreadLegRow(trade: SpreadTrade, i: number): BookContract {
     expiry: l.expiry,
     dte: l.dte,
     spot: trade.spot,
-    otmPct: Number((((l.strike - trade.spot) / trade.spot) * 100).toFixed(1)),
+    otmPct: otm,
     last: l.fill,
-    chgPct: Number(((h('chg') - 0.45) * 40).toFixed(1)),
+    chgPct: NaN,
     lastAt: trade.time,
     lastAtMin: trade.minute,
     volume,
     oi,
-    deltaOI,
-    deltaOIPct: Number(((deltaOI / Math.max(prevOI, 1)) * 100).toFixed(1)),
-    premium: Math.round(volume * l.fill * 100),
-    iv: trade.iv,
-    ivChg: Number(((h('ivc') - 0.5) * 6).toFixed(1)),
-    volOverOI: Number((volume / Math.max(oi, 1)).toFixed(2)),
-    sweepPct: Math.round(hRange(`${seed}-sw`, 0, 45)),
-    // It is a spread leg. That is the one thing we know for certain about it.
-    multiPct: Math.round(hRange(`${seed}-ml`, 82, 100)),
-    floorPct: Math.round(hRange(`${seed}-fl`, 0, 40)),
-    // Bought legs lift the offer, sold legs hit the bid — the leg's own side.
-    askPct: l.side === 'BUY' ? Math.round(hRange(`${seed}-ap`, 58, 92)) : Math.round(hRange(`${seed}-ap`, 8, 42)),
-    prevOI,
-    prevVolume,
-    prevAvgFill,
-    prevPremium: Math.round(prevVolume * prevAvgFill * 100),
-    prevAskPct: Math.round(hRange(`${seed}-pap`, 20, 80)),
-    oiStreak: Math.floor(h('ois') * 4),
-    volGtOiStreak: Math.floor(h('vgs') * 3),
+    deltaOI: 0,
+    deltaOIPct: 0,
+    premium: Math.round((l.contracts ?? trade.size * l.ratio) * l.fill * 100),
+    iv: l.iv ?? trade.iv,
+    ivChg: 0,
+    volOverOI: oi > 0 ? volume / oi : 0,
+    sweepPct: 0,
+    multiPct: 0,
+    floorPct: 0,
+    askPct: NaN,
+    prevOI: 0,
+    prevVolume: 0,
+    prevAvgFill: 0,
+    prevPremium: 0,
+    prevAskPct: 0,
+    oiStreak: 0,
+    volGtOiStreak: 0,
     earnDays: null,
-    prevSpark: Array.from({ length: 26 }, (_, k) => h01(`${seed}-sp${k}`)),
+    prevSpark: [],
   };
 }
 
@@ -1537,10 +794,11 @@ export function applyFilters(rows: BookContract[], f: BookFilters): BookContract
     if (f.tenors.length > 0 && !f.tenors.includes(sleeveForDte(r.dte))) return false;
     if (r.volume < f.minVolume) return false;
     if (r.premium < f.minPremium) return false;
-    if (f.excludeItm) {
-      const itm = r.right === 'C' ? r.otmPct < 0 : r.otmPct > 0;
-      if (itm) return false;
-    }
+    /* "Out of the money — strikes past the stock only": a known distance past the stock (an unknown one is not shown as OTM) */
+    if (f.excludeItm && !(Number.isFinite(r.otmPct) && r.otmPct >= 0)) return false;
     return true;
   });
 }
+
+/** Said on every figure the vendor sums for us (audit round 5, SidesRule): its totals carry spread legs and floor packages */
+export const VENDOR_TOTAL_NOTE = 'A vendor total — it includes spread legs and floor packages (the vendor sums every print; the legs cannot be taken back out without every print across the market). Only the totals Trace builds from prints — the Live Tape, the Dark Pool, Multi-Leg — leave them out';

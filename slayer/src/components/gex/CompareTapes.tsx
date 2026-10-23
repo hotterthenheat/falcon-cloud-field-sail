@@ -23,11 +23,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
 import { deskBars } from '../../data/uwBook';
+import { DayRef } from '../../data/bookWindow';
+import { nyIsoDate } from '../../core/nyTime';
 import { useDeskSession } from '../../data/deskSession';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { alpha, resolveInk } from './paletteInk';
-import { fmtClockLocal, localTickMarks } from './chartTime';
+import { fmtClockLocal, nyTickMarks } from './chartTime';
 import { TAPES_H, TAPES_READ_H } from './compareSkeletons';
 
 const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
@@ -96,6 +98,10 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
   const [hover, setHover] = useState<{ point: Point; left: number; top: number } | null>(null);
   const desk = useDeskSession();
   const today = useMemo(() => buildToday(a, b, desk !== 'rth'), [a, b, revision, desk]);
+  /* THE BARS' OWN DAY (the fifth audit, 2026-10-23: "Since the open … Today" over Thursday's session at 01:00 Friday) */
+  const lastT = today.points[today.points.length - 1]?.time;
+  const barDay = lastT != null ? nyIsoDate(lastT * 1000) : null;
+  const dayW = barDay ? DayRef(barDay) : 'Today';
   const pointsRef = useRef(today.points);
   pointsRef.current = today.points;
 
@@ -115,12 +121,13 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
     const chart = createChart(host, {
       autoSize: true,
       layout: { background: { color: surface.bg === 'transparent' ? readToken('--panel', undefined, host) : surface.bg }, textColor: surface.text, fontFamily: "'Inter', sans-serif", fontSize: 10, attributionLogo: true },
-      localization: { timeFormatter: fmtClockLocal },
+      /* New York's clock, like every other Pinpoint chart — on a UTC machine the axis read 15:00 → 19:55 */
+      localization: { timeFormatter: (t: Time) => fmtClockLocal(t, 'ny') },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
       /* Room above the lines: at 0.08 the leader's live chip sat over the top axis
          figure and hid half of it (the lock walk, 2026-09-09) */
       rightPriceScale: { borderColor: surface.line, scaleMargins: { top: 0.16, bottom: 0.28 } },
-      timeScale: { borderColor: surface.line, timeVisible: true, secondsVisible: false, rightOffset: 4, tickMarkFormatter: localTickMarks },
+      timeScale: { borderColor: surface.line, timeVisible: true, secondsVisible: false, rightOffset: 4, tickMarkFormatter: nyTickMarks },
       crosshair: {
         vertLine: { color: surface.crosshair, labelBackgroundColor: surface.label },
         horzLine: { color: surface.crosshair, labelBackgroundColor: surface.label },
@@ -228,12 +235,13 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
     <section className="flex flex-col min-w-0" data-compare-tapes-band data-since-a={today.lastA?.toFixed(2)} data-since-b={today.lastB?.toFixed(2)}>
       {/* THE HEAD */}
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3 flex-wrap">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Since the open</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Since the open{dayW === 'Today' ? '' : ` · ${dayW}`}</h3>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap">
-            Today, both as percent from their own open · <span style={{ color: aInk }}>{a}</span> and <span style={{ color: bInk }}>{b}</span>, the same line each · the band beneath is the gap, in the leader's ink
+          {/* truncate: unclipped, the line ran under the facts beside it ("…in the leader's ink" over "SPY +0.47%") */}
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+            {dayW}, both as percent from their own open · <span style={{ color: aInk }}>{a}</span> and <span style={{ color: bInk }}>{b}</span>, the same line each · the band beneath is the gap, in the leader's ink
           </p>
         </div>
         <dl className="grid grid-cols-3 gap-x-6">
@@ -250,13 +258,13 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Ahead now</dt>
+            <dt className="text-[10px] text-textMuted">{dayW === 'Today' ? 'Ahead now' : 'Ahead at the close'}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-tapes-ahead>
               {today.lastA == null || today.lastB == null ? '—' : Math.abs(today.lastA - today.lastB) < 0.005 ? 'level' : `${today.lastA > today.lastB ? a : b} by ${Math.abs(today.lastA - today.lastB).toFixed(2)}%`}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">The gap today</dt>
+            <dt className="text-[10px] text-textMuted">{dayW === 'Today' ? 'The gap today' : `The gap · ${barDay!.slice(5).replace('-', '/')}`}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-tapes-gap>
               {today.gap ? `${signedPct(today.gap.min)} to ${signedPct(today.gap.max)}` : '—'}
             </dd>

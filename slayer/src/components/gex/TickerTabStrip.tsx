@@ -35,6 +35,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 import { useAnchoredMenu } from '../ui/useAnchoredMenu';
+import DayMoveText from '../gex/DayMoveText';
 
 export const TAB_MAX = 5;
 const MENU_W = 288;
@@ -147,10 +148,7 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
               {!compact && price != null && change != null && (
                 <>
                   <span className="text-[11px] tnum text-textPrimary">{fmtPrice(price)}</span>
-                  <span className={`text-[10.5px] tnum ${change >= 0 ? 'text-bull' : 'text-bear'}`}>
-                    {change >= 0 ? '+' : '−'}
-                    {Math.abs(change).toFixed(2)}%
-                  </span>
+                  <DayMoveText ticker={t} short className="text-[10.5px]" />
                 </>
               )}
             </button>

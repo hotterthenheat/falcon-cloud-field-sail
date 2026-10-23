@@ -118,6 +118,13 @@ export function overlapFor(member: Member, ticker: string): string | null {
 
 /** A bracket's label, with the unparsed case named rather than blanked */
 export const bracketLabel = (i: number | null): string => (i === null ? 'not disclosed' : AMOUNT_BRACKETS[i].label);
+const kShort = (v: number) => (v >= 1_000_000 ? `$${v / 1_000_000}M` : `$${Math.round(v / 1_000)}K`);
+/** The bracket in short form for the cards ("$250K – $500K"): the full rungs ran past a card at six across */
+export const bracketShort = (i: number | null): string => {
+  if (i === null) return 'not disclosed';
+  const b = AMOUNT_BRACKETS[i];
+  return b.high == null ? `Over ${kShort(b.low - 1)}` : `${kShort(b.low - 1)} – ${kShort(b.high)}`;
+};
 
 export const EMPTY_CONGRESS: CongressFeed = { trades: [], totalLow: 0, totalHigh: 0, unknownAmounts: 0, purchases: 0, sales: 0, lateFilings: 0, overlaps: 0, medianLag: 0, windowDays: 0 };
 
@@ -185,6 +192,26 @@ export function buildCongress(windowDays = 90, day = dayKey(), count = Math.roun
   return summariseCongress(trades, windowDays);
 }
 
+/** A Treasury bill report — the bulk of the book (cash parked in 4- to 52-week bills), not an equity bet. The pages hide
+    them by default and say how many they hid (audit round 5, 2026-10-23) */
+export const isTreasuryBill = (t: CongressTrade): boolean => {
+  const d = `${t.assetDescription || ''} ${t.ticker || ''}`;
+  /* the filers' own spellings (audit round 7: Steve Cohen's "US Treas Bills Int Rate 0.000% MAT 8/5/2027" and "U.S. Tres
+     Bill …" were counted as reports): Treasury, Treas, Tres or Trsy, then Bill(s) */
+  return /\b(?:treasury|treas|tres|trsy|tsy)\.?\s*bills?\b|\bt-?bills?\b|\bus treasury bill|\bunited states treasury bill/i.test(d);
+};
+
+/* BONDS APART FROM THE STOCK BOOK (round 8: Treasury notes and munis topped "the reports to know" and were summed into
+   the headline total, while T-bills were hidden). A report of a note, a bond, a municipal or an asset-backed security —
+   Treasury, agency, state or corporate — is counted apart from the stock-focused figures, and said apart. */
+export const isBondReport = (t: CongressTrade): boolean => {
+  if (isTreasuryBill(t)) return false;
+  if (t.assetKind === 'Corporate Bond' || t.assetKind === 'Municipal Security' || t.assetKind === 'Asset-Backed Security') return true;
+  if (t.assetKind !== 'Other') return false;
+  const d = `${t.assetDescription || ''} ${t.ticker || ''}`;
+  return /\b(?:treasury|treas|tres|trsy|tsy|govt|government|agency|fnma|fhlmc|fhlb|gnma|freddie|fannie)\b[^\n]{0,40}\b(?:notes?|bonds?|tips|strips|debentures?)\b|\b(?:notes?|bonds?)\b[^\n]{0,20}\b(?:due|mat(?:ures)?)\b|\b\d+(?:\.\d+)?%\s/i.test(d);
+};
+
 /** The feed's figures over any set of reports — the page re-sums whatever its cards leave */
 export function summariseCongress(trades: CongressTrade[], windowDays: number): CongressFeed {
   let totalLow = 0;
@@ -198,9 +225,9 @@ export function summariseCongress(trades: CongressTrade[], windowDays: number): 
     if (t.bracket === null) unknownAmounts += 1;
     else {
       const b = AMOUNT_BRACKETS[t.bracket];
-      totalLow += b.low;
-      /* An open-ended top rung makes the ceiling unknowable — null, not a guess */
-      if (totalHigh !== null) totalHigh = b.high === null ? null : totalHigh + b.high;
+      totalLow += t.amountOver != null ? t.amountOver + 1 : b.low;
+      /* An open-ended top rung — or an open-ended amount as filed ("over $1,000,000") — makes the ceiling unknowable */
+      if (totalHigh !== null) totalHigh = b.high === null || t.amountOver != null ? null : totalHigh + b.high;
     }
     if (t.type === 'Purchase') purchases += 1;
     else if (t.type !== 'Exchange') sales += 1;
@@ -214,13 +241,16 @@ export function summariseCongress(trades: CongressTrade[], windowDays: number): 
 
 const fmtMoney = (v: number) => `$${v.toLocaleString('en-US')}`;
 
-/** The feed's sentence — the brackets summed, the overlap named, the late ones counted */
+/** The feed's sentence — the brackets summed, the late ones counted */
 export function congressSentence(f: CongressFeed): string {
-  if (f.trades.length === 0) return `No reports filed in the last ${f.windowDays} days.`;
+  if (f.trades.length === 0) return `No report on this cut of trades made in the last ${f.windowDays} days.`;
   const range = f.totalHigh === null ? `at least ${fmtMoney(f.totalLow)}` : `between ${fmtMoney(f.totalLow)} and ${fmtMoney(f.totalHigh)}`;
-  const parts = [`${f.trades.length} reports covering ${range} — the brackets summed, not a point estimate.`];
-  if (f.overlaps > 0) parts.push(`${f.overlaps} sit inside the member's own committee jurisdiction, which is the reading this data is for.`);
-  if (f.lateFilings > 0) parts.push(`${f.lateFilings} missed the 45-day deadline.`);
-  if (f.unknownAmounts > 0) parts.push(`${f.unknownAmounts} carried no amount the filing could be read for.`);
+  const parts = [`${f.trades.length.toLocaleString('en-US')} reports covering ${range} — the brackets summed, not a point estimate.`];
+  if (f.lateFilings > 0) parts.push(`${f.lateFilings.toLocaleString('en-US')} missed the 45-day deadline.`);
+  if (f.unknownAmounts > 0) parts.push(`${f.unknownAmounts.toLocaleString('en-US')} carried no amount the filing could be read for.`);
   return parts.join(' ');
 }
+
+/** A member's seat as one short tag — "R-AR", "D-TX-35", "R" — joining only what the roster knows ("I-" and "-AR" never) */
+export const seatLabel = (m: { party: string; state?: string; district?: string | null }): string =>
+  [m.party, m.district || m.state].filter(Boolean).join('-');

@@ -38,7 +38,7 @@ import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
 import { useResolvedTheme } from '../../theme/theme';
 import { HEADING_AXIS_H, HEADING_M, HEADING_ORDER, HEADING_ROW_H, HEADING_TOP, HEADING_W } from './buildingSkeletons';
 import { fmtStrike, type AheadClock } from '../../data/ahead';
-import type { Building, WallHeading as Level } from '../../data/building';
+import { oiWhen, type Building, type WallHeading as Level } from '../../data/building';
 
 /* THE FIGURE ON PAPER (the light sweep, 2026-09-19 — Noah: "the arrows and paths arent visible here to well"). It already
    sat on the page's ground, but it was DRAWN for black: the travel and the tie at a third of the ink's voice (a bright
@@ -184,7 +184,9 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
               <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the dots, the rings and the diamonds mean" testId="heading-guide" />
             </div>
             <p className="mt-0.5 text-[11px] text-textMuted">
-              Each level on the strike axis: where it stood at the open, where it is now, and where {clock.inSession ? "today's pace puts it by the close" : "the last session's pace puts it next session"} · a straight line, not a forecast
+              {data.overnight
+                ? `Each level on the strike axis: where it stood before ${oiWhen(data.oiDates).trade ?? 'the overnight count'} (the overnight open-interest count) and where it is now · the count is one step, so nothing is projected`
+                : <>Each level on the strike axis: where it stood at the open, where it is now, and where {clock.inSession ? "today's pace puts it by the close" : "the last session's pace puts it next session"} · a straight line, not a forecast</>}
             </p>
           </div>
         )}
@@ -254,7 +256,7 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
 
                 {l.now == null ? (
                   <text x={x((lo + hi) / 2)} y={y + 3.5} textAnchor="middle" fontSize={9.5} fill={K.note} fontFamily={SANS}>
-                    none {l.name === 'Call wall' ? 'overhead' : 'underneath'} on this book
+                    none — no {l.name === 'Call wall' ? 'call' : 'put'} gamma on this book
                   </text>
                 ) : (
                   <>
@@ -316,10 +318,10 @@ const WallHeading = ({ data, clock, scope, headless = false, fill = false, bare 
         </div>
         {/* THE KEY — its own line, so nothing sits on the axis's prices */}
         <div className="mt-1 pl-2 flex items-center gap-4 flex-wrap text-[9px] text-textMuted" data-heading-key>
-          <Key kind="open">at the open</Key>
+          <Key kind="open">{data.overnight ? `before ${oiWhen(data.oiDates).trade ?? 'the overnight count'}` : 'at the open'}</Key>
           <Key kind="now">now</Key>
-          <Key kind="close">{clock.inSession ? 'by the close, at this pace' : 'next session, at this pace'}</Key>
-          <Key kind="challenger">growing fastest on that side</Key>
+          {!data.overnight && <Key kind="close">{clock.inSession ? 'by the close, at this pace' : 'next session, at this pace'}</Key>}
+          <Key kind="challenger">{data.overnight ? 'grew most overnight on that side' : 'growing fastest on that side'}</Key>
         </div>
       </div>
     </section>

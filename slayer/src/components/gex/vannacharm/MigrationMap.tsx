@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { bookHistory, ensureBook, useBookRev } from '../../../data/uwBook';
-import { fmtUsd } from '../../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../../data/gex';
 import { heatRgb } from '../heatmap';
 import SignalBadge from '../../ui/SignalBadge';
 import TrendLine from '../TrendLine';

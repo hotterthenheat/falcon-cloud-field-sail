@@ -20,7 +20,19 @@ Also note:
 
 - `/stock/{t}/greeks?expiry=YYYY-MM-DD` works (greeks for every strike of one expiry). It must be on the proxy's
   allowlist in `server/uwProxy.mjs` — every route the browser calls has to be listed there or the proxy answers 404.
-- `/option-trades/exchange-breakdown/{date}` answered 422 in the live sweep.
+- `/stock/{t}/option-contracts` takes `limit` up to **500** (not 1000) and pages with `page`; without `expiry` it walks
+  every listed contract of the name. Pinpoint reads it paged (`whales.ts whalesOptionContractsPaged`) — one expiry, or
+  the whole name in one walk when that needs fewer pages (round 6: SPY's Nov 30 / Dec 18 / Dec 31 were cut at 500).
+- `/stock/{t}/spot-exposures/expiry-strike` without `expirations[]` returns every expiry's rows (one per strike and
+  expiry, 500 a page) — the Board's All-expiries load reads a name's dates in one walk rather than one call a date.
+- `/option-trades/exchange-breakdown/{date}` is gated to the API Advanced plan (422 "Missing access for the option tape" on this key) — not called, and the Live Tape's exchange panel is removed. It is the only route the three products used that this key refuses (browser sweep 2026-10-22: 40 pages, 7,621 calls, 146 distinct endpoints, every other one 200).
+- The Congress page needs only `/congress/*` (all open on this key); stock ownership ("Who is in it") reads `/institution/{t}/ownership` (open). The enterprise `/stock/{t}/ownership` and `/politician-portfolios/*` are extras the pages do not depend on.
+- **The key allows only 3 concurrent requests, across everyone using it** (UW answers 429 "You have exceeded 3
+  concurrent requests" and sometimes 500 past that). `server/uwProxy.mjs` therefore runs at most 3 upstream calls at
+  once, queues the rest, retries 429/5xx with backoff, and serves the last good copy if a retry still fails. In
+  production every visitor shares those 3 slots, so the proxy cache is what keeps it usable — a higher plan or a
+  shared server-side cache is needed before real traffic.
+- Futures and the rate strip are not carried: the Trace Futures tab is hidden from the navigation and `/trace/futures` redirects to the Live Tape (the page file is kept).
 
 ## Unusual Whales
 

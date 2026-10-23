@@ -14,7 +14,7 @@
 ==================================================
 */
 
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import Term from '../ui/Term';
 import type { TermKey } from '../../data/terms';
 import type { KeyLevelKind, KeyLevelRow } from '../../types/gex';
@@ -40,8 +40,8 @@ const KIND_TEXT: Record<KeyLevelKind, string> = {
 };
 
 const KIND_BAR: Record<KeyLevelKind, string> = {
-  'call-wall': 'bg-bull/90',
-  'put-wall': 'bg-bear/80',
+  'call-wall': 'bg-glacier/90',
+  'put-wall': 'bg-ember/80',
   flip: 'bg-flip/60',
   supreme: 'bg-supreme/60',
   pin: 'bg-textMuted/60',

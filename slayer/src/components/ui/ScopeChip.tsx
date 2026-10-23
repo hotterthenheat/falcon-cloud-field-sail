@@ -48,7 +48,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
-import { useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, priceWords, useLiveQuote, type LiveQuote } from '../../data/liveQuote';
+import { DayRef } from '../../data/bookWindow';
+
+/** "Today's" in the session; outside it the last regular session named by its date ("Thu Oct 22's") */
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "Oct 22" */
+const shortMonDay = (iso: string): string => {
+  const [, m, d] = iso.split('-').map(Number);
+  return m && d ? `${MON3[m - 1]} ${d}` : iso;
+};
+const sessionWord = (q: LiveQuote | null | undefined): string => {
+  const d = q && q.phase !== 'regular' ? q.regDate : null;
+  const w = d ? DayRef(d) : 'Today';
+  return `${w}'s`;
+};
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
 import useFocusTrap from './useFocusTrap';
@@ -74,6 +88,9 @@ interface ScopeChipProps {
   /** Print the live price and change on an own-name chip. Off where the
       host already prints its own price beside the chip. */
   quote?: boolean;
+  /** Outside the regular session print the REGULAR CLOSE as the price, the extended-hours move beside it (the Trace
+      pages, audit round 5: Compare's chip read QQQ's after-hours print, $703.29, beside the regular session's −2.86%) */
+  closeOutside?: boolean;
   /** Optionally controlled, like TickerQuickPick — a host with keys owns it */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -85,7 +102,7 @@ interface ScopeChipProps {
   full?: boolean;
 }
 
-const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, open: openProp, onOpenChange, title, full = false }: ScopeChipProps) => {
+const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false }: ScopeChipProps) => {
   const [selfOpen, setSelfOpen] = useState(false);
   const arriving = useWorking(useNameArriving(ticker));
   const open = openProp ?? selfOpen;
@@ -135,8 +152,13 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, open: openProp
 
   /* The live quote. A dash until stock-state answers. Never the simulator. */
   const live = useLiveQuote(quote && (!follows || full) ? ticker : null);
-  const price = live?.spot;
-  const change = live?.changePct;
+  const price = closeOutside ? priceWords(live)?.lead : live?.spot;
+  /* BEFORE THE OPEN THE LEAD IS THE LAST SESSION'S CHANGE (the sixth audit's M1, 2026-10-23: "$763.96 0.00% · pre
+     764.83" beside the Dossier's "−1.18% Oct 22"): dayMoveWords' lead — the last regular session's change, named by its
+     date, with the pre-market move beside it; "…" until the daily rows say it */
+  const pre = live?.phase === 'pre';
+  const change = pre ? live?.lastSessionPct ?? null : live?.changePct;
+  const changeDay = pre && live?.regDate ? shortMonDay(live.regDate) : null;
 
   const menu =
     open &&
@@ -181,15 +203,24 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, open: openProp
       >
         <CompanyLogo ticker={ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary leading-none">{ticker}</span>
-        {price != null && change != null && (
+        {price != null && live != null && (
           <>
             <span className="text-[11px] tnum text-textPrimary leading-none" data-scope-price>
               ${price.toFixed(2)}
             </span>
-            <span className={`text-[10px] tnum leading-none ${change >= 0 ? 'text-bull' : 'text-bear'}`}>
-              {change >= 0 ? '+' : ''}
-              {change.toFixed(2)}%
+            {/* the regular session's change; the move outside the session rides beside it, and zero is neutral — the
+                session named by its own date outside the session (the fifth audit: "Today's regular-session change" at
+                01:00 Friday over Thursday's close) */}
+            <span className={`text-[10px] tnum leading-none whitespace-nowrap ${change == null || Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${pre ? ' — the session has not opened' : ''}${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`} data-scope-change>
+              {change == null ? '…' : `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)}%`}
+              {changeDay && <span className="text-textMuted"> {changeDay}</span>}
             </span>
+            {extendedLine(live) && (
+              <span className="text-[10px] tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
+                {/* the chip's room is a title row's: "pre" and "AH" stand for the words, which the hover spells out */}
+                · {pre ? extendedLine(live)!.replace('pre-market', 'pre') : closeOutside && live?.extPrice != null ? `AH ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH')}
+              </span>
+            )}
           </>
         )}
         {/* THE NAME IS STILL ARRIVING (ui/Working.tsx): the panel keeps its shape and its last numbers, and the chip that names

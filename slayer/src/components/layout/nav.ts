@@ -210,7 +210,7 @@ export const NAV_GROUPS: NavGroup[] = ['Home', 'Market', 'The book', 'Trade', 'P
 export const NAV_GROUP_META: Record<NavGroup, { icon: LucideIcon; hint: string; caption: string | null }> = {
   Home: { icon: Activity, hint: 'The desk you land on', caption: null },
   Market: { icon: CandlestickChart, hint: 'What the market is doing, and what happened', caption: 'Market' },
-  'The book': { icon: Crosshair, hint: 'Where dealer hedging pushes', caption: 'The book' },
+  'The book': { icon: Crosshair, hint: 'The book: every open option contract on a name, and the dealer hedging it implies — where that hedging pushes', caption: 'The book' },
   Trade: { icon: Compass, hint: 'What to trade, and which contract', caption: 'Trade' },
   Practice: { icon: Dumbbell, hint: 'Trade with pretend money — today’s prices or a past market — and look back', caption: 'Practice' },
   More: { icon: Settings, hint: 'The room, and how the terminal is set', caption: null },

@@ -55,10 +55,12 @@
 ==================================================
 */
 
+import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
+import { useIsPhone } from '../../components/ui/useMediaQuery';
+import { ensureBook, snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
@@ -74,13 +76,14 @@ import { BookOrSkeleton } from './BookDown';
 import WatchMenu from '../../components/gex/WatchMenu';
 import { ladderExpiryOptions } from '../../components/gex/ladderControls';
 import { armPrice, removeAlert, useAlerts } from '../../components/gex/alertStore';
-import { buildAgenda, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { trimAgenda, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { deskAgenda } from '../../data/board';
+import { todayScopeLabel } from '../../data/bookWindow';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { aheadClock, type AheadClock } from '../../data/ahead';
-import { buildBuilding } from '../../data/building';
 import { readSessionClock } from '../../data/moc';
-import { MAX_PANES, PANE_COLS, newPaneKey, readPanes, writePanes, type Pane } from '../../data/panes';
+import { MAX_PANES, OFF_SCOPE_TITLE, PANE_COLS, newPaneKey, readPanes, usePanesFollowScope, writePanes, type Pane } from '../../data/panes';
 import { contractWords, usePositions } from '../../data/positions';
 import type { ExposureExpiry } from '../../types/gex';
 import type { MarketSnapshot } from '../../types/market';
@@ -92,7 +95,8 @@ let panesMemory: Pane[] | null = null;
 let orderMemory: AgendaOrder = 'matters';
 let windowMemory: StrikeWindow = 20;
 
-const hhmmss = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
 /* ---- one pane --------------------------------------------------------------------------- */
 
@@ -111,6 +115,8 @@ interface PaneProps {
   onToggleLink: () => void;
   onPickName: (t: string) => void;
   onExpiry: (e: ExposureExpiry) => void;
+  /** The pane reads another expiry than the Levels card */
+  offScope?: boolean;
   onRemove: () => void;
   yours?: ReadonlyMap<number, string>;
   focus: number | null;
@@ -118,7 +124,7 @@ interface PaneProps {
 }
 
 /** A pane: its own alerts, its own watch menu, its own door off — the board under its line */
-const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count, expiryOptions, linked, onToggleLink, onPickName, onExpiry, onRemove, yours, focus, onPick }: PaneProps) => {
+const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count, expiryOptions, linked, onToggleLink, onPickName, onExpiry, onRemove, yours, focus, onPick, offScope }: PaneProps) => {
   const navigate = useNavigate();
   const { focusOn } = useFocus();
   const alerts = useAlerts(ticker);
@@ -134,8 +140,17 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
     navigate('/pinpoint/map');
   };
   const levels = useMemo(() => buildExposureProfile(snap, pane.expiry, 20).levels, [snap, pane.expiry]);
-  const chip = <ScopeChip ticker={ticker} linked={index === 0 ? linked : undefined} quote={density === 'full'} onToggleLink={index === 0 ? onToggleLink : undefined} onPick={onPickName} />;
-  const expiry = <DropdownSelect label="Expiry" value={pane.expiry} options={expiryOptions} onChange={onExpiry} title="Which expiry's hedging this pane ranks" testId={`targets-expiry-${index}`} size="sm" />;
+  const chip = <ScopeChip closeOutside ticker={ticker} linked={index === 0 ? linked : undefined} quote={density === 'full'} onToggleLink={index === 0 ? onToggleLink : undefined} onPick={onPickName} />;
+  const expiry = (
+    <>
+      <DropdownSelect label="Expiry" value={pane.expiry} options={expiryOptions} onChange={onExpiry} title="Which expiry's hedging this pane ranks — it follows the Levels card at the top until you pick another" testId={`targets-expiry-${index}`} size="sm" />
+      {offScope && (
+            <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
+              own expiry
+            </span>
+          )}
+    </>
+  );
   const watch = <WatchMenu ticker={ticker} spot={agenda.spot} levels={levels} />;
   const off = count > 1 && (
     <button type="button" onClick={onRemove} title="Take this name off" aria-label={`Take ${ticker} off`} className="inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" data-targets-remove={ticker}>
@@ -171,6 +186,7 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
 /* ---- the face --------------------------------------------------------------------------- */
 
 const RankedTargets = () => {
+  const phone = useIsPhone();
   const { activeTicker, changeTicker } = useTicker();
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
@@ -182,12 +198,13 @@ const RankedTargets = () => {
     setPanesState(next);
   };
   const patchPane = (key: string, patch: Partial<Pane>) => setPanes(panes.map(p => (p.key === key ? { ...p, ...patch } : p)));
+  const levelsScope = usePanesFollowScope(panes, setPanes);
   const addPane = (ticker: string) => {
     if (panes.length >= MAX_PANES) return;
     const t = ticker.trim().toUpperCase();
     if (!t) return;
     ensureBook(t, 'full');
-    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: '0DTE' }]);
+    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: levelsScope }]);
   };
   const removePane = (key: string) => {
     if (panes.length <= 1) return;
@@ -205,7 +222,9 @@ const RankedTargets = () => {
   };
   const [guideOpen, setGuideOpen] = useState(false);
   /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
-  const expiryOptions = useMemo<DropdownOption<ExposureExpiry>[]>(() => ladderExpiryOptions().map(o => ({ value: o.value, label: o.label, hint: o.hint })), []);
+  /* each pane's Expiry card names the listing its own name reads (ladderExpiryOptions with a ticker) — re-read as the
+     book lands (bookRev re-renders the page) */
+  const expiryOptionsFor = (t: string): DropdownOption<ExposureExpiry>[] => ladderExpiryOptions(t).map(o => ({ value: o.value, label: o.label, hint: o.hint }));
 
   /* THE CLOCK — New York time, re-read every 15s; the reach odds run on it */
   const [clockRaw, setClockRaw] = useState(() => readSessionClock());
@@ -227,7 +246,8 @@ const RankedTargets = () => {
        the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
        at once */
     const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
+    /* a book whose dates or contract facts landed (a new uwByDate — uwBook never edits a chain in place) is taken at once */
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData) || scanRef.current.uwByDate !== marketData.uwByDate;
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;
@@ -267,12 +287,11 @@ const RankedTargets = () => {
     for (const p of panes) {
       const snap = snapFor(p);
       if (!snap) continue;
-      const t = snap.ticker;
-      const profile = buildExposureProfile(snap, p.expiry, window);
-      const iv = peekIv(t) ?? 0;
-      const building = buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock);
+      /* THE DESK'S ONE AGENDA (data/board.ts deskAgenda) — the Board's and Compare's watch-first is this page's; the
+         Strikes card only trims the list */
       const surface = buildExposureSurface(snap, 30, CALENDAR_DTES);
-      out.set(p.key, buildAgenda(snap, profile, building, surface, bookCandles(t) ?? [], clock, iv, order));
+      const agenda = deskAgenda(snap, p.expiry, clock, order, surface);
+      if (agenda) out.set(p.key, trimAgenda(agenda, window));
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -293,7 +312,9 @@ const RankedTargets = () => {
   const first = agendas.get(panes[0].key);
   if (!scan || !first) return <BookOrSkeleton tickers={[activeTicker]}><TargetsPageSkeleton rows={window * 2 - 2} /></BookOrSkeleton>;
 
-  const density = densityFor(panes.length);
+  /* a phone is one narrow pane: the tight columns (strike · reached · holds · actions) fit its 360px, the full list ran
+     off the right edge at "Reached next" (the phone sweep, 2026-10-22) */
+  const density = phone ? 'tight' : densityFor(panes.length);
   let strikes = 0;
   for (const a of agendas.values()) strikes += a.targets.length;
 
@@ -308,8 +329,8 @@ const RankedTargets = () => {
           <AgendaSwitch />
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the order, the cards and the rows mean" testId="targets-guide" />
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-          Every strike in the order it matters today — how likely price gets there × how much happens if it does
+        <p className="mt-0.5 text-[11px] text-textMuted lg:whitespace-nowrap lg:truncate">
+          Every strike in the order it matters {todayScopeLabel() === 'Today' ? 'today' : 'next session'} — how likely price gets there × how much happens if it does
           {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
         </p>
       </div>
@@ -354,11 +375,12 @@ const RankedTargets = () => {
                     clock={clock}
                     density={density}
                     count={panes.length}
-                    expiryOptions={expiryOptions}
+                    expiryOptions={expiryOptionsFor(t)}
                     linked={linked}
                     onToggleLink={() => patchPane(p.key, { ticker: linked ? t : undefined })}
                     onPickName={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
                     onExpiry={e => patchPane(p.key, { expiry: e })}
+                    offScope={p.expiry !== levelsScope}
                     onRemove={() => removePane(p.key)}
                     yours={t === activeTicker ? yours : undefined}
                     focus={focusFor(t)}

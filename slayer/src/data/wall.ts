@@ -51,33 +51,77 @@ import { findAirPockets, SHELF_SHARE, type AirPocket } from './airPockets';
 import { buildHedgeFlowLadder, type FlowLadder } from './hedgeFlow';
 import { SESSION_MIN, fmtDollars, fmtStrike, wholeBookVanna, type AheadClock } from './ahead';
 import type { Building } from './building';
-import type { ExposureSurface } from './exposureSurface';
+import { todayColumn, type ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
+import { putWallWords } from '../core/walls';
+import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './uwBook';
+import { datesOf } from './flipLevel';
+
+/** The one expiry a snapshot's levels chain reads, or null for several / the whole book */
+export const scopeDateOf = (snapshot: MarketSnapshot): string | null => {
+  const d = datesOf(snapshot, snapshot.chain);
+  return Array.isArray(d) && d.length === 1 ? d[0] : null;
+};
+
+/*
+  THE REACH ODDS' HORIZON (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20 and its odds ran on one session at
+  the ATM vol, $4.95, against the vendor's $14.98 into Nov 20). A scope whose expiry is the coming session reads that
+  session's move, scaled to the minutes left; a later expiry reads the vendor's implied move into it, over its whole
+  horizon — the odds are then "by Nov 20" and every label says so (`horizon`). One rule for the Agenda, the Board's
+  watch-first, Compare and the corridor.
+*/
+export interface ScopeSigma {
+  /** One standard move from now to the horizon, dollars */
+  sigmaLeft: number;
+  /** One session's move, dollars (the ruler's σ) */
+  sigmaDay: number;
+  /** "by Nov 20" for a multi-day scope — null when the horizon is the coming session's close */
+  horizon: string | null;
+  /** Which number the move is, in words ("the vendor's implied move into Nov 20") */
+  words: string;
+}
+export function scopeSigma(snapshot: MarketSnapshot, minutesLeft: number, iv: number, date: string | null = scopeDateOf(snapshot)): ScopeSigma {
+  const spot = snapshot.spot;
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, date) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
+  const m = snapshot.liveBook ? peekScopeMove(snapshot.ticker, date) : null;
+  if (m?.multi && m.until && m.move > 0) return { sigmaLeft: m.move, sigmaDay, horizon: `by ${monDayOf(m.until)}`, words: m.words };
+  /* TIME-SCALED ONCE (the tenth audit's B2): the vendor's move into a same-day expiry, read in its session, is already the
+     move left to the close (uwBook peekMoveToClose); only a full session's figure is scaled by the minutes left */
+  const left = snapshot.liveBook ? peekMoveToClose(snapshot.ticker, date, minutesLeft) : null;
+  return { sigmaLeft: left ?? sigmaDay * Math.sqrt(Math.max(0, minutesLeft) / SESSION_MIN), sigmaDay, horizon: null, words: m?.source === 'vendor' ? m.words : m?.words ?? 'the 30-day implied vol over one session' };
+}
+
 
 /* ---- the constants, named so they can be calibrated ------------------------------ */
 
-/** The ratio of a wall's hedging to the market's dollars-per-1% at which it is a coin flip */
+/* THE WALL READING IS CHAIN-RELATIVE (the owner's call, 2026-10-22): a wall's percentage is its own weight — the
+   hedging on the strike and its neighbours — against the HEAVIEST wall on the same ticker's active chain, measured the
+   same way. The heaviest wall reads 100%; a wall half its size 50%. Nothing is calibrated on other names:
+   SPY, QQQ, NVDA or any ticker each read against their own chain only, and SIZE is the driver.
+   It is a measure of how big the wall is, not a probability that price turns there — the back-test
+   (docs/wall-backtest.md) found size does not predict a hold, so the pages say "of the top wall", never "holds". The
+   tests, the build, the speed, the prints and the vanna stay in the factor list as context the reader can weigh. */
+
+/** Kept for the size factor's words: a wall at this ratio of the typical wall reads as typical */
 export const PAR_RATIO = 1;
-/** Logits per doubling of that ratio */
+/** Logits per doubling of the wall's weight against the typical wall on its book — the factor list's push only */
 const A_WEIGHT = 1.0;
-/** Logits for a perfect record of holds today (and against for breaks) */
-const A_TESTS = 1.2;
-/** Logits for a wall that grew by half its size today (and against for draining) */
+/** Logits for a perfect record of holds today (and against for breaks) (back-tested) */
+const A_TESTS = 0.048;
+/** Logits for a wall that grew by half its size today (and against for draining) — not back-testable, hand-set */
 const A_BUILD = 0.8;
-/** Logits against, per unit of speed over the priced pace */
-const A_SPEED = 0.8;
-/** Logits against, for prints handing dealers a wall's worth of stock to push through it */
+/** Logits AGAINST, per unit of speed over the priced pace (back-tested: negative — a fast arrival holds more) */
+const A_SPEED = -0.458;
+/** Logits against, for prints handing dealers a wall's worth of stock to push through it — not back-testable, hand-set */
 const A_PRINTS = 0.6;
-/** Logits against, for a one-point vol drop forcing a wall's worth of dealer stock through it — VANNA (2026-09-09) */
+/** Logits against, for a one-point vol drop forcing a wall's worth of dealer stock through it — VANNA (2026-09-09) —
+    not back-testable, hand-set */
 const A_VOL = 0.6;
 /** How much of a wall's expiring-today part still counts at the close */
 const CHARM_FLOOR = 0.35;
 /** The neighbours that count as part of a wall, as a share of spot */
 const NEIGHBOUR_PCT = 0.0025;
-/** Odds never print as certainties */
-const ODDS_LO = 0.08;
-const ODDS_HI = 0.92;
 
 /* ---- types ------------------------------------------------------------------------ */
 
@@ -156,7 +200,6 @@ export interface WallBoard {
 /* ---- helpers --------------------------------------------------------------------- */
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const sigmoid = (z: number) => 1 / (1 + Math.exp(-z));
 /** Φ via the Abramowitz–Stegun approximation — good to 1e-7 */
 const phi = (x: number) => {
   const t = 1 / (1 + 0.2316419 * Math.abs(x));
@@ -165,6 +208,14 @@ const phi = (x: number) => {
   return x >= 0 ? 1 - p : p;
 };
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** The wall reading as printed: its size against the heaviest strike on the same chain, to the nearest 5% */
+export const holdLabel = (v: number): string => `${holdShort(v)} of the top wall`;
+/** The same reading for a cell under a "Wall size" heading */
+/* rounded DOWN to 5%, so only the top wall itself reads 100% (a neighbour at 98% of it read "100%" beside it) */
+/* under 5% prints "<5%" — a floor of "5%" claimed a size the wall does not have */
+export const holdShort = (v: number): string => (v >= 0.999 ? '100%' : v < 0.05 ? '<5%' : `${Math.floor(v * 20) * 5}%`);
+/** A chance as printed: "<1%" for the tiny ones (a floor of 2% made strikes five expected moves out read "2% reached") */
+export const chanceLabel = (v: number): string => (v < 0.005 ? '<1%' : v > 0.995 ? '>99%' : `${Math.round(v * 100)}%`);
 const signedDollars = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 
 /** Tests of a level as VISITS, not bars: a test begins when a bar's range
@@ -246,6 +297,7 @@ export function printsDemand(snapshot: MarketSnapshot, iv: number): number {
 /* ---- the model ------------------------------------------------------------------- */
 
 interface Ctx {
+  ticker: string;
   spot: number;
   strikes: StrikeExposure[]; // descending
   heaviest: number;
@@ -258,7 +310,13 @@ interface Ctx {
   bars: Candle[];
   clock: AheadClock;
   marketPer1Pct: number;
+  /** The median weight of the shelves on this book — the size factor's yardstick */
+  typicalWall: number;
+  /** The heaviest wall weight on this chain, measured the way every wall is — the 100% of the wall reading */
+  topWall: number;
   sigmaLeft: number;
+  /** "by Nov 20" when the odds run to a later expiry than the coming session (scopeSigma) — null for the close */
+  horizon: string | null;
   speed: number | null;
   printsUp: number;
   /** Dollars of stock dealers must BUY if vol drops a point — the window's net vanna */
@@ -272,19 +330,46 @@ function roleOf(K: number, levels: ExposureProfileData['levels']): WallRole {
   return null;
 }
 
+/** THE WEIGHT: the strike and its close neighbours, absorbing counted for, amplifying against.
+    ONE RULE BOTH SIDES OF SPOT, THE MAP'S COLOURS' (the Pinpoint audit, 2026-10-22): a strike absorbs where dealers are
+    LONG gamma there (house sign negative — the Map's cool "pushes back"), and pushes a move along where they are SHORT
+    gamma (positive — the warm "pushes a move along"), above spot or below. The old rule counted put-dominant gamma below
+    spot as absorbing, so SPY 760/761/762 read "PUT WALL 100% / SHELF 95%" on strikes the Map coloured as pushing a move
+    along, while the identical sign at 765 above spot read TRAPDOOR. */
+/* THE STRIKE'S OWN SIGN NAMES IT (the second re-audit, 2026-10-22: SPY 770 nets +$15.4M — dealers long, Building's
+   "dealers push back" — yet the Agenda called it a TRAPDOOR, because its heavier short-gamma neighbour 769 at half
+   weight outvoted it). The neighbours still size a wall (half weight, the same side only), but the side — wall or
+   trapdoor — is the strike's own gamma. A strike with no gamma weighs nothing. */
+function wallWeight(K: number, spot: number, strikes: readonly StrikeExposure[]): number {
+  const own = strikes.find(s => s.strike === K)?.gex.net ?? 0;
+  if (!own) return 0;
+  const absorbs = own < 0;
+  let mag = 0;
+  for (const s of strikes) {
+    if (Math.abs(s.strike - K) > spot * NEIGHBOUR_PCT) continue;
+    if (s.gex.net < 0 !== absorbs || !s.gex.net) continue;
+    mag += Math.abs(s.gex.net) * (s.strike === K ? 1 : 0.5);
+  }
+  return absorbs ? mag : -mag;
+}
+
+/** Which way the dealers' hedging along a path leans against the move: a move up met by dealer BUYING is pushed along,
+    by selling it is leaned against (and the reverse for a move down) — the words follow the flow's own sign */
+export const pathLean = (side: WallSide, flow: number): 'along' | 'against' | null => (flow === 0 ? null : (side === 'call') === flow > 0 ? 'along' : 'against');
+export const pathFlowWords = (side: WallSide, flow: number): string => {
+  const lean = pathLean(side, flow);
+  if (!lean) return '';
+  return `${fmtDollars(flow)} of forced dealer ${flow > 0 ? 'buying' : 'selling'} on the way, which ${lean === 'along' ? 'pushes the move along' : 'leans against the move'}`;
+};
+
+/** The put wall in plain words — the most put hedging, and what a short-gamma floor does when it gives */
+export const PUT_WALL_WORDS = 'the most put hedging; dealers are short gamma there — below price it is support while it holds and a break can accelerate; above price it is overhead hedging, not a floor';
+
 function wallOdds(K: number, ctx: Ctx): WallOdds {
   const { spot, strikes, levels, clock } = ctx;
   const side: WallSide = K >= spot ? 'call' : 'put';
   const role = roleOf(K, levels);
-
-  /* THE WEIGHT: the strike and its close neighbours, absorbing counted for, amplifying against */
-  const absorbsSign = side === 'call' ? -1 : 1; // call-dominant above spot pushes back on a rise; put-dominant below on a drop
-  let weight = 0;
-  for (const s of strikes) {
-    if (Math.abs(s.strike - K) > spot * NEIGHBOUR_PCT) continue;
-    const near = s.strike === K ? 1 : 0.5;
-    weight += Math.sign(s.gex.net) === absorbsSign ? Math.abs(s.gex.net) * near : -Math.abs(s.gex.net) * near;
-  }
+  const weight = wallWeight(K, spot, strikes);
 
   /* THE CLOCK: the expiring-today part fades toward CHARM_FLOOR by the close, and is gone after it */
   let expiresToday = 0;
@@ -297,7 +382,10 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
       expiresToday = total > 0 ? clamp(today / total, 0, 1) : 0;
     }
   }
-  const fade = clock.inSession ? CHARM_FLOOR + (1 - CHARM_FLOOR) * (clock.minutesLeft / SESSION_MIN) : 0;
+  /* Outside the session the book's "today" contracts are the COMING session's (bookToday rolls at 16:15), alive in
+     full — they used to read as already expired, so before the open every front-expiry wall weighed nothing and sat on
+     the odds floor (the Board printed "holds 10%" on every name) */
+  const fade = clock.inSession ? CHARM_FLOOR + (1 - CHARM_FLOOR) * (clock.minutesLeft / SESSION_MIN) : 1;
   const weightEff = weight * (1 - expiresToday * (1 - fade));
 
   /* THE TESTS today — visits, held or broke */
@@ -321,18 +409,22 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const volScore = weightEff > 0 ? clamp(volToward / weightEff, -1, 1) : 0;
 
   /* THE ODDS */
-  const ratio = weightEff > 0 ? weightEff / ctx.marketPer1Pct : 0;
+  const ratio = weightEff > 0 ? weightEff / Math.max(1, ctx.typicalWall) : 0;
   const zWeight = weightEff > 0 ? A_WEIGHT * (Math.log2(ratio) - Math.log2(PAR_RATIO)) : -4;
   const zTests = A_TESTS * testsScore;
   const zBuild = A_BUILD * buildScore;
-  const zSpeed = -A_SPEED * speedExcess;
+  /* The speed is the pace price ARRIVES at, measured in the session (the back-test read it at the touch). Outside the
+     session the tape is the thin after-hours one, so it does not move the hold until the bell */
+  const zSpeed = clock.inSession ? -A_SPEED * speedExcess : 0;
   const zPrints = -A_PRINTS * printsScore;
   const zVol = -A_VOL * volScore;
-  const hold = weight <= 0 ? ODDS_LO : clamp(sigmoid(zWeight + zTests + zBuild + zSpeed + zPrints + zVol), ODDS_LO, ODDS_HI);
+  /* the reading: this wall's weight against the heaviest strike on the same chain (1 = the top wall) */
+  const hold = weight <= 0 ? 0 : clamp(weight / Math.max(1, ctx.topWall), 0, 1);
 
   const distance = Math.abs(K - spot);
   const distanceSigma = ctx.sigmaLeft > 0 ? distance / ctx.sigmaLeft : 99;
-  const reach = clamp(2 * (1 - phi(distanceSigma)), 0.02, 0.98);
+  /* no floor: a strike five expected moves out is reached well under 1% of the time, and says so */
+  const reach = clamp(2 * (1 - phi(distanceSigma)), 0, 1);
 
   /* THE PATHS */
   const beyond = side === 'call' ? strikes.filter(s => s.strike > K).sort((a, b) => a.strike - b.strike) : strikes.filter(s => s.strike < K).sort((a, b) => b.strike - a.strike);
@@ -341,7 +433,9 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const rungAt = (k: number | null) => (k == null ? null : (ctx.ladder.rungs.find(r => Math.abs(r.strike - k) < 1e-9) ?? null));
   const breakTo = nextShelf?.strike ?? (pocket ? (side === 'call' ? pocket.ceiling : pocket.floor) : null);
   const breakRung = rungAt(breakTo);
-  const breakFlow = breakRung?.flow ?? 0;
+  /* THE FLOW OF THE BREAK ITSELF — from this strike to where it runs, not from spot (the ladder's flow is cumulative
+     from spot, so a far strike's "at stake" grew with its distance and far, unlikely strikes outranked near ones) */
+  const breakFlow = breakRung ? breakRung.flow - (rungAt(K)?.flow ?? 0) : 0;
   const breakPath: WallPath = {
     to: breakTo,
     pocket,
@@ -349,7 +443,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
     words:
       breakTo == null
         ? `a break ${side === 'call' ? 'above' : 'below'} ${fmtStrike(K)} has no shelf behind it on the strikes shown`
-        : `a break ${side === 'call' ? 'above' : 'below'} ${fmtStrike(K)} runs to ${fmtStrike(breakTo)}${pocket ? ' with almost nothing in between' : ''}${breakFlow !== 0 ? `, ${fmtDollars(breakFlow)} of forced dealer ${breakFlow > 0 ? 'buying' : 'selling'} on the way` : ''}`,
+        : `a ${weight > 0 ? 'break' : 'move'} ${side === 'call' ? 'above' : 'below'} ${fmtStrike(K)} runs to ${fmtStrike(breakTo)}${pocket ? ' with almost nothing in between' : ''}${breakFlow !== 0 ? `, ${pathFlowWords(side, breakFlow)}` : ''}`,
   };
   const flipOnSpotSide = side === 'call' ? levels.flip < K : levels.flip > K;
   const holdTo = flipOnSpotSide && Math.abs(levels.flip - spot) > 1e-9 ? levels.flip : side === 'call' ? levels.putWall : levels.callWall;
@@ -359,7 +453,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
     to: holdTo,
     pocket: null,
     flow: holdFlow,
-    words: `a hold sends price back toward ${fmtStrike(holdTo)}${holdFlow !== 0 ? `, ${fmtDollars(holdFlow)} of forced dealer ${holdFlow > 0 ? 'buying' : 'selling'} on the way` : ''}`,
+    words: `a hold sends price back toward ${fmtStrike(holdTo)}${holdFlow !== 0 ? `, ${pathFlowWords(side === 'call' ? 'put' : 'call', holdFlow)}` : ''}`,
   };
 
   /* THE FACTORS, each a fact and a push */
@@ -367,24 +461,26 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
     {
       key: 'weight',
       label: 'What it is made of',
-      fact: weight > 0 ? `${fmtDollars(weightEff)} per 1% · ${ratio.toFixed(1)}× the market` : `${fmtDollars(Math.abs(weight))} the wrong way`,
+      fact: weight > 0 ? `${fmtDollars(weightEff)} per 1% · ${ratio.toFixed(1)}× a typical wall here` : `${fmtDollars(Math.abs(weight))} the wrong way`,
       push: weight > 0 ? clamp(zWeight / 3, -1, 1) : -1,
       words:
         weight > 0
           ? ratio >= 2
-            ? 'pushes back much harder than the market pushes'
+            ? 'one of the heaviest walls on this name'
             : ratio >= 1
-              ? 'pushes back harder than the market pushes'
+              ? 'heavier than a typical wall on this name'
               : ratio >= 0.5
-                ? 'pushes back, but the market pushes harder'
-                : 'thin against what moves this name'
-          : 'pushes moves along rather than back — a trapdoor, not a wall',
+                ? 'lighter than a typical wall on this name'
+                : 'thin for this name'
+          : role === 'put wall'
+            ? putWallWords(K, spot)
+            : 'pushes moves along rather than back — dealers are short gamma here: a trapdoor, not a wall',
     },
     {
       key: 'tests',
       label: 'Tested today',
       fact: touches === 0 ? 'not yet' : `${touches}× · held ${held} · broke ${breaks}`,
-      push: clamp(zTests / A_TESTS, -1, 1),
+      push: clamp(zTests / Math.abs(A_TESTS), -1, 1),
       words: touches === 0 ? 'price has not reached it today' : breaks === 0 ? `every touch held` : `broke ${breaks} time${breaks === 1 ? '' : 's'} on ${touches} touch${touches === 1 ? '' : 'es'}`,
     },
     {
@@ -415,8 +511,8 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
       key: 'speed',
       label: 'The market’s speed',
       fact: ctx.speed == null ? '—' : `${speed.toFixed(2)}× the pace priced`,
-      push: clamp(zSpeed / A_SPEED, -1, 1),
-      words: speed > 1.3 ? 'running faster than its options priced — walls break more' : speed < 0.7 ? 'a quiet market — walls hold more' : 'about the pace the options priced',
+      push: clamp(zSpeed / Math.abs(A_SPEED), -1, 1),
+      words: !clock.inSession ? 'the pace price arrives at counts once the session opens' : speed > 1.3 ? 'running faster than its options priced — fast arrivals tend to turn back more often' : speed < 0.7 ? 'a quiet market — slow arrivals tend to push through more often' : 'about the pace the options priced',
     },
     {
       key: 'prints',
@@ -438,8 +534,10 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const sentence =
     weight > 0
-      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${pct(reach)} of the time and holds ${pct(hold)} of the time when it is. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
-      : `${who} is not a wall: the hedging there pushes moves along rather than back. ${cap(breakPath.words)}.`;
+      ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${chanceLabel(reach)} of the time; it is ${holdLabel(hold)} on this chain. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
+      : role === 'put wall'
+        ? `${who}: ${putWallWords(K, spot)}. ${cap(breakPath.words)}.`
+        : `${who} is not a wall: dealers are short gamma there, so the hedging pushes moves along rather than back. ${cap(breakPath.words)}.`;
 
   return { strike: K, side, role, weight, weightEff, expiresToday, touches, breaks, build, speed, prints, distanceSigma, reach, hold, factors, breakPath, holdPath, sentence };
 }
@@ -462,11 +560,17 @@ export function buildWallContext(
   const { spot } = snapshot;
   const strikes = profile.strikes; // descending
   const heaviest = Math.max(1, ...strikes.map(s => Math.abs(s.gex.net)));
+  const shelves = strikes.map(s => Math.abs(s.gex.net)).filter(v => v >= SHELF_SHARE * heaviest).sort((a, b) => a - b);
+  const typicalWall = shelves.length ? shelves[Math.floor((shelves.length - 1) / 2)] : heaviest * 0.5;
+  const topWall = Math.max(1, ...strikes.map(s => wallWeight(s.strike, spot, strikes)));
   const todayBars = bars as Candle[];
   const marketPer1Pct = dollarsPer1Pct(todayBars) ?? 1;
-  const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
-  const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  /* the expiry the levels read: its own implied move (data/uwBook.ts peekDaySigma), the 30-day IV only as a fallback */
+  const ss = scopeSigma(snapshot, clock.minutesLeft, iv);
+  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : (impliedDaySigma(spot, iv) ?? spot * 0.01) * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   return {
+    horizon: snapshot.liveBook ? ss.horizon : null,
+    ticker: snapshot.ticker,
     spot,
     strikes,
     heaviest,
@@ -475,10 +579,12 @@ export function buildWallContext(
     ladder: buildHedgeFlowLadder(profile),
     building,
     surface,
-    todayIdx: surface ? surface.expiries.findIndex(e => e.dte === 0) : -1,
+    todayIdx: surface ? todayColumn(surface) : -1,
     bars: todayBars,
     clock,
     marketPer1Pct,
+    typicalWall,
+    topWall,
     sigmaLeft,
     speed: speedRatio(todayBars, iv),
     printsUp: printsDemand(snapshot, iv),
@@ -542,7 +648,7 @@ export function buildWallBoard(
   const s = walls.find(x => x.strike === strongest);
   const sentence =
     w && s && w.strike !== s.strike
-      ? `The weakest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''}, holding ${pct(w.hold)} of the time; the strongest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} at ${pct(s.hold)}.`
+      ? `The smallest wall in reach is ${fmtStrike(w.strike)}${w.role ? `, the ${w.role}` : ''} (${holdLabel(w.hold)}); the largest is ${fmtStrike(s.strike)}${s.role ? `, the ${s.role}` : ''} (${holdLabel(s.hold)}).`
       : walls.length
         ? `${walls.length} wall${walls.length === 1 ? '' : 's'} on the strikes shown, the nearest at ${fmtStrike(walls[0].strike)}.`
         : 'No wall on the strikes shown.';

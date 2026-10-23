@@ -73,6 +73,10 @@ export interface Indicators {
 
 export interface StrikeNode {
   strike: number;
+  /** The price and the instant (epoch ms) the vendor priced this strike's live gamma at (spot-exposures `price`, `time`)
+      — the flip re-prices the strike's legs FROM that price, AT that instant (data/flipLevel.ts) */
+  gexPx?: number;
+  gexAt?: number;
   callOI: number;
   putOI: number;
   gamma: number;
@@ -101,6 +105,12 @@ export interface StrikeNode {
   /** Today's contracts at this strike, when the feed has them. Absent on a sample chain. */
   callVol?: number;
   putVol?: number;
+  /** The vendor's implied vol and per-contract gamma for this strike's call and put on ONE expiry
+      (option-contracts) — set on a per-expiry chain once its contract rows are in; absent otherwise */
+  callIv?: number;
+  putIv?: number;
+  callGamma?: number;
+  putGamma?: number;
 }
 
 export type TradeDirection = 'BULLISH' | 'BEARISH';
@@ -146,6 +156,18 @@ export interface MarketSnapshot {
   uwByDate?: Record<string, StrikeNode[]>;
   /** Every expiry the vendor listed, nearest first. */
   uwExpiries?: { date: string; dte: number }[];
+  /** The live book's day move: `changePercent` is the regular session's change; this keeps the move outside the session
+      (pre-market before the open, after hours after the close) apart, and whether the day's change is known yet */
+  dayMove?: { extPct: number | null; phase: 'pre' | 'regular' | 'post' | 'closed'; known: boolean };
+  /** The instant (epoch ms) a book is read as of — set only for a session that has closed, so its flip is re-priced at
+      that session's own clock rather than now (data/bookWindow.ts sessionBook) */
+  asOf?: number;
+  /** A finished session's clock for the flip alone (epoch ms) — its close — so the flip and every count against it stop
+      moving after the bell, without the asOf's contract-vol switch (data/bookWindow.ts sessionBook, data/flipLevel.ts) */
+  flipAt?: number;
+  /** The Levels card's scope is not in yet and the whole book stands in for it (data/bookWindow.ts levelsBook) — every
+      level read off this snapshot is provisional, and no page draws it (the seventh audit's retail blocker) */
+  levelsPending?: boolean;
 }
 
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS';

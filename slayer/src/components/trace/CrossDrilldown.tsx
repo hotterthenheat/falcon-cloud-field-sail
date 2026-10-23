@@ -18,10 +18,10 @@ import RichRead from '../ui/RichRead';
 import GradeMeter from '../ui/GradeMeter';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
-import { liveBars, useBookRev } from '../../data/uwBook';
 import { nyClock } from '../../core/nyTime';
-import { quotePlace } from '../../data/traceLive';
-import { fmtUsd } from '../../data/gex';
+import { execWord, nyDateOf, postureOf, quotePlace, tapeSessionIso, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
+import { dayAdv } from './dayWords';
+import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
 import { readToken, useResolvedTheme } from '../../theme/theme';
@@ -36,9 +36,11 @@ const ROLE_TOKEN: Record<LevelRole, string> = { SUPPORT: '--bull', RESISTANCE: '
 const ROLE_WORD: Record<LevelRole, string> = { SUPPORT: 'support', RESISTANCE: 'resistance', PIVOT: 'pivot' };
 const SEQ_SHOWN = 6;
 
+const INTENT_TAG: Record<DarkPoolIntent, string> = { ACCUMULATION: 'ACCUMULATION', DISTRIBUTION: 'DISTRIBUTION', 'HEDGE FLOW': 'AT THE MID', ROTATION: 'NO READ' };
 const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => (
-  <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{intent}</span>
+  <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
 );
+const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · auction' : 'no read · terms') : p.extended ? 'no read · after hours' : 'no read · small');
 
 const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
   if (!view || !p.atLevel) return null;
@@ -50,8 +52,12 @@ const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
 /** A one-letter market-center code is not a venue name. */
 const venueWord = (v: string) => (v.trim().length > 2 && /[A-Za-z]/.test(v) ? v.trim() : 'off-exchange');
 
-const sideWord = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : 'at the mid');
-const sideLabel = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'BOUGHT' : p.exec === 'BID' ? 'SOLD' : p.exec === 'MID' ? 'MID' : '');
+/* NO SIDE WHERE THERE IS NONE (audit round 4: crosses 3% over the quote read "inside quote" — the fallback for a print with
+   no execution side): an own-terms print is priced by its terms; a print with no quote has no place in one */
+const sideWord = (p: DarkPoolPrint) =>
+  p.special ? 'own terms' : p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : p.exec === 'MID' ? (execWord(p) === 'MID' ? 'at the mid' : execWord(p) === 'OVER MID' ? 'inside, over mid' : 'inside, under mid') : p.bid == null || p.ask == null ? 'no quote' : 'off the quote';
+/* the label agrees with the read (audit round 7): inside the spread it is MID only within the ¼¢ band */
+const sideLabel = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'BOUGHT' : p.exec === 'BID' ? 'SOLD' : p.exec === 'MID' ? execWord(p) ?? '' : '');
 
 const fillFrac = (p: DarkPoolPrint): number | null => {
   if (p.bid != null && p.ask != null && p.ask > p.bid) return Math.min(1, Math.max(0, (p.price - p.bid) / (p.ask - p.bid)));
@@ -71,27 +77,44 @@ const cardSurface = (host: HTMLElement, paper: boolean): DaySurface => {
   return { bg, text, line: readToken('--border-subtle', undefined, host), crosshair: readToken('--text-primary', 0.35, host), label: readToken('--chip', undefined, host), ink, zero: readToken('--border-muted', undefined, host) };
 };
 
+/** The New York day a cross printed on — its own date, never the clock's */
+const crossIsoOf = (p: DarkPoolPrint): string => p.dateIso || (p.epochMs && p.epochMs > 0 ? nyDateOf(p.epochMs) : tapeSessionIso());
+
 const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView | null }) => {
   const priceRef = useRef<HTMLDivElement | null>(null);
   const darkRef = useRef<HTMLDivElement | null>(null);
   const paper = useResolvedTheme() === 'light';
-  const bookRev = useBookRev();
+  /* THE STOCK'S WHOLE DAY, EXTENDED HOURS IN (the re-audit, 2026-10-22: the stock line ended at the 16:00 close while
+     the cross was at 17:04): the name's own one-minute bars for the session's date, pre-market to after hours */
+  const bars = useStockMinutes(print.ticker, crossIsoOf(print)).rows;
   const crosses = useMemo(() => (view?.prints?.length ? view.prints : [print]), [view, print]);
-  const underDol = crosses.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents < 0 ? p.notional : 0), 0);
-  const overDol = crosses.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents > 0 ? p.notional : 0), 0);
-  const midN = crosses.filter(p => quotePlace(p.vsSpotPct, p.price).cents === 0).length;
+  /* THE STOCK'S OWN LAST TRADE (audit round 4: "THE STOCK · QQQ $725.39" was a stale contingent cross; QQQ was $703.29) */
+  const last = useStockLast(print.ticker).rows;
+  const stockPx = last?.price ?? (view && view.spot > 0 ? view.spot : null);
+  /* AFTER HOURS IS NOT A SIDE (the third audit, 2026-10-22: an after-hours tape wore "UNDER THE MID 64%" in red): where
+     the crosses in view are all extended-hours prints, the split is drawn in plain ink */
+  const allAfter = crosses.length > 0 && crosses.every(p => p.extended);
+  /* THE SPLIT READS PRINTS PRICED AT THE QUOTE (audit round 4: QQQ's "UNDER 2% · OVER 98%" counted the no-read contingent
+     prints at $725.39, 3% over the quote): own-terms prints are priced by their terms and are left out; so are after-hours
+     prints beside regular ones */
+  const placed = crosses.filter(p => !p.special && (allAfter || !p.extended));
+  const underDol = placed.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents < 0 ? p.notional : 0), 0);
+  const overDol = placed.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents > 0 ? p.notional : 0), 0);
+  const midN = placed.filter(p => quotePlace(p.vsSpotPct, p.price).cents === 0).length;
+  const leftOut = crosses.length - placed.length;
   const sided = underDol + overDol;
   const underPct = sided > 0 ? (underDol / sided) * 100 : 0;
-  const hasDay = liveBars(print.ticker).length > 0;
+  const hasDay = bars.length > 0;
+  const extendedBars = bars.some(b => b.extended);
 
   useEffect(() => {
     const priceHost = priceRef.current;
     const darkHost = darkRef.current;
     if (!priceHost || !darkHost) return;
-    const candles = liveBars(print.ticker);
-    const day = candles.slice(-390);
+    const day = bars;
     if (day.length === 0) return;
-    const priceChart: IChartApi = createChart(priceHost, { ...dayChartOptions(cardSurface(priceHost, paper), { clock: false, logo: false }), autoSize: true });
+    /* the price strip carries its own clock now — the cross is read against a time */
+    const priceChart: IChartApi = createChart(priceHost, { ...dayChartOptions(cardSurface(priceHost, paper), { clock: true, logo: false }), autoSize: true });
     const darkChart: IChartApi = createChart(darkHost, { ...dayChartOptions(cardSurface(darkHost, paper), { clock: true, logo: false }), autoSize: true });
     const dropPrice = syncDayScale(priceChart, `cross-${print.ticker}`, 'price');
     const dropDark = syncDayScale(darkChart, `cross-${print.ticker}`, 'dark');
@@ -173,37 +196,37 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
       priceChart.remove();
       darkChart.remove();
     };
-  }, [print, view, paper, bookRev, crosses]);
+  }, [print, view, paper, bars, crosses]);
 
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-cross-tape={print.ticker}>
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
         <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
-        <span className="font-mono text-[11px] text-textMuted">the stock and its dark crosses on one clock</span>
+        <span className="font-mono text-[11px] text-textMuted">the stock and its {print.lit ? 'lit prints' : 'dark crosses'} on one clock · New York · {extendedBars ? 'pre-market and after hours included' : 'the regular session'}</span>
       </div>
       <div className="px-3 pt-2.5 pb-1">
         <div className="flex items-baseline gap-2.5 flex-wrap">
           <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The stock</span>
           <span className="font-mono text-[11px] text-textMuted tnum">
-            <RichRead text={view ? `${print.ticker} $${view.spot.toFixed(2)} · ${fmtUsd(view.totalNotional)} dark · ${crosses.length} crosses` : print.ticker} />
+            <RichRead text={`${print.ticker}${stockPx ? ` $${stockPx.toFixed(2)}${last?.at ? ` (last trade ${nyClock(last.at)} ET)` : ''}` : ''}${view ? ` · ${fmtUsd(view.totalNotional)} dark · ${crosses.length} crosses in hand` : ''}`} />
           </span>
         </div>
         {sided > 0 ? (
           <div className="mt-2 flex flex-col gap-1 max-w-[460px]">
             <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase tracking-wider">
-              <span className={underPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>Under the mid {Math.round(underPct)}%</span>
-              <span className="text-textMuted normal-case tracking-normal">{midN} at the mid</span>
-              <span className={underPct < 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>Over the mid {100 - Math.round(underPct)}%</span>
+              <span className={allAfter ? 'text-textSecondary' : underPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>Under the mid {Math.round(underPct)}%</span>
+              <span className="text-textMuted normal-case tracking-normal">{midN} at the mid{allAfter ? ' · after hours, no read' : ''}{leftOut ? ` · ${leftOut} own-terms or after-hours left out` : ''}</span>
+              <span className={allAfter ? 'text-textSecondary' : underPct < 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>Over the mid {100 - Math.round(underPct)}%</span>
             </div>
             <span className="flex h-1.5 rounded-full overflow-hidden bg-ink/[0.06]">
-              <span className="h-full bg-bear/80" style={{ width: `${underPct}%` }} />
-              <span className="h-full bg-bull" style={{ width: `${100 - underPct}%` }} />
+              <span className={`h-full ${allAfter ? 'bg-ink/30' : 'bg-bear/80'}`} style={{ width: `${underPct}%` }} />
+              <span className={`h-full ${allAfter ? 'bg-ink/50' : 'bg-bull'}`} style={{ width: `${100 - underPct}%` }} />
             </span>
           </div>
         ) : (
-          <p className="mt-2 font-mono text-[11px] text-textMuted">Every cross in view printed at the mid.</p>
+          <p className="mt-2 font-mono text-[11px] text-textMuted">{placed.length ? 'Every cross priced at the quote printed at the mid.' : 'No cross in view is priced at the quote — nothing to split.'}</p>
         )}
-        {hasDay ? <div ref={priceRef} className="h-[220px] w-full" /> : <div className="h-[120px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No session bars for {print.ticker} yet</div>}
+        {hasDay ? <div ref={priceRef} className="h-[220px] w-full" data-cross-price /> : <div className="h-[120px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No session bars for {print.ticker} yet</div>}
       </div>
       {hasDay && (
         <>
@@ -218,7 +241,7 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
         </>
       )}
       <div className="px-3 pb-2.5 flex items-center gap-3 flex-wrap">
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> Running dark dollars</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> Running dark dollars · prints in hand</span>
         <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-silver" /> This cross</span>
       </div>
     </div>
@@ -228,21 +251,22 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
 const CrossSequence = ({ print, sequence, onOpen }: { print: DarkPoolPrint; sequence: DarkPoolPrint[]; onOpen?: (p: DarkPoolPrint) => void }) => {
   const n = sequence.length;
   const read = useMemo(() => {
-    if (n <= 1) return `Isolated — the only cross on ${print.ticker} on the tape today.`;
+    if (n <= 1) return `The only cross on ${print.ticker} among the prints in hand.`;
     const total = sequence.reduce((a, p) => a + p.notional, 0);
-    const bought = sequence.filter(p => p.exec === 'ASK').length;
-    const sold = sequence.filter(p => p.exec === 'BID').length;
-    const mid = n - bought - sold;
+    const bought = sequence.filter(p => !p.special && p.exec === 'ASK').length;
+    const sold = sequence.filter(p => !p.special && p.exec === 'BID').length;
+    const mid = sequence.filter(p => !p.special && p.exec === 'MID').length;
+    const own = sequence.filter(p => p.special).length;
     const oldest = sequence[n - 1]?.time ?? print.time;
     const newest = sequence[0]?.time ?? print.time;
-    return `Part of a sequence — ${n} crosses on ${print.ticker} today · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} at the mid` : ''} · ${oldest} → ${newest}.`;
+    return `${n} crosses on ${print.ticker} among the prints in hand · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} inside the quote` : ''}${own ? ` / ${own} own terms` : ''} · ${oldest} → ${newest}.`;
   }, [sequence, n, print.ticker, print.time]);
   const shown = sequence.slice(0, SEQ_SHOWN);
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-cross-sequence>
       <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-baseline gap-2 flex-wrap">
         <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The sequence</span>
-        <span className="font-mono text-[11px] text-textMuted">{print.ticker}'s crosses on the tape today</span>
+        <span className="font-mono text-[11px] text-textMuted">{print.ticker}'s crosses among the prints in hand — not the whole day</span>
       </div>
       <p className="px-3 pt-2 text-[11px] text-textSecondary leading-snug tnum">
         <RichRead text={read} />
@@ -298,7 +322,23 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
   const marked = !!print && isWatched(key);
   const shelf = useMemo(() => (print ? shelfOf(print, view) : null), [print, view]);
   const sequence = useMemo(() => (view ? [...view.prints].sort((a, b) => (a.time === b.time ? b.notional - a.notional : a.time < b.time ? 1 : -1)) : []), [view]);
-  const grade = print ? gradeOfConviction(print.conviction) : 'poor';
+  /* the cross's own session's figures, named by its date (audit round 6) */
+  const crossIso = print ? crossIsoOf(print) : null;
+  const day = useDarkDay(print?.ticker ?? null, crossIso);
+  /* THE DAY'S VWAP PRICES THE DARK SHARES (audit round 7: "≈$488.9M" was USHY's 13,968,395 dark shares all at its $35
+     bucket, the stock at $35.58): the vendor sends shares by coarse price bucket and no average price, so the dollars take
+     the stock's own regular-session VWAP from its minute bars; the buckets only when the bars are not in */
+  const dayBars = useStockMinutes(print?.ticker ?? null, crossIso).rows;
+  const vwap = useMemo(() => {
+    let pv = 0;
+    let v = 0;
+    for (const b of dayBars) {
+      if (b.extended || !(b.volume && b.volume > 0)) continue;
+      pv += b.close * b.volume;
+      v += b.volume;
+    }
+    return v > 0 ? pv / v : NaN;
+  }, [dayBars]);
   const frac = print ? fillFrac(print) : null;
   const jump = (fn: () => void) => {
     onClose();
@@ -326,8 +366,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <Wordmark height={11} label="" />
             </span>
             <span className="inline-flex items-center rounded-full border border-borderMuted bg-ink/[0.04] px-2.5 py-0.5 font-mono text-[13px] font-semibold text-textPrimary">{print.ticker}</span>
-            <span className="font-mono text-[11px] text-textSecondary tnum">cross · {venueWord(print.venue)}</span>
-            <IntentTag intent={print.intent} />
+            <span className="font-mono text-[11px] text-textSecondary tnum">{print.lit ? `lit print · ${print.venue}` : `cross · reported to ${print.facility ?? venueWord(print.venue)}`}</span>
+            {print.sized && !print.extended && !print.special ? <IntentTag intent={print.intent} /> : <span className="font-mono text-[11px] uppercase text-textMuted">{noReadWord(print)}</span>}
             <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
             {print.sized && <span className="font-mono text-[11px] uppercase font-semibold text-textPrimary">Sized</span>}
           </div>
@@ -337,7 +377,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
         print && (
           <div className="flex items-center gap-0.5 shrink-0">
             <button
-              onClick={() => toggle(watchedCross(print, view?.spot ?? print.price, 'dark-pool'))}
+              onClick={() => toggle(watchedCross(print, view && view.spot > 0 ? view.spot : print.price, 'dark-pool'))}
               aria-pressed={marked}
               title={marked ? 'Tracking this cross' : 'Track this cross'}
               className={`p-1 rounded transition-colors ${marked ? 'text-select' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'}`}
@@ -365,7 +405,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
             <div className="flex items-center gap-x-5 gap-y-2 flex-wrap px-4 py-3" data-print-money>
               <span className="flex items-baseline gap-2.5">
                 <span className={`font-mono text-[22px] font-bold tnum leading-none ${print.notional >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{fmtUsd(print.notional)}</span>
-                {sideLabel(print) && <span className={`font-mono text-[13px] font-bold ${print.exec === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{sideLabel(print)}</span>}
+                {/* no side word beside "no read" (audit round 10, minor 7: BOUGHT beside NO READ · SMALL) */}
+                {print.intent !== 'ROTATION' && sideLabel(print) && <span className={`font-mono text-[13px] font-bold ${print.exec === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{sideLabel(print)}</span>}
                 {print.sized && <span className="font-mono text-[11px] uppercase font-semibold text-textPrimary">Sized</span>}
               </span>
               {frac != null && (
@@ -385,32 +426,47 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <RichRead text={print.read} />
             </p>
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-cross-facts>
+              <Fact label="Vs the quote" value={`${quotePlace(print.vsSpotPct, print.price).text}${print.extended ? ' · after hours' : ''}`} valueCls={quotePlace(print.vsSpotPct, print.price).cents === 0 || print.extended ? 'text-textMuted' : quotePlace(print.vsSpotPct, print.price).cents > 0 ? 'text-bull' : 'text-bear'} />
+              <Fact label={print.lit ? 'Printed on' : 'Reported to'} value={print.lit ? print.venue : print.facility ?? venueWord(print.venue)} />
+              {print.special && <Fact label="Trade kind" value={print.special} valueCls="text-warn" />}
+              <Fact label="Shelf" value={shelf ? <span className={ROLE_INK[shelf.role]}>${shelf.price.toFixed(2)} · {ROLE_WORD[shelf.role]} · {shelf.sharePct.toFixed(0)}% of the day's dark dollars</span> : <span className="text-textMuted">between shelves</span>} />
               <Fact
-                label="Conviction"
-                value={
-                  <span className="inline-flex items-center gap-2">
-                    <span className={INTENT_INK[print.intent]}>{grade}</span>
-                    <GradeMeter grade={grade} fill={INTENT_BAR[print.intent]} thin className="w-16" />
-                  </span>
-                }
-              />
-              <Fact label="Vs the quote" value={quotePlace(print.vsSpotPct, print.price).text} valueCls={quotePlace(print.vsSpotPct, print.price).cents === 0 ? 'text-textMuted' : quotePlace(print.vsSpotPct, print.price).cents > 0 ? 'text-bull' : 'text-bear'} />
-              <Fact label="Venue" value={print.venue && print.venue !== venueWord(print.venue) ? `${venueWord(print.venue)} · ${print.venue}` : venueWord(print.venue)} />
-              <Fact label="Shelf" value={shelf ? <span className={ROLE_INK[shelf.role]}>${shelf.price.toFixed(2)} · {ROLE_WORD[shelf.role]} · defended {shelf.defended}×</span> : <span className="text-textMuted">between shelves</span>} />
-              <Fact
-                label={`${print.ticker} today`}
+                label={`${print.ticker}, prints in hand`}
                 value={
                   view ? (
-                    <span className={view.posture === 'ACCUMULATING' ? 'text-bull' : view.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'}>
-                      {POSTURE_WORD[view.posture]}
-                      {view.posture !== 'BALANCED' ? ` · ${gradeOfPosture(view.netPosturePct)}` : ''}
-                    </span>
+                    (() => {
+                      /* the posture is computed here from the prints, by the SidesRule (postureOf) — never a view's stored
+                         field (audit round 5: USHY read Balanced beside 70/30) */
+                      const pv = postureOf(view.prints);
+                      return pv.read === 0 ? (
+                        <span className="text-textMuted" title="No sized regular-session cross at the quote — nothing to read">nothing to read</span>
+                      ) : (
+                        <span className={pv.posture === 'ACCUMULATING' ? 'text-bull' : pv.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'} title={`Net ${pv.net > 0 ? '+' : pv.net < 0 ? '−' : ''}${Math.abs(pv.net)}% of the sized dollars over the mid less under it, across ${pv.read} sized cross${pv.read === 1 ? '' : 'es'} in hand. ${pv.note}`}>
+                          {POSTURE_WORD[pv.posture]}
+                          {pv.posture !== 'BALANCED' ? ` · ${gradeOfPosture(pv.net)}` : ''}
+                        </span>
+                      );
+                    })()
                   ) : '—'
                 }
               />
-              <Fact label="Off-exchange" value={view && view.dpSharePct > 0 ? `${view.dpSharePct.toFixed(0)}% of volume` : '—'} />
-              <Fact label="Dark dollars today" value={view ? fmtUsd(view.totalNotional) : '—'} />
-              <Fact label="Crosses today" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
+              {/* THE DAY IS THE NAME'S OWN DAY (the audit, 2026-10-22: "Dark dollars today" was the buffer's few prints) —
+                  /darkpool/{t}/price-levels, every dark and lit share by price */}
+              <Fact label={`Off-exchange ${dayAdv(crossIso ?? undefined)}`} value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
+              <Fact label={`Dark dollars ${dayAdv(crossIso ?? undefined)}`} value={day.rows ? (
+                /* THE METHOD SAID (audit round 7: "≈$488.9M" priced every share at its $35 bucket): the vendor sends dark
+                   shares by price bucket, no VWAP — each bucket's shares at the bucket's price */
+                Number.isFinite(vwap) ? (
+                  <span title={`${num(day.rows.darkShares)} dark shares at ${print?.ticker}'s regular-session VWAP, $${vwap.toFixed(2)} (from its one-minute bars, close × volume) — the vendor sends dark shares by coarse price bucket and no average price, so the dollars are approximate; at the buckets' own prices they read ≈${fmtUsd(day.rows.darkDollars)}`}>
+                    ≈{fmtUsd(day.rows.darkShares * vwap)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at the day's VWAP ${vwap.toFixed(2)}</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
+                  </span>
+                ) : (
+                  <span title={`Each of the vendor's price buckets' dark shares at the bucket's own price (/darkpool/{t}/price-levels groups shares into coarse price buckets — often whole dollars — and sends no average price), so the dollars are approximate`}>
+                    ≈{fmtUsd(day.rows.darkDollars)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at bucket prices</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
+                  </span>
+                )
+              ) : day.waiting ? '…' : '—'} />
+              <Fact label="Crosses in hand" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
               <Fact label="This cross" value={print.sized ? 'Sized' : 'Ordinary'} valueCls={print.sized ? 'text-textPrimary' : 'text-textMuted'} />
             </div>
           </div>
@@ -421,7 +477,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The crosses</span>
-              <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">{sequence.length} on the tape today</span>
+              <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">{sequence.length} in hand{sequence.length ? ` · ${sequence[sequence.length - 1].time}–${sequence[0].time} ET` : ''}</span>
             </div>
             <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden max-h-[240px] overflow-y-auto" data-cross-orders>
               <table className="w-full border-collapse">
@@ -455,9 +511,9 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                         <td className={`${td} text-right text-textPrimary`}>${p.price.toFixed(2)}</td>
                         <td className={`${td} text-right text-textPrimary`}>{num(p.size)}</td>
                         <td className={`${td} text-right ${p.notional >= 1_000_000 ? 'text-textPrimary font-semibold' : 'text-textPrimary'}`}>{fmtUsd(p.notional)}</td>
-                        <td className={`${td} ${p.exec === 'MID' || !p.exec ? 'text-textMuted' : 'text-textPrimary'}`}>{sideWord(p)}</td>
-                        <td className={`${td} text-right ${place.cents > 0 ? 'text-bull' : place.cents < 0 ? 'text-bear' : 'text-textMuted'}`}>{place.text}</td>
-                        <td className={td}><IntentTag intent={p.intent} /></td>
+                        <td className={`${td} ${p.exec === 'MID' || !p.exec || p.extended ? 'text-textMuted' : 'text-textPrimary'}`}>{sideWord(p)}</td>
+                        <td className={`${td} text-right ${p.extended ? 'text-textSecondary' : place.cents > 0 ? 'text-bull' : place.cents < 0 ? 'text-bear' : 'text-textMuted'}`}>{place.text}</td>
+                        <td className={td}>{p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="text-textMuted uppercase text-[10px]">{noReadWord(p)}</span>}</td>
                       </tr>
                     );
                   })}
@@ -484,7 +540,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
             </button>
             <button
               type="button"
-              onClick={() => toggle(watchedCross(print, view?.spot ?? print.price, 'dark-pool'))}
+              onClick={() => toggle(watchedCross(print, view && view.spot > 0 ? view.spot : print.price, 'dark-pool'))}
               aria-pressed={marked}
               className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded border font-mono text-[11px] uppercase tracking-wider transition-colors ${
                 marked ? 'border-select/40 bg-select/[0.08] text-select' : 'border-borderSubtle bg-ink/[0.02] text-textSecondary hover:text-textPrimary hover:border-borderMuted'

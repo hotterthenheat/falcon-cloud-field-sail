@@ -42,7 +42,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Maximize2, Minimize2 } from 'lucide-react';
-import { fmtDollars } from '../../data/ahead';
+import { fmtDollars, fmtStrike } from '../../data/ahead';
 import { GREEK_LABEL, GREEK_WORDS, REACH_OPTIONS, type Compare, type Greek, type Reach } from '../../data/compare';
 import DropdownMulti from '../ui/DropdownMulti';
 import { GREEK_PICK_OPTIONS } from './exposureView';
@@ -62,7 +62,6 @@ import { TickFigure } from '../ui/liveRead';
 /* THE HEAD'S OTHER CARDS (Noah, 2026-09-10: "is 'the two books on one ruler'
    missing some top buttons … the house color vs thermal color button"): the
    Map's Expiry card and the calendar's Colours card, the same words. */
-const EXPIRY_OPTIONS: ExpiryChoice<ExposureExpiry>[] = ladderExpiryOptions();
 const PALETTE_OPTIONS: DropdownOption<'thermal' | 'house'>[] = [
   { value: 'thermal', label: 'Thermal', hint: 'Yellow in the middle, red where hedging amplifies a move, blue where it absorbs one' },
   { value: 'house', label: 'House', hint: 'Gold where hedging amplifies, ice where it absorbs' },
@@ -143,6 +142,23 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
   /* THE WINDOW'S TARGET along the ruler (0 = spot), one for every lane on the box */
   const [want, setWant] = useState(0);
   useEffect(() => setWant(0), [cmp.a.ticker, cmp.b.ticker, reach]);
+  /* THE CHOICES NAME THE LISTINGS THE TWO BOOKS READ (the ship pass, 2026-10-22): read per render, not once at load (the
+     calendar rolls at the bell), and when both names land on the same listing the card says it; when they differ
+     (NVDA lists no Oct 22) the calendar's label stays and the hint says which day each book reads */
+  const expiryChoices = useMemo<ExpiryChoice<ExposureExpiry>[]>(() => {
+    const a = ladderExpiryOptions(cmp.a.ticker);
+    const b = ladderExpiryOptions(cmp.b.ticker);
+    const day = (d: Date | null | undefined) => (d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—');
+    return ladderExpiryOptions().map(o => {
+      const oa = a.find(x => x.value === o.value);
+      const ob = b.find(x => x.value === o.value);
+      if (!oa || !ob || !o.date) return o;
+      if (oa.label === ob.label) return oa;
+      /* the label names both listings (the retail test: "EXPIRY Today · Oct 22" over an NVDA book that reads Oct 23) */
+      return { ...o, label: `${cmp.a.ticker} ${day(oa.date)} · ${cmp.b.ticker} ${day(ob.date)}`, hint: `${cmp.a.ticker} reads ${day(oa.date)} · ${cmp.b.ticker} reads ${day(ob.date)}` };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cmp.a.ticker, cmp.b.ticker, cmp]);
   const target = Math.max(-limit, Math.min(limit, want));
   const view = inView(lay, target);
   const scale = view.scale(greek);
@@ -179,7 +195,8 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
   /* All on the page too (Noah, 2026-09-09: "non full screen on the rulers 'all' greek
      selection should be possible as well… making the rulers smaller") — the lanes
      picked stand in the single drawing's height; fullscreen gives them the screen */
-  const greekGroups = useMemo(() => [{ title: 'What the capsules measure', options: GREEK_PICK_OPTIONS }], []);
+  /* both books are the vendor's, and its per-strike exposure carries no vega — VEX would draw $0 capsules */
+  const greekGroups = useMemo(() => [{ title: 'What the capsules measure', options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm' } : o)) }], []);
 
   /* WHAT SITS WITHIN REACH — each greek on the ruler, not the first one speaking for the rest. */
   const reachFacts = useMemo(() => {
@@ -267,6 +284,16 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
               </div>
             </>
           )}
+          {/* ON A PHONE THE FLIPS ARE NAMED HERE (the owner's call, 2026-10-22): a ~140px lane has no room for a "flip 769.50"
+              chip beside its capsules, so the lane keeps only the dashed line and the head says which strike it is */}
+          {(cmp.a.flip != null || cmp.b.flip != null) && (
+            <div className="md:hidden col-span-3 mt-2">
+              <dt className="text-[10px] text-textMuted">Flips · the dashed lines</dt>
+              <dd className="mt-0.5 font-mono text-[12px] tnum tabular-nums text-textPrimary whitespace-nowrap" data-axis-flips>
+                {cmp.a.ticker} {cmp.a.flip != null ? fmtStrike(cmp.a.flip) : '—'} <span className="text-textMuted">·</span> {cmp.b.ticker} {cmp.b.flip != null ? fmtStrike(cmp.b.flip) : '—'}
+              </dd>
+            </div>
+          )}
         </dl>
         {/* THE FULLSCREEN DOOR at the head's far right — where the calendar's and
             the chart's sit (Noah, 2026-09-10: beside the title it "seems like
@@ -287,9 +314,9 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
 
       {/* THE ONE LINE OF CONTROLS */}
       <div className="px-5 pb-2 flex items-center gap-2 flex-wrap shrink-0" data-axis-controls>
-        <ExpiryCard label="Expiry" value={expiry} choices={EXPIRY_OPTIONS} onChange={onExpiry} title="Which contracts both books weigh" testId="compare-expiry" />
+        <ExpiryCard label="Expiry" value={expiry} choices={expiryChoices} onChange={onExpiry} title="Which contracts both books weigh" testId="compare-expiry" />
         <DropdownSelect label="Reach" value={reach} options={REACH_OPTIONS} onChange={onReach} title="How far the ruler runs, in the day's expected moves" testId="reach" />
-        <DropdownMulti label="Greek" values={greekPick} groups={greekGroups} onChange={onGreekPick} emptyWord="All" title="One, some, or all five — a lane each, on one ruler" testId="compare-greek" align="start" />
+        <DropdownMulti label="Greek" values={greekPick} groups={greekGroups} onChange={onGreekPick} emptyWord="All" title="One, some, or all four — a lane each, on one ruler" testId="compare-greek" align="start" />
         {/* no Colours card on paper (2026-10-04): the paper ramps are one journey whatever the palette */}
         {!paper && <DropdownSelect label="Colours" value={palette} options={PALETTE_OPTIONS} onChange={onPalette} title="What the colours mean" testId="compare-colours" />}
         <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" title={unit === '$' ? 'Dollars do not compare across names, so the ruler reads percent here' : undefined} data-axis-ruler-words>
@@ -304,7 +331,9 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
            box does not move when the card flips between one greek and all */
         <div
           className={`min-h-0 px-3 pb-3 grid gap-2 ${full ? 'flex-1' : 'shrink-0'}`}
-          style={{ gridTemplateColumns: `repeat(${greeks.length}, minmax(0, 1fr))`, height: full ? undefined : AXIS_HEADS_H + AXIS_H + AXIS_READ_H + 12 /* the pb-3 */ }}
+          /* lanes no narrower than 200px — in the middle column four came to ~115px each, under the ruler's drawing floor,
+             and every lane stood blank (the Pinpoint sweep, 2026-10-22); they wrap to rows that share the height instead */
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gridAutoRows: 'minmax(0, 1fr)', height: full ? undefined : AXIS_HEADS_H + AXIS_H + AXIS_READ_H + 12 /* the pb-3 */ }}
           data-axis-all
         >
           {greeks.map(g => (
@@ -320,13 +349,15 @@ const CompareAxis = ({ cmp, unit, reach, onReach, greeks, greekPick, onGreekPick
               beyond the ruler (one line each; the caption that stood between them is gone; the count of strikes too
               light to draw went with the tick rule, 2026-10-18 — every strike draws) */}
           <div className="sticky top-0 z-10 bg-panel px-5 flex items-center justify-between gap-4 font-mono text-[10px] tnum tabular-nums shrink-0 whitespace-nowrap" style={{ height: AXIS_HEADS_H }} data-axis-heads>
-            <span className="min-w-0 truncate text-textSecondary" data-axis-head="a">
-              <span className="font-bold text-textPrimary">{cmp.a.ticker}</span> · <TickFigure value={cmp.a.spot}>{cmp.a.spot.toFixed(2)}</TickFigure> · <span className="text-textMuted">longest capsule {fmtDollars(scale.a)} {GREEK_LABEL[greek]}</span>
-              {view.off.a > 0 && <span className="text-textMuted"> · {view.off.a} beyond the ruler</span>}
+            {/* SHORT ENOUGH TO READ WHOLE (the second re-audit, 2026-10-22: "longest capsule $702M GEX · …" was cut): the
+                longest capsule as "max", the strikes past the ruler as "+N off" — the full words on the hover */}
+            <span className="min-w-0 truncate text-textSecondary" data-axis-head="a" title={`${cmp.a.ticker} at ${cmp.a.spot.toFixed(2)} · its longest capsule is ${fmtDollars(scale.a)} of ${GREEK_LABEL[greek]}${view.off.a > 0 ? ` · ${view.off.a} strikes lie beyond the ruler` : ''}`}>
+              <span className="font-bold text-textPrimary">{cmp.a.ticker}</span> · <TickFigure value={cmp.a.spot}>{cmp.a.spot.toFixed(2)}</TickFigure> · <span className="text-textMuted">max {fmtDollars(scale.a)}</span>
+              {view.off.a > 0 && <span className="text-textMuted"> · +{view.off.a} off</span>}
             </span>
-            <span className="min-w-0 truncate text-right text-textSecondary" data-axis-head="b">
-              {view.off.b > 0 && <span className="text-textMuted">{view.off.b} beyond the ruler · </span>}
-              <span className="text-textMuted">longest capsule {fmtDollars(scale.b)} {GREEK_LABEL[greek]}</span> · <TickFigure value={cmp.b.spot}>{cmp.b.spot.toFixed(2)}</TickFigure> · <span className="font-bold text-textPrimary">{cmp.b.ticker}</span>
+            <span className="min-w-0 truncate text-right text-textSecondary" data-axis-head="b" title={`${cmp.b.ticker} at ${cmp.b.spot.toFixed(2)} · its longest capsule is ${fmtDollars(scale.b)} of ${GREEK_LABEL[greek]}${view.off.b > 0 ? ` · ${view.off.b} strikes lie beyond the ruler` : ''}`}>
+              {view.off.b > 0 && <span className="text-textMuted">+{view.off.b} off · </span>}
+              <span className="text-textMuted">max {fmtDollars(scale.b)}</span> · <TickFigure value={cmp.b.spot}>{cmp.b.spot.toFixed(2)}</TickFigure> · <span className="font-bold text-textPrimary">{cmp.b.ticker}</span>
             </span>
           </div>
 

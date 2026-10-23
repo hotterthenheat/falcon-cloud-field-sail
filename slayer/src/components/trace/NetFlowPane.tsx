@@ -39,25 +39,27 @@ import {
   type LineWidth,
   type MouseEventParams,
   type Time,
+  type TickMarkType,
   type UTCTimestamp,
   LineStyle,
 } from 'lightweight-charts';
 import { bookCandles, dayBars, ensureBook, useBookRev } from '../../data/uwBook';
-import { bookSession } from '../../data/flowBook';
-import { nyClock, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
+import { bookSession, VENDOR_TOTAL_NOTE } from '../../data/flowBook';
+import { indexRoot, sessionEndLabel, sessionEndMin, tapeSessionIso, usePaneFlow } from '../../data/traceLive';
+import { isLiveDay, shortDay } from './dayWords';
+import { nyClock, nyParts, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
 import { getResolvedTheme, readToken, useColourVision, useResolvedTheme } from '../../theme/theme';
 import { earnMarks, weightInk, type InkMarks } from './earnedInk';
 import ResetViewControl from '../gex/ResetViewControl';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import {
-  buildNetFlowView,
   MONEYNESS,
   NET_SEGMENTS,
   segmentLabel,
   type MoneynessKey,
   type NetFlowSegment,
 } from '../../data/flowBook';
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import CompanyLogo from '../ui/CompanyLogo';
 import { roomBelow } from '../ui/menuRoom';
@@ -118,6 +120,14 @@ const paneInks = (): PaneInks => ({
 /** The plot's ground: the page's inset on paper (read off the box, which wears the page's tokens there), the panel showing through on the dark terminal */
 const paneGround = (host: Element | null): string => (getResolvedTheme() === 'light' ? readToken('--inset', undefined, host) : 'transparent');
 const volInk = (v: number, m: InkMarks, k: PaneInks) => (v >= m.top ? k.volTop : v >= m.bar ? k.volLoud : k.volQuiet);
+/* ONE COLOUR RULE ON THE LINES (the retail pass, 2026-10-22: BAC ranked most bullish, its pane drew a RED line down to
+   −$20M under a green "NET PUTS −$20.3M"): net calls above zero were bought (bullish, green) and below it sold (bearish,
+   red); net puts above zero were bought (bearish, red) and below it sold (bullish, green). Each point wears its meaning. */
+function inkLine(pts: { time: UTCTimestamp; value: number }[], line: 'calls' | 'puts', full: boolean, k: PaneInks) {
+  const up = full ? k.calls : k.callsDim;
+  const down = full ? k.puts : k.putsDim;
+  return pts.map(p => ({ ...p, color: line === 'calls' ? (p.value >= 0 ? up : down) : p.value > 0 ? down : up }));
+}
 const TIP_VOL_BASE = 'ml-auto font-mono text-[11px] tnum';
 
 /** Today's bars for the pane's reference name — falls back to the last 240
@@ -134,7 +144,7 @@ export function paneTimes(_ref?: string): number[] {
   return Array.from({ length: n }, (_, i) => first + i * 60);
 }
 
-const SegPick = ({ seg, onSeg }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegment) => void }) => {
+const SegPick = ({ seg, onSeg, allowed }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegment) => void; allowed?: (s: NetFlowSegment) => boolean }) => {
   const [open, setOpen] = useState(false);
   /* The room the pane leaves below the pill — the menu scrolls inside it
      rather than being sliced at the pane's floor (see ui/menuRoom). */
@@ -165,7 +175,7 @@ const SegPick = ({ seg, onSeg }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegmen
   }, [open]);
 
   const label = segmentLabel(seg);
-  const groups = ['The book', 'Sectors'] as const;
+  const groups = (['The book', 'Sectors'] as const).filter(g => NET_SEGMENTS.some(x => x.group === g && (!allowed || allowed(x.key))));
   return (
     <div ref={wrapRef} className="relative shrink-0">
       <button
@@ -187,7 +197,7 @@ const SegPick = ({ seg, onSeg }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegmen
           {groups.map((g, gi) => (
             <div key={g} className={gi > 0 ? 'mt-1 pt-1 border-t border-borderSubtle' : ''}>
               <div className="px-2 pt-1 pb-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-textMuted">{g}</div>
-              {NET_SEGMENTS.filter(s => s.group === g).map(s => (
+              {NET_SEGMENTS.filter(s => s.group === g && (!allowed || allowed(s.key))).map(s => (
                 <button
                   key={s.key}
                   onClick={() => {
@@ -239,11 +249,16 @@ interface NetFlowPaneProps {
   dteMax?: number;
   /** Live tide points, epoch seconds. When set, the pane draws these and does not read the simulator. */
   live?: { time: number; callPrem: number; putPrem: number; vol: number; price: number }[] | null;
+  /** Which cuts the pane's picker offers — the same-day desk offers only those the vendor has same-day minutes for */
+  segments?: (s: NetFlowSegment) => boolean;
   /** The Money and Clock cards in the head — off when the host's own line carries the cut
       for more than one pane (Compare, 2026-09-13: two panes on ONE cut, one pair of cards) */
   cutCards?: boolean;
   /** A word after the cards' titles when the host's cut reaches more than this pane ("sets both panes") */
   sharedNote?: string;
+  /** Said on the head when the host's cut does not reach this pane's series (Compare under a clock: the name's ticks span
+      every expiry — audit round 7: the panes drew −$53.6M under a 0DTE headline of −$12.8M) */
+  uncutNote?: string;
 }
 
 const NetFlowPane = ({
@@ -265,6 +280,8 @@ const NetFlowPane = ({
   live = null,
   cutCards = true,
   sharedNote,
+  segments,
+  uncutNote,
 }: NetFlowPaneProps) => {
   /* the page's theme, and the inks cut for it (see paneInks) — read again when the page flips */
   const appTheme = useResolvedTheme();
@@ -298,16 +315,47 @@ const NetFlowPane = ({
       lands between stamps the exact-time lookup misses, so the card falls back
       to the last value at or before the hovered minute. */
   const volChunksRef = useRef<{ time: number; value: number }[]>([]);
+  /* the money lines' own points, kept so a hover's dim can re-ink them (each point wears its meaning's ink) */
+  const lineDataRef = useRef<{ calls: { time: UTCTimestamp; value: number }[]; puts: { time: UTCTimestamp; value: number }[] }>({ calls: [], puts: [] });
 
   /* The spot ribbon: the picked name's own tape, or SPY's under a cut of the book. */
   const ref = ticker ?? 'SPY';
   const bookRev = useBookRev();
-  ensureBook(ref, 'board');
+  if (!indexRoot(ref)) ensureBook(ref, 'board');
   const times = useMemo(() => paneTimes(ref), [ref, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const view = useMemo(
-    () => buildNetFlowView(book, seg, mny, times, dteMax, ticker ?? null, tenor),
-    [book, seg, mny, times, dteMax, ticker, tenor]
-  );
+  /* THE VENDOR'S MINUTES (traceLive's usePaneFlow): the lines and the head's figures read the same series — a host that
+     hands its own `live` keeps that path */
+  const own = usePaneFlow({ ticker: ticker ?? null, seg, mny, zeroDte: dteMax <= 1, enabled: live == null });
+  const series = live ?? own.rows;
+  const tail = series.length ? series[series.length - 1] : null;
+  /* a name's minutes carry gross contracts; a cut's only the net, so a cut prints no volume figure */
+  const headVol = ticker ? series.reduce((a, p) => a + p.vol, 0) : null;
+  const ncp = tail ? tail.callPrem : 0;
+  const npp = tail ? tail.putPrem : 0;
+  /* THE WINDOW RUNS TO NOW WHILE THE SESSION DOES (retail, round 8: "09:30–16:15 ET" at 10:05) — "09:30–now (10:05)",
+     the close only once it has rung */
+  const endMin = sessionEndMin(ticker ?? ref);
+  const nowP = nyParts(new Date());
+  const runningNow = isLiveDay() && nowP.hour * 60 + nowP.minute < endMin;
+  const windowWords = runningNow ? `09:30–now (${tail ? nyClock(tail.time * 1000) : nyClock(Date.now())})` : `09:30–${sessionEndLabel(ticker ?? ref)}`;
+  /* THE READOUT AT REST IS THE LATEST MINUTE (retail, round 8: "--:-- SPY — NET CALLS —" before any hover) — the hover
+     writes over it, and leaving the chart puts the latest back */
+  const restTip = useCallback(() => {
+    const card = tipRef.current;
+    if (!card || card.style.opacity === '1' || !tail) return;
+    if (tipTimeRef.current) tipTimeRef.current.textContent = `${nyClock(tail.time * 1000)} · latest`;
+    if (tipSpotLabelRef.current) tipSpotLabelRef.current.textContent = ref;
+    if (tipSpotRef.current) tipSpotRef.current.textContent = tail.price > 0 ? `$${tail.price.toFixed(2)}` : '—';
+    if (tipCallRef.current) tipCallRef.current.textContent = fmtUsd(tail.callPrem);
+    if (tipPutRef.current) tipPutRef.current.textContent = fmtUsd(tail.putPrem);
+    if (tipVolRef.current) tipVolRef.current.textContent = tail.vol.toLocaleString('en-US');
+  }, [tail, ref]);
+  useEffect(() => {
+    restTip();
+  }, [restTip]);
+  const restTipRef = useRef(restTip);
+  restTipRef.current = restTip;
+  const emptyNote = series.length ? null : own.waiting ? 'Reading the minutes…' : own.fault ? 'This read did not land — the line fills when the feed answers' : 'No flow on this cut yet';
   /* The names the search can offer: only those with contracts inside the
      pane's own DTE ceiling — a 0DTE pane lists same-day names alone. */
   const searchRows = useMemo(
@@ -315,9 +363,9 @@ const NetFlowPane = ({
     [book, dteMax, onTicker, searchNames]
   );
 
-  useEffect(() => {
-    refNameRef.current = ref;
-  }, [ref]);
+  /* the readout names THIS pane's name (retail, 2026-10-23: Compare's QQQ pane read "SPY" on hover) — set as it renders,
+     so a hover before the effect lands never wears the default */
+  refNameRef.current = ref;
 
   const resetView = useCallback(() => {
     const chart = chartRef.current;
@@ -360,7 +408,12 @@ const NetFlowPane = ({
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 14,
-        tickMarkFormatter: nyTickMarks,
+        /* the twenty lead minutes before the bell carry no label — at the pane's edge "09:10" was cut to ":10" (the audit,
+           2026-10-22) */
+        tickMarkFormatter: (t: Time, type: TickMarkType) => {
+          const p = nyParts((t as number) * 1000);
+          return typeof t === 'number' && p.hour * 60 + p.minute < SESSION_OPEN_MIN ? '' : nyTickMarks(t, type, 'en-US');
+        },
       },
       crosshair: {
         vertLine: { color: k0.cross, labelBackgroundColor: k0.label },
@@ -399,6 +452,7 @@ const NetFlowPane = ({
     });
     const puts = chart.addSeries(LineSeries, {
       color: k0.puts,
+      lineStyle: LineStyle.Dashed,
       lineWidth: 2,
       lineType: LineType.Simple,
       priceLineVisible: false,
@@ -470,14 +524,13 @@ const NetFlowPane = ({
       if (next === picked) return;
       picked = next;
       const k = paneInks();
-      calls.applyOptions({
-        color: next === null || next === 'calls' ? k.calls : k.callsDim,
-        lineWidth: (next === 'calls' ? 3 : 2) as LineWidth,
-      });
-      puts.applyOptions({
-        color: next === null || next === 'puts' ? k.puts : k.putsDim,
-        lineWidth: (next === 'puts' ? 3 : 2) as LineWidth,
-      });
+      /* each point keeps its MEANING's ink — calls bought green, sold red; puts bought red, sold green — dimmed whole when
+         the other line is the one under the hand */
+      const d = lineDataRef.current;
+      calls.setData(inkLine(d.calls, 'calls', next === null || next === 'calls', k));
+      puts.setData(inkLine(d.puts, 'puts', next === null || next === 'puts', k));
+      calls.applyOptions({ lineWidth: (next === 'calls' ? 3 : 2) as LineWidth });
+      puts.applyOptions({ lineWidth: (next === 'puts' ? 3 : 2) as LineWidth });
       // White at rest, heavier white under the hand — never a different colour.
       spot.applyOptions({ color: k.spot, lineWidth: (next === 'spot' ? 3 : 1) as LineWidth });
       (
@@ -494,7 +547,9 @@ const NetFlowPane = ({
       if (!card) return;
       if (!param.time || !param.point) {
         card.style.opacity = '0';
+        card.style.visibility = 'hidden';
         applyPick(null);
+        restTipRef.current();
         return;
       }
       if (tipTimeRef.current) tipTimeRef.current.textContent = typeof param.time === 'number' ? nyClock(param.time * 1000) : nyTimeFormatter(param.time);
@@ -557,6 +612,7 @@ const NetFlowPane = ({
       // readout lives in the pane's quietest corner and updates as the
       // crosshair glides, so it never covers what the eye is reading.
       card.style.opacity = '1';
+      card.style.visibility = 'visible';
     };
     chart.subscribeCrosshairMove(onMove);
 
@@ -580,15 +636,41 @@ const NetFlowPane = ({
     const calls = callRef.current;
     const puts = putRef.current;
     const vol = volRef.current;
-    if (!chart || !spot || !calls || !puts || !vol || (times.length === 0 && !(live && live.length))) return;
+    if (!chart || !spot || !calls || !puts || !vol) return;
+    if (!series.length) {
+      spot.setData([]);
+      calls.setData([]);
+      puts.setData([]);
+      vol.setData([]);
+      return;
+    }
 
-    const bars = live ? [] : (bookCandles(ref) ?? dayBars(ref) ?? []);
+    const bars = series.length ? [] : (bookCandles(ref) ?? dayBars(ref) ?? []);
     const byTime = new Map<number, number>();
     for (const b of bars) byTime.set(b.time as number, b.close);
 
     const id = `${seg}-${mny}-${ref}-${tenor}-${dteMax}`;
     const loaded = loadedRef.current;
     let spotData = times.map(t => ({ time: t as UTCTimestamp, value: byTime.get(t) ?? 0 })).filter(p => p.value > 0);
+    /* REAL BARS OFF THE MINUTE GRID (Trace › Compare, 2026-10-22): the vendor's candles do not always sit on the pane's
+       minutes (five-minute bars, or a stamp a few seconds in), and the index fallback below then laid ~80 bars over 390
+       minutes and repeated the last close — the price drew FLAT from mid-morning. Read each minute AS OF the latest bar
+       at or before it, whenever the bars cover the session's own minutes. */
+    if (spotData.length < times.length / 2 && bars.length > 0 && times.length > 0) {
+      const sorted = [...bars].sort((x, y) => (x.time as number) - (y.time as number));
+      const first = sorted[0].time as number;
+      const last = sorted[sorted.length - 1].time as number;
+      if (first <= times[times.length - 1] && last >= times[0]) {
+        let j = -1;
+        spotData = times
+          .map(t => {
+            while (j + 1 < sorted.length && (sorted[j + 1].time as number) <= t) j += 1;
+            /* nothing after the last bar: the price is not drawn past the data */
+            return { time: t as UTCTimestamp, value: j >= 0 && t <= last + 300 ? sorted[j].close : 0 };
+          })
+          .filter(p => p.value > 0);
+      }
+    }
     /* THE SIMULATOR'S CLOCK RUNS AHEAD OF THE WALL'S (~15×, one bar per four ticks), so its bars rarely sit on the
        session's minutes: its last session (SESSION_BARS of them, one simulated day) is laid over the session's minutes
        by index — bar k at 09:30 + k. Real one-minute bars land on the minutes themselves and take the first path. */
@@ -597,13 +679,11 @@ const NetFlowPane = ({
       const at = (i: number) => tail[Math.min(i, tail.length - 1)]?.close ?? 0;
       spotData = times.map((t, i) => ({ time: t as UTCTimestamp, value: at(i) })).filter(p => p.value > 0);
     }
-    const drawn = live && live.length
-      ? live.map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.vol }))
-      : view.points;
+    const drawn = series.map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.vol }));
     const callData = drawn.map(p => ({ time: p.time as UTCTimestamp, value: p.callPrem }));
     const putData = drawn.map(p => ({ time: p.time as UTCTimestamp, value: p.putPrem }));
-    if (live && live.length) {
-      spotData = live.filter(p => p.price > 0).map(p => ({ time: p.time as UTCTimestamp, value: p.price }));
+    if (series.length) {
+      spotData = series.filter(p => p.price > 0).map(p => ({ time: p.time as UTCTimestamp, value: p.price }));
     }
 
     /* The volume floor — one bar per minute, each in its EARNED ink: the marks
@@ -638,15 +718,16 @@ const NetFlowPane = ({
        right edge, and a line that no longer ended where its card said. Three
        setData calls of ~420 points are nothing; a lying line is not. */
     spot.setData(spotData);
-    calls.setData(callData);
-    puts.setData(putData);
+    lineDataRef.current = { calls: callData, puts: putData };
+    calls.setData(inkLine(callData, 'calls', true, inks));
+    puts.setData(inkLine(putData, 'puts', true, inks));
     if (loaded.id !== id) {
       chart.priceScale('right').applyOptions({ autoScale: true });
       chart.priceScale('left').applyOptions({ autoScale: true });
       chart.timeScale().fitContent();
     }
     loadedRef.current = { id, length: drawn.length };
-  }, [view, times, seg, mny, ref, tenor, dteMax, appTheme, live, bookRev]);
+  }, [times, seg, mny, ref, tenor, dteMax, appTheme, series, bookRev]);
 
   /* THE PAGE FLIPPED: the chart that is up is re-inked in place */
   useEffect(() => {
@@ -659,7 +740,11 @@ const NetFlowPane = ({
     });
     spotRef.current?.applyOptions({ color: k.spot });
     callRef.current?.applyOptions({ color: k.calls });
-    putRef.current?.applyOptions({ color: k.puts, lineStyle: vision === 'standard' ? LineStyle.Solid : LineStyle.Dashed });
+    /* the puts are always dashed: the two lines now share inks (each by its meaning), so the style tells them apart */
+    putRef.current?.applyOptions({ color: k.puts, lineStyle: LineStyle.Dashed });
+    const d = lineDataRef.current;
+    callRef.current?.setData(inkLine(d.calls, 'calls', true, k));
+    putRef.current?.setData(inkLine(d.puts, 'puts', true, k));
   }, [appTheme, vision]);
 
   /* data-menu-clip: this box clips its overflow, so the menus in its head
@@ -679,7 +764,7 @@ const NetFlowPane = ({
             {!onTicker && <span className="font-mono text-[11px] font-bold text-textPrimary">{ticker}</span>}
           </span>
         ) : (
-          <SegPick seg={seg} onSeg={onSeg} />
+          <SegPick seg={seg} onSeg={onSeg} allowed={segments} />
         )}
         {/* The two controls are two questions: the cut asks WHICH PART of the
             book, the search asks WHICH NAME. A picked name replaces the cut
@@ -696,23 +781,60 @@ const NetFlowPane = ({
           />
         )}
         {/* The two cuts as labelled cards (the walk, 2026-09-09 — never chip rows) */}
-        {cutCards && <DropdownSelect label="Moneyness" value={mny} options={MONEY_OPTIONS} onChange={onMny} title={sharedNote ? `Which strikes against the stock — ${sharedNote}` : 'Which strikes against the stock'} testId="pane-money" />}
-        {cutCards && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
+        {/* the cards show only where the vendor's minutes can be cut by them: moneyness on a market cut (net-flow/expiry
+            takes it), never on a name's ticks or a sector's tide, and no tenor — a name's ticks span every expiry */}
+        {cutCards && (live != null || (!ticker && !seg.startsWith('sector:'))) && <DropdownSelect label="Moneyness" value={mny} options={MONEY_OPTIONS} onChange={onMny} title={sharedNote ? `Which strikes against the stock — ${sharedNote}` : 'Which strikes against the stock'} testId="pane-money" />}
+        {cutCards && live != null && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
         {/* the figures wrap on a phone rather than run off the pane (the device sweep, 2026-10-18: the volume cut at 360) */}
         <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-[11px] tnum [&>span]:whitespace-nowrap">
           {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
-          <span style={{ color: inksNow.spot }} title={ticker ? undefined : `The white line is ${ref}'s price — the cut's money is every name in it`}>
-            {ticker ? ref : `${ref} price`}
+          {/* AN INDEX-ONLY PANE SAYS ITS LINE IS NOT AN INDEX (audit round 4: "Index options only" over a line labelled "SPY
+              price"): the vendor's minutes carry SPY's price on every cut, so the line is SPY's, said as a reference */}
+          {/* THE LINES' KEY (retail, round 8: the chart had no legend for its lines) — each label wears its line's stroke */}
+          <span style={{ color: inksNow.spot }} data-pane-legend="spot" title={ticker ? `The thin solid line — ${ref}'s price, its own scale on the left` : `The white line is ${ref}'s price — the vendor's reference line on every cut, not ${seg === 'indexes' ? 'an index level' : "the cut's own price"}; the cut's money is every name in it`}>
+            <span aria-hidden className="inline-block align-middle w-3.5 mr-1 border-t" style={{ borderColor: inksNow.spot }} />
+            {ticker ? `${ref} price` : seg === 'indexes' ? `${ref} price for reference, not an index` : `${ref} price for reference`}
           </span>
-          <span>
+          {/* WHOSE MONEY (audit round 9: "SPY … net calls −$2.0M, net puts −$5.8M" read as SPY's own 0DTE flow — Compare showed
+              SPY's −$3.7M / −$0.1M): on a cut the figures are every name in the cut, said beside them */}
+          {!ticker && (
+            <span className="text-textSecondary uppercase text-[11px] tracking-wider" data-pane-scope title="The net call and put premium below are every name in this cut — not the reference name's own; the price line is only a clock to read them against">
+              {seg === 'all' ? "all names'" : "the cut's names'"} {dteMax <= 1 ? '0DTE flow' : 'flow'}
+            </span>
+          )}
+          {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
+              series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}
+          {ticker && uncutNote && live == null && (
+            <span className="text-warn uppercase text-[11px] tracking-wider" title={`This pane is the name's money across ${uncutNote}`} data-pane-uncut>
+              every expiry · not cut
+            </span>
+          )}
+          {ticker && dteMax <= 1 && live == null && (
+            <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The vendor has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry, from the bell">
+              every expiry
+            </span>
+          )}
+          <span title={`${ticker ? "The vendor's minute ticks for the name (/stock/{t}/net-prem-ticks), 09:30 to the close" : "The vendor's net flow by expiry (/net-flow/expiry)"}. ${VENDOR_TOTAL_NOTE}`}>
+            <span aria-hidden data-pane-legend="calls" className="inline-block align-middle w-3.5 mr-1 border-t-2" style={{ borderColor: inksNow.calls }} title="The solid line — net call premium, running from the bell" />
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
-            <span className={view.ncp >= 0 ? 'text-bull' : 'text-bear'}>{fmtUsd(view.ncp)}</span>
+            <span className={ncp >= 0 ? 'text-bull' : 'text-bear'}>{tail ? fmtUsd(ncp) : '—'}</span>
           </span>
-          <span>
+          <span title={VENDOR_TOTAL_NOTE}>
+            <span aria-hidden data-pane-legend="puts" className="inline-block align-middle w-3.5 mr-1 border-t-2 border-dashed" style={{ borderColor: inksNow.puts }} title="The dashed line — net put premium, running from the bell" />
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net puts</span>
-            <span className={view.npp >= 0 ? 'text-bear' : 'text-bull'}>{fmtUsd(view.npp)}</span>
+            <span className={npp >= 0 ? 'text-bear' : 'text-bull'}>{tail ? fmtUsd(npp) : '—'}</span>
           </span>
-          <span className="text-textSecondary">{view.vol.toLocaleString('en-US')} vol</span>
+          {/* THE NET, SAID (audit round 5): the figure Compare's headline and Intervals print for the same name and window */}
+          {ticker && tail && (
+            <span title="Net calls less net puts, 09:30 to the close — the vendor's minute ticks; the same figure as Compare's net and Intervals' lean">
+              <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net</span>
+              <span className={ncp - npp >= 0 ? 'text-bull' : 'text-bear'}>{ncp - npp < 0 ? '−' : '+'}{fmtUsd(Math.abs(ncp - npp))}</span>
+              {/* THE WINDOW UNDER THE FIGURE (audit round 6: BAC +$19.8M here beside +$19.7M on the board, the windows said only
+                  on a hover) */}
+              <span className="text-textSecondary text-[11px] ml-1" data-pane-window>· {windowWords} ET{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
+            </span>
+          )}
+          {headVol != null && tail && <span className="text-textSecondary">{headVol.toLocaleString('en-US')} vol</span>}
         </span>
         {onExpand && (
           <button
@@ -727,11 +849,19 @@ const NetFlowPane = ({
       </div>
       <div className="relative flex-1 min-h-0" onDoubleClick={resetView}>
         <div ref={containerRef} className="absolute inset-0" />
+        {emptyNote && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted" data-pane-empty>{emptyNote}</span>
+          </div>
+        )}
         {/* The glide readout — pinned top-left past the price axis, glass
             enough to whisper over the lines it summarizes */}
         <div
           ref={tipRef}
           aria-hidden
+          /* hidden, not only faded, at rest (audit round 9: the resting readout read as a second "NET PUTS" beside the
+             head's — the head carries the latest figures; the card is the hover's) */
+          style={{ visibility: 'hidden' }}
           className="pointer-events-none absolute top-2 left-14 z-20 w-[168px] opacity-0 transition-opacity duration-100 border border-borderSubtle bg-panel/60 backdrop-blur-md rounded-md shadow-lg shadow-black/30 px-2.5 py-2"
         >
           <span ref={tipTimeRef} className="block font-mono text-[11px] uppercase tracking-widest text-textMuted mb-1">
@@ -740,7 +870,7 @@ const NetFlowPane = ({
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.spot }} />
             <span ref={tipSpotLabelRef} className="font-mono text-[11px] uppercase tracking-wider text-textMuted">
-              SPY
+              {ref}
             </span>
             <span ref={tipSpotRef} className="ml-auto font-mono text-[11px] tnum text-textPrimary">
               —
@@ -762,7 +892,9 @@ const NetFlowPane = ({
           </span>
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.volLoud }} />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">Volume</span>
+            {/* A CUT'S BAR IS THE CHANGE IN NET VOLUME (audit round 9, minor 4): the vendor's net-flow and sector-tide minutes
+                carry a running net volume, not contracts traded — the bar is |Δ net volume| that minute, named so */}
+            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted" title={ticker ? "Contracts traded that minute — the name's calls and puts" : "The change in the vendor's running net volume that minute (calls less puts), sign dropped — not contracts traded"}>{ticker ? 'Volume' : 'Net vol chg'}</span>
             <span ref={tipVolRef} className={`${TIP_VOL_BASE} text-textSecondary`}>
               —
             </span>

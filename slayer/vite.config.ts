@@ -15,6 +15,15 @@ const whalesProxy = (): Plugin => ({
       void proxyTheta(req, res);
     });
   },
+  /* the built site, served by `vite preview`, reads the same proxy — so the production bundle can be checked live */
+  configurePreviewServer(server) {
+    server.middlewares.use('/api/uw', (req, res) => {
+      void proxyUw(req, res);
+    });
+    server.middlewares.use('/api/theta', (req, res) => {
+      void proxyTheta(req, res);
+    });
+  },
 });
 
 // https://vitejs.dev/config/

@@ -17,6 +17,7 @@ import type { Sector } from './universe';
 import { SECTOR_UNIVERSE } from './darkpool';
 import { SP500_NYSE } from './sp500';
 import { tickerName } from './tickers';
+import { boardMondayIso, nyTodayIso } from './nyDate';
 
 export type EarningsVerdict = 'PLAY' | 'FADE' | 'SKIP';
 export type ReportSlot = 'BMO' | 'AMC';
@@ -49,6 +50,8 @@ export interface EarningsEvent {
   pastMoves: { label: string; movePct: number }[];
   /** implied ÷ realized — the mispricing everything hangs on */
   richness: number;
+  /** The street's EPS estimate for the upcoming report, when the vendor's row for it carries one */
+  nextEpsEst?: number | null;
   /** % of the last 8 quarters beaten */
   beatRate8q: number;
   /** −1…+1 — analyst estimate drift into the print */
@@ -65,6 +68,28 @@ export interface EarningsEvent {
   iso?: string;
   /** False until the last prints are in. Absent on the sample, which already has them. */
   history?: boolean;
+  /** True once the report is out (its day has passed, or the vendor carries the session's reaction) */
+  reported?: boolean;
+  /** The stock's move the session after the report, signed % — the vendor's `reaction`, null until it is in */
+  actualMovePct?: number | null;
+  /** True while actualMovePct is the reacting session's move so far, off the live price (round 9) */
+  moveLive?: boolean;
+  /** The New York session that reacts to the report: the report day before the open, the next session after the close */
+  reactionIso?: string;
+  /** How many past reports the usual move is the average of (the live feed; the sample has eight) */
+  histCount?: number;
+  /** Past reports with both an actual and an estimate, split three ways — an in-line print is not a beat */
+  beatCount?: number;
+  inlineCount?: number;
+  missCount?: number;
+  /** False when the vendor has no time for the report ("unknown") — the slot is then not stated */
+  timeKnown?: boolean;
+  /** True when the date is the vendor's estimate, not one the company set */
+  estimated?: boolean;
+  /** True when the name is a fund (an ETF or a trust) — funds do not report earnings */
+  fund?: boolean;
+  /** A second share class whose reports the vendor files under another symbol (BBDO → BBD) */
+  classOf?: string;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -100,17 +125,18 @@ function labelFor(d: Date): string {
 }
 
 /** The calendar date of a board cell — the week list needs the real day to
-    seat the macro calendar beside the reports (2026-09-03). */
+    seat the macro calendar beside the reports (2026-09-03). New York's calendar, from the same Monday the feed starts
+    its fortnight on (nyDate.ts boardMondayIso) — never the browser's clock. The Date is local midnight of that day. */
 export function weekDayDate(weekIdx: 0 | 1, weekday: number): Date {
-  const today = tradingToday();
-  return new Date(mondayOf(today) + weekIdx * 7 * 86400000 + (weekday - 1) * 86400000);
+  const [y, m, d] = boardMondayIso().split('-').map(Number);
+  return new Date(y, m - 1, d + weekIdx * 7 + (weekday - 1));
 }
 
-/** Column header for the week board — date math stays in one module. */
+/** Column header for the week board — date math stays in one module. "Today" is New York's today, never on a weekend. */
 export function weekDayLabel(weekIdx: 0 | 1, weekday: number): { label: string; isToday: boolean } {
-  const today = tradingToday();
   const d = weekDayDate(weekIdx, weekday);
-  return { label: labelFor(d), isToday: d.getTime() === today.getTime() };
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { label: labelFor(d), isToday: iso === nyTodayIso() };
 }
 
 /** "Q2'26"-style labels for the last N quarters, oldest first. */
@@ -158,7 +184,7 @@ export function decide(e: Omit<EarningsEvent, 'verdict' | 'strategy' | 'rational
   // States, not orders: the strings DESCRIBE the pricing and the sleeves —
   // they never name instruments or tell anyone what to do. The verdict enum
   // stays internal loop-scoring vocabulary.
-  if (rich >= 1.3) {
+  if (rich > 1.3) {
     if (Math.abs(dirScore) >= 3) {
       const up = dirScore > 0;
       return {
@@ -174,7 +200,7 @@ export function decide(e: Omit<EarningsEvent, 'verdict' | 'strategy' | 'rational
     };
   }
 
-  if (rich <= 0.85) {
+  if (rich < 0.85) {
     return {
       verdict: 'PLAY',
       strategy: `Implied ${im}% under-prices an ${hm}% average mover — volatility is on sale into this print.`,
@@ -221,6 +247,8 @@ export interface EarningsQuarter {
   epsEst: number;
   epsActual: number;
   epsBeat: boolean;
+  /** Beat, in line (equal to the cent) or miss — the live feed's; the sample leaves it off */
+  epsResult?: 'beat' | 'inline' | 'miss';
   revEstB: number;
   revActualB: number;
   revBeat: boolean;
@@ -248,6 +276,8 @@ export interface ActiveContract {
   ivPct: number;
   /** Strike distance from spot, signed % */
   fromSpotPct: number;
+  /** What "spot" is: the last price in the session, else the last regular close ("the Oct 22 close") */
+  spotWord?: string;
   /** Move needed by expiry to break even on the mid, % */
   breakevenPct: number;
   /** The contract's expiry as a date key ("2026-09-18") — a row is carried to
@@ -278,6 +308,8 @@ export interface EarningsDossier {
   crushKnown?: boolean;
   /** The busiest-contract read has finished. Absent on the sample. */
   contractsReady?: boolean;
+  /** The report after the one the page leads with (when that one is already out) */
+  nextAfter?: { iso: string; dateLabel: string; slot: ReportSlot; timeKnown: boolean; estimated: boolean; confirmed: boolean; daysOut: number } | null;
 }
 
 function roundStrike(px: number, offPct: number): number {

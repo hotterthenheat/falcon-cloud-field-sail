@@ -179,21 +179,35 @@ const IMPACT: Record<Cluster, (GeoZone & { rel: number })[]> = {
   ],
 };
 
-/* Macro headlines carry their origin in their words — first match wins, so
-   the specific places (the cartel, the Gulf, the shale patch, the foundries)
-   sit above the broad ones. */
+/* Macro headlines carry their origin in their words — first match wins, so the specific places sit above the broad
+   ones. EVERY PATTERN IS A WHOLE WORD (audit round 5, 2026-10-23): /uk/ matched "Ukraine" (London), /foundr/ pinned
+   Samsung's Taylor, Texas foundry to Taipei, /rate/ matched "Accelerates" (Washington), /gulf/ took the Gulf of Mexico to
+   Riyadh. A story's place must be named — a bare industry word ("foundry", "chips", "oil") names no city. */
 const MACRO_ORIGINS: { re: RegExp; lat: number; lng: number; city: string }[] = [
-  { re: /opec/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
-  { re: /hormuz|saudi|riyadh|aramco|brent|gulf/i, lat: 24.71, lng: 46.68, city: 'Riyadh' },
-  { re: /\beia\b|cushing|permian|wti|shale/i, lat: 29.76, lng: -95.37, city: 'Houston' },
-  { re: /taiwan|taipei|foundr|\bsox\b/i, lat: 25.03, lng: 121.56, city: 'Taipei' },
-  { re: /export control|commerce dept|chip curb/i, lat: 38.89, lng: -77.04, city: 'Washington' },
-  { re: /fed|fomc|rate|cpi|inflation|payroll|jobs|jobless|claims|ism\b|treasury|yield/i, lat: 38.89, lng: -77.04, city: 'Washington' },
-  { re: /boj|japan|yen/i, lat: 35.68, lng: 139.69, city: 'Tokyo' },
-  { re: /ecb|euro(?!phori)|lagarde/i, lat: 50.11, lng: 8.68, city: 'Frankfurt' },
-  { re: /china|beijing|tariff/i, lat: 39.9, lng: 116.4, city: 'Beijing' },
-  { re: /opec|crude|oil/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
-  { re: /uk|boe|gilt/i, lat: 51.51, lng: -0.13, city: 'London' },
+  { re: /\bopec\+?(?=\W|$)/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
+  { re: /\b(?:israel(?:i|is)?|gaza|hamas|jerusalem|tel aviv|west bank|hezbollah)\b/i, lat: 31.77, lng: 35.21, city: 'Jerusalem' },
+  { re: /\b(?:ukrain(?:e|ian|ians)|kyiv|kiev|zelensk(?:y|iy))\b/i, lat: 50.45, lng: 30.52, city: 'Kyiv' },
+  { re: /\b(?:russia(?:n|ns)?|moscow|kremlin|putin)\b/i, lat: 55.76, lng: 37.62, city: 'Moscow' },
+  { re: /\b(?:iran(?:ian)?|tehran)\b/i, lat: 35.69, lng: 51.39, city: 'Tehran' },
+  { re: /\b(?:hormuz|saudi(?: arabia)?|riyadh|aramco|persian gulf|gulf states)\b/i, lat: 24.71, lng: 46.68, city: 'Riyadh' },
+  { re: /\b(?:eia|cushing|permian|wti|shale|gulf of mexico)\b/i, lat: 29.76, lng: -95.37, city: 'Houston' },
+  { re: /\b(?:taiwan(?:ese)?|taipei|tsmc|taiex)\b/i, lat: 25.03, lng: 121.56, city: 'Taipei' },
+  { re: /\b(?:south korea(?:n)?|korea(?:n)?|seoul|kospi|bok)\b/i, lat: 37.57, lng: 126.98, city: 'Seoul' },
+  { re: /\b(?:india(?:n)?|mumbai|new delhi|rbi|sensex|nifty|rupee)\b/i, lat: 19.08, lng: 72.88, city: 'Mumbai' },
+  { re: /\b(?:boj|japan(?:ese)?|tokyo|yen|nikkei|jgbs?)\b/i, lat: 35.68, lng: 139.69, city: 'Tokyo' },
+  { re: /\b(?:china|chinese|beijing|pboc|yuan|renminbi|caixin|hang seng|hong kong)\b/i, lat: 39.9, lng: 116.4, city: 'Beijing' },
+  { re: /\b(?:uk|u\.k\.|britain|british|england|boe|bank of england|gilts?|ftse|sterling|london)\b/i, lat: 51.51, lng: -0.13, city: 'London' },
+  { re: /\b(?:ital(?:y|ian)|btps?|rome)\b/i, lat: 41.9, lng: 12.5, city: 'Rome' },
+  { re: /\b(?:france|french|paris|cac 40|oats)\b/i, lat: 48.86, lng: 2.35, city: 'Paris' },
+  { re: /\b(?:germany|german|berlin|bunds?|ifo|zew|dax)\b/i, lat: 52.52, lng: 13.4, city: 'Berlin' },
+  { re: /\b(?:ecb|eurozone|euro area|lagarde|frankfurt)\b/i, lat: 50.11, lng: 8.68, city: 'Frankfurt' },
+  { re: /\b(?:canada|canadian|ottawa|bank of canada|loonie)\b/i, lat: 45.42, lng: -75.7, city: 'Ottawa' },
+  { re: /\b(?:mexico|mexican|peso|banxico)\b/i, lat: 19.43, lng: -99.13, city: 'Mexico City' },
+  { re: /\b(?:brazil(?:ian)?|brasilia|bovespa)\b/i, lat: -15.79, lng: -47.88, city: 'Brasília' },
+  { re: /\b(?:australia(?:n)?|rba|sydney|asx)\b/i, lat: -33.87, lng: 151.21, city: 'Sydney' },
+  { re: /\b(?:export controls?|commerce (?:dept|department)|chip curbs?)\b/i, lat: 38.89, lng: -77.04, city: 'Washington' },
+  { re: /\b(?:fed|fomc|powell|interest rates?|rate (?:cut|hike|decision)s?|cpi|ppi|pce|inflation|payrolls?|nonfarm|jobs report|jobless|claims|ism|treasury|treasuries|t-bills?|yields?|white house|congress|senate|tariffs?)\b/i, lat: 38.89, lng: -77.04, city: 'Washington' },
+  { re: /\b(?:crude|oil prices?|brent)\b/i, lat: 48.21, lng: 16.37, city: 'Vienna' },
 ];
 
 const gradeOf = (s: number): NewsGrade => (s > 0.12 ? 'ALLY' : s < -0.12 ? 'THREAT' : 'WATCH');
@@ -203,7 +217,11 @@ const severityOf = (n: NewsItem): number =>
   Math.max(1, Math.min(10, Math.round(Math.abs(n.prediction.expMove1dPct) * 1.6 + n.magnitude * 5)));
 
 export function geoFromItems(items: NewsItem[]): GeoNewsEvent[] {
-  return items.map(item => {
+  /* one story once: the wire is read page by page while it keeps printing, so a story that slid across a page boundary
+     came back twice — two rows, two pins and React's duplicate-key warning on the phone (the Dossier sweep, 2026-10-22) */
+  const seen = new Set<string>();
+  const once = items.filter(item => (seen.has(item.id) ? false : (seen.add(item.id), true)));
+  return once.map(item => {
     const hq = item.ticker ? HQ[item.ticker] ?? null : null;
     const macro = !hq ? MACRO_ORIGINS.find(m => m.re.test(item.headline)) : null;
     const o = hq ?? macro;
@@ -361,11 +379,11 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
   if (top) {
     out.push({
       key: 'lean',
-      title: "Today's lean",
+      title: marked === 0 ? 'Major today' : "Today's lean",
       ink: lean === 'positive' ? 'bull' : lean === 'negative' ? 'bear' : 'neutral',
       read:
         marked === 0
-          ? `${events.length} headlines on the wire, and none of them are marked for or against a name. The heaviest print is ${where}${from}.`
+          ? `${events.filter(e => e.item.major).length} of ${events.length} headlines are major — flagged so by Unusual Whales, about a named listed company or the economy, and not house-keeping (call dates, routine dividends); the feed sends no positive or negative read. The hardest-landing one is ${where}${from}.`
           : `${positive} positive against ${negative} negative across ${events.length} headlines — the wire is ${
               lean === 'split' ? 'split down the middle' : `net ${lean}`
             }. The heaviest print is ${where}${from}.`,
@@ -378,30 +396,41 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
     key: 'beat',
     title: 'Biggest story type',
     ink: 'neutral',
-    read: `${topCat} carries ${topCatN} of ${events.length} stories today — when one beat crowds the tape, moves cluster around its names and the rest of the board trades quiet.`,
+    read: `${topCat} carries ${topCatN} of ${events.length} stories today.`,
   });
-  const macro = events.filter(e => !e.item.ticker);
+  /* MACRO IS THE MACRO BEAT (the fourth audit, 2026-10-23): "1216 stories name no single stock… market-wide" counted
+     every untagged story, press releases from unlisted companies included, against the page's own rule (whalesMap
+     categoryOf: macro only when the story is about the economy, a central bank, rates, prices, markets or policy) */
+  const macro = events.filter(e => e.item.category === 'Macro');
+  const unnamed = events.filter(e => !e.item.ticker && e.item.category !== 'Macro').length;
+  const named = events.filter(e => !!e.item.ticker).length;
   const macroLift = macro.filter(e => e.grade === 'ALLY').length;
   const macroPress = macro.filter(e => e.grade === 'THREAT').length;
   const macroMarked = macroLift + macroPress;
+  const rest = `${named} ${named === 1 ? 'story that names' : 'that name'} a listed stock${unnamed ? ` and ${unnamed} company ${unnamed === 1 ? 'story' : 'stories'} naming none the page lists` : ''}`;
   out.push({
     key: 'macro',
     title: 'Macro backdrop',
     ink: macroLift > macroPress ? 'bull' : macroPress > macroLift ? 'bear' : 'neutral',
-    read: `${macro.length} index-level prints against ${events.length - macro.length} single names. The macro tape ${
-      macroMarked === 0 ? 'is not marked for or against' : macroLift > macroPress ? 'leans supportive' : macroPress > macroLift ? 'leans heavy' : 'leans neutral'
-    } — single-name stories trade with that wind ${macroLift > macroPress ? 'behind' : macroPress > macroLift ? 'against' : 'beside'} them.`,
+    read:
+      macroMarked === 0
+        ? `${macro.length} macro ${macro.length === 1 ? 'story' : 'stories'} — the economy, central banks, rates, markets and policy — against ${rest}; ${macro.filter(e => e.item.major).length} of the macro ones are flagged major.`
+        : `${macro.length} macro ${macro.length === 1 ? 'story' : 'stories'} against ${rest}. The macro tape ${
+            macroLift > macroPress ? 'leans supportive' : macroPress > macroLift ? 'leans heavy' : 'leans neutral'
+          } — single-name stories trade with that wind ${macroLift > macroPress ? 'behind' : macroPress > macroLift ? 'against' : 'beside'} them.`,
   });
   const fresh = events.filter(e => freshnessOf(e) === 'fresh');
   if (fresh.length > 0) {
     const named = fresh.slice(0, 3).map(e => e.item.ticker).filter((t): t is string => !!t);
-    const macros = fresh.slice(0, 3).filter(e => !e.item.ticker).length;
+    const macros = fresh.slice(0, 3).filter(e => !e.item.ticker && e.item.category === 'Macro').length;
     const who = [...named, macros === 1 ? 'a macro print' : macros > 1 ? `${macros} macro prints` : ''].filter(Boolean).join(', ');
     out.push({
       key: 'fresh',
       title: 'Just landed',
       ink: 'neutral',
-      read: `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling — ${who} ${fresh.length === 1 ? 'is' : 'are'} the freshest ink on the board.`,
+      read: who
+        ? `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling — ${who} ${named.length + macros > 1 ? 'are' : 'is'} the freshest ink on the board.`
+        : `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling.`,
     });
   }
   return out;

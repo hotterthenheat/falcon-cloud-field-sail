@@ -24,7 +24,7 @@ import {
   type MouseEventParams,
   type Time,
 } from 'lightweight-charts';
-import { bookCandles, bookHistory as liveGexHistory, dayBars, ensureBook, peekIv } from '../../data/uwBook';
+import { bookCandles, bookHistory as liveGexHistory, dayBars, ensureBook, peekDaySigma, peekIv } from '../../data/uwBook';
 import { onGlide, promisedWidth } from '../../core/glide';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
 import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
@@ -54,7 +54,7 @@ import PaneFoot from './PaneFoot';
 import ReplayStrip from './ReplayStrip';
 import { commitArm, evaluateAlert, markFired, useAlerts, type AlertContext, type IndicatorSource } from './alertStore';
 import { newsPulse } from '../../data/news';
-import { exposureNowFor, fmtUsd } from '../../data/gex';
+import { exposureNowFor, fmtGexUsd as fmtUsd } from '../../data/gex';
 import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock } from 'lucide-react';
 import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, gestureOf, isFreehand, isWordsKind, loadDrawings, needsThirdAnchor, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
 import DrawRailTools, { DrawSheet } from './DrawRailTools';
@@ -3023,7 +3023,8 @@ const StrikeChart = ({
        measure box and the flip strip cannot disagree about the day's range. */
     drawingsRef.current?.setDistanceScales({
       atr: sessionAtr(base),
-      sigma: impliedDaySigma(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
+      /* the vendor's implied move first — the one expected move the pages share (uwBook peekDaySigma) */
+      sigma: peekDaySigma(ticker) ?? impliedDaySigma(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
     });
 
     const loaded = loadedRef.current;

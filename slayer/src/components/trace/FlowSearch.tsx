@@ -62,7 +62,7 @@
 import { useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Layers, Search, X } from 'lucide-react';
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 import CompanyLogo from '../ui/CompanyLogo';
 import { CARD } from '../ui/DropdownSelect';
 
@@ -75,6 +75,71 @@ export interface FlowSearchRow {
 }
 
 export const normSymbol = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/* ---- A CONTRACT TYPED THE WAY PEOPLE WRITE IT (audit round 9: "NVDA 220C 11/20" read "Nothing on this cut", no hint) -----
+   The field takes a name, a name and a strike, or a whole contract: "NVDA 220C 11/20", "NVDA 220 C Nov 20",
+   "NVDA 220 call 2026-11-20", "NVDA261120C00220000" (OCC). The old letters-and-digits match stays for anything that is not
+   one of those ("505C", "spy505c"). */
+export interface ContractQuery {
+  ticker: string;
+  strike: number | null;
+  right: 'C' | 'P' | null;
+  /** MM/DD of the expiry, and its year when typed */
+  month: number | null;
+  day: number | null;
+  year: number | null;
+}
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+export const CONTRACT_FORMATS = 'NVDA 220C 11/20, NVDA 220 C Nov 20 or NVDA261120C00220000';
+export function parseContractQuery(raw: string): ContractQuery | null {
+  const q = raw.trim().toUpperCase();
+  if (!q) return null;
+  /* the OCC symbol: root, YYMMDD, C/P, strike × 1000 in eight digits */
+  const occ = q.replace(/\s+/g, '').match(/^([A-Z][A-Z.]{0,5}?)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/);
+  if (occ) return { ticker: occ[1], strike: Number(occ[6]) / 1000, right: occ[5] as 'C' | 'P', month: Number(occ[3]), day: Number(occ[4]), year: 2000 + Number(occ[2]) };
+  const m = q.match(/^\$?([A-Z][A-Z.]{0,5})(?:\s*(\d+(?:\.\d+)?))?\s*(CALLS?|PUTS?|C|P)?\b\s*(.*)$/);
+  if (!m || (!m[2] && !m[4])) return null;
+  const rest = (m[4] ?? '').replace(/[,]/g, ' ').trim();
+  let month: number | null = null;
+  let day: number | null = null;
+  let year: number | null = null;
+  let right: 'C' | 'P' | null = m[3] ? (m[3].startsWith('C') ? 'C' : 'P') : null;
+  let tail = rest;
+  /* a right after the date ("NVDA 220 11/20 C") */
+  const rt = tail.match(/\s*\b(CALLS?|PUTS?|C|P)$/);
+  if (!right && rt) {
+    right = rt[1].startsWith('C') ? 'C' : 'P';
+    tail = tail.slice(0, rt.index).trim();
+  }
+  if (tail) {
+    const iso = tail.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    const slash = tail.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
+    const word = tail.match(/^([A-Z]{3})[A-Z]*\.?\s*(\d{1,2})(?:,?\s*'?(\d{2,4}))?$/);
+    if (iso) [year, month, day] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+    else if (slash) [month, day, year] = [Number(slash[1]), Number(slash[2]), slash[3] ? Number(slash[3].length === 2 ? `20${slash[3]}` : slash[3]) : null];
+    else if (word && MONTHS.includes(word[1])) [month, day, year] = [MONTHS.indexOf(word[1]) + 1, Number(word[2]), word[3] ? Number(word[3].length === 2 ? `20${word[3]}` : word[3]) : null];
+    else return null;
+  }
+  return { ticker: m[1], strike: m[2] ? Number(m[2]) : null, right, month, day, year };
+}
+/** Does a row match what was typed: a parsed contract field by field, else the letters-and-digits match */
+export function matchesContract(raw: string, r: { ticker: string; strike: number; right: 'C' | 'P'; expiry?: string }): boolean {
+  const nq = normSymbol(raw);
+  if (nq === '') return true;
+  const c = parseContractQuery(raw);
+  if (!c) return normSymbol(`${r.ticker}${r.strike}${r.right}`).includes(nq);
+  if (r.ticker.toUpperCase() !== c.ticker) return false;
+  /* a strike still being typed ("NVDA 2") matches as a prefix; with a side or a date it is the whole strike */
+  if (c.strike != null && (c.right || c.month != null ? Math.abs(r.strike - c.strike) > 1e-6 : !String(r.strike).startsWith(String(c.strike)))) return false;
+  if (c.right && r.right !== c.right) return false;
+  if (c.month != null && r.expiry) {
+    const e = r.expiry.match(/^(\d{2})\/(\d{2})\/(\d{4})/) ?? r.expiry.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!e) return false;
+    const [mm, dd, yy] = r.expiry.includes('/') ? [Number(e[1]), Number(e[2]), Number(e[3])] : [Number(e[2]), Number(e[3]), Number(e[1])];
+    if (mm !== c.month || dd !== c.day || (c.year != null && yy !== c.year)) return false;
+  }
+  return true;
+}
 
 type Suggestion =
   | { key: string; kind: 'ticker'; ticker: string; primary: string; count: string; money: string }
@@ -195,22 +260,27 @@ const FlowSearch = ({
   /* Unscoped: the query against every ticker and contract. */
   const { tickers, contracts } = useMemo(() => {
     const tickers: Suggestion[] = [...tallies.tick.entries()]
-      .filter(([tk]) => nq === '' || normSymbol(tk).includes(nq))
+      .filter(([tk]) => nq === '' || normSymbol(tk).includes(nq) || parseContractQuery(value)?.ticker === tk)
       .sort((a, b) => b[1].prem - a[1].prem)
       .slice(0, tickersOnly ? 8 : nq === '' ? 5 : 4)
       .map(([tk, v]) => ({ key: `t-${tk}`, kind: 'ticker', ticker: tk, primary: tk, count: `${v.count} ${countNoun}`, money: fmtUsd(v.prem) }));
     const contracts: Suggestion[] = tickersOnly
       ? []
       : [...tallies.con.entries()]
-          .filter(([ck]) => nq === '' || normSymbol(ck).includes(nq))
+          .filter(([ck, v]) => nq === '' || normSymbol(ck).includes(nq) || (parseContractQuery(value) != null && matchesContract(value, v)))
           .sort((a, b) => b[1].prem - a[1].prem)
           .slice(0, nq === '' ? 4 : 6)
           .map(contractRow);
     return { tickers, contracts };
-  }, [tallies, nq, countNoun, tickersOnly]);
+  }, [tallies, nq, value, countNoun, tickersOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doorRow: Suggestion | null = door ? { key: 'door', kind: 'door', primary: door.label(value.trim()) } : null;
-  const flat: Suggestion[] = scope ? scoped : [...tickers, ...contracts, ...(doorRow ? [doorRow] : [])];
+  /* A STRIKE TYPED IS A CONTRACT ASKED FOR (audit round 10, minor 1: "NVDA 215C" + Enter picked "Everything on NVDA"): with
+     a strike in the query the contracts lead the menu, and Enter keeps the query itself — every expiry of that strike and
+     side, or the one contract when a date is typed */
+  const parsedQ = tickersOnly ? null : parseContractQuery(value);
+  const contractAsked = !!parsedQ && parsedQ.strike != null;
+  const flat: Suggestion[] = scope ? scoped : contractAsked ? [...contracts, ...tickers, ...(doorRow ? [doorRow] : [])] : [...tickers, ...contracts, ...(doorRow ? [doorRow] : [])];
   const clampedHi = Math.min(hi, Math.max(0, flat.length - 1));
 
   const pick = (s: Suggestion) => {
@@ -255,9 +325,16 @@ const FlowSearch = ({
       e.preventDefault();
       setHi(h => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
-      if (open && flat[clampedHi]) {
+      if (open && contractAsked && !scope && clampedHi === 0) {
+        e.preventDefault();
+        close();
+      } else if (open && flat[clampedHi]) {
         e.preventDefault();
         pick(flat[clampedHi]);
+      } else if (open) {
+        /* nothing to pick: Enter keeps what is typed and closes the card, never leaves it over the page (retail, round 10) */
+        e.preventDefault();
+        close();
       }
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       // Tab walks on to the next control — the card does not stay open behind the reader
@@ -296,6 +373,8 @@ const FlowSearch = ({
         className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${lit ? WASH[s.kind === 'contract' ? s.right : 'plain'] : ''}`}
         data-flow-search-row={s.kind}
         data-lit={lit || undefined}
+        /* the figures say what they count (retail, round 10: "80 contracts $476.8M" unexplained) */
+        title={quiet ? undefined : `${s.kind === 'contract' ? `${s.ticker} ${s.strike}${s.right}` : s.kind === 'all' ? `Everything on ${s.ticker}` : s.ticker} — ${s.count ? `${s.count.replace('×', ' times')} ` : ''}on this page${s.money ? `, ${s.money} in premium among them` : ''}`}
       >
         <span className="w-4 h-4 shrink-0 flex items-center justify-center" aria-hidden="true">
           {s.kind === 'back' ? (
@@ -359,7 +438,9 @@ const FlowSearch = ({
           <input
             value={value}
             onChange={e => {
-              onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9 .]/g, '').slice(0, 12));
+              /* the date's "/" and "-" stay, and room for a whole contract (audit round 10, minor 1: "NVDA 215C 10/30" became
+                 "NVDA 215C 10" — the field kept 12 letters and digits; an OCC symbol alone is 21) */
+              onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9 ./-]/g, '').slice(0, 28));
               setScope(null); // typing is searching again
               setOpen(true);
               setHi(0);
@@ -420,13 +501,19 @@ const FlowSearch = ({
             </>
           ) : (
             <>
-              {tickers.length > 0 && (
+              {contractAsked && contracts.length > 0 && (
                 <>
-                  <div className={HEADING}>Names</div>
-                  {tickers.map((s, i) => renderRow(s, i))}
+                  <div className={HEADING}>Contracts · Enter keeps “{value.trim()}”</div>
+                  {contracts.map((s, i) => renderRow(s, i))}
                 </>
               )}
-              {contracts.length > 0 && (
+              {tickers.length > 0 && (
+                <>
+                  <div className={`${HEADING} ${contractAsked && contracts.length > 0 ? 'mt-1 border-t border-borderSubtle/70 pt-2' : ''}`}>{`Names · ${countNoun} on this page · their premium`}</div>
+                  {tickers.map((s, i) => renderRow(s, (contractAsked ? contracts.length : 0) + i))}
+                </>
+              )}
+              {!contractAsked && contracts.length > 0 && (
                 <>
                   <div className={`${HEADING} ${tickers.length > 0 ? 'mt-1 border-t border-borderSubtle/70 pt-2' : ''}`}>Contracts</div>
                   {contracts.map((s, i) => renderRow(s, tickers.length + i))}

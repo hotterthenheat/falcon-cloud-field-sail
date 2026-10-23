@@ -12,9 +12,16 @@ import ScrollHome from '../../components/layout/ScrollHome';
 import type { DistanceUnit } from '../../data/atr';
 import { setDistanceUnit, useDistanceUnit } from '../../data/distanceUnits';
 import { LEVELS_OPTIONS, LEVELS_TITLE, setLevelsScope, useLevelsScope } from '../../data/levelsScope';
+import { todayScopeLabel } from '../../data/bookWindow';
+import { GLOSSARY } from '../../components/gex/glossary';
+
+/** The pages whose named levels follow the Levels card */
+const LEVELS_PAGES = new Set(['/pinpoint/map', '/pinpoint/agenda', '/pinpoint/board', '/pinpoint/compare']);
 import { GEX_SUBPAGES } from './subnav';
 import { useReplayLabel } from './replayState';
 import SessionBook from '../../components/ui/SessionBook';
+import RegimeLine from '../../components/gex/RegimeLine';
+import { SayPage } from '../../components/layout/PageMeta';
 
 /*
 ==================================================
@@ -121,7 +128,10 @@ const PinpointLayout = () => {
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{page.label}</h1>
+            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">
+              {page.label}
+              {page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' && <span className="text-textMuted font-normal"> · Building</span>}
+            </h1>
             {focused != null && (
               <span data-focus-chip className="inline-flex items-center gap-2 rounded-md border border-silver/40 bg-silver/[0.06] pl-2.5 pr-1 py-0.5 font-mono">
                 <span className="text-[9px] font-bold uppercase tracking-widest text-silver">Focus</span>
@@ -154,7 +164,7 @@ const PinpointLayout = () => {
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{line}</p>
+          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate" title={[line, /\bbook\b/i.test(line) ? GLOSSARY.book : '', /supreme/i.test(line) ? GLOSSARY.supreme : ''].filter(Boolean).join('\n')}>{line}</p>
         </div>
 
         {/* THE SIDE: the Map's band where the row has its room (#pinpoint-head-band — the Map measures the room against
@@ -163,15 +173,22 @@ const PinpointLayout = () => {
             never asked for room, so on a phone held sideways, a small laptop or a portrait monitor it was handed 10 to
             165px and the two cards ran off the screen's edge — the only sideways scroll on the site. A floor of the
             cards' own width makes `flex-wrap` carry the side to its own line instead. */}
-        <div className="flex-[3_1_0%] min-w-[264px] max-sm:basis-full flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
+        <div className="flex-[3_1_0%] min-w-[400px] max-sm:min-w-0 max-sm:basis-full flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
           <div id="pinpoint-head-band" className="empty:hidden min-w-0 flex-1 [&>[data-ledger-toolbar]]:border-0 [&>[data-ledger-toolbar]]:bg-transparent [&>[data-ledger-toolbar]]:p-0" data-shell-band />
-          <div className="ml-auto flex items-center gap-2" data-shell-cards>
+          <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 max-sm:ml-0 max-sm:w-full max-sm:justify-start max-sm:gap-1.5 [&_:where(button)]:hit" data-shell-cards>
             <SessionBook />
-            {page.path !== '/pinpoint/map' && <DropdownSelect label="Levels" icon={Layers} value={levelsScope} options={LEVELS_OPTIONS} onChange={setLevelsScope} title={LEVELS_TITLE} testId="levels-scope" align="end" />}
+            {/* ONE LEVELS CARD FOR THE WHOLE DESK (the ship pass, 2026-10-22): the Map, the Agenda, the Board and Compare all
+                read their supreme, walls, flip and net GEX off the contracts it picks, so one ticker shows one set of
+                levels on every page. A page's own Expiry card can still look at other dates, and says so when it does. */}
+            {LEVELS_PAGES.has(page.path) && <DropdownSelect label="Levels" icon={Layers} value={levelsScope} options={LEVELS_OPTIONS.map(o => (o.value === '0DTE' && todayScopeLabel() !== 'Today' ? { ...o, label: todayScopeLabel(), hint: "Today's contracts expired at the close — the next session's contracts (the next expiry if none expire then): the next day's walls and flip" } : o))} onChange={setLevelsScope} title={LEVELS_TITLE} testId="levels-scope" align="end" />}
             <DropdownSelect label="Ruler" value={unit} options={RULER_OPTIONS} onChange={setDistanceUnit} title="The unit every distance on Pinpoint is read in" testId="ruler" align="end" />
           </div>
         </div>
       </header>
+      {/* PINNED OR TRENDING, IN ONE SENTENCE (the eighth audit's retail finding) — the Levels pages, for the desk's name */}
+      {LEVELS_PAGES.has(page.path) && <RegimeLine ticker={activeTicker} />}
+      {/* the Agenda's Building face names itself in the tab (the eighth audit: /pinpoint/building read "Agenda") */}
+      <SayPage words={page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' ? 'Building · Agenda' : null} />
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -183,7 +200,10 @@ const PinpointLayout = () => {
           /* THE DESK OWNS ITS FIRST SCREEN: top bar 56 + the shell's padding
              and its head ≈ 164. Short pages stretch to a full first screen;
              the footer starts below the fold. */
-          className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)]"
+          /* A FINGER'S HIT AREA ON EVERY PINPOINT CONTROL (the ship pass, 2026-10-22, at 390 wide: the window rails, the
+             strike doors, the row actions were 12–28px tall). `.hit` (index.css) adds an invisible 44px box on a coarse
+             pointer only; nothing a mouse sees changes. */
+          className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] [&_:where(button)]:hit [&_:where(a)]:hit"
         >
           {/* A subpage opens at its head, not where the last one's scroll was (2026-09-11) */}
           <ScrollHome />

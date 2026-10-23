@@ -21,8 +21,11 @@ import { readToken } from '../../theme/theme';
 
 export const BULL = 'rgb(var(--bull))';
 export const LIME = 'rgb(var(--select))';
-export const CALL_WALL = BULL;
-export const PUT_WALL = 'rgb(var(--bear))';
+/* THE WALLS ARE MARKERS, NOT SIGNS (the third audit, 2026-10-23: the Map said red for "pushes a move along" and red for
+   "put wall"). Green and red are the sign — absorbs and amplifies — everywhere; the walls wear the legs' own inks, the
+   call side's glacier and the put side's ember (CALL_SIDE / PUT_SIDE), so a wall marker never reads as a sign. */
+export const CALL_WALL = 'rgb(var(--glacier))';
+export const PUT_WALL = 'rgb(var(--ember))';
 export const FLIP = 'rgb(var(--flip))';
 export const SUPREME = 'rgb(var(--supreme))';
 export const DARK_POOL = 'rgb(var(--darkpool))';
@@ -48,13 +51,15 @@ export const ACCENT = LIME;
    views"): the capsules and the bars said amplify in ember and absorb in glacier while the profile, the book through
    the day and the facts said the same two things in red and green — the inks of the walls and of direction. The Map's
    boxes read these; SHORT_GAMMA and LONG_GAMMA stay for the rooms that always wore them. */
-export const AMPLIFY = EMBER;
-export const ABSORB = GLACIER;
+/* ONE SIGN RULE (the third audit, 2026-10-23): absorbs green, amplifies red, on the Map as on the Board, the gamma line
+   and every net figure — the ember/glacier pair is the legs' and the walls' now */
+export const AMPLIFY = SHORT_GAMMA;
+export const ABSORB = LONG_GAMMA;
 /* THE PRESSURE PAIR BY PALETTE (Noah, 2026-10-17, the clock's strip in ember and glacier beside a thermal book: "the
    color of this needs to change to match the thermal"): amplify and absorb in the two inks the book's legend wears —
    ember and glacier on the house palette, the thermal pair on thermal (Settings › Appearance, data/ledgerPalette.ts) */
 export const pressureInks = (palette: 'house' | 'thermal'): { absorbs: string; amplifies: string } =>
-  palette === 'thermal' ? { absorbs: THERMAL_COOL, amplifies: THERMAL_WARM } : { absorbs: GLACIER, amplifies: EMBER };
+  palette === 'thermal' ? { absorbs: THERMAL_COOL, amplifies: THERMAL_WARM } : { absorbs: LONG_GAMMA, amplifies: SHORT_GAMMA };
 /* Categorical side inks — identity, the same on both grounds (palette.ts) */
 export { CALL_SIDE, PUT_SIDE, CHART_MINT } from './palette';
 

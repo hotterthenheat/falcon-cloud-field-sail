@@ -14,7 +14,7 @@
 */
 
 import { useEffect, useRef, useState } from 'react';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { CALL_WALL, PUT_WALL } from './paletteInk';
 
 const MUTED = 'rgb(var(--text-muted))';

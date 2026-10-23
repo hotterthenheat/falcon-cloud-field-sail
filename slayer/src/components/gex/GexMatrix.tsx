@@ -1,4 +1,4 @@
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { heatPoles, heatScaleGradient, heatScaleLabels } from './heatmap';
 import HeatPill, { HiddenStrikes } from './HeatPill';
 import { foldQuietStrikes } from './foldStrikes';

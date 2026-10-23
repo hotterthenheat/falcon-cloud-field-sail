@@ -6,7 +6,8 @@
   "498 across 7 expiries").
 */
 
-import { fmtUsd } from '../../data/gex';
+import { shownGreek } from './retailSign';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { sinceOpenRead } from '../../data/levelview';
 import { GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { BULL, LONG_GAMMA, PUT_WALL, SHORT_GAMMA } from './paletteInk';
@@ -50,10 +51,10 @@ const ExposureReadout = ({ surface, cell, depth, openRatio, caption }: ExposureR
     <div key={greek} className="flex items-baseline gap-2 font-mono text-[10px] tnum whitespace-nowrap">
       <span className="w-8 text-textMuted uppercase tracking-wider">{greek}</span>
       <span className="w-14 text-[8px] text-textMuted/70 uppercase tracking-wider">{GREEK_UNIT[greek]}</span>
-      <span style={{ color: PUT_INK }}>{fmtUsd(surface.put[greek][cell.e][s])}</span>
-      <span style={{ color: CALL_INK }}>{fmtUsd(surface.call[greek][cell.e][s])}</span>
+      <span style={{ color: PUT_INK }}>{fmtUsd(shownGreek(greek, surface.put[greek][cell.e][s]))}</span>
+      <span style={{ color: CALL_INK }}>{fmtUsd(shownGreek(greek, surface.call[greek][cell.e][s]))}</span>
       <span className="ml-auto font-bold" style={{ color: netInk(greek, surface.net[greek][cell.e][s]) }}>
-        {fmtUsd(surface.net[greek][cell.e][s])}
+        {fmtUsd(shownGreek(greek, surface.net[greek][cell.e][s]))}
         {/* the star = the heaviest single cell; the supreme (the book's heaviest strike) wears its word in magenta */}
         {surface.king[greek].e === cell.e && surface.king[greek].strike === cell.strike && <span className="ml-1 text-textPrimary">★</span>}
         {surface.supreme[greek].strike === cell.strike && <span className="ml-1 text-[8px] uppercase tracking-widest text-[#EA00FF]">supreme</span>}
@@ -98,7 +99,7 @@ const ExposureReadout = ({ surface, cell, depth, openRatio, caption }: ExposureR
               <span key={greek} className="inline-flex items-baseline gap-1">
                 <span className="text-[8px] uppercase tracking-wider text-textMuted/70">{greek}</span>
                 <span className="font-semibold" style={{ color: netInk(greek, t) }}>
-                  {fmtUsd(t)}
+                  {fmtUsd(shownGreek(greek, t))}
                 </span>
               </span>
             );

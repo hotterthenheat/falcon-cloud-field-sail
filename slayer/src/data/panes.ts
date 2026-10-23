@@ -15,7 +15,9 @@
 ==================================================
 */
 
+import { useEffect, useRef } from 'react';
 import type { ExposureExpiry } from '../types/gex';
+import { readLevelsScope, useLevelsScope } from './levelsScope';
 
 /** Four names at most — the Map's rule, and a quarter of the screen is the least a pane can read in */
 export const MAX_PANES = 4;
@@ -46,8 +48,29 @@ export function readPanes(storageKey: string): Pane[] {
   } catch {
     /* nothing kept, or storage off */
   }
-  return [{ key: 'p0', expiry: '0DTE' }];
+  return [{ key: 'p0', expiry: readLevelsScope() }];
 }
+
+/**
+ * PANES FOLLOW THE LEVELS CARD (the ship pass, 2026-10-22): a pane on the card's contracts moves with the card, so the
+ * Agenda's walls and supreme stay the Board's and the Map's for the same name. A pane the reader put on another expiry
+ * keeps it (and wears the "own expiry" mark — `offScope`).
+ */
+export function usePanesFollowScope(panes: Pane[], setPanes: (next: Pane[]) => void): ExposureExpiry {
+  const scope = useLevelsScope();
+  const was = useRef(scope);
+  useEffect(() => {
+    const prev = was.current;
+    was.current = scope;
+    if (prev === scope) return;
+    if (panes.some(p => p.expiry === prev)) setPanes(panes.map(p => (p.expiry === prev ? { ...p, expiry: scope } : p)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);
+  return scope;
+}
+
+/** The words for a pane that reads another expiry than the Levels card */
+export const OFF_SCOPE_TITLE = 'This pane reads a different expiry from the Levels card at the top of the page, so its walls, flip and supreme can differ from the Board and the Map';
 
 export function writePanes(storageKey: string, panes: Pane[]): void {
   try {

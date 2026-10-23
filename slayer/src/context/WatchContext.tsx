@@ -33,6 +33,7 @@ import type { DarkPoolIntent, DarkPoolPrint } from '../types/darkpool';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { SpreadTrade } from '../data/flowBook';
+import { liveSpotOf } from '../data/traceLive';
 
 const STORAGE_KEY = 'slayer_trace_watch';
 
@@ -55,7 +56,9 @@ export interface WatchedContract extends WatchBase {
   /** MM/DD/YYYY */
   expiry: string;
   /** The contract's facts at the moment it was watched — the Tracker's "then" */
-  at: { dte: number; spot: number; last: number; chgPct: number; volume: number; oi: number; premium: number; askPct: number };
+  at: { dte: number; spot: number; last: number; chgPct: number; volume: number; oi: number; premium: number; askPct: number; lastAt?: string };
+  /** The vendor's OCC symbol — the Tracker reads the contract's own day by it (optional: older marks carry none) */
+  occ?: string;
 }
 
 export interface WatchedPrint extends WatchBase {
@@ -70,8 +73,12 @@ export interface WatchedPrint extends WatchBase {
   premium: number;
   side: 'ASK' | 'BID' | 'MID';
   sweep: boolean;
-  /** The underlying and the contract's day when it printed */
-  at: { spot: number; volume: number; oi: number };
+  /** One leg of a multi-leg order — half of a structure, never read bullish or bearish when reopened (audit round 8) */
+  multi?: boolean;
+  /** The underlying and the contract's day when it printed — `daySide` the contract's day by side at the mark, so the
+      Tracker's "lean then" is the lean when it was marked (audit round 8: "— → EVEN" on a print marked at ask 54%) */
+  at: { spot: number; volume: number; oi: number; daySide?: { ask: number; bid: number; mid: number } };
+  occ?: string;
 }
 
 export interface WatchedStructure extends WatchBase {
@@ -82,9 +89,16 @@ export interface WatchedStructure extends WatchBase {
   dte: number;
   time: string;
   size: number;
-  /** Positive = debit paid, negative = credit collected */
+  /** Per UNIT: positive = debit paid, negative = credit collected (older marks: the vendor's net price) */
   net: number;
+  /** The net premium that changed hands, dollars, signs dropped (older marks: the gross of every leg — see `gross`) */
   premium: number;
+  /** Signed net premium: + paid, − collected — newer marks only */
+  netPremium?: number;
+  /** The gross of every leg — newer marks only */
+  gross?: number;
+  /** Units (the legs' common factor) — newer marks only; `size` holds the same */
+  units?: number;
   at: { spot: number };
 }
 
@@ -168,7 +182,9 @@ export const watchContract = (r: BookContract, from: WatchSource): WatchedContra
   expiry: r.expiry,
   watchedAt: Date.now(),
   from,
-  at: { dte: r.dte, spot: r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct },
+  /* THE SPOT AT MARK TIME IS THE LIVE ONE (audit round 9: "Spot then $212.75" was the screener's frozen stock-state) */
+  at: { dte: r.dte, spot: liveSpotOf(r.ticker) || r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct, lastAt: r.lastAt && r.lastAt !== '—' ? r.lastAt : undefined },
+  occ: r.optionSymbol,
 });
 
 export const watchPrint = (p: FlowPrint, from: WatchSource): WatchedPrint => ({
@@ -185,9 +201,11 @@ export const watchPrint = (p: FlowPrint, from: WatchSource): WatchedPrint => ({
   premium: p.premium,
   side: p.side,
   sweep: p.sweep,
+  multi: p.legs > 1 || undefined,
   watchedAt: Date.now(),
   from,
-  at: { spot: p.spot, volume: p.volume, oi: p.oi },
+  at: { spot: p.spot, volume: p.volume, oi: p.oi, daySide: p.daySide },
+  occ: p.occ,
 });
 
 export const watchStructure = (t: SpreadTrade, from: WatchSource): WatchedStructure => ({
@@ -199,9 +217,14 @@ export const watchStructure = (t: SpreadTrade, from: WatchSource): WatchedStruct
   expiry: t.expiry,
   dte: t.dte,
   time: t.time,
-  size: t.size,
+  /* THE MONEY THAT CHANGED HANDS (the re-audit, 2026-10-22: a structure's "Then $18.1K" was the gross of its legs; it
+     collected $2.35K) — units and the per-unit net from its settled legs, the net premium beside the gross */
+  size: t.units ?? t.size,
   net: t.net,
-  premium: t.premium,
+  premium: t.netKnown === false ? t.premium : Math.abs(t.netPremium),
+  netPremium: t.netKnown === false ? undefined : t.netPremium,
+  gross: t.premium,
+  units: t.units,
   watchedAt: Date.now(),
   from,
   at: { spot: t.spot },

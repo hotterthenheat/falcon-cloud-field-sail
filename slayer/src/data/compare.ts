@@ -21,16 +21,19 @@
 ==================================================
 */
 
-import { bookCandles, peekIv } from './uwBook';
+import { wallPlace } from '../core/walls';
+import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot, scopeDatesPending } from './uwBook';
+import { scopeSigma } from './wall';
 import { UNIVERSE } from './universe';
-import { SESSION_MIN, buildCloseOdds, type AheadClock } from './ahead';
+import { SESSION_MIN, type AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
 import { impliedDaySigma, sessionAtr, type DistanceScales, type DistanceUnit } from './atr';
-import { bellShareOf, watchOf, type BoardRow } from './board';
+import { deskAgenda, netGexOf, retailNet, watchFrom, watchSurface, type BoardRow } from './board';
 import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from './exposureSurface';
 import { buildFlipGauge, type GammaRegime } from './flipGauge';
-import { readHeatPattern } from './gex';
+import { readRegime } from './flipLevel';
+import { levelsFor } from './levelsFor';
 import { sessionBars } from './levelview';
 import type { ExposureExpiry, ExposureLevels, ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, GexLevel, MarketSnapshot } from '../types/market';
@@ -71,6 +74,16 @@ export const GREEK_WORDS: Record<Greek, GreekWords> = {
 };
 export const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'VEX', vanna: 'VANNA', charm: 'CHARM' };
 
+/** EACH GREEK IN ONE PLAIN SENTENCE (the retail test, 2026-10-22: "VEX −$14.6K next to VANNA $3.9M with no explanation") —
+    the hover on every label that prints them side by side */
+export const GREEK_EXPLAIN: Record<Greek, string> = {
+  gex: 'GEX (gamma): the stock dealers must trade for a 1% move — positive, they absorb moves; negative, they amplify them',
+  dex: 'DEX (delta): the stock dealers already hold against their options — which way their hedging leans',
+  vex: "VEX (vega): the dollars dealers' option book gains or loses if implied volatility moves one point — their volatility risk, not stock they must trade",
+  vanna: 'VANNA: the stock dealers must buy or sell if implied volatility moves one point — their hedges shifting with vol. Not VEX: VEX is the dollars their book gains or loses; VANNA is the stock it makes them trade',
+  charm: 'CHARM: the stock dealers must buy or sell as a day passes, with price and vol unchanged — the clock pulling on their hedges',
+};
+
 export interface CompareLevel {
   strike: number;
   /** Signed percent of spot */
@@ -89,6 +102,10 @@ export interface CompareSide {
   flipDistPct: number | null;
   /** One expected move for the minutes left, dollars — and as percent of spot */
   sigmaLeft: number;
+  /** "by Nov 20" when the move runs to a later expiry than the coming session — null for the close */
+  horizon: string | null;
+  /** Which number the move is ("the vendor's implied move into Oct 23") */
+  moveWords: string;
   sigmaLeftPct: number;
   sigmaDay: number;
   scales: DistanceScales;
@@ -101,13 +118,19 @@ export interface CompareSide {
   putWall: CompareLevel;
   /** The heaviest strike, per greek — the one the Map's supreme follows when the greek changes */
   supreme: Record<Greek, CompareLevel>;
-  /** The window's net: positive amplifies, negative absorbs */
+  /** Net GEX in the RETAIL sign (data/board.ts retailNet): positive = dealers long gamma, hedging absorbs moves;
+      negative = short gamma, it amplifies them — the Board's own figure for the same contracts */
   netGex: number;
-  /** Share of the hedging that expires at the bell, percent */
+  /** Share of the book's gamma that expires today, percent — the Board's figure (uwBook peekBellShare) */
   bellShare: number | null;
+  /** Why there is no share: nothing expires today on this name, or the list is not in yet */
+  bellWhy: 'none' | 'wait' | null;
   watch: BoardRow['watch'];
   /** The most likely close, and its odds in percent */
+  /** The close's lean — the desk agenda's (data/agenda.ts closesNear: only past LEAN_MIN) */
   closes: { strike: number; odds: number } | null;
+  /** The best single strike's odds even when it is no lean */
+  closeTop: { strike: number; odds: number } | null;
   /* THE BOOK'S READ FOR TWO NAMES (2026-10-17 — Head to head is the read card laid out for two): what the card prints */
   /** The snapshot the side was built from — the windows' history is read off it (data/replay.ts) */
   snapshot: MarketSnapshot;
@@ -119,6 +142,8 @@ export interface CompareSide {
   read: string;
   /** How many expiries the calendar holds */
   expiryCount: number;
+  /** The contracts this side reads — its history windows must read the same ones */
+  expiry: ExposureExpiry;
 }
 
 export interface Compare {
@@ -176,10 +201,18 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   } catch {
     return null;
   }
-  const gauge = buildFlipGauge(snapshot);
+  /* THE FLIP OFF THE SAME CONTRACTS AS THE WALLS: the snapshot's chain is the Levels card's; with another expiry picked
+     here the gauge read the card's flip beside this expiry's walls */
+  const lens = snapshot.liveBook && snapshot.uwChains?.[expiry]?.length ? { ...snapshot, chain: snapshot.uwChains[expiry]! } : snapshot;
+  const gauge = buildFlipGauge(lens);
   const iv = peekIv(ticker) ?? 0.2;
-  const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
-  const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  /* the expiry this side reads: its own implied move, not the 30-day IV (data/uwBook.ts peekDaySigma) */
+  /* …over the scope's own horizon — "by Nov 20" for a later expiry (data/wall.ts scopeSigma, the fifth audit) */
+  const ss = scopeSigma(lens, clock.minutesLeft, iv);
+  const sigmaDay = snapshot.liveBook ? ss.sigmaDay : impliedDaySigma(spot, iv) ?? spot * 0.01;
+  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const horizon = snapshot.liveBook ? ss.horizon : null;
+  const moveWords = snapshot.liveBook ? ss.words : 'the 30-day implied vol over one session';
   const scales: DistanceScales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: sigmaDay };
 
   const rows: Record<Greek, GexLevel[]> = { gex: [], dex: [], vex: [], vanna: [], charm: [] };
@@ -198,48 +231,83 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   const at = (k: number): CompareLevel => ({
     strike: k,
     distPct: ((k - spot) / spot) * 100,
-    weight: Math.abs(rows.gex.find(r => Math.abs(r.strike - k) < 1e-9)?.value ?? 0),
+    /* off the drawn window the level still weighs what its strike carries on these contracts */
+    weight: Math.abs(rows.gex.find(r => Math.abs(r.strike - k) < 1e-9)?.value ?? lens.chain.find(n => Math.abs(n.strike - k) < 1e-9)?.netGex ?? 0),
   });
 
+  /* THE NAMED LEVELS ARE levelsFor's (the sixth audit's B1, 2026-10-23: META All expiries' supreme read 700 · +$186.1M
+     here — the heaviest strike of the drawn window — against 750 · +$290.7M on the raw book and the Board). On the two
+     Levels scopes the supreme, the walls and the flip are the one function's, drawn or not. */
+  const lv = snapshot.liveBook && (expiry === '0DTE' || expiry === 'ALL') ? levelsFor(ticker, expiry) : null;
+  if (lv) supreme.gex = at(lv.supreme);
+  else supreme.gex = at(profile.levels.supreme);
+  /* NO OTHER SCOPE'S LEVELS UNDER THIS ONE'S NAME (the eighth audit's m6: SPY "FLIP 772.69" — the All-expiries flip — under
+     TODAY'S CONTRACTS): on a live book a Levels scope with no levelsFor reading yet, or a picked expiry whose own chain has
+     not landed (the lens above then fell back to the levels book), is not final — the page keeps its loading state */
+  const scoped = expiry === '0DTE' || expiry === 'ALL';
+  /* (a picked expiry the name does not list never lands — once every date is in, the page reads what there is) */
+  const ownMissing = !!snapshot.liveBook && (scoped ? !lv : !snapshot.uwChains?.[expiry]?.length && scopeDatesPending(ticker, 'ALL'));
+  const levels: ExposureLevels = lv
+    ? { ...profile.levels, supreme: lv.supreme, callWall: lv.callWall ?? profile.levels.callWall, putWall: lv.putWall ?? profile.levels.putWall, flip: lv.flip ?? profile.levels.flip, flipFound: lv.flip != null, complete: profile.levels.complete && lv.complete }
+    : ownMissing
+      ? { ...profile.levels, complete: false }
+      : profile.levels;
+  const flipAt = lv ? lv.flip : gauge.flip;
+
   let surface: ExposureSurface | null = null;
-  let bellShare: number | null = null;
+  const bell = peekBellShare(ticker);
   try {
     surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-    bellShare = bellShareOf(surface);
   } catch {
     /* no surface for this name yet */
   }
   const bars = sessionBars(ticker) ?? [];
-  const watch = watchOf(snapshot, profile, surface, bars, clock);
-  const close = buildCloseOdds(profile, spot, sigmaLeft, clock);
-  const top = close.top[0];
+  /* THE LIKELIEST CLOSE IS THE DESK AGENDA'S (the seventh audit's m4: Compare said "764 · 9% of the time" while the Agenda
+     said "no clear lean" and listed 765 at 8%) — the same build, the same expected move, and the same LEAN_MIN before a
+     strike is called the close's lean */
+  const agenda = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot));
+  const lead = agenda?.first[0];
+  const watch: BoardRow['watch'] = watchFrom(lead);
 
   return {
     ticker,
     spot,
     changePct: snapshot.changePercent,
-    regime: gauge.regime,
-    flip: gauge.flip,
-    flipDistPct: gauge.distPct,
+    /* THE REGIME IS levelsFor's (the eighth audit's m2): the sign of the scope's whole net, as the Board, the Map and the
+       Dossier print it — the gauge's net at spot was a second reading of the same word */
+    regime: lv ? lv.regime : gauge.regime,
+    flip: flipAt,
+    flipDistPct: flipAt != null && spot > 0 ? ((flipAt - spot) / spot) * 100 : null,
     sigmaLeft,
+    horizon,
+    moveWords,
     sigmaLeftPct: (sigmaLeft / spot) * 100,
     sigmaDay,
     scales,
-    levels: profile.levels,
+    levels,
     rows,
     heaviest,
-    callWall: at(profile.levels.callWall),
-    putWall: at(profile.levels.putWall),
+    callWall: at(levels.callWall),
+    putWall: at(levels.putWall),
     supreme,
-    netGex: profile.netGex,
-    bellShare,
+    netGex: snapshot.liveBook ? netGexOf(lens.chain) : retailNet(profile.netGex),
+    bellShare: bell.share,
+    bellWhy: bell.share == null ? bell.why : null,
     watch,
-    closes: top ? { strike: top.strike, odds: top.odds } : null,
+    closes: agenda?.closesNear ?? null,
+    closeTop: agenda?.closeTop ?? null,
     snapshot,
     strikes: profile.strikes,
     maxAbs: profile.maxAbs,
-    read: readHeatPattern(profile.levels).read,
-    expiryCount: surface?.expiries.length ?? 1,
+    /* the walls' words follow each strike's own net sign (core/walls.ts) — retail sign, off the scope's contracts */
+    read: readRegime(levels, k => (lv ? lv.netAt(k) : (() => {
+      const n = lens.chain.find(x => Math.abs(x.strike - k) < 1e-9);
+      return n ? retailNet(n.netGex) : null;
+    })())).read,
+    /* the expiries THESE figures read (the ninth audit's m4: "61 STRIKES · 25 EXPIRIES" under "TODAY'S CONTRACTS") — one
+       on Today or a picked date, every listed one on All expiries */
+    expiryCount: expiry === 'ALL' ? (snapshot.uwExpiries?.length || surface?.expiries.length || 1) : 1,
+    expiry,
   };
 }
 
@@ -345,7 +413,17 @@ export interface Pair {
 }
 
 /** The ratio of the two names' closes, session by session and today minute by minute */
-export function buildPair(a: string, b: string): Pair {
+/** One session's close, from the vendor's daily bars */
+export interface DailyClose {
+  /** New York calendar date, YYYY-MM-DD */
+  date: string;
+  close: number;
+}
+
+/* THE SESSIONS COME FROM THE DAILY BARS WHEN THEY ARE IN (the Pinpoint sweep, 2026-10-22): the book's own candles hold
+   a session or two of 5-minute bars, so "the pair" sat on "not enough sessions on the tape yet" on every name. The
+   vendor's daily bars carry months; the minute bars still draw today. */
+export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] | null, dailyB?: readonly DailyClose[] | null): Pair {
   const ba = bookCandles(a) ?? [];
   const bb = bookCandles(b) ?? [];
   const sessionsOf = (bars: readonly Candle[]) => {
@@ -365,6 +443,21 @@ export function buildPair(a: string, b: string): Pair {
     const cb = closeB.get(dayOf(last.time));
     if (cb) sessions.push({ time: last.time, ratio: last.close / cb, closeA: last.close, closeB: cb });
   }
+  if (dailyA?.length && dailyB?.length) {
+    const closeOn = new Map(dailyB.map(d => [d.date, d.close]));
+    const lastIntraday = sessions[sessions.length - 1];
+    const lastDay = lastIntraday ? new Date((lastIntraday.time - 4 * 3600) * 1000).toISOString().slice(0, 10) : null;
+    const fromDaily: PairPoint[] = [];
+    for (const d of [...dailyA].sort((x, y) => x.date.localeCompare(y.date))) {
+      const cb = closeOn.get(d.date);
+      if (!(cb && cb > 0 && d.close > 0) || d.date === lastDay) continue;
+      fromDaily.push({ time: Math.floor(Date.parse(`${d.date}T20:00:00Z`) / 1000), ratio: d.close / cb, closeA: d.close, closeB: cb });
+    }
+    if (fromDaily.length >= 5) {
+      const tail = fromDaily.slice(-120);
+      sessions.splice(0, sessions.length, ...tail, ...(lastIntraday ? [lastIntraday] : []));
+    }
+  }
   /* The still-forming session is today's, off the average */
   const done = sessions.slice(0, -1);
   const todayA = sa[sa.length - 1] ?? [];
@@ -375,7 +468,13 @@ export function buildPair(a: string, b: string): Pair {
     const cb = bAt.get(x.time);
     if (cb) today.push({ time: x.time, ratio: x.close / cb, closeA: x.close, closeB: cb });
   }
-  const now = today.length ? today[today.length - 1].ratio : sessions.length ? sessions[sessions.length - 1].ratio : null;
+  /* ONE QUOTE ON THE PAGE (the second re-audit, 2026-10-22: "SPY 763.97 ÷ QQQ 704.59" under a head reading QQQ 703.42):
+     today's point is the two last prices the heads print (the book's spot — after the close, the after-hours print), not
+     the last minute bar both happened to print */
+  const qa = peekSpot(a);
+  const qb = peekSpot(b);
+  if (qa != null && qb != null && qb > 0 && today.length) today[today.length - 1] = { ...today[today.length - 1], ratio: qa / qb, closeA: qa, closeB: qb };
+  const now = today.length ? today[today.length - 1].ratio : qa != null && qb != null && qb > 0 ? qa / qb : sessions.length ? sessions[sessions.length - 1].ratio : null;
   let mean: number | null = null;
   let sd: number | null = null;
   if (done.length >= 5) {
@@ -401,7 +500,16 @@ export function buildPair(a: string, b: string): Pair {
   return { a, b, sessions, today, now, mean, sd, z, outside, sentence };
 }
 
-export const regimeWord = (s: CompareSide) => (s.regime === 'LONG' ? 'absorb' : s.regime === 'SHORT' ? 'amplify' : 'lean one way');
+/* on the flip (within 0.05%, data/gex.ts readHeatPattern's AT_FLIP) a name is neither regime — the panel says "sitting on
+   the flip", so the sentence under the ruler must not say "amplify" for it */
+const onFlip = (s: CompareSide) => s.flipDistPct != null && Math.abs(s.flipDistPct) < 0.05;
+export const regimeWord = (s: CompareSide) => (onFlip(s) ? 'go either way on' : s.regime === 'LONG' ? 'absorb' : s.regime === 'SHORT' ? 'amplify' : 'lean one way');
+
+/* ONE "AT PRICE" (core/walls.ts wallPlace, 0.05% — the tenth audit's m2) */
+const placeWords = (strike: number, spot: number, distPct: number): string => {
+  const p = wallPlace(strike, spot);
+  return p === 'at' ? 'right at price' : `${Math.abs(distPct).toFixed(2)}% ${p}`;
+};
 
 export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock): Compare {
   const ratioRaw = b.sigmaLeftPct / Math.max(1e-9, a.sigmaLeftPct);
@@ -410,12 +518,14 @@ export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock):
   const nearerCall = Math.abs(a.callWall.distPct) <= Math.abs(b.callWall.distPct) ? a : b;
   const nearerPut = Math.abs(a.putWall.distPct) <= Math.abs(b.putWall.distPct) ? a : b;
   const regimes =
-    a.regime && b.regime && a.regime === b.regime
-      ? `dealers ${regimeWord(a)} moves on both`
-      : `dealers ${regimeWord(a)} moves on ${a.ticker} and ${regimeWord(b)} them on ${b.ticker}`;
+    onFlip(a) || onFlip(b)
+      ? [a, b].map(s => (onFlip(s) ? `${s.ticker} sits on its flip` : `dealers ${regimeWord(s)} moves on ${s.ticker}`)).join(' and ')
+      : a.regime && b.regime && a.regime === b.regime
+        ? `dealers ${regimeWord(a)} moves on both`
+        : `dealers ${regimeWord(a)} moves on ${a.ticker} and ${regimeWord(b)} them on ${b.ticker}`;
   const when = clock.inSession ? 'to the close' : 'next session';
   const sentence =
     `${wider.ticker} has the wider expected move ${when}, ${wider.ratio.toFixed(1)}× ${narrower}'s; ${regimes}. ` +
-    `${nearerCall.ticker}'s call wall is the nearer overhead at ${fmtStrike(nearerCall.callWall.strike)}, ${nearerPut.ticker}'s put wall the nearer below at ${fmtStrike(nearerPut.putWall.strike)}.`;
+    `${nearerCall.ticker}'s call wall (the most call gamma) is the nearer at ${fmtStrike(nearerCall.callWall.strike)}, ${placeWords(nearerCall.callWall.strike, nearerCall.spot, nearerCall.callWall.distPct)}; ${nearerPut.ticker}'s put wall (the most put gamma) the nearer at ${fmtStrike(nearerPut.putWall.strike)}, ${placeWords(nearerPut.putWall.strike, nearerPut.spot, nearerPut.putWall.distPct)}.`;
   return { a, b, inSession: clock.inSession, wider, sentence };
 }

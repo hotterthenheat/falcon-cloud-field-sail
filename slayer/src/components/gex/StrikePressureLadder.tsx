@@ -51,7 +51,7 @@ export const splinePath = (pts: { x: number; y: number }[], xMin: number, xMax: 
   }
   return d;
 };
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { sinceOpenRead } from '../../data/levelview';
 import { afterGlide, onGlide, promisedWidth } from '../../core/glide';
 import HoverReadout from '../ui/HoverReadout';
@@ -92,7 +92,7 @@ const HOUSE_INKS = { put: 'rgb(var(--ember))', call: 'rgb(var(--glacier))', word
 const inksFor = (mode: HeatMode) => {
   if (mode === HEAT_MODE) return HOUSE_INKS;
   const { pos, neg } = heatLaneInks(mode, 0.78);
-  return { put: pos, call: neg, words: mode === 'thermal-yellow' ? 'red amplifies, blue absorbs · longer and hotter is heavier' : 'warm amplifies, cool absorbs · longer and hotter is heavier' };
+  return { put: pos, call: neg, words: mode === 'thermal-yellow' ? 'red amplifies, green absorbs · longer and hotter is heavier' : 'warm amplifies, cool absorbs · longer and hotter is heavier' };
 };
 const rampCss = (side: 'put' | 'call', t: number, mode: HeatMode) => {
   const [r, g, b] = heatRampColorFor(side === 'put' ? 1 : -1, t, mode);

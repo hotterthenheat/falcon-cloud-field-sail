@@ -84,7 +84,10 @@ export function buildExposureCurve(surface: ExposureSurface, expiries: number[],
       const oi = oiRow[s];
       let eff = fig / base;
       if (Number.isFinite(oi) && oi > 0) eff = Math.max(-oi, Math.min(oi, eff));
-      else if (base < atm * 1e-6) continue;
+      /* no open interest to bound it (the vendor's per-expiry rows carry none): a cell whose gamma at spot is under 1% of
+         the at-the-money's is skipped — its figure over a near-zero base read as hundreds of thousands of contracts, and
+         re-priced at its own strike the curve peaked at $3.4T on SPY once the book stood in dollars (2026-10-22) */
+      else if (base < atm * 1e-2) continue;
       cells.push({ e, k: strikes[s], t, v, eff });
     }
   }

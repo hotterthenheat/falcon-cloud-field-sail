@@ -35,18 +35,19 @@ import { DayHeadSlot } from './DayBox';
 import { AreaSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type IPriceLine, type ISeriesApi, type LineData, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
 import { Bell, BellRing, ChevronDown } from 'lucide-react';
 import { roomLevels } from '../../data/roomLevels';
-import { bookHistory, deskBars, liveBars, peekIv, useBookRev } from '../../data/uwBook';
+import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev } from '../../data/uwBook';
+import { scopeDateOf } from '../../data/wall';
 import { pickFlip } from '../../core/walls';
 import { readSessionClock } from '../../data/moc';
 import { YEAR_MINUTES } from '../../data/measure';
-import { CLOSE_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
+import { CLOSE_MIN, SESSION_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
 import { buildExposureProfile } from '../../data/exposure';
 import { ThermalFieldPrimitive, type FieldPoint, type Rgb } from './thermalFieldPrimitive';
 import { dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
-import { nyMinutes } from '../../core/nyTime';
+import { nyIsoDate, nyMinutes } from '../../core/nyTime';
+import { dayRef, longDay, todayScopeLabel } from '../../data/bookWindow';
 import { armLevel, removeAlert, useAlerts, type LevelName } from './alertStore';
-import { useLevelsScope } from '../../data/levelsScope';
 import { setDayHover, useDayHover } from '../../data/dayHover';
 import { useResolvedTheme } from '../../theme/theme';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
@@ -144,19 +145,25 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const roomSpot = useRoomSpot(snapshot.ticker);
   const bookRev = useBookRev();
   const bars = useMemo(() => barsProp ?? deskBars(snapshot.ticker) ?? liveBars(snapshot.ticker), [snapshot.ticker, barsProp, bookRev]);
-  /* the levels off today's contracts or every date — the desk's one choice (data/levelsScope.ts) */
-  const levelsScope = useLevelsScope();
+  /* THE BOOK HANDED IN IS ALREADY THE MAP'S WINDOW (bookForDates) — read as it stands, the band's own rule
+     (ExposureField: a dated book is read '0DTE'). The desk's Levels card lives on the Board; read here it re-cut the
+     window to the whole book under a head that still named the window (the ship pass, 2026-10-22). */
+  const levelsScope = '0DTE' as const;
   const levels = useMemo<Level[]>(() => {
     try {
       /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the tags here are the
          band's tags (the re-audit's H6) */
       const l = roomLevels(snapshot, levelsScope);
-      if (!l) return [];
+      /* NOTHING DRAWN OFF A PROVISIONAL BOOK (the seventh audit's retail blocker: SPY's Map marked the All-expiries 765
+         and 760 under "Today" while Today's chain loaded): no line, no chip, until the scope's levels are final */
+      if (!l || (snapshot.liveBook && (l.complete === false || snapshot.levelsPending))) return [];
       const all: Level[] = [
         { key: 'callWall', word: 'Call wall', ink: CALL_WALL, price: l.callWall },
-        { key: 'flip', word: 'Flip', ink: FLIP, price: l.flip },
+        /* no crossing within ±10% is no flip — no line is drawn at a placeholder */
+        { key: 'flip', word: 'Flip', ink: FLIP, price: l.flipFound === false ? Number.NaN : l.flip },
         { key: 'putWall', word: 'Put wall', ink: PUT_WALL, price: l.putWall },
-        { key: 'pin', word: 'Pin', ink: INK_3, price: l.pin },
+        /* a pin only where dealers are long gamma and price is near (data/exposure.ts) */
+        { key: 'pin', word: 'Pin', ink: INK_3, price: l.pinFound === false ? Number.NaN : l.pin },
         { key: 'supreme', word: 'Supreme', ink: SUPREME, price: l.supreme },
       ];
       return all.filter(x => Number.isFinite(x.price));
@@ -187,7 +194,12 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   /* THE FLIP'S PATH (idea 2, 2026-10-13): the flip of each minute's own book, paired to the bars by time. A closed
      minute's book never changes, so its flip is worked out once (kept by the book itself) — a tick re-reads the last. */
   const flipMemo = useRef(new WeakMap<GexSnapshot, number | null>());
+  /* THE PATH IS OFF (the Pinpoint audit, 2026-10-22): each minute's book was today's volume walked onto the overnight
+     open interest — volume is not open interest — and its flip was the per-strike sign change, not the book's zero
+     crossing the line beside it draws. No past book is on the feed to re-price, so no past flip is drawn. */
+  const FLIP_PATH = false;
   const flipTrail = useMemo<(LineData<Time> | WhitespaceData<Time>)[]>(() => {
+    if (!FLIP_PATH) return [];
     const snaps = bookHistory(snapshot.ticker) ?? [];
     if (!snaps?.length || !bars.length) return [];
     const byTime = new Map(snaps.map(s => [s.time, s]));
@@ -220,10 +232,23 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const spot = bars.length ? bars[bars.length - 1].close : snapshot.spot;
   /* what "Last" prints: the room's price — the replay's last bar when rewound */
   const last = barsProp != null ? spot : roomSpot ?? spot;
-  /* one expected move to the close, on the name's vol */
+  /* ONE EXPECTED MOVE ON EVERY PAGE (the fourth audit's B2): the vendor's implied move into the levels' expiry (uwBook
+     peekDaySigma — Compare's and the reach odds'), over the minutes left; the name's vol only when the vendor has none */
   const iv = peekIv(snapshot.ticker) ?? 0.2;
   const minLeft = Math.max(0, CLOSE_MIN - nowMin);
-  const w1 = spot * iv * Math.sqrt(minLeft / YEAR_MINUTES);
+  /* …and no expected move off it either (the same blocker: "ONE MOVE today ±4.12" read off the 30-day vol, later ±4.74 —
+     the vendor's own implied move): "…" until the levels' scope is final and the vendor's term structure is in */
+  const movePending = !!snapshot.liveBook && (!!snapshot.levelsPending || roomLevels(snapshot, '0DTE')?.complete === false || peekScopeMove(snapshot.ticker, scopeDateOf(snapshot))?.source === 'iv30');
+  const daySigma = snapshot.liveBook && !movePending ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
+  /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2: "One move ±0.48" was the
+     vendor's move LEFT to the close, scaled again); a replay's minute keeps the full-session figure's scaling */
+  const left = daySigma != null && at == null ? peekMoveToClose(snapshot.ticker, scopeDateOf(snapshot), minLeft) : null;
+  const w1 = left ?? (daySigma != null ? daySigma * Math.sqrt(Math.min(minLeft, SESSION_MIN) / SESSION_MIN) : spot * iv * Math.sqrt(minLeft / YEAR_MINUTES));
+  /* ONE PHASE VOCABULARY (the sixth audit's m8: "closed" here, "The next session" on the Read, "Today" on the Levels
+     card, all before Friday's open): outside the session the move is the coming session's — "today" before a trading
+     day's open, "next session" after its close (bookWindow todayScopeLabel, the Levels card's own word) */
+  const aheadWord = todayScopeLabel() === 'Today' ? 'today' : 'next session';
+  const shutMove = movePending ? `${aheadWord} …` : daySigma != null ? `${aheadWord} ±${daySigma.toFixed(2)}` : aheadWord;
   const dayStart = bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
   /* THE THERMAL FIELD (thermalFieldPrimitive.ts): where price is likelier to be from now to the close, by the Ahead
      model's corridor (data/ahead.ts) — the odds curve's centre pulled by the strikes, one and two expected moves round
@@ -238,7 +263,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   }, [snapshot]);
   const fieldEnd = Math.min(CLOSE_MIN, TO);
   const fieldPoints = useMemo<FieldPoint[]>(() => {
-    if (!profile || minLeft <= 0 || !bars.length || fieldEnd <= nowMin) return [];
+    if (!profile || movePending || minLeft <= 0 || !bars.length || fieldEnd <= nowMin) return [];
     const clock: AheadClock = { ...aheadClock(readSessionClock()), nowMin, inSession: true, minutesLeft: Math.max(1, CLOSE_MIN - nowMin) };
     /* the corridor runs from the tape's own last close, the figure the line ends on */
     const cone = buildCorridor({ ...snapshot, spot }, profile, iv, clock).cone;
@@ -333,12 +358,15 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       bottomColor: alpha(s.ink, 0.01),
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: true,
+      /* ONE PRICE (the retail test, 2026-10-23: the scale's tag read 763.97 — the last cash bar's close — beside "Last
+         763.96", the regular close): the scale's tag is the price the box prints, drawn below as its own line */
+      lastValueVisible: false,
       crosshairMarkerRadius: 3,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
+      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
         const r = original();
-        if (!r) return r;
+        /* a view holding no bars has no range (the seventh audit's phone pass: "reading 'minValue'" of null) */
+        if (!r || !r.priceRange) return r;
         let lo = r.priceRange.minValue;
         let hi = r.priceRange.maxValue;
         const { levels: lv, cone, spot: sp } = reachRef.current;
@@ -499,8 +527,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     const pin = levels.find(l => l.key === 'pin');
     if (pin && Number.isFinite(pin.price)) linesRef.current.push(series.createPriceLine({ price: pin.price, color: alpha(resolveInk(pin.ink, host), 0.7), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'Pin' }));
     if (focus != null) linesRef.current.push(series.createPriceLine({ price: focus, color: resolveInk(SILVER, host), lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: 'Kept' }));
+    if (Number.isFinite(last) && last > 0) linesRef.current.push(series.createPriceLine({ price: last, color: resolveInk(INK_3, host), lineWidth: 1, lineStyle: LineStyle.Solid, lineVisible: false, axisLabelVisible: true, title: '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupsKey, focus, paper, part, open]);
+  }, [groupsKey, focus, paper, part, open, last]);
 
   /* THE KEPT STRIKE OFF THE SCALE (the owner, 2026-10-14, after a walk as a user: 463 kept, seven points up, and the tape
      showed nothing — no line, no chip, no word, under a note that had promised "every box"): the scale holds a kept strike
@@ -585,6 +614,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const say = (ws: string[]) => (ws.length <= 1 ? ws[0] ?? '' : `${ws.slice(0, -1).join(', ')} and ${ws[ws.length - 1]}`);
   const plotW = hostRef.current?.clientWidth ?? 0;
   const session = useMemo(() => (bars.length ? { lo: Math.min(...bars.map(b => b.low)), hi: Math.max(...bars.map(b => b.high)) } : null), [bars]);
+  /* THE BARS' OWN DAY (the fifth audit, 2026-10-23: "Price today · SESSION 761.17–767.71" at 01:00 Friday over Thursday's
+     session): "today" only when the bars are New York's today, else the day by name */
+  const barDay = bars.length ? nyIsoDate(bars[bars.length - 1].time * 1000) : null;
+  const priceWord = !barDay || dayRef(barDay) === 'today' ? 'Price today' : `Price · ${longDay(barDay)}`;
 
   /* THE CHART IS NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "remove the word 'the tape' sounds ai generated and lacks
      clarity … give me informative names as to what they do, i also dislike their size or font"): today's price, in the
@@ -593,8 +626,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const partHead = part ? (
     <>
       {headSlot && <span className="h-4 w-px bg-borderSubtle shrink-0" aria-hidden />}
-      <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-tape-part-word>
-        Price today
+      <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-tape-part-word data-tape-day={barDay ?? undefined}>
+        {priceWord}
       </span>
       {bars.length > 0 && session && (
         <>
@@ -604,8 +637,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
           <PartFact label="Session">
             {session.lo.toFixed(2)} – {session.hi.toFixed(2)}
           </PartFact>
-          <PartFact label="One move" title="One expected move from here to the close, on the name's vol — the thermal field's width">
-            <span data-tape-move={w1.toFixed(2)}>{minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} min left` : 'closed'}</span>
+          <PartFact label="One move" title="One expected move from here to the close, on the name's vol — the thermal field's width; outside the session, the coming session's whole move">
+            <span data-tape-move={movePending ? undefined : w1.toFixed(2)}>{movePending ? '…' : minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} min left` : shutMove}</span>
           </PartFact>
         </>
       )}
@@ -638,7 +671,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                 {open ? 'Fold' : 'Unfold'}
               </button>
             </div>
-            <p className="mt-0.5 text-[11px] text-textMuted">Today's price with the book's levels on it</p>
+            <p className="mt-0.5 text-[11px] text-textMuted">{priceWord === 'Price today' ? "Today's price" : `${longDay(barDay!)}'s price`} with the book's levels on it</p>
           </div>
         )}
         {bars.length > 0 && session && (
@@ -657,8 +690,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             </div>
             <div>
               <dt className="text-[11px] text-textMuted">One move to the close</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-move={w1.toFixed(2)}>
-                {minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} ${minLeft === 1 ? 'minute' : 'minutes'} left` : 'closed'}
+              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-move={movePending ? undefined : w1.toFixed(2)}>
+                {movePending ? '…' : minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} ${minLeft === 1 ? 'minute' : 'minutes'} left` : shutMove}
               </dd>
             </div>
           </dl>
@@ -679,6 +712,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
               if (levelHot && !overCard.current) onPick(levelHot.price);
             }}
             data-tape-plot
+            data-tape-levels={groupsKey || undefined}
           >
             <div ref={hostRef} className="absolute inset-0" data-tape-chart />
             {/* the pointer's minute — Compare's glass, beside the point it reads */}

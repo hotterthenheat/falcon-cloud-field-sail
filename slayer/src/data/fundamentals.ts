@@ -32,6 +32,9 @@ export interface Fundamentals {
   beats: number | null;
   /** How many of those quarters had both a print and an estimate */
   beatOf: number;
+  /** The live feed's in-line and missed counts over the same reports (absent on the sample) */
+  inline?: number | null;
+  misses?: number | null;
   /** Year on year. Null when the feed does not carry it. */
   revenueGrowthPct: number | null;
   epsGrowthPct: number | null;

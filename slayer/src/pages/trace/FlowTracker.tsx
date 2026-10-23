@@ -40,18 +40,18 @@
 ==================================================
 */
 
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
-import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedCross, type WatchedItem } from '../../context/WatchContext';
+import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint } from '../../context/WatchContext';
 import CrossDrilldown from '../../components/trace/CrossDrilldown';
 import type { DarkPoolPrint } from '../../types/darkpool';
 
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
-import { useLiveBook } from '../../data/traceLive';
+import { dayLean, ensureSpots, expiredAtBell, liveSpotOf, occOf, traceHeld, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
+import { nyParts } from '../../core/nyTime';
 import { ensureBook, peekSpot, useBookRev } from '../../data/uwBook';
-import { fmtUsd } from '../../data/gex';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -66,11 +66,15 @@ import ReadDoor from '../../components/trace/ReadDoor';
 import WatchStar from '../../components/trace/WatchStar';
 import TraceBox, { Champion, Fact, TraceGrid } from '../../components/trace/TraceBox';
 import { TrackerGuide } from '../../components/trace/TraceGuide';
+import { nextCountDay } from '../../components/trace/dayWords';
 
 const num = (v: number) => v.toLocaleString('en-US');
-const signedPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
-const signedNum = (v: number) => `${v >= 0 ? '+' : ''}${num(v)}`;
+const signedPct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
+const signedNum = (v: number) => `${v >= 0 ? '+' : '−'}${num(Math.abs(v))}`;
 const pct = (now: number, then: number) => (then > 0 ? ((now - then) / then) * 100 : 0);
+/** The floor for ranking a % move: a price of 5¢ and up that moved 5¢ or more */
+const MIN_MOVE_PRICE = 0.05;
+const MIN_MOVE_ABS = 0.05;
 
 const SOURCE_LABEL: Record<WatchSource, string> = {
   tape: 'Live Tape',
@@ -83,30 +87,102 @@ const SOURCE_LABEL: Record<WatchSource, string> = {
   'dark-pool': 'Dark pool',
 };
 
-/** "14:22" today, "09/02 14:22" for an older mark — the house's 24-hour clock. */
+/** "14:22 ET" today, "09/02 14:22 ET" for an older mark — New York's 24-hour clock, whatever the machine's zone */
 function markedAt(ms: number): string {
-  const d = new Date(ms);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const today = new Date();
-  const sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-  return sameDay ? hm : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${hm}`;
+  const d = nyParts(new Date(ms));
+  const t = nyParts(new Date());
+  const hm = `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')} ET`;
+  const sameDay = d.year === t.year && d.month === t.month && d.day === t.day;
+  return sameDay ? hm : `${String(d.month).padStart(2, '0')}/${String(d.day).padStart(2, '0')} ${hm}`;
 }
 
 /** The lean as the Lean cell would say it, in its ink — for a then → now pair. */
-const leanWord = (askPct: number) => {
-  const bid = 100 - askPct;
-  const mid = Math.abs(askPct - 50) < 6;
+const leanWord = (askPct: number, side?: { ask: number; bid: number; mid: number }) => {
+  if (side) {
+    const l = dayLean({ askPct, volume: side.ask + side.bid + side.mid, sideVol: side });
+    if (l.lean === 'UNSIDED') return { text: Number.isFinite(l.mid) ? `MID ${Math.round(l.mid)}%` : '—', ink: 'text-textMuted' };
+    if (l.lean === 'EVEN') return { text: 'EVEN', ink: 'text-textMuted' };
+    /* the share the rule is called on — the side's share of the SIDED contracts (the Lean cell's figure) */
+    return { text: l.lean === 'ASK' ? `ASK ${Math.round(l.askSided)}%` : `BID ${Math.round(l.bidSided)}%`, ink: 'text-textPrimary' };
+  }
+  /* THE RULE ON THE UNROUNDED SHARE (audit round 4: an ask share of 54.6% was rounded to 55 BEFORE the 55% rule, so the
+     mark read "ASK 55%" and the same data now read "EVEN" — a lean change that never happened). The one lean rule
+     (traceLive dayLean) decides on the figure as kept; only the printed number is rounded. A share that rounds up to the
+     edge but sits under it prints EVEN, never "ASK 55%". */
+  const l = dayLean({ askPct, volume: 0 }).lean;
+  const mid = l === 'EVEN' || l === 'UNSIDED';
+  const a = Math.round(askPct);
   return {
-    text: mid ? 'MID' : bid >= 50 ? `BID ${bid}%` : `ASK ${askPct}%`,
+    text: l === 'UNSIDED' ? '—' : mid ? 'EVEN' : l === 'BID' ? `BID ${100 - a}%` : `ASK ${a}%`,
     ink: mid ? 'text-textMuted' : 'text-textPrimary',
   };
 };
 
+/** The OCC symbols a mark may be under — its own, else built from its parts (an index's weekly root first) */
+const WEEKLY_ROOT: Record<string, string> = { SPX: 'SPXW', NDX: 'NDXP', RUT: 'RUTW', VIX: 'VIXW' };
+function occCandidates(w: { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; occ?: string }): string[] {
+  if (w.occ) return [w.occ.toUpperCase()];
+  const roots = WEEKLY_ROOT[w.ticker] ? [WEEKLY_ROOT[w.ticker], w.ticker] : [w.ticker];
+  return roots.map(r => occOf(r, w.strike, w.right, w.expiry)).filter((x): x is string => !!x);
+}
+/** A marked contract as a book row, from its OWN session (the vendor's historic row) — the figures it carries, the rest
+    unknown, never invented */
+function bookOfDay(w: { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; at: { spot: number } }, occ: string, d: ContractDayNow): BookContract {
+  const sided = d.sideVol.ask + d.sideVol.bid;
+  return {
+    key: `own-${occ}`,
+    optionSymbol: occ,
+    ticker: w.ticker,
+    sector: null,
+    sectorColor: null,
+    strike: w.strike,
+    right: w.right,
+    expiry: w.expiry,
+    dte: 0,
+    spot: w.at.spot,
+    otmPct: NaN,
+    last: d.last,
+    chgPct: NaN,
+    lastAt: '—',
+    lastAtMin: 0,
+    volume: d.volume,
+    oi: d.oi,
+    deltaOI: 0,
+    deltaOIPct: 0,
+    premium: d.premium,
+    iv: 0,
+    ivChg: 0,
+    volOverOI: d.oi > 0 ? d.volume / d.oi : 0,
+    sweepPct: 0,
+    multiPct: 0,
+    floorPct: 0,
+    askPct: sided > 0 ? (d.sideVol.ask / sided) * 100 : NaN,
+    prevOI: 0,
+    prevVolume: 0,
+    prevAvgFill: 0,
+    prevPremium: 0,
+    prevAskPct: 0,
+    oiStreak: 0,
+    volGtOiStreak: 0,
+    earnDays: null,
+    prevSpark: [],
+    sideVol: d.sideVol,
+  };
+}
+const isoOfExpiry = (e: string) => {
+  const m = e.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[1]}-${m[2]}` : e.slice(0, 10);
+};
+
 const Dash = () => <span className="text-textSecondary">—</span>;
 
+/** Index option roots — the vendor has no stock state or bars for them (/stock/SPXW/stock-state answers 422), so the
+    Tracker neither seeds a book for them nor draws a spot: an index mark's spot reads "—", never "$0.00" */
+const INDEX_ROOTS = new Set(['SPX', 'SPXW', 'XSP', 'NDX', 'NDXP', 'XND', 'RUT', 'RUTW', 'MRUT', 'VIX', 'VIXW', 'DJX', 'OEX', 'XEO']);
+
 /** Fixed widths for the figure columns (the spot's then → now and its change would otherwise clip); the name, contract and mark share the rest */
-const WIDTHS: Record<string, number> = { then: 170, money: 90, since: 140, spot: 200, vol: 96, oi: 96, lean: 160 };
-const FLEXES: Record<string, number> = { ticker: 1, contract: 2, marked: 1.4 };
+const WIDTHS: Record<string, number> = { then: 150, money: 84, since: 124, spot: 196, vol: 84, oi: 80, lean: 120 };
+const FLEXES: Record<string, number> = { ticker: 1, contract: 2.2, marked: 1.6 };
 
 // ---- one row shape for every kind of mark ----------------------------------------
 
@@ -121,9 +197,24 @@ interface TrackRow {
   spotNow: number | null;
   spotChg: number | null;
   volAdded: number | null;
+  /** Why volume added is not a number: the mark was in an earlier session (today's whole volume is then shown) */
+  volWord?: string;
+  /** The price now — the SAME field as the price marked: the screener's close for a contract, the newest trade's fill
+      for a print — and when it was set */
+  nowPrice: number | null;
+  nowAt: string | null;
+  nowSrc?: 'close' | 'fill';
   oiDelta: number | null;
   leanThen: number | null;
+  /** A print's contract day by side when it was marked */
+  sideThen?: { ask: number; bid: number; mid: number };
+  /** The open interest has not been counted again since the mark (the count is set each morning) — the day it will be */
+  oiNext?: string;
   leanNow: number | null;
+  /** The contract's day by side now, when its own day was read */
+  sideNow?: { ask: number; bid: number; mid: number };
+  /** Why there is no "now": it expired, or it has not traded today */
+  nowNote?: string;
   /** The sort: the price move when the book can give one, else the underlying's */
   moved: number;
 }
@@ -207,22 +298,42 @@ const FlowTracker = () => {
   );
   const [query, setQuery] = useState('');
   /** The open card: a contract's key, and the print clip when opened from a print row. */
-  const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string } } | null>(null);
+  const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } } | null>(null);
 
-  const contractPack = useLiveBook(activeTicker);
+  /* AN EMPTY TRACKER ASKS NOTHING (audit round 9, minor 6: with no marks it polled two screener routes every 4s) */
+  const contractPack = useLiveBook(activeTicker, options.length > 0);
+  /* the marks' names' live prices — the "now" beside each mark's spot then (traceLive liveSpotOf) */
+  const markNames = useMemo(() => [...new Set(options.map(w => w.ticker.toUpperCase()))].sort().join(','), [options]);
+  useEffect(() => {
+    if (!markNames) return;
+    void ensureSpots(markNames.split(','));
+    const id = window.setInterval(() => {
+      if (!traceHeld()) void ensureSpots(markNames.split(','));
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [markNames]);
   const bookRev = useBookRev();
   const liveBook = contractPack.rows;
   // The shared hold (see LiveHold): the SINCE columns freeze with the tick.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !(contractPack.waiting && contractPack.rows.length === 0));
   const { book, tick } = hold.value;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* Today's book by contract key — the "now" every row is measured against. */
+  /* Today's book by contract key — the "now" every row is measured against when the book carries it */
   const byKey = useMemo(() => {
     const m = new Map<string, BookContract>();
     for (const r of book) m.set(contractKey(r), r);
     return m;
   }, [book]);
+  /* EACH MARK BY ITS OWN CONTRACT (the re-audit, 2026-10-22: a contract marked from the Screener read "off today's book"
+     because this page looked for it in another page's book) — the contract's own session off the vendor */
+  const occs = useMemo(() => options.filter(w => w.kind !== 'structure').flatMap(w => occCandidates(w as { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; occ?: string })), [options]);
+  const days = useContractDays(occs).rows;
+  const markNow = useMarkNow(useMemo(() => options.filter(w => w.kind !== 'structure').map(w => {
+    const o = w as WatchedContract | WatchedPrint;
+    return { key: o.key, kind: o.kind, ticker: o.ticker, strike: o.strike, right: o.right, expiry: o.expiry, occ: o.occ ?? occCandidates(o)[0] };
+  }), [options])).rows;
+  const todayIso = tapeSessionIso();
 
   const nq = normSymbol(query);
 
@@ -231,16 +342,56 @@ const FlowTracker = () => {
       options
         .filter(w => nq === '' || normSymbol(w.ticker).includes(nq))
         .map(w => {
-          ensureBook(w.ticker, 'board');
-          const spotNow = peekSpot(w.ticker);
+          const isIndex = INDEX_ROOTS.has(w.ticker.toUpperCase());
+          if (!isIndex) ensureBook(w.ticker, 'board');
+          /* the name's live price — the one every Trace page draws (liveSpotOf), the book's spot only without it */
+          const spotNow = isIndex ? null : liveSpotOf(w.ticker) || peekSpot(w.ticker);
           const spotThen = w.at.spot;
-          const spotChg = spotNow != null ? pct(spotNow, spotThen) : null;
+          const spotChg = spotNow != null && spotThen > 0 ? pct(spotNow, spotThen) : null;
           if (w.kind === 'structure') {
-            return { w, live: null, chg: null, spotThen, spotNow, spotChg, volAdded: null, oiDelta: null, leanThen: null, leanNow: null, moved: spotChg ?? 0 };
+            return { w, live: null, chg: null, spotThen, spotNow, spotChg, volAdded: null, nowPrice: null, nowAt: null, oiDelta: null, leanThen: null, leanNow: null, moved: spotChg ?? 0 };
           }
-          const live = byKey.get(contractKey(w)) ?? null;
+          const cands = occCandidates(w);
+          const occ = cands.find(o => days[o]) ?? cands[0];
+          const own: ContractDayNow | null = occ ? days[occ] ?? null : null;
+          const booked = byKey.get(contractKey(w)) ?? null;
+          const now = markNow[w.key];
+          /* the card's row: the contract's own screener row, else the page's book, else its own day — the card only */
+          const live: BookContract | null = now?.book ?? booked ?? (own && own.iso === todayIso ? bookOfDay(w, occ!, own) : null);
+          const markDay = sessionIsoAt(w.watchedAt);
+          /* LIKE WITH LIKE: a contract's close against its close, off the screener both times; a print's fill against the
+             contract's newest trade, off the tape route both times — never one source against the other */
+          let nowPrice: number | null = null;
+          let nowAt: string | null = null;
+          let nowVol: number | null = null;
+          let nowOi: number | null = null;
+          let nowDay: string | null = null;
+          if (w.kind === 'contract') {
+            const b = now?.book ?? (booked && booked.optionSymbol ? booked : null);
+            if (b) {
+              nowPrice = b.last > 0 ? b.last : null;
+              nowAt = b.lastAt && b.lastAt !== '—' ? b.lastAt : null;
+              nowVol = b.volume;
+              nowOi = b.oi;
+              nowDay = b.lastDay ?? todayIso;
+            }
+          } else if (now?.trade) {
+            nowPrice = now.trade.fill > 0 ? now.trade.fill : null;
+            nowAt = now.trade.time.slice(0, 5);
+            nowVol = now.trade.volume;
+            nowOi = now.trade.oi;
+            nowDay = now.trade.day;
+          }
           const then = w.kind === 'contract' ? w.at.last : w.fill;
-          const chg = live ? pct(live.last, then) : null;
+          const chg = nowPrice != null && then > 0 ? pct(nowPrice, then) : null;
+          const expired = expiredAtBell(isoOfExpiry(w.expiry), w.ticker);
+          const nowNote = nowPrice != null ? undefined : expired ? 'expired' : own ? `no print today · last ${own.iso.slice(5).replace('-', '/')}` : undefined;
+          /* VOLUME ADDED IS NEVER NEGATIVE: within the mark's own session it is now less then, one field; a mark from an
+             earlier session has today's whole volume added, and says so */
+          const sameDay = nowDay != null && nowDay === markDay;
+          const diff = nowVol != null && sameDay ? nowVol - w.at.volume : null;
+          const volAdded = diff != null && diff >= 0 ? diff : null;
+          const volWord = nowVol != null && !sameDay ? `${num(nowVol)} today` : undefined;
           return {
             w,
             live,
@@ -248,16 +399,26 @@ const FlowTracker = () => {
             spotThen,
             spotNow,
             spotChg,
-            volAdded: live ? live.volume - w.at.volume : null,
-            oiDelta: live ? live.oi - w.at.oi : null,
-            leanThen: w.kind === 'contract' ? w.at.askPct : null,
+            volAdded,
+            volWord,
+            nowPrice,
+            nowAt,
+            nowSrc: w.kind === 'contract' ? ('close' as const) : ('fill' as const),
+            oiDelta: nowOi != null ? nowOi - w.at.oi : null,
+            /* THE COUNT HAS NOT COME YET (audit round 8: "OI since +0" intraday, when the next count is set the morning of
+               Mon Oct 26) — a mark in the session still running has no newer count to compare */
+            oiNext: markDay === tapeSessionIso() ? nextCountDay(markDay) : undefined,
+            leanThen: w.kind === 'contract' ? w.at.askPct : w.kind === 'print' && w.at.daySide && w.at.daySide.ask + w.at.daySide.bid > 0 ? (w.at.daySide.ask / (w.at.daySide.ask + w.at.daySide.bid)) * 100 : null,
+            sideThen: w.kind === 'print' ? w.at.daySide : undefined,
             leanNow: live ? live.askPct : null,
+            sideNow: live?.sideVol,
+            nowNote,
             moved: chg ?? spotChg ?? 0,
           };
         })
         .sort((a, b) => Math.abs(b.moved) - Math.abs(a.moved)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [options, byKey, nq, tick, bookRev]
+    [options, byKey, nq, tick, bookRev, days, todayIso, markNow]
   );
 
   /* Three registers per column, measured over what is on screen. */
@@ -290,13 +451,13 @@ const FlowTracker = () => {
     const w = r.w;
     setOpen({
       key: r.live.key,
-      clip: w.kind === 'print' && w.side !== 'MID' ? { size: w.size, fill: w.fill, side: w.side, time: w.time } : undefined,
+      clip: w.kind === 'print' && w.side !== 'MID' ? { size: w.size, fill: w.fill, side: w.side, time: w.time, multi: w.multi } : undefined,
     });
   }, []);
   const keyOf = useCallback((r: TrackRow) => r.w.key, []);
   /* A contract that has left the book dims; a print's contract being off
      the book is the usual case, and a structure never had one — they don't. */
-  const dimGone = useCallback((r: TrackRow) => (r.w.kind === 'contract' && !r.live ? 'opacity-50' : undefined), []);
+  const dimGone = useCallback((r: TrackRow) => (r.w.kind !== 'structure' && r.nowNote === 'expired' ? 'opacity-50' : undefined), []);
 
   const columns = useMemo<Column<TrackRow>[]>(
     () => [
@@ -353,7 +514,7 @@ const FlowTracker = () => {
           if (w.kind === 'contract')
             return (
               <span className="text-textSecondary">
-                last <span className="text-textPrimary">${w.at.last.toFixed(2)}</span>
+                last <span className="text-textPrimary">${w.at.last.toFixed(2)}</span> <span className="text-[11px]">{w.at.lastAt ? `${w.at.lastAt} fill` : `as of ${markedAt(w.watchedAt)}`}</span>
               </span>
             );
           if (w.kind === 'print')
@@ -367,9 +528,9 @@ const FlowTracker = () => {
               </span>
             );
           return (
-            <span className="text-textSecondary">
-              <span className="text-textPrimary">{num(w.size)}×</span> @ <span className="text-textPrimary">${Math.abs(w.net).toFixed(2)}</span>{' '}
-              <span className="text-[11px]">{w.net >= 0 ? 'debit' : 'credit'}</span>
+            <span className="text-textSecondary" title={w.units == null ? 'Marked before the structure was read from its legs — the size and price are the vendor\'s' : `${w.units} units at the net a unit`}>
+              <span className="text-textPrimary">{num(w.size)}×</span> @ <span className="text-textPrimary">{w.net === 0 ? '—' : `$${Math.abs(w.net).toFixed(2)}`}</span>{' '}
+              <span className="text-[11px]">{w.net === 0 ? '' : w.net > 0 ? 'debit' : 'credit'}</span>
             </span>
           );
         },
@@ -381,7 +542,15 @@ const FlowTracker = () => {
         sortValue: r => (r.w.kind === 'contract' ? r.w.at.premium : r.w.premium),
         // The dollars behind the mark: the print's premium, the structure's,
         // a contract's day when it was marked.
-        render: r => <span className="text-textPrimary">{fmtUsd(r.w.kind === 'contract' ? r.w.at.premium : r.w.premium)}</span>,
+        render: r => {
+          const w = r.w;
+          if (w.kind === 'structure') {
+            /* the net that changed hands; a mark taken before the structure was settled carried only the gross */
+            if (w.netPremium != null) return <span className="text-textPrimary" title={w.gross != null ? `${fmtUsd(w.gross)} across every leg` : undefined}>{fmtUsd(Math.abs(w.netPremium))} <span className="text-[11px] text-textSecondary">{w.netPremium > 0 ? 'paid' : 'collected'}</span></span>;
+            return <span className="text-textSecondary" title="Marked before the net was kept — this is the gross of every leg, not what changed hands">{fmtUsd(w.premium)} <span className="text-[11px]">gross</span></span>;
+          }
+          return <span className="text-textPrimary">{fmtUsd(w.kind === 'contract' ? w.at.premium : w.premium)}</span>;
+        },
       },
       {
         key: 'since',
@@ -389,22 +558,15 @@ const FlowTracker = () => {
         align: 'right',
         sortValue: r => r.chg ?? -Infinity,
         render: r =>
-          r.live ? (
-            <span className="text-textPrimary">
-              ${r.live.last.toFixed(2)} <span className={`text-[11px] ${directionInk(r.chg ?? 0, marks.chg)}`}>{signedPct(r.chg ?? 0)}</span>
+          r.nowPrice != null ? (
+            <span className="text-textPrimary" title={r.nowSrc === 'close' ? "The screener's close for this contract now, against its close when you marked it" : "The contract's newest trade, against the print you marked — a fill against a fill"}>
+              ${r.nowPrice.toFixed(2)} {r.nowAt && <span className="text-[11px] text-textSecondary">{r.nowAt}</span>} <span className={`text-[11px] ${directionInk(r.chg ?? 0, marks.chg)}`}>{signedPct(r.chg ?? 0)}</span>
             </span>
           ) : r.w.kind === 'structure' ? (
             <Dash />
           ) : (
-            <span
-              className="text-[11px] text-textMuted"
-              title={
-                r.w.kind === 'contract'
-                  ? 'This contract is not on today’s book — it expired, or the day rolled'
-                  : 'The book does not carry this contract today — the underlying’s move is beside it'
-              }
-            >
-              {r.w.kind === 'contract' ? 'off today’s book' : 'not on the book'}
+            <span className="text-[11px] text-textMuted" title={r.nowNote === 'expired' ? 'The contract expired at its bell — it no longer trades' : r.nowNote ? 'The contract has not printed in today’s session' : 'Its day is still being read'}>
+              {r.nowNote ?? '…'}
             </span>
           ),
       },
@@ -415,7 +577,7 @@ const FlowTracker = () => {
         sortValue: r => r.spotChg ?? -Infinity,
         render: r =>
           r.spotNow == null ? (
-            <span className="text-textPrimary">${r.spotThen.toFixed(2)}</span>
+            r.spotThen > 0 ? <span className="text-textPrimary">${r.spotThen.toFixed(2)}</span> : <span className="text-textMuted">—</span>
           ) : (
             <span className="text-textPrimary">
               ${r.spotThen.toFixed(2)} <span className="text-textSecondary">→</span> <span className="text-textPrimary">${r.spotNow.toFixed(2)}</span>{' '}
@@ -428,14 +590,32 @@ const FlowTracker = () => {
         header: 'Vol added',
         align: 'right',
         sortValue: r => r.volAdded ?? -Infinity,
-        render: r => (r.volAdded == null ? <Dash /> : <span className={weightInk(r.volAdded, marks.vol)}>{signedNum(r.volAdded)}</span>),
+        render: r =>
+          r.volAdded != null ? (
+            <span className={weightInk(r.volAdded, marks.vol)}>+{num(r.volAdded)}</span>
+          ) : r.volWord ? (
+            <span className="text-textSecondary" title="Marked in an earlier session — the volume since cannot be split from that session's, so today's whole volume is shown">
+              {r.volWord}
+            </span>
+          ) : (
+            <Dash />
+          ),
       },
       {
         key: 'oi',
         header: 'OI since',
         align: 'right',
         sortValue: r => r.oiDelta ?? -Infinity,
-        render: r => (r.oiDelta == null ? <Dash /> : <span className={directionInk(r.oiDelta, marks.oi)}>{signedNum(r.oiDelta)}</span>),
+        render: r =>
+          r.oiNext && !r.oiDelta ? (
+            <span className="text-[11px] text-textMuted whitespace-nowrap" title={`Open interest is counted once a day, the morning after the trading — the count after this session's trading is set the morning of ${r.oiNext}`}>
+              next count {r.oiNext}
+            </span>
+          ) : r.oiDelta == null ? (
+            <Dash />
+          ) : (
+            <span className={directionInk(r.oiDelta, marks.oi)}>{signedNum(r.oiDelta)}</span>
+          ),
       },
       {
         key: 'lean',
@@ -444,8 +624,8 @@ const FlowTracker = () => {
         sortValue: r => r.leanNow ?? -1,
         render: r => {
           if (r.leanNow == null && r.leanThen == null) return <Dash />;
-          const then = r.leanThen != null ? leanWord(r.leanThen) : null;
-          const now = r.leanNow != null ? leanWord(r.leanNow) : null;
+          const then = r.leanThen != null || r.sideThen ? leanWord(r.leanThen ?? NaN, r.sideThen) : null;
+          const now = r.leanNow != null || r.sideNow ? leanWord(r.leanNow ?? NaN, r.sideNow) : null;
           return (
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wide tnum whitespace-nowrap">
               {then ? <span className={then.ink}>{then.text}</span> : <span className="text-textSecondary">—</span>}
@@ -475,7 +655,14 @@ const FlowTracker = () => {
   const champs = useMemo(() => {
     const label = (r: TrackRow) => (r.w.kind === 'structure' ? `${r.w.ticker} ${r.w.strikesLabel}` : `${r.w.ticker} ${r.w.strike}${r.w.right}`);
     const priced = rows.filter(r => r.chg != null);
-    const moved = priced.reduce<TrackRow | null>((a, r) => (Math.abs(r.chg!) >= 0.05 && (a === null || Math.abs(r.chg!) > Math.abs(a.chg!)) ? r : a), null);
+    /* A PENNY IS NOT A MOVE (audit round 10, minor 8: "Moved most NVDA 215C +100.0%" was $0.01 → $0.02): a % move is
+       ranked only on a price of MIN_MOVE_PRICE and up that moved MIN_MOVE_ABS or more */
+    const thenOf = (r: TrackRow): number | null => (r.w.kind === 'contract' ? r.w.at.last : r.w.kind === 'print' ? r.w.fill : null);
+    const real = (r: TrackRow) => {
+      const then = thenOf(r);
+      return then != null && r.nowPrice != null && then >= MIN_MOVE_PRICE && Math.abs(r.nowPrice - then) >= MIN_MOVE_ABS - 1e-9;
+    };
+    const moved = priced.filter(real).reduce<TrackRow | null>((a, r) => (Math.abs(r.chg!) >= 0.05 && (a === null || Math.abs(r.chg!) > Math.abs(a.chg!)) ? r : a), null);
     const building = priced.reduce<TrackRow | null>((a, r) => ((r.oiDelta ?? 0) > 0 && (a === null || r.oiDelta! > a.oiDelta!) ? r : a), null);
     const unwinding = priced.reduce<TrackRow | null>((a, r) => ((r.oiDelta ?? 0) < 0 && (a === null || r.oiDelta! < a.oiDelta!) ? r : a), null);
     return { moved, building, unwinding, label };
@@ -490,19 +677,19 @@ const FlowTracker = () => {
       counts.structures ? `${counts.structures} structure${counts.structures === 1 ? '' : 's'}` : '',
     ].filter(Boolean);
     const what = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
-    const gone = rows.filter(r => r.w.kind === 'contract' && !r.live).length;
+    const gone = rows.filter(r => r.w.kind !== 'structure' && r.nowNote === 'expired').length;
     const m = champs.moved;
     return (
       <>
-        <RichRead text={`${what} under watch${gone ? `, ${gone} no longer on today’s book` : ''}. `} />
+        <RichRead text={`${what} under watch${gone ? `, ${gone} expired` : ''}. `} />
         {m ? (
           <>
             <RichRead text="Moved most since its mark: " />
             <ReadDoor onOpen={() => openRow(m)}>{champs.label(m)}</ReadDoor>
-            <RichRead text={`, [[${signedPct(m.chg!)}]] on the ${m.w.kind === 'print' ? 'fill' : 'last'}.`} />
+            <RichRead text={`, [[${signedPct(m.chg!)}]] ${m.w.kind === 'print' ? "— the contract's newest fill against the print's" : "— the screener's close now against its close at the mark"}.`} />
           </>
         ) : (
-          <RichRead text="Nothing has moved since its mark yet." />
+          <RichRead text="Nothing has moved since its mark yet — a move is ranked once a price of 5¢ and up has moved 5¢ or more." />
         )}
       </>
     );
@@ -556,7 +743,7 @@ const FlowTracker = () => {
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="marks" tickersOnly />
           </>
         }

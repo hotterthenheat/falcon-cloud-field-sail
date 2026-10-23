@@ -14,10 +14,12 @@
 ==================================================
 */
 
+import { shownGamma, shownGreek } from './retailSign';
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { attachScrollMore } from '../ui/scrollMore';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import type { ExposureSurface, Greek } from '../../data/exposureSurface';
+import { todayColumn } from '../../data/exposureSurface';
 import { heatCellStyle, type HeatMode } from './heatmap';
 
 const INK = 'rgb(var(--text-primary))';
@@ -49,7 +51,7 @@ const Cell = ({ x, y, w, v, ring }: { x: number; y: number; w: number; v: number
       <rect x={x} y={y - 7} width={w} height={14} rx={7} fill={String(st.backgroundColor)} />
       {ring && <rect x={x - 1.5} y={y - 8.5} width={w + 3} height={17} rx={8.5} fill="none" stroke={ring} strokeWidth="1.25" />}
       <text x={x + w - 6} y={y + 0.5} textAnchor="end" dominantBaseline="middle" fontFamily={MONO} fontSize="11" fontWeight="600" fill={String(st.color)}>
-        {fmtUsd(v * 1e6)}
+        {fmtUsd(shownGamma(v * 1e6))}
       </text>
     </g>
   );
@@ -134,7 +136,7 @@ const GridFigure = () => {
         magenta: the supreme
       </text>
       <text x={292} y={168} dominantBaseline="middle" fontFamily={SANS} fontSize="11" fill={PUT_WALL}>
-        red: the put wall
+        gold: the put wall
       </text>
       <Label x={52} y={184} fill={INK_3}>
         dotted line: the market
@@ -186,7 +188,7 @@ const MatrixFigure = () => {
   const { mode, paper } = useContext(Paint);
   const rows = [
     { y: 46, k: '496', ink: INK_2, v: -94 },
-    { y: 70, k: '495', ink: SUPREME, v: -256 },
+    { y: 70, k: '495', ink: SUPREME, v: 256 },
     { y: 94, k: '494', ink: INK_2, v: 61 },
     { y: 130, k: '493', ink: PUT_WALL, v: 131 },
   ];
@@ -208,7 +210,7 @@ const MatrixFigure = () => {
               {r.k}
             </Label>
             <text x={102} y={r.y + 0.5} textAnchor="end" dominantBaseline="middle" fontFamily={MONO} fontSize="11" fill={INK}>
-              {fmtUsd(r.v * 1e6)}
+              {fmtUsd(shownGamma(r.v * 1e6))}
             </text>
             <rect x={110} y={r.y - 5} width={Math.max(4, (Math.abs(r.v) / FIG_MAX) * LANE)} height={10} rx={5} fill={String(st.backgroundColor)} />
           </g>
@@ -227,10 +229,10 @@ const MatrixFigure = () => {
         magenta: the supreme
       </text>
       <text x={130} y={172} dominantBaseline="middle" fontFamily={SANS} fontSize="11" fill={PUT_WALL}>
-        red: the put wall
+        gold: the put wall
       </text>
       <text x={238} y={172} dominantBaseline="middle" fontFamily={SANS} fontSize="11" fill={CALL_WALL}>
-        green: the call wall
+        blue: the call wall
       </text>
       <Label x={8} y={188} fill={INK_3}>
         dotted line: the market
@@ -258,9 +260,9 @@ const ProfileFigure = () => {
   ];
   const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0]} ${p[1]}`).join(' ');
   return (
-    <svg viewBox={`0 0 ${FIG_W} 196`} width={FIG_W} height={196} role="img" aria-label="A curve of the book's gamma across prices, crossing zero at the zero-gamma line; above zero hedging amplifies a move, below it absorbs one" data-guide-figure="profile">
-      <rect x={20} y={20} width={364} height={66} fill={amp} fillOpacity={0.12} />
-      <rect x={20} y={86} width={364} height={66} fill={abs} fillOpacity={0.12} />
+    <svg viewBox={`0 0 ${FIG_W} 196`} width={FIG_W} height={196} role="img" aria-label="A curve of the book's gamma across prices, crossing zero at the zero-gamma line; above zero dealers are long gamma and hedging absorbs a move, below it amplifies one" data-guide-figure="profile">
+      <rect x={20} y={20} width={364} height={66} fill={abs} fillOpacity={0.12} />
+      <rect x={20} y={86} width={364} height={66} fill={amp} fillOpacity={0.12} />
       <line x1={20} x2={384} y1={86} y2={86} stroke={INK_3} strokeOpacity="0.6" />
       <path d={d} fill="none" stroke={INK} strokeWidth="1.75" />
       <line x1={196} x2={196} y1={20} y2={152} stroke={INK_2} strokeDasharray="3 3" />
@@ -274,16 +276,16 @@ const ProfileFigure = () => {
       <line x1={120} x2={120} y1={20} y2={152} stroke={PUT_WALL} strokeOpacity="0.8" />
       <line x1={330} x2={330} y1={20} y2={152} stroke={CALL_WALL} strokeOpacity="0.8" />
       <Label x={24} y={30} fill={INK_3}>
-        amplifies
+        absorbs
       </Label>
       <Label x={24} y={146} fill={INK_3}>
-        absorbs
+        amplifies
       </Label>
       <Label x={20} y={172} fill={INK_3}>
         price runs left to right · the line is the book's gamma if price stood there
       </Label>
       <Label x={20} y={188} fill={INK_3}>
-        red rule: the put wall · green rule: the call wall
+        gold rule: the put wall · blue rule: the call wall
       </Label>
     </svg>
   );
@@ -309,7 +311,7 @@ const LedgerGuide = ({ surface, greek, view = 'calendar', mode, paper = false }:
 );
 
 /** The two sides' colours in words, for the ramp on the screen */
-const sideWords = (mode?: HeatMode) => (mode === 'thermal-yellow' ? { absorb: 'Blue', amplify: 'red and orange' } : { absorb: 'Glacier blue', amplify: 'ember orange' });
+const sideWords = (mode?: HeatMode) => (mode === 'thermal-yellow' ? { absorb: 'Green', amplify: 'red and orange' } : { absorb: 'Glacier blue', amplify: 'ember orange' });
 
 const InWords = ({ surface, greek }: { surface: ExposureSurface; greek: Greek }) => {
   const label = greek.toUpperCase();
@@ -317,7 +319,7 @@ const InWords = ({ surface, greek }: { surface: ExposureSurface; greek: Greek })
   const supremeDate = surface.expiries[supreme.e]?.date ?? '';
   return (
     <li className="text-[11.5px] leading-relaxed text-textSecondary">
-      The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(supreme.total))}</span> of {label} hedging across the whole book, most of it on{' '}
+      The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(shownGreek(greek, supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
       <span className="text-textPrimary">{supremeDate}</span>. The chart wears it in magenta.
     </li>
   );
@@ -330,7 +332,7 @@ const MatrixWords = ({ surface, greek, mode }: { surface: ExposureSurface; greek
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The matrix · one strike per row, a column per greek</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Each row is a strike, every expiry on the band added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level: magenta the supreme, green the call wall, red the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
+          Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), blue the call wall, gold the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
         </p>
         <FigureBox>
           <MatrixFigure />
@@ -360,7 +362,7 @@ const ProfileWords = ({ surface, mode }: { surface: ExposureSurface; mode?: Heat
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The profile · the book's gamma at every price</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Price runs left to right. The line is the dealers' total gamma if price stood at that level, every drawn expiry added together; the quiet lines are the expiries one by one. Above the zero line their hedging amplifies a move; below it, it absorbs one. Where the line crosses zero is the zero-gamma level: the price where the book changes character. It is not the same number as the flip strike on the band, which is the strike where the net by strike changes sign.
+          Price runs left to right. The line is the dealers' total gamma if price stood at that level, every drawn expiry added together; the quiet lines are the expiries one by one. Above the zero line dealers are long gamma and their hedging absorbs a move; below it, it amplifies one. Where the line crosses zero is the zero-gamma level: the price where the book changes character. The flip on the band is the same idea read off the Levels card's contracts (its scope), each re-priced from the minute the vendor priced it — so it can sit a little apart from this line, which adds up the drawn expiries.
         </p>
         <FigureBox>
           <ProfileFigure />
@@ -389,7 +391,7 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
   const supreme = surface.supreme[greek];
   const supremeDate = surface.expiries[supreme.e]?.date ?? '';
   /* How much of the calendar expires at the bell */
-  const todayIdx = surface.expiries.findIndex(e => e.dte === 0);
+  const todayIdx = todayColumn(surface);
   let dies = 0;
   let total = 0;
   for (let e = 0; e < surface.expiries.length; e++) for (let s = 0; s < surface.strikes.length; s++) {
@@ -410,7 +412,7 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The grid · one strike per row, one date per column</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Each row is a strike, a price level. Each column is an expiry date, today first and later dates to the right. Each cell is a capsule: the figure inside is how much dealer hedging sits at that strike for that date. Brighter means more. {w.absorb} pushes back against a move there, {w.amplify} pushes it along. The strike printed in magenta is the supreme, the heaviest strike of the whole book and the one the chart wears in magenta; the cell with the star is the heaviest single cell. A strike's ink names its level: green the call wall, red the put wall, magenta the supreme; a dotted underline marks the gamma pin, a silver one a strike you own. Hover a strike for the words.
+          Each row is a strike, a price level. Each column is an expiry date, today first and later dates to the right. Each cell is a capsule: the figure inside is how much dealer hedging sits at that strike for that date. Brighter means more. {w.absorb} pushes back against a move there, {w.amplify} pushes it along. The strike printed in magenta is the supreme: the strike with the most hedging on the Levels card's contracts, the same one the Board and Compare show. The cell with the star is the heaviest single cell on this calendar. A strike's ink names its level: blue the call wall, gold the put wall, magenta the supreme; a dotted underline marks the gamma pin, a silver one a strike you own. Hover a strike for the words.
         </p>
         <FigureBox>
           <GridFigure />
@@ -429,7 +431,7 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
         <p className="text-[11px] text-textMuted">Today's calendar, in words</p>
         <ul className="mt-1 flex flex-col gap-1.5">
           <li className="text-[11.5px] leading-relaxed text-textSecondary">
-            The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(supreme.total))}</span> of {label} hedging across the whole book, most of it on{' '}
+            The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(shownGreek(greek, supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
             <span className="text-textPrimary">{supremeDate}</span>. The chart wears it in magenta.
           </li>
           <li className="text-[11.5px] leading-relaxed text-textSecondary">

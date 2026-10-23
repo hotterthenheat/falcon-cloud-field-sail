@@ -21,8 +21,8 @@ import { FLAT_DOOR } from '../ui/flatDoor';
 import useFocusTrap from '../ui/useFocusTrap';
 import { bookCsv, downloadText, levelsJson, stampForName } from '../../data/exportBook';
 import { readLevelsScope } from '../../data/levelsScope';
-import { sourceWords } from './BookProvenance';
-import { freshnessOf } from '../../data/levelSureness';
+import { bookFreshness, sourceWords } from './BookProvenance';
+import { LEVEL_ORDER } from '../../core/walls';
 import type { ExposureSurface, Greek } from '../../data/exposureSurface';
 
 interface Props {
@@ -60,7 +60,7 @@ const MoreDoor = ({ surface, greeks, expiries, onData, compact = false }: Props)
       window.removeEventListener('keydown', onKey, true);
     };
   }, [open]);
-  const src = sourceWords();
+  const src = sourceWords(surface.ticker);
   const stamp = stampForName();
   const take = (what: 'book' | 'levels') => {
     if (what === 'book') downloadText(`${surface.ticker}-book-${stamp}.csv`, bookCsv(surface, greeks, expiries), 'text/csv;charset=utf-8');
@@ -103,7 +103,7 @@ const MoreDoor = ({ surface, greeks, expiries, onData, compact = false }: Props)
               <span className="min-w-0">
                 <span className="block text-textPrimary">Where this book comes from</span>
                 <span className="block text-textMuted">
-                  {src.live ? `Live · ${src.short}` : src.short} · {freshnessOf(surface.ticker)}
+                  {src.live ? `Live · ${src.short}` : src.short} · {bookFreshness(surface.ticker)}
                 </span>
               </span>
             </button>
@@ -121,7 +121,7 @@ const MoreDoor = ({ surface, greeks, expiries, onData, compact = false }: Props)
               <Download className={icon} />
               <span className="min-w-0">
                 <span className="block text-textPrimary">Save the levels as JSON</span>
-                <span className="block text-textMuted">call wall · flip · put wall · pin · supreme</span>
+                <span className="block text-textMuted">{[...LEVEL_ORDER, 'pin'].join(' · ')}</span>
               </span>
             </button>
           </div>,
