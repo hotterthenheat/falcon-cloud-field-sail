@@ -401,18 +401,23 @@ function applyCatalysts(data: unknown) {
     if (o.type === 'earnings') {
       const ticker = String(o.ticker ?? '').toUpperCase();
       if (!ticker) continue;
-      const pre = String(meta.report_time ?? o.subtitle ?? '').toLowerCase().includes('pre') || String(o.subtitle ?? '').toLowerCase().includes('before');
+      /* THE CATALYST'S OWN TIME, OR NONE (audit round 10: "unknown" read as after the close, every row "confirmed") —
+         the row carries no source, so it never claims the company confirmed the date */
+      const when = `${String(meta.report_time ?? '')} ${String(o.subtitle ?? '')}`.toLowerCase();
+      const pre = /pre|before/.test(when);
+      const post = /post|after/.test(when);
       const move = num(meta.expected_move_perc);
       events.push({
         id: `er-live-${ticker}-${String(o.date ?? '').slice(0, 10)}-${events.length}`,
         kind: 'earnings',
         date,
-        time: pre ? 'before the open' : 'after the close',
+        time: pre ? 'before the open' : post ? 'after the close' : 'time not set',
         title: `${ticker} reports`,
         impact: move != null && Math.abs(move) * (Math.abs(move) <= 3 ? 100 : 1) >= 7 ? 'high' : 'medium',
         ticker,
         slot: pre ? 'BMO' : 'AMC',
-        confirmed: true,
+        timeKnown: pre || post,
+        catalystOnly: true,
         impliedMovePct: move == null ? undefined : Math.abs(move) <= 3 ? move * 100 : move,
       });
     } else if (o.type === 'econ') {

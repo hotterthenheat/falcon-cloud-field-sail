@@ -184,6 +184,13 @@ export function bookRowToPrint(
     structure, on Multi-Leg. An alert counts only when every print in it was a leg. */
 export const isSpreadLeg = (p: Pick<FlowPrint, 'legs'> & Partial<Pick<FlowPrint, 'compression'>>): boolean => p.legs > 1 && !p.compression;
 
+/** NOT A BET, ONE RULE FOR EVERY CROWN ON THE TAPE (audit round 10: the sentence's "largest print in this window EWZ 47C
+    at $560.0K" was a 3,500-lot `cross_trade` the tile beside it had already passed over). A compression package, a floor
+    package's leg, a cross trade and a leg of a multi-leg order are never the largest print, the top bull or the top
+    bear — summarizeTape and the Live Tape's whale doors both ask this. */
+export const notCrownable = (p: Pick<FlowPrint, 'legs'> & Partial<Pick<FlowPrint, 'compression' | 'floorPackage' | 'cross'>>): boolean =>
+  !!p.compression || !!p.floorPackage || !!p.cross || isSpreadLeg(p);
+
 export function sentimentOf(p: FlowPrint): PrintSentiment {
   /* a compression package (OPRA cbmo / mctp, or the vendor's arbitrage tag) nets open interest down between members — it
      is not a bet either way (traceLive printCondition); a spread leg is half of a structure */
@@ -259,6 +266,8 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
   let compPremium = 0;
   let legCount = 0;
   let legPremium = 0;
+  let crossCount = 0;
+  let crossPremium = 0;
   let largest: FlowPrint | null = null;
 
   for (const p of prints) {
@@ -275,6 +284,13 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
       putCount++;
       putPremium += p.premium;
     }
+    /* a cross trade is pre-arranged at one price, no side taken: in the call/put money, never a block, a side or the
+       largest (audit round 10) */
+    if (p.cross) {
+      crossCount++;
+      crossPremium += p.premium;
+      continue;
+    }
     const kind = printKind(p);
     if (kind === 'SWEEP') sweeps++;
     else if (kind === 'BLOCK') blocks++;
@@ -285,7 +301,7 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
       legPremium += p.premium;
       continue;
     }
-    if (!p.floorPackage && (!largest || p.premium > largest.premium)) largest = p;
+    if (!notCrownable(p) && (!largest || p.premium > largest.premium)) largest = p;
     const s = sentimentOf(p);
     if (s === 'BULLISH') bull += p.premium;
     else if (s === 'BEARISH') bear += p.premium;
@@ -307,8 +323,9 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     sweeps,
     blocks,
     multi,
-    other: prints.length - compCount - sweeps - blocks - multi,
+    other: prints.length - compCount - crossCount - sweeps - blocks - multi,
     compression: { count: compCount, premium: compPremium },
+    crosses: { count: crossCount, premium: crossPremium },
     spreadLegs: { count: legCount, premium: legPremium },
     largest: largest
       ? { ticker: largest.ticker, strike: largest.strike, right: largest.right, premium: largest.premium }

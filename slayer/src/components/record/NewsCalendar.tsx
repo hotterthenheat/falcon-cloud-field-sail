@@ -32,7 +32,8 @@ import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { now } from '../../core/clock';
 import { buildMonthCalendar, dayKeyOf, fdaStamp, setLiveEarnings, subscribeFda, type CalDay, type CalEvent } from '../../data/monthCalendar';
-import { ensureEarnings, useEveryReportQuiet } from '../../data/earningsFeed';
+import { ensureEarnings, useEveryReportQuiet, useLiveReactions } from '../../data/earningsFeed';
+import { nyTodayIso as nyIsoDate } from '../../data/nyDate';
 import { useSeen } from './CoName';
 import CardTabs from '../ui/CardTabs';
 import CompanyLogo from '../ui/CompanyLogo';
@@ -74,7 +75,7 @@ const Pill = ({ e, onOpen }: { e: CalEvent; onOpen: () => void }) => {
       }}
       className="w-full flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-left font-mono text-[9.5px] font-semibold overflow-hidden transition-[filter] hover:brightness-110"
       style={{ background: alpha(ink, 0.13), color: ink, boxShadow: `inset 2px 0 0 0 ${ink}` }}
-      title={e.kind === 'earnings' ? `${e.ticker} reports ${e.time}${e.impliedMovePct ? ` · ±${e.impliedMovePct.toFixed(1)}% priced` : ''}` : e.kind === 'post' ? e.title : e.kind === 'schedule' ? `${e.time} · ${e.title}${e.note ? ` · ${e.note}` : ''}` : e.kind === 'fda' ? `${e.title}` : `${e.time} · ${e.title}${e.forecast ? ` · fcst ${e.forecast}` : ''}`}
+      title={e.kind === 'earnings' ? `${e.ticker} ${e.reported ? 'reported' : 'reports'} ${e.time}${e.reported && e.movePct != null ? ` · ${moveWords(e)}` : ''}${e.impliedMovePct ? ` · ±${e.impliedMovePct.toFixed(1)}% priced` : ''}` : e.kind === 'post' ? e.title : e.kind === 'schedule' ? `${e.time} · ${e.title}${e.note ? ` · ${e.note}` : ''}` : e.kind === 'fda' ? `${e.title}` : `${e.time} · ${e.title}${e.forecast ? ` · fcst ${e.forecast}` : ''}`}
       data-cal-pill={e.id}
       data-kind={e.kind}
     >
@@ -82,7 +83,7 @@ const Pill = ({ e, onOpen }: { e: CalEvent; onOpen: () => void }) => {
         <>
           <CompanyLogo ticker={e.ticker} size={10} />
           <span className="truncate">{e.ticker}</span>
-          <span className="ml-auto text-[8px] font-normal opacity-80 shrink-0">{e.slot}</span>
+          <span className="ml-auto text-[8px] font-normal opacity-80 shrink-0">{e.timeKnown === false ? '—' : e.slot}</span>
         </>
       ) : e.kind === 'fda' && e.ticker ? (
         <>
@@ -110,6 +111,13 @@ const Pill = ({ e, onOpen }: { e: CalEvent; onOpen: () => void }) => {
   );
 };
 
+/** A report's move: "−3.8% so far" while its reacting session trades, "moved −3.8%" once it closed */
+const moveWords = (e: CalEvent): string => {
+  const m = e.movePct ?? 0;
+  const pct = `${m >= 0 ? '+' : '−'}${Math.abs(m).toFixed(1)}%`;
+  return e.moveLive ? `${pct} so far` : `moved ${pct}`;
+};
+
 const NewsCalendar = () => {
   const today = useMemo(() => now(), []);
   const [ym, setYm] = useState({ y: today.getFullYear(), m: today.getMonth() });
@@ -126,22 +134,36 @@ const NewsCalendar = () => {
   const reports = reportsQ.events;
   /* the day's empty line waits for the fortnight's reports to land (audit round 7: "nothing" before the read was in) */
   const reportsPending = reportsQ.status === 'loading';
+  /* the reports whose reacting session is today carry their move, as on the Earnings page (audit round 10: AXP at
+     15:00 still read "reports before the open · ±3.2% priced") — the known names, the board's own read */
+  const reacting = useMemo(() => reports.filter(r => r.known && r.reported && r.reactionIso === nyIsoDate()), [reports]);
+  useLiveReactions(reacting);
   useEffect(() => {
+    /* EVERY REPORT ON THE LISTS (audit round 10: the known names only, so RCBC — today's one after-close report — was
+       missing beside the Earnings page's grid); the known and the largest first within a day */
     setLiveEarnings(
       reports
-        .filter(r => r.iso && r.known)
+        .filter(r => r.iso)
+        .slice()
+        .sort((a, b) => Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0))
         .map(r => {
           const [y, m, d] = (r.iso as string).split('-').map(Number);
+          const timeKnown = r.timeKnown !== false;
           return {
             id: `er-${r.ticker}-${r.iso}`,
             kind: 'earnings' as const,
-            date: new Date(y, m - 1, d, r.slot === 'BMO' ? 7 : 16, r.slot === 'BMO' ? 0 : 5),
-            time: r.slot === 'BMO' ? 'before the open' : 'after the close',
+            date: new Date(y, m - 1, d, r.slot === 'BMO' && timeKnown ? 7 : 16, r.slot === 'BMO' && timeKnown ? 0 : 5),
+            time: !timeKnown ? 'time not set' : r.slot === 'BMO' ? 'before the open' : 'after the close',
             title: `${r.ticker} reports`,
             impact: r.impliedMovePct >= 7 ? ('high' as const) : r.impliedMovePct >= 4 ? ('medium' as const) : ('low' as const),
             ticker: r.ticker,
             slot: r.slot,
             confirmed: r.confirmed,
+            timeKnown,
+            reported: !!r.reported,
+            movePct: r.actualMovePct,
+            moveLive: !!r.moveLive,
+            reactionIso: r.reactionIso,
             impliedMovePct: r.impliedMovePct || undefined,
           };
         })
@@ -261,11 +283,11 @@ const NewsCalendar = () => {
               <div key={e.id} className="px-4 py-2 border-b border-borderSubtle/40" data-cal-event={e.id} data-kind={e.kind}>
                 <div className="flex items-start gap-2">
                   {e.kind === 'earnings' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: SILVER }} /> : e.kind === 'market' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: SUPREME }} /> : e.kind === 'fda' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: WARN }} /> : e.kind === 'schedule' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: SCHEDULE }} /> : e.kind === 'post' ? <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: POST }} /> : <ImpactMark tier={e.impact} />}
-                  <span className="font-mono text-[10px] tnum text-textSecondary w-[54px] shrink-0">{e.kind === 'earnings' ? (e.slot === 'BMO' ? 'pre' : 'post') : e.kind === 'fda' ? 'FDA' : e.time}</span>
+                  <span className="font-mono text-[10px] tnum text-textSecondary w-[54px] shrink-0">{e.kind === 'earnings' ? (e.timeKnown === false ? 'time —' : e.slot === 'BMO' ? 'pre' : 'post') : e.kind === 'fda' ? 'FDA' : e.time}</span>
                   {e.kind === 'earnings' && e.ticker ? (
                     <span className="min-w-0 flex items-center gap-1.5 text-[12px] text-textPrimary">
                       <CompanyLogo ticker={e.ticker} size={14} />
-                      <span className="font-mono font-bold">{e.ticker}</span> reports {e.time}
+                      <span className="font-mono font-bold">{e.ticker}</span> {e.reported ? 'reported' : 'reports'} {e.time}
                     </span>
                   ) : e.kind === 'fda' && e.ticker ? (
                     <span className="min-w-0 flex items-center gap-1.5 text-[12px] text-textPrimary">
@@ -282,8 +304,9 @@ const NewsCalendar = () => {
                 <div className="mt-1 pl-[72px] flex items-center gap-x-4 font-mono text-[10px] tnum text-textPrimary">
                   {e.kind === 'earnings' ? (
                     <>
-                      {e.impliedMovePct != null && <span>±{e.impliedMovePct.toFixed(1)}% priced for the print</span>}
-                      <span className="text-textMuted">{e.confirmed ? 'date confirmed by the company' : 'date estimated — not yet confirmed'}</span>
+                      {e.reported && e.movePct != null ? <span className={e.movePct >= 0 ? 'text-bull' : 'text-bear'}>{moveWords(e)}</span> : e.reported ? <span className="text-textMuted">{e.reactionIso === nyIsoDate() ? 'out — reading the move' : 'out'}</span> : null}
+                      {e.impliedMovePct != null && <span className={e.reported ? 'text-textMuted' : ''}>±{e.impliedMovePct.toFixed(1)}% priced{e.reported ? '' : ' for the print'}</span>}
+                      {!e.reported && <span className="text-textMuted">{e.catalystOnly ? 'on the daily catalysts · not on the earnings lists' : e.confirmed ? 'date confirmed by the company' : 'date estimated — not yet confirmed'}</span>}
                     </>
                   ) : e.kind === 'fda' || e.kind === 'schedule' ? (
                     <span className="min-w-0 break-words whitespace-normal leading-relaxed text-textMuted">{e.note ?? (e.kind === 'fda' ? 'an FDA date' : '')}</span>

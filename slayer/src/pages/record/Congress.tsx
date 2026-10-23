@@ -357,7 +357,7 @@ export const CongressProgress = ({ coverage, window, waiting }: { coverage: Cong
 };
 
 /** The Treasury-bill switch: on by default, and it says how many reports it is hiding */
-export const BillsSwitch = ({ hide, onToggle, hidden, testId }: { hide: boolean; onToggle: () => void; hidden: number; testId: string }) => (
+export const BillsSwitch = ({ hide, onToggle, hidden, testId, reading = false }: { hide: boolean; onToggle: () => void; hidden: number; testId: string; reading?: boolean }) => (
   <button
     type="button"
     onClick={onToggle}
@@ -366,7 +366,7 @@ export const BillsSwitch = ({ hide, onToggle, hidden, testId }: { hide: boolean;
     title={hide ? `${hidden.toLocaleString('en-US')} Treasury-bill ${hidden === 1 ? 'report is' : 'reports are'} hidden — parked cash, not an equity trade. Click to show them` : 'Treasury bills are shown. Click to hide them'}
     className={`h-7 px-2.5 rounded border font-mono text-[10px] uppercase tracking-widest whitespace-nowrap transition-colors ${hide ? 'border-silver/50 bg-silver/[0.08] text-textPrimary' : 'border-borderMuted text-textSecondary hover:border-silver/40'}`}
   >
-    {hide ? `T-bills hidden · ${hidden.toLocaleString('en-US')}` : 'T-bills shown'}
+    {hide ? `T-bills hidden · ${reading ? '…' : hidden.toLocaleString('en-US')}` : 'T-bills shown'}
   </button>
 );
 
@@ -545,8 +545,15 @@ const Congress = () => {
           <div>
             {/* a trade made under 45 days ago cannot be late yet — on the 30-day window the count is structurally nil, and says so */}
             <dt className="text-[10px] text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days`}>Past the deadline</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${stats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
-              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : stats.lateFilings.toLocaleString('en-US')}
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${equityStats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
+              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : (
+                /* ONE BASIS WITH THE SENTENCE (audit round 10: "Past the deadline 7" counted the bonds, the line under it said
+                   "4 missed the 45-day deadline" of the stocks) — the stocks' count, the bonds' said beside it */
+                <>
+                  {equityStats.lateFilings.toLocaleString('en-US')}
+                  {bondStats.lateFilings > 0 ? <span className="text-textMuted"> · +{bondStats.lateFilings.toLocaleString('en-US')} {bondStats.lateFilings === 1 ? 'bond' : 'bonds'}</span> : null}
+                </>
+              )}
             </dd>
           </div>
         </dl>
@@ -566,7 +573,7 @@ const Congress = () => {
         <FeedFallback />
       ) : (
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
-          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
+          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total${bondStats.lateFilings ? `, ${bondStats.lateFilings.toLocaleString('en-US')} of them filed past the deadline` : ''}.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
         </p>
       )}
       {/* THE REPORTS TO KNOW */}

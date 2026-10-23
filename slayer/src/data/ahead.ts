@@ -53,7 +53,7 @@
 */
 
 import { impliedDaySigma } from './atr';
-import { peekDaySigma } from './uwBook';
+import { peekDaySigma, peekMoveToClose } from './uwBook';
 import { datesOf } from './flipLevel';
 import { lastSessionSupreme, moveIntoClose, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
 import { inCashSession, sessionBars } from './levelview';
@@ -169,9 +169,11 @@ function pulledCentre(profile: ExposureProfileData, spot: number, sigma: number,
 export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfileData, iv: number, clock: AheadClock): Corridor {
   const spot = snapshot.spot;
   const one = snapshot.liveBook ? datesOf(snapshot, snapshot.chain) : null;
-  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, Array.isArray(one) && one.length === 1 ? one[0] : null) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
-  /* the corridor is to the coming close — one session's move on the vendor's own scale (uwBook peekDaySigma) */
-  const sigma = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const oneDate = Array.isArray(one) && one.length === 1 ? one[0] : null;
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, oneDate) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
+  /* the corridor is to the coming close — one session's move on the vendor's own scale (uwBook peekDaySigma), scaled to
+     the minutes left exactly once (uwBook peekMoveToClose: a same-day expiry's own move in its session is already that) */
+  const sigma = (snapshot.liveBook ? peekMoveToClose(snapshot.ticker, oneDate, clock.minutesLeft) : null) ?? sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   const { callWall, putWall, flip } = profile.levels;
   const gravityEnd = gravityFor(clock.minutesLeft);
   const start = clock.nowMin ?? OPEN_MIN;
@@ -199,7 +201,8 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
      by the walls that bend the band */
   const cone: ConePoint[] = [];
   const at = (t: number): ConePoint => {
-    const s = sigmaDay * Math.sqrt(Math.max(0, t - start) / SESSION_MIN);
+    /* ends on the corridor's own move to the close (the same move, scaled once — the tenth audit's B2) */
+    const s = sigma * Math.sqrt(Math.max(0, t - start) / span);
     const g = gravityEnd * ((t - start) / span);
     const c = pulledCentre(profile, spot, s, g);
     const hi1 = highWall ? Math.min(c + s, callWall) : c + s;

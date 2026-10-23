@@ -21,6 +21,7 @@
 ==================================================
 */
 
+import { wallPlace } from '../core/walls';
 import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot, scopeDatesPending } from './uwBook';
 import { scopeSigma } from './wall';
 import { UNIVERSE } from './universe';
@@ -504,6 +505,12 @@ export function buildPair(a: string, b: string, dailyA?: readonly DailyClose[] |
 const onFlip = (s: CompareSide) => s.flipDistPct != null && Math.abs(s.flipDistPct) < 0.05;
 export const regimeWord = (s: CompareSide) => (onFlip(s) ? 'go either way on' : s.regime === 'LONG' ? 'absorb' : s.regime === 'SHORT' ? 'amplify' : 'lean one way');
 
+/* ONE "AT PRICE" (core/walls.ts wallPlace, 0.05% — the tenth audit's m2) */
+const placeWords = (strike: number, spot: number, distPct: number): string => {
+  const p = wallPlace(strike, spot);
+  return p === 'at' ? 'right at price' : `${Math.abs(distPct).toFixed(2)}% ${p}`;
+};
+
 export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock): Compare {
   const ratioRaw = b.sigmaLeftPct / Math.max(1e-9, a.sigmaLeftPct);
   const wider = ratioRaw >= 1 ? { ticker: b.ticker, ratio: ratioRaw } : { ticker: a.ticker, ratio: 1 / ratioRaw };
@@ -519,6 +526,6 @@ export function buildCompare(a: CompareSide, b: CompareSide, clock: AheadClock):
   const when = clock.inSession ? 'to the close' : 'next session';
   const sentence =
     `${wider.ticker} has the wider expected move ${when}, ${wider.ratio.toFixed(1)}× ${narrower}'s; ${regimes}. ` +
-    `${nearerCall.ticker}'s call wall (the most call gamma) is the nearer at ${fmtStrike(nearerCall.callWall.strike)}, ${Math.abs(nearerCall.callWall.distPct).toFixed(2)}% ${nearerCall.callWall.distPct >= 0 ? 'above' : 'below'}; ${nearerPut.ticker}'s put wall (the most put gamma) the nearer at ${fmtStrike(nearerPut.putWall.strike)}, ${Math.abs(nearerPut.putWall.distPct).toFixed(2)}% ${nearerPut.putWall.distPct >= 0 ? 'above' : 'below'}.`;
+    `${nearerCall.ticker}'s call wall (the most call gamma) is the nearer at ${fmtStrike(nearerCall.callWall.strike)}, ${placeWords(nearerCall.callWall.strike, nearerCall.spot, nearerCall.callWall.distPct)}; ${nearerPut.ticker}'s put wall (the most put gamma) the nearer at ${fmtStrike(nearerPut.putWall.strike)}, ${placeWords(nearerPut.putWall.strike, nearerPut.spot, nearerPut.putWall.distPct)}.`;
   return { a, b, inSession: clock.inSession, wider, sentence };
 }

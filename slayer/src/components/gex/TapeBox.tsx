@@ -35,7 +35,7 @@ import { DayHeadSlot } from './DayBox';
 import { AreaSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type IPriceLine, type ISeriesApi, type LineData, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
 import { Bell, BellRing, ChevronDown } from 'lucide-react';
 import { roomLevels } from '../../data/roomLevels';
-import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, peekScopeMove, useBookRev } from '../../data/uwBook';
+import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev } from '../../data/uwBook';
 import { scopeDateOf } from '../../data/wall';
 import { pickFlip } from '../../core/walls';
 import { readSessionClock } from '../../data/moc';
@@ -240,7 +240,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
      the vendor's own implied move): "…" until the levels' scope is final and the vendor's term structure is in */
   const movePending = !!snapshot.liveBook && (!!snapshot.levelsPending || roomLevels(snapshot, '0DTE')?.complete === false || peekScopeMove(snapshot.ticker, scopeDateOf(snapshot))?.source === 'iv30');
   const daySigma = snapshot.liveBook && !movePending ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
-  const w1 = daySigma != null ? daySigma * Math.sqrt(Math.min(minLeft, SESSION_MIN) / SESSION_MIN) : spot * iv * Math.sqrt(minLeft / YEAR_MINUTES);
+  /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2: "One move ±0.48" was the
+     vendor's move LEFT to the close, scaled again); a replay's minute keeps the full-session figure's scaling */
+  const left = daySigma != null && at == null ? peekMoveToClose(snapshot.ticker, scopeDateOf(snapshot), minLeft) : null;
+  const w1 = left ?? (daySigma != null ? daySigma * Math.sqrt(Math.min(minLeft, SESSION_MIN) / SESSION_MIN) : spot * iv * Math.sqrt(minLeft / YEAR_MINUTES));
   /* ONE PHASE VOCABULARY (the sixth audit's m8: "closed" here, "The next session" on the Read, "Today" on the Levels
      card, all before Friday's open): outside the session the move is the coming session's — "today" before a trading
      day's open, "next session" after its close (bookWindow todayScopeLabel, the Levels card's own word) */

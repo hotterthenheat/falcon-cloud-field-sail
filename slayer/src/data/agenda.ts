@@ -284,6 +284,8 @@ function wordsOf(o: WallOdds, shelf: boolean, flat = false): string {
 
 /** The least reach a strike's "matters most" score counts (see buildAgenda) */
 const REACH_FLOOR = 0.0005;
+/** The least reach a strike needs to lead "Watch first" while any strike has it (the tenth audit's M4) — "<1%" is under it */
+const LEAD_REACH = 0.01;
 
 export function buildAgenda(
   snapshot: MarketSnapshot,
@@ -386,8 +388,14 @@ export function buildAgenda(
     t.driver = r >= s * 1.3 ? 'odds' : s >= r * 1.3 ? 'size' : 'both';
   }
 
+  /* AN UNREACHABLE STRIKE DOES NOT LEAD (the tenth audit's M4: AMZN All expiries' "Watch first" was 290 · <1% reached ·
+     $3.2B, 17% away, because the reach floor let its size win): while some strike has a real chance of being reached
+     (LEAD_REACH, or the session already traded through it), every strike under LEAD_REACH ranks after all of those —
+     the floor still orders the far strikes among themselves */
+  const anyReachable = targets.some(t => t.reach >= LEAD_REACH || !!t.today);
+  const tier = (t: Target) => (anyReachable && t.reach < LEAD_REACH && !t.today ? 1 : 0);
   /* …and ties broken by the stake, then the distance (the ninth audit's M5) — one order, every time */
-  const byMattersSort = (a: Target, b: Target) => b.matters - a.matters || b.stake - a.stake || Math.abs(a.distancePct) - Math.abs(b.distancePct) || a.strike - b.strike;
+  const byMattersSort = (a: Target, b: Target) => tier(a) - tier(b) || b.matters - a.matters || b.stake - a.stake || Math.abs(a.distancePct) - Math.abs(b.distancePct) || a.strike - b.strike;
   const byMatters = [...targets].sort(byMattersSort);
   /* A LEADER IS KEPT UNTIL ANOTHER CLEARLY BEATS IT (the third audit, 2026-10-23: "Watch first" flipped 765 ↔ 762 on
      after-hours ticks of ±$0.15). The last leader stays first while it scores within HOLD_LEAD of the top; a
@@ -396,7 +404,7 @@ export function buildAgenda(
   const prevLead = leaderOf.get(key);
   if (byMatters.length > 1 && prevLead != null && byMatters[0].strike !== prevLead) {
     const i = byMatters.findIndex(t => t.strike === prevLead);
-    if (i > 0 && byMatters[i].matters >= byMatters[0].matters * (1 - HOLD_LEAD)) byMatters.unshift(...byMatters.splice(i, 1));
+    if (i > 0 && tier(byMatters[i]) <= tier(byMatters[0]) && byMatters[i].matters >= byMatters[0].matters * (1 - HOLD_LEAD)) byMatters.unshift(...byMatters.splice(i, 1));
   }
   if (byMatters[0]) leaderOf.set(key, byMatters[0].strike);
   const sorters: Record<AgendaOrder, (a: Target, b: Target) => number> = {
@@ -425,7 +433,9 @@ export function buildAgenda(
   /* THE WALLS IN REACH ARE EVERY WALL THE TABLE NAMES (the retail test, 2026-10-23: "Only wall in reach 770 · the only
      one" above a row tagging 769 PUT WALL, nearer): the absorbing shelves and the named call and put walls alike */
   const isWallRow = (t: Target) => t.isShelf || t.role === 'call wall' || t.role === 'put wall' || t.roles.includes('call wall') || t.roles.includes('put wall');
-  const wallsInReach = ordered.filter(t => isWallRow(t) && t.reach >= IN_REACH);
+  /* …and a wall price is on, or the session has already traded through, is in reach (the tenth audit: "Walls in reach ·
+     none in reach" beside a #1 wall already reached today) */
+  const wallsInReach = ordered.filter(t => isWallRow(t) && (t.reach >= IN_REACH || !!t.today || onPrice(t)));
   const shelvesInReach = wallsInReach.filter(t => t.isShelf);
   const weakestWall = shelvesInReach.length ? shelvesInReach.reduce((a, b) => (b.hold < a.hold ? b : a)) : null;
   const nearestWall = wallsInReach.length ? wallsInReach.reduce((a, b) => (Math.abs(b.distancePct) < Math.abs(a.distancePct) ? b : a)) : null;

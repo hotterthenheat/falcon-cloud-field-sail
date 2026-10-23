@@ -64,7 +64,7 @@ import type { ExposureProfileData, StrikeExposure } from '../../types/gex';
 import { Change, READ_WINDOWS } from './ChangeMark';
 import { toneBadge, type Tone } from '../ui/tones';
 import Fact from '../ui/Fact';
-import { levelRoles, type LevelRole } from '../../core/walls';
+import { levelRoles, wallPlace, type LevelRole } from '../../core/walls';
 
 const ROLE_TONE: Record<LevelRole, Tone> = { supreme: 'supreme', 'call wall': 'bull', 'put wall': 'bear', flip: 'white' };
 
@@ -198,8 +198,10 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     const pw = s.putWall.strike;
     const cwNet = valueAt(cw, 'gex', 'net');
     if (cwNet != null && shownGreek('gex', cwNet) < 0) parts.push(`${fmtStrike(cw)} is the call wall because it holds the most call gamma; its puts are heavier still, so its net is negative — dealers are short gamma there, so it is not a lid.`);
-    else if (cw < s.spot) parts.push(`The call wall ${fmtStrike(cw)} is below price: the most call gamma sits under it, which can act as support.`);
-    if (pw > s.spot) parts.push(`The put wall ${fmtStrike(pw)} is above price: that is overhead put hedging, not a floor.`);
+    /* ONE "AT PRICE" (core/walls.ts wallPlace, 0.05% — the tenth audit's m2: "the 705 put wall right at price", then
+       "The put wall 705 is above price") */
+    else if (wallPlace(cw, s.spot) === 'below') parts.push(`The call wall ${fmtStrike(cw)} is below price: the most call gamma sits under it, which can act as support.`);
+    if (wallPlace(pw, s.spot) === 'above') parts.push(`The put wall ${fmtStrike(pw)} is above price: that is overhead put hedging, not a floor.`);
     return parts.join(' ');
   })();
 

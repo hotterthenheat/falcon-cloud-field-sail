@@ -308,6 +308,8 @@ export interface EarningsDossier {
   crushKnown?: boolean;
   /** The busiest-contract read has finished. Absent on the sample. */
   contractsReady?: boolean;
+  /** The report after the one the page leads with (when that one is already out) */
+  nextAfter?: { iso: string; dateLabel: string; slot: ReportSlot; timeKnown: boolean; estimated: boolean; confirmed: boolean; daysOut: number } | null;
 }
 
 function roundStrike(px: number, offPct: number): number {

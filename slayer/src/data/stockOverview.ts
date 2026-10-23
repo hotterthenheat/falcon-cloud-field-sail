@@ -1145,6 +1145,33 @@ const whyNowOf = (pillars: Pillar[]): string => {
   if (!top.length) return 'Nothing on the name stands out right now.';
   return top.map(f => `${cap(f.label)} ${f.value} — ${f.note}`).join(' · ') + '.';
 };
+/** A pillar's side in the read's sentences, on THE PILLAR LABELS' OWN CUTS (audit round 10: SPY "the money is selling"
+    beside a Money of caution, 50%; UNH Money poor beside "nothing against it" — the sentences cut at 45/55 and 65, the
+    labels at 46 and 60). For the name = good or strong, against it = poor, between = caution, said as neither. */
+export const pillarSide = (score: number): 'for' | 'against' | 'middle' => {
+  const g = gradeOf(score);
+  return g === 'good' || g === 'strong' ? 'for' : g === 'poor' ? 'against' : 'middle';
+};
+/** The read in a sentence, from the pillars ranked best first — every clause from the pillars' own labels */
+export function verdictSentence(ranked: readonly { score: number; name: string; good: string; bad: string }[], screen: Screen): string {
+  if (!ranked.length) return 'Nothing on the name stands out right now.';
+  const be = (p: { name: string }) => (p.name === 'the numbers' ? 'are' : 'is');
+  const goods = ranked.filter(p => pillarSide(p.score) === 'for');
+  const bads = ranked.filter(p => pillarSide(p.score) === 'against').reverse();
+  const list = (xs: readonly { name: string }[]) => (xs.length === 1 ? xs[0].name : `${xs.slice(0, -1).map(x => x.name).join(', ')} and ${xs[xs.length - 1].name}`);
+  if (ranked.length === 1) {
+    const p = ranked[0];
+    return cap(`${goods.length ? p.good : bads.length ? p.bad : `${p.name} ${be(p)} in the middle`}.`);
+  }
+  const soft = bads.length === 0 ? 'nothing against it' : bads.length === 1 ? `${bads[0].name} ${be(bads[0])} the one soft spot` : `${list(bads)} are the soft spots`;
+  const help = goods.length === 0 ? 'nothing in its favour' : goods.length === 1 ? `${goods[0].name} alone cannot carry it` : `${list(goods)} cannot carry it`;
+  if (screen === 'STRONG' && goods.length) return cap(`${goods.slice(0, 2).map(p => p.good).join(', ')}; ${soft}.`);
+  if (screen === 'WEAK' && bads.length) return cap(`${bads.slice(0, 2).map(p => p.bad).join(', ')}; ${help}.`);
+  if (!goods.length && !bads.length) return 'Nothing on the name is decisive.';
+  if (!goods.length) return cap(`${bads.slice(0, 2).map(p => p.bad).join(', ')}; ${help}.`);
+  if (!bads.length) return cap(`${goods.slice(0, 2).map(p => p.good).join(', ')}; nothing against it, the rest in the middle.`);
+  return cap(`${goods[0].good} but ${bads[0].bad} — a catalyst decides.`);
+}
 const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen: Screen): string => {
   const words: Record<PillarKey, { good: string; bad: string; name: string }> = {
     /* the trend's span named (round 8: CRM "STRONG · the trend is up" while down 3.5% on the year) — its factors are
@@ -1154,18 +1181,8 @@ const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen:
     money: { name: 'the money', good: 'the money is buying', bad: 'the money is selling' },
     news: { name: 'the news', good: 'the news helps', bad: 'the news hurts' },
   };
-  const ranked = [...pillars].sort((a, b) => b.score - a.score);
-  const best = ranked[0];
-  const worst = ranked[ranked.length - 1];
-  const second = ranked[1];
-  const next = ranked[ranked.length - 2];
-  if (!best || !worst) return 'Nothing on the name stands out right now.';
-  if (!second || !next) return cap(`${best.score >= 55 ? words[best.key].good : best.score <= 45 ? words[best.key].bad : `${words[best.key].name} ${best.key === 'numbers' ? 'are' : 'is'} quiet`}.`);
-  if (screen === 'STRONG') return cap(`${words[best.key].good}, ${words[second.key].good}; ${worst.score < 45 ? `${words[worst.key].name} ${worst.key === 'numbers' ? 'are' : 'is'} the one soft spot` : 'nothing against it'}.`);
-  if (screen === 'WEAK') return cap(`${words[worst.key].bad}, ${words[next.key].bad}; ${best.score > 65 ? `${words[best.key].name} alone cannot carry it` : 'nothing in its favour'}.`);
-  if (best.score < 55 && worst.score > 45) return 'Nothing on the name is decisive.';
-  if (best.score < 55) return cap(`${words[worst.key].bad}.`);
-  return cap(`${words[best.key].good} but ${words[worst.key].bad} — a catalyst decides.`);
+  const ranked = [...pillars].sort((a, b) => b.score - a.score).map(p => ({ score: p.score, ...words[p.key] }));
+  return verdictSentence(ranked, screen);
 };
 /** Every factor's points: its lean × its share of the pillar × 50 × the pillar's weight — they sum to the score's distance from 50 */
 const contributionsOf = (pillars: Pillar[]): Contribution[] =>
@@ -1204,7 +1221,7 @@ const movesOf = (pillars: Pillar[], composite: number): Move[] => {
    pillar agrees" — the side cut at 55 while the word "caution" runs 47–59, so a caution pillar was counted as backing a
    bullish read. A pillar is for the name when it grades good or strong, against it when poor, and a caution pillar is in
    the middle — it neither agrees nor argues. */
-const sideOf = (score: number): 'for' | 'against' | 'middle' => (score >= GOOD_FROM ? 'for' : score <= POOR_TO ? 'against' : 'middle');
+const sideOf = pillarSide; /* one rule with the sentences above */
 const verbs = (p: Pillar, one: string, many: string) => (p.key === 'numbers' ? many : one);
 const lowerName = (p: Pillar) => p.name.toLowerCase();
 const topFactor = (p: Pillar) => p.factors.filter(f => !f.context).sort((a, b) => Math.abs(b.lean) * b.weight - Math.abs(a.lean) * a.weight)[0];

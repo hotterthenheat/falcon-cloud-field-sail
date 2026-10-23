@@ -107,11 +107,14 @@ export function today(): Date {
   return new Date(p.year, p.month - 1, p.day);
 }
 
-/** The day the BOOK is on: New York's date until the bell's last prints (16:15), the next calendar day after — today's
-    contracts are settled by then, so "0DTE" is the next session's expiry, and says so. */
+/** The day the BOOK is on: New York's date until the 4:00 bell, the next calendar day after — today's contracts stop
+    trading at 4:00 on their expiry day (the late 16:15 close is for the index and ETF options that do NOT expire that
+    day), so from 4:00 "0DTE" is the next session's expiry, and says so. THE ROLL IS AT 4:00, NOT 16:15 (the tenth audit's
+    M3, 2026-10-23: from 16:00 to 16:15 the scope read "Next session" while the book was still Friday's — "SPY · Oct 23 ·
+    next expiry", "Expires Fri 10/23 21%" and closing odds for a session already closed). */
 export function bookToday(): Date {
   const p = nyParts(now());
-  const after = p.hour * 60 + p.minute >= 16 * 60 + 15;
+  const after = p.hour * 60 + p.minute >= 16 * 60;
   return new Date(p.year, p.month - 1, p.day + (after ? 1 : 0));
 }
 
