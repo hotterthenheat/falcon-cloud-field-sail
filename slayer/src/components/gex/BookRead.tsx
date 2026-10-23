@@ -33,7 +33,7 @@
 import { expirySpan, todayScopeLabel } from '../../data/bookWindow';
 import { useLevelsScope } from '../../data/levelsScope';
 import { useLevelsFor } from '../../data/levelsFor';
-import { peekDaySigma } from '../../data/uwBook';
+import { peekDaySigma, peekScopeMove } from '../../data/uwBook';
 import { shownGreek } from './retailSign';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -244,8 +244,14 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   const minLeft = clock.secondsToClose / 60;
   const shut = minLeft <= 0;
   const sigmaDay = peekDaySigma(snapshot.ticker, lv?.date ?? null);
-  const w1 = sigmaDay != null ? (shut ? sigmaDay : sigmaDay * Math.sqrt(Math.min(390, minLeft) / 390)) : null;
+  /* A LATER EXPIRY'S MOVE IS ITS OWN, OVER ITS WHOLE HORIZON (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20 —
+     the card read $4.95, the ATM vol over one session, against the vendor's $14.98 into Nov 20): uwBook peekScopeMove,
+     the same move the reach odds read (data/wall.ts scopeSigma), and the card says which number it is */
+  const scopeMove = peekScopeMove(snapshot.ticker, lv?.date ?? null);
+  const multi = !!scopeMove?.multi;
+  const w1 = multi ? scopeMove!.move : sigmaDay != null ? (shut ? sigmaDay : sigmaDay * Math.sqrt(Math.min(390, minLeft) / 390)) : null;
   const moveDate = lv?.date ?? null;
+  const moveWords = scopeMove?.words ?? (moveDate ? `the vendor's implied move into ${expirySpan([moveDate])}` : "the vendor's implied move");
   const nearest = (price: number) => surface.strikes.reduce((b, s) => (Math.abs(s - price) < Math.abs(b - price) ? s : b), surface.strikes[0]);
 
   const go = (id: SectionId) => {
@@ -450,11 +456,11 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
 
         {/* TO THE CLOSE */}
         <section data-read-section="close" className="flex flex-col gap-2">
-          <Head>{shut ? 'The next session' : 'To the close'} · expected move</Head>
+          <Head>{multi && moveDate ? `By ${expirySpan([moveDate])}` : shut ? 'The next session' : 'To the close'} · expected move</Head>
           <div className="flex items-baseline gap-2">
-            <span className="text-[17px] font-semibold text-textPrimary">{w1 != null ? `±${w1.toFixed(2)}` : '…'}</span>
-            <span className="text-[11px] text-textMuted">
-              one expected move · {shut ? 'the next session' : `${Math.round(minLeft)} min left`} · the vendor's implied move{moveDate ? ` into ${expirySpan([moveDate])}` : ''}
+            <span className="text-[17px] font-semibold text-textPrimary" data-read-move={w1 != null ? w1.toFixed(2) : undefined}>{w1 != null ? `±${w1.toFixed(2)}` : '…'}</span>
+            <span className="text-[11px] text-textMuted" data-read-move-source={scopeMove?.source}>
+              one expected move · {multi && moveDate ? `by ${expirySpan([moveDate])}, the expiry the levels read` : shut ? 'the next session' : `${Math.round(minLeft)} min left`} · {multi ? moveWords : scopeMove?.source === 'vendor' || !scopeMove ? moveWords : `one session of ${moveWords}`}
             </span>
           </div>
           {/* one column: "one move down · 512.34 · 512 put wall" wrapped to two lines in half the card (the audit's H6) */}

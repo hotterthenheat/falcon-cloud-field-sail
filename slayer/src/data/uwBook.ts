@@ -1064,8 +1064,9 @@ export function peekScopeMove(ticker: string, date?: string | null): ScopeMove |
   ONE SESSION'S EXPECTED MOVE, DOLLARS (the third audit, 2026-10-23: "EXPECTED MOVE ±$7.32", which drives every reach
   odd, was the 30-day IV off iv-rank — 15.2% — while the Oct 23 ATM vol is 17.4% and the vendor's own implied move into
   Oct 23 is $4.74). The move is the expiry the levels read: when that expiry IS the coming session, the vendor's own
-  implied move into it; a later expiry (CROX's Nov 20) its at-the-money vol over one session; the 30-day IV only when the
-  term structure has nothing. `date` null: the first live listing.
+  implied move into it; a later expiry (CROX's Nov 20) its at-the-money vol over one session on the vendor's own scale
+  (k·S·σ·√(1/365) — the move over the scope's whole horizon is peekScopeMove); the 30-day IV only when the term structure
+  has nothing. `date` null: the first live listing.
 */
 export function peekDaySigma(ticker: string, date?: string | null): number | null {
   const e = peekEntry(ticker);
@@ -1436,15 +1437,20 @@ function keepTotals(entry: Entry, rows: unknown): void {
 
 const FRONT_MS = 180_000;
 
-/* THE OWN-VOL HORIZON (the fifth audit, 2026-10-23): the live dates whose contracts' own implied vols the flip re-prices
-   with (data/flipLevel.ts) — every live date. A thirty-day horizon with the at-the-money vol past it was tried and is
-   not enough: AAPL's whole book is nearly flat across −8%…−5% (≈ $4M a dollar), and the December and January dates'
-   wings at the ATM vol against their own moved it by ~$80M — no crossing at all, against 325.99 with every contract's
-   own vol. The full book reads every date's contracts anyway; a Board-only name reading "All expiries" reads them too
-   (loadBoardDates), so both pages hold the same vols. */
-export const OWN_IV_DAYS = 3660;
-export const inOwnIvHorizon = (date: string, from: string = isoDate(bookToday())): boolean =>
-  date >= from && (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 <= OWN_IV_DAYS;
+/* WHICH DATES RE-PRICE WITH THEIR CONTRACTS' OWN VOLS (the fifth audit, 2026-10-23): the front date, and every live date
+   holding at least OWN_IV_SHARE of the dates' gross gamma. With only the front date's own vols AAPL's whole book read
+   336.7 (its later dates' wings at the ATM vol) against 326.0 with every contract's own; with the dates under 0.5% of
+   the gross on their ATM vol it reads 326.00 (QQQ 734.37 against 734.33) — at 2% it was 329.1, AAPL's book is that
+   flat — and a Board-only name skips five to nine dates' contracts. The full book reads every date's contracts anyway; the
+   Board reads these dates' (loadBoardDates) — both pages pick the dates by the same rule off the same chains, so both
+   re-price with the same vols. */
+export const OWN_IV_SHARE = 0.005;
+export function ownIvDates(byDate: Readonly<Record<string, readonly StrikeNode[] | undefined>>, dates: readonly string[], front: string | undefined): Set<string> {
+  const gross = (d: string) => (byDate[d] ?? []).reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
+  const g = dates.map(d => [d, gross(d)] as const);
+  const total = g.reduce((a, [, v]) => a + v, 0);
+  return new Set(g.filter(([d, v]) => d === front || (total > 0 && v >= OWN_IV_SHARE * total)).map(([d]) => d));
+}
 
 /*
   A BOARD NAME'S FRONT DATE (the ship pass, 2026-10-22). A name read for the Board alone used to carry no per-expiry
@@ -1532,10 +1538,13 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   if (readLevelsScope() === 'ALL') await loadBoardDates(entry.ticker, token, listed);
 }
 
-/** The own-vol horizon's dates whose contracts are not read yet */
+/** The own-vol dates (ownIvDates) whose contracts are not read yet */
 function horizonFactsMissing(entry: Entry): string[] {
   const facts = entry.factsDates ?? new Set<string>();
-  return Object.keys(entry.byDate).filter(d => inOwnIvHorizon(d) && entry.byDate[d]?.length && !facts.has(d));
+  const floor = isoDate(bookToday());
+  const live = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length).sort();
+  const own = ownIvDates(entry.byDate, live, live[0]);
+  return live.filter(d => own.has(d) && !facts.has(d));
 }
 
 /** The session on record's date (data/bookWindow.ts recordDay, kept here without the import cycle): today's from the
@@ -1565,7 +1574,36 @@ function datesComplete(entry: Entry): boolean {
 const datesWait = new Set<string>();
 /** Listed dates whose strikes came back empty — asked once, not waited on forever */
 const emptyDates = new Map<string, Set<string>>();
-async function loadBoardDates(ticker: string, token: number, listed?: { date: string; dte: number }[]): Promise<void> {
+/*
+  ONE BOARD NAME'S DATES AT A TIME, THE NAME ON SCREEN FIRST (the fifth audit, 2026-10-23: the Board in All expiries sat
+  on "Reading the levels…" for 17 of 20 names at 45s). Every name queued its forty dates at once, so the key's three
+  slots were shared by all twenty and every row finished late together. The dates are read a name at a time — the hot
+  name (the one the desk is on) ahead of the rest, then in the order asked (the Board's own order) — so rows land one
+  after another; the chains already read are kept on the book and never asked again.
+*/
+const datesQueue: { ticker: string; run: () => Promise<void>; done: () => void }[] = [];
+let datesRunning = 0;
+const DATES_AT_ONCE = 1;
+function pumpDates(): void {
+  while (datesRunning < DATES_AT_ONCE && datesQueue.length) {
+    const i = Math.max(0, datesQueue.findIndex(q => isHot(q.ticker)));
+    const job = datesQueue.splice(i, 1)[0];
+    datesRunning++;
+    void job.run().finally(() => {
+      datesRunning--;
+      job.done();
+      pumpDates();
+    });
+  }
+}
+function loadBoardDates(ticker: string, token: number, listed?: { date: string; dte: number }[]): Promise<void> {
+  if (datesQueue.some(q => q.ticker === ticker)) return Promise.resolve();
+  return new Promise(resolve => {
+    datesQueue.push({ ticker, run: () => loadBoardDatesNow(ticker, gen.get(ticker) ?? token, listed), done: resolve });
+    pumpDates();
+  });
+}
+async function loadBoardDatesNow(ticker: string, token: number, listed?: { date: string; dte: number }[]): Promise<void> {
   const still = () => gen.get(ticker) === token;
   const e = cache.get(ticker);
   if (!e || datesWait.has(ticker)) return;
@@ -1587,7 +1625,7 @@ async function loadBoardDates(ticker: string, token: number, listed?: { date: st
   try {
     const fetched = await mapLimit(want, 3, async date => {
       try {
-        return [date, await dateChain(ticker, date, e.spot, false)] as const;
+        return [date, await dateChain(ticker, date, e.spot, false, isHot(ticker))] as const;
       } catch {
         return [date, null] as const;
       }

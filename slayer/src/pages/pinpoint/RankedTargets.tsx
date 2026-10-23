@@ -329,7 +329,7 @@ const RankedTargets = () => {
           <AgendaSwitch />
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the order, the cards and the rows mean" testId="targets-guide" />
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+        <p className="mt-0.5 text-[11px] text-textMuted lg:whitespace-nowrap lg:truncate">
           Every strike in the order it matters {todayScopeLabel() === 'Today' ? 'today' : 'next session'} — how likely price gets there × how much happens if it does
           {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
         </p>

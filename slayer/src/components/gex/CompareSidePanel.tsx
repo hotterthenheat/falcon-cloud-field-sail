@@ -359,7 +359,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* TO THE CLOSE */}
-      <Cap>{cmp.inSession ? 'To the close' : 'The next session'}</Cap>
+      <Cap tip={`The expected move is ${s.moveWords}`}>{s.horizon ? s.horizon.replace(/^by/, 'By') : cmp.inSession ? 'To the close' : 'The next session'}</Cap>
       <div className="pt-1 flex flex-col gap-0.5">
         <Fact
           label="Expected move"
@@ -390,7 +390,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
               <span className="inline-flex items-baseline gap-1.5">
                 <Door k={s.watch.strike} />
                 <span className="text-[10px] text-textMuted" title={kindTip(watchKind)}>
-                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
+                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.horizon ? ` ${s.watch.horizon}` : ''}{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
                 </span>
               </span>
             ) : (

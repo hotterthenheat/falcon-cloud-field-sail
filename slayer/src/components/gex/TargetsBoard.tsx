@@ -70,6 +70,7 @@ import { chanceLabel, holdLabel, holdShort, pathFlowWords, pathLean } from '../.
 import { GLOSSARY, kindTip } from './glossary';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useDistanceUnit } from '../../data/distanceUnits';
+import { longDay, recordDay } from '../../data/bookWindow';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
 import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
 
@@ -314,7 +315,7 @@ const breakWords = (t: Target): ReactNode =>
 /** "At stake" and its "×", in words (the fourth audit: "0.2×" beside "at stake" was never explained) */
 const stakeTip = (stake: number, per1: number): string =>
   `At stake: the dollars of dealer hedging that come into play if price reaches this strike — the hedging parked here plus what dealers must trade on the way through. ${
-    per1 > 1 ? `The × figure is that against the dollars of stock it took to move the name 1% today (${fmtDollars(per1)}): ${(stake / per1).toFixed(1)}× means the hedging here is ${(stake / per1).toFixed(1)} times what a 1% move took.` : ''
+    per1 > 1 ? `The × figure is that against the dollars of stock it took to move the name 1% in ${recordDay().isToday ? "today's" : `${longDay(recordDay().date)}'s`} session (${fmtDollars(per1)}): ${(stake / per1).toFixed(1)}× means the hedging here is ${(stake / per1).toFixed(1)} times what a 1% move took.` : ''
   }`;
 
 interface CardProps {

@@ -39,6 +39,8 @@
 ==================================================
 */
 
+import { longDay } from '../../data/bookWindow';
+import { nyIsoDate } from '../../core/nyTime';
 import { readMarketState } from '../../data/marketState';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, LineStyle, createChart, createSeriesMarkers, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from 'lightweight-charts';
@@ -236,6 +238,9 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
   /* THE DAY IN HAND: the crosshair's, today at rest */
   const hovering = hover != null && byTime.has(hover);
   const shownTime = hovering ? hover : (todayAt?.time ?? null);
+  /* THE LAST POINT NAMED BY ITS OWN DAY (the fifth audit, 2026-10-23: "Today" on Thursday's close at 01:00 Friday) */
+  const lastDay = todayAt ? nyIsoDate(todayAt.time * 1000) : null;
+  const lastWord = !lastDay || lastDay === nyIsoDate() ? 'Today' : longDay(lastDay);
   const shown = shownTime != null ? byTime.get(shownTime) : null;
   const shownPlace = shown ? pairPlace(shown.ratio, pair.mean, pair.sd) : null;
   const warmCss = THERMAL_WARM;
@@ -248,7 +253,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
         <div className="min-w-0 flex-1">
           <div className="h-6 flex items-center gap-3 min-w-0">
             <h3 className="shrink-0 text-[15px] font-semibold leading-tight text-textPrimary">The pair</h3>
-            <span className="min-w-0 truncate text-[11px] text-textSecondary">which of the two has been stronger, and whether today's gap is normal</span>
+            <span className="min-w-0 truncate text-[11px] text-textSecondary">which of the two has been stronger, and whether {lastWord === 'Today' ? "today's" : `${lastWord}'s`} gap is normal</span>
             {onGuide && <GuideDoor open={guideOpen} onClick={onGuide} title="What the line, the range and the marks mean" testId="pair-guide" />}
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
@@ -279,7 +284,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
             </span>
             {shown && shownTime != null && (
               <div className="absolute top-2 left-3 z-10 pointer-events-none flex items-center gap-2 font-mono text-[11px] tnum whitespace-nowrap" data-pair-legend data-legend-time={shownTime}>
-                <span className="font-semibold text-textPrimary">{shown.today ? 'Today' : dayWords(shownTime)}</span>
+                <span className="font-semibold text-textPrimary">{shown.today ? lastWord : dayWords(shownTime)}</span>
                 {/* "still moving" only while the session is — after the bell today's ratio is a close like any other day's */}
                 {shown.today && readMarketState().word === 'live' && (
                   <span className="text-[9px] uppercase tracking-widest" style={{ color: SILVER }}>
@@ -295,7 +300,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
             {/* THE CARD on the day under the crosshair — the marks included: the two closes in their inks, the ratio, where
                 that day sat against the usual range and which name was further ahead than usual */}
             {hovering && shown && shownTime != null && (
-              <PointerFollowCard start={pointerAt.current} width={248} testId="data-pair-card" testValue={`${shownTime}`} title={shown.today ? 'Today' : dayWords(shownTime)} aside={shown.today && readMarketState().word === 'live' ? 'still moving' : isOutside(shown.ratio) ? 'closed outside the range' : 'closed inside the range'}>
+              <PointerFollowCard start={pointerAt.current} width={248} testId="data-pair-card" testValue={`${shownTime}`} title={shown.today ? lastWord : dayWords(shownTime)} aside={shown.today && readMarketState().word === 'live' ? 'still moving' : isOutside(shown.ratio) ? 'closed outside the range' : 'closed inside the range'}>
                 <CardRow k={a} v={fmtClose(shown.closeA)} ink={aInk} sub={shown.today ? 'last' : 'close'} />
                 <CardRow k={b} v={fmtClose(shown.closeB)} ink={bInk} sub={shown.today ? 'last' : 'close'} />
                 <CardRow k={`${a} ÷ ${b}`} v={fmtRatio(shown.ratio)} />
@@ -339,7 +344,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
             )}
             <span className="ml-auto inline-flex items-center gap-1.5 text-textMuted">
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: SILVER }} aria-hidden />
-              today
+              {lastWord === 'Today' ? 'today' : lastWord}
             </span>
           </>
         ) : (

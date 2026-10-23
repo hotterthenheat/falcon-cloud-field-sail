@@ -78,7 +78,7 @@ export interface BoardRow {
   /** Your positions on the name: contracts owned or sold (0 = none) */
   yours: { positions: number; contracts: number };
   /** The agenda's first strike for this name — what to watch first, and why (2026-09-08) */
-  watch: { strike: number; role: WallRole; isShelf: boolean; isWall: boolean; reach: number; hold: number; stake: number } | null;
+  watch: { strike: number; role: WallRole; isShelf: boolean; isWall: boolean; reach: number; hold: number; stake: number; horizon: string | null } | null;
 }
 
 const SPARK_POINTS = 48;
@@ -155,7 +155,7 @@ export const watchSurface = (snapshot: MarketSnapshot): ExposureSurface | null =
 
 export function watchOf(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock): BoardRow['watch'] {
   const lead = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot))?.first[0];
-  return lead ? { strike: lead.strike, role: lead.role, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake } : null;
+  return lead ? { strike: lead.strike, role: lead.role, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake, horizon: lead.horizon } : null;
 }
 
 /** Thin a series to at most n points, keeping the ends */
