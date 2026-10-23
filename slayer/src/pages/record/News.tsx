@@ -30,9 +30,9 @@
 */
 
 import { companyName } from '../../data/tickers';
-import { extendedLine, useDayMoves, useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, useLiveQuote, useSetMoves } from '../../data/liveQuote';
 import { PublishMove, storyNameWord } from '../../components/record/publishMove';
-import { shortDay } from '../../data/nyDate';
+import { nyTodayIso, shortDay } from '../../data/nyDate';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -94,7 +94,7 @@ const LEAN_OPTIONS: DropdownOption<LeanPick>[] = [
 const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
   { value: 'all', label: 'Every name', short: 'All', hint: 'Every story on the wire' },
   { value: 'board', label: 'Your board', hint: 'Stories on the names on your Board' },
-  { value: 'macro', label: 'Macro only', hint: 'Stories with no single name' },
+  { value: 'macro', label: 'Macro only', hint: 'The economy, the Fed, markets and policy — stories with no company as their subject' },
 ];
 const SORT_OPTIONS: DropdownOption<Sort>[] = [
   { value: 'matters', label: 'What matters', hint: 'Major stories on your Board first, then other stories on your Board, then the rest of the major ones — newest first inside each' },
@@ -487,7 +487,8 @@ const News = () => {
       if (category !== 'all' && e.item.category !== category) return false;
       if (lean !== 'any' && e.grade !== lean) return false;
       if (names === 'board' && !(e.item.ticker && board.has(e.item.ticker))) return false;
-      if (names === 'macro' && e.item.ticker) return false;
+      /* macro is the Macro beat (whalesMap categoryOf) — an unnamed company press release is not macro */
+      if (names === 'macro' && (e.item.ticker || e.item.category !== 'Macro')) return false;
       return true;
     });
   }, [events, category, lean, names, boardNames]);
@@ -600,28 +601,29 @@ const News = () => {
   /* THE FACTS */
   const positive = rows.filter(r => r.grade === 'ALLY').length;
   const negative = rows.filter(r => r.grade === 'THREAT').length;
-  /* BIGGEST MOVE TODAY, OVER A STATED, STABLE SET (the third audit, 2026-10-23: it read TTMI −27.7%, then MRNA −17.6% on
-     the next load — the set was the dozen that had moved most at publish in the current cut, and it changed with every
-     read). The set is now fixed and said: the names on your Board and the names today's major stories are about, read
-     once the wire is whole, each for its regular-session change (data/liveQuote.ts, data/dayChange.ts); before the open,
-     the last session's. It is said how many of the set have landed. */
+  /* BIGGEST MOVE TODAY, OVER A COMPLETE, STATED SET (the fourth audit, 2026-10-23: "NVDA −4.4% · 3 of 86 read" while
+     META −6.98% and AMD −8.10% had stories — the set was read a quote at a time and named before it was in). The set is
+     every name today's stories are about, read in bulk off the screener for its regular-session change
+     (data/liveQuote.ts useSetMoves), and the figure is given only once the whole set has answered. */
   const moveNames = useMemo(() => {
     if (coverage.reading) return [] as string[];
-    const set = new Set<string>(boardNames);
-    for (const e of events) if (e.item.major && e.item.ticker) set.add(e.item.ticker);
+    const set = new Set<string>();
+    for (const e of events) {
+      if (e.item.ticker) set.add(e.item.ticker);
+      for (const t of e.item.tickers ?? []) set.add(t);
+    }
     return [...set].sort();
-  }, [events, boardNames, coverage.reading]);
-  const dayMoves = useDayMoves(moveNames);
+  }, [events, coverage.reading]);
+  const setMoves = useSetMoves(moveNames);
   const biggest = useMemo(() => {
-    let top: { ticker: string; pct: number; pre: boolean; date: string | null } | null = null;
-    for (const [t, q] of dayMoves) {
-      const pre = q.phase === 'pre';
-      const v = pre ? q.lastSessionPct : q.changePct;
-      if (v == null) continue;
-      if (!top || Math.abs(v) > Math.abs(top.pct) || (Math.abs(v) === Math.abs(top.pct) && t < top.ticker)) top = { ticker: t, pct: v, pre, date: q.regDate };
+    if (!setMoves.complete) return null;
+    let top: { ticker: string; pct: number; date: string } | null = null;
+    for (const [t, q] of setMoves.moves) {
+      if (!top || Math.abs(q.pct) > Math.abs(top.pct) || (Math.abs(q.pct) === Math.abs(top.pct) && t < top.ticker)) top = { ticker: t, pct: q.pct, date: q.date };
     }
     return top;
-  }, [dayMoves]);
+  }, [setMoves]);
+  const moveDayIsToday = biggest ? biggest.date === nyTodayIso() : true;
   const selectedQuote = useLiveQuote(selected?.item.ticker ?? null);
   const nextPrint = calendar.find(c => c.impact === 'high' && c.inMinutes >= 0) ?? calendar.find(c => c.inMinutes >= 0) ?? null;
   const unmarked = positive === 0 && negative === 0;
@@ -694,16 +696,16 @@ const News = () => {
                 <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
               </Fact>
             )}
-            <Fact label={biggest?.pre ? `Biggest move${biggest.date ? ` · ${shortDay(biggest.date)}` : ''}` : 'Biggest move today'} testId="biggest" tip={`The regular session's change${biggest?.pre ? ' on the last session (the market has not opened)' : ''} — not the move when the story crossed — over a fixed set: the names on your Board and the names today's major stories are about (${moveNames.length} names; ${dayMoves.size} read)`}>
+            <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : 'Biggest move today'} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name today's stories are about (${moveNames.length} names, read in bulk off the screener; ${setMoves.moves.size} with a quote)`}>
               {coverage.reading ? (
-                <span className="text-textMuted">once the wire is read</span>
+                <span className="text-textMuted">reading today's stories</span>
               ) : biggest ? (
                 <>
                   {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.pct)}</span>
-                  {dayMoves.size < moveNames.length && <span className="text-textMuted"> · {dayMoves.size} of {moveNames.length} read</span>}
+                  <span className="text-textMuted"> · of {setMoves.moves.size} names</span>
                 </>
               ) : (
-                <span className="text-textMuted">{moveNames.length ? `reading ${moveNames.length} names` : '—'}</span>
+                <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no quote on these names' : `reading ${moveNames.length} names`) : 'no named stories yet'}</span>
               )}
             </Fact>
             <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first">
@@ -845,7 +847,7 @@ const News = () => {
                     )
                   ) : null}
                 </div>
-                {selected.item.prediction.measured ? (
+                {selected.item.prediction.playbook ? (
                 <div key={selected.id} className="flex flex-col gap-2 animate-soft-in text-[11.5px] leading-relaxed text-textSecondary">
                   <div>
                     <div className="text-[9px] uppercase tracking-widest text-textMuted">At publish</div>
@@ -943,7 +945,7 @@ const News = () => {
                     <span>·</span>
                     <CatTag category={e.item.category} size={9} />
                     {(e.item.major || onBoard(e) || leanOf(e.grade)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} />}
-                    {(move != null || e.item.prediction.extMovePct != null) && <span className="ml-auto tnum font-semibold"><PublishMove p={e.item.prediction} short /> <span className="font-normal text-textMuted">at publish</span></span>}
+                    {(move != null || e.item.prediction.extMovePct != null || e.item.prediction.lastSession) && <span className="ml-auto tnum font-semibold"><PublishMove p={e.item.prediction} short /> <span className="font-normal text-textMuted">at publish</span></span>}
                   </span>
                 </button>
               );

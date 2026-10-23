@@ -45,6 +45,8 @@ export interface InstitutionRow {
   ticker: string;
   /** The holding's company name as the filing gives it, when the listing does not know the ticker */
   company?: string;
+  /** True when the filing gives no listed symbol — `ticker` is then the vendor's own identifier (a CUSIP-like id) */
+  unlisted?: boolean;
   sector: string;
   sharesM: number;
   /** Shares on the prior 13F. Zero when the line is new. */

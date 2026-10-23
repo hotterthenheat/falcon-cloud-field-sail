@@ -44,7 +44,7 @@ import { InsidersGuide } from '../../components/record/InsidersGuide';
 import { When } from '../../components/record/when';
 import { dollars3 as fmtDollars } from './money';
 import { useBoardNames } from '../../data/boardNames';
-import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, personSlug } from '../../data/insiders';
+import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, personSlug, splitWords, type SalesSplit } from '../../data/insiders';
 import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
@@ -144,8 +144,28 @@ const TradeCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
 };
 
 const SharesCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{fmtInt(data.shares)}</span> : null);
-const PriceCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum text-textSecondary">${data.price.toFixed(2)}</span> : null);
-const ValueCell = ({ data }: ICellRendererParams<InsiderTrade>) => (data ? <span className="font-mono text-[11px] tnum font-semibold text-textPrimary">{fmtDollars(data.value)}</span> : null);
+const foreignTip = (t: InsiderTrade) =>
+  t.foreignPrice ? `Filed at ${t.price.toFixed(2)} a share in the home market's currency, not dollars — the US listing trades at $${t.foreignPrice.listed.toFixed(2)}. The value (${Math.round(t.foreignPrice.filedValue).toLocaleString('en-US')} in that currency) is kept out of every dollar total` : undefined;
+const PriceCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
+  data ? (
+    data.foreignPrice ? (
+      <span className="font-mono text-[11px] tnum text-warn cursor-help" title={foreignTip(data)} data-insider-foreign>
+        {data.price.toFixed(2)} <span className="text-[8px] uppercase tracking-widest">not USD</span>
+      </span>
+    ) : (
+      <span className="font-mono text-[11px] tnum text-textSecondary">${data.price.toFixed(2)}</span>
+    )
+  ) : null;
+const ValueCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
+  data ? (
+    data.foreignPrice ? (
+      <span className="font-mono text-[10px] tnum text-textMuted cursor-help" title={foreignTip(data)}>
+        not USD
+      </span>
+    ) : (
+      <span className="font-mono text-[11px] tnum font-semibold text-textPrimary">{fmtDollars(data.value)}</span>
+    )
+  ) : null;
 /** What the stake figure means for this row, in words — 100% on a buy is a first position, 100% on a sale an exit */
 const stakeWords = (t: InsiderTrade): string => {
   if (t.stakePct < 0) return 'The filing gave no holding before or after, so the share of the stake cannot be read';
@@ -158,10 +178,14 @@ const stakeWords = (t: InsiderTrade): string => {
   if (t.stakePct >= 99.95) return `${shares} shares sold — everything this filer reported holding before the sale`;
   return `${shares} shares sold out of the holding before the sale: ${t.stakePct.toFixed(1)}% of it`;
 };
+/* AN INDIRECT LINE'S STAKE IS THAT LINE'S (the fourth audit, 2026-10-23): "100.0%" on a sale held by a trust is the trust's
+   line alone — the filer's direct holding is another line of the filing. Said so on the cell and in its words. */
+const stakeTip = (t: InsiderTrade): string => (t.indirect ? `${stakeWords(t)} — of the shares held indirectly (${t.indirect.toLowerCase()}) only; the filer's direct holding is a separate line and is not counted` : stakeWords(t));
 const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
-    <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={stakeWords(data)}>
+    <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={stakeTip(data)}>
       {data.stakePct < 0 ? '—' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
+      {data.indirect && data.stakePct >= 0 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> of line</span> : null}
     </span>
   ) : null;
 
@@ -207,7 +231,8 @@ const NameCard = ({ f, on, onToggle }: { f: InsiderFlow; on: boolean; onToggle: 
   const buyers = new Set(f.trades.filter(t => isChosenBuy(t)).flatMap(t => t.owners ?? [t.person])).size;
   /* THE POSTURE SAYS WHY (the retail pass, 2026-10-22: "AUGO $23M chosen buying · 1 buyer · DISTRIBUTING" read as a
      contradiction): the word weighs chosen buying against chosen selling in the same window, so the selling is shown */
-  const chosenSold = Math.max(0, f.sold - f.plannedValue);
+  /* chosen selling on the rule chosen buying uses: what the filing marks chosen — unstated sales are neither */
+  const chosenSold = f.chosenSold;
   const why = f.signal === 'distributing' ? ` · ${fmtDollars(chosenSold)} sold by choice outweighs it` : f.signal === 'accumulating' && chosenSold > 0 ? ` · against ${fmtDollars(chosenSold)} sold by choice` : '';
   return (
     <button
@@ -358,15 +383,25 @@ const Insiders = () => {
   }, [cut, picks]);
   const toggleName = (ticker: string) => setPicks(p => (p.includes(`name:${ticker}`) ? p.filter(x => x !== `name:${ticker}`) : [...p, `name:${ticker}`]));
 
+  /* THE SALES' COVERAGE, ONE PER FIGURE (the fourth audit, 2026-10-23): $1M+ sales are paged over the whole window, the
+     smaller ones only in the latest filings read — when those stop short of the window the figure is the large sales'
+     alone and the smaller ones are stated apart, with their days */
+  const split = useMemo<SalesSplit | null>(() => {
+    const since = nyIsoDaysBack(window - 1);
+    if (!coverage.restSince || !coverage.restNewest || coverage.restSince <= since) return null;
+    return { big: coverage.bigSale, from: coverage.restSince, to: coverage.restNewest };
+  }, [coverage.restSince, coverage.restNewest, coverage.bigSale, window]);
   const facts = useMemo(() => {
     const market = rows.filter(t => TX_CODES[t.code].openMarket);
     const chosen = market.filter(t => isChosenBuy(t)).reduce((s, t) => s + t.value, 0);
     const corporate = market.filter(t => isCorporateBuy(t)).reduce((s, t) => s + t.value, 0);
-    const sales = market.filter(t => t.kind === 'SELL');
+    const allSales = market.filter(t => t.kind === 'SELL');
+    const sales = split ? allSales.filter(t => t.value >= split.big) : allSales;
+    const small = split ? allSales.filter(t => t.value < split.big) : [];
     const sold = sales.reduce((s, t) => s + t.value, 0);
     const planned = sales.filter(t => t.plan === 'plan').length;
-    return { filings: rows.length, chosen, corporate, sold, plannedPct: sales.length ? Math.round((planned / sales.length) * 100) : null };
-  }, [rows]);
+    return { filings: rows.length, chosen, corporate, sold, sales: sales.length, smallSold: small.reduce((s, t) => s + t.value, 0), smallCount: small.length, plannedPct: sales.length ? Math.round((planned / sales.length) * 100) : null };
+  }, [rows, split]);
 
   /* THE NAMES TO KNOW: chosen buying in the window, heaviest first, on the Names card's cut */
   const buyers = useInsiderBuyers(window);
@@ -384,7 +419,7 @@ const Insiders = () => {
       { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
       { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
       { headerName: 'Value', field: 'value', width: 104, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
-      { headerName: 'Of stake', field: 'stakePct', width: 96, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's own holding this trade was" },
+      { headerName: 'Of stake', field: 'stakePct', width: 118, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's own holding this trade was" },
       {
         headerName: 'Chose to?',
         field: 'plan',
@@ -441,14 +476,17 @@ const Insiders = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="Dollars of shares insiders sold in the open market — planned or not">Sold in the market</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={split ? `Dollars of shares insiders sold in the open market — planned or not. ${splitWords(split, window)}: the figure is the ${fmtDollars(split.big)}+ sales of the whole window; the smaller ones (${facts.smallCount.toLocaleString()} for ${fmtDollars(facts.smallSold)}) cover only those days and are kept out of it` : 'Dollars of shares insiders sold in the open market — planned or not'}>
+              {split ? `Sold · sales of ${fmtDollars(split.big)}+` : 'Sold in the market'}
+            </dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
               {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
+              {split && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · {window} days{facts.smallCount ? ` · + ${fmtDollars(facts.smallSold)} smaller, ${shortDay(split.from)}${split.from !== split.to ? `–${shortDay(split.to)}` : ''}` : ''}</span> : null}
               {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The share of those sales that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today">Sales on a plan</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${fmtDollars(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
               {facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}
             </dd>
@@ -468,7 +506,7 @@ const Insiders = () => {
         <FeedFallback />
       ) : (
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insiders-sentence>
-          {waiting ? 'Reading the filings.' : insidersSentence(rows, window)}
+          {waiting ? 'Reading the filings.' : insidersSentence(rows, window, split)}
         </p>
       )}
       {/* THE NAMES TO KNOW */}
@@ -639,6 +677,10 @@ export const InsiderFile = () => {
                withholdings only when there were some */
             const off = book.trades.length - book.trades.filter(t => TX_CODES[t.code].openMarket).length;
             return off === 0 ? (book.trades.length === 1 ? 'It was an open-market trade.' : 'Every one was an open-market trade.') : `${off} of them never reached the market — grants, awards or shares withheld for tax.`;
+          })()}
+          {(() => {
+            const foreign = book.trades.filter(t => t.foreignPrice).length;
+            return foreign ? ` ${foreign} ${foreign === 1 ? 'row is' : 'rows are'} priced in the home market's currency, not dollars — flagged "not USD" and kept out of the dollar totals.` : '';
           })()}
         </p>
         <div className="slayer-board border-t border-borderSubtle" data-insider-trades>

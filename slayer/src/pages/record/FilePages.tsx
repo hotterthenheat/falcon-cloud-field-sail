@@ -106,11 +106,11 @@ const BOOK_WORD: Record<InstitutionRow['book'], string> = { calls: 'Call', puts:
 const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
   data ? (
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
-      <CompanyLogo ticker={data.ticker} size={16} />
-      <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
+      {data.unlisted ? <span className="w-4 shrink-0" aria-hidden /> : <CompanyLogo ticker={data.ticker} size={16} />}
+      <span className="flex flex-col leading-tight min-w-0" title={data.unlisted ? `${data.company ?? ''} — the filing gives no listed symbol` : undefined}>
+        <span className={`font-mono text-[12px] font-bold ${data.unlisted ? 'text-textSecondary' : 'text-textPrimary'}`}>{data.ticker}</span>
         {/* the listing's name, else the filing's; never the ticker said twice ("IVV · IVV") */}
-        <CoSub ticker={data.ticker} fallback={data.company} />
+        {data.unlisted ? <span className="text-[10px] text-textMuted truncate">{data.company}</span> : <CoSub ticker={data.ticker} fallback={data.company} />}
       </span>
     </span>
   ) : null;

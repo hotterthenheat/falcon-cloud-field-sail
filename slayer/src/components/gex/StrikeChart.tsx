@@ -24,7 +24,7 @@ import {
   type MouseEventParams,
   type Time,
 } from 'lightweight-charts';
-import { bookCandles, bookHistory as liveGexHistory, dayBars, ensureBook, peekIv } from '../../data/uwBook';
+import { bookCandles, bookHistory as liveGexHistory, dayBars, ensureBook, peekDaySigma, peekIv } from '../../data/uwBook';
 import { onGlide, promisedWidth } from '../../core/glide';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
 import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
@@ -3023,7 +3023,8 @@ const StrikeChart = ({
        measure box and the flip strip cannot disagree about the day's range. */
     drawingsRef.current?.setDistanceScales({
       atr: sessionAtr(base),
-      sigma: impliedDaySigma(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
+      /* the vendor's implied move first — the one expected move the pages share (uwBook peekDaySigma) */
+      sigma: peekDaySigma(ticker) ?? impliedDaySigma(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
     });
 
     const loaded = loadedRef.current;

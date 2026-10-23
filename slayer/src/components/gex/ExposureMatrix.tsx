@@ -444,20 +444,33 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   useLayoutEffect(() => {
     if (natural > 0) onNatural?.(natural);
   }, [natural, onNatural]);
-  const centredFor = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    if (centredFor.current === surface.ticker) return;
-    centredFor.current = surface.ticker;
-    const row = spotRef.current;
-    const box = row?.closest('[data-matrix-scroll]') as HTMLElement | null;
-    if (!row || !box) return;
-    box.scrollTop = Math.max(0, row.offsetTop - box.clientHeight / 2);
-  }, [surface.ticker, rows.length]);
-
   /* THE ROWS SHARE THE BOX (2026-10-13): the box's height less the head and the spot row, over the rows, floored at
      ROW_MIN and capped at ROW_H — an 870px box holds forty rows at 20px with nothing hidden under the head */
   const theadRef = useRef<HTMLTableSectionElement | null>(null);
   const [rowH, setRowH] = useState(ROW_H);
+  const centredFor = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    /* re-centred once the rows take their height too — centred at the first height, the rows then shrank under it */
+    const key = `${surface.ticker}|${rowH}`;
+    if (centredFor.current === key) return;
+    centredFor.current = key;
+    const row = spotRef.current;
+    const box = row?.closest('[data-matrix-scroll]') as HTMLElement | null;
+    if (!row || !box) return;
+    let top = Math.max(0, row.offsetTop - box.clientHeight / 2);
+    /* NO ROW HALF UNDER THE HEAD (the fourth audit: SPY's supreme row, 769, sat clipped under the sticky head at load) — the
+       first row under the head starts whole */
+    const head = theadRef.current?.offsetHeight ?? 0;
+    if (top > 0) {
+      for (const el of box.querySelectorAll<HTMLElement>('[data-matrix-row]')) {
+        if (el.offsetTop >= top + head - 1) {
+          top = Math.max(0, el.offsetTop - head);
+          break;
+        }
+      }
+    }
+    box.scrollTop = top;
+  }, [surface.ticker, rows.length, rowH]);
   /* the pixels the even share leaves over, one each to as many rows, spread down the table — the last row ends on the
      box's foot */
   const [rowExtra, setRowExtra] = useState(0);

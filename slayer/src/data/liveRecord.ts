@@ -100,7 +100,8 @@ function wantCloses(rows: UwNews[]): void {
   for (const r of rows) {
     for (const [t, m] of Object.entries(r.meta ?? {})) {
       const mt = String((m as { curr?: { mt?: string } })?.curr?.mt ?? '').toLowerCase();
-      if (mt.startsWith('post') && !closesAsked.has(t) && !peekRegularCloses(t)) need.add(t);
+      /* after-hours and pre-market stories both need the close before their last session (publishMove's `last`) */
+      if ((mt.startsWith('post') || mt.startsWith('pre')) && (r.tickers ?? []).includes(t) && !closesAsked.has(t) && !peekRegularCloses(t)) need.add(t);
     }
   }
   for (const t of need) {

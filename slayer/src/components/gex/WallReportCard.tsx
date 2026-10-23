@@ -39,6 +39,7 @@ import { roomLevels } from '../../data/roomLevels';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
 import { sessionBars } from '../../data/levelview';
+import { flipSidesWords } from '../../data/flipLevel';
 import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev } from '../../data/uwBook';
 import { valueOiChange } from '../../data/building';
 import { fmtDollars as fmtUsdShort } from '../../data/ahead';
@@ -257,8 +258,20 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         last.label = `${last.label} · ${r.label}`;
       } else merged.push(r);
     }
+    /* the names on a shared strike in the one order everywhere (core/walls.ts levelRoles): supreme · call wall · put wall,
+       then the flip and the pin (the fourth audit's m1) */
+    const ORDER = ['Supreme', 'Call wall', 'Put wall', 'Gamma flip', 'Gamma pin'];
+    for (const r of merged) {
+      r.labels.sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
+      r.label = r.labels.map(l => l.label).join(' · ');
+    }
     return merged;
   }, [snapshot, bars, levelsScope, session, oiAt]);
+  /* the flip's tip off THIS book's orientation (data/flipLevel.ts flipSidesWords) */
+  const flipTip = useMemo(() => {
+    const lv = roomLevels(snapshot, levelsScope);
+    return lv && lv.flipFound !== false && lv.net != null ? flipSidesWords(lv.flip, lv.spot, lv.net) : null;
+  }, [snapshot, levelsScope]);
   /* THE BASE RATES (data/levelRecord.ts): the sessions on hand before today, each level as it stood at its open, graded
      by the report's own rule — read, not stored; a machine on the vendor's two years grades two years */
   const rates = useMemo(() => baseRates(sessionRecords(snapshot.ticker, peekIv(snapshot.ticker))), [snapshot.ticker]);
@@ -332,7 +345,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
                   type="button"
                   onClick={() => onPick(r.price)}
                   className={`${grid} w-full min-h-10 py-1.5 items-center text-left hover:bg-ink/[0.03] transition-colors group`}
-                  title={`${r.labels.map(l => `${l.label} ${fmtStrike(r.price)}: ${LEVEL_TIPS[l.label.toLowerCase()] ?? ''}`).join('\n')}\n${r.grade.words} · click to keep the strike`}
+                  title={`${r.labels.map(l => `${l.label} ${fmtStrike(r.price)}: ${(l.label === 'Gamma flip' && flipTip) || (LEVEL_TIPS[l.label.toLowerCase()] ?? '')}`).join('\n')}\n${r.grade.words} · click to keep the strike`}
                   aria-pressed={isFocus}
                   data-level-pick
                 >

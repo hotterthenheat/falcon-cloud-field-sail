@@ -37,7 +37,7 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast } from '../../data/uwBook';
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { fmtDistance, impliedDaySigma } from '../../data/atr';
 import { bellDay, todayScopeLabel } from '../../data/bookWindow';
@@ -55,7 +55,8 @@ import { fmtDollars } from '../../data/ahead';
 import { chanceLabel } from '../../data/wall';
 import { nyClock } from '../../core/nyTime';
 import { useLevelsScope } from '../../data/levelsScope';
-import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
+import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
+import { levelRoles } from '../../core/walls';
 import { BOARD_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { kindTip } from '../../components/gex/glossary';
 
@@ -76,12 +77,12 @@ const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`;
    this feed) it falls back to dollars rather than print a unit with no number. */
 const Dist = ({ ticker, spot, pct }: { ticker: string; spot: number; pct: number }) => {
   const unit = useDistanceUnit();
+  /* within the one tolerance (core/walls.ts wallPlace, 0.05%) a level is AT price — never "−$0.00" */
+  if (Math.abs(pct) < 0.05) return <>at price</>;
   if (unit === '%') return <>{fmtPct(pct)}</>;
   const delta = (pct / 100) * spot;
   return <>{fmtDistance(delta, spot, unit, { atr: null, sigma: unit === 'σ' ? peekDaySigma(ticker) ?? impliedDaySigma(spot, peekIv(ticker) ?? 0) : null })}</>;
 };
-/* the nearest wall with every level it is (core/walls.ts levelRoles) — "Put wall · supreme 769" */
-const alsoSupreme = (row: BoardRow) => Math.abs(row.nearest.strike - row.supreme) < 1e-9;
 
 // ---- cell renderers: the house grammar inside the grid -----------------------
 
@@ -144,13 +145,18 @@ const DayChange = ({ data, compact = false }: { data: BoardRow; compact?: boolea
   );
 };
 
-const SpotCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data ? (
-    <TickFigure value={data.spot} className="inline-flex items-baseline gap-2 font-mono text-[12px]">
+const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
+  if (!data) return null;
+  /* OUTSIDE THE SESSION THE PRICE IS THE CLOSE (the fourth audit: the after-hours $348.60 beside the session's change);
+     the after-hours or pre-market print is named in the hover */
+  const ext = peekExtLast(data.ticker);
+  return (
+    <TickFigure value={data.spot} title={ext ? `${data.spot.toFixed(2)} regular close · ${ext.price.toFixed(2)} ${ext.word}. The levels, and every distance here, are read at the close` : undefined} className="inline-flex items-baseline gap-2 font-mono text-[12px]">
       <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
       <DayChange data={data} />
     </TickFigure>
-  ) : null;
+  );
+};
 
 const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
@@ -193,19 +199,42 @@ const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
     </span>
   ) : null;
 
-const WallCell = ({ data }: ICellRendererParams<BoardRow>) =>
-  data?.pending ? (
-    <Pending data={data} />
-  ) : data ? (
-    <span className="inline-flex items-baseline gap-2 font-mono tnum tabular-nums">
-      <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: data.nearest.kind === 'call' ? CALL_WALL : PUT_WALL }}>
-        {data.nearest.kind === 'call' ? 'Call wall' : 'Put wall'}
-        {alsoSupreme(data) && <span style={{ color: SUPREME }}> · supreme</span>}
-      </span>
+/* EVERY LEVEL THE NEAREST WALL IS, IN THE ONE ORDER (core/walls.ts levelRoles — supreme · call wall · put wall; the fourth
+   audit: "PUT WALL · SUPREME", and SOFI's All-expiries 15, both walls, read only one). Two lines when it is more than one
+   level, so the distance is never cut ("277 +$" at 1440) */
+const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
+  if (data?.pending) return <Pending data={data} />;
+  if (!data) return null;
+  const roles = levelRoles(data.nearest.strike, { supreme: data.supreme, callWall: data.callWall, putWall: data.putWall });
+  const ink = (r: string) => (r === 'supreme' ? SUPREME : r === 'call wall' ? CALL_WALL : PUT_WALL);
+  const label = (
+    <span className="text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title={roles.join(' · ')}>
+      {roles.map((r, i) => (
+        <span key={r} style={{ color: ink(r) }}>
+          {i > 0 && <span className="text-textMuted"> · </span>}
+          {r}
+        </span>
+      ))}
+    </span>
+  );
+  const figs = (
+    <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
       <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(data.nearest.strike)}</span>
       <span className="text-[10px] text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.nearest.distPct} /></span>
     </span>
-  ) : null;
+  );
+  return roles.length > 1 ? (
+    <span className="flex flex-col justify-center leading-[14px] font-mono tnum tabular-nums min-w-0">
+      {label}
+      {figs}
+    </span>
+  ) : (
+    <span className="inline-flex items-baseline gap-2 font-mono tnum tabular-nums">
+      {label}
+      {figs}
+    </span>
+  );
+};
 
 /** The agenda's #1 for the name: the strike in its kind's ink, reached · holds, the dollars at stake */
 const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
@@ -274,7 +303,7 @@ const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
   ) : (
     data.bellWhy === 'none' ? (
       <span className="font-mono text-[10px] text-textMuted" title={BELL_NONE_TITLE(data.ticker)}>
-        {BELL_NONE}
+        {bellNone()}
       </span>
     ) : (
       <Pending data={data} />
@@ -386,9 +415,13 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
           <div className="flex flex-col min-w-0">
             {label('Nearest wall', 'The nearer of the call wall (most call gamma) and the put wall (most put gamma)')}
             <span className="truncate">
-              <span style={{ color: row.nearest.kind === 'call' ? CALL_WALL : PUT_WALL }} className="text-[9px] font-bold uppercase tracking-wider">
-                {row.nearest.kind === 'call' ? 'Call' : 'Put'}
-                {alsoSupreme(row) && <span style={{ color: SUPREME }}> · supreme</span>}
+              <span className="text-[9px] font-bold uppercase tracking-wider">
+                {levelRoles(row.nearest.strike, { supreme: row.supreme, callWall: row.callWall, putWall: row.putWall }).map((r, i) => (
+                  <span key={r} style={{ color: r === 'supreme' ? SUPREME : r === 'call wall' ? CALL_WALL : PUT_WALL }}>
+                    {i > 0 && <span className="text-textMuted"> · </span>}
+                    {r}
+                  </span>
+                ))}
               </span>{' '}
               <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary"><Dist ticker={row.ticker} spot={row.spot} pct={row.nearest.distPct} /></span>
             </span>
@@ -521,8 +554,8 @@ const Board = () => {
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
       { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 130, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
-      { headerName: 'Price', field: 'spot', flex: 1.6, minWidth: 250, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: "The last price and today's change" },
-      { headerName: todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 1.1, minWidth: 170, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
+      { headerName: 'Price', field: 'spot', flex: 1.6, minWidth: 250, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
+      { headerName: levelsScope === 'ALL' ? 'Hedging · all expiries' : todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 1.1, minWidth: 170, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
       { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : `Net GEX · ${todayScopeLabel().toLowerCase()}`, field: 'netGex', flex: 1.1, minWidth: 150, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
       {
         headerName: 'Flip · how far',
@@ -553,7 +586,7 @@ const Board = () => {
         minWidth: 220,
         cellRenderer: WatchCell,
         cellDataType: false,
-        headerTooltip: 'The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there today; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there',
+        headerTooltip: `The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'}; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there`,
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },

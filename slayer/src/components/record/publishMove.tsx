@@ -16,10 +16,29 @@ export function PublishMove({ p, short = false }: { p: NewsPrediction; short?: b
       </span>
     );
   }
-  if (ext != null) {
+  const last = p.lastSession ?? null;
+  const lastTag = last ? `${last.date.slice(5, 7)}/${last.date.slice(8, 10)}` : '';
+  if (ext != null || last) {
     return (
-      <span className="font-normal text-textMuted" title={`Only the ${p.extWord} move is known at publish — the session's own move is not in hand`}>
-        {extTag} {signed(ext)}
+      <span
+        className="font-normal text-textMuted"
+        title={
+          last
+            ? `The story crossed before the open — the session had not moved yet. ${ext != null ? `${p.extWord} ${signed(ext)} at publish; ` : ''}the last session, ${lastTag}, moved ${signed(last.pct)} (that day's move, not the story's)`
+            : `Only the ${p.extWord} move is known at publish — the session's own move is not in hand`
+        }
+      >
+        {ext != null && (
+          <>
+            {extTag} {signed(ext)}
+          </>
+        )}
+        {last && !short && (
+          <>
+            {ext != null ? ' · ' : ''}
+            {lastTag} {signed(last.pct)}
+          </>
+        )}
       </span>
     );
   }

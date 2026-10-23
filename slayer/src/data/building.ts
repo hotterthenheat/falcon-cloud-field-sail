@@ -76,6 +76,9 @@ export interface BuildRow {
   dPut: number;
   /** |now| − |open| — the wall's size change, positive = built */
   sizeChange: number;
+  /** Net gamma now less what it was, in the RETAIL sign every page prints (calls +, puts −): the one change a strike shows
+      — now − was = change, always (the fourth audit: "783 +$9M · was −$11M" beside a change of "−$2M") */
+  change: number;
   /** The wall's size through the day, sampled, 0..1 of the row's own peak */
   shape: number[];
   /** Where most of the change landed: early · middle · late — null when nothing moved */
@@ -135,6 +138,8 @@ export interface Building {
   overnight: boolean;
   /** The open-interest dates the overnight change runs between, when it is the vendor's */
   oiDates: { from: string; to: string } | null;
+  /** A live book whose overnight count has not landed yet — nothing is counted, the page prints "…" */
+  loading: boolean;
 }
 
 /** The change's time words: the vendor's count is set overnight from yesterday's trading — never "today" */
@@ -249,7 +254,22 @@ export function buildBuilding(
   const chain = (snapshot.liveBook && snapshot.uwChains?.[profile.expiry]?.length ? snapshot.uwChains[profile.expiry] : snapshot.chain) ?? snapshot.chain;
   const valued = oiChange && oiChange.rows.length ? valueOiChange(snapshot, chain, oiChange) : null;
   const real = !!valued;
-  const hasOi = real || (today.length >= 2 && today.some(s => s.levels.some(l => l.callOI !== undefined)));
+  /* NEVER THE VOLUME WALK ON A LIVE BOOK (the fourth audit's retail blocker: "Drained last session −$156.0B", "770 · was
+     −$8.0B"): before the vendor's overnight count lands, the stand-in walked the WHOLE book's traded volume onto its open
+     interest and valued it at the levels' own expiry's per-contract gamma — every expiry's volume at one date's units.
+     On the live book the overnight count is the only measure; until it is in, nothing is counted, and the page says so */
+  /* …and on a full book, until every in-scope date the count touches has its contract rows (each contract is valued at
+     its own vendor gamma — before they land it is priced off the model, and the figures moved by a few million as they
+     did) */
+  const entry = snapshot.liveBook ? peekEntry(snapshot.ticker) : undefined;
+  const scopeDates = snapshot.liveBook ? datesOf(snapshot, chain as MarketSnapshot['chain']) : null;
+  const floor = isoDate(bookToday());
+  const factsMissing =
+    real &&
+    !!entry?.wantFull &&
+    oiChange!.rows.some(r => r.expiry >= floor && (scopeDates === 'ALL' || (Array.isArray(scopeDates) && scopeDates.includes(r.expiry))) && !!snapshot.uwByDate?.[r.expiry]?.length && !entry.factsDates?.has(r.expiry));
+  const loading = !!snapshot.liveBook && (!real || factsMissing);
+  const hasOi = (real && !loading) || (!snapshot.liveBook && today.length >= 2 && today.some(s => s.levels.some(l => l.callOI !== undefined)));
   const first = today[0];
   const last = today[today.length - 1];
   const elapsedMin = clock.inSession && clock.nowMin != null ? Math.max(30, clock.nowMin - OPEN_MIN) : SESSION_MIN;
@@ -333,11 +353,11 @@ export function buildBuilding(
     const own = Math.max(Math.abs(now), Math.abs(open));
     const material = Math.abs(sizeChange) >= MATERIAL * own && Math.abs(sizeChange) >= FLOOR_SHARE * maxAbsBook;
     const switched = hasOi && Math.sign(now) !== Math.sign(open) && Math.abs(now) >= FLOOR_SHARE * maxAbsBook && Math.abs(open) >= FLOOR_SHARE * maxAbsBook;
-    const verdict: BuildVerdict = isNew && material ? 'new' : switched ? 'switched' : material ? (sizeChange > 0 ? 'building' : 'draining') : 'steady';
+    const verdict: BuildVerdict = !hasOi ? 'steady' : isNew && material ? 'new' : switched ? 'switched' : material ? (sizeChange > 0 ? 'building' : 'draining') : 'steady';
     const byClose = real ? 0 : (sizeChange / elapsedMin) * minutesLeft;
 
     const role: BuildRole = K === levels.callWall ? 'call wall' : K === levels.putWall ? 'put wall' : K === levels.supreme ? 'supreme' : null;
-    rows.push({ strike: K, role, roles: levelRoles(K, levels), pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, shape, when, verdict, byClose, words: '' });
+    rows.push({ strike: K, role, roles: levelRoles(K, levels), pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, change: shownGamma(now) - shownGamma(open), shape, when, verdict, byClose, words: '' });
     maxAbs = Math.max(maxAbs, Math.abs(now));
     maxChange = Math.max(maxChange, Math.abs(callAdded), Math.abs(putAdded));
   }
@@ -353,11 +373,12 @@ export function buildBuilding(
        −$245M elsewhere) */
     const stand = `now ${retail(r.now)}, ${sideWords(r.now)}`;
     if (!hasOi) {
-      r.words = `No open interest on this feed yet — ${stand}.`;
+      r.words = loading ? `Loading the overnight open-interest count — ${stand}.` : `No open interest on this feed yet — ${stand}.`;
       continue;
     }
     const dominant = Math.abs(r.callAdded) >= Math.abs(r.putAdded) ? 'calls' : 'puts';
-    const change = `${signed(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`;
+    /* the net change, now − was (retail sign), the figure the row's CHANGE column prints — the verdict is the size's */
+    const change = `net ${signed(r.change)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`;
     const when = r.when ? `, ${whenWords(r.when)}` : '';
     const pace = clock.inSession && !real && r.verdict !== 'steady' ? ` At today's pace ${signed(r.byClose)} ${r.byClose >= 0 ? 'more' : 'further'} by the close.` : '';
     switch (r.verdict) {
@@ -466,7 +487,7 @@ export function buildBuilding(
 
   /* THE SENTENCE */
   let sentence: string;
-  if (!hasOi) sentence = 'Open interest is not on this feed yet, so nothing can be read as built or drained.';
+  if (!hasOi) sentence = loading ? 'Loading the overnight open-interest count…' : 'Open interest is not on this feed yet, so nothing can be read as built or drained.';
   else {
     const parts: string[] = [];
     if (real) {
@@ -490,5 +511,5 @@ export function buildBuilding(
   }
 
   const oiDates = real && oiChange?.lastDate && oiChange.currDate ? { from: oiChange.lastDate, to: oiChange.currDate } : null;
-  return { ticker, spot, rows, maxAbs, maxChange, built, drained, fastestUp, fastestDown, spotAfter, elapsedMin, minutesLeft, inSession: clock.inSession, heading, sentence, hasOi, overnight: real, oiDates };
+  return { ticker, spot, rows, maxAbs, maxChange, built, drained, fastestUp, fastestDown, spotAfter, elapsedMin, minutesLeft, inSession: clock.inSession, heading, sentence, hasOi, overnight: real || loading, oiDates, loading };
 }

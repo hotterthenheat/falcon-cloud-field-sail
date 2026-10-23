@@ -80,29 +80,45 @@ interface MetaBar {
   mt?: string;
 }
 export interface PublishMove {
-  /** The regular session's move when the story crossed, or null when it cannot be read */
+  /** The regular session's move when the story crossed, or null when it cannot be read (or the session had not opened) */
   day: number | null;
   /** The pre-market or after-hours move at publish, or null in the session */
   ext: number | null;
   extWord: 'pre-market' | 'after hours' | null;
+  /** BEFORE THE OPEN: the last session's own change and its date — said as that day's, never as the story's day */
+  last: { pct: number; date: string } | null;
   /** After the bell, the regular close the day's move needs a prior close for — and its date */
   needs: { ticker: string; date: string; close: number } | null;
 }
 const pctOf = (a: number, b: number): number => Number((((a - b) / b) * 100).toFixed(2));
-export function publishMove(meta: UwNews['meta'], ticker: string | null, priorClose: (ticker: string, before: string) => number | null): PublishMove {
-  const none: PublishMove = { day: null, ext: null, extWord: null, needs: null };
+/* BEFORE THE OPEN IS NOT THE LAST SESSION (the fourth audit, 2026-10-23): "03:18 NVDA … +2.5%" was the 10/21 session —
+   the overnight story's meta is still 10/21's post-market bar, so the post-market branch measured 10/21's close against
+   10/20's and printed it as the move at publish; NVDA fell −4.4% on 10/22. On dayChange.ts's before-open rule, a story
+   that crossed on a New York day after its meta's last regular session (after midnight, before the open) has no session
+   move yet: it carries the extended-hours move (pre-market, or the evening's after-hours still standing overnight) and
+   the last session's change, labelled with that session's date. */
+export function publishMove(meta: UwNews['meta'], ticker: string | null, priorClose: (ticker: string, before: string) => number | null, publishedAt?: string): PublishMove {
+  const none: PublishMove = { day: null, ext: null, extWord: null, last: null, needs: null };
   if (!ticker || !meta) return none;
   const node = meta[ticker] as { curr?: MetaBar; prev?: MetaBar } | undefined;
   const curr = Number(node?.curr?.c);
   const prev = Number(node?.prev?.c);
   if (!(curr > 0) || !(prev > 0)) return none;
   const mt = String(node?.curr?.mt ?? 'regular').toLowerCase();
+  const prevDate = String(node?.prev?.date ?? '').slice(0, 10);
+  const storyDay = publishedAt ? nyDayOf(publishedAt) : null;
+  const lastOf = (): PublishMove['last'] => {
+    const before = prevDate ? priorClose(ticker, prevDate) : null;
+    return before && before > 0 ? { pct: pctOf(prev, before), date: prevDate } : null;
+  };
+  const needsOf = prevDate ? { ticker, date: prevDate, close: prev } : null;
   if (mt.startsWith('reg') || mt === 'r') return { ...none, day: pctOf(curr, prev) };
-  if (mt.startsWith('pre')) return { ...none, ext: pctOf(curr, prev), extWord: 'pre-market' };
+  if (mt.startsWith('pre')) return { ...none, ext: pctOf(curr, prev), extWord: 'pre-market', last: lastOf(), needs: needsOf };
+  /* post-market bar on a later New York day: the story crossed overnight, before the open */
+  if (storyDay && prevDate && storyDay > prevDate) return { ...none, ext: pctOf(curr, prev), extWord: 'after hours', last: lastOf(), needs: needsOf };
   /* post-market: prev is the session's regular close; the day's move is that close against the close before its date */
-  const date = String(node?.prev?.date ?? node?.curr?.date ?? '').slice(0, 10);
-  const before = date ? priorClose(ticker, date) : null;
-  return { day: before && before > 0 ? pctOf(prev, before) : null, ext: pctOf(curr, prev), extWord: 'after hours', needs: date ? { ticker, date, close: prev } : null };
+  const before = prevDate ? priorClose(ticker, prevDate) : null;
+  return { day: before && before > 0 ? pctOf(prev, before) : null, ext: pctOf(curr, prev), extWord: 'after hours', last: null, needs: needsOf };
 }
 
 /* THE STORY'S NAME, CHECKED AGAINST ITS OWN HEADLINE (the ship pass, 2026-10-22): the wire's ticker tags are loose —
@@ -182,7 +198,7 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
     const major = !!r.is_major;
     const { tickers, mentions } = storyTickers(headline, r.tickers);
     const ticker = tickers[0] ?? null;
-    const pm = publishMove(r.meta, ticker, priorClose);
+    const pm = publishMove(r.meta, ticker, priorClose, r.created_at);
     const moved = pm.day;
     const move = moved ?? 0;
     const stamp = Number.isFinite(at) ? at : 0;
@@ -207,10 +223,15 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
         expMove5dPct: move,
         confidencePct: moved != null ? 58 : 0,
         analog: moved != null ? 'The figure is the name\'s regular-session move when the story crossed. Not a forecast.' : '',
-        playbook: moved != null ? `The figure is how the name had moved on the regular session when the story crossed the wire${pm.ext != null ? `, with the ${pm.extWord} move apart` : ''} — a snapshot at publish, not today's move now, and not a forecast.` : '',
+        playbook: moved != null
+          ? `The figure is how the name had moved on the regular session when the story crossed the wire${pm.ext != null ? `, with the ${pm.extWord} move apart` : ''} — a snapshot at publish, not today's move now, and not a forecast.`
+          : pm.last
+            ? `The story crossed before the open: the session had not moved yet. The ${pm.extWord} move at publish was ${pm.ext != null ? `${pm.ext > 0 ? '+' : pm.ext < 0 ? '−' : ''}${Math.abs(pm.ext).toFixed(1)}%` : 'not in hand'}; the last session (${pm.last.date.slice(5, 7)}/${pm.last.date.slice(8, 10)}) moved ${pm.last.pct > 0 ? '+' : pm.last.pct < 0 ? '−' : ''}${Math.abs(pm.last.pct).toFixed(1)}% — that day's move, not the story's.`
+            : '',
         measured: moved != null,
         extMovePct: pm.ext,
         extWord: pm.extWord,
+        lastSession: pm.last,
       },
     };
   });
@@ -237,8 +258,17 @@ export function econFromWhales(rows: UwEcon[]): EconEvent[] {
     const inMinutes = Math.round((at - nowMs) / 60_000);
     if (inMinutes <= -600) continue;
     const region = REGIONS.find(x => x.re.test(r.event))?.region ?? 'USD';
+    /* THE VENDOR REPEATS EVENTS (the fourth audit, 2026-10-23): the same release at the same minute came twice — one row
+       per release, keeping the one that carries the forecast or the prior */
+    const id = `econ-${at}-${r.event.trim().toLowerCase()}`;
+    const dup = out.findIndex(e => e.id === id);
+    if (dup >= 0) {
+      if (!out[dup].forecast && r.forecast) out[dup].forecast = r.forecast;
+      if (!out[dup].previous && r.prev) out[dup].previous = r.prev;
+      continue;
+    }
     out.push({
-      id: `econ-${at}-${r.event}`,
+      id,
       title: r.event,
       region,
       impact: impactOf(r.event),
@@ -501,7 +531,7 @@ const isShareLine = (title?: string | null): boolean => !title || !NOT_SHARES.te
 /** The largest share of a company one open-market trade can plausibly be. A filing over it is a unit mix-up, not a trade */
 const MAX_CAP_SHARE = 0.25;
 
-type UwInsiderRow = { amount?: number; filing_date?: string; formtype?: string | null; is_10b5_1?: boolean | null; is_director?: boolean; is_officer?: boolean; is_ten_percent_owner?: boolean; officer_title?: string | null; owner_name?: string; price?: string | number | null; shares_owned_after?: number | null; shares_owned_before?: number | null; stock_price?: string | number | null; ticker?: string; transaction_code?: string; transaction_date?: string; id?: string; security_title?: string | null; marketcap?: string | number | null; sector?: string | null; reporter_cik?: string | null; full_name?: string | null; reporter_is_public_company?: boolean | string | null; director_indirect?: string | null };
+type UwInsiderRow = { amount?: number; filing_date?: string; formtype?: string | null; is_10b5_1?: boolean | null; is_director?: boolean; is_officer?: boolean; is_ten_percent_owner?: boolean; officer_title?: string | null; owner_name?: string; price?: string | number | null; shares_owned_after?: number | null; shares_owned_before?: number | null; stock_price?: string | number | null; ticker?: string; transaction_code?: string; transaction_date?: string; id?: string; security_title?: string | null; marketcap?: string | number | null; sector?: string | null; reporter_cik?: string | null; full_name?: string | null; reporter_is_public_company?: boolean | string | null; director_indirect?: string | null; natureofownership?: string | null };
 
 /** What the insider feed read: the rows, and how many it set aside and why — counted, never silent */
 export interface InsiderRead {
@@ -615,6 +645,11 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
       implausible += 1;
       continue;
     }
+    /* NOT IN DOLLARS (the fourth audit, 2026-10-23): Takeda's directors filed ordinary-share tax withholdings at 4,931.20 —
+       yen — beside the US listing's $20.36, and MARAGANORE JOHN read "$5.68M" for ¥5.68M. A grant, award or withholding
+       row whose price is ten times the listing's own (or a tenth of it) is a home-market price: it stays on the row,
+       flagged, and its value is out of every dollar total. */
+    const foreign = !meta.openMarket && spot > 0 && price > 0 && (price > spot * 10 || price * 10 < spot);
     const held = Number(r.shares_owned_after) || 0;
     const before = Number(r.shares_owned_before) || 0;
     const plan = r.is_10b5_1 === true ? 'plan' : r.is_10b5_1 === false ? 'discretionary' : 'unknown';
@@ -637,13 +672,15 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
       kind: meta.acquires ? 'BUY' : 'SELL',
       shares,
       price,
-      value: Math.round(shares * price),
+      value: foreign ? 0 : Math.round(shares * price),
+      foreignPrice: foreign ? { listed: spot, filedValue: Math.round(shares * price) } : undefined,
+      indirect: String(r.director_indirect ?? '').toUpperCase() === 'I' ? (r.natureofownership?.trim() || 'indirect') : undefined,
       daysAgo: daysAgo(r.transaction_date || r.filing_date),
       plan,
       clusterCount: 1,
       heldAfter: held,
       stakePct,
-      sincePct: price > 0 && spot > 0 ? Number((((spot - price) / price) * 100).toFixed(1)) : 0,
+      sincePct: price > 0 && spot > 0 && !foreign ? Number((((spot - price) / price) * 100).toFixed(1)) : 0,
       company: r.full_name?.trim() || undefined,
       sector: r.sector?.trim() || undefined,
       marketCap: cap > 0 ? cap : null,

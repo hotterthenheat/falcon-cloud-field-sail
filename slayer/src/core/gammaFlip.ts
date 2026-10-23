@@ -36,7 +36,10 @@
   crossing a dollar away. Legs with no vol are carried
   flat (a far listing with no vol on hand).
 
-  The crossing nearest spot inside ±10% is the flip;
+  A leg carries the price its G₀ was priced at (s0 — after
+  the close the vendor's rows are priced at the 4:00 close,
+  not the after-hours last), and is re-priced from there.
+  The crossing nearest the live spot inside ±10% is the flip;
   none there is a real state ("no flip nearby"), never a
   level invented at spot.
 ==================================================
@@ -51,6 +54,9 @@ export interface GammaLeg {
   iv: number;
   /** Years to expiry */
   t: number;
+  /** The price g0 was priced at, when it is not the search's spot (the vendor's row price — after the close the 4:00
+      regular close, not the after-hours last). The leg is re-priced FROM here. */
+  s0?: number;
 }
 
 export interface FlipRead {
@@ -90,9 +96,10 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
       continue;
     }
     /* re-priced off the leg's own gamma at S₀: the ratio of S·φ(d₁), in logs so a far wing cannot underflow */
-    const a = d1Of(S0, l.strike, l.t, l.iv, r);
+    const base = l.s0 && l.s0 > 0 ? l.s0 : S0;
+    const a = d1Of(base, l.strike, l.t, l.iv, r);
     const b = d1Of(S, l.strike, l.t, l.iv, r);
-    const ln = Math.log(S / S0) - (b * b) / 2 + (a * a) / 2;
+    const ln = Math.log(S / base) - (b * b) / 2 + (a * a) / 2;
     /* NO 25× CAP (the second re-audit, 2026-10-22): a wing's gamma legitimately grows a few hundred times as price walks
        to its strike (NVDA's 230 call, 1 day out: $7M at 212, ~$2B at 230), and the cap froze those legs at their spot
        value, which left jitter crossings on SPY's whole book and moved QQQ's by 1%. G₀ is the vendor's live gamma, so the
@@ -144,7 +151,10 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: numbe
     const u = x1 > x0 ? (S - x0) / (x1 - x0) : 0;
     return cy[k - 1] + (cy[k] - cy[k - 1]) * u;
   };
-  const at = (S: number) => (S === spot ? net0 : broadAt(S) + netGammaAt(narrow, spot, S, r));
+  /* a leg priced at another price (the close, read after hours) is NOT its own value at spot: spot is searched from, and
+     the book is re-priced there like anywhere else */
+  const ownSpot = legs.every(l => !l.s0 || l.s0 === spot);
+  const at = (S: number) => (S === spot && ownSpot ? net0 : broadAt(S) + netGammaAt(narrow, spot, S, r));
   const maxG = narrow.reduce((m, l) => Math.max(m, Math.abs(l.g0)), 0);
   let width = Infinity;
   for (const l of narrow) if (Math.abs(l.g0) >= 0.01 * maxG) width = Math.min(width, l.iv * Math.sqrt(l.t) * spot);

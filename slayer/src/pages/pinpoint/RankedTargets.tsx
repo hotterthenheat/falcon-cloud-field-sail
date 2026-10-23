@@ -78,6 +78,7 @@ import { ladderExpiryOptions } from '../../components/gex/ladderControls';
 import { armPrice, removeAlert, useAlerts } from '../../components/gex/alertStore';
 import { trimAgenda, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
 import { deskAgenda } from '../../data/board';
+import { todayScopeLabel } from '../../data/bookWindow';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { aheadClock, type AheadClock } from '../../data/ahead';
@@ -329,7 +330,7 @@ const RankedTargets = () => {
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the order, the cards and the rows mean" testId="targets-guide" />
         </div>
         <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-          Every strike in the order it matters today — how likely price gets there × how much happens if it does
+          Every strike in the order it matters {todayScopeLabel() === 'Today' ? 'today' : 'next session'} — how likely price gets there × how much happens if it does
           {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
         </p>
       </div>

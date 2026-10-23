@@ -60,7 +60,7 @@ export const SidesRule = () => (
       <b className="text-textPrimary">Net premium</b> is premium at the ask less premium on the bid. Net calls above zero were bought on balance (bullish, green); net puts above zero were bought (bearish, red) and below zero sold (bullish, green). Every line and figure wears its meaning's ink, not its sign's.
     </p>
     <p className="mt-2">
-      <b className="text-textPrimary">A dark-pool cross</b> over the mid was paid up for — buyer-initiated — and reads <span className="text-bull">accumulation</span>; under the mid it was sold down — seller-initiated — and reads <span className="text-bear">distribution</span>; at the mid it leans neither way. Only a sized cross (10,000 shares or $500K) priced at the quote carries a read.
+      <b className="text-textPrimary">A dark-pool cross</b> over the mid was paid up for — buyer-initiated — and reads <span className="text-bull">accumulation</span>; under the mid it was sold down — seller-initiated — and reads <span className="text-bear">distribution</span>; at the mid it leans neither way. Only a sized cross (10,000 shares or $500K) priced at the quote carries a read. A print priced by its own terms — contingent, qualified-contingent, average-price, prior-reference, derivative-priced — carries no read and no side, and is kept out of every total, split, shelf and leader: it stands in its own labelled group ("Own terms"), and a day's dark dollars at prices the lit tape never traded are counted apart.
     </p>
     <p className="mt-2">
       <b className="text-textPrimary">After the close</b> prints keep coming against thin post-market quotes: they are labelled after hours and never read bullish, bearish, accumulation or distribution. Each print is judged by its own time and flag — index and ETF options (SPX, SPY, QQQ…) trade their regular session to 16:15, stock options to 16:00. The badge beside Pause says which session it is.
@@ -69,7 +69,10 @@ export const SidesRule = () => (
       <b className="text-textPrimary">A compression print</b> — OPRA's cbmo or mctp, or a print the vendor tags arbitrage — is a package that nets open interest down between members (a call bought against a put sold at one strike). It is labelled "compression · not a bet", counted on its own, and kept out of every bullish or bearish total and the largest, top-bull and top-bear facts. A cancelled print never traded and is dropped everywhere.
     </p>
     <p className="mt-2">
-      <b className="text-textPrimary">A lean</b> — at the ask, on the bid, even — is one rule on every page: at least half the day's contracts traded on a side, and that side holds 55% or more of them; otherwise it is even, or mostly mid / no side. It counts contracts, because that is what the vendor carries per contract; a name's net premium is its own figure.
+      <b className="text-textPrimary">A leg of a multi-leg order</b> — a print whose OPRA condition marks it one leg of a spread, fly or condor (mlet, mlft, tlct and their family) — is half of a structure, not a bet of its own: a call vertical prints one call bought and one sold in the same millisecond. It is labelled "spread leg", counted on its own and in the call and put money, and kept out of every bullish or bearish total and the largest, top-bull and top-bear facts. Multi-Leg reads which way the whole structure went, from its net.
+    </p>
+    <p className="mt-2">
+      <b className="text-textPrimary">A lean</b> — at the ask, on the bid, even — is one rule on every page: at least half the day's contracts traded on a side, and that side holds 55% or more of the contracts that traded on a side; otherwise it is even, or mostly mid / no side. The figure a lean prints ("BID 60%") is that share of the sided contracts — the number the rule is decided on, judged before any rounding; the hover gives each side's share of the whole day. It counts contracts, because that is what the vendor carries per contract; a name's net premium is its own figure. A flow alert's side is the side that carried 60% or more of its whole premium, unsided money included.
     </p>
   </Section>
 );

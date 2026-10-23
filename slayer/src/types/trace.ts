@@ -74,6 +74,9 @@ export interface FlowPrint {
   /** A compression package (OPRA cbmo / mctp, or the vendor's `arbitrage` tag) — not a bet; kept out of every
       directional total (data/traceLive printCondition) */
   compression?: boolean;
+  /** The card stands for the contract's DAY (a day-book row opened), its premium, size and side the day's — `last` is the
+      latest regular-session print it is anchored on, with the day's running volume at that print */
+  dayCard?: { last: { fill: number; size: number; time: string; side: 'ASK' | 'BID' | 'MID'; volume: number } | null; session: string };
   /** A flow alert's largest single trade, when its trades have been read — the block test reads it, never total_size */
   largestTrade?: { size: number; premium: number };
 }
@@ -190,5 +193,8 @@ export interface TapeSummary {
   other: number;
   /** Compression packages, counted apart and in no other figure here */
   compression: { count: number; premium: number };
+  /** Legs of multi-leg orders (OPRA multi-leg conditions) — each leg is half of a structure, not a bet of its own: counted
+      here and in the call/put money, kept out of the bullish/bearish totals and the largest */
+  spreadLegs: { count: number; premium: number };
   largest: LargestPrint | null;
 }

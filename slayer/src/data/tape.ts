@@ -177,10 +177,17 @@ export function bookRowToPrint(
 /** THE ONE RULE (the Trace guide's "Bought, sold, bullish, bearish"): a print at the ask was BOUGHT, on the bid SOLD.
     Calls bought and puts sold read bullish; puts bought and calls sold read bearish; a mid print reads neither — and so
     does a print outside the regular session, set against a thin post-market quote. */
+/** A LEG OF A MULTI-LEG ORDER IS NOT A BET OF ITS OWN (audit round 4, 2026-10-22: the default tape's "Top bear XSP 738C
+    sold" and "Largest XSP 736C bought" were the two legs of one call vertical, both `mlet` in the same millisecond, and on
+    the ≥$1M cut 1,176 of 1,401 directional prints were spread legs — META 750P sold beside 760P bought). A print whose OPRA
+    condition marks it a leg (ML?T / TL?T, the ?ESL family — traceLive printCondition) is read only as part of its
+    structure, on Multi-Leg. An alert counts only when every print in it was a leg. */
+export const isSpreadLeg = (p: Pick<FlowPrint, 'legs'> & Partial<Pick<FlowPrint, 'compression'>>): boolean => p.legs > 1 && !p.compression;
+
 export function sentimentOf(p: FlowPrint): PrintSentiment {
   /* a compression package (OPRA cbmo / mctp, or the vendor's arbitrage tag) nets open interest down between members — it
-     is not a bet either way (traceLive printCondition) */
-  if (p.side === 'MID' || p.extended || p.compression) return 'NEUTRAL';
+     is not a bet either way (traceLive printCondition); a spread leg is half of a structure */
+  if (p.side === 'MID' || p.extended || p.compression || isSpreadLeg(p)) return 'NEUTRAL';
   return (p.right === 'C' && p.side === 'ASK') || (p.right === 'P' && p.side === 'BID') ? 'BULLISH' : 'BEARISH';
 }
 
@@ -248,6 +255,8 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
   let multi = 0;
   let compCount = 0;
   let compPremium = 0;
+  let legCount = 0;
+  let legPremium = 0;
   let largest: FlowPrint | null = null;
 
   for (const p of prints) {
@@ -268,6 +277,12 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     if (kind === 'SWEEP') sweeps++;
     else if (kind === 'BLOCK') blocks++;
     else if (kind === 'MULTI') multi++;
+    /* a spread leg is in the call/put money but never the largest bet or a side's total */
+    if (isSpreadLeg(p)) {
+      legCount++;
+      legPremium += p.premium;
+      continue;
+    }
     if (!largest || p.premium > largest.premium) largest = p;
     const s = sentimentOf(p);
     if (s === 'BULLISH') bull += p.premium;
@@ -292,6 +307,7 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     multi,
     other: prints.length - compCount - sweeps - blocks - multi,
     compression: { count: compCount, premium: compPremium },
+    spreadLegs: { count: legCount, premium: legPremium },
     largest: largest
       ? { ticker: largest.ticker, strike: largest.strike, right: largest.right, premium: largest.premium }
       : null,

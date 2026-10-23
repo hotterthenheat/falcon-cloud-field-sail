@@ -57,6 +57,7 @@
 ==================================================
 */
 
+import { dollars3 } from '../pages/record/money';
 import { regimeOfNet } from './flipLevel';
 import { levelsFor, type TickerLevels } from './levelsFor';
 import { now } from '../core/clock';
@@ -131,8 +132,14 @@ export interface TrendRead {
   flags: { hh: boolean; hl: boolean; lh: boolean; ll: boolean } | null;
   /** How many of the averages on hand the price sits above, and how many there are */
   above: { count: number; of: number };
+  /** The page's two spans of change. From the screener row (one_week_perc, one_month_perc) when it is in hand — the very
+      figures the trend factors score — else off the bars, five and twenty sessions */
   change5Pct: number | null;
   change20Pct: number | null;
+  /** Where the averages, RSI, ADX and the changes come from: 'screener' (one source for the card and the factors) or 'bars' */
+  source: 'screener' | 'bars';
+  /** The close the averages are set against: the last regular close after the bell, the live price in the session */
+  refClose: number;
   sessions: number;
 }
 
@@ -177,7 +184,11 @@ export interface MoneyRead {
   dark: DarkPoolView;
   /** What the dark-pool read stands on: the read prints (sized, regular session, priced at the quote) of the prints in
       hand, and the New York clock window they span */
-  darkWindow: { read: number; inHand: number; from: string | null; to: string | null };
+  /** The read's prints and the window the tape in hand truly covers: `complete` when it was paged back to the open;
+      otherwise `cover` is the oldest instant in hand (HH:MM ET) and nothing before it was read */
+  darkWindow: { read: number; inHand: number; from: string | null; to: string | null; complete: boolean; cover: string | null; ownTerms: number };
+  /** The window the session's flow alerts truly cover: `complete` when paged back to the session's start */
+  flowWindow: { alerts: number; complete: boolean; from: string | null; to: string | null };
   /** Off-exchange prints of 50K shares or more */
   darkBlocks: number;
   /** Today's session minute by minute — the tape the prints are drawn on */
@@ -353,11 +364,9 @@ export const ordinal = (n: number): string => {
   return `${n}${s}`;
 };
 const pct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
-export const fmtMoney = (v: number): string => {
-  const a = Math.abs(v);
-  const s = a >= 1e12 ? `$${(a / 1e12).toFixed(2)}T` : a >= 1e9 ? `$${(a / 1e9).toFixed(1)}B` : a >= 1e6 ? `$${(a / 1e6).toFixed(0)}M` : a >= 1e3 ? `$${(a / 1e3).toFixed(0)}K` : `$${a.toFixed(0)}`;
-  return v < 0 ? `−${s}` : s;
-};
+/* ONE MONEY FORMATTER ON THE DOSSIER (the fourth audit, 2026-10-23: Cohen's buy read "$23M" here and "$22.8M" on the
+   Insiders page) — three significant figures, pages/record/money.ts dollars3 */
+export const fmtMoney = (v: number): string => dollars3(v);
 const fmtCount = (v: number): string => (v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${Math.round(v)}`);
 /** A pillar's score from its factors: 50 + 50 × the leans' weighted mean */
 const scoreOf = (factors: readonly Factor[]): number => {
@@ -383,6 +392,8 @@ export interface ScreenPillars {
   trend: Factor[];
   numbers: Factor[];
   money: Factor[];
+  /** The close the trend factors set the averages against */
+  refClose: number | null;
 }
 /** The scored factors, from the screener row alone */
 export function screenFactors(row: ScreenRow): ScreenPillars {
@@ -403,7 +414,7 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
   const trend: Factor[] = [];
   if (ema20 != null && ema20 > 0 && last != null && last > 0) {
     const off = ((last - ema20) / ema20) * 100;
-    trend.push({ key: 'ema20', label: 'Price against its 20-day average', value: `${pct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
+    trend.push({ key: 'ema20', label: 'Price against its 20-day EMA', value: `${pct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
   }
   if (rsi14 != null) trend.push({ key: 'rsi', label: 'RSI, 14 sessions', value: rsi14.toFixed(0), lean: clamp((rsi14 - 50) / 20), weight: 0.2, note: rsi14 >= 70 ? 'stretched — strong, but late' : rsi14 >= 55 ? 'firm' : rsi14 <= 30 ? 'washed out' : rsi14 <= 45 ? 'soft' : 'in the middle' });
   if (adx14 != null && week != null) {
@@ -436,7 +447,7 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
     const share = calls / (calls + puts);
     money.push({ key: 'prem', label: 'Call premium against put premium', value: `${Math.round(share * 100)}% calls`, lean: clamp((share - 0.5) * 4), weight: 0.15, note: share >= 0.55 ? 'more of the premium is on calls' : share <= 0.45 ? 'more of the premium is on puts' : 'calls and puts are about even' });
   }
-  return { trend, numbers, money };
+  return { trend, numbers, money, refClose: last };
 }
 /** The scored factors' weight — a pillar with none of it is left out of the read */
 const scoredWeight = (factors: readonly Factor[]): number => factors.reduce((a, f) => a + (f.context ? 0 : f.weight), 0);
@@ -558,11 +569,11 @@ const trendFor = (blocks: Candle[][], spot: number, uptoSessions?: number): { re
   const above = { count: averages.filter(a => last > a).length, of: averages.length };
   const change5Pct = sessions >= 6 ? ((last - closes[sessions - 6]) / closes[sessions - 6]) * 100 : null;
   const change20Pct = sessions >= 21 ? ((last - closes[sessions - 21]) / closes[sessions - 21]) * 100 : null;
-  const read: TrendRead = { closes, times, ema20, sma50, sma200, rsi14, adx14, atrPercentile, rangeToday: today ?? null, structure, flags, above, change5Pct, change20Pct, sessions };
+  const read: TrendRead = { closes, times, ema20, sma50, sma200, rsi14, adx14, atrPercentile, rangeToday: today ?? null, structure, flags, above, change5Pct, change20Pct, source: 'bars', refClose: last, sessions };
   const factors: Factor[] = [];
   if (ema20 != null) {
     const off = ((last - ema20) / ema20) * 100;
-    factors.push({ key: 'ema20', label: 'Price against its 20-day average', value: `${pct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
+    factors.push({ key: 'ema20', label: 'Price against its 20-day EMA', value: `${pct(off)} · ${ema20.toFixed(2)}`, lean: clamp(off / 3), weight: 0.3, note: off >= 0 ? 'above its average — the trend holds' : 'under its average — the trend has slipped' });
   }
   if (rsi14 != null) factors.push({ key: 'rsi', label: 'RSI, 14 sessions', value: rsi14.toFixed(0), lean: clamp((rsi14 - 50) / 20), weight: 0.2, note: rsi14 >= 70 ? 'stretched — strong, but late' : rsi14 >= 55 ? 'firm' : rsi14 <= 30 ? 'washed out' : rsi14 <= 45 ? 'soft' : 'in the middle' });
   if (adx14 != null && change5Pct != null) {
@@ -690,8 +701,13 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   }
   const callOI = snapshot.chain.reduce((a, s) => a + (s.callOI ?? 0), 0);
   const putOI = snapshot.chain.reduce((a, s) => a + (s.putOI ?? 0), 0);
-  const darkShares = file.dark.reduce((a, p) => a + p.size, 0);
-  const darkNotional = file.dark.reduce((a, p) => a + p.notional, 0);
+  /* OWN-TERMS PRINTS ARE OUT OF EVERY DARK FIGURE (the fourth audit, 2026-10-23): SPY's tape chart named 126K-share
+     contingent blocks ($97.8M each) its largest while the read said "the largest $24M" — average-price, reference-price,
+     contingent and derivative-priced prints are priced by their own terms, not the market, so the totals, the chart and
+     every "largest" leave them out alike (SidesRule); they are only counted, apart */
+  const ownTermsOut = file.dark.filter(p => !p.special);
+  const darkShares = ownTermsOut.reduce((a, p) => a + p.size, 0);
+  const darkNotional = ownTermsOut.reduce((a, p) => a + p.notional, 0);
   /* THE READ, ON TRACE'S CONVENTION (data/stockFile.ts darksFrom): the read prints' dollars paid over their own mid
      (buyer-initiated) against sold under it (seller-initiated); average-price, reference-price, contingent and
      extended-hours prints are on the tape but never in the read */
@@ -705,7 +721,16 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const posture: DarkPoolView['posture'] = netPosturePct >= 18 ? 'ACCUMULATING' : netPosturePct <= -18 ? 'DISTRIBUTING' : 'BALANCED';
   const largest = [...readPrints].sort((a, b) => b.notional - a.notional)[0] ?? null;
   const clocks = readPrints.map(p => p.time).filter(Boolean).sort();
-  const darkWindow = { read: readPrints.length, inHand: file.dark.length, from: clocks[0] ?? null, to: clocks[clocks.length - 1] ?? null };
+  const darkWindow = {
+    read: readPrints.length,
+    inHand: file.dark.length,
+    from: clocks[0] ?? null,
+    to: clocks[clocks.length - 1] ?? null,
+    complete: file.darkWindow.complete,
+    cover: file.darkWindow.complete ? null : file.darkWindow.from || null,
+    ownTerms: file.dark.filter(p => p.special).length,
+  };
+  const flowWindow = { alerts: file.flow.length, complete: file.flowWindow.complete, from: file.flowWindow.from || null, to: file.flowWindow.to || null };
   const dark: DarkPoolView = {
     ticker,
     spot: snapshot.spot,
@@ -725,10 +750,10 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
           : 'on both sides of the mid',
     totalNotional: darkNotional,
     levels: [],
-    prints: file.dark,
+    prints: ownTermsOut,
     largest,
   };
-  const darkBlocks = file.dark.filter(p => p.size >= 50_000).length;
+  const darkBlocks = ownTermsOut.filter(p => p.size >= 50_000).length;
   const today = (lastBlock ?? []).map(c => ({ time: c.time, close: c.close }));
   const read: MoneyRead = {
     netGex: houseNet,
@@ -759,6 +784,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
     unusual,
     dark,
     darkWindow,
+    flowWindow,
     darkBlocks,
     today,
     busiest: { calls: busiestOf(file.contracts, 'C', ticker, snapshot.spot), puts: busiestOf(file.contracts, 'P', ticker, snapshot.spot) },
@@ -993,8 +1019,8 @@ const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen:
   const second = ranked[1];
   const next = ranked[ranked.length - 2];
   if (!best || !worst) return 'Nothing on the name stands out right now.';
-  if (!second || !next) return cap(`${best.score >= 55 ? words[best.key].good : best.score <= 45 ? words[best.key].bad : `${words[best.key].name} is quiet`}.`);
-  if (screen === 'STRONG') return cap(`${words[best.key].good}, ${words[second.key].good}; ${worst.score < 45 ? `${words[worst.key].name} is the one soft spot` : 'nothing against it'}.`);
+  if (!second || !next) return cap(`${best.score >= 55 ? words[best.key].good : best.score <= 45 ? words[best.key].bad : `${words[best.key].name} ${best.key === 'numbers' ? 'are' : 'is'} quiet`}.`);
+  if (screen === 'STRONG') return cap(`${words[best.key].good}, ${words[second.key].good}; ${worst.score < 45 ? `${words[worst.key].name} ${worst.key === 'numbers' ? 'are' : 'is'} the one soft spot` : 'nothing against it'}.`);
   if (screen === 'WEAK') return cap(`${words[worst.key].bad}, ${words[next.key].bad}; ${best.score > 65 ? `${words[best.key].name} alone cannot carry it` : 'nothing in its favour'}.`);
   if (best.score < 55 && worst.score > 45) return 'Nothing on the name is decisive.';
   if (best.score < 55) return cap(`${words[worst.key].bad}.`);
@@ -1033,7 +1059,11 @@ const movesOf = (pillars: Pillar[], composite: number): Move[] => {
    name (55+), against it (45−) or in the middle. Under a bullish or bearish read a pillar on that side agrees, one on
    the other side argues, and one in the middle does neither. Under a neutral read nothing agrees or argues: each pillar
    says which way it pulls, and the sentences say the read is split. */
-const sideOf = (score: number): 'for' | 'against' | 'middle' => (score >= 55 ? 'for' : score <= 45 ? 'against' : 'middle');
+/* A PILLAR'S SIDE IS ITS GRADE'S (the fourth audit, 2026-10-23): AAPL read "3 of 3 agree … money caution AGREES … Every
+   pillar agrees" — the side cut at 55 while the word "caution" runs 47–59, so a caution pillar was counted as backing a
+   bullish read. A pillar is for the name when it grades good or strong, against it when poor, and a caution pillar is in
+   the middle — it neither agrees nor argues. */
+const sideOf = (score: number): 'for' | 'against' | 'middle' => (score >= GOOD_FROM ? 'for' : score <= POOR_TO ? 'against' : 'middle');
 const verbs = (p: Pillar, one: string, many: string) => (p.key === 'numbers' ? many : one);
 const lowerName = (p: Pillar) => p.name.toLowerCase();
 const topFactor = (p: Pillar) => p.factors.filter(f => !f.context).sort((a, b) => Math.abs(b.lean) * b.weight - Math.abs(a.lean) * a.weight)[0];
@@ -1047,16 +1077,18 @@ const agreementOf = (pillars: Pillar[], composite: number, news: NewsRead): Agre
     return { key: p.key, name: p.name, score: p.score, agrees: stance === 'agrees', stance };
   });
   const priced = news.nextEarnings && news.nextEarnings.impliedMovePct > 0 ? `, ±${news.nextEarnings.impliedMovePct.toFixed(1)}% priced` : '';
-  const event = news.nextEarnings ? `the next test is the report on ${news.nextEarnings.label}${priced}` : 'the next test is a headline the wire has not seen yet';
+  /* no report on the calendar: nothing is said of a next test ("a headline the wire has not seen yet" was filler) */
+  const event = news.nextEarnings ? `the next test is the report on ${news.nextEarnings.label}${priced}` : '';
+  const tail = (lead: string) => (event ? `${lead}; ${event}.` : `${lead}.`);
   let risk: string;
   if (want == null) {
     const pulls = pillars.filter(p => sideOf(p.score) === 'for').map(lowerName);
     const drags = pillars.filter(p => sideOf(p.score) === 'against').map(lowerName);
     risk = pulls.length && drags.length
-      ? `The read is split: ${listWords(pulls)} ${pulls.length === 1 && !/^the numbers/.test(pulls[0]) ? 'pulls' : 'pull'} for the name, ${listWords(drags)} against it, and neither side carries it; ${event}.`
+      ? tail(`The read is split: ${listWords(pulls)} ${pulls.length === 1 && !/^the numbers/.test(pulls[0]) ? 'pulls' : 'pull'} for the name, ${listWords(drags)} against it, and neither side carries it`)
       : pulls.length || drags.length
-        ? `Only ${listWords(pulls.length ? pulls : drags)} ${pulls.length ? 'leans for the name' : 'leans against it'}, not enough to tip the read; ${event}.`
-        : `No pillar leans either way; ${event}.`;
+        ? tail(`Only ${listWords(pulls.length ? pulls : drags)} ${pulls.length ? (/^the numbers/.test(pulls[0]) && pulls.length === 1 ? 'lean for the name' : 'leans for the name') : 'leans against it'}, not enough to tip the read`)
+        : tail('No pillar leans either way');
   } else {
     const against = pillars.filter(p => sideOf(p.score) !== 'middle' && sideOf(p.score) !== want).sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50));
     if (against.length) {
@@ -1065,7 +1097,8 @@ const agreementOf = (pillars: Pillar[], composite: number, news: NewsRead): Agre
       risk = `The case against the ${lean} read is ${lowerName(p)}${f ? ` — ${f.label.toLowerCase()} ${f.value}, ${f.note}` : ''}; if that strengthens, the read turns there first.`;
     } else {
       const all = rows.every(r => r.stance === 'agrees');
-      risk = `${all ? 'Every pillar agrees' : 'No pillar argues against it'}; ${event}.`;
+      const between = rows.filter(r => r.stance === 'middle').map(r => r.name.toLowerCase());
+      risk = tail(all ? 'Every pillar agrees' : `No pillar argues against it${between.length ? ` — ${listWords(between)} ${between.length === 1 && !/^the numbers/.test(between[0]) ? 'sits' : 'sit'} in the middle, at caution` : ''}`);
     }
   }
   return { lean, pillars: rows, aligned: rows.filter(r => r.agrees).length, risk };
@@ -1109,7 +1142,7 @@ const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: P
     `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} on the wire`,
   ],
   derived: [
-    `the 20-day average${trend.sma50 != null ? ', the 50-' : ''}${trend.sma200 != null ? ' and 200-day' : ''} · RSI · ADX · the range percentile · the structure`,
+    `the screener's 20-day EMA${trend.sma50 != null ? ', 50-' : ''}${trend.sma200 != null ? ' and 200-day SMA' : ''} · RSI · ADX · the range percentile · the structure`,
     `GEX · DEX · VEX · vanna · charm, and the walls, the flip and the supreme from them`,
     'bullish against bearish premium (the side of the trade) and calls against puts (the kind of contract), from the screener',
     money.darkWindow.read ? 'off-exchange prints over or under their own quote\'s mid, the regular session\'s sized prints only' : 'no regular-session off-exchange print to read',
@@ -1121,6 +1154,34 @@ const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: P
     `the lean — ${lean} — from the same balance`,
   ],
 });
+
+/** The trend read with the screener row's own averages, RSI, ADX and changes — the figures its factors score */
+const screenTrend = (bars: TrendRead, row: ScreenRow): TrendRead => {
+  if (!row) return bars;
+  const f = screenFactors(row);
+  const ema20 = rowNum(row, 'ema_20');
+  const sma50 = rowNum(row, 'sma_50');
+  const sma200 = rowNum(row, 'sma_200');
+  const rsi14 = rowNum(row, 'rsi_14');
+  const adx14 = rowNum(row, 'adx_14');
+  const week = rowNum(row, 'one_week_perc');
+  const month = rowNum(row, 'one_month_perc');
+  const ref = f.refClose ?? bars.refClose;
+  const averages = [ema20, sma50, sma200].filter((a): a is number => a != null && a > 0);
+  return {
+    ...bars,
+    ema20: ema20 ?? bars.ema20,
+    sma50: sma50 ?? bars.sma50,
+    sma200: sma200 ?? bars.sma200,
+    rsi14: rsi14 ?? bars.rsi14,
+    adx14: adx14 ?? bars.adx14,
+    change5Pct: week != null ? week * 100 : bars.change5Pct,
+    change20Pct: month != null ? month * 100 : bars.change20Pct,
+    above: averages.length ? { count: averages.filter(a => ref > a).length, of: averages.length } : bars.above,
+    source: 'screener',
+    refClose: ref,
+  };
+};
 
 /* ---- the overview ------------------------------------------------------------- */
 
@@ -1144,7 +1205,12 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const quote = peekQuote(ticker);
   const dayPct = quote ? quote.changePct : snapshot.changePercent;
   const extLine = extendedLine(quote);
-  const trend = trendFor(blocks, snapshot.spot);
+  const trendBars = trendFor(blocks, snapshot.spot);
+  /* ONE SOURCE FOR EVERY TREND FIGURE ON THE PAGE (the fourth audit, 2026-10-23): the card computed its own ADX and RSI
+     off the bars (GME 52, SPY 19) beside factors that score the screener's adx_14 (54; SPY 13.5), and "5 · 20 sessions
+     +1.9% · +3.8%" sat beside "The last month +2.6%". The card now prints the screener row's own measures — the very
+     numbers the factors score — and the bars keep only what the screener does not carry (the range, the structure). */
+  const trend = { ...trendBars, read: screenTrend(trendBars.read, file.screen) };
   const money = moneyFor(ticker, { ...snapshot, changePercent: dayPct }, blocks, file);
   const news = newsFor(ticker, file);
   const numbers = numbersFor(file);

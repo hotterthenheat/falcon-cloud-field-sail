@@ -77,7 +77,9 @@ export function dayChangeOf(state: StateLike, closes: readonly { date: string; c
     const today = nyIsoDate();
     const sessions = (closes ?? []).filter(c => c.date <= today);
     /* after today's bell before the vendor has written today's daily row, today's close is the quote's prev_close */
-    const todayMissing = phase === 'post' && sessions[0]?.date !== today;
+    /* — only on a trading day: on a weekend or holiday the quote still says "postmarket", and reading Friday's row as
+       "missing today" measured Friday's close against itself (the fourth audit, 2026-10-22: AAPL +0.00% on Sat) */
+    const todayMissing = phase === 'post' && isTradingDay(nyToday()) && sessions[0]?.date !== today;
     const lastSession = todayMissing ? undefined : sessions[0];
     const before = todayMissing ? sessions[0] : sessions[1];
     const regClose = lastSession?.close ?? prevClose;

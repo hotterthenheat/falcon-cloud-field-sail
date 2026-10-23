@@ -145,6 +145,9 @@ export interface ExposureLevels {
       spot only as a placeholder — print "no flip nearby", never this number */
   flip: number;
   flipFound?: boolean;
+  /** False while the contracts these levels are read from are still landing (a date, or the front date's own vols) —
+      the levels are then provisional and the pages print "…" rather than a figure that is about to change */
+  complete?: boolean;
   /** Net gamma of every strike of these contracts at spot, HOUSE sign (negative = dealers long gamma = absorbs). The
       regime is this sign — never the side of the flip */
   net?: number;

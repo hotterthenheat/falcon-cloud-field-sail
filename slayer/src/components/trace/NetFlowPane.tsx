@@ -757,8 +757,10 @@ const NetFlowPane = ({
         {/* the figures wrap on a phone rather than run off the pane (the device sweep, 2026-10-18: the volume cut at 360) */}
         <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-[11px] tnum [&>span]:whitespace-nowrap">
           {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
-          <span style={{ color: inksNow.spot }} title={ticker ? undefined : `The white line is ${ref}'s price — the cut's money is every name in it`}>
-            {ticker ? ref : `${ref} price`}
+          {/* AN INDEX-ONLY PANE SAYS ITS LINE IS NOT AN INDEX (audit round 4: "Index options only" over a line labelled "SPY
+              price"): the vendor's minutes carry SPY's price on every cut, so the line is SPY's, said as a reference */}
+          <span style={{ color: inksNow.spot }} title={ticker ? undefined : `The white line is ${ref}'s price — the vendor's reference line on every cut, not ${seg === 'indexes' ? 'an index level' : "the cut's own price"}; the cut's money is every name in it`}>
+            {ticker ? ref : seg === 'indexes' ? `${ref} price · reference, not an index` : `${ref} price · reference`}
           </span>
           {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
               series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}

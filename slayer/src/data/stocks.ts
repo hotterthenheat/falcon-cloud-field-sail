@@ -118,7 +118,7 @@ function thesisFor(sl: StockSleeves, verdict: StockVerdict, quiet: readonly (key
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   if (!best || !worst) return 'Not enough on the feed to screen this name.';
   if (!second || best === worst) return cap(`${best.v >= 50 ? best.good : best.bad}.`);
-  if (verdict === 'ACCUMULATE') return cap(`${best.good}, ${second.good}; ${worst.v < 45 ? `${worst.name} is the one soft spot` : 'nothing against it'}.`);
+  if (verdict === 'ACCUMULATE') return cap(`${best.good}, ${second.good}; ${worst.v < 45 ? `${worst.name} ${worst.name === 'the numbers' ? 'are' : 'is'} the one soft spot` : 'nothing against it'}.`);
   if (verdict === 'AVOID') return cap(`${worst.bad}${next ? `, ${next.bad}` : ''}; ${best.v > 65 ? `${best.name} alone cannot carry it` : 'nothing in its favour'}.`);
   return cap(`${best.good} but ${worst.bad} — a catalyst decides.`);
 }

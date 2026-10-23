@@ -45,7 +45,8 @@
 
 import { bellDay, todayScopeLabel } from '../../data/bookWindow';
 import { GLOSSARY, kindTip } from './glossary';
-import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
+import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
+import { bookDatesIn } from '../../data/uwBook';
 import { holdLabel } from '../../data/wall';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -185,10 +186,13 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   /* GAMMA IN THE READER'S SIGN AND INK (the ship pass, 2026-10-22, retailSign.ts): positive absorbs, green; negative
      amplifies, red — the Board's net GEX convention, strike by strike. The other greeks stay in the primary ink. */
   const Money = ({ v, bold = false, size = 11, g: mg = greek }: { v: number | null; bold?: boolean; size?: number; g?: Greek }) => {
-    const shown = v == null ? null : shownGreek(mg, v);
+    /* NEVER A FALSE $0 (the fourth audit: "VEX $0" beside "VANNA −$19.4M"): vega comes off the contract rows alone (the
+       vendor's exposure rows carry none), so a strike whose contracts carry none says so instead */
+    const noVega = mg === 'vex' && (v == null || v === 0);
+    const shown = v == null || noVega ? null : shownGreek(mg, v);
     const ink = shown == null ? 'text-textMuted' : mg === 'gex' && shown > 0 ? 'text-bull' : mg === 'gex' && shown < 0 ? 'text-bear' : 'text-textPrimary';
     return (
-      <span className={`font-mono tnum tabular-nums ${bold ? 'font-bold' : ''} ${ink}`} style={{ fontSize: size }}>
+      <span className={`font-mono tnum tabular-nums ${bold ? 'font-bold' : ''} ${ink}`} style={{ fontSize: size }} title={noVega ? 'No vega on these contracts: it is read off the contract rows, and none carry it at this strike' : undefined}>
         {shown == null ? '—' : `${mg === 'gex' && shown > 0 ? '+' : ''}${fmtUsd(shown)}`}
       </span>
     );
@@ -338,7 +342,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* TODAY'S CONTRACTS — one row of seven figures under their labels */}
-      <Cap tip="The contracts the levels read, re-priced at each window's price — after the close they are the next session's">{todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts"} · {L} · each window</Cap>
+      <Cap tip={todayScopeLabel() === 'Today' ? "The contracts the levels read, re-priced at each window's price" : "The contracts the levels read, re-priced at each window's price, the windows counted back from the 4:00 close — the session is over, so nothing moves until the next open"}>{todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts"} · {L} · {todayScopeLabel() === 'Today' ? 'each window' : 'each window to the close'}</Cap>
       <div className="pt-1 grid grid-cols-7 font-mono tnum tabular-nums" data-side-windows>
         {READ_WINDOWS.map((w, i) => (
           <span key={w.key} className="flex flex-col leading-tight min-w-0">
@@ -388,10 +392,10 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             )
           }
         />
-        <Fact label={bellDay().clock} value={s.bellShare != null ? <span title={`${s.bellShare}% — ${bellDay().tip(s.ticker)}`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? BELL_NONE : '…'}</span>} />
+        <Fact label={bellDay().clock} value={s.bellShare != null ? <span title={`${s.bellShare}% — ${bellDay().tip(s.ticker)}`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? bellNone() : '…'}</span>} />
       </div>
       <div className="pt-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-side-foot>
-        {s.strikes.length} strikes · {s.expiryCount} {s.expiryCount === 1 ? 'expiry' : 'expiries'}
+        {s.strikes.length} strikes · {bookDatesIn(s.ticker) ? `${s.expiryCount} ${s.expiryCount === 1 ? 'expiry' : 'expiries'}` : '… expiries'}
       </div>
     </div>
   );

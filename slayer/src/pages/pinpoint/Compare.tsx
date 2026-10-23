@@ -163,14 +163,16 @@ const Compare = () => {
   useEffect(() => setExpiryPick(null), [levelsScope]);
   const expiry: ExposureExpiry = expiryPick ?? levelsScope;
   const setExpiry = (e: ExposureExpiry) => setExpiryPick(e === levelsScope ? null : e);
-  const sideA = useMemo(() => {
-    const s = snapOf(aTicker);
-    return s ? buildCompareSide(s, clock, expiry) : null;
-  }, [aTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sideB = useMemo(() => {
-    const s = snapOf(bTicker);
-    return s ? buildCompareSide(s, clock, expiry) : null;
-  }, [bTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* NOTHING PROVISIONAL (the fourth audit's M1: QQQ read "−$12.1B · put wall 700 · call wall 740 · flip none nearby ·
+     ±$11.25" under "Next session · Oct 23" for 8–15 seconds — the whole book standing in for the front date). A side whose
+     levels are not final is not built: the page keeps its loading state until both are */
+  const finalSide = (s: MarketSnapshot | null) => {
+    if (!s) return null;
+    const side = buildCompareSide(s, clock, expiry);
+    return side && side.levels.complete === false ? null : side;
+  };
+  const sideA = useMemo(() => finalSide(snapOf(aTicker)), [aTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideB = useMemo(() => finalSide(snapOf(bTicker)), [bTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const cmp = useMemo(() => (sideA && sideB ? buildCompare(sideA, sideB, clock) : null), [sideA, sideB, clock]);
 
   const [guideOpen, setGuideOpen] = useState(false);

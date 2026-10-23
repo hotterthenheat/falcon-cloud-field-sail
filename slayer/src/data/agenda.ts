@@ -100,6 +100,8 @@ export interface Target {
   build: number;
   /** The change is the vendor's overnight open-interest count (yesterday's trading) — never "today" */
   buildOvernight: boolean;
+  /** The overnight count has not landed yet — the change is not known */
+  buildLoading?: boolean;
   verdict: BuildVerdict;
   /** Odds the close lands on this strike, percent — 0 outside the band the close can reach */
   closes: number;
@@ -268,8 +270,10 @@ export function buildAgenda(
         breakFlow: o.breakPath.flow,
         pocket: !!o.breakPath.pocket,
         holdTo: o.holdPath.to,
-        build: brow?.sizeChange ?? 0,
+        /* the strike's ONE overnight change — Building's CHANGE column, now − was in the retail sign */
+        build: brow?.change ?? 0,
         buildOvernight: building.overnight,
+        buildLoading: building.loading,
         verdict: brow?.verdict ?? 'steady',
         closes: closesAt.get(s.strike) ?? 0,
         stake,
@@ -360,4 +364,4 @@ export const closeLeanWords = (a: Pick<Agenda, 'closesNear' | 'closeTop'>): stri
 
 /** Building's word for today's change at a strike, for the row */
 export const buildWords = (t: Target, inSession: boolean): string =>
-  t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} ${signed(t.build)}${t.buildOvernight ? ' overnight' : inSession ? '' : ' last session'}`;
+  t.buildLoading ? '…' : t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} · net ${signed(t.build)}${t.buildOvernight ? ' overnight' : inSession ? '' : ' last session'}`;

@@ -56,6 +56,7 @@ import CardTabs from '../../components/ui/CardTabs';
 import { motion } from 'framer-motion';
 import RankedTargets from './RankedTargets';
 import Building from './Building';
+import { todayScopeLabel } from '../../data/bookWindow';
 
 export type AgendaFace = 'targets' | 'building';
 export const AGENDA_FACES = [
@@ -65,8 +66,11 @@ export const AGENDA_FACES = [
 /** The face an address names — Targets unless it asks for Building */
 export const agendaFaceOf = (search: string): AgendaFace => (new URLSearchParams(search).get('view') === 'building' ? 'building' : 'targets');
 /** What the shell's line says under the name, a face at a time */
+/* "today" only while today's session is ahead or running — after the close it is the next session's (the fourth audit's m7) */
 export const AGENDA_LINES: Record<AgendaFace, string> = {
-  targets: 'Every strike, in the order it matters today',
+  get targets() {
+    return `Every strike, in the order it matters ${todayScopeLabel() === 'Today' ? 'today' : 'next session'}`;
+  },
   building: "What yesterday's trading added to every strike (the overnight open-interest count) — walls forming before they are the wall, draining before they break",
 };
 /** The other face is mounted, unseen, this long after the page lands — past the shell's crossfade (200ms) and the

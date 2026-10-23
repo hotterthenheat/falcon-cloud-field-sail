@@ -19,7 +19,7 @@ import GradeMeter from '../ui/GradeMeter';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 import { nyClock } from '../../core/nyTime';
-import { postureOf, quotePlace, useDarkDay, useStockMinutes } from '../../data/traceLive';
+import { postureOf, quotePlace, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
 import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
@@ -51,7 +51,10 @@ const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
 /** A one-letter market-center code is not a venue name. */
 const venueWord = (v: string) => (v.trim().length > 2 && /[A-Za-z]/.test(v) ? v.trim() : 'off-exchange');
 
-const sideWord = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : 'inside quote');
+/* NO SIDE WHERE THERE IS NONE (audit round 4: crosses 3% over the quote read "inside quote" — the fallback for a print with
+   no execution side): an own-terms print is priced by its terms; a print with no quote has no place in one */
+const sideWord = (p: DarkPoolPrint) =>
+  p.special ? 'own terms' : p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : p.exec === 'MID' ? 'inside quote' : p.bid == null || p.ask == null ? 'no quote' : 'off the quote';
 const sideLabel = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'BOUGHT' : p.exec === 'BID' ? 'SOLD' : p.exec === 'MID' ? 'MID' : '');
 
 const fillFrac = (p: DarkPoolPrint): number | null => {
@@ -80,14 +83,22 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
      the cross was at 17:04): the name's own one-minute bars for the session's date, pre-market to after hours */
   const bars = useStockMinutes(print.ticker).rows;
   const crosses = useMemo(() => (view?.prints?.length ? view.prints : [print]), [view, print]);
-  const underDol = crosses.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents < 0 ? p.notional : 0), 0);
-  const overDol = crosses.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents > 0 ? p.notional : 0), 0);
-  const midN = crosses.filter(p => quotePlace(p.vsSpotPct, p.price).cents === 0).length;
-  const sided = underDol + overDol;
-  const underPct = sided > 0 ? (underDol / sided) * 100 : 0;
+  /* THE STOCK'S OWN LAST TRADE (audit round 4: "THE STOCK · QQQ $725.39" was a stale contingent cross; QQQ was $703.29) */
+  const last = useStockLast(print.ticker).rows;
+  const stockPx = last?.price ?? (view && view.spot > 0 ? view.spot : null);
   /* AFTER HOURS IS NOT A SIDE (the third audit, 2026-10-22: an after-hours tape wore "UNDER THE MID 64%" in red): where
      the crosses in view are all extended-hours prints, the split is drawn in plain ink */
   const allAfter = crosses.length > 0 && crosses.every(p => p.extended);
+  /* THE SPLIT READS PRINTS PRICED AT THE QUOTE (audit round 4: QQQ's "UNDER 2% · OVER 98%" counted the no-read contingent
+     prints at $725.39, 3% over the quote): own-terms prints are priced by their terms and are left out; so are after-hours
+     prints beside regular ones */
+  const placed = crosses.filter(p => !p.special && (allAfter || !p.extended));
+  const underDol = placed.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents < 0 ? p.notional : 0), 0);
+  const overDol = placed.reduce((a, p) => a + (quotePlace(p.vsSpotPct, p.price).cents > 0 ? p.notional : 0), 0);
+  const midN = placed.filter(p => quotePlace(p.vsSpotPct, p.price).cents === 0).length;
+  const leftOut = crosses.length - placed.length;
+  const sided = underDol + overDol;
+  const underPct = sided > 0 ? (underDol / sided) * 100 : 0;
   const hasDay = bars.length > 0;
   const extendedBars = bars.some(b => b.extended);
 
@@ -192,14 +203,14 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
         <div className="flex items-baseline gap-2.5 flex-wrap">
           <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The stock</span>
           <span className="font-mono text-[11px] text-textMuted tnum">
-            <RichRead text={view ? `${print.ticker} $${view.spot.toFixed(2)} · ${fmtUsd(view.totalNotional)} dark · ${crosses.length} crosses` : print.ticker} />
+            <RichRead text={`${print.ticker}${stockPx ? ` $${stockPx.toFixed(2)}${last?.at ? ` (last trade ${nyClock(last.at)} ET)` : ''}` : ''}${view ? ` · ${fmtUsd(view.totalNotional)} dark · ${crosses.length} crosses in hand` : ''}`} />
           </span>
         </div>
         {sided > 0 ? (
           <div className="mt-2 flex flex-col gap-1 max-w-[460px]">
             <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase tracking-wider">
               <span className={allAfter ? 'text-textSecondary' : underPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>Under the mid {Math.round(underPct)}%</span>
-              <span className="text-textMuted normal-case tracking-normal">{midN} at the mid{allAfter ? ' · after hours, no read' : ''}</span>
+              <span className="text-textMuted normal-case tracking-normal">{midN} at the mid{allAfter ? ' · after hours, no read' : ''}{leftOut ? ` · ${leftOut} own-terms or after-hours left out` : ''}</span>
               <span className={allAfter ? 'text-textSecondary' : underPct < 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>Over the mid {100 - Math.round(underPct)}%</span>
             </div>
             <span className="flex h-1.5 rounded-full overflow-hidden bg-ink/[0.06]">
@@ -208,7 +219,7 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
             </span>
           </div>
         ) : (
-          <p className="mt-2 font-mono text-[11px] text-textMuted">Every cross in view printed at the mid.</p>
+          <p className="mt-2 font-mono text-[11px] text-textMuted">{placed.length ? 'Every cross priced at the quote printed at the mid.' : 'No cross in view is priced at the quote — nothing to split.'}</p>
         )}
         {hasDay ? <div ref={priceRef} className="h-[220px] w-full" data-cross-price /> : <div className="h-[120px] flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted">No session bars for {print.ticker} yet</div>}
       </div>
@@ -237,12 +248,13 @@ const CrossSequence = ({ print, sequence, onOpen }: { print: DarkPoolPrint; sequ
   const read = useMemo(() => {
     if (n <= 1) return `The only cross on ${print.ticker} among the prints in hand.`;
     const total = sequence.reduce((a, p) => a + p.notional, 0);
-    const bought = sequence.filter(p => p.exec === 'ASK').length;
-    const sold = sequence.filter(p => p.exec === 'BID').length;
-    const mid = n - bought - sold;
+    const bought = sequence.filter(p => !p.special && p.exec === 'ASK').length;
+    const sold = sequence.filter(p => !p.special && p.exec === 'BID').length;
+    const mid = sequence.filter(p => !p.special && p.exec === 'MID').length;
+    const own = sequence.filter(p => p.special).length;
     const oldest = sequence[n - 1]?.time ?? print.time;
     const newest = sequence[0]?.time ?? print.time;
-    return `${n} crosses on ${print.ticker} among the prints in hand · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} inside the quote` : ''} · ${oldest} → ${newest}.`;
+    return `${n} crosses on ${print.ticker} among the prints in hand · ${fmtUsd(total)} total · ${bought} paid the offer / ${sold} hit the bid${mid ? ` / ${mid} inside the quote` : ''}${own ? ` / ${own} own terms` : ''} · ${oldest} → ${newest}.`;
   }, [sequence, n, print.ticker, print.time]);
   const shown = sequence.slice(0, SEQ_SHOWN);
   return (
@@ -344,7 +356,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
         print && (
           <div className="flex items-center gap-0.5 shrink-0">
             <button
-              onClick={() => toggle(watchedCross(print, view?.spot ?? print.price, 'dark-pool'))}
+              onClick={() => toggle(watchedCross(print, view && view.spot > 0 ? view.spot : print.price, 'dark-pool'))}
               aria-pressed={marked}
               title={marked ? 'Tracking this cross' : 'Track this cross'}
               className={`p-1 rounded transition-colors ${marked ? 'text-select' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'}`}
@@ -414,7 +426,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               {/* THE DAY IS THE NAME'S OWN DAY (the audit, 2026-10-22: "Dark dollars today" was the buffer's few prints) —
                   /darkpool/{t}/price-levels, every dark and lit share by price */}
               <Fact label="Off-exchange today" value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
-              <Fact label="Dark dollars today" value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh` : day.waiting ? '…' : '—'} />
+              <Fact label="Dark dollars today" value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh${day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}` : day.waiting ? '…' : '—'} />
               <Fact label="Crosses in hand" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
               <Fact label="This cross" value={print.sized ? 'Sized' : 'Ordinary'} valueCls={print.sized ? 'text-textPrimary' : 'text-textMuted'} />
             </div>
@@ -489,7 +501,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
             </button>
             <button
               type="button"
-              onClick={() => toggle(watchedCross(print, view?.spot ?? print.price, 'dark-pool'))}
+              onClick={() => toggle(watchedCross(print, view && view.spot > 0 ? view.spot : print.price, 'dark-pool'))}
               aria-pressed={marked}
               className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded border font-mono text-[11px] uppercase tracking-wider transition-colors ${
                 marked ? 'border-select/40 bg-select/[0.08] text-select' : 'border-borderSubtle bg-ink/[0.02] text-textSecondary hover:text-textPrimary hover:border-borderMuted'

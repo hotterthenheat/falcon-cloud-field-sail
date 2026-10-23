@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { uwCall } from '../../data/whales';
+import { nyDayOfUtcStamp } from '../../data/nyDate';
 import { useNavigate } from 'react-router-dom';
 import { houseSlug } from '../../data/fileBooks';
 import { useShortRow } from '../../data/liveFiles';
@@ -62,7 +63,7 @@ const weightsOf = (etf: string) => {
         for (const r of res.data as Record<string, unknown>[]) {
           const t = String(r.ticker || '').toUpperCase();
           const w = Number(r.weight);
-          if (t && Number.isFinite(w)) out.set(t, { weight: w, asOf: r.updated ? String(r.updated).slice(0, 10) : null });
+          if (t && Number.isFinite(w)) out.set(t, { weight: w, asOf: nyDayOfUtcStamp(r.updated ? String(r.updated) : null) });
         }
       return out;
     });

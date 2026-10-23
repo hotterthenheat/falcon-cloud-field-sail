@@ -531,6 +531,10 @@ export interface SpreadLeg {
 export interface SpreadTrade {
   id: string;
   minute: number;
+  /** Filled outside the name's regular session (before 09:30, or from its 16:00 / 16:15 close) */
+  extended?: boolean;
+  /** Repeats of this structure the vendor sent under other ids — the same legs, size, money and second — folded in */
+  repeats?: number;
   time: string;
   ticker: string;
   kind: SpreadKind;

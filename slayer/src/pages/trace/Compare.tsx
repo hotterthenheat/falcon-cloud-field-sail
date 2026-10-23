@@ -27,7 +27,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { SPREAD_KINDS, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
-import { dayLean, sessionEndLabel, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
+import { dayLean, lastRegularClose, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
 import type { SleeveKey } from '../../types/compass';
@@ -123,6 +123,8 @@ interface Row {
   /** Which side leads on this fact — lit; null when the fact has no leader */
   lead: 'a' | 'b' | null;
   cell: (s: TraceSide, lit: boolean) => ReactNode;
+  /** The row's longer word, on hover of its fact */
+  hint?: string;
   /** The row's capsules a side — one, or a pair; a row without them prints its cell */
   bars?: (s: TraceSide) => Bar[];
 }
@@ -355,12 +357,20 @@ const Compare = () => {
      card keeps the book's own figures and says so. */
   const flowA = usePaneFlow({ ticker: aTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
   const flowB = usePaneFlow({ ticker: bTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
-  /* every expiry: the card takes the pane's own running totals; a clock: the vendor's flow for the expiries on it */
+  /* ONE SOURCE FOR EVERY CLOCK (audit round 4, 2026-10-22: uncut, the card took /net-prem-ticks — QQQ net −$53.6M, puts
+     +$26.9M — and on Clock = Weekly /flow-per-expiry — QQQ +$51.3M, puts −$53.2M; "net puts" flipped sign between views).
+     The two vendor routes carry the SAME contracts by side (QQQ's call and put volume at the ask and on the bid match to
+     the contract) but not the same put money: the ticks' net_put_premium was +$27.4M where the per-expiry put premium at the
+     ask less on the bid summed to −$51.9M, and the day's own prints of $250K and up, by their side tags, net −$106M on
+     puts — the per-expiry route agrees with the tape's sides, the ticks do not (on small names the two agree to the
+     dollar). So every cut reads /stock/{t}/flow-per-expiry: every expiry summed, or the clock's expiries; the whole day.
+     The ticks stay on Net Flow's pane (it needs minutes); where the two disagree the page says so. */
   const uncut = tenor === 'all';
-  const withTicks = (side: TraceSide, rows: PaneFlowPoint[]): TraceSide => {
+  const ticksOf = (rows: PaneFlowPoint[]) => {
     const lastPt = rows.length ? rows[rows.length - 1] : null;
-    return uncut && lastPt ? { ...side, net: lastPt.callPrem - lastPt.putPrem, netCall: lastPt.callPrem, netPut: lastPt.putPrem } : side;
+    return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem } : null;
   };
+  const withTicks = (side: TraceSide, _rows: PaneFlowPoint[]): TraceSide => side;
   const todayIso = tapeSessionIso();
   const heldFpeA = frozen.current.fpeA;
   const heldFpeB = frozen.current.fpeB;
@@ -370,7 +380,10 @@ const Compare = () => {
      … 300 prints for $166.2K") — the tape clause and fact stand in the regular session, with their window named */
   /* each print by its own time and flag (traceCompare buildTraceSide): a busier tape is called only when BOTH names have
      regular-session prints in the stretch */
-  const regular = sideA.tape.prints > 0 && sideB.tape.prints > 0;
+  /* AFTER THE CLOSE NO BUSIER TAPE (audit round 4: "Busier tape SPY · 300 prints since 16:14" meant nothing once the session
+     had ended) — the two tapes' last stretches are not the day */
+  const afterClose = !!lastRegularClose();
+  const regular = !afterClose && sideA.tape.prints > 0 && sideB.tape.prints > 0;
   const afterLeftOut = sideA.tape.after + sideB.tape.after;
   const tapeWords = tapeSince ? `since ${nyClock(tapeSince * 1000)} ET` : 'over the same stretch';
   const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular), [sideA, sideB, tapeWords, regular]);
@@ -417,7 +430,7 @@ const Compare = () => {
 
   const sections: { title: string; rows: Row[] }[] = [
     {
-      title: `${uncut ? `Net flow · every expiry, 09:30–${sessionEndLabel(aTicker) === sessionEndLabel(bTicker) ? sessionEndLabel(aTicker) : 'the close'} ET` : "Net flow · the clock's expiries, the whole day"}${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''}`,
+      title: `${uncut ? 'Net flow · every expiry, the whole day' : "Net flow · the clock's expiries, the whole day"} — the vendor's flow by expiry, premium at the ask less on the bid${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''}`,
       rows: [
         {
           key: 'net',
@@ -442,6 +455,34 @@ const Compare = () => {
           lead: louder(s => s.netPut),
           bars: s => [{ v: s.netPut, text: signedUsd(s.netPut), ink: putInk(s.netPut) }],
           cell: (s, lit) => <Fig lit={lit} ink={putDirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>,
+        },
+        /* THE OTHER ROUTE, SAID (audit round 4: Net Flow said QQQ −$54.9M where this card said −$53.6M, and the two vendor
+           routes disagree on put money): what Net Flow's pane reads — the minute ticks, 09:30 to the close — beside it */
+        {
+          key: 'ticks',
+          label: "Net Flow's pane",
+          hint: "The charts above and Net Flow's pane draw the vendor's minute ticks (/stock/{t}/net-prem-ticks), 09:30 to the close. The figures above are the vendor's flow by expiry (/stock/{t}/flow-per-expiry), the whole day — the one source every clock can be cut from. The two routes carry the same contracts by side, but on names heavy with spreads their put money can disagree, even in sign; checked against the prints' own side tags, the by-expiry figure is the one that agrees.",
+          note: (() => {
+            const off = [a, b].filter(sd => {
+              const t = ticksOf(sd === a ? flowA : flowB);
+              return t && Math.sign(t.puts) !== Math.sign(sd.netPut) && Math.abs(t.puts - sd.netPut) > 1e6;
+            });
+            return off.length
+              ? `the charts' minute ticks · ${off.map(sd => sd.ticker).join(', ')} puts flip sign by route`
+              : "the charts' minute ticks, 09:30 to the close";
+          })(),
+          lead: null,
+          cell: s => {
+            const t = ticksOf(s === a ? flowA : flowB);
+            return t ? (
+              <>
+                <Fig lit={false} ink={dirInk(t.net)}>{signedUsd(t.net)}</Fig>
+                <Sub>· puts {signedUsd(t.puts)}</Sub>
+              </>
+            ) : (
+              <Sub>—</Sub>
+            );
+          },
         },
       ],
     },
@@ -643,7 +684,7 @@ const Compare = () => {
     },
     {
       /* both names over the same reach of their own tapes — the title says from when */
-      title: `${tapeSince ? `The tape · each name's prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both tapes cover` : `The tape · each name's last ${TAPE_N} prints`}${afterLeftOut > 0 ? ` · regular-session prints only, ${num(afterLeftOut)} after-hours ${afterLeftOut === 1 ? 'print' : 'prints'} left out` : ''}${regular ? '' : ' — one name has no regular-session print in the stretch, so no busier tape is called'}`,
+      title: `${tapeSince ? `The tape · each name's prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both tapes cover` : `The tape · each name's last ${TAPE_N} prints`}${afterLeftOut > 0 ? ` · regular-session prints only, ${num(afterLeftOut)} after-hours ${afterLeftOut === 1 ? 'print' : 'prints'} left out` : ''}${regular ? '' : afterClose ? ' — the session has closed, so no busier tape is called' : ' — one name has no regular-session print in the stretch, so no busier tape is called'}`,
       rows: [
         {
           key: 'prints',
@@ -931,7 +972,7 @@ const Compare = () => {
               >
                 {/* the fact, with the verdict under it — the middle column at a desk, the top line on a phone */}
                 {phone && (
-                  <span className="flex flex-col items-center leading-none pt-1.5 pb-1" data-compare-fact>
+                  <span className="flex flex-col items-center leading-none pt-1.5 pb-1" data-compare-fact title={r.hint}>
                     <span className="text-[11px] text-textSecondary whitespace-nowrap">{r.label}</span>
                     <span className="mt-[3px] text-[9.5px] text-textMuted whitespace-nowrap truncate max-w-full" data-compare-note>
                       {r.note}
@@ -945,7 +986,7 @@ const Compare = () => {
                   {phone ? (
                     <span className="self-stretch bg-borderSubtle/60 rounded-full" aria-hidden />
                   ) : (
-                    <span className="min-w-0 self-stretch flex flex-col items-center justify-center leading-none paper-panel paper-edge-x">
+                    <span className="min-w-0 self-stretch flex flex-col items-center justify-center leading-none paper-panel paper-edge-x" title={r.hint}>
                       <span className="text-[11px] text-textSecondary group-hover:text-textPrimary transition-colors duration-150 whitespace-nowrap">{r.label}</span>
                       <span className="mt-[3px] text-[9.5px] text-textMuted group-hover:text-textSecondary transition-colors duration-150 whitespace-nowrap truncate max-w-full" data-compare-note>
                         {r.note}

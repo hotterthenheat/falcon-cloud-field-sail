@@ -55,7 +55,7 @@
 ==================================================
 */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUpRight, X } from 'lucide-react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
@@ -112,7 +112,15 @@ const HoldBeam = ({ t, w = 52, h = 6 }: { t: Target; w?: number | string; h?: nu
 
 /* EVERY LEVEL THE STRIKE IS, IN THE ONE ORDER (the retail test, 2026-10-23: 769 read PUT WALL here and SUPREME on the
    Map): supreme · call wall · put wall, then shelf or trapdoor when it is none of them */
-const Tags = ({ t, yours }: { t: Target; yours?: string }) => (
+/* THE TAG STANDS OUT ONLY WHERE IT MATTERS (the fourth audit: every strike of a short-gamma book read "TRAPDOOR" in the
+   same warm ink — true, and so it told the reader nothing). The kind is kept on every row; it wears its ink on the
+   strikes that carry weight — the first three in the order, the three heaviest, the named levels — and is quiet
+   elsewhere. The board says which are loud (LoudStrikes). */
+const LoudStrikes = createContext<ReadonlySet<number> | null>(null);
+const Tags = ({ t, yours }: { t: Target; yours?: string }) => {
+  const loudSet = useContext(LoudStrikes);
+  const loud = t.roles.length > 0 || t.rank <= 3 || !!loudSet?.has(t.strike);
+  return (
   <>
     {t.roles.map(r => (
       <span key={r} className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: ROLE_INK[r] }} title={kindTip(r)}>
@@ -120,7 +128,12 @@ const Tags = ({ t, yours }: { t: Target; yours?: string }) => (
       </span>
     ))}
     {!t.roles.length && kindOf(t) !== 'thin' && (
-      <span className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: t.isShelf ? 'rgb(var(--text-muted))' : WARM }} title={kindTip(t.isShelf ? 'shelf' : 'trapdoor')}>
+      <span
+        className={`text-[8px] uppercase tracking-widest whitespace-nowrap ${loud ? '' : 'opacity-60'}`}
+        style={{ color: loud ? (t.isShelf ? 'rgb(var(--text-secondary))' : WARM) : 'rgb(var(--text-muted))' }}
+        title={`${kindTip(t.isShelf ? 'shelf' : 'trapdoor')}${loud ? '' : ' — a light one: it is not among the strikes that carry the most here'}`}
+        data-tag-loud={loud || undefined}
+      >
         {t.isShelf ? 'shelf' : 'trapdoor'}
       </span>
     )}
@@ -131,7 +144,8 @@ const Tags = ({ t, yours }: { t: Target; yours?: string }) => (
       </span>
     )}
   </>
-);
+  );
+};
 
 /* ---- the row's card ------------------------------------------------------------- */
 
@@ -290,6 +304,12 @@ const breakWords = (t: Target): ReactNode =>
 
 /* ---- the three ---------------------------------------------------------------- */
 
+/** "At stake" and its "×", in words (the fourth audit: "0.2×" beside "at stake" was never explained) */
+const stakeTip = (stake: number, per1: number): string =>
+  `At stake: the dollars of dealer hedging that come into play if price reaches this strike — the hedging parked here plus what dealers must trade on the way through. ${
+    per1 > 1 ? `The × figure is that against the dollars of stock it took to move the name 1% today (${fmtDollars(per1)}): ${(stake / per1).toFixed(1)}× means the hedging here is ${(stake / per1).toFixed(1)} times what a 1% move took.` : ''
+  }`;
+
 interface CardProps {
   t: Target;
   n: number;
@@ -353,8 +373,8 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
       <p className="mt-1 font-mono text-[10px] leading-[15px] tnum flex flex-wrap items-center gap-x-3">
         <span className={material ? 'text-textPrimary' : 'text-textMuted'}>{buildWords(t, inSession)}</span>
         {t.closes > 0 && <span className="text-textSecondary">closes here {t.closes.toFixed(0)}%</span>}
-        <span className="text-textSecondary">
-          {fmtDollars(t.stake)} at stake{t.stake / Math.max(1, marketPer1Pct) >= 0.05 ? ` · ${(t.stake / Math.max(1, marketPer1Pct)).toFixed(1)}×` : ''}
+        <span className="text-textSecondary cursor-help" title={stakeTip(t.stake, marketPer1Pct)}>
+          {fmtDollars(t.stake)} at stake{t.stake / Math.max(1, marketPer1Pct) >= 0.05 ? ` · ${(t.stake / Math.max(1, marketPer1Pct)).toFixed(1)}× the 1% move` : ''}
         </span>
       </p>
       <div className="mt-auto flex items-center justify-end h-[22px] -mr-1">
@@ -476,6 +496,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   const podiumSet = useMemo(() => new Set(podium.map(t => t.strike)), [podium]);
   const rest = useMemo(() => agenda.targets.filter(t => !podiumSet.has(t.strike)), [agenda.targets, podiumSet]);
   const maxStake = Math.max(1, ...agenda.targets.map(t => t.stake));
+  /* the strikes whose kind is said loud: the three heaviest by net gamma (the first three in the order are loud anyway) */
+  const loudSet = useMemo(() => new Set([...agenda.targets].sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight)).slice(0, 3).map(t => t.strike)), [agenda.targets]);
   const lead = agenda.first[0];
   const reachedWord = clock.inSession ? 'reached by the close' : 'reached next session';
   const cols = COLS[density];
@@ -492,6 +514,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   return (
     /* FIVE ROWS OF THE HOST'S SUBGRID — the head, the sentence, the podium, the list, the foot — so panes side by side
        share every row's height (RankedTargets; the row's card is a portal and takes no row) */
+    <LoudStrikes.Provider value={loudSet}>
     <section className="relative grid grid-rows-subgrid row-span-5 min-w-0" data-targets-board data-targets-density={density}>
       {/* THE PANE'S HEAD — its line (the chip, the expiry, the watch), and the four facts */}
       <div className={`${pad} pt-3 pb-2 flex items-start gap-x-6 gap-y-2 flex-wrap`}>
@@ -563,8 +586,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
           {full && headCell(agenda.targets[0]?.buildOvernight ? 'Built overnight' : clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', agenda.targets[0]?.buildOvernight ? "Hedging added (building) or taken off (draining) at this strike in yesterday's trading — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma" : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
-          {wide && headCell('At stake', false, '', 'The dollars of dealer hedging that come into play if price reaches this strike')}
-          {full && headCell('Why it ranks here', false, '', 'The two numbers behind its place: the chance it is reached times what is at stake')}
+          {wide && headCell('At stake', false, '', stakeTip(1, 0))}
+          {full && headCell('Why it ranks', false, 'whitespace-nowrap truncate', 'Why it ranks here: the two numbers behind its place — the chance it is reached times what is at stake')}
           {headCell(wide ? 'Actions' : '', true, '', 'Open the strike on the Map, or set a price alert on it')}
           {rest.map(t => {
             const kept = focus != null && Math.abs(focus - t.strike) < 1e-9;
@@ -625,6 +648,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
         {agenda.closesNear ? `The close leans to ${fmtStrike(agenda.closesNear.strike)} at ${agenda.closesNear.odds.toFixed(0)}%.` : agenda.closeTop ? 'The close has no clear lean — no single strike is likely enough.' : ''}
       </p>
     </section>
+    </LoudStrikes.Provider>
   );
 };
 

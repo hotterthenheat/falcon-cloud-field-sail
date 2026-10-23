@@ -28,6 +28,10 @@ export interface StockFile {
   days: Candle[];
   flow: FlowPrint[];
   dark: DarkPoolPrint[];
+  /** The window the session's flow alerts truly cover (paged back, bounded) */
+  flowWindow: TapeWindow;
+  /** The window the dark prints truly cover (paged back, bounded) */
+  darkWindow: TapeWindow;
   /** The chain's contracts, busiest by volume first (/stock/{t}/option-contracts) — the earnings page reads the same */
   contracts: Record<string, unknown>[];
   /** The New York session the flow alerts and the dark prints are filtered to ("2026-10-22" before the open on the 23rd) */
@@ -41,10 +45,11 @@ const EMPTY_DAYS: Candle[] = [];
 const EMPTY_FLOW: FlowPrint[] = [];
 const EMPTY_DARK: DarkPoolPrint[] = [];
 const EMPTY_CONTRACTS: Record<string, unknown>[] = [];
+const NO_WINDOW: TapeWindow = { complete: false, from: '', to: '', rows: 0, pages: 0 };
 /** One object per status. A fresh object on every read makes useSyncExternalStore
     treat the file as changed and warn that getSnapshot is not cached. */
-const LOADING: StockFile = { status: 'loading', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
-const FAILED: StockFile = { status: 'error', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
+const LOADING: StockFile = { status: 'loading', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
+const FAILED: StockFile = { status: 'error', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
 
 const blank = (status: StockFile['status']): StockFile => (status === 'error' ? FAILED : LOADING);
 
@@ -115,7 +120,8 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
     const exp = String(row.expiry || '').slice(0, 10);
     return !/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp >= today;
   });
-  return live.slice(0, 40).map((row, i) => {
+  /* every alert of the session is kept: the ask and sweep shares are sums over all of them (the tape shows the top few) */
+  return live.map((row, i) => {
     const prem = num(row.total_premium);
     const ask = num(row.total_ask_side_prem);
     const bid = num(row.total_bid_side_prem);
@@ -237,27 +243,133 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
    vendor's tracking id. The window they span is printed with the read. */
 export const DARK_MIN_PREMIUM = 500_000;
 export const DARK_MIN_SIZE = 10_000;
-async function darkTape(ticker: string, session: string): Promise<Record<string, unknown>[]> {
-  /* 16:00 New York on the session's day as an instant: the offset is read off the clock itself (EDT −4, EST −5) */
+
+/** The window a paged read truly covers, as New York clocks. `complete` when the paging reached the session's start
+    (or the vendor ran out of rows); otherwise `from` is the oldest print in hand and the read covers from there only. */
+export interface TapeWindow {
+  complete: boolean;
+  /** HH:MM New York — the oldest instant the read covers ('' when nothing landed) */
+  from: string;
+  /** HH:MM New York — the newest */
+  to: string;
+  rows: number;
+  pages: number;
+}
+
+/** An instant on the session's New York day at HH:MM, the offset read off the clock itself (EDT −4, EST −5) */
+const nyInstant = (session: string, hh: number, mm = 0): number => {
   const nyNoonUtc = Date.parse(`${session}T12:00:00Z`);
   const nyNoonHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date(nyNoonUtc)));
-  const closeMs = nyNoonUtc + (16 - nyNoonHour) * 3_600_000;
-  const after = Date.now() >= closeMs ? `&older_than=${Math.floor(closeMs / 1000)}` : '';
-  const base = `/darkpool/${encodeURIComponent(ticker)}?date=${session}&limit=500${after}`;
-  const [byPrem, bySize] = await Promise.all([uwCall(`${base}&min_premium=${DARK_MIN_PREMIUM}`, true), uwCall(`${base}&min_size=${DARK_MIN_SIZE}`, true)]);
-  if (byPrem.error && bySize.error) throw new Error(byPrem.error);
+  return nyNoonUtc + (hh - nyNoonHour) * 3_600_000 + mm * 60_000;
+};
+
+/* PAGED BACK, BOUNDED (the fourth audit, 2026-10-23). One call of 500 rows covered SPY's $500K+ prints from 15:42 only
+   while the label said 09:32–15:59 (the start came from the 42-row 10,000-share read). Each stream now pages back
+   with older_than — the oldest print in hand — until it reaches the session's start or the vendor runs dry, at most
+   `maxPages` calls in a row (the key has 3 upstream slots for everyone, so the paging is sequential and capped). */
+async function pageBack(base: string, stamp: string, limit: number, startMs: number, endMs: number | null, maxPages: number): Promise<{ rows: Record<string, unknown>[]; complete: boolean; oldestMs: number | null; pages: number; error: string | null }> {
+  const rows: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  let older = endMs != null ? Math.floor(endMs / 1000) : null;
+  let oldestMs: number | null = null;
+  let pages = 0;
+  let error: string | null = null;
+  while (pages < maxPages) {
+    const res = await uwCall(`${base}${older != null ? `&older_than=${older}` : ''}`, true);
+    pages += 1;
+    if (res.error) {
+      error = res.error;
+      break;
+    }
+    const page = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+    let fresh = 0;
+    for (const row of page) {
+      const key = String(row.tracking_id ?? row.id ?? `${row[stamp]}|${row.price}|${row.size}|${row.option_chain ?? ''}`);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      fresh += 1;
+      rows.push(row);
+      const t = Date.parse(String(row[stamp] || ''));
+      if (Number.isFinite(t)) oldestMs = oldestMs == null ? t : Math.min(oldestMs, t);
+    }
+    if (page.length < limit) return { rows, complete: true, oldestMs, pages, error };
+    if (oldestMs != null && oldestMs <= startMs) return { rows, complete: true, oldestMs, pages, error };
+    /* older_than is strict: the next page starts at the oldest second in hand, plus one so a second split across two
+       pages is read whole (the tracking id dedupes it); a page with nothing new steps a second further back */
+    const next = oldestMs != null ? Math.floor(oldestMs / 1000) + (fresh > 0 ? 1 : 0) : null;
+    if (next == null || (older != null && next >= older)) older = older != null ? older - 1 : null;
+    else older = next;
+    if (older == null) break;
+  }
+  return { rows, complete: false, oldestMs, pages, error };
+}
+
+/* THE TAPE THE READ STANDS ON. After the bell the newest prints are all post-market, so the read had nothing of the
+   session: the prints are asked for on the session the page names, up to its 16:00 New York close once that has passed.
+   SIZED IS 10,000 SHARES OR $500K (Trace's SidesRule; the third audit, 2026-10-23: asked for $500K+ alone, GME lost 16
+   of its 25 sized prints) — so the tape is two asks, the $500K+ prints and the 10,000-share+ prints, merged on the
+   vendor's tracking id. When either ask could not be paged back to the open, both are cut to the window the shorter
+   one covers, so every print in the read is from one stated window — and that window is printed with the read. */
+const DARK_LIMIT = 500;
+async function darkTape(ticker: string, session: string): Promise<{ rows: Record<string, unknown>[]; window: TapeWindow }> {
+  const closeMs = nyInstant(session, 16);
+  const openMs = nyInstant(session, 9, 30);
+  const endMs = Date.now() >= closeMs ? closeMs : null;
+  const base = `/darkpool/${encodeURIComponent(ticker)}?date=${session}&limit=${DARK_LIMIT}`;
+  const [byPrem, bySize] = await Promise.all([
+    pageBack(`${base}&min_premium=${DARK_MIN_PREMIUM}`, 'executed_at', DARK_LIMIT, openMs, endMs, 12),
+    pageBack(`${base}&min_size=${DARK_MIN_SIZE}`, 'executed_at', DARK_LIMIT, openMs, endMs, 6),
+  ]);
+  if (byPrem.error && bySize.error && !byPrem.rows.length && !bySize.rows.length) throw new Error(byPrem.error);
+  /* the window both streams cover: from the later of the two oldest prints when either stopped short of the open */
+  const cuts = [byPrem, bySize].filter(r => !r.complete && r.oldestMs != null).map(r => r.oldestMs as number);
+  const fromMs = cuts.length ? Math.max(...cuts) : null;
   const seen = new Set<string>();
   const out: Record<string, unknown>[] = [];
   for (const res of [byPrem, bySize]) {
-    for (const row of Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : []) {
+    for (const row of res.rows) {
       const key = String(row.tracking_id ?? `${row.executed_at}|${row.price}|${row.size}`);
       /* the vendor's date filter still hands back the evening before; the read is the named session's alone */
       if (nyDayOf(String(row.executed_at || '')) !== session || seen.has(key)) continue;
+      if (fromMs != null && Date.parse(String(row.executed_at || '')) < fromMs) continue;
       seen.add(key);
       out.push(row);
     }
   }
-  return out.sort((a, b) => String(b.executed_at || '').localeCompare(String(a.executed_at || '')));
+  out.sort((a, b) => String(b.executed_at || '').localeCompare(String(a.executed_at || '')));
+  const newest = out[0] ? clock(String(out[0].executed_at)) : '';
+  const window: TapeWindow = {
+    complete: fromMs == null,
+    from: fromMs != null ? clock(new Date(fromMs).toISOString()) : out.length ? clock(String(out[out.length - 1].executed_at)) : '',
+    to: newest,
+    rows: out.length,
+    pages: byPrem.pages + bySize.pages,
+  };
+  return { rows: out, window };
+}
+
+/* THE SESSION'S FLOW ALERTS, PAGED BACK (the fourth audit, 2026-10-23): 200 rows covered SPY's alerts from 15:53 only
+   and AAPL's from 14:38 while the page called them the session's. They are paged back with older_than to the session's
+   New York midnight (newer_than holds the floor), at most 8 pages; the window in hand is stated with them. */
+const FLOW_LIMIT = 200;
+async function flowTape(ticker: string, session: string): Promise<{ rows: Record<string, unknown>[]; window: TapeWindow }> {
+  const dayStart = nyInstant(session, 0);
+  const dayEnd = nyInstant(session, 23, 59);
+  const endMs = Date.now() > dayEnd ? dayEnd : null;
+  const base = `/option-trades/flow-alerts?ticker_symbol=${encodeURIComponent(ticker)}&limit=${FLOW_LIMIT}&newer_than=${Math.floor(dayStart / 1000)}`;
+  const got = await pageBack(base, 'created_at', FLOW_LIMIT, dayStart, endMs, 8);
+  const rows = got.rows.filter(r => nyDayOf(String(r.created_at || '')) === session);
+  const stamps = rows.map(r => String(r.created_at || '')).sort();
+  return {
+    rows,
+    window: {
+      complete: got.complete,
+      from: !got.complete && got.oldestMs != null ? clock(new Date(got.oldestMs).toISOString()) : stamps[0] ? clock(stamps[0]) : '',
+      to: stamps.length ? clock(stamps[stamps.length - 1]) : '',
+      rows: rows.length,
+      pages: got.pages,
+    },
+  };
 }
 
 /** The prints the dark-pool read is built on: sized, in the regular session, priced at the quote */
@@ -269,9 +381,9 @@ async function load(ticker: string): Promise<void> {
     whalesScreener([ticker]).catch(() => [] as Record<string, unknown>[]),
     whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
     whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
-    /* enough of the alerts to cover a busy name's whole session; filtered to that session in flowsFrom */
-    uwCall(`/option-trades/flow-alerts?ticker_symbol=${encodeURIComponent(ticker)}&limit=200`, true).then(r => (Array.isArray(r.data) ? (r.data as Record<string, unknown>[]) : [])).catch(() => [] as Record<string, unknown>[]),
-    darkTape(ticker, session).catch(() => [] as Record<string, unknown>[]),
+    /* the session's alerts, paged back to its start (bounded); filtered to that session in flowsFrom */
+    flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
+    darkTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
     /* the same call the earnings page makes, so the two pages' busiest contracts agree */
     whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
   ]);
@@ -285,8 +397,10 @@ async function load(ticker: string): Promise<void> {
     screen: screen && typeof screen === 'object' ? (screen as Record<string, unknown>) : null,
     earnings: Array.isArray(earnR) ? earnR : [],
     days,
-    flow: flowsFrom(Array.isArray(flowR) ? flowR : [], spot, session),
-    dark: darksFrom(Array.isArray(darkR) ? darkR : [], spot),
+    flow: flowsFrom(flowR.rows, spot, session),
+    flowWindow: flowR.window,
+    dark: darksFrom(darkR.rows, spot),
+    darkWindow: darkR.window,
     contracts: Array.isArray(contractR) ? (contractR as Record<string, unknown>[]) : [],
     at: got ? Date.now() : undefined,
   });

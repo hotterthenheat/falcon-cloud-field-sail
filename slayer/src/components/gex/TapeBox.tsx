@@ -35,11 +35,12 @@ import { DayHeadSlot } from './DayBox';
 import { AreaSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type IPriceLine, type ISeriesApi, type LineData, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
 import { Bell, BellRing, ChevronDown } from 'lucide-react';
 import { roomLevels } from '../../data/roomLevels';
-import { bookHistory, deskBars, liveBars, peekIv, useBookRev } from '../../data/uwBook';
+import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
+import { scopeDateOf } from '../../data/wall';
 import { pickFlip } from '../../core/walls';
 import { readSessionClock } from '../../data/moc';
 import { YEAR_MINUTES } from '../../data/measure';
-import { CLOSE_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
+import { CLOSE_MIN, SESSION_MIN, aheadClock, buildCorridor, hhmm, type AheadClock } from '../../data/ahead';
 import { buildExposureProfile } from '../../data/exposure';
 import { ThermalFieldPrimitive, type FieldPoint, type Rgb } from './thermalFieldPrimitive';
 import { dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
@@ -228,10 +229,12 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const spot = bars.length ? bars[bars.length - 1].close : snapshot.spot;
   /* what "Last" prints: the room's price — the replay's last bar when rewound */
   const last = barsProp != null ? spot : roomSpot ?? spot;
-  /* one expected move to the close, on the name's vol */
+  /* ONE EXPECTED MOVE ON EVERY PAGE (the fourth audit's B2): the vendor's implied move into the levels' expiry (uwBook
+     peekDaySigma — Compare's and the reach odds'), over the minutes left; the name's vol only when the vendor has none */
   const iv = peekIv(snapshot.ticker) ?? 0.2;
   const minLeft = Math.max(0, CLOSE_MIN - nowMin);
-  const w1 = spot * iv * Math.sqrt(minLeft / YEAR_MINUTES);
+  const daySigma = snapshot.liveBook ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
+  const w1 = daySigma != null ? daySigma * Math.sqrt(Math.min(minLeft, SESSION_MIN) / SESSION_MIN) : spot * iv * Math.sqrt(minLeft / YEAR_MINUTES);
   const dayStart = bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
   /* THE THERMAL FIELD (thermalFieldPrimitive.ts): where price is likelier to be from now to the close, by the Ahead
      model's corridor (data/ahead.ts) — the odds curve's centre pulled by the strikes, one and two expected moves round
