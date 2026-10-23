@@ -75,7 +75,7 @@ export interface Target {
   isWall: boolean;
   /** Net gamma at the strike on the scope's contracts, RETAIL sign (+ dealers long gamma, absorbs), dollars per 1% */
   net: number;
-  /** So little net gamma here (under FLAT_SHARE of the window's heaviest strike) it is neither a wall nor a trapdoor */
+  /** So little net gamma here (under FLAT_SHARE — the shelf's own share — of the window's heaviest strike) it is neither a shelf nor a trapdoor */
   flat: boolean;
   /** Every level the strike is, in the one order (core/walls.ts levelRoles): supreme · call wall · put wall */
   roles: LevelRole[];
@@ -170,8 +170,11 @@ const pct = chanceLabel;
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 /** A wall in reach is one the day can plausibly get to */
 const IN_REACH = 0.15;
-/* A STRIKE WITH ALMOST NO NET GAMMA IS NEITHER (the retail test, 2026-10-23: 774 tagged TRAPDOOR on −$0.7M) */
-export const FLAT_SHARE = 0.03;
+/* ONE THRESHOLD EACH SIDE (the sixth audit, 2026-10-23: −$27M at 766 was a TRAPDOOR while +$27M at 771 and +$68M at
+   772 carried no tag — the trapdoor's bar was 3% of the heaviest strike, the shelf's 35%). A strike is a shelf or a
+   trapdoor only with SHELF_SHARE of the heaviest strike's net gamma, whichever its sign; under that it is too thin to be
+   either and carries no tag. */
+export const FLAT_SHARE = SHELF_SHARE;
 /* "THE CLOSE LEANS TO 766 · 6%" IS NOT A LEAN (the retail test, 2026-10-23): one strike's odds have to reach this
    before the page says the close leans anywhere */
 export const LEAN_MIN = 15;
@@ -353,7 +356,7 @@ export function buildAgenda(
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time ${ctx.horizon ?? (clock.inSession ? 'by the close' : 'by the next close')}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall || lead.flat ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.roles.length ? `, the ${lead.roles.join(' and the ')}` : lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time ${ctx.horizon ?? (clock.inSession ? 'by the close' : 'by the next close')}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall || lead.flat ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';

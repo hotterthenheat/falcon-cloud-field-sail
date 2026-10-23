@@ -79,10 +79,9 @@ interface ExposureMatrixProps {
   /** The expiry window the rows add up ("Oct 23 → Nov 3") — said on each greek's head, so a row is never read as the
       levels' figure (the second re-audit, 2026-10-22: row 769 −$768.7M beside "SUPREME 769 · −$701.9M") */
   windowLabel?: string | null;
-  /** A LEVEL'S ROW READS THE LEVEL'S OWN CONTRACTS (the fifth audit's retail test, 2026-10-23: "SUPREME 769 · −$595.1M"
-      over a matrix row of −$657.5M — the window's sum — was easy to misread): when the window differs from the Levels
-      card's contracts, the supreme's and the walls' GEX cells print the Levels card's figures (house sign, by leg),
-      marked, with the window's figure on hover. Null where the strike is not on the levels' contracts. */
+  /** A LEVEL'S OWN FIGURE, ON HOVER (the sixth audit, 2026-10-23): every row prints the matrix window's sum; when the
+      window differs from the Levels card's contracts, the supreme's and the walls' GEX cells are marked and their hover
+      adds the Levels card's figure (house sign, by leg). Null where the strike is not on the levels' contracts. */
   levelLegsAt?: ((strike: number) => { put: number; call: number; net: number } | null) | null;
   /** The Levels card's contracts in words ("Today · Oct 23") — for the marked cells' hover */
   levelsWords?: string | null;
@@ -568,7 +567,10 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
         {shownGreeks.map((g, gi) =>
           LEGS.map((leg, li) => {
             const lvl = g === 'gex' && windowLabel && role.ink && (r.strike === levels.supreme || r.strike === levels.callWall || r.strike === levels.putWall) ? levelLegsAt?.(r.strike) ?? null : null;
-            const v = lvl ? lvl[leg] : r.legs[g][leg];
+            /* EVERY ROW IS THE MATRIX WINDOW'S FIGURE (the sixth audit, 2026-10-23: rows 769/770 printed the Levels card's
+               Oct 23 figure, −$595.1M, under "GEX · Oct 23 → Nov 3" while every other row and the hover read the window's
+               sum, −$657.5M). The level's own figure moves to the cell's hover and the level chips. */
+            const v = r.legs[g][leg];
             return (
               <Cell
                 key={`${g}-${leg}`}
@@ -583,7 +585,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
                 last={li === LEGS.length - 1}
                 rowH={rowH + plus}
                 heavy={heavyBy[`${g}|${leg}`]?.has(r.strike) ?? true}
-                level={lvl ? { ink: role.ink!, title: `${fmtStrike(r.strike)} ${leg} · ${fmtUsd(shownGreek(g, v))} on the Levels card's contracts (${levelsWords ?? 'its scope'}) — the figure the level is named by · this row's window, ${windowLabel}, adds up to ${fmtUsd(shownGreek(g, r.legs[g][leg]))}` } : null}
+                level={lvl ? { ink: role.ink!, title: `${fmtStrike(r.strike)} ${leg} · ${fmtUsd(shownGreek(g, v))} — this row adds up the matrix window, ${windowLabel} · on the Levels card's contracts (${levelsWords ?? 'its scope'}) alone, the figure the level is named by: ${fmtUsd(shownGreek(g, lvl[leg]))}` } : null}
               />
             );
           })

@@ -923,8 +923,9 @@ const Compare = () => {
       controls={
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
-          {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13) */}
-          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&>[data-scope]]:shrink-0" data-compare-names>
+          {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13); a chip wider than
+              the row (a name's last-session change and its pre-market move) wraps inside itself rather than run off the card */}
+          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&>[data-scope]]:shrink-0 max-sm:[&>[data-scope]]:shrink max-sm:[&>[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&>[data-scope]]:h-auto max-sm:[&>[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1" data-compare-names>
             <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">A</span>
             {/* The two chips wear the same clothes (Noah, 2026-09-09): the first in the full following look
                 with its silver link, the second its own name with no link at all */}

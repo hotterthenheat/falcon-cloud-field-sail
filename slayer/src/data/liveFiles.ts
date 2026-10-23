@@ -9,8 +9,9 @@ import { houseSlug, type EtfHolding, type EtfKind, type EtfRow, type Institution
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
-import { companyName, hasVendorName, isListed, rememberCompanyName } from './tickers';
-import { screenerDayMove, screenerPrices } from './liveQuote';
+import { companyName, hasVendorName, isListed, rememberCompanyName, subscribeCompanyNames } from './tickers';
+import { screenerNeedsCloses, screenerRead } from './liveQuote';
+import { loadRegularCloses } from './dayChange';
 import {
   whalesEtfFlow,
   whalesEtfHoldings,
@@ -128,7 +129,6 @@ const empty: Snap = {
 
 let snap: Snap = empty;
 const listeners = new Set<() => void>();
-let started = false;
 
 const emit = (next: Partial<Snap>) => {
   snap = { ...snap, ...next };
@@ -657,36 +657,53 @@ async function pullStocks() {
       const part = await whalesScreener(tickers.slice(i, i + 12));
       if (Array.isArray(part)) rows.push(...part);
     }
+    /* THE REGULAR CLOSE FROM THE DAILY ROWS (audit round 6): the screener has none — its close is the last print and its
+       intraday_change is off the OPEN — so outside the session each name's regular closes are read (loadRegularCloses,
+       the quote's and the top bar's source; the list's quotes read the same cached rows) */
+    const closesOf = new Map<string, readonly { date: string; close: number }[] | null>();
+    await Promise.all(
+      rows.map(row => {
+        const t = String(row.ticker || '').toUpperCase();
+        if (!t || !screenerNeedsCloses(row)) return Promise.resolve();
+        return loadRegularCloses(t)
+          .then(c => void closesOf.set(t, c))
+          .catch(() => void closesOf.set(t, null));
+      }),
+    );
     const picks: StockPick[] = [];
     for (const row of rows) {
       const ticker = String(row.ticker || '').toUpperCase();
       const u = UNIVERSE.find(x => x.ticker === ticker);
-      const prices = screenerPrices(row as Record<string, unknown>);
+      const read = screenerRead(row, closesOf.get(ticker) ?? null);
       /* the REGULAR price — the after-hours print kept apart, as every row and the quote read it */
-      const price = prices?.regular ?? null;
+      const price = read?.regular ?? null;
       if (!ticker || price == null || !(price > 0)) continue;
+      const weekClose = numOr(row.one_week_close);
+      const monthClose = numOr(row.one_month_close);
+      /* the week and the month off the REGULAR price too — the screener's own percents run to the last print */
+      const off = (ref: number | null) => (ref != null && ref > 0 ? ((price - ref) / ref) * 100 : null);
       const pick = pickFromLive({
           ticker,
           name: u?.name || String(row.full_name || ticker),
           sector: asSector(ticker, typeof row.sector === 'string' ? row.sector : undefined),
           price,
-          /* the regular session's change — the screener's one_day_perc runs to the post-market print after the bell */
-          changePct: screenerDayMove(row as Record<string, unknown>)?.pct ?? frac(row.one_day_perc) ?? 0,
-          weekPct: frac(row.one_week_perc),
-          monthPct: frac(row.one_month_perc),
+          /* the regular session's change, off the daily rows (0 only when no prior close is in hand) */
+          changePct: read?.pct ?? 0,
+          weekPct: off(weekClose) ?? frac(row.one_week_perc),
+          monthPct: off(monthClose) ?? frac(row.one_month_perc),
           rsi: numOr(row.rsi_14),
           epsGrowth: numOr(row.eps_growth_4q),
           yearClose: numOr(row.one_year_close),
           sixClose: numOr(row.six_month_close),
           threeClose: numOr(row.three_month_close),
-          monthClose: numOr(row.one_month_close),
-          weekClose: numOr(row.one_week_close),
+          monthClose,
+          weekClose,
           bullish: numOr(row.bullish_premium),
           bearish: numOr(row.bearish_premium),
           sma50: numOr(row.sma_50),
           row: row as Record<string, unknown>,
         });
-      picks.push({ ...pick, extPrice: prices?.ext ?? null, extPct: prices?.extPct ?? null });
+      picks.push({ ...pick, extPrice: read?.ext ?? null, extPct: read?.extPct ?? null });
     }
     picks.sort((a, b) => b.composite - a.composite);
     emit({ stockStatus: picks.length ? 'live' : 'error', stocks: picks });
@@ -749,30 +766,45 @@ export function ensureStockCard(ticker: string): void {
     .finally(() => cardInflight.delete(t));
 }
 
-function ensure() {
-  if (started || typeof window === 'undefined') return;
-  started = true;
-  void pullInstitutions();
-  void pullShorts();
-  void pullEtfs();
-  void pullStocks();
-  void pullTide();
+/* ONLY WHAT THE PAGE SHOWS (Dossier audit round 6: every Dossier page fired 250–450 reads — a single name cell on the
+   Congress page started the institutions, the shorts screen, every fund's book, the stock screen and the tide). Each
+   part of the store starts when a hook that reads it is mounted, and never before. */
+type Part = 'inst' | 'shorts' | 'etfs' | 'stocks' | 'tide';
+const partStarted = new Set<Part>();
+function ensurePart(part: Part) {
+  if (partStarted.has(part) || typeof window === 'undefined') return;
+  partStarted.add(part);
+  if (part === 'inst') void pullInstitutions();
+  else if (part === 'shorts') void pullShorts();
+  else if (part === 'etfs') void pullEtfs();
+  else if (part === 'stocks') void pullStocks();
+  else void pullTide();
 }
 
-function subscribe(fn: () => void): () => void {
-  listeners.add(fn);
-  ensure();
-  return () => listeners.delete(fn);
+function subscribeTo(parts: readonly Part[]): (fn: () => void) => () => void {
+  return fn => {
+    listeners.add(fn);
+    parts.forEach(ensurePart);
+    return () => listeners.delete(fn);
+  };
 }
+const SUBS: Record<string, (fn: () => void) => () => void> = {};
+const subFor = (parts: readonly Part[]) => (SUBS[parts.join(',')] ??= subscribeTo(parts));
 
 const peek = () => snap;
 
+/** The file store, starting only the parts named (none: the store as it stands, starting nothing) */
+function useFiles(...parts: Part[]): Snap {
+  return useSyncExternalStore(subFor(parts), peek, peek);
+}
+
+/** Every part — kept for callers that read the whole store */
 export function useLiveFiles(): Snap {
-  return useSyncExternalStore(subscribe, peek, peek);
+  return useFiles('inst', 'shorts', 'etfs', 'stocks', 'tide');
 }
 
 export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[]; progress: { done: number; total: number } | null } {
-  const s = useLiveFiles();
+  const s = useFiles('inst');
   const houses = [...new Set(s.institutions.map(r => r.name))];
   return { status: s.instStatus, rows: s.institutions, houses, progress: s.instProgress };
 }
@@ -784,7 +816,7 @@ export function houseNameFromSlug(slug: string): string | null {
 }
 
 export function useHouseBook(slug: string): { status: FileStatus; name: string | null; rows: InstitutionRow[]; totalB: number | null; linesRead: number } {
-  const s = useLiveFiles();
+  const s = useFiles('inst');
   const name = houseNameFromSlug(slug);
   const total = name ? s.houseTotals[name] : undefined;
   /* still landing while houses are being read — a house not read yet is not "missing" */
@@ -793,24 +825,24 @@ export function useHouseBook(slug: string): { status: FileStatus; name: string |
 }
 
 export function useShorts(): { status: FileStatus; rows: ShortRow[] } {
-  const s = useLiveFiles();
+  const s = useFiles('shorts');
   return { status: s.shortStatus, rows: s.shorts };
 }
 
 export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow | null } {
-  const s = useLiveFiles();
+  const s = useFiles('shorts');
   const t = ticker.toUpperCase();
   return { status: s.shortStatus, row: s.shorts.find(r => r.ticker === t) ?? null };
 }
 
 export type HoldingsCover = { lines: number; weight: number; fundCount: number | null };
 export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (etf: string) => EtfHolding[]; coverOf: (etf: string) => HoldingsCover | null } {
-  const s = useLiveFiles();
+  const s = useFiles('etfs');
   return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [], coverOf: etf => s.holdingsCover[etf.toUpperCase()] ?? null };
 }
 
 export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null } {
-  const s = useLiveFiles();
+  const s = useFiles('etfs');
   const t = etf.toUpperCase();
   return { status: s.etfStatus, row: s.etfs.find(r => r.etf === t) ?? null, holdings: s.holdings[t] ?? [], cover: s.holdingsCover[t] ?? null };
 }
@@ -841,7 +873,7 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
 }
 
 export function useFundsHolding(ticker: string): { etf: string; name: string; weight: number; sharesM: number }[] {
-  const s = useLiveFiles();
+  const s = useFiles('etfs');
   const t = ticker.toUpperCase();
   return s.etfs.flatMap(e => {
     const hit = (s.holdings[e.etf] ?? []).find(h => h.ticker === t);
@@ -850,37 +882,67 @@ export function useFundsHolding(ticker: string): { etf: string; name: string; we
 }
 
 export function useHousesOn(ticker: string): InstitutionRow[] {
-  const s = useLiveFiles();
+  const s = useFiles('inst');
   const t = ticker.toUpperCase();
   return s.institutions.filter(r => r.ticker === t).sort((a, b) => b.valueB - a.valueB);
 }
 
 export function useLiveStocks(): { status: FileStatus; picks: StockPick[] } {
-  const s = useLiveFiles();
+  const s = useFiles('stocks');
   return { status: s.stockStatus, picks: s.stocks };
 }
 
 export function useLiveTide(): TidePrint | null {
-  return useLiveFiles().tide;
+  return useFiles('tide').tide;
+}
+
+/* NAMES IN BULK (round 6): the Shorts page asked /stock/{t}/info two hundred times for the names alone. A name is asked
+   of the screener (its full_name), up to sixty a call, gathered over a beat; a name the screener does not carry is
+   left on the bundled listing's. */
+let namesRev = 0;
+const companyNamesRev = () => namesRev;
+const nameAsked = new Set<string>();
+let nameQueue: string[] = [];
+let nameTimer: number | null = null;
+function askName(t: string): void {
+  if (nameAsked.has(t)) return;
+  nameAsked.add(t);
+  nameQueue.push(t);
+  if (nameTimer != null) return;
+  nameTimer = window.setTimeout(() => {
+    nameTimer = null;
+    const all = nameQueue;
+    nameQueue = [];
+    for (let i = 0; i < all.length; i += 50) {
+      const chunk = all.slice(i, i + 50);
+      void whalesScreener(chunk)
+        .then(rows => {
+          /* the revision first: the name store's listeners re-read it as each name lands */
+          namesRev += 1;
+          for (const r of Array.isArray(rows) ? rows : []) rememberCompanyName(String(r.ticker ?? ''), String(r.full_name || ''));
+        })
+        .catch(() => undefined);
+    }
+  }, 120);
 }
 
 /** The company's name as the vendor gives it (its stock info), the bundled listing's until that lands — every Dossier
     name cell reads this (the re-audit, 2026-10-22: the listing called SERV "ServiceMaster") */
 export function useCompanyName(ticker: string, fromVendorFeed = false): string {
   const t = (ticker || '').toUpperCase();
-  /* subscribed to the file store: the card's landing re-renders the name */
-  useLiveFiles();
+  /* A LIGHT LOOKUP (round 6): subscribed to the names alone — it starts none of the store's books — and asked in bulk */
+  useSyncExternalStore(subscribeCompanyNames, companyNamesRev, companyNamesRev);
   useEffect(() => {
     /* a symbol the vendor's own feed sent is asked of it; any other only when it is a listed one (an OTC symbol on a
        Congress filing answers 404) */
-    if (t && /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && !hasVendorName(t) && (fromVendorFeed || isListed(t))) ensureStockCard(t);
+    if (t && /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && !hasVendorName(t) && (fromVendorFeed || isListed(t))) askName(t);
   }, [t, fromVendorFeed]);
   return t ? companyName(t) : '';
 }
 
 export function useStockCard(ticker: string): StockCard | null | undefined {
   const t = ticker.toUpperCase();
-  const s = useLiveFiles();
+  const s = useFiles();
   useEffect(() => {
     ensureStockCard(t);
   }, [t]);

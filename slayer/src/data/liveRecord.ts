@@ -19,7 +19,7 @@ export type FeedStatus = 'loading' | 'live' | 'sim';
 export interface LiveSnapshot {
   news: { status: FeedStatus; events: GeoNewsEvent[] };
   econ: { status: FeedStatus; events: EconEvent[] };
-  congress: { status: FeedStatus; trades: CongressTrade[] };
+  congress: { status: FeedStatus; trades: CongressTrade[]; notMemberAges?: number[] };
   insiders: { status: FeedStatus; trades: InsiderTrade[] };
 }
 
@@ -98,11 +98,15 @@ let closesRepaint: number | null = null;
 function wantCloses(rows: UwNews[]): void {
   const need = new Set<string>();
   for (const r of rows) {
-    for (const [t, m] of Object.entries(r.meta ?? {})) {
-      const mt = String((m as { curr?: { mt?: string } })?.curr?.mt ?? '').toLowerCase();
-      /* after-hours and pre-market stories both need the close before their last session (publishMove's `last`) */
-      if ((mt.startsWith('post') || mt.startsWith('pre')) && (r.tickers ?? []).includes(t) && !closesAsked.has(t) && !peekRegularCloses(t)) need.add(t);
-    }
+    /* ONLY THE STORY'S OWN NAME (round 6, the Trace fixer: every symbol in the meta was asked — USD, P, FOR, OUT, AI —
+       on the key's three slots). publishMove reads the close for the story's lead ticker alone, a symbol the vendor
+       tagged and the headline bears out, never a currency code; and only one on the listing or named by the vendor */
+    const t = storyLeadTicker(r.headline || '', r.tickers);
+    if (!t || !(isListed(t) || hasVendorName(t))) continue;
+    const m = (r.meta ?? {})[t];
+    const mt = String((m as { curr?: { mt?: string } } | undefined)?.curr?.mt ?? '').toLowerCase();
+    /* after-hours and pre-market stories both need the close before their last session (publishMove's `last`) */
+    if ((mt.startsWith('post') || mt.startsWith('pre')) && !closesAsked.has(t) && !peekRegularCloses(t)) need.add(t);
   }
   for (const t of need) {
     closesAsked.add(t);
@@ -188,16 +192,20 @@ let congressPulling: Promise<void> | null = null;
 export interface CongressCoverage {
   since: string | null;
   partialDays: string[];
+  /** Of each partial day's first 200 filings, how many were members' */
+  partialMembers: Record<string, number>;
   reading: boolean;
   capped: boolean;
 }
-let congressCoverage: CongressCoverage = { since: null, partialDays: [], reading: true, capped: false };
+let congressCoverage: CongressCoverage = { since: null, partialDays: [], partialMembers: {}, reading: true, capped: false };
 let congressCursor: string | null = null;
 let congressCalls = 0;
 let congressDone = false;
 
-const paintCongress = () =>
-  patch({ congress: { status: 'live', trades: congressFromWhales(congressRows, congressPeople).trades } });
+const paintCongress = () => {
+  const feed = congressFromWhales(congressRows, congressPeople);
+  patch({ congress: { status: 'live', trades: feed.trades, notMemberAges: feed.notMemberAges } });
+};
 
 async function pageCongress(): Promise<void> {
   while (!congressDone && congressCalls < CONGRESS_CALL_CAP) {
@@ -220,11 +228,13 @@ async function pageCongress(): Promise<void> {
       congressDone = true;
       congressCoverage = { ...congressCoverage, since: oldest ?? congressCoverage.since };
     } else if (oldest && oldest === congressCursor) {
-      /* the whole read was one day — more than 200 reports on it; step past it and say so. ONLY A DAY WITH MEMBERS' ROWS
-         IS FLAGGED (audit round 5: Jul 29 was 200 of 256 executive-branch filings, none of them read by this page — "may
-         be incomplete" told the reader members' reports were missing when none had been seen) */
-      const members = rows.some(r => !r.member_type || /house|senate/i.test(r.member_type));
-      congressCoverage = { ...congressCoverage, partialDays: members ? [...congressCoverage.partialDays, oldest] : congressCoverage.partialDays, since: oldest };
+      /* the whole read was one day — more than 200 reports on it; step past it and say so. EVERY DAY STEPPED PAST IS
+         FLAGGED (audit round 6): the route has no offset and no member_type filter (only limit, date and ticker), so the
+         filings after the first 200 of such a day are never seen — a day whose first 200 were all executive-branch
+         filings (Jul 29: 200 of 256) may still hold members' reports further down. The day is named, with how many of
+         its first 200 were members'. */
+      const members = rows.filter(r => !r.member_type || /house|senate/i.test(r.member_type)).length;
+      congressCoverage = { ...congressCoverage, partialDays: [...congressCoverage.partialDays, oldest], partialMembers: { ...congressCoverage.partialMembers, [oldest]: members }, since: oldest };
       congressCursor = nyIsoDaysBack(1, oldest);
     } else {
       /* the oldest day may be cut mid-day: complete from the day after it, and the next read starts on it */
@@ -593,7 +603,9 @@ export function useCongressFeed(windowDays: number): CongressFeed {
   );
   return useMemo(() => {
     if (congress.status !== 'live') return { ...EMPTY_CONGRESS, windowDays };
-    return rollCongress(congress.trades.filter(t => t.tradedDaysAgo <= windowDays), windowDays);
+    /* the executive-branch filings left out, counted for the window (audit round 6: counted, never shown) */
+    const notMembers = (congress.notMemberAges ?? []).filter(d => d <= windowDays).length;
+    return { ...rollCongress(congress.trades.filter(t => t.tradedDaysAgo <= windowDays), windowDays), notMembers };
   }, [congress, windowDays]);
 }
 

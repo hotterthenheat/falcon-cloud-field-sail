@@ -116,7 +116,11 @@ export const assetLine = (t: CongressTrade) => {
   const rawDesc = t.assetDescription && t.assetDescription !== 'Stock' && t.assetDescription !== 'Undisclosed' && t.assetDescription.toUpperCase() !== sym ? t.assetDescription : '';
   const fallback = !named && sym && !/^(NONE|NA|N\/A)$/.test(sym) ? sym : '';
   const described = readable(rawDesc || fallback);
-  if (named) return { sym, title: sym, sub: described || (t.assetKind === 'Stock' ? companyName(sym) : t.assetKind) };
+  /* an option on a named stock says so on the row (audit round 6: Pelosi's AAPL [OP] read as a share purchase) */
+  if (named) {
+    const base = described || (t.assetKind === 'Stock' || t.assetKind === 'Stock Option' ? companyName(sym) : t.assetKind);
+    return { sym, title: sym, sub: t.assetKind === 'Stock Option' ? `${base} · option` : base };
+  }
   const title = described || (t.assetKind === 'Stock' || t.assetKind === 'Other' ? 'Not named on the filing' : t.assetKind);
   const sub = described && t.assetKind !== 'Stock' && t.assetKind !== 'Other' ? t.assetKind : '';
   return { sym: '', title, sub };
@@ -282,11 +286,12 @@ const shortDay = (iso: string): string => {
 };
 
 /** One honest line: the trade days the reports cover, whether the read is still going back, and the days it could not finish */
-const CongressCoverageLine = ({ coverage, window, unread }: { coverage: CongressCoverage; window: number; unread: number }) => {
+const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { coverage: CongressCoverage; window: number; unread: number; notMembers: number }) => {
   const start = nyIsoDaysBack(window);
   const covered = !!coverage.since && coverage.since <= start;
   const partial = coverage.partialDays.filter(d => d >= start);
-  const done = covered && !coverage.reading;
+  /* "complete" only with no day read short (audit round 6) */
+  const done = covered && !coverage.reading && partial.length === 0;
   return (
     <p className="px-5 pb-2 text-[11px] leading-relaxed text-textMuted" data-congress-coverage title="Unusual Whales sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
       {covered
@@ -294,8 +299,15 @@ const CongressCoverageLine = ({ coverage, window, unread }: { coverage: Congress
         : coverage.since
           ? `Reports of trades made since ${shortDay(coverage.since)}${coverage.reading ? ' — reading further back' : coverage.capped ? ` — the read stops there, short of ${window} days` : ''}`
           : 'Reading'}
-      {partial.length ? ` · ${partial.length} ${partial.length === 1 ? 'day' : 'days'} with more than 200 reports, members' among them (${partial.map(shortDay).join(', ')}), may be incomplete` : ''}
+      {/* every day stepped past is named (audit round 6): the route cannot page within a day, so its filings after the
+          first 200 are unseen, members' among them or not */}
+      {partial.length
+        ? ` · ${partial.length} ${partial.length === 1 ? 'day' : 'days'} with more than 200 filings (${partial.map(d => `${shortDay(d)}, ${coverage.partialMembers[d] ?? 0} of the first 200 members'`).join('; ')}) could be read only to 200 — members' reports past that may be missing`
+        : ''}
       {unread ? ` · ${unread} ${unread === 1 ? 'report' : 'reports'} with an unreadable type left out` : ''}
+      {notMembers ? (
+        <span data-congress-not-members>{` · ${notMembers.toLocaleString('en-US')} executive-branch ${notMembers === 1 ? 'filing' : 'filings'} on the same feed (the President's and officials' OGE reports) left out — not members of Congress`}</span>
+      ) : null}
     </p>
   );
 };
@@ -305,13 +317,16 @@ const CongressCoverageLine = ({ coverage, window, unread }: { coverage: Congress
 export const CongressProgress = ({ coverage, window, waiting }: { coverage: CongressCoverage; window: number; waiting: boolean }) => {
   const start = nyIsoDaysBack(window);
   const covered = !!coverage.since && coverage.since <= start;
+  const shortDays = coverage.partialDays.filter(d => d >= start).length;
   const reach = coverage.since ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${coverage.since}T12:00:00Z`)) / 86_400_000))) : 0;
   const text = waiting || (!coverage.since && coverage.reading)
     ? `Reading the reports · 0 of ${window} days so far`
     : covered
       ? coverage.reading
         ? `All ${window} days read · finishing`
-        : `Complete · all ${window} days read`
+        : shortDays > 0
+          ? `All ${window} days read · ${shortDays} busy ${shortDays === 1 ? 'day' : 'days'} only to 200 filings`
+          : `Complete · all ${window} days read`
       : coverage.reading
         ? `Reading · ${reach} of ${window} days so far — the counts grow as older reports land`
         : `Partial · ${reach} of ${window} days — the read stopped there`;
@@ -504,7 +519,7 @@ const Congress = () => {
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
         <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="congress-bills" />
       </div>
-      {!failed && !waiting && <CongressCoverageLine coverage={coverage} window={window} unread={feed.unreadTypes ?? 0} />}
+      {!failed && !waiting && <CongressCoverageLine coverage={coverage} window={window} unread={feed.unreadTypes ?? 0} notMembers={feed.notMembers ?? 0} />}
       {failed ? (
         <FeedFallback />
       ) : (

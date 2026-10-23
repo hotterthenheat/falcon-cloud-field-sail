@@ -32,6 +32,7 @@ import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from './exposureSurface';
 import { buildFlipGauge, type GammaRegime } from './flipGauge';
 import { readRegime } from './flipLevel';
+import { levelsFor } from './levelsFor';
 import { sessionBars } from './levelview';
 import type { ExposureExpiry, ExposureLevels, ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, GexLevel, MarketSnapshot } from '../types/market';
@@ -230,6 +231,17 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     weight: Math.abs(rows.gex.find(r => Math.abs(r.strike - k) < 1e-9)?.value ?? lens.chain.find(n => Math.abs(n.strike - k) < 1e-9)?.netGex ?? 0),
   });
 
+  /* THE NAMED LEVELS ARE levelsFor's (the sixth audit's B1, 2026-10-23: META All expiries' supreme read 700 · +$186.1M
+     here — the heaviest strike of the drawn window — against 750 · +$290.7M on the raw book and the Board). On the two
+     Levels scopes the supreme, the walls and the flip are the one function's, drawn or not. */
+  const lv = snapshot.liveBook && (expiry === '0DTE' || expiry === 'ALL') ? levelsFor(ticker, expiry) : null;
+  if (lv) supreme.gex = at(lv.supreme);
+  else supreme.gex = at(profile.levels.supreme);
+  const levels: ExposureLevels = lv
+    ? { ...profile.levels, supreme: lv.supreme, callWall: lv.callWall ?? profile.levels.callWall, putWall: lv.putWall ?? profile.levels.putWall, flip: lv.flip ?? profile.levels.flip, flipFound: lv.flip != null, complete: profile.levels.complete && lv.complete }
+    : profile.levels;
+  const flipAt = lv ? lv.flip : gauge.flip;
+
   let surface: ExposureSurface | null = null;
   const bell = peekBellShare(ticker);
   try {
@@ -247,19 +259,19 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     spot,
     changePct: snapshot.changePercent,
     regime: gauge.regime,
-    flip: gauge.flip,
-    flipDistPct: gauge.distPct,
+    flip: flipAt,
+    flipDistPct: flipAt != null && spot > 0 ? ((flipAt - spot) / spot) * 100 : null,
     sigmaLeft,
     horizon,
     moveWords,
     sigmaLeftPct: (sigmaLeft / spot) * 100,
     sigmaDay,
     scales,
-    levels: profile.levels,
+    levels,
     rows,
     heaviest,
-    callWall: at(profile.levels.callWall),
-    putWall: at(profile.levels.putWall),
+    callWall: at(levels.callWall),
+    putWall: at(levels.putWall),
     supreme,
     netGex: snapshot.liveBook ? netGexOf(lens.chain) : retailNet(profile.netGex),
     bellShare: bell.share,
@@ -269,7 +281,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     snapshot,
     strikes: profile.strikes,
     maxAbs: profile.maxAbs,
-    read: readRegime(profile.levels).read,
+    read: readRegime(levels).read,
     expiryCount: surface?.expiries.length ?? 1,
     expiry,
   };

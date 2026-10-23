@@ -166,9 +166,24 @@ const thin = (xs: number[], n: number): number[] => {
   return out;
 };
 
+/* ONE ROW PER STATE OF THE NAME'S BOOK (the sixth audit's M3, 2026-10-23): the Board rebuilt all twenty rows on every
+   book event while the dates landed, and the main thread's work held the next reads back. A row is rebuilt when its
+   own name's snapshot moves (data/uwBook.ts materialize), its scope or its overnight count changes, or every scan
+   (10s) — another name's book landing leaves it as it was. */
+const rowMemo = new Map<string, { snap: MarketSnapshot; key: string; oi: unknown; row: BoardRow | null }>();
 export function buildBoardRow(ticker: string): BoardRow | null {
   const snapshot = snapshotOf(ticker, 'board');
   if (!snapshot || !snapshot.chain.length) return null;
+  const t = ticker.toUpperCase();
+  const key = `${readLevelsScope()}|${Math.floor(Date.now() / 10_000)}|${getPositions(t).length}|${scopeDatesPending(t)}|${JSON.stringify(peekBellShare(t))}`;
+  const oi = peekOiChange(t);
+  const hit = rowMemo.get(t);
+  if (hit && hit.snap === snapshot && hit.key === key && hit.oi === oi) return hit.row;
+  const row = buildBoardRowNow(ticker, snapshot);
+  rowMemo.set(t, { snap: snapshot, key, oi, row });
+  return row;
+}
+function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | null {
   let today;
   try {
     today = buildExposureProfile(snapshot, readLevelsScope(), LEVELS_WINDOW);

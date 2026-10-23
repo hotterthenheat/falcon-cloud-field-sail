@@ -211,55 +211,99 @@ export function useDayMoves(tickers: readonly string[]): Map<string, LiveQuote> 
    "Biggest move today: NVDA −4.4% · 3 of 86 read" while META (−6.98%) and AMD (−8.10%) had stories — the set was read
    one quote at a time and named before it had landed. Now every name is read in bulk off /screener/stocks (about sixty
    names a call, the proxy's path limit), and the result is given only when the whole set is in.
-   The screener's `close` is the last print — after the bell, the post-market one — and `intraday_change` is that last
-   print's move off the regular close (META 10/22: close 645.89, intraday_change −0.456% → 648.85, the regular close),
-   so the regular session's change is close ÷ (1 + intraday_change) against prev_close. In the session it is close
-   against prev_close. The move is labelled with the screener's own `date` (the session it belongs to). */
+
+   THE SCREENER HAS NO REGULAR CLOSE (audit round 6, 2026-10-23). Its `close` is the last print (after the bell, the
+   post-market one) and `intraday_change` is (close − open) ÷ open — the spec's own words — so close ÷ (1 + intraday_change)
+   gave back the session's OPEN (SPCX 10/22: open 154.20, close 143.965, ic −6.64% → "−3.2%" against 159.31; the regular
+   close was 144.75, −9.14%). Outside the session the regular close and the close before it are read off the name's daily
+   rows (data/dayChange.ts loadRegularCloses — the source the top bar, the quote and Pinpoint read), and the screener
+   gives only the last print (the extended one, kept apart) and the reference closes. In the session `close` is the last
+   regular print and `prev_close` the prior regular close, so the row is read as it stands. */
 export interface SetMove {
   pct: number;
   /** The New York session the move belongs to */
   date: string;
 }
 export interface SetMoves {
-  /** True once every chunk of the set has answered */
+  /** True once every name of the set is settled: read, or ruled out of the lead */
   complete: boolean;
   /** How many names were asked */
   asked: number;
+  /** How many the screener answered */
+  screened: number;
+  /** The names whose regular-session move was read */
   moves: Map<string, SetMove>;
 }
-const setCache = new Map<string, { at: number; move: SetMove | null }>();
-const setInflight = new Set<string>();
-let setRev = 0;
-const setListeners = new Set<() => void>();
-const SET_TTL = 5 * 60_000;
 const numOf = (v: unknown): number => {
   const x = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
   return Number.isFinite(x) ? x : NaN;
 };
-export function screenerDayMove(row: Record<string, unknown>): SetMove | null {
+type Closes = readonly { date: string; close: number }[];
+const inSessionRow = (date: string): boolean => isTradingDay(nyTodayDate()) && nySessionPhase() === 'open' && date === nyIsoDate();
+
+/** One screener row read against the name's regular closes: the regular price, the regular session's move and its date,
+    and the extended-hours print apart. Outside the session, without the closes there is no read (null) — the row's own
+    close is an extended print and its intraday_change is off the open. */
+export interface ScreenerRead {
+  /** The regular price: the last print in the session, the last regular close outside it */
+  regular: number;
+  /** The regular session's change, percent (null when the close before it is not in hand) */
+  pct: number | null;
+  /** The New York session `regular` and `pct` belong to */
+  date: string;
+  /** The extended-hours print when it differs from the regular close, else null */
+  ext: number | null;
+  extPct: number | null;
+}
+export function screenerRead(row: Record<string, unknown>, closes: Closes | null): ScreenerRead | null {
   const close = numOf(row.close);
   const prev = numOf(row.prev_close);
   const date = String(row.date ?? '').slice(0, 10);
-  if (!(close > 0) || !(prev > 0) || !date) return null;
-  const inSession = isTradingDay(nyTodayDate()) && nySessionPhase() === 'open' && date === nyIsoDate();
-  const ext = numOf(row.intraday_change);
-  const reg = inSession || !Number.isFinite(ext) ? close : close / (1 + ext);
-  return { pct: ((reg - prev) / prev) * 100, date };
+  if (!(close > 0) || !date) return null;
+  if (inSessionRow(date)) return { regular: close, pct: prev > 0 ? ((close - prev) / prev) * 100 : null, date, ext: null, extPct: null };
+  if (!closes || !closes.length) return null;
+  /* the row's own session when its daily row is written; before the open (a row already dated today, its close a
+     pre-market print) the last session before it */
+  const own = closes.find(c => c.date === date);
+  const last = own ?? closes.find(c => c.date < date);
+  if (!last) return null;
+  /* after today's bell, before the vendor writes today's daily row, the regular close is not in hand: the row's close
+     stands, unlabelled as extended (the quote's own rule in dayChange.ts reads its prev_close there) */
+  if (!own && date === nyIsoDate() && nySessionPhase() === 'after') return { regular: close, pct: prev > 0 ? ((close - prev) / prev) * 100 : null, date, ext: null, extPct: null };
+  const before = closes.find(c => c.date < last.date);
+  const base = before?.close ?? (own && prev > 0 ? prev : NaN);
+  const pct = base > 0 ? ((last.close - base) / base) * 100 : null;
+  const ext = Math.abs(close - last.close) >= 0.005 ? close : null;
+  return { regular: last.close, pct, date: last.date, ext, extPct: ext != null ? ((close - last.close) / last.close) * 100 : null };
+}
+/** The regular session's move off one screener row, given the name's regular closes (null when it cannot be read) */
+export function screenerDayMove(row: Record<string, unknown>, closes: Closes | null): SetMove | null {
+  const r = screenerRead(row, closes);
+  return r && r.pct != null ? { pct: r.pct, date: r.date } : null;
 }
 /** The screener row's REGULAR price and its extended-hours print kept apart — the quote's convention (regularPrice /
-    extPrice) for a row whose quote has not landed: outside the session `close` is the last (post-market) print and
-    `intraday_change` its move off the regular close (audit round 5: META's row read the after-hours $645.89 as its price
-    with no AH tag, where every other row read the close and "AH") */
-export function screenerPrices(row: Record<string, unknown>): { regular: number; ext: number | null; extPct: number | null } | null {
-  const close = numOf(row.close);
-  if (!(close > 0)) return null;
-  const date = String(row.date ?? '').slice(0, 10);
-  const inSession = isTradingDay(nyTodayDate()) && nySessionPhase() === 'open' && date === nyIsoDate();
-  const ext = numOf(row.intraday_change);
-  if (inSession || !Number.isFinite(ext) || ext === 0) return { regular: close, ext: null, extPct: null };
-  const regular = Number((close / (1 + ext)).toFixed(4));
-  return Math.abs(close - regular) >= 0.005 ? { regular, ext: close, extPct: ext * 100 } : { regular, ext: null, extPct: null };
+    extPrice) for a row whose quote has not landed */
+export function screenerPrices(row: Record<string, unknown>, closes: Closes | null): { regular: number; ext: number | null; extPct: number | null } | null {
+  const r = screenerRead(row, closes);
+  return r ? { regular: r.regular, ext: r.ext, extPct: r.extPct } : null;
 }
+/** Whether a screener row needs the daily rows for its regular price (every row outside the session) */
+export const screenerNeedsCloses = (row: Record<string, unknown>): boolean => !inSessionRow(String(row.date ?? '').slice(0, 10));
+
+/* THE LARGEST MOVE A ROW COULD HAVE (round 6): the regular close sits inside the session's range, so the regular move
+   off prev_close is at most the larger of high and low against it. A name whose whole range is inside the leader's move
+   cannot lead, and its daily rows are not read — exact, never a guess. Before the open, on a row already dated today
+   (its range the pre-market's), there is no bound. */
+const moveBound = (row: Record<string, unknown>): number => {
+  const date = String(row.date ?? '').slice(0, 10);
+  const prev = numOf(row.prev_close);
+  const hi = numOf(row.high);
+  const lo = numOf(row.low);
+  if (date >= nyIsoDate() && nySessionPhase() !== 'after') return Infinity;
+  if (!(prev > 0) || !(hi > 0) || !(lo > 0)) return Infinity;
+  return Math.max(Math.abs(hi / prev - 1), Math.abs(lo / prev - 1)) * 100;
+};
+
 function chunksOf(names: string[]): string[][] {
   const out: string[][] = [];
   let cur: string[] = [];
@@ -276,33 +320,78 @@ function chunksOf(names: string[]): string[][] {
   if (cur.length) out.push(cur);
   return out;
 }
-function askSet(names: string[]): void {
-  const now = Date.now();
-  const want = names.filter(t => !setInflight.has(t) && !((setCache.get(t)?.at ?? 0) > now - SET_TTL));
-  if (!want.length) return;
-  want.forEach(t => setInflight.add(t));
-  for (const chunk of chunksOf(want)) {
-    void whalesScreener(chunk)
-      .catch(() => [] as Record<string, unknown>[])
-      .then(rows => {
-        const by = new Map<string, Record<string, unknown>>();
-        for (const r of Array.isArray(rows) ? rows : []) by.set(String(r.ticker ?? '').toUpperCase(), r);
-        const at = Date.now();
-        for (const t of chunk) {
-          const r = by.get(t);
-          setCache.set(t, { at, move: r ? screenerDayMove(r) : null });
-          setInflight.delete(t);
-        }
-        setRev += 1;
-        setListeners.forEach(fn => fn());
-      });
-  }
+
+interface SetResult {
+  at: number;
+  complete: boolean;
+  screened: number;
+  moves: Map<string, SetMove>;
 }
-/** Every name's regular-session move in one stated set, read in bulk — `complete` only once the whole set has answered */
+const setResults = new Map<string, SetResult>();
+const setRunning = new Set<string>();
+let setRev = 0;
+const setListeners = new Set<() => void>();
+const SET_TTL = 5 * 60_000;
+
+async function runSet(key: string): Promise<void> {
+  const names = key.split(',');
+  const rows = new Map<string, Record<string, unknown>>();
+  await Promise.all(
+    chunksOf(names).map(chunk =>
+      whalesScreener(chunk)
+        .catch(() => [] as Record<string, unknown>[])
+        .then(rs => {
+          for (const r of Array.isArray(rs) ? rs : []) rows.set(String(r.ticker ?? '').toUpperCase(), r);
+        }),
+    ),
+  );
+  const moves = new Map<string, SetMove>();
+  const publish = (complete: boolean) => {
+    setResults.set(key, { at: Date.now(), complete, screened: rows.size, moves: new Map(moves) });
+    setRev += 1;
+    setListeners.forEach(fn => fn());
+  };
+  const pending: { t: string; row: Record<string, unknown>; bound: number }[] = [];
+  for (const t of names) {
+    const row = rows.get(t);
+    if (!row) continue;
+    const m = screenerNeedsCloses(row) ? screenerDayMove(row, peekRegularCloses(t)) : screenerDayMove(row, null);
+    if (m) moves.set(t, m);
+    else if (screenerNeedsCloses(row)) pending.push({ t, row, bound: moveBound(row) });
+  }
+  pending.sort((a, b) => b.bound - a.bound);
+  const lead = () => Math.max(0, ...[...moves.values()].map(m => Math.abs(m.pct)));
+  /* the daily rows of the names that could still lead, largest possible move first, three at a time (the key's slots) */
+  for (let i = 0; i < pending.length; i += 3) {
+    const batch = pending.slice(i, i + 3).filter(p => !(p.bound < lead()));
+    if (!batch.length) break;
+    await Promise.all(
+      batch.map(p =>
+        loadRegularCloses(p.t)
+          .then(closes => {
+            const m = screenerDayMove(p.row, closes);
+            if (m) moves.set(p.t, m);
+          })
+          .catch(() => undefined),
+      ),
+    );
+  }
+  publish(true);
+}
+
+function askSet(key: string): void {
+  if (setRunning.has(key)) return;
+  const hit = setResults.get(key);
+  if (hit && hit.at > Date.now() - SET_TTL) return;
+  setRunning.add(key);
+  void runSet(key).finally(() => setRunning.delete(key));
+}
+/** The regular-session move over one stated set, read in bulk — `complete` only once every name is read or ruled out of
+    the lead (its whole session range inside the leader's move) */
 export function useSetMoves(tickers: readonly string[]): SetMoves {
   const key = [...new Set(tickers.map(t => t.toUpperCase()).filter(Boolean))].sort().join(',');
   useEffect(() => {
-    if (key) askSet(key.split(','));
+    if (key) askSet(key);
   }, [key]);
   const rv = useSyncExternalStore(
     fn => {
@@ -315,16 +404,9 @@ export function useSetMoves(tickers: readonly string[]): SetMoves {
     () => 0,
   );
   return useMemo(() => {
-    const moves = new Map<string, SetMove>();
     const names = key ? key.split(',') : [];
-    let answered = 0;
-    for (const t of names) {
-      const hit = setCache.get(t);
-      if (!hit) continue;
-      answered += 1;
-      if (hit.move) moves.set(t, hit.move);
-    }
-    return { complete: names.length > 0 && answered === names.length, asked: names.length, moves };
+    const hit = key ? setResults.get(key) : undefined;
+    return { complete: !!hit?.complete && names.length > 0, asked: names.length, screened: hit?.screened ?? 0, moves: hit?.moves ?? new Map() };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, rv]);
 }

@@ -40,6 +40,7 @@ const DayMoveText = ({ ticker, snapshot, short = false, className = 'text-[11px]
   return (
     <span className={`inline-flex items-baseline gap-1.5 font-mono tnum whitespace-nowrap ${className}`} title={w.title} data-day-move>
       <span style={{ color: changeInk(main) }}>{w.main}</span>
+      {w.when && <span className={extClassName}>{w.when}</span>}
       {!short && w.ext && <span className={extClassName}>· {w.ext}</span>}
     </span>
   );

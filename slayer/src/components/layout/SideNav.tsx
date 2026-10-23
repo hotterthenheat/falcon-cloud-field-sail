@@ -289,7 +289,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
       {change != null && (
         <span className="font-mono text-[10px] tnum whitespace-nowrap" style={{ color: changeInk(change) }} title={moveWords ? `${moveWords.title}${moveWords.ext ? ` (${moveWords.ext})` : ''}` : undefined} data-subject-change>
           {changeText}
-          {moveWords?.ext && move?.extPct != null && <span className="text-textMuted"> · AH {move.extPct > 0 ? '+' : move.extPct < 0 ? '−' : ''}{Math.abs(move.extPct).toFixed(2)}%</span>}
+          {moveWords?.when && <span className="text-textMuted"> {moveWords.when}</span>}
+          {moveWords?.ext && move?.extPct != null && <span className="text-textMuted"> · {moveWords.ext.replace('after hours', 'AH')}</span>}
         </span>
       )}
       {/* the after-hours figure takes the search mark's room — ⌘K still switches */}
@@ -684,6 +685,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           {changeText && change != null && (
             <span className="font-mono text-[10px] tnum whitespace-nowrap" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
               {changeText}
+              {moveWords?.when && <span className="text-textMuted"> {moveWords.when}</span>}
+              {moveWords?.ext && <span className="text-textMuted"> · {moveWords.ext.replace('after hours', 'AH')}</span>}
             </span>
           )}
         </button>

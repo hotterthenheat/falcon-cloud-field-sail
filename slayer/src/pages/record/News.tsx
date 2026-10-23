@@ -718,16 +718,16 @@ const News = () => {
                 <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
               </Fact>
             )}
-            <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : 'Biggest move today'} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name today's stories are about (${moveNames.length} names, read in bulk off the screener; ${setMoves.moves.size} with a quote)`}>
+            <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : 'Biggest move today'} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name today's stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
               {coverage.reading ? (
                 <span className="text-textMuted">reading today's stories</span>
               ) : biggest ? (
                 <>
                   {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.pct)}</span>
-                  <span className="text-textMuted"> · of {setMoves.moves.size} {setMoves.moves.size === 1 ? "name" : "names"}</span>
+                  <span className="text-textMuted"> · of {setMoves.screened} {setMoves.screened === 1 ? "name" : "names"}</span>
                 </>
               ) : (
-                <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no quote on these names' : `reading ${moveNames.length} names`) : 'no named stories yet'}</span>
+                <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no regular close on these names' : `reading ${moveNames.length} names`) : 'no named stories yet'}</span>
               )}
             </Fact>
             <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first">

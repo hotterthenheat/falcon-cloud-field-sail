@@ -13,4 +13,4 @@ export const GLOSSARY = {
 
 /** The definition for a strike's kind word, as the Agenda and the Board print it */
 export const kindTip = (kind: string | null | undefined): string | undefined =>
-  kind === 'supreme' ? GLOSSARY.supreme : kind === 'trapdoor' ? GLOSSARY.trapdoor : kind === 'shelf' ? GLOSSARY.shelf : kind === 'call wall' ? GLOSSARY.callWall : kind === 'put wall' ? GLOSSARY.putWall : kind === 'thin' ? 'Too thin to be a wall: dealers are long gamma here, but it holds under a third of the biggest wall' : undefined;
+  kind === 'supreme' ? GLOSSARY.supreme : kind === 'trapdoor' ? GLOSSARY.trapdoor : kind === 'shelf' ? GLOSSARY.shelf : kind === 'call wall' ? GLOSSARY.callWall : kind === 'put wall' ? GLOSSARY.putWall : kind === 'thin' ? 'Too thin to be a shelf or a trapdoor: whichever way dealers lean here, it holds under a third of the heaviest strike\'s net gamma' : undefined;

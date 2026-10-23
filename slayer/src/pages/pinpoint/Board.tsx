@@ -141,6 +141,7 @@ const DayChange = ({ data, compact = false }: { data: BoardRow; compact?: boolea
   return (
     <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-[11px]' : 'text-[10px]'} whitespace-nowrap`} title={w.title} data-day-change>
       <span style={{ color: changeInk(main) }}>{w.main}</span>
+      {w.when && <span className="text-textMuted">{w.when}</span>}
       {w.ext && <span className="text-textMuted">· {w.ext}</span>}
     </span>
   );
@@ -479,6 +480,8 @@ const Board = () => {
         setRows(prev => {
           const at = prev.findIndex(r => r.ticker === row.ticker);
           if (at < 0) return [...prev, row];
+          /* the same row (data/board.ts keeps a name's row until its own book moves) leaves the grid alone */
+          if (prev[at] === row) return prev;
           const next = prev.slice();
           next[at] = row;
           return next;

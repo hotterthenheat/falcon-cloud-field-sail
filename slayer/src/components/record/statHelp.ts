@@ -29,7 +29,8 @@ const HELP: Record<string, string> = {
   Estimates: 'The analysts’ average estimates on the feed',
   'IV rank': 'Where today’s implied volatility sits in its past-year range: 0 is the lowest of the year, 100 the highest',
   /* the stock */
-  'The stock': 'The last price and today’s change',
+  'The stock': 'The regular price — the last print in the session, the last regular close outside it',
+  'The stock · close': 'The last regular-session close; the pre-market or after-hours print sits under it, named',
   Today: 'Today’s change in the price',
   "Today's range": 'Today’s low and high so far',
   'Closed in its range': 'How far up from today’s low the price sits: 0% at the low, 100% at the high',

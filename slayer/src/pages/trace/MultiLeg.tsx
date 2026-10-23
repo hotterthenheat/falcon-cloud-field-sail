@@ -53,7 +53,7 @@ import { createViewStore } from '../../data/savedViews';
 import { StructureGuide } from '../../components/trace/TraceGuide';
 import Modal from '../../components/ui/Modal';
 import { expiryLabel } from '../../core/format';
-import { dayAdv } from '../../components/trace/dayWords';
+import { dayAdv, spanWords } from '../../components/trace/dayWords';
 
 const num = (v: number) => v.toLocaleString('en-US');
 /** The structures the page holds — the vendor's newest */
@@ -367,8 +367,8 @@ const MultiLeg = () => {
   const keyOf = useCallback((t: SpreadTrade) => `${t.id}:${t.legsState ?? ''}`, []);
   /* the window the structures cover — the first and last in hand */
   const windowSpan = useMemo(() => {
-    const ts = heldTrades.map(t => t.time).sort();
-    return ts.length ? `${ts[0]}–${ts[ts.length - 1]}` : '—';
+    /* the day named when it is not today's (audit round 6) */
+    return spanWords(heldTrades) ?? '—';
   }, [heldTrades]);
   const openRow = useCallback((t: SpreadTrade) => setDrill(t), []);
 

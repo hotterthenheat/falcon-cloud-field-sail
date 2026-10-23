@@ -94,6 +94,8 @@ export interface CongressFeed {
   unreadTypes?: number;
   /** Rows tagged house/senate whose person the politician list does not carry as a member — left out */
   notMembers?: number;
+  /** Each left-out executive-branch filing's trade age in days, so a window can count its own */
+  notMemberAges?: number[];
 }
 
 /* ---- Insiders ------------------------------------------------------------------ */

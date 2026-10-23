@@ -51,6 +51,16 @@ export function levelsFor(ticker: string, scope: LevelsScope): TickerLevels | nu
   if (scope === 'ALL') ensureScopeDates(t, 'ALL');
   const snap = snapshotFor(t, scope);
   if (!snap) return null;
+  /* one reading per state of the name's book (data/uwBook.ts materialize hands the same snapshot back until it moves) */
+  const pending = scopeDatesPending(t, scope);
+  const memo = levelsMemo.get(snap);
+  if (memo && memo.scope === scope && memo.pending === pending) return memo.out;
+  const out = levelsOf(t, scope, snap);
+  levelsMemo.set(snap, { scope, pending, out });
+  return out;
+}
+const levelsMemo = new WeakMap<object, { scope: LevelsScope; pending: boolean; out: TickerLevels | null }>();
+function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<typeof snapshotFor>>): TickerLevels | null {
   const book = levelsBook(snap, scope);
   let profile;
   try {
