@@ -20,6 +20,8 @@ const LEVELS_PAGES = new Set(['/pinpoint/map', '/pinpoint/agenda', '/pinpoint/bo
 import { GEX_SUBPAGES } from './subnav';
 import { useReplayLabel } from './replayState';
 import SessionBook from '../../components/ui/SessionBook';
+import RegimeLine from '../../components/gex/RegimeLine';
+import { SayPage } from '../../components/layout/PageMeta';
 
 /*
 ==================================================
@@ -126,7 +128,10 @@ const PinpointLayout = () => {
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-borderSubtle text-textSecondary shrink-0" aria-hidden="true">
               <PageIcon className="w-3.5 h-3.5" />
             </span>
-            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{page.label}</h1>
+            <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">
+              {page.label}
+              {page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' && <span className="text-textMuted font-normal"> · Building</span>}
+            </h1>
             {focused != null && (
               <span data-focus-chip className="inline-flex items-center gap-2 rounded-md border border-silver/40 bg-silver/[0.06] pl-2.5 pr-1 py-0.5 font-mono">
                 <span className="text-[9px] font-bold uppercase tracking-widest text-silver">Focus</span>
@@ -180,6 +185,10 @@ const PinpointLayout = () => {
           </div>
         </div>
       </header>
+      {/* PINNED OR TRENDING, IN ONE SENTENCE (the eighth audit's retail finding) — the Levels pages, for the desk's name */}
+      {LEVELS_PAGES.has(page.path) && <RegimeLine ticker={activeTicker} />}
+      {/* the Agenda's Building face names itself in the tab (the eighth audit: /pinpoint/building read "Agenda") */}
+      <SayPage words={page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' ? 'Building · Agenda' : null} />
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div

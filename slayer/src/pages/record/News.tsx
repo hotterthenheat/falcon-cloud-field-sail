@@ -33,6 +33,7 @@ import { companyName } from '../../data/tickers';
 import { extendedLine, useLiveQuote, useSetMoves } from '../../data/liveQuote';
 import { PublishMove, storyNameWord } from '../../components/record/publishMove';
 import { nyTodayIso, shortDay } from '../../data/nyDate';
+import { useEveryReportQuiet } from '../../data/earningsFeed';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -648,6 +649,19 @@ const News = () => {
   const moveDayIsToday = biggest ? biggest.date === nyTodayIso() : true;
   const selectedQuote = useLiveQuote(selected?.item.ticker ?? null);
   const nextPrint = calendar.find(c => c.impact === 'high' && c.inMinutes >= 0) ?? calendar.find(c => c.inMinutes >= 0) ?? null;
+  /* THE NEXT PRINT IS AN EARNINGS ONE TOO (round 8: "nothing ahead on the calendar" while the earnings calendar listed
+     RCBC after today's close and ~710 reports next week): with no economic release ahead, the next report still to come
+     on the fortnight's lists — read once the calendar below asks for them, after the headlines */
+  const reportsQ = useEveryReportQuiet();
+  const nextReport = useMemo(() => {
+    const today = nyTodayIso();
+    const ahead = reportsQ.events.filter(e => !e.reported && (e.iso ?? '') >= today);
+    if (!ahead.length) return null;
+    const order = (e: (typeof ahead)[number]) => `${e.iso}|${e.slot === 'BMO' && e.timeKnown !== false ? 0 : 1}`;
+    const first = [...ahead].sort((a, b) => order(a).localeCompare(order(b)) || Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0))[0];
+    const same = ahead.filter(e => order(e) === order(first)).length;
+    return { e: first, same, total: ahead.length, today: first.iso === today };
+  }, [reportsQ]);
   const unmarked = positive === 0 && negative === 0;
   const moodInk = mood.label === 'LEANS BULLISH' ? 'text-bull' : mood.label === 'LEANS BEARISH' ? 'text-bear' : 'text-textPrimary';
 
@@ -730,13 +744,22 @@ const News = () => {
                 <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no regular close on these names' : `reading ${moveNames.length} names`) : 'no named stories yet'}</span>
               )}
             </Fact>
-            <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first">
+            <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
               {nextPrint ? (
                 <>
                   {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} ET · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
                 </>
               ) : (
-                <span className="text-textMuted">{econ.status === 'loading' ? 'reading the calendar' : econ.status === 'sim' ? 'the calendar did not answer' : 'nothing ahead on the calendar'}</span>
+                nextReport ? (
+                  <span title={`No economic release is ahead on the calendar; the next earnings report still to come — ${nextReport.total.toLocaleString('en-US')} on the fortnight's lists`} data-news-next="earnings">
+                    {nextReport.e.ticker} reports{nextReport.same > 1 ? <span className="text-textMuted"> +{nextReport.same - 1}</span> : null}{' '}
+                    <span className="text-textMuted">
+                      · {nextReport.e.timeKnown === false ? 'time not set' : nextReport.e.slot === 'BMO' ? 'before the open' : 'after the close'} {nextReport.today ? 'today' : nextReport.e.dateLabel} · {nextReport.total.toLocaleString('en-US')} reports ahead
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-textMuted">{econ.status === 'loading' || reportsQ.status === 'loading' ? 'reading the calendar' : econ.status === 'sim' && reportsQ.status === 'sim' ? 'the calendar did not answer' : 'nothing ahead on the calendar'}</span>
+                )
               )}
             </Fact>
           </dl>
@@ -1032,7 +1055,15 @@ const News = () => {
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">The month — data, earnings, the FDA, the public schedule, the posts — and what the wire adds up to</p>
         </div>
         <div className="border-t border-borderSubtle">
-          <NewsCalendar />
+          {/* HEADLINES FIRST (round 8: the fortnight's 23 earnings lists, the FDA calendar and the posts were asked before the
+              first page of headlines, which then landed ~12s in) — the month is read once the wire's first page is in */}
+          {news.status === 'loading' ? (
+            <div className="px-5 py-8 font-mono text-[10px] uppercase tracking-widest text-textMuted animate-pulse" data-news-day-pending>
+              Reading the month after the headlines…
+            </div>
+          ) : (
+            <NewsCalendar />
+          )}
         </div>
         {/* THE READS — across, under the month, however many the wire adds up to */}
         {/* on a phone the reads stack two by two — four across left each a word to a line (the Dossier sweep, 2026-10-22) */}

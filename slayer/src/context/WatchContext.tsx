@@ -72,8 +72,11 @@ export interface WatchedPrint extends WatchBase {
   premium: number;
   side: 'ASK' | 'BID' | 'MID';
   sweep: boolean;
-  /** The underlying and the contract's day when it printed */
-  at: { spot: number; volume: number; oi: number };
+  /** One leg of a multi-leg order — half of a structure, never read bullish or bearish when reopened (audit round 8) */
+  multi?: boolean;
+  /** The underlying and the contract's day when it printed — `daySide` the contract's day by side at the mark, so the
+      Tracker's "lean then" is the lean when it was marked (audit round 8: "— → EVEN" on a print marked at ask 54%) */
+  at: { spot: number; volume: number; oi: number; daySide?: { ask: number; bid: number; mid: number } };
   occ?: string;
 }
 
@@ -196,9 +199,10 @@ export const watchPrint = (p: FlowPrint, from: WatchSource): WatchedPrint => ({
   premium: p.premium,
   side: p.side,
   sweep: p.sweep,
+  multi: p.legs > 1 || undefined,
   watchedAt: Date.now(),
   from,
-  at: { spot: p.spot, volume: p.volume, oi: p.oi },
+  at: { spot: p.spot, volume: p.volume, oi: p.oi, daySide: p.daySide },
   occ: p.occ,
 });
 

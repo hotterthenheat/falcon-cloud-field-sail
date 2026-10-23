@@ -66,6 +66,7 @@ import ReadDoor from '../../components/trace/ReadDoor';
 import WatchStar from '../../components/trace/WatchStar';
 import TraceBox, { Champion, Fact, TraceGrid } from '../../components/trace/TraceBox';
 import { TrackerGuide } from '../../components/trace/TraceGuide';
+import { nextCountDay } from '../../components/trace/dayWords';
 
 const num = (v: number) => v.toLocaleString('en-US');
 const signedPct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
@@ -202,6 +203,10 @@ interface TrackRow {
   nowSrc?: 'close' | 'fill';
   oiDelta: number | null;
   leanThen: number | null;
+  /** A print's contract day by side when it was marked */
+  sideThen?: { ask: number; bid: number; mid: number };
+  /** The open interest has not been counted again since the mark (the count is set each morning) — the day it will be */
+  oiNext?: string;
   leanNow: number | null;
   /** The contract's day by side now, when its own day was read */
   sideNow?: { ask: number; bid: number; mid: number };
@@ -290,13 +295,13 @@ const FlowTracker = () => {
   );
   const [query, setQuery] = useState('');
   /** The open card: a contract's key, and the print clip when opened from a print row. */
-  const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string } } | null>(null);
+  const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } } | null>(null);
 
   const contractPack = useLiveBook(activeTicker);
   const bookRev = useBookRev();
   const liveBook = contractPack.rows;
   // The shared hold (see LiveHold): the SINCE columns freeze with the tick.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !(contractPack.waiting && contractPack.rows.length === 0));
   const { book, tick } = hold.value;
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -385,7 +390,11 @@ const FlowTracker = () => {
             nowAt,
             nowSrc: w.kind === 'contract' ? ('close' as const) : ('fill' as const),
             oiDelta: nowOi != null ? nowOi - w.at.oi : null,
-            leanThen: w.kind === 'contract' ? w.at.askPct : null,
+            /* THE COUNT HAS NOT COME YET (audit round 8: "OI since +0" intraday, when the next count is set the morning of
+               Mon Oct 26) — a mark in the session still running has no newer count to compare */
+            oiNext: markDay === tapeSessionIso() ? nextCountDay(markDay) : undefined,
+            leanThen: w.kind === 'contract' ? w.at.askPct : w.kind === 'print' && w.at.daySide && w.at.daySide.ask + w.at.daySide.bid > 0 ? (w.at.daySide.ask / (w.at.daySide.ask + w.at.daySide.bid)) * 100 : null,
+            sideThen: w.kind === 'print' ? w.at.daySide : undefined,
             leanNow: live ? live.askPct : null,
             sideNow: live?.sideVol,
             nowNote,
@@ -427,7 +436,7 @@ const FlowTracker = () => {
     const w = r.w;
     setOpen({
       key: r.live.key,
-      clip: w.kind === 'print' && w.side !== 'MID' ? { size: w.size, fill: w.fill, side: w.side, time: w.time } : undefined,
+      clip: w.kind === 'print' && w.side !== 'MID' ? { size: w.size, fill: w.fill, side: w.side, time: w.time, multi: w.multi } : undefined,
     });
   }, []);
   const keyOf = useCallback((r: TrackRow) => r.w.key, []);
@@ -582,7 +591,16 @@ const FlowTracker = () => {
         header: 'OI since',
         align: 'right',
         sortValue: r => r.oiDelta ?? -Infinity,
-        render: r => (r.oiDelta == null ? <Dash /> : <span className={directionInk(r.oiDelta, marks.oi)}>{signedNum(r.oiDelta)}</span>),
+        render: r =>
+          r.oiNext && !r.oiDelta ? (
+            <span className="text-[11px] text-textMuted whitespace-nowrap" title={`Open interest is counted once a day, the morning after the trading — the count after this session's trading is set the morning of ${r.oiNext}`}>
+              next count {r.oiNext}
+            </span>
+          ) : r.oiDelta == null ? (
+            <Dash />
+          ) : (
+            <span className={directionInk(r.oiDelta, marks.oi)}>{signedNum(r.oiDelta)}</span>
+          ),
       },
       {
         key: 'lean',
@@ -591,7 +609,7 @@ const FlowTracker = () => {
         sortValue: r => r.leanNow ?? -1,
         render: r => {
           if (r.leanNow == null && r.leanThen == null) return <Dash />;
-          const then = r.leanThen != null ? leanWord(r.leanThen) : null;
+          const then = r.leanThen != null || r.sideThen ? leanWord(r.leanThen ?? NaN, r.sideThen) : null;
           const now = r.leanNow != null || r.sideNow ? leanWord(r.leanNow ?? NaN, r.sideNow) : null;
           return (
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wide tnum whitespace-nowrap">

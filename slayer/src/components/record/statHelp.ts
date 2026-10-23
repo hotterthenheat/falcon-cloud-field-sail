@@ -59,6 +59,7 @@ const HELP: Record<string, string> = {
   'Largest house': 'The fund manager reporting the most shares in its latest 13F',
   'Short interest': 'The share of the float sold short and not yet bought back, as of the last settlement',
   'Largest fund': 'The ETF that holds the most shares of the name',
+  'Fund holding most': 'The ETF that holds the most shares of the name — not the largest fund; the list under it runs most shares first',
   Holders: 'Fund managers reporting the stock in their latest 13F (the feed answers 50 at a time)',
   Marks: 'Events on the timeline',
   Last: 'The latest one',

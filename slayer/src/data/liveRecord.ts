@@ -4,7 +4,7 @@
   A failed feed stays empty. It does not invent a congressman or a headline.
 */
 
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { EMPTY_CONGRESS } from './congress';
 import { ALL_CODES, OPEN_MARKET_CODES, personSlug, summariseFlow } from './insiders';
 import { geoFromItems, type EconEvent, type GeoNewsEvent } from './newsroom';
@@ -202,6 +202,15 @@ let congressCursor: string | null = null;
 let congressCalls = 0;
 let congressDone = false;
 
+/* EACH READ'S ROWS CARRY THE READ THEY CAME IN (round 8): two identical rows in ONE answer are two lots — a member who
+   bought the same bill twice the same day files two lines alike — while the same row in two answers is the paging's
+   overlap (each read re-reads its cursor's day). The mark is not enumerable, so a row's own fields stay its key. */
+let congressPageNo = 0;
+const markPage = (rows: UwCongress[]): UwCongress[] => {
+  const n = ++congressPageNo;
+  for (const r of rows) Object.defineProperty(r, '__page', { value: n, enumerable: false, configurable: true });
+  return rows;
+};
 const paintCongress = () => {
   const feed = congressFromWhales(congressRows, congressPeople);
   patch({ congress: { status: 'live', trades: feed.trades, notMemberAges: feed.notMemberAges } });
@@ -220,7 +229,7 @@ async function pageCongress(): Promise<void> {
       congressDone = true;
       break;
     }
-    congressRows = congressRows.concat(rows);
+    congressRows = congressRows.concat(markPage(rows));
     const days = rows.map(r => (r.transaction_date || '').slice(0, 10)).filter(Boolean).sort();
     const oldest = days[0];
     const full = rows.length >= CONGRESS_LIMIT;
@@ -269,7 +278,7 @@ async function pullCongress() {
   if (congressCalls > 0) {
     const res = await uwCall(`/congress/recent-trades?limit=${CONGRESS_LIMIT}`);
     if (!res.error && Array.isArray(res.data)) {
-      congressRows = (res.data as UwCongress[]).concat(congressRows);
+      congressRows = markPage(res.data as UwCongress[]).concat(congressRows);
       paintCongress();
     }
     return;
@@ -1038,4 +1047,58 @@ export function useTickerNews(ticker: string): TickerNews {
     () => peekTickerNews(t),
     () => TICKER_NEWS_LOADING,
   );
+}
+
+/* ---- THE ROSTER ALONE (round 8) -------------------------------------------------------------------------------------
+   A member's page walked the whole Congress book (90 days of every member's reports, paged 200 at a time) to learn the
+   member's name, though /congress/congress-trader?name= returns the member's own reports. The politician list (one
+   call) names the member; the market book is read only for a member the roster does not list. */
+let rosterState: { status: FeedStatus; rev: number } = { status: 'loading', rev: 0 };
+let rosterStateAsked = false;
+function ensureRosterState(): void {
+  if (rosterStateAsked || typeof window === 'undefined') return;
+  rosterStateAsked = true;
+  if (congressPeople.length) {
+    rosterState = { status: 'live', rev: rosterState.rev + 1 };
+    return;
+  }
+  void whalesPoliticians()
+    .then(p => {
+      if (Array.isArray(p) && p.length) congressPeople = p;
+      rosterState = { status: Array.isArray(p) && p.length ? 'live' : 'sim', rev: rosterState.rev + 1 };
+    })
+    .catch(() => {
+      rosterState = { status: 'sim', rev: rosterState.rev + 1 };
+    })
+    .finally(() => listeners.forEach(fn => fn()));
+}
+/** The politician roster's state — starts that one read, never the Congress book */
+export function useCongressRoster(): FeedStatus {
+  useSyncExternalStore(
+    fn => {
+      const off = listen(fn);
+      ensureRosterState();
+      return off;
+    },
+    () => rosterState.rev,
+    () => rosterState.rev,
+  );
+  return congressPeople.length ? 'live' : rosterState.status;
+}
+/** The Congress book only when `want` — the member page's fallback for a member the roster does not list */
+export function useCongressFeedIf(want: boolean, windowDays: number): CongressFeed {
+  const congress = useSyncExternalStore(listen, () => snap.congress, () => snap.congress);
+  useEffect(() => {
+    if (want) ensureCongress();
+  }, [want]);
+  return useMemo(() => (congress.status !== 'live' ? { ...EMPTY_CONGRESS, windowDays } : rollCongress(congress.trades.filter(t => t.tradedDaysAgo <= windowDays), windowDays)), [congress, windowDays]);
+}
+/** The Congress book's state, without starting it */
+export function useCongressStatusQuiet(): FeedStatus {
+  return useSyncExternalStore(listen, () => snap.congress.status, () => snap.congress.status);
+}
+/** The Congress book's coverage, without starting it */
+export function useCongressCoverageQuiet(): CongressCoverage {
+  useSyncExternalStore(listen, () => snap.congress, () => snap.congress);
+  return congressCoverage;
 }

@@ -35,7 +35,7 @@
 ==================================================
 */
 
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { WINDOWS_PER_DAY, type IntervalWindow } from '../../data/flowBook';
 import { SESSION_LENGTH_MIN } from '../../core/nyTime';
 import { earnMarks } from './earnedInk';
@@ -95,6 +95,19 @@ const DayStrip = ({
   const ceiling = Math.max(marks.bar === Infinity ? max : marks.bar, 1);
   const live = windows.find(w => w.live);
   const nowMin = live ? (live.idx + 1) * MIN_PER_SLOT : null;
+  /* THE AXIS MEASURES ITS OWN ROOM (audit round 8, 390: "09:30now" — the 45-minute berth is ~40px on a phone, less than
+     the two labels need): a fixed mark steps aside when "now" sits within ~52px of it, whatever the width */
+  const axisRef = useRef<HTMLDivElement | null>(null);
+  const [axisW, setAxisW] = useState(0);
+  useEffect(() => {
+    const el = axisRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setAxisW(el.clientWidth));
+    ro.observe(el);
+    setAxisW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const berth = axisW > 0 ? Math.max(45, (52 / axisW) * len) : 45;
   const shown = windows[hover ?? selectedIdx] ?? windows[selectedIdx];
 
   const readout = shown
@@ -177,10 +190,10 @@ const DayStrip = ({
       </div>
 
       {/* The axis: every mark at its own x, the open and close brighter, "now" in the status ink. */}
-      <div className="relative h-4 font-mono text-[11px] text-textMuted tnum">
+      <div ref={axisRef} className="relative h-4 font-mono text-[11px] text-textMuted tnum">
         {TICKS.map(t => {
           // "now" owns its neighbourhood: a fixed mark within a label's width of it steps aside.
-          const near = nowMin !== null && Math.abs(t.min - nowMin) < 45;
+          const near = nowMin !== null && Math.abs(t.min - nowMin) < berth;
           if (near) return null;
           return (
             <span

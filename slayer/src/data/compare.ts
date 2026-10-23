@@ -21,13 +21,13 @@
 ==================================================
 */
 
-import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot } from './uwBook';
+import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot, scopeDatesPending } from './uwBook';
 import { scopeSigma } from './wall';
 import { UNIVERSE } from './universe';
 import { SESSION_MIN, type AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
 import { impliedDaySigma, sessionAtr, type DistanceScales, type DistanceUnit } from './atr';
-import { deskAgenda, netGexOf, retailNet, watchSurface, type BoardRow } from './board';
+import { deskAgenda, netGexOf, retailNet, watchFrom, watchSurface, type BoardRow } from './board';
 import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from './exposureSurface';
 import { buildFlipGauge, type GammaRegime } from './flipGauge';
@@ -240,9 +240,17 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   const lv = snapshot.liveBook && (expiry === '0DTE' || expiry === 'ALL') ? levelsFor(ticker, expiry) : null;
   if (lv) supreme.gex = at(lv.supreme);
   else supreme.gex = at(profile.levels.supreme);
+  /* NO OTHER SCOPE'S LEVELS UNDER THIS ONE'S NAME (the eighth audit's m6: SPY "FLIP 772.69" — the All-expiries flip — under
+     TODAY'S CONTRACTS): on a live book a Levels scope with no levelsFor reading yet, or a picked expiry whose own chain has
+     not landed (the lens above then fell back to the levels book), is not final — the page keeps its loading state */
+  const scoped = expiry === '0DTE' || expiry === 'ALL';
+  /* (a picked expiry the name does not list never lands — once every date is in, the page reads what there is) */
+  const ownMissing = !!snapshot.liveBook && (scoped ? !lv : !snapshot.uwChains?.[expiry]?.length && scopeDatesPending(ticker, 'ALL'));
   const levels: ExposureLevels = lv
     ? { ...profile.levels, supreme: lv.supreme, callWall: lv.callWall ?? profile.levels.callWall, putWall: lv.putWall ?? profile.levels.putWall, flip: lv.flip ?? profile.levels.flip, flipFound: lv.flip != null, complete: profile.levels.complete && lv.complete }
-    : profile.levels;
+    : ownMissing
+      ? { ...profile.levels, complete: false }
+      : profile.levels;
   const flipAt = lv ? lv.flip : gauge.flip;
 
   let surface: ExposureSurface | null = null;
@@ -258,13 +266,15 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
      strike is called the close's lean */
   const agenda = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot));
   const lead = agenda?.first[0];
-  const watch: BoardRow['watch'] = lead ? { strike: lead.strike, role: lead.role, roles: lead.roles, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake, horizon: lead.horizon } : null;
+  const watch: BoardRow['watch'] = watchFrom(lead);
 
   return {
     ticker,
     spot,
     changePct: snapshot.changePercent,
-    regime: gauge.regime,
+    /* THE REGIME IS levelsFor's (the eighth audit's m2): the sign of the scope's whole net, as the Board, the Map and the
+       Dossier print it — the gauge's net at spot was a second reading of the same word */
+    regime: lv ? lv.regime : gauge.regime,
     flip: flipAt,
     flipDistPct: flipAt != null && spot > 0 ? ((flipAt - spot) / spot) * 100 : null,
     sigmaLeft,

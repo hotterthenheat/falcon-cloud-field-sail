@@ -201,6 +201,17 @@ export const isTreasuryBill = (t: CongressTrade): boolean => {
   return /\b(?:treasury|treas|tres|trsy|tsy)\.?\s*bills?\b|\bt-?bills?\b|\bus treasury bill|\bunited states treasury bill/i.test(d);
 };
 
+/* BONDS APART FROM THE STOCK BOOK (round 8: Treasury notes and munis topped "the reports to know" and were summed into
+   the headline total, while T-bills were hidden). A report of a note, a bond, a municipal or an asset-backed security —
+   Treasury, agency, state or corporate — is counted apart from the stock-focused figures, and said apart. */
+export const isBondReport = (t: CongressTrade): boolean => {
+  if (isTreasuryBill(t)) return false;
+  if (t.assetKind === 'Corporate Bond' || t.assetKind === 'Municipal Security' || t.assetKind === 'Asset-Backed Security') return true;
+  if (t.assetKind !== 'Other') return false;
+  const d = `${t.assetDescription || ''} ${t.ticker || ''}`;
+  return /\b(?:treasury|treas|tres|trsy|tsy|govt|government|agency|fnma|fhlmc|fhlb|gnma|freddie|fannie)\b[^\n]{0,40}\b(?:notes?|bonds?|tips|strips|debentures?)\b|\b(?:notes?|bonds?)\b[^\n]{0,20}\b(?:due|mat(?:ures)?)\b|\b\d+(?:\.\d+)?%\s/i.test(d);
+};
+
 /** The feed's figures over any set of reports — the page re-sums whatever its cards leave */
 export function summariseCongress(trades: CongressTrade[], windowDays: number): CongressFeed {
   let totalLow = 0;

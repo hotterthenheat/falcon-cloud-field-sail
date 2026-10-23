@@ -50,6 +50,7 @@ import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnCh
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { nyClock } from '../../core/nyTime';
 import { DarkPoolGuide } from '../../components/trace/TraceGuide';
@@ -255,7 +256,14 @@ const DarkPool = () => {
       ownTerms: all.filter(p => p.special).length,
     };
   }, [dark.rows, lit.rows, nameBook.rows.lit, tapeKind, named, terms]);
-  const hold = useHold(useMemo(() => ({ view: liveView, tape: liveTape, tick: marketData }), [liveView, liveTape, marketData]), named ?? 'market');
+  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "Posture Nothing to read · $0 · 0 crosses" while the tape loaded) —
+     the source the head reads is named, and until its first answer every figure reads "—" */
+  const srcReading = named
+    ? nameBook.waiting && !nameBook.rows.view && nameBook.rows.lit.length === 0
+    : tapeKind === 'lit'
+      ? lit.waiting && lit.rows.length === 0
+      : dark.waiting && dark.rows.length === 0;
+  const hold = useHold(useMemo(() => ({ view: liveView, tape: liveTape, tick: marketData }), [liveView, liveTape, marketData]), named ?? 'market', !srcReading);
   /* THE REGULAR VIEW IS THE DAY'S LARGEST, NOT THE LAST (audit round 4: "last 198 prints" over the day's largest 198 of
      $27.5M and up) — the smallest cross that made the cut */
   const regFloor = useMemo(() => (darkReg.rows.length ? Math.min(...darkReg.rows.map(p => p.notional)) : 0), [darkReg.rows]);
@@ -583,8 +591,8 @@ const DarkPool = () => {
   const largest = facts.largest;
   const sentence: ReactNode = (
     <>
-      <RichRead text={`${head.postureNote} `} />
-      {largest ? (
+      <RichRead text={srcReading ? `Reading ${named ? `${named}'s crosses` : tapeKind === 'lit' ? 'the lit tape' : "the market's crosses"}… ` : `${head.postureNote} `} />
+      {srcReading ? null : largest ? (
         <>
           <RichRead text={litLane ? 'Largest lit print ' : 'Largest cross '} />
           <ReadDoor onOpen={() => setOpenCross(largest)} title="Open the cross's card">
@@ -671,7 +679,9 @@ const DarkPool = () => {
               {/* which side leads, then how far it leans in the four words — never the figure (data/darkpool.ts gradeOfPosture).
                   Balanced stands alone: a poor lean is no lean. The steps wear the side's ink. NOTHING READ is not
                   balanced (the third audit) — it says so. */}
-              {head.read === 0 ? (
+              {srcReading ? (
+                <span className="text-textMuted" data-posture-read="reading">Reading…</span>
+              ) : head.read === 0 ? (
                 <span className="text-textMuted" data-posture-read="none" title="No sized regular-session cross at the quote in this view — nothing to read">Nothing to read</span>
               ) : (
               <span
@@ -685,10 +695,12 @@ const DarkPool = () => {
               )}
             </Fact>
             <Fact label="On this cut" testId="cut">
-              {fmtUsd(facts.dollars)} <span className="text-textMuted">· {cut.length} {litLane ? 'prints' : 'crosses'}</span>
+              {srcReading ? <span className="text-textMuted">—</span> : <>{fmtUsd(facts.dollars)} <span className="text-textMuted">· {cut.length} {litLane ? 'prints' : 'crosses'}</span></>}
             </Fact>
             <Fact label="Sized: over · under the mid" testId="sides" title={`Every sized print on this cut (10,000 shares or $500K, priced at the quote) by where it printed, any distance from the mid: over it (paid up — buyer-initiated) and under it (sold down — seller-initiated)${facts.atMid > 0 ? `; ${fmtUsd(facts.atMid)} crossed at the mid` : ''}${facts.afterHours ? `; ${facts.afterHours} of them after hours, against a post-market quote, so they are counted here but never read` : ''}`}>
-              {facts.sizedCount === 0 ? (
+              {srcReading ? (
+                <span className="text-textMuted">—</span>
+              ) : facts.sizedCount === 0 ? (
                 <span className="text-textMuted">no sized print</span>
               ) : (
                 <>
@@ -752,7 +764,12 @@ const DarkPool = () => {
             </div>
           </>
         }
-        sentence={sentence}
+        sentence={
+          <>
+            {sentence}
+            <TermLine keys={['ownTerms']} testId="dark-pool" />
+          </>
+        }
       >
         {/* THE SHELVES — one strip of six cells across the box, lowest price at the left the
             way a price axis reads, so nothing stands beside the grid empty (Noah, 2026-09-13:
@@ -808,7 +825,7 @@ const DarkPool = () => {
         </div>
         )}
         {/* THE CROSSES — the grid grows with its rows, the page scrolls; a row opens the cross's card */}
-        <TraceGrid rows={cut} columns={columns} hidden={hidden} widths={WIDTHS} flexes={{ says: 2 }} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={selected} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} testId="dark-pool" />
+        <TraceGrid rows={cut} columns={columns} hidden={hidden} widths={WIDTHS} flexes={{ says: 2 }} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={selected} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} testId="dark-pool" />
         {(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) && cut.length === 0 ? <FeedFallback fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} /> : null}
       </TraceBox>
 
@@ -821,10 +838,10 @@ const DarkPool = () => {
         facts={
           <>
             <Fact label={regularView ? "The day's largest crosses" : 'Dark tape in hand'} testId="tape" title={regularView ? `The day's largest regular-session crosses by dollars (${fmtUsd(regFloor)} and up), priced at the quote — the vendor's top crosses, not every one; own-terms prints left out` : "The market's latest dark prints priced at the quote, collected while this page is open — not the whole day; own-terms prints left out"}>
-              {fmtUsd(leaders.totalNotional)} <span className="text-textMuted">· {num(leaders.totalPrints)} crosses{leaderWindow ? ` · ${leaderWindow}` : ''}</span>
+              {srcReading && !leaders.totalPrints ? <span className="text-textMuted">—</span> : <>{fmtUsd(leaders.totalNotional)} <span className="text-textMuted">· {num(leaders.totalPrints)} crosses{leaderWindow ? ` · ${leaderWindow}` : ''}</span></>}
             </Fact>
             <Fact label="Names" testId="names" title="The names in the market's latest dark prints — the vendor's recent feed carries no sector">
-              {num(leaderRows.length)}
+              {srcReading && !leaderRows.length ? <span className="text-textMuted">—</span> : num(leaderRows.length)}
             </Fact>
             {heaviest && (
               <Champion label="Heaviest name" ink="supreme" onOpen={() => putAbove(heaviest.ticker)} testId="heaviest">
@@ -845,7 +862,7 @@ const DarkPool = () => {
         }
         sentence={leadersSentence}
       >
-        <TraceGrid rows={leaderRows} columns={leaderColumns} hidden={leaderChooser.hidden} widths={LEADER_WIDTHS} tooltips={LEADER_TOOLTIPS} rowKey={leaderKey} onRowClick={r => putAbove(r.ticker)} selectedKey={name} initialSort={{ key: 'dark', dir: 'desc' }} autoHeight emptyText="No dark prints in hand yet" testId="dark-leaders" />
+        <TraceGrid rows={leaderRows} columns={leaderColumns} hidden={leaderChooser.hidden} widths={LEADER_WIDTHS} tooltips={LEADER_TOOLTIPS} rowKey={leaderKey} onRowClick={r => putAbove(r.ticker)} selectedKey={name} initialSort={{ key: 'dark', dir: 'desc' }} autoHeight emptyText={srcReading ? 'Reading the tape…' : 'No dark prints in hand yet'} testId="dark-leaders" />
       </TraceBox>
 
       {/* THE CROSS'S CARD — the Live Tape's print card, for a cross: the figures, the read, the sequence, the tape */}

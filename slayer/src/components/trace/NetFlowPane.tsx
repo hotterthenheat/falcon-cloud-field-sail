@@ -338,6 +338,23 @@ const NetFlowPane = ({
   const nowP = nyParts(new Date());
   const runningNow = isLiveDay() && nowP.hour * 60 + nowP.minute < endMin;
   const windowWords = runningNow ? `09:30–now (${tail ? nyClock(tail.time * 1000) : nyClock(Date.now())})` : `09:30–${sessionEndLabel(ticker ?? ref)}`;
+  /* THE READOUT AT REST IS THE LATEST MINUTE (retail, round 8: "--:-- SPY — NET CALLS —" before any hover) — the hover
+     writes over it, and leaving the chart puts the latest back */
+  const restTip = useCallback(() => {
+    const card = tipRef.current;
+    if (!card || card.style.opacity === '1' || !tail) return;
+    if (tipTimeRef.current) tipTimeRef.current.textContent = `${nyClock(tail.time * 1000)} · latest`;
+    if (tipSpotLabelRef.current) tipSpotLabelRef.current.textContent = ref;
+    if (tipSpotRef.current) tipSpotRef.current.textContent = tail.price > 0 ? `$${tail.price.toFixed(2)}` : '—';
+    if (tipCallRef.current) tipCallRef.current.textContent = fmtUsd(tail.callPrem);
+    if (tipPutRef.current) tipPutRef.current.textContent = fmtUsd(tail.putPrem);
+    if (tipVolRef.current) tipVolRef.current.textContent = tail.vol.toLocaleString('en-US');
+  }, [tail, ref]);
+  useEffect(() => {
+    restTip();
+  }, [restTip]);
+  const restTipRef = useRef(restTip);
+  restTipRef.current = restTip;
   const emptyNote = series.length ? null : own.waiting ? 'Reading the minutes…' : own.fault ? 'This read did not land — the line fills when the feed answers' : 'No flow on this cut yet';
   /* The names the search can offer: only those with contracts inside the
      pane's own DTE ceiling — a 0DTE pane lists same-day names alone. */
@@ -531,6 +548,7 @@ const NetFlowPane = ({
       if (!param.time || !param.point) {
         card.style.opacity = '0';
         applyPick(null);
+        restTipRef.current();
         return;
       }
       if (tipTimeRef.current) tipTimeRef.current.textContent = typeof param.time === 'number' ? nyClock(param.time * 1000) : nyTimeFormatter(param.time);
@@ -770,8 +788,10 @@ const NetFlowPane = ({
           {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
           {/* AN INDEX-ONLY PANE SAYS ITS LINE IS NOT AN INDEX (audit round 4: "Index options only" over a line labelled "SPY
               price"): the vendor's minutes carry SPY's price on every cut, so the line is SPY's, said as a reference */}
-          <span style={{ color: inksNow.spot }} title={ticker ? undefined : `The white line is ${ref}'s price — the vendor's reference line on every cut, not ${seg === 'indexes' ? 'an index level' : "the cut's own price"}; the cut's money is every name in it`}>
-            {ticker ? ref : seg === 'indexes' ? `${ref} price · reference, not an index` : `${ref} price · reference`}
+          {/* THE LINES' KEY (retail, round 8: the chart had no legend for its lines) — each label wears its line's stroke */}
+          <span style={{ color: inksNow.spot }} data-pane-legend="spot" title={ticker ? `The thin solid line — ${ref}'s price, its own scale on the left` : `The white line is ${ref}'s price — the vendor's reference line on every cut, not ${seg === 'indexes' ? 'an index level' : "the cut's own price"}; the cut's money is every name in it`}>
+            <span aria-hidden className="inline-block align-middle w-3.5 mr-1 border-t" style={{ borderColor: inksNow.spot }} />
+            {ticker ? `${ref} price` : seg === 'indexes' ? `${ref} price · reference, not an index` : `${ref} price · reference`}
           </span>
           {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
               series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}
@@ -786,10 +806,12 @@ const NetFlowPane = ({
             </span>
           )}
           <span title={`${ticker ? "The vendor's minute ticks for the name (/stock/{t}/net-prem-ticks), 09:30 to the close" : "The vendor's net flow by expiry (/net-flow/expiry)"}. ${VENDOR_TOTAL_NOTE}`}>
+            <span aria-hidden data-pane-legend="calls" className="inline-block align-middle w-3.5 mr-1 border-t-2" style={{ borderColor: inksNow.calls }} title="The solid line — net call premium, running from the bell" />
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
             <span className={ncp >= 0 ? 'text-bull' : 'text-bear'}>{tail ? fmtUsd(ncp) : '—'}</span>
           </span>
           <span title={VENDOR_TOTAL_NOTE}>
+            <span aria-hidden data-pane-legend="puts" className="inline-block align-middle w-3.5 mr-1 border-t-2 border-dashed" style={{ borderColor: inksNow.puts }} title="The dashed line — net put premium, running from the bell" />
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net puts</span>
             <span className={npp >= 0 ? 'text-bear' : 'text-bull'}>{tail ? fmtUsd(npp) : '—'}</span>
           </span>

@@ -35,7 +35,7 @@ import { When } from '../../components/record/when';
 import { EtfsGuide, InstitutionsGuide, ShortsGuide } from '../../components/record/FileGuides';
 import { useBoardNames } from '../../data/boardNames';
 import { houseSlug, positionWord, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type ShortRow } from '../../data/fileBooks';
-import { HOUSE_LINES, SHORTS_MIN_FLOAT, SHORTS_SCREEN, useCompanyName, useEtfs, useInstitutions, useShorts } from '../../data/liveFiles';
+import { HOUSE_LINES, SHORTS_MIN_FLOAT, SHORTS_SCREEN, useCompanyName, useEtfs, useInstitutions, useShorts, wantAllHouses } from '../../data/liveFiles';
 import { tickerName } from '../../data/tickers';
 import { FeedFallback } from '../../components/ui/liveRead';
 
@@ -85,11 +85,19 @@ type BookPick = 'any' | InstitutionRow['book'];
 type HousePick = string;
 type NamesPick = 'all' | 'board';
 
+/* THE WINDOW IS WHEN THE LATEST 13F WAS FILED (round 8: "The year" read as a year of filings — each house's latest 13F
+   alone is read, every one of them for the same quarter) */
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
-  { value: 90, label: 'This quarter', hint: 'Filed in the last 90 days' },
-  { value: 180, label: 'Half year', hint: 'Filed in the last 180 days' },
-  { value: 365, label: 'The year', hint: 'Filed in the last year' },
+  { value: 90, label: 'Filed ≤ 90 days', short: '90 days', hint: "Houses whose latest 13F was filed in the last 90 days" },
+  { value: 180, label: 'Filed ≤ 180 days', short: '180 days', hint: "Houses whose latest 13F was filed in the last 180 days" },
+  { value: 365, label: 'Filed ≤ 1 year', short: '1 year', hint: "Houses whose latest 13F was filed in the last year — still one 13F a house, the latest" },
 ];
+/** "2026 Q2" → "Jun 30, 2026": the day a 13F's holdings are as of */
+const QUARTER_END = ['Mar 31', 'Jun 30', 'Sep 30', 'Dec 31'];
+const quarterEnd = (report: string): string | null => {
+  const m = /^(\d{4}) Q([1-4])$/.exec(report);
+  return m ? `${QUARTER_END[Number(m[2]) - 1]}, ${m[1]}` : null;
+};
 const BOOK_OPTIONS: DropdownOption<BookPick>[] = [
   { value: 'any', label: 'Any side', short: 'All', hint: 'Shares, calls and puts' },
   { value: 'stock', label: 'Shares', hint: 'The filing left put/call empty' },
@@ -116,7 +124,15 @@ const InstName = ({ data }: ICellRendererParams<InstitutionRow>) =>
     </span>
   ) : null;
 
-const InstFiled = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <When days={data.filedDaysAgo} /> : null);
+/* the filing day and, under it, the day the holdings are as of (round 8: "Filed 09/23 · 30d ago" read as fresh positions;
+   they are the quarter-end's) */
+const InstFiled = ({ data }: ICellRendererParams<InstitutionRow>) =>
+  data ? (
+    <span className="flex flex-col leading-tight">
+      <When days={data.filedDaysAgo} />
+      {quarterEnd(data.report) ? <span className="font-mono text-[9px] text-textMuted">holdings as of {quarterEnd(data.report)}</span> : null}
+    </span>
+  ) : null;
 const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary truncate">{data.name}</span> : null);
 const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${BOOK_INK[data.book]}`}>{data.book === 'stock' && data.security ? data.security : BOOK_WORD[data.book]}</span> : null);
 const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
@@ -175,6 +191,24 @@ export const Institutions = () => {
   const [guideOpen, setGuideOpen] = useState(false);
   const live = useInstitutions();
   const feed = live.rows;
+  /* THE PERIOD THE 13Fs COVER (round 8: the page never said the values are as of the quarter's end) */
+  const periods = useMemo(() => [...new Set(feed.map(r => r.report).filter(r => r && r !== '—'))].sort().reverse(), [feed]);
+  const periodWords = periods.length === 1 && quarterEnd(periods[0]) ? `13F for the quarter ending ${quarterEnd(periods[0])}` : periods.length > 1 ? `13Fs for the quarters ending ${periods.map(p => quarterEnd(p) ?? p).join(', ')}` : null;
+  /* THE REST OF THE HOUSES WHEN WANTED (round 8): any cut, a pick, the grid's pages or the end of the list reads them */
+  const allSentinel = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!live.held) return;
+    const el = allSentinel.current;
+    if (!el) return;
+    /* the reader's own scroll to the end of the list asks for the rest — the sentinel in view while the grid is still
+       laying out does not */
+    const onScroll = () => {
+      const r = el.getBoundingClientRect();
+      if (globalThis.scrollY > 100 && r.top < globalThis.innerHeight + 200) wantAllHouses();
+    };
+    globalThis.addEventListener('scroll', onScroll, { passive: true });
+    return () => globalThis.removeEventListener('scroll', onScroll);
+  }, [live.held]);
   /* a failed read is not an empty filing season */
   const failed = live.status === 'error';
   const houseOptions = useMemo<DropdownOption<string>[]>(() => [{ value: 'any', label: 'Every house', short: 'All', hint: 'The houses on this cut' }, ...live.houses.map(h => ({ value: h, label: h }))], [live.houses]);
@@ -263,6 +297,9 @@ export const Institutions = () => {
   const paged = usePagedGrid<InstitutionRow>();
   const cutKey = `${window}|${book}|${house}|${names}|${picks.join(',')}`;
   useEffect(() => {
+    if (cutKey !== '365|any|any|all|') wantAllHouses();
+  }, [cutKey]);
+  useEffect(() => {
     const el = gridRef.current;
     if (!el) return;
     el.classList.remove('animate-soft-in');
@@ -285,26 +322,33 @@ export const Institutions = () => {
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What the houses reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a line, a book and the change mean" testId="institutions-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title="Each house's book is far longer than the lines read here: the largest 80 lines by value from its latest 13F, for the 40 largest houses">The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title="Each house's book is far longer than the lines read here: the largest 80 lines by value from its latest 13F, for the 40 largest houses. A 13F reports what a house held on the last day of the quarter, filed up to 45 days later — never today's positions">{periodWords ? <span className="text-textSecondary" data-institutions-period>{periodWords} — values as of that day · </span> : null}The largest {HOUSE_LINES} lines of each house's latest 13F, for the 40 largest houses — not every line · a row opens that house</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Lines")}>Lines</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : <>{facts.lines.toLocaleString('en-US')}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lines.toLocaleString('en-US')}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Houses")}>Houses</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">
-              {failed ? '—' : live.progress ? <span className="text-textSecondary" title="The rest of the houses are still landing">{facts.houses.toLocaleString('en-US')} · reading {live.progress.done} of {live.progress.total}</span> : <>{facts.houses.toLocaleString('en-US')}</>}
+              {failed ? '—' : live.held && live.progress ? (
+                <span className="text-textSecondary" title={`The ${live.progress.done} newest filers are read; the other ${live.progress.total - live.progress.done} are read when you go further — scroll the grid, pick a cut, or ask here`}>
+                  {facts.houses.toLocaleString('en-US')} <span className="text-textMuted">newest of {live.progress.total} ·</span>{' '}
+                  <button type="button" onClick={wantAllHouses} className="underline decoration-dotted underline-offset-2 hover:text-textPrimary" data-institutions-more>
+                    read all
+                  </button>
+                </span>
+              ) : live.progress ? <span className="text-textSecondary" title="The rest of the houses are still landing">{facts.houses.toLocaleString('en-US')} · reading {live.progress.done} of {live.progress.total}</span> : live.status === 'loading' ? <span className="text-textMuted">…</span> : <>{facts.houses.toLocaleString('en-US')}</>}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Calls · puts")}>Calls · puts</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap text-textPrimary">{failed ? '—' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap text-textPrimary">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.calls} calls <span className="text-textMuted">·</span> {facts.puts} puts</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Largest line")}>Largest line</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -366,6 +410,7 @@ export const Institutions = () => {
         {paged.bar(rows.length, 'institutions')}
         </>
         )}
+        <div ref={allSentinel} aria-hidden className="h-px" />
       </div>
     </Page>
   );

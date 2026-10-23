@@ -47,6 +47,7 @@ import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import LeanCell from '../../components/trace/LeanCell';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
@@ -169,9 +170,12 @@ const Footprints = () => {
   /* THE MARKET'S BOOK ONLY (audit round 5: the "market" book silently took in the shell's active ticker — the market's top
      200 plus SPY's top 80 — so changing the ticker elsewhere moved the market's figures, and SPY 767P stood as the
      biggest build though it is not among the market's 200). A name is read with the search. */
-  const liveBook = useLiveBook(null).rows;
+  const bookPack = useLiveBook(null);
+  const liveBook = bookPack.rows;
+  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "+0 added … No open interest changed" while the book loaded) */
+  const reading = bookPack.waiting && liveBook.length === 0;
   // The shared hold (see LiveHold): book and tick freeze together while paused.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !reading);
   const { book: heldBook, tick } = hold.value;
   /* THE EXPIRY CUT: the dates on the book, as a calendar */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
@@ -213,10 +217,15 @@ const Footprints = () => {
     return bits.length ? bits.join(', ') : '';
   }, [query, side]);
   const loudestBuild = useMemo(() => [...filtered.filter(r => r.deltaOI > 0 && onCount(r))].sort((a, b) => b.deltaOI - a.deltaOI)[0] ?? null, [filtered, onCount]);
+  /* THE SENTENCE FOLLOWS THE SCREEN (audit round 8: on Unwinds it still ended "Biggest build…") */
+  const loudestUnwind = useMemo(() => [...filtered.filter(r => r.deltaOI < 0 && onCount(r))].sort((a, b) => a.deltaOI - b.deltaOI)[0] ?? null, [filtered, onCount]);
+  const loudest = screen === 'unwinds' ? loudestUnwind : loudestBuild;
 
   /* ReactNode: "The loudest:" is a door into the same card its table row
      opens — even when the current screen has it filtered out. */
   const read = useMemo<ReactNode>(() => {
+    if (reading) return <RichRead text="Reading the market's book and its open interest…" />;
+    if (bookPack.fault && heldBook.length === 0) return <RichRead text="The book did not answer — the footprints fill when it does." />;
     const counted = filtered.filter(onCount);
     const builds = counted.filter(r => r.deltaOI > 0);
     const unwinds = counted.filter(r => r.deltaOI < 0);
@@ -229,18 +238,19 @@ const Footprints = () => {
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
     /* WHAT IT COVERS (the audit, 2026-10-22: "Open interest grew by 297,774 overnight" summed only the book's contracts) */
     const base = `Across the ${num(counted.length)} standing contract${counted.length === 1 ? '' : 's'} ${cutWord ? `${cutWord} ` : ''}on the market's book (the vendor's 200 contracts with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}), open interest rose ${num(added)} ${oiInWords(cover.day)} on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.${tail}`;
-    if (!loudestBuild) return <RichRead text={base} />;
+    if (!loudest) return <RichRead text={base} />;
+    const unwind = loudest.deltaOI < 0;
     return (
       <>
-        <RichRead text={`${base} Biggest build: `} />
-        <ReadDoor onOpen={() => setOpenKey(loudestBuild.key)}>
-          {loudestBuild.ticker} {loudestBuild.strike}
-          {loudestBuild.right}
+        <RichRead text={`${base} ${unwind ? 'Biggest unwind' : 'Biggest build'}: `} />
+        <ReadDoor onOpen={() => setOpenKey(loudest.key)}>
+          {loudest.ticker} {loudest.strike}
+          {loudest.right}
         </ReadDoor>
-        <RichRead text={` [[+${num(loudestBuild.deltaOI)}]]${loudestBuild.prevVolume > 0 ? `, built ${loudestBuild.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}${stockLike(loudestBuild) ? ` — ${Math.abs(loudestBuild.otmPct).toFixed(0)}% in the money with ${loudestBuild.dte} days to run: likely a stock replacement or a roll, not a directional bet` : ''}.`} />
+        <RichRead text={` [[${unwind ? '−' : '+'}${num(Math.abs(loudest.deltaOI))}]]${!unwind && loudest.prevVolume > 0 ? `, built ${loudest.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}${!unwind && stockLike(loudest) ? ` — ${Math.abs(loudest.otmPct).toFixed(0)}% in the money with ${loudest.dte} days to run: likely a stock replacement or a roll, not a directional bet` : ''}.`} />
       </>
     );
-  }, [filtered, cutWord, loudestBuild, stand.expired, onCount, cover]);
+  }, [filtered, cutWord, loudest, stand.expired, onCount, cover, reading, bookPack.fault, heldBook.length]);
 
   const activeScreen = FOOTPRINT_SCREENS.find(s => s.key === screen) ?? FOOTPRINT_SCREENS[0];
   const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.filter(s => hasPrevSide || !['bought', 'sold', 'carryover'].includes(s.key)).map(s => ({ value: s.key, label: s.label, hint: s.hint })), [hasPrevSide]);
@@ -448,7 +458,9 @@ const Footprints = () => {
     let shed = 0;
     let builds = 0;
     let unwinds = 0;
-    for (const r of book) {
+    /* THE HEAD FOLLOWS THE FILTER (audit round 8: under Side = Puts the head summed the whole book while the sentence and
+       the pills were puts) — the side and the search cut it, as they cut the sentence */
+    for (const r of filtered) {
       if (!onCount(r)) continue;
       if (r.deltaOI > 0) {
         added += r.deltaOI;
@@ -458,8 +470,8 @@ const Footprints = () => {
         unwinds++;
       }
     }
-    return { added, shed, builds, unwinds, counted: book.filter(onCount).length };
-  }, [book, onCount]);
+    return { added, shed, builds, unwinds, counted: filtered.filter(onCount).length };
+  }, [filtered, onCount]);
   const tooltips = useMemo(() => tooltipsFor(cover), [cover]);
   const pendingNote = oiPendingWords(cover);
   /* a deep-in-the-money, long-dated build trades like the stock — flagged, not read as a bet (retail, 2026-10-23) */
@@ -477,11 +489,11 @@ const Footprints = () => {
         guide={{ title: 'How to read the footprints', door: 'What open interest, a build and a streak mean', body: <FootprintsGuide />, testId: 'footprints-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label={`OI ${oiInWords(cover.day)} · on the book`} testId="overnight" title={`Open interest added and shed ${oiInWords(cover.day)} (counted the morning after), summed over the ${num(facts.counted)} standing contracts${cover.lagging ? ` (${num(cover.lagging)} still on the count before are left out)` : ''} on the market's book — the vendor's 200 contracts with the most premium ${dayAdv()}, every name; the terminal's ticker is not added — not the whole market`}>
-              <span className="text-bull">+{num(facts.added)}</span> <span className="text-textSecondary">added ·</span> <span className="text-bear">−{num(facts.shed)}</span> <span className="text-textSecondary">shed</span>
+            <Fact label={`OI ${oiInWords(cover.day)} · ${cutWord || 'on the book'}`} testId="overnight" title={`Open interest added and shed ${oiInWords(cover.day)} (counted the morning after), summed over the ${num(facts.counted)} standing contracts${cutWord ? ` ${cutWord}` : ''}${cover.lagging ? ` (${num(cover.lagging)} still on the count before are left out)` : ''} on the market's book — the vendor's 200 contracts with the most premium ${dayAdv()}, every name; the terminal's ticker is not added — not the whole market`}>
+              {reading ? <span className="text-textMuted">—</span> : <><span className="text-bull">+{num(facts.added)}</span> <span className="text-textSecondary">added ·</span> <span className="text-bear">−{num(facts.shed)}</span> <span className="text-textSecondary">shed</span></>}
             </Fact>
             <Fact label="Contracts" testId="contracts">
-              {facts.builds} <span className="text-textSecondary">built · {facts.unwinds} unwound</span>
+              {reading ? <span className="text-textMuted">—</span> : <>{facts.builds} <span className="text-textSecondary">built · {facts.unwinds} unwound</span></>}
             </Fact>
             {champs.build && champs.build !== champs.fastest && (
               <Champion label="Biggest build" ink="bull" onOpen={() => setOpenKey(champs.build!.key)} testId="build">
@@ -522,13 +534,14 @@ const Footprints = () => {
               </p>
             )}
             {read}
+            <TermLine keys={['standing', 'doi', 'oiDay', 'stockLike']} testId="footprints" />
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText="Nothing on this cut — no contract's open interest moved enough to show under these cards" testId="footprints" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : "Nothing on this cut — no contract's open interest moved enough to show under these cards"} testId="footprints" />
       </TraceBox>
 
-      <BookDrill list={loudestBuild && !shown.some(r => r.key === loudestBuild.key) ? [loudestBuild, ...shown] : shown} openKey={openKey} onOpen={setOpenKey} tick={tick} />
+      <BookDrill list={loudest && !shown.some(r => r.key === loudest.key) ? [loudest, ...shown] : shown} openKey={openKey} onOpen={setOpenKey} tick={tick} />
     </>
   );
 };

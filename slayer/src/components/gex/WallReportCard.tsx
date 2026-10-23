@@ -221,17 +221,30 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       const v = key === 'flip' ? null : oiAt?.get(price);
       const node = snapshot.chain.find(n => Math.abs(n.strike - price) < 1e-9);
       if (key !== 'flip' && oiAt && node) {
-        const now = node.netGex;
-        const added = (v?.call ?? 0) + (v?.put ?? 0);
+        /* A WALL IS GRADED BY ITS OWN LEG (the eighth audit's M2: the 765 call wall "shrank $353M" off its net while 8,499
+           calls were added to it): the call wall is the most call gamma, so its size is its call gamma; the put wall's its
+           put gamma; the supreme (the most net) and the pin by the net — Building's rule (data/building.ts basis), decided
+           by the strike so the levels sharing a row share one figure */
+        const basis = price === levels.supreme ? 'net' : price === levels.callWall && price !== levels.putWall ? 'calls' : price === levels.putWall && price !== levels.callWall ? 'puts' : 'net';
+        const now = basis === 'calls' ? node.callGex : basis === 'puts' ? node.putGex : node.netGex;
+        const added = basis === 'calls' ? v?.call ?? 0 : basis === 'puts' ? v?.put ?? 0 : (v?.call ?? 0) + (v?.put ?? 0);
         const size = Math.abs(now) - Math.abs(now - added);
-        if (Math.abs(size) < 0.05 * Math.max(1, Math.abs(now))) {
+        const legWord = basis === 'net' ? '' : `${basis} `;
+        const switched = basis === 'net' && Math.sign(now) !== Math.sign(now - added) && Math.abs(now - added) > 0.05 * Math.max(1, Math.abs(now));
+        if (switched) {
+          /* a strike that changed sides has no one size — both figures, retail sign */
+          const f = (x: number) => `${-x > 0 ? '+' : -x < 0 ? '−' : ''}${fmtUsdShort(Math.abs(x))}`;
+          trendFig = `flipped ${f(now - added)} → ${f(now)}`;
+          trendWord = oiWords?.day ? oiWords.day : 'overnight';
+          trend = `${now < 0 ? 'call-heavy' : 'put-heavy'} now, ${now - added < 0 ? 'call-heavy' : 'put-heavy'} before ${oiWords?.trade ?? 'the overnight count'} (${f(now - added)} → ${f(now)})`;
+        } else if (Math.abs(size) < 0.05 * Math.max(1, Math.abs(now))) {
           trendWord = 'steady';
           trend = `about where it was before ${oiWords?.trade ?? 'the overnight count'}`;
         } else {
           /* the wall's size in words, no sign beside a signed net (the seventh audit: "−$171M" read as the net falling) */
-          trendFig = `${size > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(size))}`;
+          trendFig = `${legWord}${size > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(size))}`;
           trendWord = oiWords?.day ? oiWords.day : 'overnight';
-          trend = `${trendFig} ${trendWord}`;
+          trend = `${basis === 'calls' ? 'its call gamma ' : basis === 'puts' ? 'its put gamma ' : ''}${size > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(size))} ${trendWord}${basis === 'net' ? '' : ` — a ${basis === 'calls' ? 'call' : 'put'} wall is the most ${basis === 'calls' ? 'call' : 'put'} gamma, so it is read by that leg`}`;
         }
       }
       const lastTouch = ticks.length ? nyClock(ticks[ticks.length - 1].time * 1000) : null;

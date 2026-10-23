@@ -539,13 +539,15 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
         /* EVERY LEVEL A STRIKE IS, IN THE ONE ORDER (the seventh audit's m3: the supreme's chip was skipped where it was
            also a wall, and the put wall overwrote the call wall on a shared strike) — "Supreme · Put wall", inked by the
            first (core/walls.ts LEVEL_ORDER: supreme, call wall, put wall) */
-        const levelOf = new Map<number, { words: string; c: string }>();
+        const levelOf = new Map<number, { words: string; short: string; c: string }>();
         const inkOf = (r: LevelRole) => (r === 'supreme' ? K.supreme : r === 'call wall' ? K.call : K.put);
         for (const k of [S.supreme, s.levels.callWall, s.levels.putWall]) {
           if (!Number.isFinite(k) || [...levelOf.keys()].some(x => near(x, k))) continue;
           const roles = levelRoles(k, { supreme: S.supreme, callWall: s.levels.callWall, putWall: s.levels.putWall });
           if (!roles.length) continue;
-          levelOf.set(k, { words: roles.map((r, i) => (i ? r : r.charAt(0).toUpperCase() + r.slice(1))).join(' · '), c: inkOf(roles[0]) });
+          /* the short form for a lane too narrow for the words (the eighth audit: "Supreme · put wal" cut on a phone) */
+          const SHORT: Record<string, string> = { supreme: 'Sup', 'call wall': 'call', 'put wall': 'put' };
+          levelOf.set(k, { words: roles.map((r, i) => (i ? r : r.charAt(0).toUpperCase() + r.slice(1))).join(' · '), short: roles.length > 1 ? roles.map(r => SHORT[r] ?? r).join(' · ') : roles[0], c: inkOf(roles[0]) });
         }
         const levelAt = (kk: number) => {
           for (const [lk, v] of levelOf) if (near(lk, kk)) return v;
@@ -601,8 +603,11 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
             } else {
               /* KEPT INSIDE ITS OWN LANE (the seventh audit's retail finding: on a phone the "Call wall" pill sat over the
                  strike labels at 770/771 — a short capsule pushed its chip across the axis) */
-              const inLane = left ? Math.min(Math.max(6, x), laneA.from - chipW) : Math.max(laneB.from, Math.min(W - 6 - chipW, x + len - chipW));
-              chipsLater.push({ words: lvl.words, c: lvl.c, x: clearOfFlip(inLane, chipW, p.y), y: p.y, w: chipW });
+              const avail = left ? laneA.from - 6 : W - 6 - laneB.from;
+              const words = chipW > avail ? lvl.short : lvl.words;
+              const cw = chipW > avail ? chipOf(words) : chipW;
+              const inLane = left ? Math.min(Math.max(6, x), laneA.from - cw) : Math.max(laneB.from, Math.min(W - 6 - cw, x + len - cw));
+              chipsLater.push({ words, c: lvl.c, x: clearOfFlip(inLane, cw, p.y), y: p.y, w: cw });
             }
           } else {
             if (canPrint && textW(fig, FIG) + 12 <= len) {

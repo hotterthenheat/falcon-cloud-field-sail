@@ -58,6 +58,7 @@ import LeanCell from '../../components/trace/LeanCell';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { createViewStore } from '../../data/savedViews';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
@@ -422,9 +423,17 @@ const LiveTape = () => {
 
   const tickerQ = searchQuery.trim().toUpperCase();
   const tickerOnly = /^[A-Z][A-Z0-9.]{0,5}$/.test(tickerQ) ? tickerQ : '';
+  /* THE VENDOR IS ASKED ONCE THE TYPING SETTLES (audit round 8: "N", "NV", "NVD", "NVDA" each restarted the tape) — and
+     until the asked name's prints are in, the grid reads "Reading", never "No prints on this cut" */
+  const [streamTicker, setStreamTicker] = useState(tickerOnly);
+  useEffect(() => {
+    if (tickerOnly === streamTicker) return;
+    const t = window.setTimeout(() => setStreamTicker(tickerOnly), tickerOnly ? 350 : 0);
+    return () => window.clearTimeout(t);
+  }, [tickerOnly, streamTicker]);
   const tapeQuery = useMemo<TapeQuery>(
     () => ({
-      ticker: tickerOnly || undefined,
+      ticker: streamTicker || undefined,
       side: sentFilter === 'BULLISH' || sentFilter === 'BEARISH' ? null : sentFilter === 'NEUTRAL' ? 'MID' : null,
       multi: flowFilter === 'MULTI' ? true : undefined,
       /* THE KIND GOES TO THE VENDOR where its codes can say it (audit round 4: Compression read "No prints in this view"
@@ -435,7 +444,7 @@ const LiveTape = () => {
       minSize: flowFilter === 'BLOCK' ? BLOCK_MIN_SIZE : undefined,
       minPremium: Number(minPremKey) || undefined,
     }),
-    [tickerOnly, sentFilter, flowFilter, minPremKey]
+    [streamTicker, sentFilter, flowFilter, minPremKey]
   );
   /* THE HOLD HOLDS THE QUESTION TOO (the audit, 2026-10-22): a card changed while paused re-asked the vendor under the
      frozen rows. Paused, the stream keeps the query it had; the cards cut the held prints on the page, and the new
@@ -465,13 +474,18 @@ const LiveTape = () => {
   /* THE ALERTS LANE READS THE SESSION TOO (audit round 4: it opened on after-hours alerts under Regular) */
   const alerts = useFlowAlerts(40, { untilMs: anchor?.closeMs ?? null, session: regularOnly ? 'regular' : 'extended' });
   const tapeDown = (lane === 'alerts' ? alerts : stream).fault != null;
+  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "Prints 0 of 0 · Premium 0C $0…" for a second or two) — the head reads
+     "—" and the grid "Reading" until the lane's first answer, and while a typed name's own prints are being asked for */
+  const tapeReading = lane === 'alerts' ? alerts.waiting && alerts.rows.length === 0 : stream.waiting || tickerOnly !== streamTicker;
+  const headReading = tapeReading && !frozen;
   /* THE ALERTS IN THE ORDER THEIR TIME COLUMN SAYS (the third audit: "newest first" was the vendor's created_at while the
      Time column shows each alert's first fill, start_time) — by the fill's millisecond, newest first */
   const alertRows = useMemo(() => [...alerts.rows].sort((a, b) => (b.epochMs ?? 0) - (a.epochMs ?? 0)), [alerts.rows]);
   const liveRows = lane === 'alerts' ? alertRows : stream.rows;
   const rows = frozen ?? liveRows;
   useEffect(() => {
-    if (paused) setFrozen(f => f ?? liveRows);
+    /* paused before the first prints: the hold waits for them, then holds there — never a frozen empty tape */
+    if (paused) setFrozen(f => (f && f.length ? f : liveRows.length ? liveRows : null));
     else setFrozen(null);
   }, [paused, liveRows]);
   /* The bookmarks live in the Trace watch store now (2026-09-03) — they
@@ -683,16 +697,22 @@ const LiveTape = () => {
     () => {
       /* OUTSIDE THE SESSION THE DAY LEADS (retail, round 7): the whole day's market net first, then the window, labelled as
          only its seconds */
+      /* IN THE SESSION THE DAY LEADS TOO (retail, round 8: the head's big labels covered two seconds of prints) — the day so
+         far first, then the window, said as its seconds */
       const dayLead: ReadSeg[] =
-        lane === 'prints' && anchor && dayNet
+        lane === 'prints' && !anchor && dayNet && regularOnly && !scopeActive
+          ? [
+              `Today so far (09:30–${nyClock(dayNet.last * 1000)} ET): the market's net premium [[${dayNet.net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.net))}]] — net calls ${dayNet.calls >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.calls))} less net puts ${dayNet.puts >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.puts))} (the vendor's market tide, spread legs and floor packages in it). The rest of this read, and the figures above it, cover only the last ${rows.length.toLocaleString('en-US')} prints${spanLength(rows) ? ` — ${spanLength(rows)}` : ''}: `,
+            ]
+          : lane === 'prints' && anchor && dayNet
           ? [
               `The whole ${shortDay(anchor.iso)} session (${regularOnly ? '09:30–16:15 ET' : 'after the close'}): the market's net premium [[${dayNet.net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.net))}]] — net calls ${dayNet.calls >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.calls))} less net puts ${dayNet.puts >= 0 ? '+' : '−'}${fmtUsd(Math.abs(dayNet.puts))} (the vendor's market tide, spread legs and floor packages in it; the whole-day panel below has the contracts and alerts). `,
             ]
           : [];
       const lead: ReadSeg[] = lane === 'prints' && anchor ? [`The regular session has closed — on the Regular session card the tape is its last stretch, walked back from the 16:15 ET close${anchor.iso !== tapeIsoToday() ? ` of ${shortDay(anchor.iso)}` : ''} (the prints after it are under Extended hours on the Session card). `] : [];
-      return dayLead.concat(lead, beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? (lane === 'alerts' ? 'Awaiting the first alerts…' : 'Awaiting the first prints…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints', lane === 'prints' && !!anchor));
+      return dayLead.concat(lead, beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? (lane === 'alerts' ? 'Reading the alerts…' : tickerOnly ? `Reading ${tickerOnly}'s prints…` : 'Reading the tape…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints', lane === 'prints' && !!anchor));
     },
-    [beamRows, beamSummary, tapeDown, rows.length, lane, anchor, dayNet, regularOnly]
+    [beamRows, beamSummary, tapeDown, rows, lane, anchor, dayNet, regularOnly, scopeActive, tickerOnly]
   );
   /* THE WINDOW IS THE LABEL'S PRINTS (audit round 5: "Window · last 2,000 prints" under a filter showed the filtered
      subset's span) — the span of every print in hand; a cut's own span rides beside it */
@@ -993,29 +1013,29 @@ const LiveTape = () => {
         guide={{ title: 'How to read the tape', door: 'What a print, its fill and its conviction mean', body: <LiveTapeGuide />, testId: 'live-tape-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
+            <Fact label={lane === 'prints' ? `These figures cover · last ${rows.length.toLocaleString('en-US')} prints${spanLength(rows) ? ` · ${spanLength(rows)}` : ''} · not the day` : 'These figures cover · the alerts in hand'} testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick Extended hours on the Session card for what prints after it` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
+              {headReading ? <span className="text-textMuted">—</span> : windowSpan ? `${windowSpan} ET` : '—'}
+              {cutSpan && cutSpan !== windowSpan && <span className="text-textSecondary" title="The span of the prints this cut keeps"> · this cut {cutSpan}</span>}
+              {lane === 'prints' && anchor && <span className="text-textSecondary"> · regular session, to the {anchor.iso !== tapeIsoToday() ? `${shortDay(anchor.iso)} close` : 'close'}</span>}
+            </Fact>
             <Fact label={lane === 'alerts' ? 'Alerts' : 'Prints'} testId="prints" title={lane === 'alerts' ? "The vendor's newest flow alerts — each one an aggregate of a contract's prints in one burst" : 'The prints in hand — the newest stretch of the tape, unbroken, up to 2,000 — not the whole day'}>
-              {filtered.length}{' '}
+              {headReading ? <span className="text-textMuted">—</span> : <>{filtered.length}{' '}
               <span className="text-textSecondary">
                 of {rows.length}{lane === 'alerts' ? ' alerts' : ''}
                 {lane === 'prints' && stream.hasOlder ? ' · older still coming' : ''}
                 {lane === 'prints' && !stream.hasOlder && rows.length >= TAPE_CAP ? ' · at the max' : ''}
                 {' · '}
                 {markedCount} tracked
-              </span>
+              </span></>}
             </Fact>
-            <Fact label={lane === 'prints' ? `Window · last ${rows.length.toLocaleString('en-US')} prints${spanLength(rows) ? ` · ${spanLength(rows)}` : ''}${anchor ? ' · not the day' : ''}` : 'Window'} testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick Extended hours on the Session card for what prints after it` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
-              {windowSpan ? `${windowSpan} ET` : '—'}
-              {cutSpan && cutSpan !== windowSpan && <span className="text-textSecondary" title="The span of the prints this cut keeps"> · this cut {cutSpan}</span>}
-              {lane === 'prints' && anchor && <span className="text-textSecondary"> · regular session, to the {anchor.iso !== tapeIsoToday() ? `${shortDay(anchor.iso)} close` : 'close'}</span>}
+            <Fact label="Premium · window" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? `, compression packages left out (${fmtUsd(beamSummary.compression.premium)})` : ''}`}>
+              {headReading ? <span className="text-textMuted">—</span> : <><span className="text-bull">{beamSummary.callCount}C</span> {fmtUsd(beamSummary.callPremium)} <span className="text-textSecondary">/</span> <span className="text-bear">{beamSummary.putCount}P</span> {fmtUsd(beamSummary.putPremium)}</>}
             </Fact>
-            <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? `, compression packages left out (${fmtUsd(beamSummary.compression.premium)})` : ''}`}>
-              <span className="text-bull">{beamSummary.callCount}C</span> {fmtUsd(beamSummary.callPremium)} <span className="text-textSecondary">/</span> <span className="text-bear">{beamSummary.putCount}P</span> {fmtUsd(beamSummary.putPremium)}
+            <Fact label="Sweeps · blocks · multi-leg · window" testId="kinds" title={`Sweeps, blocks (one leg, ${BLOCK_MIN_SIZE} contracts or $${BLOCK_MIN_PREMIUM / 1000}K and up) and multi-leg prints in this view; ${beamSummary.other} single prints besides`}>
+              {headReading ? <span className="text-textMuted">—</span> : <>{beamSummary.sweeps} <span className="text-textSecondary">·</span> {beamSummary.blocks} <span className="text-textSecondary">·</span> {beamSummary.multi}</>}
             </Fact>
-            <Fact label="Sweeps · blocks · multi-leg" testId="kinds" title={`Sweeps, blocks (one leg, ${BLOCK_MIN_SIZE} contracts or $${BLOCK_MIN_PREMIUM / 1000}K and up) and multi-leg prints in this view; ${beamSummary.other} single prints besides`}>
-              {beamSummary.sweeps} <span className="text-textSecondary">·</span> {beamSummary.blocks} <span className="text-textSecondary">·</span> {beamSummary.multi}
-            </Fact>
-            <Fact label="P/C premium" testId="pc" title="Put premium divided by call premium in this view">
-              {beamSummary.callPremium > 0 ? beamSummary.pcRatio.toFixed(2) : '—'}
+            <Fact label="P/C premium · window" testId="pc" title="Put premium divided by call premium in this view — the prints in hand only, not the day">
+              {!headReading && beamSummary.callPremium > 0 ? beamSummary.pcRatio.toFixed(2) : '—'}
             </Fact>
             {beamSummary.compression.count > 0 && (
               <Fact label="Compression · not a bet" testId="compression" title="OPRA cbmo / mctp packages and arbitrage-tagged prints in this view — they net open interest down between members; shown, never read, and in no other figure here">
@@ -1027,8 +1047,8 @@ const LiveTape = () => {
                 {beamSummary.spreadLegs.count} <span className="text-textSecondary">· {fmtUsd(beamSummary.spreadLegs.premium)}</span>
               </Fact>
             )}
-            <Fact label="0DTE" testId="odte" title={`Share of this view's ${lane === 'alerts' ? 'alerts' : 'prints'} on contracts expiring the day they printed (0 days to expiry), each counted from its own trade date`}>
-              <span className="text-textPrimary">{(Math.round(zdteShare * 1000 + 1e-9) / 10).toFixed(1)}%</span> <span className="text-textSecondary">of {lane === 'alerts' ? 'alerts' : 'prints'} · {beamRows.filter(r => r.dte === 0).length.toLocaleString('en-US')} of {beamRows.length.toLocaleString('en-US')}</span>
+            <Fact label="0DTE · window" testId="odte" title={`Share of this view's ${lane === 'alerts' ? 'alerts' : 'prints'} on contracts expiring the day they printed (0 days to expiry), each counted from its own trade date`}>
+              {headReading ? <span className="text-textMuted">—</span> : <><span className="text-textPrimary">{(Math.round(zdteShare * 1000 + 1e-9) / 10).toFixed(1)}%</span> <span className="text-textSecondary">of {lane === 'alerts' ? 'alerts' : 'prints'} · {beamRows.filter(r => r.dte === 0).length.toLocaleString('en-US')} of {beamRows.length.toLocaleString('en-US')}</span></>}
             </Fact>
             {tickerOnly && topDay.rows.length > 0 && (
               <Fact label={`${tickerOnly} · biggest with a clear side ${dayAdv(dayIso)} · whole day`} testId="name-day" title={`${tickerOnly}'s biggest contracts WITH A CLEAR SIDE ${dayAdv(dayIso)}, the whole day — not the biggest by premium (the Screener's "Largest"), which is named after them when it differs — the vendor's screener, not the window of prints above. Ranked by their sided premium (the day's premium × the share of its contracts that leaned to the ask over the bid); a contract whose day was even (no side holding 55% of the sided contracts), mostly at the mid, mostly floor-traded multi-leg packages, half or more legs of multi-leg orders (spread legs), or deep in the money and long-dated (stock-like) has no directional read and is not ranked${nameDay.packs.length ? `. Set apart: ${nameDay.packs.map(c => `${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} ${notABetWord(c)}`).join(', ')}` : ''}`}>
@@ -1054,12 +1074,12 @@ const LiveTape = () => {
               </Fact>
             )}
             {whales.bull && whales.bull !== whales.all && (
-              <Champion label="Top bull" ink="bull" title="The biggest bullish print in this window — a call bought at the ask or a put sold on the bid" onOpen={() => setOpenPrint(whales.bull)} testId="bull">
+              <Champion label={lane === 'alerts' ? 'Top bull alert' : 'Top bull · window'} ink="bull" title="The biggest bullish print in this window — a call bought at the ask or a put sold on the bid" onOpen={() => setOpenPrint(whales.bull)} testId="bull">
                 {pill(whales.bull)}
               </Champion>
             )}
             {whales.bear && whales.bear !== whales.all && (
-              <Champion label="Top bear" ink="bear" title="The biggest bearish print in this window — a put bought at the ask or a call sold on the bid" onOpen={() => setOpenPrint(whales.bear)} testId="bear">
+              <Champion label={lane === 'alerts' ? 'Top bear alert' : 'Top bear · window'} ink="bear" title="The biggest bearish print in this window — a put bought at the ask or a call sold on the bid" onOpen={() => setOpenPrint(whales.bear)} testId="bear">
                 {pill(whales.bear)}
               </Champion>
             )}
@@ -1072,7 +1092,7 @@ const LiveTape = () => {
         }
         controls={
           <>
-            <LiveHold paused={paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
+            <LiveHold paused={paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={paused && !frozen} />
             {/* a closed session's stretch is complete, not stale — it is not polled because nothing newer belongs to it */}
             {!(lane === 'prints' && anchor) && <StaleMark at={(lane === 'alerts' ? alerts : stream).at} ttlMs={FLOW_TTL_MS} fault={(lane === 'alerts' ? alerts : stream).fault} />}
             <span className="inline-flex rounded-md border border-borderSubtle overflow-hidden" data-tape-lane>
@@ -1083,8 +1103,8 @@ const LiveTape = () => {
               ))}
             </span>
             {lane === 'prints' && (
-              <button type="button" onClick={() => setDayPick(!showDay)} aria-pressed={showDay} title="The whole day's figures — the market tide, the contracts with the most premium and the largest flow alerts — above the prints" className={`px-2 py-1 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider ${showDay ? 'bg-chip text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`} data-tape-day-toggle>
-                Whole day
+              <button type="button" onClick={() => setDayPick(!showDay)} aria-pressed={showDay} title="Shows or hides the whole-day panel — the market tide, the contracts with the most premium and the largest flow alerts. A panel, not a filter: the prints and the figures above them do not change" className={`px-2 py-1 rounded-md border border-borderSubtle font-mono text-[10px] uppercase tracking-wider ${showDay ? 'bg-chip text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`} data-tape-day-toggle>
+                {showDay ? 'Hide whole day' : 'Show whole day'}
               </button>
             )}
             <FlowSearch value={searchQuery} onChange={setSearchQuery} rows={rows} span />
@@ -1119,6 +1139,7 @@ const LiveTape = () => {
               </p>
             )}
             {readNode}
+            <TermLine keys={['spreadLegs', 'floor', 'stockLike', 'volOi']} testId="live-tape" />
           </>
         }
       >
@@ -1253,7 +1274,7 @@ const LiveTape = () => {
             rowClass={FADE_ROW}
             animate={false}
             autoHeight
-            emptyText={rows.length === 0 ? (tapeDown ? 'This read did not land — the tape will fill when the feed answers' : 'Awaiting first prints…') : 'No prints on this cut — loosen a card: the order, the kind, the lean, the floor or the expiry'}
+            emptyText={tapeReading && !frozen ? (tickerOnly ? `Reading ${tickerOnly}'s prints…` : lane === 'alerts' ? 'Reading the alerts…' : 'Reading the tape…') : rows.length === 0 ? (tapeDown ? 'This read did not land — the tape will fill when the feed answers' : lane === 'alerts' ? 'No alerts in this view yet' : 'No prints in this view yet') : 'No prints on this cut — loosen a card: the order, the kind, the lean, the floor or the expiry'}
             testId="live-tape"
           />
         </div>

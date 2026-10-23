@@ -34,7 +34,7 @@ import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/
 import { useMarketData } from '../../context/MarketDataContext';
 import { dayLean, useContracts, usd as fmtUsd } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
-import { applyFilters, floorPackaged, FRESH_VOL_OI, notABet, spreadLegDay, spreadLegHint, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
+import { applyFilters, doiTail, floorPackaged, FRESH_VOL_OI, notABet, spreadLegDay, spreadLegHint, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -53,6 +53,7 @@ import { shyPct } from '../../components/trace/dayWords';
 import { dayAdv, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, oiRowTitle, prevSessionIso, shortDay } from '../../components/trace/dayWords';
 import { SectorName } from '../../components/trace/SectorMark';
 import WatchStar from '../../components/trace/WatchStar';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { ScreenerGuide } from '../../components/trace/TraceGuide';
 import { contractKey, watchContract } from '../../context/WatchContext';
@@ -209,7 +210,7 @@ const OptionsScreener = () => {
   const pack = unusual ? unusualBook : hottest;
   const liveBook = pack.rows;
   /* ONE hold for the whole page: paused, the book AND the tick freeze together */
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !(pack.waiting && liveBook.length === 0));
   const { book: heldBook, tick } = hold.value;
   /* THE EXPIRY CUT: the dates on the book, as a calendar. THE CALENDAR OFFERS WHAT THE OTHER CARDS LEAVE: its dates
      come from the book under the screen and the filters, so it never offers a day the other cards have already shut out */
@@ -267,6 +268,7 @@ const OptionsScreener = () => {
     }
     return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, pkgPrem, pkg, legPrem, legs };
   }, [rows]);
+  const bookReading = pack.waiting && liveBook.length === 0;
   const champs = useMemo(() => {
     /* a day that was mostly floor-traded multi-leg packages — compression's shape — is named apart, never crowned the
        largest without saying so (the third audit; flowBook floorPackaged) */
@@ -277,12 +279,13 @@ const OptionsScreener = () => {
     return { call: by(r => r.right === 'C'), put: by(r => r.right === 'P'), all: by(() => true), packaged };
   }, [rows]);
   const sentence = useMemo(() => {
+    if (bookReading) return 'Reading the book…';
     if (rows.length === 0) return 'Nothing on this cut.';
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
     const apart = [facts.pkg ? `${plural(facts.pkg, 'floor-package contract', 'floor-package contracts')} (${fmtUsd(facts.pkgPrem)}, mostly floor-traded multi-leg packages)` : '', facts.legs ? `${plural(facts.legs, 'spread-leg contract', 'spread-leg contracts')} (${fmtUsd(facts.legPrem)}, half or more of the day in multi-leg orders)` : ''].filter(Boolean);
     const pkgWords = apart.length ? ` (${apart.join(' and ')} left out — legs of packages, not bets of their own)` : '';
     return `${fmtUsd(facts.prem)} across ${plural(rows.length - facts.pkg - facts.legs, 'contract', 'contracts')}${pkgWords} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
-  }, [rows.length, facts]);
+  }, [rows.length, facts, bookReading]);
   /* AN EMPTY CUT NAMES THE CARDS THAT EMPTIED IT */
   const emptyText = useMemo(() => {
     const on: string[] = [];
@@ -372,7 +375,7 @@ const OptionsScreener = () => {
               {r.deltaOI > 0 ? '+' : '−'}
               {num(Math.abs(r.deltaOI))} {/* a tier down, never opacity */}
               {/* a percentage of next to nothing is no figure ("+4564800%" on an open interest of 1) */}
-              <span className="text-[11px]">{r.prevOI >= 100 ? pctSigned(r.deltaOIPct, 0) : 'new'}</span>
+              <span className="text-[11px]">{doiTail(r)}</span>
             </span>
           );
         },
@@ -433,7 +436,7 @@ const OptionsScreener = () => {
         facts={
           <>
             <Fact label={facts.pkg || facts.legs ? 'Premium · packages & legs out' : 'Premium'} testId="premium" title={facts.pkg || facts.legs ? `The day's premium of the contracts on this cut, less ${num(facts.pkg)} whose day was mostly floor-traded multi-leg packages (${fmtUsd(facts.pkgPrem)}) and ${num(facts.legs)} whose day was half or more legs of multi-leg orders (${fmtUsd(facts.legPrem)}) — set apart, not single bets` : "The day's premium of the contracts on this cut"}>
-              {fmtUsd(facts.prem)}
+              {bookReading ? <span className="text-textMuted">—</span> : fmtUsd(facts.prem)}
               {/* no premium, no split — "calls 0% / puts 100%" on $0 was a division by nothing */}
               {facts.prem > 0 && (
                 <>
@@ -443,10 +446,10 @@ const OptionsScreener = () => {
               )}
             </Fact>
             <Fact label="Contracts" testId="contracts">
-              {num(rows.length)} <span className="text-textSecondary">· {facts.names} names</span>
+              {bookReading ? <span className="text-textMuted">—</span> : <>{num(rows.length)} <span className="text-textSecondary">· {facts.names} names</span></>}
             </Fact>
             <Fact label="Vol ≥ 1.5× OI" testId="fresh" title={`Contracts on this cut whose volume ${dayAdv()} is at least 1.5 times their open interest — positions likely built in the session (the one floor across Trace; a contract with no open interest before the session is new and not counted)`}>
-              {facts.fresh}
+              {bookReading ? <span className="text-textMuted">—</span> : facts.fresh}
             </Fact>
             {champs.call && champs.call !== champs.all && (
               <Champion label="Top call" ink="plain" title="The biggest single bet among the calls: the most premium among contracts whose day was not mostly floor-traded packages or spread legs (half or more in multi-leg orders) — those are set apart, not bets" onOpen={() => setOpenKey(champs.call!.key)} testId="top-call">
@@ -501,10 +504,11 @@ const OptionsScreener = () => {
               </p>
             )}
             <RichRead text={sentence} />
+            <TermLine keys={['floor', 'spreadLegs', 'volOi', 'doi', 'stockLike', 'oiDay']} testId="screener" />
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={emptyText} testId="screener" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={bookReading ? 'Reading the book…' : emptyText} testId="screener" />
         {pack.fault && rows.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
       <BookDrill list={rows} openKey={openKey} onOpen={setOpenKey} tick={tick} />

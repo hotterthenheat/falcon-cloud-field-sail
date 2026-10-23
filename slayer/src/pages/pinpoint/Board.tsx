@@ -41,8 +41,9 @@ import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWo
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { fmtDistance, impliedDaySigma } from '../../data/atr';
 import { readLevelsScope } from '../../data/levelsScope';
-import { bellDay, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
+import { bellDay, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
+import { strikeTag, todayWords } from '../../data/agenda';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
 import { tickerName } from '../../data/tickers';
 import TickerLookup from '../../components/ui/TickerLookup';
@@ -183,6 +184,18 @@ const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
   );
 };
 
+/* A NAME WHOSE "TODAY" IS A LATER EXPIRY SAYS SO IN THE CELL (the eighth audit's m3: CROX read under "Supreme · today"
+   off its Nov 20 contracts — it has none expiring today). The Levels card's Today reads the front expiry; where that is
+   not today's (or the next session's), the date stands beside the figure. */
+const ExpiryMark = ({ data }: { data: BoardRow }) => {
+  if (readLevelsScope() === 'ALL' || !data.levelsDate || dayWordOf(data.levelsDate)) return null;
+  return (
+    <span className="ml-1 font-mono text-[9px] text-textMuted whitespace-nowrap" title={`${data.ticker} has no contracts expiring ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — this column reads its nearest expiry, ${expirySpan([data.levelsDate]) ?? data.levelsDate}`} data-board-expiry={data.levelsDate}>
+      {expirySpan([data.levelsDate]) ?? data.levelsDate}
+    </span>
+  );
+};
+
 const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
   if (data.pending) return <Pending data={data} />;
@@ -194,6 +207,7 @@ const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   return (
     <span className="font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
       {data.regime === 'SHORT' ? 'amplifying moves' : 'absorbing moves'}
+      <ExpiryMark data={data} />
     </span>
   );
 };
@@ -263,8 +277,9 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
   const w = data.watch;
   if (!w) return <span className="font-mono text-[10px] text-textMuted">—</span>;
   /* every level the strike is, in the one order (the sixth audit's m5) */
-  const kind = w.roles?.length ? w.roles.join(' · ') : w.role ?? (w.isShelf ? 'shelf' : w.isWall ? null : 'trapdoor');
-  const ink = w.roles?.length ? ROLE_INK[w.roles[0]] : w.role ? ROLE_INK[w.role] : w.isShelf ? 'rgb(var(--text-muted))' : w.isWall ? undefined : WARM;
+  /* ONE CLASSIFIER, THE AGENDA'S (the eighth audit's M1: 759 "TRAPDOOR" here, "too thin to be a trapdoor" on the Agenda) */
+  const kind = strikeTag(w);
+  const ink = w.roles?.length ? ROLE_INK[w.roles[0]] : w.role ? ROLE_INK[w.role] : kind === 'shelf' ? 'rgb(var(--text-muted))' : kind === 'trapdoor' ? WARM : undefined;
   /* TWO LINES, so nothing truncates ("$8(" at 1440): the strike and its kind, then the chance, the size and the dollars */
   return (
     <span className="flex flex-col justify-center leading-[14px] font-mono tnum tabular-nums min-w-0">
@@ -277,7 +292,8 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
         )}
       </span>
       <span className="text-[10px] text-textSecondary whitespace-nowrap">
-        {chanceLabel(w.reach)} {w.horizon ? `reached ${w.horizon}` : 'reached'}
+        {/* a strike the session already traded through is reached, not a chance (the eighth audit) */}
+        {w.atPrice ? 'at price' : w.today ? <span title={`Today's session has already traded through ${fmtStrike(w.strike)}${w.today.tests != null ? ` — ${todayWords(w.today)}` : ''}; ${chanceLabel(w.reach)} to touch it again`}>reached today</span> : `${chanceLabel(w.reach)} ${w.horizon ? `reached ${w.horizon}` : 'reached'}`}
         {w.isShelf && (
           <>
             {' · '}
@@ -296,6 +312,7 @@ const SupremeCell = ({ data }: ICellRendererParams<BoardRow>) =>
   ) : data ? (
     <span className="font-mono text-[11px] font-bold tnum tabular-nums" style={{ color: SUPREME }}>
       {fmtStrike(data.supreme)}
+      <ExpiryMark data={data} />
     </span>
   ) : null;
 
@@ -310,6 +327,7 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
     <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`font-mono text-[11px] font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
       {data.netGex > 0 ? '+' : ''}
       {fmtUsd(data.netGex)}
+      <ExpiryMark data={data} />
     </TickFigure>
   ) : null;
 
@@ -339,7 +357,7 @@ const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
       className="font-mono text-[11px] tnum tabular-nums text-textSecondary"
       title={data.crossWhy ?? `${recordPossessive().replace(/^t/, 'T')} session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
     >
-      {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? '—' : data.crossFlip == null ? 'no flip' : `${data.crossings}×`}
+      {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? (data.crossEarly ? 'counts from 9:40' : '—') : data.crossFlip == null ? 'no flip' : `${data.crossings}×`}
     </span>
   ) : null;
 

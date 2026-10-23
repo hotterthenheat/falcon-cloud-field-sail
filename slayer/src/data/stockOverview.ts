@@ -1127,7 +1127,9 @@ const whyNowOf = (pillars: Pillar[]): string => {
 };
 const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen: Screen): string => {
   const words: Record<PillarKey, { good: string; bad: string; name: string }> = {
-    trend: { name: 'the trend', good: 'the trend is up', bad: 'the trend is broken' },
+    /* the trend's span named (round 8: CRM "STRONG · the trend is up" while down 3.5% on the year) — its factors are
+       the 20-day average, the 14-session RSI, the week's ADX and the month */
+    trend: { name: 'the trend', good: 'the short-term trend (weeks, not the year) is up', bad: 'the short-term trend (weeks, not the year) has turned down' },
     numbers: { name: 'the numbers', good: 'the numbers are clean', bad: 'the numbers are slipping' },
     money: { name: 'the money', good: 'the money is buying', bad: 'the money is selling' },
     news: { name: 'the news', good: 'the news helps', bad: 'the news hurts' },

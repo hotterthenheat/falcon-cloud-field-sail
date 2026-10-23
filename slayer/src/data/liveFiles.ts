@@ -95,6 +95,8 @@ interface Snap {
   institutions: InstitutionRow[];
   /** Houses read so far of those asked, while the book is still landing; null once whole */
   instProgress: { done: number; total: number } | null;
+  /** True while the book holds its first houses only, the rest waiting for the reader to want them (round 8) */
+  instHeld: boolean;
   shortStatus: FileStatus;
   shorts: ShortRow[];
   etfStatus: FileStatus;
@@ -115,6 +117,7 @@ interface Snap {
 const empty: Snap = {
   instStatus: 'loading',
   instProgress: null,
+  instHeld: false,
   institutions: [],
   shortStatus: 'loading',
   shorts: [],
@@ -347,6 +350,20 @@ function ensureHouse(slug: string): void {
   })();
 }
 
+/* THE NEWEST FILERS FIRST, THE REST WHEN WANTED (round 8: the Institutions index made 40 house-holdings calls on open).
+   The grid opens on the newest filings, so the houses are read newest filing first: the first INST_FIRST of them, then
+   the book holds until the reader goes further — scrolls to the grid's pages, picks a house, a filter or a window, or
+   asks for the rest — and only then reads the other houses, ten at a time. */
+export const INST_FIRST = 10;
+let instMore: (() => void) | null = null;
+let instWanted = false;
+/** Read the houses the book is holding back */
+export function wantAllHouses(): void {
+  instWanted = true;
+  const go = instMore;
+  instMore = null;
+  go?.();
+}
 async function pullInstitutions() {
   try {
     const houses = await listHouses();
@@ -354,10 +371,10 @@ async function pullInstitutions() {
     const rows: InstitutionRow[] = [];
     /* ten houses at a time, the book published once whole — one by one, the head counted "6 houses · 0 calls" for the
        half-minute the rest took (the ship pass, 2026-10-22) */
-    const list = houses as UwInstitution[];
+    const list = [...(houses as UwInstitution[])].sort((a, b) => String(b.filing_date || b.date || '').localeCompare(String(a.filing_date || a.date || '')));
     emit(houseFacts(list));
     let done = 0;
-    await inBatches(list, 10, async house => {
+    const readHouse = async (house: UwInstitution) => {
       done += 1;
       const name = (house.name || house.short_name || '').trim();
       if (!name) return;
@@ -368,12 +385,26 @@ async function pullInstitutions() {
         const row = rowFromHolding(name, filed, h);
         if (row) rows.push(row);
       }
-    }, () => {
+    };
+    const publish = (held: boolean) => {
       /* the rows land a batch at a time, so the grid fills in seconds; the head says how many houses are in */
-      if (rows.length) emit({ instStatus: 'live', institutions: rows.slice().sort((a, b) => b.valueB - a.valueB), instProgress: done < list.length ? { done, total: list.length } : null });
-    });
+      if (rows.length) emit({ instStatus: 'live', institutions: rows.slice().sort((a, b) => b.valueB - a.valueB), instProgress: done < list.length ? { done, total: list.length } : null, instHeld: held });
+    };
+    const first = list.slice(0, INST_FIRST);
+    const rest = list.slice(INST_FIRST);
+    await inBatches(first, 10, readHouse, () => publish(false));
+    if (rest.length) {
+      if (!instWanted) {
+        publish(true);
+        await new Promise<void>(res => {
+          instMore = res;
+        });
+      }
+      emit({ instHeld: false, instProgress: { done, total: list.length } });
+      await inBatches(rest, 10, readHouse, () => publish(false));
+    }
     if (rows.length === 0) throw new Error('no house landed');
-    emit({ instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB), instProgress: null });
+    emit({ instStatus: 'live', institutions: rows.sort((a, b) => b.valueB - a.valueB), instProgress: null, instHeld: false });
   } catch {
     if (snap.institutions.length === 0) emit({ instStatus: 'error' });
   }
@@ -662,57 +693,64 @@ const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
   };
 };
 
+type FundReads = [UwEtfInfo | null, UwEtfHolding[], UwEtfFlow[]];
+const readFund = (etf: string): Promise<FundReads> =>
+  Promise.all([
+    whalesEtfInfo(etf).catch(() => null as UwEtfInfo | null),
+    whalesEtfHoldings(etf).catch(() => [] as UwEtfHolding[]),
+    whalesEtfFlow(etf).catch(() => [] as UwEtfFlow[]),
+  ]);
+const flowDates = (flowR: unknown): Set<string> => (Array.isArray(flowR) ? new Set((flowR as UwEtfFlow[]).map(x => String(x.date || '').slice(0, 10)).filter(Boolean)) : new Set<string>());
+/** One fund's row and lines off its three reads, its flow summed over `common` (the newest five dates) */
+function fundRow(e: { etf: string; kind: EtfKind }, [infoR, holdR, flowR]: FundReads, common: string[]): { row: EtfRow; held: EtfHolding[] } | null {
+  /* a fund none of whose three reads landed is not a $0 fund — it stays off the book */
+  if (!infoR && !(Array.isArray(holdR) && holdR.length) && !(Array.isArray(flowR) && flowR.length)) return null;
+  const info = infoR && !Array.isArray(infoR) ? infoR : null;
+  const held = (Array.isArray(holdR) ? holdR : []).map(holdingOf).filter((h): h is EtfHolding => !!h).sort((a, b) => b.weight - a.weight);
+  const top = held[0];
+  const window = new Set(common);
+  const flow = flow5(Array.isArray(flowR) ? flowR : [], common.length ? window : undefined);
+  const equity = held.filter(h => !/bond|treasury|fixed/i.test(h.sector)).reduce((s, h) => s + h.weight, 0);
+  const row: EtfRow = {
+    etf: e.etf,
+    name: info?.name || e.etf,
+    kind: e.kind,
+    aumB: num(info?.aum) / 1e9,
+    flow5dM: flow.flow5dM,
+    topHolding: top ? (top.bond ? (top.name ?? '—') : top.ticker) : '—',
+    topWeight: top?.weight ?? 0,
+    equityPct: held.length ? Math.min(100, Math.round(equity)) : e.kind === 'rates' ? 0 : 0,
+    expensePct: numOr(info?.expense_ratio),
+    company: info?.etf_company || '—',
+    domicile: info?.domicile || '—',
+    /* the fund's own count; a dash-free 0 for a trust that holds no securities (GLD holds bullion) */
+    holdingsCount: info?.holdings_count != null ? num(info.holdings_count) : held.length,
+    inception: info?.inception_date || '—',
+    hasOptions: !!info?.has_options,
+    avgVolM: num(info?.avg30_volume) / 1e6,
+    callVol: numOr(info?.call_vol),
+    putVol: numOr(info?.put_vol),
+    flows: flow.flows,
+    flowFrom: common.length ? common[common.length - 1] : null,
+    flowTo: common.length ? common[0] : null,
+    flowDays: common.length,
+    holdingsAsOf: held.reduce<string | null>((m, h) => (h.asOf && (!m || h.asOf > m) ? h.asOf : m), null),
+  };
+  return { row, held };
+}
 async function pullEtfs() {
   try {
     const rows: EtfRow[] = [];
     const holdings: Record<string, EtfHolding[]> = {};
     /* every fund asked at once — one by one, the head read "6 funds" for the half-minute the rest took to land */
-    const reads = await Promise.all(ETF_LIST.map(e => Promise.all([
-        whalesEtfInfo(e.etf).catch(() => null as UwEtfInfo | null),
-        whalesEtfHoldings(e.etf).catch(() => [] as UwEtfHolding[]),
-        whalesEtfFlow(e.etf).catch(() => [] as UwEtfFlow[]),
-      ])));
-    const dateSets = reads.map(r => (Array.isArray(r[2]) ? new Set(r[2].map(x => String(x.date || '').slice(0, 10)).filter(Boolean)) : new Set<string>())).filter(d => d.size > 0);
+    const reads = await Promise.all(ETF_LIST.map(e => readFund(e.etf)));
+    const dateSets = reads.map(r => flowDates(r[2])).filter(d => d.size > 0);
     const common = dateSets.length ? [...dateSets[0]].filter(d => dateSets.every(set => set.has(d))).sort().reverse().slice(0, 5) : [];
-    const window = new Set(common);
-    const flowFrom = common.length ? common[common.length - 1] : null;
-    const flowTo = common.length ? common[0] : null;
     for (let k = 0; k < ETF_LIST.length; k++) {
-      const e = ETF_LIST[k];
-      const [infoR, holdR, flowR] = reads[k];
-      /* a fund none of whose three reads landed is not a $0 fund — it stays off the book */
-      if (!infoR && !(Array.isArray(holdR) && holdR.length) && !(Array.isArray(flowR) && flowR.length)) continue;
-      const info = infoR && !Array.isArray(infoR) ? infoR : null;
-      const held = (Array.isArray(holdR) ? holdR : []).map(holdingOf).filter((h): h is EtfHolding => !!h).sort((a, b) => b.weight - a.weight);
-      holdings[e.etf] = held;
-      const top = held[0];
-      const flow = flow5(Array.isArray(flowR) ? flowR : [], common.length ? window : undefined);
-      const equity = held.filter(h => !/bond|treasury|fixed/i.test(h.sector)).reduce((s, h) => s + h.weight, 0);
-      rows.push({
-        etf: e.etf,
-        name: info?.name || e.etf,
-        kind: e.kind,
-        aumB: num(info?.aum) / 1e9,
-        flow5dM: flow.flow5dM,
-        topHolding: top ? (top.bond ? (top.name ?? '—') : top.ticker) : '—',
-        topWeight: top?.weight ?? 0,
-        equityPct: held.length ? Math.min(100, Math.round(equity)) : e.kind === 'rates' ? 0 : 0,
-        expensePct: numOr(info?.expense_ratio),
-        company: info?.etf_company || '—',
-        domicile: info?.domicile || '—',
-        /* the fund's own count; a dash-free 0 for a trust that holds no securities (GLD holds bullion) */
-        holdingsCount: info?.holdings_count != null ? num(info.holdings_count) : held.length,
-        inception: info?.inception_date || '—',
-        hasOptions: !!info?.has_options,
-        avgVolM: num(info?.avg30_volume) / 1e6,
-        callVol: numOr(info?.call_vol),
-        putVol: numOr(info?.put_vol),
-        flows: flow.flows,
-        flowFrom,
-        flowTo,
-        flowDays: common.length,
-        holdingsAsOf: held.reduce<string | null>((m, h) => (h.asOf && (!m || h.asOf > m) ? h.asOf : m), null),
-      });
+      const got = fundRow(ETF_LIST[k], reads[k], common);
+      if (!got) continue;
+      holdings[ETF_LIST[k].etf] = got.held;
+      rows.push(got.row);
     }
     if (rows.length === 0) throw new Error('no fund landed');
     /* what each fund's file covers: the lines read (the route sends the largest 250), their weight, the fund's own count */
@@ -725,6 +763,27 @@ async function pullEtfs() {
   } catch {
     if (snap.etfs.length === 0) emit({ etfStatus: 'error' });
   }
+}
+
+/* ONE FUND'S PAGE READS ONE FUND (round 8: etfs/SPY read the info, the flows and the holdings of all 18 funds to draw
+   one). The fund's own three reads; its five-day flow is its own five newest dates (the index's common window is for
+   adding the funds up, which one fund's page does not do). */
+const oneFund = new Map<string, { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null }>();
+function ensureOneFund(etf: string): void {
+  if (!etf || oneFund.has(etf) || typeof window === 'undefined') return;
+  oneFund.set(etf, { status: 'loading', row: null, holdings: [], cover: null });
+  const e = ETF_LIST.find(x => x.etf === etf) ?? { etf, kind: 'broad' as EtfKind };
+  void readFund(etf)
+    .then(reads => {
+      const common = [...flowDates(reads[2])].sort().reverse().slice(0, 5);
+      const got = fundRow(e, reads, common);
+      oneFund.set(etf, got ? { status: 'live', row: got.row, holdings: got.held, cover: { lines: got.held.length, weight: got.held.reduce((a, h) => a + h.weight, 0), fundCount: got.row.holdingsCount > 0 ? got.row.holdingsCount : null } } : { status: 'error', row: null, holdings: [], cover: null });
+      emit({});
+    })
+    .catch(() => {
+      oneFund.set(etf, { status: 'error', row: null, holdings: [], cover: null });
+      emit({});
+    });
 }
 
 /* THE FIELD'S OWN UNIT (the fourth audit, 2026-10-23): one_day_perc, one_week_perc and one_month_perc are fractions
@@ -889,10 +948,11 @@ export function useLiveFiles(): Snap {
   return useFiles('inst', 'shorts', 'etfs', 'stocks', 'tide');
 }
 
-export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[]; progress: { done: number; total: number } | null } {
+export function useInstitutions(): { status: FileStatus; rows: InstitutionRow[]; houses: string[]; progress: { done: number; total: number } | null; held: boolean } {
   const s = useFiles('inst');
-  const houses = [...new Set(s.institutions.map(r => r.name))];
-  return { status: s.instStatus, rows: s.institutions, houses, progress: s.instProgress };
+  /* every listed house, read or still held back (round 8) */
+  const houses = [...new Set([...s.institutions.map(r => r.name), ...Object.keys(s.houseTotals)])];
+  return { status: s.instStatus, rows: s.institutions, houses, progress: s.instProgress, held: s.instHeld };
 }
 
 export function houseNameFromSlug(slug: string): string | null {
@@ -972,9 +1032,15 @@ export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (et
 }
 
 export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null } {
-  const s = useFiles('etfs');
+  /* the index's book when the ETFs page has read it; this one fund otherwise (round 8) */
+  const s = useFiles();
   const t = etf.toUpperCase();
-  return { status: s.etfStatus, row: s.etfs.find(r => r.etf === t) ?? null, holdings: s.holdings[t] ?? [], cover: s.holdingsCover[t] ?? null };
+  const fromBook = s.etfStatus === 'live' ? s.etfs.find(r => r.etf === t) ?? null : null;
+  useEffect(() => {
+    if (!fromBook) ensureOneFund(t);
+  }, [t, fromBook]);
+  if (fromBook) return { status: 'live', row: fromBook, holdings: s.holdings[t] ?? [], cover: s.holdingsCover[t] ?? null };
+  return oneFund.get(t) ?? { status: 'loading', row: null, holdings: [], cover: null };
 }
 
 /** A fund's whole-book sector and country weights (/etfs/{t}/weights) — the fund's own split, not the lines read */

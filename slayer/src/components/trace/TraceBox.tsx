@@ -468,6 +468,11 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
     api.hideOverlay();
     api.showNoRowsOverlay();
   }, [emptyText]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* an overlay shown by hand stays until it is hidden by hand — rows landing take it down */
+  const hasRows = gridRows.length > 0;
+  useEffect(() => {
+    if (hasRows) gridRef.current?.api?.hideOverlay();
+  }, [hasRows]);
   const scrollToTop = () => {
     const el = viewport();
     if (!el) return;

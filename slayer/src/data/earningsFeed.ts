@@ -985,3 +985,11 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sym, version]);
 }
+
+/** The fortnight's reports as far as they are read, WITHOUT starting the read (round 8: the News page's "Next print"
+    looks at them once the calendar below the wire has asked for them — the headlines go first) */
+export function useEveryReportQuiet(): { status: 'loading' | 'live' | 'sim'; events: EarningsEvent[] } {
+  const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => ({ status: feed.status as 'loading' | 'live' | 'sim', events: feed.status === 'live' ? feed.events : [] }), [version]);
+}

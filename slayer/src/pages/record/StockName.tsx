@@ -544,11 +544,21 @@ const StockName = () => {
       setAllWanted(true);
       return;
     }
+    /* a reader who scrolls to the panel asks for it; a panel that merely lands in the first screen does not (a wide
+       desk shows it at once — the forty dates stay a click away, "Read every expiry") */
     const io = new IntersectionObserver(es => {
-      if (es.some(e => e.isIntersecting)) setAllWanted(true);
+      if (es.some(e => e.isIntersecting) && window.scrollY > 120) setAllWanted(true);
     });
+    const onScroll = () => {
+      const r = el.getBoundingClientRect();
+      if (window.scrollY > 120 && r.top < window.innerHeight && r.bottom > 0) setAllWanted(true);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
     io.observe(el);
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      window.removeEventListener('scroll', onScroll);
+    };
   }, [allWanted, viewReady, T]);
   /* THE READ IS HELD WHILE ITS SOURCES LAND (the round-8 audit: "Reads strong · Leans bullish · The money good" at "5 of
      9 sources live", then "Reads good · The money poor"). The words wait for the quote, the regular closes and the tapes;
@@ -1053,7 +1063,17 @@ const StockName = () => {
                   {money.levelsAll.flip == null && <p className="font-mono text-[10px] text-textMuted" data-stock-flip="none">No flip within ±10% — net gamma stays {money.levelsAll.regime === 'SHORT' ? 'short' : 'long'} across the range.</p>}
                 </>
               ) : (
-                <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>supreme … · call wall … · put wall … · flip … — the levels are given once every listed expiry is in.</p>
+                allWanted ? (
+                  <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>supreme … · call wall … · put wall … · flip … — the levels are given once every listed expiry is in.</p>
+                ) : (
+                  <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-deferred>
+                    The whole book's levels read every listed expiry (about forty dates) —{' '}
+                    <button type="button" onClick={() => setAllWanted(true)} className="text-textSecondary hover:text-textPrimary underline decoration-dotted underline-offset-2" data-stock-levels-load>
+                      read every expiry
+                    </button>
+                    , or scroll here and they load.
+                  </p>
+                )
               )}
             </div>
             <p className="text-[10.5px] leading-relaxed text-textMuted" data-stock-gex-note>

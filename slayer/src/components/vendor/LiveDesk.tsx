@@ -1,3 +1,4 @@
+import { GLOSSARY } from '../gex/glossary';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
@@ -553,11 +554,11 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       <div className="px-4 min-h-9 py-1 flex items-center gap-x-4 gap-y-1 flex-wrap">
         <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">{ticker}</h3>
         {/* MAX PAIN IS ONE EXPIRY'S — named for the date it is (it read "Window Oct 22" as if it were the window's) */}
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={pain ? `Max pain for the ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry — the nearest one in the window; each expiry has its own (the chart below)` : undefined}>
+        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`${pain ? `Max pain for the ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry — the nearest one in the window; each expiry has its own (the chart below). ` : ''}${GLOSSARY.maxPain}`}>
           <span className="text-[11px] uppercase tracking-wider text-textMuted">Max pain{pain ? ` · ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry` : ''}</span>
           <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? String(pain.max_pain ?? '—') : waiting ? '…' : '—'}</span>
         </span>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title="The vendor's NOPE for the whole name (every expiry), as printed — not split by the window">
+        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`The vendor's NOPE for the whole name (every expiry), as printed — not split by the window. ${GLOSSARY.nope}`}>
           <span className="text-[11px] uppercase tracking-wider text-textMuted">NOPE · whole name</span>
           <span className="text-[12px] font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : nopeWaiting || waiting ? '…' : '—'}</span>
         </span>

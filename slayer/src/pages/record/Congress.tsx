@@ -39,7 +39,7 @@ import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
-import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, congressSentence, isTreasuryBill, seatLabel, summariseCongress } from '../../data/congress';
+import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, congressSentence, isBondReport, isTreasuryBill, seatLabel, summariseCongress } from '../../data/congress';
 import { useCongressCoverage, useCongressFeed, useCongressStatus, wantCongressWindow, type CongressCoverage } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { FeedFallback } from '../../components/ui/liveRead';
@@ -49,14 +49,17 @@ import { useSeen } from '../../components/record/CoName';
 import type { Chamber, CongressTrade, ReportOwner } from '../../types/record';
 import { REPORTS_TO_KNOW } from './recordSkeletons';
 import { CongressHoldings } from '../../components/record/ExtraFaces';
+import { dollars3 } from './money';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
-type Window = 30 | 90 | 180;
+type Window = 7 | 30 | 90 | 180;
 type ChamberPick = 'both' | Chamber;
 type OwnerPick = 'any' | ReportOwner;
 type Show = 'all' | 'late' | 'purchases' | 'sales';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
+  /* THIS WEEK (round 8: the shortest window was 30 days) */
+  { value: 7, label: 'This week', short: '7 days', hint: 'Trades made in the last seven days' },
   { value: 30, label: '30 days', hint: 'Trades made in the last month' },
   { value: 90, label: '90 days', hint: 'Trades made in the last quarter' },
   { value: 180, label: '180 days', hint: 'Trades made in the last half year' },
@@ -306,8 +309,9 @@ const CongressCoverageLine = ({ coverage, window, unread, notMembers }: { covera
           : 'Reading'}
       {/* every day stepped past is named (audit round 6): the route cannot page within a day, so its filings after the
           first 200 are unseen, members' among them or not */}
+      {/* said plainly (round 8: "1 day with more than 200 filings (Jul 29, 0 of the first 200 members')…" read as noise) */}
       {partial.length
-        ? ` · ${partial.length} ${partial.length === 1 ? 'day' : 'days'} with more than 200 filings (${partial.map(d => `${shortDay(d)}, ${coverage.partialMembers[d] ?? 0} of the first 200 members'`).join('; ')}) could be read only to 200 — members' reports past that may be missing`
+        ? ` · ${partial.map(d => shortDay(d)).join(', ')}: the feed held more than 200 filings for ${partial.length === 1 ? 'that day' : 'each of those days'} and answers only the first 200 of a day, so later filings from ${partial.length === 1 ? 'it' : 'them'} may be missing (of those first 200, ${partial.map(d => `${coverage.partialMembers[d] ?? 0}${partial.length > 1 ? ` on ${shortDay(d)}` : ''}`).join(', ')} ${partial.length === 1 && (coverage.partialMembers[partial[0]] ?? 0) === 1 ? 'was a member of Congress' : 'were members of Congress'} — the rest executive-branch filings)`
         : ''}
       {unread ? ` · ${unread} ${unread === 1 ? 'report' : 'reports'} with an unreadable type left out` : ''}
       {notMembers ? (
@@ -433,11 +437,15 @@ const Congress = () => {
   }, [cut, picks]);
   const toggleMember = (name: string) => setPicks(p => (p.includes(`member:${name}`) ? p.filter(x => x !== `member:${name}`) : [...p, `member:${name}`]));
   const stats = useMemo(() => summariseCongress(rows, window), [rows, window]);
+  /* the stock-focused figures leave the bond reports out; the bonds are said apart (round 8) */
+  const equityStats = useMemo(() => summariseCongress(rows.filter(t => !isBondReport(t)), window), [rows, window]);
+  const bondStats = useMemo(() => summariseCongress(rows.filter(isBondReport), window), [rows, window]);
 
   /* THE REPORTS TO KNOW: the biggest disclosed brackets on the cut, the latest first among equals */
   const toKnow = useMemo(
     () =>
-      [...cut]
+      cut
+        .filter(t => !isBondReport(t))
         .sort((a, b) => (b.bracket ?? -1) - (a.bracket ?? -1) || a.filedDaysAgo - b.filedDaysAgo)
         .slice(0, REPORTS_TO_KNOW),
     [cut]
@@ -541,7 +549,7 @@ const Congress = () => {
         <FeedFallback />
       ) : (
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
-          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among trades made in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
+          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among trades made in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
         </p>
       )}
       {/* THE REPORTS TO KNOW */}
@@ -549,7 +557,7 @@ const Congress = () => {
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The reports to know</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the biggest disclosed amounts on this cut, the latest first among equals · click one to keep the grid to that member</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the biggest disclosed stock, option and fund trades on this cut, the latest first among equals — bonds are left to the grid · click one to keep the grid to that member</span>
         </div>
         {toKnow.length === 0 ? (
           <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut'}</div>

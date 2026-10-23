@@ -157,10 +157,11 @@ const Odte = () => {
     };
   }, [fsIdx]);
 
-  const liveBook = useLiveBook(activeTicker).rows;
+  const odteBookPack = useLiveBook(activeTicker);
+  const liveBook = odteBookPack.rows;
   // The shared hold (see LiveHold): book and tick freeze together while
   // paused, so every pane stops on the same bar.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !(odteBookPack.waiting && liveBook.length === 0));
   const { book, tick } = hold.value;
   const [guideOpen, setGuideOpen] = useState(false);
 

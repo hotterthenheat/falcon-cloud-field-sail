@@ -22,7 +22,7 @@
 
 import type { LevelRole } from '../core/walls';
 import Simulator from '../core/simulator';
-import { buildAgenda, type Agenda, type AgendaOrder } from './agenda';
+import { buildAgenda, type Agenda, type AgendaOrder, type Target } from './agenda';
 import { aheadClock, type AheadClock } from './ahead';
 import { buildBuilding } from './building';
 import { buildExposureProfile } from './exposure';
@@ -55,6 +55,8 @@ export interface BoardRow {
   crossFlip: number | null;
   /** The count's book is still loading — the cell says "…", not "not available" (the seventh audit's m1) */
   crossPending: boolean;
+  /** Under ten minutes of the session — the cell says the count starts at 9:40, never a bare dash (the eighth audit's m1) */
+  crossEarly: boolean;
   regime: 'LONG' | 'SHORT' | null;
   flip: number | null;
   /** Signed distance from spot to the flip, percent (+ = the flip is overhead) */
@@ -81,7 +83,26 @@ export interface BoardRow {
   /** Your positions on the name: contracts owned or sold (0 = none) */
   yours: { positions: number; contracts: number };
   /** The agenda's first strike for this name — what to watch first, and why (2026-09-08) */
-  watch: { strike: number; role: WallRole; /** every level the strike is, in the one order (core/walls.ts levelRoles) */ roles: LevelRole[]; isShelf: boolean; isWall: boolean; reach: number; hold: number; stake: number; horizon: string | null } | null;
+  watch: {
+    strike: number;
+    role: WallRole;
+    /** every level the strike is, in the one order (core/walls.ts levelRoles) */
+    roles: LevelRole[];
+    isShelf: boolean;
+    isWall: boolean;
+    /** too thin to be a shelf or a trapdoor — the Agenda's own flag, so all three pages tag it alike (agenda.ts strikeKind) */
+    flat: boolean;
+    reach: number;
+    /** today's session already traded through it — "reached today", never a chance (agenda.ts todayWords) */
+    today: Target['today'];
+    atPrice: boolean;
+    hold: number;
+    stake: number;
+    horizon: string | null;
+  } | null;
+  /** The expiry the "Today" scope reads for this name (YYYY-MM-DD) — a name with no same-day expiry reads a later one, and
+      the Board's "· today" columns say its date (the eighth audit's m3) */
+  levelsDate: string | null;
 }
 
 const SPARK_POINTS = 48;
@@ -156,9 +177,12 @@ export const watchSurface = (snapshot: MarketSnapshot): ExposureSurface | null =
   }
 };
 
+/** The watch-first, carried whole enough that every page classes and words it the Agenda's way (agenda.ts strikeKind) */
+export const watchFrom = (lead: Target | null | undefined): BoardRow['watch'] =>
+  lead ? { strike: lead.strike, role: lead.role, roles: lead.roles, isShelf: lead.isShelf, isWall: lead.isWall, flat: lead.flat, reach: lead.reach, today: lead.today, atPrice: !!lead.atPrice, hold: lead.hold, stake: lead.stake, horizon: lead.horizon } : null;
+
 export function watchOf(snapshot: MarketSnapshot, expiry: ExposureExpiry, clock: AheadClock): BoardRow['watch'] {
-  const lead = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot))?.first[0];
-  return lead ? { strike: lead.strike, role: lead.role, roles: lead.roles, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake, horizon: lead.horizon } : null;
+  return watchFrom(deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot))?.first[0]);
 }
 
 /** Thin a series to at most n points, keeping the ends */
@@ -241,6 +265,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   return {
     pending,
     watch,
+    levelsDate: lv?.date ?? null,
     yours: { positions: mine.length, contracts: mine.reduce((s, p) => s + p.contracts, 0) },
     ticker: snapshot.ticker,
     spot,
@@ -252,6 +277,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
     crossings: pending || crossPending ? null : cross.crossings,
     crossWhy: crossPending ? null : cross.why,
     crossPending,
+    crossEarly: !!cross.early,
     crossLabel: cross.label,
     crossFlip: cross.flip,
     callWall,
