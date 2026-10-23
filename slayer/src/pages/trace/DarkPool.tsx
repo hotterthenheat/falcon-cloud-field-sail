@@ -305,13 +305,24 @@ const DarkPool = () => {
     const byName = new Map<string, DarkLeaderRow>();
     /* own-terms prints are in no leader (audit round 4) */
     const atQuote = dark.rows.filter(p => !p.special);
+    /* THE PRICE IS THE NEWEST CROSS (audit round 7: the rows come newest first and each older one overwrote the price —
+       LQD read $103.98 at 11:27 where its last cross was $104.32 at 15:45): kept by the print's own instant */
+    const newestAt = new Map<string, number>();
+    const atOf = (p: DarkPoolPrint) => p.epochMs ?? 0;
     for (const p of atQuote) {
       const had = byName.get(p.ticker);
       if (had) {
         had.notional += p.notional;
         had.size += p.size;
-        had.price = p.price;
-      } else byName.set(p.ticker, { ticker: p.ticker, price: p.price, dirUp: p.vsSpotPct >= 0, notional: p.notional, pctAvgVol: 0, size: p.size });
+        if (atOf(p) > (newestAt.get(p.ticker) ?? -Infinity)) {
+          had.price = p.price;
+          had.dirUp = p.vsSpotPct >= 0;
+          newestAt.set(p.ticker, atOf(p));
+        }
+      } else {
+        byName.set(p.ticker, { ticker: p.ticker, price: p.price, dirUp: p.vsSpotPct >= 0, notional: p.notional, pctAvgVol: 0, size: p.size });
+        newestAt.set(p.ticker, atOf(p));
+      }
     }
     const rows = [...byName.values()].sort((a, b) => b.notional - a.notional);
     const totalNotional = rows.reduce((a, r) => a + r.notional, 0);
@@ -701,7 +712,16 @@ const DarkPool = () => {
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
             {/* the closed session's crosses are read once and do not go stale */}
-            {!(regularView && !named && tapeKind !== 'lit') && <StaleMark at={named ? nameBook.at : tapeKind === 'lit' ? lit.at : dark.at} ttlMs={FLOW_TTL_MS} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />}
+            {/* A CLOSED SESSION IS CLOSED, NOT STALE (audit round 7: Lit read "STALE DATA" on a session read once after its
+                close) — the mark says the session closed; a fault still says so */}
+            {regularView && !(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) ? (
+              <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest text-textMuted" title={`The ${closed ? shortDay(closed.iso) : ''} session has closed — its prints are read once and do not change`} data-stale="closed">
+                <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-textMuted" />
+                Closed{closed ? ` · ${shortDay(closed.iso)}` : ''}
+              </span>
+            ) : (
+              <StaleMark at={named ? nameBook.at : tapeKind === 'lit' ? lit.at : dark.at} ttlMs={FLOW_TTL_MS} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />
+            )}
             {/* THE SEARCH, the Live Tape's own: a name typed cuts the tape to it; a prefix narrows it */}
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} tickersOnly countNoun="names" span />
             <DropdownSelect label="Read" value={read} options={READ_OPTIONS} onChange={setRead} title="What the cross is doing" testId="dark-pool-read" />

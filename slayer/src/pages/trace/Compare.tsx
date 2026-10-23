@@ -36,7 +36,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
 import ScopeChip from '../../components/ui/ScopeChip';
-import { daysFromToday, isLiveDay, oiSpanWords, sameDayWords, shortDay } from '../../components/trace/dayWords';
+import { daysFromToday, isLiveDay, oiInWords, sameDayWords, shortDay } from '../../components/trace/dayWords';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import LeanCell from '../../components/trace/LeanCell';
@@ -335,13 +335,16 @@ const Compare = () => {
     const since = Math.max(reach(tapeA, TAPE_N), reach(tapeB, TAPE_N));
     /* paged to the session's start (useNameSpreads): a name whose pages did not reach it is cut, with the other, to the
        stretch both cover */
-    const minuteReach = (r: SpreadTrade[], done: boolean) => (!done && r.length ? Math.min(...r.map(t => t.minute)) : -Infinity);
-    const sinceMin = Math.max(minuteReach(spreadsA, spreadsPackA.complete), minuteReach(spreadsB, spreadsPackB.complete));
+    /* TO THE SECOND, NOT THE MINUTE (audit round 7: "since 16:09 ET" while QQQ's capped pages reached back only to 16:09:57
+       and SPY counted the whole minute) — both names are cut at the exact instant the shorter reach starts */
+    const msOf = (t: SpreadTrade) => t.epochMs ?? 0;
+    const reachMs = (r: SpreadTrade[], done: boolean) => (!done && r.length ? Math.min(...r.map(msOf)) : -Infinity);
+    const sinceMs = Math.max(reachMs(spreadsA, spreadsPackA.complete), reachMs(spreadsB, spreadsPackB.complete));
     return {
       tape: [...tapeA, ...tapeB].filter(p => (p.epoch ?? 0) >= since),
-      spreads: [...spreadsA, ...spreadsB].filter(t => t.minute >= sinceMin),
+      spreads: [...spreadsA, ...spreadsB].filter(t => msOf(t) >= sinceMs),
       since: Number.isFinite(since) ? since : null,
-      spreadSinceMin: Number.isFinite(sinceMin) ? sinceMin : null,
+      spreadSinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
     };
   }, [tapeA, tapeB, spreadsA, spreadsB, spreadsPackA.complete, spreadsPackB.complete]);
   /* EACH NAME READS ITS OWN BOOK (2026-10-22): the page's book is the terminal name's — its top contracts plus the
@@ -408,7 +411,11 @@ const Compare = () => {
   /* the stretch's day named when it is not today's (audit round 6) */
   const sinceDay = tapeSince && nyDateOf(tapeSince * 1000) !== nyIsoToday() ? `${shortDay(nyDateOf(tapeSince * 1000))} ` : '';
   const tapeWords = tapeSince ? `since ${sinceDay}${nyClock(tapeSince * 1000)} ET` : 'over the same stretch';
-  const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular, sameDayWords(todayIso)), [sideA, sideB, tapeWords, regular, todayIso]);
+  /* the cut in words, for a side with nothing standing on it: "no 0DTE contracts standing" (audit round 7) */
+  const clockLabel = CLOCK_OPTIONS.find(o => o.value === tenor)?.label ?? tenor;
+  const moneyLabel = MONEY_OPTIONS.find(o => o.value === mny)?.label ?? mny;
+  const cutWords = tenor === 'all' && mny === 'all' ? 'on the book' : `on this cut (${[tenor !== 'all' ? clockLabel : '', mny !== 'all' ? moneyLabel : ''].filter(Boolean).join(' · ')})${tenor === 'odte' && !isLiveDay(todayIso) ? ` — ${shortDay(todayIso)}'s same-day contracts expired at its bell` : ''}`;
+  const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular, sameDayWords(todayIso), cutWords), [sideA, sideB, tapeWords, regular, todayIso, cutWords]);
   const { a, b } = cmp;
 
   /* The first chip follows the frame until it holds a name (the Pinpoint Compare's rule);
@@ -461,9 +468,26 @@ const Compare = () => {
     return a.earnDays < b.earnDays ? 'a' : b.earnDays < a.earnDays ? 'b' : null;
   };
 
+  const oiDayTitle = (() => {
+    const da = a.interest.day;
+    const db = b.interest.day;
+    const pend = a.interest.pending && b.interest.pending && isLiveDay(todayIso) ? " (today's build is counted tomorrow morning)" : '';
+    const lag = a.interest.lagging + b.interest.lagging;
+    const lagWords = lag ? ` · ${num(lag)} contract${lag === 1 ? '' : 's'} still on the count before left out` : '';
+    if (da && db && da !== db) return `${a.ticker} ${oiInWords(da)}, ${b.ticker} ${oiInWords(db)}${lagWords}`;
+    return `built or unwound ${oiInWords(da ?? db)}${pend}${lagWords}`;
+  })();
+  /* the other vendor route's put money, for the hover only */
+  const otherRouteOf = (sd: TraceSide): string => {
+    const t = uncut ? (sd.byExpiry ?? null) : ticksOf(sd === a ? flowA : flowB);
+    if (!t) return '';
+    return uncut ? `the vendor's expiry route, the whole day, reads puts ${signedUsd(t.puts)}` : `the minute ticks, 09:30 to the close, read puts ${signedUsd(t.puts)}`;
+  };
+  const otherRouteHint = `${uncut ? "Net puts here are the vendor's minute ticks (/stock/{t}/net-prem-ticks), 09:30 to the close — the figure Net Flow's pane and Intervals show." : "Net puts here are the vendor's flow by expiry (/stock/{t}/flow-per-expiry) on the clock's expiries, the whole day — the only route a clock can cut."} The other route: ${a.ticker} ${otherRouteOf(a) || '—'}; ${b.ticker} ${otherRouteOf(b) || '—'}. The two routes carry the same contracts by side, but on names heavy with spreads their put money can disagree, even in sign. Both are vendor totals that include spread legs and floor packages.`;
+
   const sections: { title: string; rows: Row[] }[] = [
     {
-      title: `${uncut ? `Net flow · every expiry, the regular session (09:30 to the close) — the vendor's minute ticks, the figure Net Flow's pane and Intervals show` : "Net flow · the clock's expiries, the whole day — by expiry (the vendor's expiry route)"}, premium at the ask less on the bid${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''} · a vendor total: spread legs and floor packages are in it`,
+      title: `${uncut ? `Net flow · every expiry, the regular session (09:30 to the close${isLiveDay(todayIso) ? '' : `, ${shortDay(todayIso)}`}) — the vendor's minute ticks, the figure Net Flow's pane and Intervals show` : `Net flow · the clock's expiries, ${isLiveDay(todayIso) ? 'the whole day' : `${shortDay(todayIso)}, the whole day`} — by expiry (the vendor's expiry route)`}, premium at the ask less on the bid${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''} · a vendor total: spread legs and floor packages are in it`,
       rows: [
         {
           key: 'net',
@@ -481,41 +505,17 @@ const Compare = () => {
           bars: s => [{ v: s.netPending ? 0 : s.netCall, text: s.netPending ? pend(s) : signedUsd(s.netCall), ink: barInk(s.netCall) }],
           cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.netCall)}>{signedUsd(s.netCall)}</Fig>),
         },
+        /* ONE FIGURE ON THE CARD (retail, round 7: "Net puts +$26.9M" beside "By expiry … puts −$51.9M — QQQ puts flip sign
+           by route" destroyed trust): the card shows the one source its cut reads — the minute ticks uncut, the expiry route
+           under a clock — and the other route's figure sits in this row's hover, with why the two can differ */
         {
           key: 'puts',
           label: 'Net puts',
           note: netHeld ? the(louder(s => s.netPut), 'the louder on puts') : '…',
           lead: netHeld ? louder(s => s.netPut) : null,
-          bars: s => [{ v: s.netPending ? 0 : s.netPut, text: s.netPending ? pend(s) : signedUsd(s.netPut), ink: putInk(s.netPut) }],
+          hint: otherRouteHint,
+          bars: s => [{ v: s.netPending ? 0 : s.netPut, text: s.netPending ? pend(s) : signedUsd(s.netPut), ink: putInk(s.netPut), desc: otherRouteOf(s) }],
           cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={putDirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>),
-        },
-        /* THE OTHER ROUTE, SAID (audit round 4: Net Flow said QQQ −$54.9M where this card said −$53.6M, and the two vendor
-           routes disagree on put money): what Net Flow's pane reads — the minute ticks, 09:30 to the close — beside it */
-        {
-          key: 'ticks',
-          label: uncut ? 'By expiry (vendor\'s expiry route)' : "Net Flow's pane",
-          hint: "Two vendor routes. The minute ticks (/stock/{t}/net-prem-ticks), 09:30 to the close, are what the headline, the charts, Net Flow's pane and Intervals read. The flow by expiry (/stock/{t}/flow-per-expiry), the whole day, is the only one a clock can be cut by. The two carry the same contracts by side, but on names heavy with spreads their put money can disagree, even in sign. Both are vendor totals that include spread legs and floor packages.",
-          note: (() => {
-            const off = [a, b].filter(sd => {
-              const t = ticksOf(sd === a ? flowA : flowB);
-              const e = sd.byExpiry;
-              return t && e && Math.sign(t.puts) !== Math.sign(e.puts) && Math.abs(t.puts - e.puts) > 1e6;
-            });
-            const what = uncut ? 'the expiry route, the whole day' : "the minute ticks, 09:30 to the close";
-            return off.length ? `${what} · ${off.map(sd => sd.ticker).join(', ')} puts flip sign by route` : what;
-          })(),
-          lead: null,
-          cell: s => {
-            const t = uncut ? (s.byExpiry ?? null) : ticksOf(s === a ? flowA : flowB);
-            return t ? (
-              <>
-                <Fig lit={false} ink={dirInk(t.net)}>{signedUsd(t.net)}</Fig>
-                <Sub>· puts {signedUsd(t.puts)}</Sub>
-              </>
-            ) : (
-              <Sub>—</Sub>
-            );
-          },
         },
       ],
     },
@@ -649,12 +649,14 @@ const Compare = () => {
       ],
     },
     {
-      title: `Footprints · open interest on those contracts, ${oiSpanWords(todayIso)}`,
+      /* WHOSE TRADING (audit round 7): the change of the newest published count — "OI after Oct 22's trading" — both names
+         on the same day, or each says its own */
+      title: `Footprints · open interest on those contracts, ${oiDayTitle}`,
       rows: [
         {
           key: 'added',
           label: 'Interest added',
-          note: the(higher(s => s.interest.added), `added the more ${oiSpanWords(todayIso)}`),
+          note: the(higher(s => s.interest.added), `added the more ${oiInWords(a.interest.day ?? b.interest.day)}`),
           lead: higher(s => s.interest.added),
           bars: s => [{ v: s.interest.added, text: s.interest.added > 0 ? `+${num(s.interest.added)}` : '0', ink: s.interest.added > 0 ? 'bull' : 'mute' }],
           cell: (s, lit) => (
@@ -679,7 +681,7 @@ const Compare = () => {
     },
     {
       /* THE WINDOW SAID (audit round 6: "Structures 80 · the same" was the fetch cap) */
-      title: `Structures · each name's on the ${shortDay(todayIso)} session${frozen.current.spreadSinceMin != null ? `, since ${String(Math.floor(frozen.current.spreadSinceMin / 60)).padStart(2, '0')}:${String(frozen.current.spreadSinceMin % 60).padStart(2, '0')} ET — the stretch both names' last ${SPREADS_N * 3} cover` : spreadsDone ? ', the whole session' : ''} · regular hours only, compression packages left out`,
+      title: `Structures · each name's on the ${shortDay(todayIso)} session${frozen.current.spreadSinceMs != null ? `, since ${nyClock(frozen.current.spreadSinceMs, { seconds: true })} ET — the stretch both names' last ${SPREADS_N * 3} cover, both cut at that second` : spreadsDone ? ', the whole session' : ''} · regular hours only, compression packages left out`,
       rows: [
         {
           key: 'structures',
@@ -908,9 +910,15 @@ const Compare = () => {
           <Champion label={`Leans ${leansWords}`} ink={cmp.bullish.net >= 0 ? 'bull' : 'bear'} onOpen={() => toNetFlow(cmp.bullish.ticker)} testId="bullish">
             {netHeld ? <>{cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}</> : <span className="text-textMuted">…</span>}
           </Champion>
-          <Champion label="Heavier premium" ink="supreme" title="The name with more premium across its standing contracts with the most premium (up to 80) — put it on Net Flow's pane" onOpen={() => toNetFlow(cmp.heavier.ticker)} testId="heavier">
-            {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
-          </Champion>
+          {cmp.heavier ? (
+            <Champion label="Heavier premium" ink="supreme" title="The name with more premium across its standing contracts with the most premium (up to 80) — put it on Net Flow's pane" onOpen={() => toNetFlow(cmp.heavier!.ticker)} testId="heavier">
+              {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
+            </Champion>
+          ) : (
+            <Fact label="Heavier premium" testId="heavier" title={`Neither name has a contract standing ${cutWords}`}>
+              <span className="text-textMuted">none standing</span>
+            </Fact>
+          )}
           {regular && (
             <Fact label="Busier tape" testId="busier" title={tapeSince ? `Regular-session prints (each by its own time and flag) since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `Each name's last ${TAPE_N} prints`}>
               {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
@@ -960,7 +968,7 @@ const Compare = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 border-t border-borderSubtle p-2" data-compare-panes>
         {[a, b].map((s, i) => (
           <div key={`${i}-${s.ticker}`} style={{ height: CMP_PANE_H }} className="min-w-0" data-compare-pane={i === 0 ? 'a' : 'b'}>
-            <NetFlowPane book={book} seg="all" mny={mny} onSeg={() => {}} onMny={setMny} tick={tick} ticker={s.ticker} tenor={tenor} onTenor={setTenor} dteMax={Infinity} cutCards={false} />
+            <NetFlowPane book={book} seg="all" mny={mny} onSeg={() => {}} onMny={setMny} tick={tick} ticker={s.ticker} tenor={tenor} onTenor={setTenor} dteMax={Infinity} cutCards={false} uncutNote={tenor !== 'all' || mny !== 'all' ? `every expiry, every strike — the ${[tenor !== 'all' ? 'clock' : '', mny !== 'all' ? 'money' : ''].filter(Boolean).join(' and ')} cut does not reach the minute ticks` : undefined} />
           </div>
         ))}
       </div>

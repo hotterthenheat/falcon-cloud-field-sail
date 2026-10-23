@@ -99,3 +99,50 @@ export function spanWords(xs: readonly { time: string; epochMs?: number }[]): st
   if (d0 === d1) return d0 === today ? `${first.time}–${last.time}` : `${shortDay(d0)} ${first.time}–${last.time}`;
   return `${shortDay(d0)} ${first.time}–${shortDay(d1)} ${last.time}`;
 }
+
+/* ---- WHOSE TRADING THE OPEN INTEREST REFLECTS (audit round 7, major 2) ----------------------------------------------
+   A count of open interest is set the morning after a session trades. Each book row carries the session its volume is
+   from (volDay) and the session whose trading set the count it shows (oiDay — traceLive usePairedOi): the same day once
+   the vendor publishes the count after the volume, the session before until then (oiPending). Pages name that day
+   ("OI after Oct 22's trading") and keep a row that lags out of any sum with the rest. */
+type OiRow = { oiDay?: string; volDay?: string; oiPending?: boolean; expired?: boolean };
+export interface OiCover {
+  /** The newest session whose trading the rows' counts reflect */
+  day: string | null;
+  /** The volume's session of those rows */
+  volDay: string | null;
+  /** Rows whose count is an earlier session's than `day` */
+  lagging: number;
+  /** Every row's count is the session before its volume's (the volume's own is not out — the live session) */
+  allPending: boolean;
+}
+export function oiCoverOf(rows: readonly OiRow[]): OiCover {
+  let day: string | null = null;
+  let volDay: string | null = null;
+  for (const r of rows) {
+    if (r.oiDay && (!day || r.oiDay > day)) day = r.oiDay;
+    if (r.volDay && (!volDay || r.volDay > volDay)) volDay = r.volDay;
+  }
+  const lagging = day ? rows.filter(r => r.oiDay && r.oiDay < day!).length : 0;
+  return { day, volDay, lagging, allPending: rows.length > 0 && rows.every(r => r.oiPending) };
+}
+/** "after Oct 22's trading" (or "after the last close" when no row says) */
+export const oiAfterWords = (day: string | null) => (day ? `after ${shortDay(day)}'s trading` : 'as of the last count');
+/** "in Oct 22's trading" — the session a change of open interest was made in */
+export const oiInWords = (day: string | null) => (day ? `in ${shortDay(day)}'s trading` : 'since the count before');
+/** A row lags the cover: its count is an earlier session's */
+export const oiLags = (r: OiRow, cover: OiCover) => !!(cover.day && r.oiDay && r.oiDay < cover.day);
+/** One row's open interest in a hover: whose trading it reflects, and whether the volume's own count is out */
+export function oiRowTitle(r: OiRow): string {
+  if (!r.oiDay) return 'Open interest as of the last count';
+  const set = `Open interest after ${shortDay(r.oiDay)}'s trading (counted the morning after); ΔOI is what ${shortDay(r.oiDay)}'s trading built or unwound`;
+  if (!r.oiPending || !r.volDay || r.volDay === r.oiDay) return set;
+  return `${set} — the count after ${isLiveDay(r.volDay) ? "today's" : `${shortDay(r.volDay)}'s`} trading, the volume shown, is ${isLiveDay(r.volDay) ? 'set tomorrow morning' : 'not out for this contract yet'}`;
+}
+/** The pending note for a page's sub-line: "" when the counts pair with the volume */
+export function oiPendingWords(cover: OiCover): string {
+  if (!cover.day) return '';
+  if (cover.allPending && cover.volDay && cover.volDay !== cover.day) return `${isLiveDay(cover.volDay) ? "today's" : `${shortDay(cover.volDay)}'s`} build is counted ${isLiveDay(cover.volDay) ? 'tomorrow morning' : 'once the vendor publishes it'}`;
+  if (cover.lagging) return `${cover.lagging} contract${cover.lagging === 1 ? '' : 's'} still on the count before (marked) — kept out of the sums`;
+  return '';
+}

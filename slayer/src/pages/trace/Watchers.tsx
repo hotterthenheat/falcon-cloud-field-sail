@@ -371,7 +371,7 @@ const Watchers = () => {
         header: 'Vol/OI',
         align: 'right',
         sortValue: a => a.row.volOverOI,
-        render: a => <span className={a.row.oi > 0 && a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'} title={a.row.oi > 0 ? undefined : 'No open interest before the session — a new contract, nothing to divide by'}>{volOiText(a.row)}</span>,
+        render: a => <span className={a.row.oi > 0 && a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'} title={a.row.volOverOI > 0 || !(a.row.volume > 0) ? undefined : 'No open interest before the session — a new contract, nothing to divide by'}>{volOiText(a.row)}</span>,
       },
       {
         key: 'otm',

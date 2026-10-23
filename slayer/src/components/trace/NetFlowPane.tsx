@@ -256,6 +256,9 @@ interface NetFlowPaneProps {
   cutCards?: boolean;
   /** A word after the cards' titles when the host's cut reaches more than this pane ("sets both panes") */
   sharedNote?: string;
+  /** Said on the head when the host's cut does not reach this pane's series (Compare under a clock: the name's ticks span
+      every expiry — audit round 7: the panes drew −$53.6M under a 0DTE headline of −$12.8M) */
+  uncutNote?: string;
 }
 
 const NetFlowPane = ({
@@ -278,6 +281,7 @@ const NetFlowPane = ({
   cutCards = true,
   sharedNote,
   segments,
+  uncutNote,
 }: NetFlowPaneProps) => {
   /* the page's theme, and the inks cut for it (see paneInks) — read again when the page flips */
   const appTheme = useResolvedTheme();
@@ -765,6 +769,11 @@ const NetFlowPane = ({
           </span>
           {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
               series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}
+          {ticker && uncutNote && live == null && (
+            <span className="text-warn uppercase text-[11px] tracking-wider" title={`This pane is the name's money across ${uncutNote}`} data-pane-uncut>
+              every expiry · not cut
+            </span>
+          )}
           {ticker && dteMax <= 1 && live == null && (
             <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The vendor has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry, from the bell">
               every expiry
