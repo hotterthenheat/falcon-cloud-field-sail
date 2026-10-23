@@ -166,6 +166,13 @@ export interface BookContract {
   theta?: number;
   /** The contract's last fill as a New York date and minute, for display */
   lastDay?: string;
+  /** The session the row's volume is from, YYYY-MM-DD */
+  volDay?: string;
+  /** The session whose trading set the open interest shown (oi, prevOI → deltaOI), YYYY-MM-DD — the count is set the
+      morning after it */
+  oiDay?: string;
+  /** The count after volDay's trading is not out yet: oi/deltaOI are oiDay's (an earlier session's) */
+  oiPending?: boolean;
 }
 
 export type PrintSentiment = 'BULLISH' | 'BEARISH' | 'NEUTRAL';

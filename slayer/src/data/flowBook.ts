@@ -135,7 +135,7 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
         .sort((a, b) => b.premium - a.premium);
     case 'conviction-puts':
       return rows
-        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct <= 0)
+        .filter(r => r.right === 'P' && r.sweepPct >= 25 && r.otmPct >= 0) /* otmPct is + out of the money on both sides (audit round 7: this took ITM puts) */
         .sort((a, b) => b.premium - a.premium);
     case 'cheap':
       return rows.filter(r => r.right === 'C' && r.last <= 1.5 && r.otmPct >= 3).sort((a, b) => b.volume - a.volume);
@@ -322,7 +322,9 @@ export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): b
 export const FRESH_VOL_OI = 1.5;
 /** Vol/OI as a cell — "new" when the contract had no open interest (nothing to divide by), never 0.00 (audit round 5) */
 export function volOiText(r: Pick<BookContract, 'oi' | 'volume' | 'volOverOI'>): string {
-  if (r.oi > 0) return r.volOverOI.toFixed(2);
+  /* volOverOI is against the count at the session's open — a row may now show the newer count (usePairedOi), so the
+     ratio itself says whether there was one */
+  if (r.volOverOI > 0) return r.volOverOI.toFixed(2);
   return r.volume > 0 ? 'new' : '—';
 }
 /** A DEEP-IN-THE-MONEY, LONG-DATED CONTRACT IS LIKELY NOT A BET (retail, 2026-10-23: NVDA's top "bet" on the Live Tape was a
@@ -485,12 +487,19 @@ export function segmentFilter(r: BookContract, seg: NetFlowSegment): boolean {
   return r.sector === seg.slice('sector:'.length) && !INDEX_FUNDS.has(r.ticker);
 }
 
+/* MONEYNESS, ONE CONVENTION (audit round 7, the blocker: "Out of the money" returned CRWV 78P −40.3% and dropped the OTM
+   NVDA 210P +1.0%): otmPct is the strike's distance PAST the stock — positive out of the money for calls AND puts (call:
+   strike above spot; put: strike below spot; traceLive otmOf, spreadLegRow). So in the money is otmPct < 0 on both sides.
+   A distance that is not known (NaN — a whole-point small index) is neither in nor out. */
+export const isInTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct < 0;
+export const isOutOfTheMoney = (r: Pick<BookContract, 'otmPct'>): boolean => Number.isFinite(r.otmPct) && r.otmPct > 0;
+
 /** A contract's or a print's place against the stock — both carry the same two fields */
 export function moneynessFilter(r: Pick<BookContract, 'otmPct' | 'right'>, m: MoneynessKey): boolean {
   if (m === 'all') return true;
+  if (!Number.isFinite(r.otmPct)) return false;
   if (m === 'atm') return Math.abs(r.otmPct) <= 1;
-  const itm = r.right === 'C' ? r.otmPct < 0 : r.otmPct > 0;
-  return m === 'itm' ? itm : !itm;
+  return m === 'itm' ? isInTheMoney(r) : !isInTheMoney(r);
 }
 
 export type SpreadKind = 'vertical' | 'diagonal' | 'condor' | 'butterfly' | 'straddle' | 'strangle' | 'calendar' | 'ratio' | 'synthetic' | 'riskReversal' | 'custom';
@@ -684,10 +693,8 @@ export function applyFilters(rows: BookContract[], f: BookFilters): BookContract
     if (f.tenors.length > 0 && !f.tenors.includes(sleeveForDte(r.dte))) return false;
     if (r.volume < f.minVolume) return false;
     if (r.premium < f.minPremium) return false;
-    if (f.excludeItm) {
-      const itm = r.right === 'C' ? r.otmPct < 0 : r.otmPct > 0;
-      if (itm) return false;
-    }
+    /* "Out of the money — strikes past the stock only": a known distance past the stock (an unknown one is not shown as OTM) */
+    if (f.excludeItm && !(Number.isFinite(r.otmPct) && r.otmPct >= 0)) return false;
     return true;
   });
 }

@@ -404,7 +404,7 @@ const tickerOfRow = (r: Record<string, unknown>) => String(r.underlying_symbol |
 /* AN INDEX LEVEL IN WHOLE POINTS IS TOO COARSE FOR A DISTANCE ON A SMALL INDEX (the re-audit, 2026-10-22: "VIX 19 put ·
    0.0%"): a point is 5% of VIX and 0.13% of XSP, so the distance is not stated there. SPX, NDX and RUT (thousands of
    points) keep theirs, marked "≈" where it is drawn. */
-function otmOf(right: 'C' | 'P', strike: number, spot: number, fromIndex: boolean): number {
+export function otmOf(right: 'C' | 'P', strike: number, spot: number, fromIndex: boolean): number {
   if (!(spot > 0) || !(strike > 0)) return NaN;
   if (fromIndex && spot < 2000) return NaN;
   return ((right === 'C' ? strike - spot : spot - strike) / spot) * 100;
@@ -1579,8 +1579,151 @@ export function standing<T extends { expired?: boolean }>(rows: T[]): { rows: T[
   return { rows: out, expired: rows.length - out.length };
 }
 
+/* ---- THE OPEN INTEREST THAT PAIRS WITH THE VOLUME (audit round 7, major 2) --------------------------------------
+   The screener's open_interest is the count set the morning OF its session — after the session BEFORE traded — and its
+   prev_oi the morning before that. So beside Oct 22's volume it showed Oct 21's build: ORCL 140C "OI 8,038 / prev 1,038"
+   when /historic already carried the Oct 23 count (26,023, built by Oct 22's 18,243 contracts); SPXW 7650P Oct 23 read
+   "+4,548 (+100%)" though Oct 22's flow took it from 9,099 to 6,901. Once the count after the volume's session is
+   published (the vendor sets it overnight: /stock/{t}/oi-change?date=<next session>, then the contract's /historic for
+   what those pages do not reach), each row takes it — OI, the OI before and ΔOI all of the volume's session. Until then
+   the row keeps the screener's count and says whose trading it reflects (oiDay) and that the volume's own is not out
+   (oiPending). */
+export function nextSessionIso(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  d.setDate(d.getDate() + 1);
+  for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() + 1);
+  return isoDate(d);
+}
+function prevSessionOf(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
+  return isoDate(d);
+}
+interface NewestOi {
+  /** The count after the volume's session */
+  oi: number;
+  /** The count that stood at that session's open */
+  before: number;
+  streak?: number;
+}
+/** occ:date → the count dated `date` (null = asked, the vendor has none for it) */
+const newestOiCache = new Map<string, NewestOi | null>();
+const newestOiAsked = new Map<string, number>();
+const NEWEST_OI_MS = 30 * 60_000;
+const NEWEST_OI_HISTORIC_CAP = 80;
+let newestOiVer = 0;
+const newestOiListeners = new Set<() => void>();
+const volDayOf = (r: BookContract) => (r.lastDay && /^\d{4}-\d{2}-\d{2}$/.test(r.lastDay) ? r.lastDay : tapeSessionIso());
+
+async function loadNewestOi(rows: BookContract[]): Promise<void> {
+  const today = nyIsoToday();
+  /* by the date of the count asked for: the session after each row's volume, once that morning has come */
+  const want = new Map<string, Map<string, BookContract[]>>();
+  for (const r of rows) {
+    if (!r.optionSymbol || r.expired) continue;
+    const next = nextSessionIso(volDayOf(r));
+    if (next > today) continue;
+    const k = `${r.optionSymbol}:${next}`;
+    if (newestOiCache.has(k) && Date.now() - (newestOiAsked.get(k) ?? 0) < NEWEST_OI_MS) continue;
+    const byT = want.get(next) ?? new Map<string, BookContract[]>();
+    byT.set(r.ticker, [...(byT.get(r.ticker) ?? []), r]);
+    want.set(next, byT);
+  }
+  if (!want.size) return;
+  let changed = false;
+  for (const [next, byT] of want) {
+    const missing: BookContract[] = [];
+    for (const [t, list] of byT) {
+      const got = new Map<string, Record<string, unknown>>();
+      for (const order of ['desc', 'asc'] as const) {
+        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&date=${next}&order=${order}`, false, true);
+        const page = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+        for (const x of page) if (String(x.curr_date ?? '').slice(0, 10) === next) got.set(String(x.option_symbol ?? ''), x);
+      }
+      for (const r of list) {
+        const x = got.get(r.optionSymbol!);
+        const k = `${r.optionSymbol}:${next}`;
+        if (!x) {
+          missing.push(r);
+          continue;
+        }
+        newestOiCache.set(k, { oi: num(x.curr_oi), before: num(x.last_oi), streak: x.days_of_oi_increases != null ? num(x.days_of_oi_increases) : undefined });
+        newestOiAsked.set(k, Date.now());
+        changed = true;
+      }
+    }
+    /* what the pages did not reach (an unchanged count, or past the first 500 changes): the contract's own history,
+       heaviest rows first so the ones on screen land first */
+    missing.sort((a, b) => b.premium - a.premium);
+    for (const r of missing.slice(0, NEWEST_OI_HISTORIC_CAP)) {
+      const k = `${r.optionSymbol}:${next}`;
+      try {
+        const res = await uwCall(`/option-contract/${encodeURIComponent(r.optionSymbol!)}/historic?limit=3`, false, true);
+        const box = res.data as { chains?: unknown[]; data?: unknown[] } | unknown[] | null;
+        const list = (Array.isArray(box) ? box : Array.isArray((box as { chains?: unknown[] })?.chains) ? (box as { chains: unknown[] }).chains : Array.isArray((box as { data?: unknown[] })?.data) ? (box as { data: unknown[] }).data : []) as Record<string, unknown>[];
+        const at = list.find(x => String(x.date ?? '').slice(0, 10) === next);
+        const was = list.find(x => String(x.date ?? '').slice(0, 10) === volDayOf(r));
+        newestOiCache.set(k, at && was ? { oi: num(at.open_interest), before: num(was.open_interest) } : null);
+      } catch {
+        newestOiCache.set(k, null);
+      }
+      newestOiAsked.set(k, Date.now());
+      changed = true;
+    }
+  }
+  if (changed) {
+    newestOiVer++;
+    for (const f of newestOiListeners) f();
+  }
+}
+
+/** The rows with the open interest of their volume's session wherever it is out (see above) */
+export function usePairedOi(rows: BookContract[]): BookContract[] {
+  const [ver, setVer] = useState(newestOiVer);
+  useEffect(() => {
+    const f = () => setVer(newestOiVer);
+    newestOiListeners.add(f);
+    return () => {
+      newestOiListeners.delete(f);
+    };
+  }, []);
+  useEffect(() => {
+    if (rows.length) void loadNewestOi(rows);
+  }, [rows]);
+  return useMemo(() => {
+    void ver;
+    return rows.map(r => {
+      const vol = volDayOf(r);
+      const next = nextSessionIso(vol);
+      const hit = r.optionSymbol ? newestOiCache.get(`${r.optionSymbol}:${next}`) : undefined;
+      if (!hit) return { ...r, volDay: vol, oiDay: prevSessionOf(vol), oiPending: !r.expired };
+      return {
+        ...r,
+        oi: hit.oi,
+        prevOI: hit.before,
+        deltaOI: hit.oi - hit.before,
+        deltaOIPct: hit.before > 0 ? ((hit.oi - hit.before) / hit.before) * 100 : 0,
+        oiStreak: hit.streak ?? r.oiStreak,
+        volDay: vol,
+        oiDay: vol,
+        oiPending: false,
+      };
+    });
+  }, [rows, ver]);
+}
+
 /** Hottest chains, plus the name on the desk so a one-name page is not an empty SPX book. */
 export function useLiveBook(ticker?: string | null): LivePack<BookContract[]> {
+  const pack = useLiveBookRaw(ticker);
+  const rows = usePairedOi(pack.rows);
+  return useMemo(() => ({ ...pack, rows }), [pack.at, pack.fault, pack.waiting, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+function useLiveBookRaw(ticker?: string | null): LivePack<BookContract[]> {
   const name = (ticker || '').trim().toUpperCase();
   return useLive(
     `book:${name || 'mkt'}`,
@@ -1616,7 +1759,9 @@ export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, o
   if (issue === 'stock') parts.push('issue_types[]=Common Stock');
   else if (issue === 'etf') parts.push('issue_types[]=ETF');
   const q = parts.join('&');
-  return useLive(`contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}`, async () => mapWithIndex(await getRows(`/screener/option-contracts?${q}`), contractRow), []);
+  const pack = useLive(`contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}`, async () => mapWithIndex(await getRows(`/screener/option-contracts?${q}`), contractRow), []);
+  const rows = usePairedOi(pack.rows);
+  return useMemo(() => ({ ...pack, rows }), [pack.at, pack.fault, pack.waiting, rows]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** The newest flow alerts — or, with `opts.untilMs`, the newest filed before that instant (the regular session's last

@@ -62,8 +62,9 @@ export interface TraceSide {
     /** Contracts whose volume ran past their standing interest — the Screener's "new positioning" */
     builtToday: number;
   };
-  /** What stood overnight: interest added and interest shed, contracts */
-  interest: { added: number; shed: number };
+  /** Open interest added and shed by one session's trading (`day`, YYYY-MM-DD — the newest count on the side's rows);
+      `lagging` rows still on the count before are left out (audit round 7) */
+  interest: { added: number; shed: number; day: string | null; lagging: number; pending: boolean };
   /** dollars: the structures' NET premium, signs dropped — what changed hands, not the gross of every leg */
   structures: { count: number; paid: number; collected: number; dollars: number; list: SpreadTrade[] };
   /** The name's REGULAR-SESSION prints in the window — each print by its own time and flag (an SPY print at 16:14:5x is
@@ -147,10 +148,17 @@ export function buildTraceSide(
       })(),
       builtToday: rows.filter(r => r.oi > 0 && r.volOverOI >= FRESH_VOL_OI).length,
     },
-    interest: {
-      added: rows.reduce((a, r) => a + (r.deltaOI > 0 ? r.deltaOI : 0), 0),
-      shed: rows.reduce((a, r) => a + (r.deltaOI < 0 ? r.deltaOI : 0), 0),
-    },
+    interest: (() => {
+      const day = rows.reduce<string | null>((m, r) => (r.oiDay && (!m || r.oiDay > m) ? r.oiDay : m), null);
+      const on = rows.filter(r => !day || !r.oiDay || r.oiDay === day);
+      return {
+        added: on.reduce((a, r) => a + (r.deltaOI > 0 ? r.deltaOI : 0), 0),
+        shed: on.reduce((a, r) => a + (r.deltaOI < 0 ? r.deltaOI : 0), 0),
+        day,
+        lagging: rows.length - on.length,
+        pending: rows.length > 0 && rows.every(r => r.oiPending),
+      };
+    })(),
     structures: {
       count: list.length,
       paid: list.filter(t => t.netKnown !== false && t.netPremium > 0).length,
@@ -177,8 +185,9 @@ export interface TraceCompare {
   b: TraceSide;
   /** The name whose money leans the more bullish */
   bullish: TraceSide;
-  /** The heavier premium on the book */
-  heavier: TraceSide;
+  /** The heavier premium on the book — null when neither name has a contract standing on the cut (audit round 7: Clock =
+      0DTE before the open crowned "QQQ · $0" across "its 0 standing contracts") */
+  heavier: TraceSide | null;
   /** The busier tape, by prints */
   busier: TraceSide;
   /** The page's sentence, the names as parts of their own */
@@ -192,9 +201,9 @@ export const signedUsd = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
 /** `tapeWindow` names the stretch both tapes cover ("from 15:58 to 16:14 ET"); `regular` is false when either name has
     no regular-session print in that stretch — a count of after-hours prints says nothing about which name is busier, so
     the tape clause is then left out */
-export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over the same stretch', regular = true, sameDay = 'expiring today'): TraceCompare {
+export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over the same stretch', regular = true, sameDay = 'expiring today', cutWords = 'on this cut'): TraceCompare {
   const bullish = a.net >= b.net ? a : b;
-  const heavier = a.book.premium >= b.book.premium ? a : b;
+  const heavier = a.book.premium <= 0 && b.book.premium <= 0 ? null : a.book.premium >= b.book.premium ? a : b;
   const busier = a.tape.prints >= b.tape.prints ? a : b;
   /* the net says its source and window — the ticks' regular session, or the clock's expiries for the whole day */
   const lean = (s: TraceSide) => s.netPending ? (s.netPending === 'loading' ? ' — its net is loading (the vendor\'s minute ticks…)' : ' — the vendor\'s minute ticks did not answer, so its net is not stated') : ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${signedUsd(s.net)}${s === b ? (s.netSource === 'ticks' ? " (net premium over the regular session, the vendor's minute ticks — the figure on Net Flow and Intervals)" : " (the clock's expiries, the vendor's expiry route)") : ''}`;
@@ -204,11 +213,12 @@ export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over
     `${lean(a)} while `,
     { name: b.ticker },
     `${lean(b)}. `,
-    { name: heavier.ticker },
-    ` carries more premium — ${fmtUsd(heavier.book.premium)} across its ${num(heavier.book.count)} standing contracts with the most premium, on ${num(heavier.book.volume)} volume${showTape ? ' — and ' : '. '}`,
+    ...(heavier
+      ? [{ name: heavier.ticker }, ` carries more premium — ${fmtUsd(heavier.book.premium)} across its ${num(heavier.book.count)} standing contract${heavier.book.count === 1 ? '' : 's'} with the most premium, on ${num(heavier.book.volume)} volume${showTape ? ' — and ' : '. '}`]
+      : [`Neither name has a contract standing ${cutWords}, so neither carries more premium${showTape ? '; ' : '. '}`]),
     ...(!showTape
       ? []
-      : busier === heavier
+      : busier === heavier || !heavier
         ? [`the busier tape ${tapeWindow}, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
         : [{ name: busier.ticker }, ` the busier tape ${tapeWindow}, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
     `Money on contracts ${sameDay} (by expiry, the vendor's expiry route): `,

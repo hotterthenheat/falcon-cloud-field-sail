@@ -50,7 +50,7 @@ import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import LeanCell from '../../components/trace/LeanCell';
 import { shyPct } from '../../components/trace/dayWords';
-import { dayAdv } from '../../components/trace/dayWords';
+import { dayAdv, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, oiRowTitle, prevSessionIso, shortDay } from '../../components/trace/dayWords';
 import { SectorName } from '../../components/trace/SectorMark';
 import WatchStar from '../../components/trace/WatchStar';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
@@ -144,7 +144,7 @@ const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
   otm: 'How far the strike sits from the stock, as a percent',
-  voloi: 'Volume over open interest — at 1.5 and above the positions were built in the session; "new" when there was no open interest to divide by',
+  voloi: 'Volume over the open interest that stood at the session’s open — at 1.5 and above the positions were built in the session; "new" when there was no open interest to divide by',
   vol: "The screener's day volume for the contract, as of its last fill (the Time column) — the card adds its session row's figure, after-hours prints included",
   last: "The screener's last fill and the New York time it printed, with the change on the previous close — the card shows the latest regular-session print with its own time",
   sweep: 'The share of the volume that swept across exchanges',
@@ -225,20 +225,38 @@ const OptionsScreener = () => {
   }, [book, screen, filters, cutQuery]);
 
   /* Three registers per column — see components/trace/earnedInk.ts */
+  const oiCover = useMemo(() => oiCoverOf(rows), [rows]);
+  const tooltips = useMemo(
+    () => ({
+      ...TOOLTIPS,
+      oi: `Open interest ${oiAfterWords(oiCover.day)} — counted the morning after${oiPendingWords(oiCover) ? `; ${oiPendingWords(oiCover)}` : ''}`,
+      doi: `What open interest did ${oiInWords(oiCover.day)}${oiCover.day ? ` — from the count at ${shortDay(oiCover.day)}'s open (after ${shortDay(prevSessionIso(oiCover.day))}'s trading)` : ''}; a row marked with an earlier day is still on the count before`,
+    }),
+    [oiCover]
+  );
   const marks = useMemo(() => ({ vol: earnMarks(rows, r => r.volume), oi: earnMarks(rows, r => r.oi), doi: earnMarks(rows, r => r.deltaOI), prem: earnMarks(rows, r => r.premium) }), [rows]);
 
+  /* THE HEAD'S MONEY LEAVES THE FLOOR PACKAGES OUT (audit round 7: $126.4M of the $1.4B was contracts whose day was mostly
+     floor-traded multi-leg packages, summed without a word) — counted apart and said on the hover */
   const facts = useMemo(() => {
     let prem = 0;
     let callPrem = 0;
     let fresh = 0;
+    let pkgPrem = 0;
+    let pkg = 0;
     const names = new Set<string>();
     for (const r of rows) {
-      prem += r.premium;
-      if (r.right === 'C') callPrem += r.premium;
       if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI) fresh++;
       names.add(r.ticker);
+      if (floorPackaged(r)) {
+        pkgPrem += r.premium;
+        pkg++;
+        continue;
+      }
+      prem += r.premium;
+      if (r.right === 'C') callPrem += r.premium;
     }
-    return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size };
+    return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, pkgPrem, pkg };
   }, [rows]);
   const champs = useMemo(() => {
     /* a day that was mostly floor-traded multi-leg packages — compression's shape — is named apart, never crowned the
@@ -250,7 +268,8 @@ const OptionsScreener = () => {
   const sentence = useMemo(() => {
     if (rows.length === 0) return 'Nothing on this cut.';
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-    return `${fmtUsd(facts.prem)} across ${plural(rows.length, 'contract', 'contracts')} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
+    const pkgWords = facts.pkg ? ` (${plural(facts.pkg, 'floor-package contract', 'floor-package contracts')}, ${fmtUsd(facts.pkgPrem)}, left out — mostly floor-traded multi-leg packages, not bets)` : '';
+    return `${fmtUsd(facts.prem)} across ${plural(rows.length - facts.pkg, 'contract', 'contracts')}${pkgWords} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
   }, [rows.length, facts]);
   /* AN EMPTY CUT NAMES THE CARDS THAT EMPTIED IT */
   const emptyText = useMemo(() => {
@@ -323,18 +342,21 @@ const OptionsScreener = () => {
         ),
       },
       { key: 'vol', header: 'Vol', align: 'right', sortValue: r => r.volume, render: r => <span className={weightInk(r.volume, marks.vol)}>{num(r.volume)}</span> },
-      { key: 'oi', header: 'OI', align: 'right', sortValue: r => r.oi, render: r => <span className={weightInk(r.oi, marks.oi)}>{num(r.oi)}</span> },
+      { key: 'oi', header: 'OI', align: 'right', sortValue: r => r.oi, render: r => <span className={weightInk(r.oi, marks.oi)} title={oiRowTitle(r)}>{num(r.oi)}</span> },
       {
         key: 'doi',
         header: 'ΔOI',
         align: 'right',
         sortValue: r => r.deltaOI,
         render: r => {
-          if (r.deltaOI === 0) return <span className="text-textSecondary">—</span>;
+          /* a row still on the count before names its day, in plain ink (audit round 7) */
+          const lag = oiLags(r, oiCover) && r.oiDay ? <span className="mr-1 text-[10px] text-textMuted">{shortDay(r.oiDay)}</span> : null;
+          if (r.deltaOI === 0) return <span className="text-textSecondary" title={oiRowTitle(r)}>{lag}—</span>;
           const a = Math.abs(r.deltaOI);
-          const tone = a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? (r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary';
+          const tone = lag ? 'text-textPrimary' : a >= marks.doi.top ? 'text-supreme font-bold' : a >= marks.doi.bar ? (r.deltaOI > 0 ? 'text-bull dir-up' : 'text-bear dir-down') : 'text-textPrimary';
           return (
-            <span className={tone}>
+            <span className={tone} title={oiRowTitle(r)}>
+              {lag}
               {r.deltaOI > 0 ? '+' : '−'}
               {num(Math.abs(r.deltaOI))} {/* a tier down, never opacity */}
               <span className="text-[11px]">{pctSigned(r.deltaOIPct, 0)}</span>
@@ -362,14 +384,14 @@ const OptionsScreener = () => {
             <span className="text-textMuted">—</span>
           ),
       },
-      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`font-mono tnum ${r.oi > 0 && r.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.oi > 0 ? undefined : 'No open interest before the session — a new contract, nothing to divide by'}>{volOiText(r)}</span> },
+      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOverOI, render: r => <span className={`font-mono tnum ${r.oi > 0 && r.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.volOverOI > 0 || !(r.volume > 0) ? undefined : 'No open interest before the session — a new contract, nothing to divide by'}>{volOiText(r)}</span> },
       { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.sweepPct)}%</span> },
       { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{Math.round(r.floorPct)}%</span>) },
       { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.multiPct)}%</span> },
       { key: 'lean', header: 'Lean', align: 'right', sortValue: r => r.askPct, render: r => <LeanCell askPct={r.askPct} split={r.sideVol} /> },
       { key: 'sector', header: 'Sector', sortValue: r => r.sector ?? '', render: r => <SectorName sector={r.sector} /> },
     ],
-    [marks]
+    [marks, oiCover]
   );
 
   /* SEVENTEEN COLUMNS DID NOT FIT AT 1440 (the audit, 2026-10-22): the floor share, the multi-leg share and the sector open
@@ -397,7 +419,7 @@ const OptionsScreener = () => {
         guide={{ title: 'How to read the book', door: 'What a row, the inks and the shares mean', body: <ScreenerGuide />, testId: 'screener-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Premium" testId="premium">
+            <Fact label={facts.pkg ? 'Premium · packages out' : 'Premium'} testId="premium" title={facts.pkg ? `The day's premium of the contracts on this cut, less ${num(facts.pkg)} whose day was mostly floor-traded multi-leg packages (${fmtUsd(facts.pkgPrem)}) — set apart, not bets` : "The day's premium of the contracts on this cut"}>
               {fmtUsd(facts.prem)}
               {/* no premium, no split — "calls 0% / puts 100%" on $0 was a division by nothing */}
               {facts.prem > 0 && (
@@ -414,12 +436,12 @@ const OptionsScreener = () => {
               {facts.fresh}
             </Fact>
             {champs.call && champs.call !== champs.all && (
-              <Champion label="Top call" ink="bull" title="The call with the most premium among contracts whose day was not mostly floor-traded multi-leg packages — a floor package is set apart, not a bet" onOpen={() => setOpenKey(champs.call!.key)} testId="top-call">
+              <Champion label="Top call" ink="plain" title="The call with the most premium among contracts whose day was not mostly floor-traded multi-leg packages — a floor package is set apart, not a bet" onOpen={() => setOpenKey(champs.call!.key)} testId="top-call">
                 {pill(champs.call)}
               </Champion>
             )}
             {champs.put && champs.put !== champs.all && (
-              <Champion label="Top put" ink="bear" title="The put with the most premium among contracts whose day was not mostly floor-traded multi-leg packages — a floor package is set apart, not a bet" onOpen={() => setOpenKey(champs.put!.key)} testId="top-put">
+              <Champion label="Top put" ink="plain" title="The put with the most premium among contracts whose day was not mostly floor-traded multi-leg packages — a floor package is set apart, not a bet" onOpen={() => setOpenKey(champs.put!.key)} testId="top-put">
                 {pill(champs.put)}
               </Champion>
             )}
@@ -469,7 +491,7 @@ const OptionsScreener = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={emptyText} testId="screener" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={emptyText} testId="screener" />
         {pack.fault && rows.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
       <BookDrill list={rows} openKey={openKey} onOpen={setOpenKey} tick={tick} />
