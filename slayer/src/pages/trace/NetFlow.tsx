@@ -84,8 +84,13 @@ const NetFlow = () => {
      tide — every name's net call premium less net put premium, running from the open. */
   const tide = useTide('market', '');
   const liveBook = useLiveBook(picked || activeTicker).rows;
+  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "The board $0 · Names 0 · No name has leaned yet today" while the
+     board loaded) — the board's facts read "—" and the pane waits for the board's first name rather than drawing SPY and
+     then the leader (two reads for one pane) */
+  const boardReading = top.waiting && top.rows.length === 0;
+  const boardFault = top.fault;
   // The shared hold (see LiveHold): the board's book and the pane's tick freeze together while paused
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !boardReading);
   const { book: heldBook, tick } = hold.value;
   /* the pane draws the picked name's own minutes (usePaneFlow); the book only feeds the search's suggestions */
   const book = heldBook;
@@ -121,7 +126,7 @@ const NetFlow = () => {
   useEffect(() => () => window.clearTimeout(typeTimer.current), []);
   const unknown = query !== '' && !/^[A-Z][A-Z0-9.]{0,5}$/.test(query);
 
-  const sel = picked ?? leaders[0]?.ticker ?? 'SPY';
+  const sel = picked ?? leaders[0]?.ticker ?? (boardReading ? null : 'SPY');
   const maxAbs = useMemo(() => Math.max(...leaders.map(l => Math.abs(l.net)), 1), [leaders]);
   const netMarks = useMemo(() => earnMarks(leaders, l => l.net), [leaders]);
 
@@ -168,7 +173,8 @@ const NetFlow = () => {
     return { net: calls - puts, calls, puts, at: (post ?? pre)!.last ? nyClock((post ?? pre)!.last * 1000) : '', from: pre ? nyClock(pre.first * 1000) : post ? nyClock(post.first * 1000) : null, none: false, span, day: nyDateOf((post ?? pre)!.last * 1000) as string | null };
   }, [tide.rows, session]);
   const read = useMemo<ReactNode>(() => {
-    if (!facts.top || !facts.bottom) return <RichRead text="The book is still waking up." />;
+    if (boardReading) return <RichRead text="Reading the vendor's board and the market tide…" />;
+    if (!facts.top || !facts.bottom) return <RichRead text={boardFault ? 'The board did not answer — it fills when the feed does.' : 'The book is still waking up.'} />;
     const { top, bottom, topIsChamp } = facts;
     const crown = (v: number, champ: boolean) => (champ ? <span className="font-semibold tnum text-supreme">{signed(v)}</span> : <Lean v={v} />);
     return (
@@ -205,7 +211,7 @@ const NetFlow = () => {
       </>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facts, leaders.length, market]);
+  }, [facts, leaders.length, market, boardReading, boardFault]);
 
   /* The search PICKS a name (it is a board, not a filter); the board scrolls the picked row into view */
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -234,16 +240,16 @@ const NetFlow = () => {
                 {session === 'regular' ? <Lean v={market.net} /> : <span className="tnum text-textPrimary">{signed(market.net)}</span>} <span className="text-textSecondary">· {market.day && !isLiveDay(market.day) ? `${shortDay(market.day)} ` : ''}{market.span} ET</span>
               </>
             ) : (
-              <span className="text-textMuted">—</span>
+              <span className="text-textMuted">{tide.waiting ? '…' : '—'}</span>
             )}
           </Fact>
           <Fact label="The board · bullish · bearish" testId="sides" title={`The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market. ${VENDOR_TOTAL_NOTE}`}>
             {/* the bearish names' sum is a sum of names' NET premium, below zero — bearish, red (audit round 5: it wore the
                 put-premium ink and read bullish green) */}
-            <Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" />
+            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <><Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" /></>}
           </Fact>
           <Fact label="Names" testId="names">
-            {leaders.length} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span>
+            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <>{leaders.length} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span></>}
           </Fact>
           {facts.hasVol && (
             <Fact label="Contracts traded" testId="volume" title="Volume across the board, and how many contracts carried it">
@@ -270,7 +276,7 @@ const NetFlow = () => {
       }
       controls={
         <>
-          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
           <StaleMark at={top.at} ttlMs={FLOW_TTL_MS} fault={top.fault} />
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
@@ -299,7 +305,7 @@ const NetFlow = () => {
           )}
           {leaders.length === 0 && (
             <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-board-empty>
-              {top.fault ? 'This read did not land' : `No name has leaned yet ${dayAdv()}`}
+              {boardReading ? 'Reading the board…' : top.fault ? 'This read did not land' : `No name has leaned yet ${dayAdv()}`}
             </p>
           )}
           {leaders.map((l, i) => {
@@ -341,6 +347,11 @@ const NetFlow = () => {
         </div>
         {/* THE PANE — the picked name's session */}
         <div className="flex-1 min-w-0 p-2 max-md:h-[460px] max-md:flex-none">
+          {sel == null ? (
+            <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-pane-waiting>
+              Reading the board — the pane opens on its first name
+            </p>
+          ) : (
           <NetFlowPane
             book={book}
             seg="all"
@@ -353,6 +364,7 @@ const NetFlow = () => {
             onTenor={setTenor}
             dteMax={Infinity}
           />
+          )}
           {top.fault && leaders.length === 0 ? <FeedFallback fault={top.fault} /> : null}
         </div>
       </div>

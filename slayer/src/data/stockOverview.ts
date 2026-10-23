@@ -66,7 +66,7 @@ import { buildExposureProfile } from './exposure';
 import { LEVELS_WINDOW } from './roomLevels';
 import { bookCandles, snapshotOf } from './uwBook';
 import { peekQuote, extendedLine, priceWords, screenerRead, screenerNeedsCloses } from './liveQuote';
-import { peekLive } from './liveRecord';
+import { peekLive, peekTickerNews } from './liveRecord';
 import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
 import { nyTodayIso } from './nyDate';
 import { nyClock, nyIsoDate, nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
@@ -757,7 +757,7 @@ const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: st
 
 /* ---- the money, from the book, the flow and the dark pool ------------------------------- */
 
-const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], file: StockFile): { read: MoneyRead; factors: Factor[] } => {
+const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], file: StockFile, allExpiries: boolean): { read: MoneyRead; factors: Factor[] } => {
   /* EVERY LISTED DATE, NOT THE DESK'S SCOPE (the ship pass, 2026-10-22): the Pinpoint desk's Levels card defaults to
      today's contracts, and a single stock with no same-day expiry (AAPL on a Thursday) then read an empty book — open
      interest 0, "50% calls", a $44M net GEX against the whole book's −$573M. The name's page reads the whole book. */
@@ -767,7 +767,10 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   /* NET GEX AND THE REGIME FROM PINPOINT'S OWN READ (the re-audit, 2026-10-22): the profile's netGex sums a ±30-strike
      window (SPY −$11.6B against Pinpoint's −$14.69B on every strike). levelsFor is the one source both products read;
      it is in the retail sign, the money read keeps the house sign (the page flips it for print). */
-  const pin = levelsFor(ticker, 'ALL');
+  /* THE WHOLE BOOK ONLY WHEN IT IS LOOKED AT (the round-8 audit: 143 calls on AAPL's page, most of them the forty listed
+     dates' chains behind these levels). levelsFor(t, 'ALL') walks every date; the page asks for it once the All-expiries
+     panel is on screen (or the book is already whole — Pinpoint's cache is shared) */
+  const pin = allExpiries ? levelsFor(ticker, 'ALL') : null;
   const pinToday = levelsFor(ticker, '0DTE');
   const houseNet = pin ? -pin.netGex : profile.netGex;
   const regime: MoneyRead['regime'] = regimeOfNet(houseNet) === 'SHORT' ? 'amplifying' : 'absorbing';
@@ -867,7 +870,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   /* THE SESSION'S OWN MINUTES (the retail test, round 6: NVDA's "Oct 22 tape" drew the one daily bar — a 212.10–212.25
      axis on a 7.62 range, no line — because the blocks are daily bars once five sessions are in). The line is the book's
      one-minute cash bars of the dark tape's session; the blocks only when they are minutes themselves. */
-  const sessionMinutes = (bookCandles(ticker) ?? []).filter(c => {
+  const sessionMinutes = (file.minutes && file.minutes.length > 1 ? file.minutes : bookCandles(ticker) ?? []).filter(c => {
     const at = c.time * 1000;
     const m = nyMinutes(at);
     return (!file.session || nyIsoDate(at) === file.session) && m >= SESSION_OPEN_MIN && m <= SESSION_CLOSE_MIN;
@@ -922,12 +925,14 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
 
 /* ---- the news, from the wire ----------------------------------------------------- */
 
-const wireLive = (ticker: string) => peekLive().news.status === 'live' && peekLive().news.events.some(e => e.item.ticker === ticker);
+/* the name's own headlines (liveRecord.useTickerNews), not the whole day's wire */
+const wireLive = (ticker: string) => peekTickerNews(ticker).status === 'live';
 
 const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Factor[]; lastReport: { label: string; epsActual: number; epsEst: number; beat: boolean; result: 'beat' | 'inline' | 'miss'; movePct: number | null } | null } => {
-  const feed = peekLive().news;
+  const feed = peekTickerNews(ticker);
+  /* the vendor's own feed for the name: every story on it is the name's, whichever symbol leads it */
   const stories = (feed.status === 'live' ? feed.events : [])
-    .filter(e => e.item.ticker === ticker)
+    .slice()
     .sort((a, b) => a.item.minutesAgo - b.item.minutesAgo);
   const positive = stories.filter(s => s.grade === 'ALLY').length;
   const negative = stories.filter(s => s.grade === 'THREAT').length;
@@ -1302,9 +1307,10 @@ const screenTrend = (bars: TrendRead, row: ScreenRow): TrendRead => {
 
 /* ---- the overview ------------------------------------------------------------- */
 
-export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[] = []): StockOverview | null {
+export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[] = [], opts: { allExpiries?: boolean } = {}): StockOverview | null {
   const ticker = tickerRaw.toUpperCase();
-  const snapshot = snapshotOf(ticker, 'full');
+  /* the light book (the name's whole-book strikes and its front expiry); the forty dates load with the All-expiries panel */
+  const snapshot = snapshotOf(ticker, opts.allExpiries ? 'full' : 'board');
   if (!snapshot) return null;
   const u = lookup(ticker);
   const name = u?.name ?? tickerName(ticker);
@@ -1328,7 +1334,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
      +1.9% · +3.8%" sat beside "The last month +2.6%". The card now prints the screener row's own measures — the very
      numbers the factors score — and the bars keep only what the screener does not carry (the range, the structure). */
   const trend = { ...trendBars, read: screenTrend(trendBars.read, file.screen) };
-  const money = moneyFor(ticker, { ...snapshot, changePercent: dayPct }, blocks, file);
+  const money = moneyFor(ticker, { ...snapshot, changePercent: dayPct }, blocks, file, !!opts.allExpiries);
   const news = newsFor(ticker, file);
   const numbers = numbersFor(file);
   /* THE WORD IS THE BOARD'S (readOfScreen, on the screener row the board reads too); the page's own reads — the swing

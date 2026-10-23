@@ -573,11 +573,9 @@ async function pullShorts() {
         for (const r of Array.isArray(got) ? got : []) {
           const sym = String(r.ticker || '').toUpperCase();
           facts.set(sym, r);
-          if (!sym) continue;
-          nameAsked.add(sym);
-          rememberCompanyName(sym, String(r.full_name || ''));
+          /* a name the screener gives is kept (it now comes back empty — the name cells ask the stock's info) */
+          if (sym && r.full_name) rememberCompanyName(sym, String(r.full_name));
         }
-        if (Array.isArray(got)) namesRev += 1;
       },
     );
     out = out.map(r => {
@@ -924,10 +922,47 @@ export function useShorts(): { status: FileStatus; rows: ShortRow[] } {
   return { status: s.shortStatus, rows: s.shorts };
 }
 
+/* ONE NAME'S SHORT PRINT, NOT THE WHOLE SCREEN (the round-8 audit: the stock page and shorts/GME walked the whole
+   most-shorted screen — seven /short_screener calls and four screener batches — for one name's figure). The name's own
+   two newest settlements (/short_screener?tickers=T, newest first) are read; the screen's row stands in only when the
+   Shorts page has already read the screen. */
+const oneShort = new Map<string, { status: FileStatus; row: ShortRow | null }>();
+const oneShortAsked = new Set<string>();
+function ensureOneShort(t: string): void {
+  if (!t || oneShortAsked.has(t)) return;
+  oneShortAsked.add(t);
+  oneShort.set(t, { status: 'loading', row: null });
+  void uwCall(`/short_screener?tickers=${encodeURIComponent(t)}&order_by=market_date&order_direction=desc&limit=2`)
+    .then(res => {
+      const rows = Array.isArray(res.data) ? (res.data as UwShort[]) : [];
+      if (res.error && !rows.length) {
+        oneShort.set(t, { status: 'error', row: null });
+      } else {
+        const own = rows
+          .filter(r => String(r.symbol ?? (r as { ticker?: string }).ticker ?? t).toUpperCase() === t)
+          .sort((a, b) => String(b.market_date ?? '').localeCompare(String(a.market_date ?? '')))
+          .slice(0, 2)
+          .map(r => shortFrom({ ...r, symbol: t }))
+          .filter((r): r is ShortRow => !!r);
+        const merged = own.length ? collapseShorts(own)[0] ?? null : null;
+        oneShort.set(t, { status: 'live', row: merged ? { ...merged, borrowAsOf: merged.history[0]?.report } : null });
+      }
+      emit({});
+    })
+    .catch(() => {
+      oneShort.set(t, { status: 'error', row: null });
+      emit({});
+    });
+}
 export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow | null } {
-  const s = useFiles('shorts');
+  const s = useFiles();
   const t = ticker.toUpperCase();
-  return { status: s.shortStatus, row: s.shorts.find(r => r.ticker === t) ?? null };
+  const fromScreen = s.shortStatus === 'live' ? s.shorts.find(r => r.ticker === t) ?? null : null;
+  useEffect(() => {
+    if (!fromScreen) ensureOneShort(t);
+  }, [t, fromScreen]);
+  if (fromScreen) return { status: 'live', row: fromScreen };
+  return oneShort.get(t) ?? { status: 'loading', row: null };
 }
 
 export type HoldingsCover = { lines: number; weight: number; fundCount: number | null };
@@ -1000,48 +1035,71 @@ export function useLiveTide(): TidePrint | null {
   return useFiles('tide').tide;
 }
 
-/* NAMES IN BULK (round 6): the Shorts page asked /stock/{t}/info two hundred times for the names alone. A name is asked
-   of the screener (its full_name), up to sixty a call, gathered over a beat; a name the screener does not carry is
-   left on the bundled listing's. */
+/* NAMES FROM THE STOCK'S OWN INFO (round 8: SERV still read "ServiceMaster Global Holdings, Inc." on the Shorts grid).
+   Round 6 asked the screener for names in bulk, but the screener's full_name now comes back empty for every row, so
+   the old bundled listing stood under every grid. The vendor's name is on /stock/{t}/info alone: it is asked only for a
+   name a reader can see (the name cells ask once they scroll into view), two at a time behind the page's own reads,
+   and remembered for a fortnight in this browser (tickers.ts). While a name is being asked the cell holds its name
+   rather than print the stale listing; the listing's name stands only when the vendor has none. */
 let namesRev = 0;
 const companyNamesRev = () => namesRev;
 const nameAsked = new Set<string>();
-let nameQueue: string[] = [];
-let nameTimer: number | null = null;
+const nameDone = new Set<string>();
+const nameQueue: string[] = [];
+let nameBusy = 0;
+const bumpNames = () => {
+  namesRev += 1;
+  nameRevListeners.forEach(fn => fn());
+};
+const nameRevListeners = new Set<() => void>();
+function pumpNames(): void {
+  while (nameBusy < 2 && nameQueue.length) {
+    const t = nameQueue.shift()!;
+    nameBusy += 1;
+    void whalesStock(t)
+      .then(info => {
+        const row = info && typeof info === 'object' ? (info as Record<string, unknown>) : null;
+        if (row) rememberCompanyName(t, String(row.full_name || row.short_name || ''));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        nameBusy -= 1;
+        nameDone.add(t);
+        bumpNames();
+        pumpNames();
+      });
+  }
+}
 function askName(t: string): void {
   if (nameAsked.has(t)) return;
   nameAsked.add(t);
   nameQueue.push(t);
-  if (nameTimer != null) return;
-  nameTimer = window.setTimeout(() => {
-    nameTimer = null;
-    const all = nameQueue;
-    nameQueue = [];
-    for (let i = 0; i < all.length; i += 50) {
-      const chunk = all.slice(i, i + 50);
-      void whalesScreener(chunk)
-        .then(rows => {
-          /* the revision first: the name store's listeners re-read it as each name lands */
-          namesRev += 1;
-          for (const r of Array.isArray(rows) ? rows : []) rememberCompanyName(String(r.ticker ?? ''), String(r.full_name || ''));
-        })
-        .catch(() => undefined);
-    }
-  }, 120);
+  pumpNames();
 }
+const subscribeNames = (fn: () => void) => {
+  const off = subscribeCompanyNames(fn);
+  nameRevListeners.add(fn);
+  return () => {
+    off();
+    nameRevListeners.delete(fn);
+  };
+};
+const askable = (t: string, fromVendorFeed: boolean) => /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && (fromVendorFeed || isListed(t));
 
-/** The company's name as the vendor gives it (its stock info), the bundled listing's until that lands — every Dossier
-    name cell reads this (the re-audit, 2026-10-22: the listing called SERV "ServiceMaster") */
-export function useCompanyName(ticker: string, fromVendorFeed = false): string {
+/** The company's name as the vendor gives it (its stock info). `seen` gates the ask (a name cell asks once it is on
+    screen). While the ask is out the name is '' — never the stale listing's, which stands only once the vendor has
+    answered without one, or for a symbol the vendor is not asked about. */
+export function useCompanyName(ticker: string, fromVendorFeed = false, seen = true): string {
   const t = (ticker || '').toUpperCase();
-  /* A LIGHT LOOKUP (round 6): subscribed to the names alone — it starts none of the store's books — and asked in bulk */
-  useSyncExternalStore(subscribeCompanyNames, companyNamesRev, companyNamesRev);
+  useSyncExternalStore(subscribeNames, companyNamesRev, companyNamesRev);
+  const ask = !!t && askable(t, fromVendorFeed) && !hasVendorName(t);
   useEffect(() => {
-    /* a symbol the vendor's own feed sent is asked of it; any other only when it is a listed one (an OTC symbol on a
-       Congress filing answers 404) */
-    if (t && /^[A-Z][A-Z0-9.]{0,6}$/.test(t) && !hasVendorName(t) && (fromVendorFeed || isListed(t))) askName(t);
-  }, [t, fromVendorFeed]);
-  return t ? companyName(t) : '';
+    if (ask && seen) askName(t);
+  }, [t, ask, seen]);
+  if (!t) return '';
+  if (hasVendorName(t)) return companyName(t);
+  if (ask && !nameDone.has(t)) return '';
+  return companyName(t);
 }
 
 export function useStockCard(ticker: string): StockCard | null | undefined {

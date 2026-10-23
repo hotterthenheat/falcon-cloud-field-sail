@@ -59,6 +59,7 @@ import { richText, stateOf, type VolState } from '../../components/earnings/volS
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
 import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending, historyMissed } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
+import { nyMinutes } from '../../core/nyTime';
 import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
 import { statHelp } from '../../components/record/statHelp';
@@ -314,12 +315,31 @@ const IvCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? pricedK
 /* a report with no straddle on the row (KARO's ±0.0%) is not priced — it says so; a report that is out shows the move the
    stock made, not the one the options had priced */
 const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}%`;
-const moveText = (e: EarningsEvent) => (e.reported ? (e.actualMovePct != null ? `moved ${signedPct(e.actualMovePct)}` : 'reported') : e.impliedMovePct > 0 ? `±${e.impliedMovePct.toFixed(1)}%` : '—');
+/* THE REACTION'S OWN SESSION (round 8: Thursday's after-close names read "moved −3.1%" on Friday at 10:30, mid-move):
+   a report before the open reacts that session, one after the close (or with no time) the next weekday. While that
+   session trades the move is said as "so far". */
+const nextWeekday = (iso: string): string => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  do d.setUTCDate(d.getUTCDate() + 1);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  return d.toISOString().slice(0, 10);
+};
+const reactionSession = (e: EarningsEvent): string => (e.slot === 'BMO' && e.timeKnown !== false ? e.iso : nextWeekday(e.iso));
+const reactionLive = (e: EarningsEvent): boolean => {
+  if (!e.reported || e.actualMovePct == null) return false;
+  const m = nyMinutes();
+  return reactionSession(e) === nyTodayIso() && m >= 4 * 60 && m < 16 * 60;
+};
+const moveText = (e: EarningsEvent) => (e.reported ? (e.actualMovePct != null ? (reactionLive(e) ? `${signedPct(e.actualMovePct)} so far` : `moved ${signedPct(e.actualMovePct)}`) : 'reported') : e.impliedMovePct > 0 ? `±${e.impliedMovePct.toFixed(1)}%` : '—');
+/** The grid's move column, per row: what the options price before the print, the move the stock made (or is making) after */
+const moveCellText = (e: EarningsEvent) =>
+  e.reported ? (e.actualMovePct != null ? (reactionLive(e) ? `${signedPct(e.actualMovePct)} so far` : `moved ${signedPct(e.actualMovePct)}`) : 'reported') : e.impliedMovePct > 0 ? `±${e.impliedMovePct.toFixed(1)}% priced` : 'not priced';
 const moveInk = (e: EarningsEvent) => (e.reported ? (e.actualMovePct == null ? 'text-textMuted' : e.actualMovePct > 0 ? 'text-bull' : e.actualMovePct < 0 ? 'text-bear' : 'text-textPrimary') : '');
 const MoveCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
-    <span className={`font-mono text-[11px] tnum font-semibold ${data.reported ? moveInk(data) : data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`} title={data.reported ? `Reported — the options had priced ±${data.impliedMovePct.toFixed(1)}%` : undefined}>
-      {moveText(data)}
+    <span className="flex flex-col items-end leading-tight" title={data.reported ? `Reported — ${reactionLive(data) ? 'the move so far in the session reacting to it' : 'the move the stock made the session after'}; the options had priced ±${data.impliedMovePct.toFixed(1)}%` : 'The move the options charge for the print — the at-the-money straddle as a percent of the stock'}>
+      <span className={`font-mono text-[11px] tnum font-semibold ${data.reported ? moveInk(data) : data.impliedMovePct > 0 ? 'text-textPrimary' : 'text-textMuted'}`}>{moveCellText(data)}</span>
+      {data.reported && data.impliedMovePct > 0 ? <span className="font-mono text-[9px] tnum text-textMuted">priced ±{data.impliedMovePct.toFixed(1)}%</span> : null}
     </span>
   ) : null;
 const UsualCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
@@ -470,7 +490,7 @@ const Earnings = () => {
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 180, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open its page' },
       { headerName: 'Reports', field: 'daysOut', width: 210, cellRenderer: WhenCell, headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
-      { headerName: 'Options price', field: 'impliedMovePct', width: 124, cellRenderer: MoveCell, type: 'rightAligned', headerTooltip: 'The move the options charge for the print — the at-the-money straddle as a percent of the stock. Once the report is out, the move the stock made the session after' },
+      { headerName: 'Priced · or moved', field: 'impliedMovePct', width: 140, cellRenderer: MoveCell, type: 'rightAligned', headerTooltip: 'Before the print: the move the options charge — the at-the-money straddle as a percent of the stock ("priced"). Once the report is out: the move the stock made the session after ("moved"), or is making while that session trades ("so far"), with the price it had beside it' },
       { headerName: 'Usually moves', field: 'histAvgMovePct', width: 136, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move the session after its last eight reports — or fewer, said beside it, when fewer are on file' },
       { headerName: 'Priced', field: 'richness', width: 124, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
       { headerName: 'Beat · in line · miss', field: 'beatRate8q', width: 130, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'Of the last eight reports that carry both an actual and an estimate: how many beat, came in line (equal to the cent) and missed' },
@@ -506,8 +526,13 @@ const Earnings = () => {
             <Fact label="Priced" testId="priced">
               {failed ? (
                 <span className="text-textMuted">—</span>
-              ) : pending || scored.length === 0 ? (
-                <span className="text-textMuted">{pending ? 'reading the lists…' : 'reading the usual moves'}</span>
+              ) : pending ? (
+                <span className="text-textMuted">reading the lists…</span>
+              ) : ahead.length === 0 ? (
+                /* nothing left to price is not "reading" (round 8: Friday's "reading the usual moves" stood all day) */
+                <span className="text-textMuted" title={`Every known name ${weekWords} has reported — a report that is out is not priced any more`}>nothing left to price {weekWords}</span>
+              ) : scored.length === 0 ? (
+                <span className="text-textMuted">{weekHistOut > 0 ? 'reading the usual moves' : `none with ${MIN_PRICED_PRINTS}+ past moves on file`}</span>
               ) : (
                 <span title={`Known names still to report ${weekWords} with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${ahead.length}. A name with fewer, or none, is not called rich or cheap`}>
                   <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>

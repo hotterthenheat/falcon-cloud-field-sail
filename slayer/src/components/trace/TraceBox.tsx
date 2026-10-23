@@ -455,6 +455,19 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
   useEffect(() => {
     setShowTop((viewport()?.scrollTop ?? 0) > 600);
   }, [rows]);
+  /* THE EMPTY LINE FOLLOWS THE READ (audit round 8: "Reading…" changed to the cut's empty line, or back, while the grid
+     kept the overlay it first drew) — a shown no-rows overlay is redrawn with the new words */
+  const firstEmpty = useRef(true);
+  useEffect(() => {
+    if (firstEmpty.current) {
+      firstEmpty.current = false;
+      return;
+    }
+    const api = gridRef.current?.api;
+    if (!api || gridRows.length) return;
+    api.hideOverlay();
+    api.showNoRowsOverlay();
+  }, [emptyText]); // eslint-disable-line react-hooks/exhaustive-deps
   const scrollToTop = () => {
     const el = viewport();
     if (!el) return;

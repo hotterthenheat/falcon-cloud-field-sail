@@ -45,6 +45,7 @@ import { nyIsoDaysBack } from '../../data/nyDate';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { companyName, isListed, tickerName } from '../../data/tickers';
 import { useCompanyName } from '../../data/liveFiles';
+import { useSeen } from '../../components/record/CoName';
 import type { Chamber, CongressTrade, ReportOwner } from '../../types/record';
 import { REPORTS_TO_KNOW } from './recordSkeletons';
 import { CongressHoldings } from '../../components/record/ExtraFaces';
@@ -140,12 +141,13 @@ export const assetKey = (t: CongressTrade) => {
 
 export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   /* the vendor's own name for a named stock, once its info lands */
-  useCompanyName(data?.ticker && SYMBOL.test(data.ticker.trim().toUpperCase()) ? data.ticker.trim().toUpperCase() : '');
+  const [seenRef, seen] = useSeen<HTMLSpanElement>();
+  useCompanyName(data?.ticker && SYMBOL.test(data.ticker.trim().toUpperCase()) ? data.ticker.trim().toUpperCase() : '', false, seen);
   if (!data) return null;
   const line = assetLine(data);
   return (
     /* a full-width flex, so a long asset name ends in an ellipsis instead of being sheared mid-word at the cell edge */
-    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>
+    <span ref={seenRef} className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>
       {line.sym ? <CompanyLogo ticker={line.sym} size={16} /> : null}
       <span className="flex flex-col leading-tight min-w-0 flex-1">
         <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.title}</span>

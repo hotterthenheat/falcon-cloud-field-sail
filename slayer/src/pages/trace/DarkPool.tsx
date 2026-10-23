@@ -716,7 +716,7 @@ const DarkPool = () => {
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             {/* the closed session's crosses are read once and do not go stale */}
             {/* A CLOSED SESSION IS CLOSED, NOT STALE (audit round 7: Lit read "STALE DATA" on a session read once after its
                 close) — the mark says the session closed; a fault still says so */}

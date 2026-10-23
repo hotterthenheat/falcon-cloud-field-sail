@@ -45,7 +45,7 @@ import {
 } from 'lightweight-charts';
 import { bookCandles, dayBars, ensureBook, useBookRev } from '../../data/uwBook';
 import { bookSession, VENDOR_TOTAL_NOTE } from '../../data/flowBook';
-import { indexRoot, sessionEndLabel, tapeSessionIso, usePaneFlow } from '../../data/traceLive';
+import { indexRoot, sessionEndLabel, sessionEndMin, tapeSessionIso, usePaneFlow } from '../../data/traceLive';
 import { isLiveDay, shortDay } from './dayWords';
 import { nyClock, nyParts, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
 import { getResolvedTheme, readToken, useColourVision, useResolvedTheme } from '../../theme/theme';
@@ -332,6 +332,12 @@ const NetFlowPane = ({
   const headVol = ticker ? series.reduce((a, p) => a + p.vol, 0) : null;
   const ncp = tail ? tail.callPrem : 0;
   const npp = tail ? tail.putPrem : 0;
+  /* THE WINDOW RUNS TO NOW WHILE THE SESSION DOES (retail, round 8: "09:30–16:15 ET" at 10:05) — "09:30–now (10:05)",
+     the close only once it has rung */
+  const endMin = sessionEndMin(ticker ?? ref);
+  const nowP = nyParts(new Date());
+  const runningNow = isLiveDay() && nowP.hour * 60 + nowP.minute < endMin;
+  const windowWords = runningNow ? `09:30–now (${tail ? nyClock(tail.time * 1000) : nyClock(Date.now())})` : `09:30–${sessionEndLabel(ticker ?? ref)}`;
   const emptyNote = series.length ? null : own.waiting ? 'Reading the minutes…' : own.fault ? 'This read did not land — the line fills when the feed answers' : 'No flow on this cut yet';
   /* The names the search can offer: only those with contracts inside the
      pane's own DTE ceiling — a 0DTE pane lists same-day names alone. */
@@ -794,7 +800,7 @@ const NetFlowPane = ({
               <span className={ncp - npp >= 0 ? 'text-bull' : 'text-bear'}>{ncp - npp < 0 ? '−' : '+'}{fmtUsd(Math.abs(ncp - npp))}</span>
               {/* THE WINDOW UNDER THE FIGURE (audit round 6: BAC +$19.8M here beside +$19.7M on the board, the windows said only
                   on a hover) */}
-              <span className="text-textSecondary text-[11px] ml-1" data-pane-window>· 09:30–{sessionEndLabel(ticker)} ET{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
+              <span className="text-textSecondary text-[11px] ml-1" data-pane-window>· {windowWords} ET{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
             </span>
           )}
           {headVol != null && tail && <span className="text-textSecondary">{headVol.toLocaleString('en-US')} vol</span>}

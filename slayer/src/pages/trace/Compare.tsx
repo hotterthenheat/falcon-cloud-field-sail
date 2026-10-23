@@ -26,7 +26,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { floorPackaged, SPREAD_KINDS, stockLike, STOCK_LIKE_HINT, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
+import { floorPackaged, notABet, spreadLegHint, SPREAD_KINDS, stockLike, STOCK_LIKE_HINT, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
 import { dayLean, lastRegularClose, nyDateOf, nyIsoToday, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
@@ -331,8 +331,12 @@ const Compare = () => {
   const spreadsB = spreadsPackB.rows;
   const spreadsDone = spreadsPackA.complete && spreadsPackB.complete;
   const liveNames = useMemo(() => {
-    const reach = (r: { epoch?: number }[], cap: number) => (r.length >= cap ? Math.min(...r.map(p => p.epoch ?? Infinity)) : -Infinity);
-    const since = Math.max(reach(tapeA, TAPE_N), reach(tapeB, TAPE_N));
+    /* TO THE MILLISECOND (audit round 8, major 3: the tapes were still cut by the whole second, so a print in the cut's own
+       second counted for one name and not the other's earlier half) — the spreads' round-7 rule, on the tape */
+    const msP = (p: { epoch?: number; epochMs?: number }) => p.epochMs ?? (p.epoch != null ? p.epoch * 1000 : Infinity);
+    const reach = (r: { epoch?: number; epochMs?: number }[], cap: number) => (r.length >= cap ? Math.min(...r.map(msP)) : -Infinity);
+    const sinceMsTape = Math.max(reach(tapeA, TAPE_N), reach(tapeB, TAPE_N));
+    const since = Number.isFinite(sinceMsTape) ? sinceMsTape / 1000 : sinceMsTape;
     /* paged to the session's start (useNameSpreads): a name whose pages did not reach it is cut, with the other, to the
        stretch both cover */
     /* TO THE SECOND, NOT THE MINUTE (audit round 7: "since 16:09 ET" while QQQ's capped pages reached back only to 16:09:57
@@ -341,7 +345,7 @@ const Compare = () => {
     const reachMs = (r: SpreadTrade[], done: boolean) => (!done && r.length ? Math.min(...r.map(msOf)) : -Infinity);
     const sinceMs = Math.max(reachMs(spreadsA, spreadsPackA.complete), reachMs(spreadsB, spreadsPackB.complete));
     return {
-      tape: [...tapeA, ...tapeB].filter(p => (p.epoch ?? 0) >= since),
+      tape: [...tapeA, ...tapeB].filter(p => (p.epochMs ?? (p.epoch ?? 0) * 1000) >= sinceMsTape),
       spreads: [...spreadsA, ...spreadsB].filter(t => msOf(t) >= sinceMs),
       since: Number.isFinite(since) ? since : null,
       spreadSinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
@@ -563,7 +567,7 @@ const Compare = () => {
       ],
     },
     {
-      title: "The book · each name's standing contracts with the most premium (up to 80)",
+      title: `The book · each name's standing contracts with the most premium (up to 80) — floor packages and spread legs left out${a.book.apart.count || b.book.apart.count ? ` (${a.ticker} ${num(a.book.apart.count)} · ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} · ${fmtUsd(b.book.apart.premium)})` : ''}: legs of packages, not bets`,
       rows: [
         {
           key: 'count',
@@ -627,7 +631,8 @@ const Compare = () => {
         },
         {
           key: 'iv',
-          label: `Implied vol · past ${isLiveDay(todayIso) ? 'today' : shortDay(todayIso)}`,
+          /* SAID AS IT IS (audit round 8: "past today" over a 0DTE cut whose every contract expires today) */
+          label: a.book.ivLater || b.book.ivLater ? `Implied vol · past ${isLiveDay(todayIso) ? 'today' : shortDay(todayIso)}` : `Implied vol · ${isLiveDay(todayIso) ? "today's" : `${shortDay(todayIso)}'s`} expiry`,
           note: the(higher(s => s.book.iv), 'the richer'),
           lead: higher(s => s.book.iv),
           bars: s => [{ v: s.book.iv, text: `${s.book.iv}%`, ink: 'silver' }],
@@ -795,7 +800,7 @@ const Compare = () => {
      packages): the bets ranked by dollars, then the packages among the heaviest, each labelled — not a bet */
   const listOf = (rows: BookContract[]) => {
     const top = rows.slice(0, CMP_LISTED + 3);
-    return [...rows.filter(r => !floorPackaged(r)).slice(0, CMP_LISTED), ...top.filter(r => floorPackaged(r)).slice(0, 2)];
+    return [...rows.filter(r => !notABet(r)).slice(0, CMP_LISTED), ...top.filter(r => notABet(r)).slice(0, 2)];
   };
   const listed = useMemo(() => [...listOf(a.rows), ...listOf(b.rows)], [a.rows, b.rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const kindOf = (t: SpreadTrade) => SPREAD_KINDS.find(k => k.key === t.kind)?.label ?? t.kind;
@@ -806,7 +811,7 @@ const Compare = () => {
       <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
         <CompanyLogo ticker={s.ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s heaviest contracts</span>
-        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· by dollars · floor packages apart · a row opens the card</span>
+        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· by dollars · packages &amp; spread legs apart · a row opens the card</span>
       </div>
       {listOf(s.rows).map(r => (
         <button
@@ -824,6 +829,10 @@ const Compare = () => {
               <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={`${Math.round(r.floorPct)}% of its day traded on the floor and ${Math.round(r.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down: not a bet, so not ranked`}>
                 floor pkg
               </span>
+            ) : notABet(r) ? (
+              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={`${spreadLegHint(r)} — not ranked`}>
+                spread legs
+              </span>
             ) : stockLike(r) ? (
               <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={STOCK_LIKE_HINT}>
                 stock-like
@@ -834,7 +843,7 @@ const Compare = () => {
           <span className="font-mono text-[12px] tnum font-semibold text-textPrimary text-right">{fmtUsd(r.premium)}</span>
           <span className="font-mono text-[10.5px] tnum text-textSecondary text-right whitespace-nowrap max-sm:hidden">{num(r.volume)} vol</span>
           <span className="flex justify-end">
-            <LeanCell askPct={r.askPct} split={r.sideVol} />
+            <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} />
           </span>
         </button>
       ))}
@@ -911,7 +920,7 @@ const Compare = () => {
             {netHeld ? <>{cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}</> : <span className="text-textMuted">…</span>}
           </Champion>
           {cmp.heavier ? (
-            <Champion label="Heavier premium" ink="supreme" title="The name with more premium across its standing contracts with the most premium (up to 80) — put it on Net Flow's pane" onOpen={() => toNetFlow(cmp.heavier!.ticker)} testId="heavier">
+            <Champion label="Heavier premium" ink="supreme" title={`The name with more premium across its standing contracts with the most premium (up to 80), floor packages and spread legs left out (${a.ticker} ${num(a.book.apart.count)} for ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} for ${fmtUsd(b.book.apart.premium)}) — put it on Net Flow's pane`} onOpen={() => toNetFlow(cmp.heavier!.ticker)} testId="heavier">
               {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
             </Champion>
           ) : (
@@ -922,7 +931,12 @@ const Compare = () => {
           {regular && (
             <Fact label="Busier tape" testId="busier" title={tapeSince ? `Regular-session prints (each by its own time and flag) since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `Each name's last ${TAPE_N} prints`}>
               {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
-              {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}</>}
+              {!cmp.busier ? (
+                a.tape.prints === 0 ? <span className="text-textMuted">—</span> : <span title="Both names printed the same number of regular-session prints over the same stretch">level <span className="text-textMuted">·</span> {num(a.tape.prints)} prints each{tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}</span>
+              ) : cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}{(() => {
+                const sec = cmp.busier.tape.lastMs && tapeSince ? (Math.max(a.tape.lastMs ?? 0, b.tape.lastMs ?? 0) - tapeSince * 1000) / 1000 : 0;
+                return sec >= 1 ? <span className="text-textMuted"> · {(cmp.busier.tape.prints / sec).toFixed(sec < 60 ? 1 : 2)}/s</span> : null;
+              })()}</>}
             </Fact>
           )}
         </>
@@ -930,7 +944,7 @@ const Compare = () => {
       }
       controls={
         <>
-          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
           {/* (round 7: the first chip's chevron wrapped onto a line of its own at 390 — the pre-market / after-hours move, the
               chip's third figure, is left off on a phone; the hover still says it) */}
           {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13); a chip wider than

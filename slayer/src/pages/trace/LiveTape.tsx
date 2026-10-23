@@ -65,7 +65,7 @@ import { isoDate } from '../../core/calendar';
 import { expiryLabel, pctSigned } from '../../core/format';
 import { LiveTapeGuide } from '../../components/trace/TraceGuide';
 import type { FlowPrint, PrintSentiment, TapeSummary } from '../../types/trace';
-import { floorPackaged, FRESH_VOL_OI, stockLike, STOCK_LIKE_HINT, VENDOR_TOTAL_NOTE, volOiText } from '../../data/flowBook';
+import { floorPackaged, FRESH_VOL_OI, notABet, notABetWord, spreadLegHint, stockLike, STOCK_LIKE_HINT, VENDOR_TOTAL_NOTE, volOiText } from '../../data/flowBook';
 import { shyPct } from '../../components/trace/dayWords';
 import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 
@@ -953,9 +953,13 @@ const LiveTape = () => {
      floor package ranked first with a lean printed for it): only contracts with a clear side rank, by their sided premium —
      the day's premium × (ask − bid) over the day's contracts; floor packages stand apart with no lean */
   const nameDay = useMemo(() => {
-    const packs = topDay.rows.filter(c => floorPackaged(c));
+    /* a day of spread legs has no side of its own either (audit round 8) — set apart with the floor packages */
+    const packs = topDay.rows.filter(c => notABet(c));
+    /* THE BIGGEST BY PREMIUM, SAID BESIDE THE BIGGEST WITH A SIDE (retail, round 8: "NVDA · bought or sold: 217.5C sold
+       $3.6M" here and "Top call NVDA 220C $10.2M" on the Screener — two different questions, neither said) */
+    const biggest = topDay.rows.filter(c => !notABet(c)).reduce<(typeof topDay.rows)[number] | null>((a, c) => (a === null || c.premium > a.premium ? c : a), null);
     const sided = topDay.rows
-      .filter(c => !floorPackaged(c) && !stockLike(c))
+      .filter(c => !notABet(c) && !stockLike(c))
       .map(c => ({ c, lean: dayLean(c) }))
       .filter(x => x.lean.lean === 'ASK' || x.lean.lean === 'BID')
       .map(x => {
@@ -964,7 +968,7 @@ const LiveTape = () => {
         return { ...x, sided: sv && total > 0 ? (x.c.premium * Math.abs(sv.ask - sv.bid)) / total : x.c.premium * Math.abs(x.lean.askSided - x.lean.bidSided) / 100 };
       })
       .sort((a, b) => b.sided - a.sided);
-    return { sided, packs };
+    return { sided, packs, biggest };
   }, [topDay.rows]);
 
   const readNode = read.map((seg, i) =>
@@ -1027,9 +1031,9 @@ const LiveTape = () => {
               <span className="text-textPrimary">{(Math.round(zdteShare * 1000 + 1e-9) / 10).toFixed(1)}%</span> <span className="text-textSecondary">of {lane === 'alerts' ? 'alerts' : 'prints'} · {beamRows.filter(r => r.dte === 0).length.toLocaleString('en-US')} of {beamRows.length.toLocaleString('en-US')}</span>
             </Fact>
             {tickerOnly && topDay.rows.length > 0 && (
-              <Fact label={`${tickerOnly} · bought or sold ${dayAdv(dayIso)} · whole day`} testId="name-day" title={`${tickerOnly}'s contracts with a clear side ${dayAdv(dayIso)}, the whole day — the vendor's screener, not the window of prints above. Ranked by their sided premium (the day's premium × the share of its contracts that leaned to the ask over the bid); a contract whose day was even (no side holding 55% of the sided contracts), mostly at the mid, mostly floor-traded multi-leg packages, or deep in the money and long-dated (stock-like) has no directional read and is not ranked${nameDay.packs.length ? `. Set apart: ${nameDay.packs.map(c => `${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} floor package`).join(', ')}` : ''}`}>
+              <Fact label={`${tickerOnly} · biggest with a clear side ${dayAdv(dayIso)} · whole day`} testId="name-day" title={`${tickerOnly}'s biggest contracts WITH A CLEAR SIDE ${dayAdv(dayIso)}, the whole day — not the biggest by premium (the Screener's "Largest"), which is named after them when it differs — the vendor's screener, not the window of prints above. Ranked by their sided premium (the day's premium × the share of its contracts that leaned to the ask over the bid); a contract whose day was even (no side holding 55% of the sided contracts), mostly at the mid, mostly floor-traded multi-leg packages, half or more legs of multi-leg orders (spread legs), or deep in the money and long-dated (stock-like) has no directional read and is not ranked${nameDay.packs.length ? `. Set apart: ${nameDay.packs.map(c => `${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} ${notABetWord(c)}`).join(', ')}` : ''}`}>
                 {nameDay.sided.length === 0 ? (
-                  <span className="text-textSecondary">no clear side — {tickerOnly}'s heaviest contracts traded even, at the mid or in floor packages</span>
+                  <span className="text-textSecondary">no clear side — {tickerOnly}'s heaviest contracts traded even, at the mid, in floor packages or as spread legs</span>
                 ) : (
                   nameDay.sided.slice(0, 2).map((x, i) => (
                     <span key={x.c.key}>
@@ -1039,7 +1043,14 @@ const LiveTape = () => {
                     </span>
                   ))
                 )}
-                {nameDay.packs.length > 0 && <span className="text-textMuted" title={nameDay.packs.map(c => `${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} — ${FLOOR_HINT(c)}`).join('\n')}> · {nameDay.packs.length} floor package{nameDay.packs.length === 1 ? '' : 's'} apart</span>}
+                {nameDay.biggest && nameDay.sided.length > 0 && nameDay.biggest.key !== nameDay.sided[0].c.key && (
+                  <span className="text-textSecondary" title={`The biggest single contract by premium ${dayAdv(dayIso)} — the Screener's "Largest" — with its day's lean; it is not ranked above because its side is not clear`} data-name-day-biggest>
+                    {' '}
+                    · biggest by premium {nameDay.biggest.strike}
+                    {nameDay.biggest.right} {expiryLabel(nameDay.biggest.expiry)} {fmtUsd(nameDay.biggest.premium)} ({leanWords(dayLean(nameDay.biggest))}{dayLean(nameDay.biggest).lean === 'ASK' || dayLean(nameDay.biggest).lean === 'BID' ? '' : ', no clear side'})
+                  </span>
+                )}
+                {nameDay.packs.length > 0 && <span className="text-textMuted" title={nameDay.packs.map(c => `${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} — ${floorPackaged(c) ? FLOOR_HINT(c) : spreadLegHint(c)}`).join('\n')}> · {nameDay.packs.length} package{nameDay.packs.length === 1 ? '' : 's'} / spread legs apart</span>}
               </Fact>
             )}
             {whales.bull && whales.bull !== whales.all && (
@@ -1061,7 +1072,7 @@ const LiveTape = () => {
         }
         controls={
           <>
-            <LiveHold paused={paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             {/* a closed session's stretch is complete, not stale — it is not polled because nothing newer belongs to it */}
             {!(lane === 'prints' && anchor) && <StaleMark at={(lane === 'alerts' ? alerts : stream).at} ttlMs={FLOW_TTL_MS} fault={(lane === 'alerts' ? alerts : stream).fault} />}
             <span className="inline-flex rounded-md border border-borderSubtle overflow-hidden" data-tape-lane>
@@ -1138,10 +1149,10 @@ const LiveTape = () => {
                   )}
                 </div>
                 <div className="min-w-0" data-tape-day-top>
-                  <div className="text-textMuted" title={`The screener's contracts with the most premium ${dayAdv(dayIso)}, the whole day, each with its day's lean (the one lean rule). A contract whose day was mostly floor-traded multi-leg packages — the shape of compression — is set apart below, labelled, not ranked as a bet`}>Most premium {dayAdv(dayIso)} · per contract · floor packages apart</div>
+                  <div className="text-textMuted" title={`The screener's contracts with the most premium ${dayAdv(dayIso)}, the whole day, each with its day's lean (the one lean rule). A contract whose day was mostly floor-traded multi-leg packages — the shape of compression — is set apart below, labelled, not ranked as a bet`}>Most premium {dayAdv(dayIso)} · per contract · packages &amp; spread legs apart</div>
                   {dayTop.rows.length ? (
                     <>
-                      {dayTop.rows.filter(c => !floorPackaged(c)).slice(0, 3).map(c => {
+                      {dayTop.rows.filter(c => !notABet(c)).slice(0, 3).map(c => {
                         const l = dayLean(c);
                         return (
                           <div key={c.key} className="font-mono tnum text-textPrimary truncate">
@@ -1152,10 +1163,10 @@ const LiveTape = () => {
                         );
                       })}
                       {(() => {
-                        const packs = dayTop.rows.filter(c => floorPackaged(c)).slice(0, 3);
+                        const packs = dayTop.rows.filter(c => notABet(c)).slice(0, 3);
                         return packs.length ? (
-                          <div className="font-mono tnum text-textSecondary truncate" title={packs.map(c => `${c.ticker} ${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} — ${FLOOR_HINT(c)}`).join('\n')} data-tape-day-packages>
-                            <span className="text-warn">Floor packages · not a bet:</span> {packs.map(c => `${c.ticker} ${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)}`).join(' · ')}
+                          <div className="font-mono tnum text-textSecondary truncate" title={packs.map(c => `${c.ticker} ${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} — ${floorPackaged(c) ? FLOOR_HINT(c) : spreadLegHint(c)}`).join('\n')} data-tape-day-packages>
+                            <span className="text-warn">{packs.every(c => floorPackaged(c)) ? 'Floor packages' : packs.some(c => floorPackaged(c)) ? 'Packages & spread legs' : 'Spread legs'} · not a bet:</span> {packs.map(c => `${c.ticker} ${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)}`).join(' · ')}
                           </div>
                         ) : null;
                       })()}
@@ -1171,12 +1182,12 @@ const LiveTape = () => {
                       {dayAlertsSplit.bets.slice(0, 3).map(a => (
                         <button key={a.id} type="button" onClick={() => setOpenPrint(a)} className="block w-full text-left font-mono tnum text-textPrimary truncate hover:text-silver" data-tape-day-alert>
                           {a.ticker} {a.strike}
-                          {a.right} · {fmtUsd(a.premium)} <span className="text-textSecondary">{a.side === 'ASK' ? 'at the ask' : a.side === 'BID' ? 'on the bid' : 'no side'} · {a.time}</span>
+                          {a.right} {expiryLabel(a.expiry)} · {fmtUsd(a.premium)} <span className="text-textSecondary">{a.side === 'ASK' ? 'at the ask' : a.side === 'BID' ? 'on the bid' : 'no side'} · {a.time}</span>
                         </button>
                       ))}
                       {dayAlertsSplit.packs.length > 0 && (
                         <button type="button" onClick={() => setOpenPrint(dayAlertsSplit.packs[0])} className="block w-full text-left font-mono tnum text-textSecondary truncate hover:text-silver" title={ALERT_PACK_HINT} data-tape-day-alert-pack>
-                          <span className="text-warn">floor package · not a bet</span> · {dayAlertsSplit.packs.length} alert{dayAlertsSplit.packs.length === 1 ? '' : 's'}, {fmtUsd(dayAlertsSplit.packs.reduce((a, p) => a + p.premium, 0))} · {dayAlertsSplit.packs.slice(0, 3).map(p => `${p.ticker} ${p.strike}${p.right}`).join(', ')}
+                          <span className="text-warn">floor package · not a bet</span> · {dayAlertsSplit.packs.length} alert{dayAlertsSplit.packs.length === 1 ? '' : 's'}, {fmtUsd(dayAlertsSplit.packs.reduce((a, p) => a + p.premium, 0))} · {dayAlertsSplit.packs.slice(0, 3).map(p => `${p.ticker} ${p.strike}${p.right} ${expiryLabel(p.expiry)}`).join(', ')}
                         </button>
                       )}
                     </>

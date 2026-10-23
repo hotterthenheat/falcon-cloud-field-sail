@@ -472,6 +472,9 @@ export const Shorts = () => {
   const [guideOpen, setGuideOpen] = useState(false);
   const liveShorts = useShorts();
   const failed = liveShorts.status === 'error';
+  /* NOTHING IS "NOTHING" UNTIL THE READ IS IN (round 8: tiles of 0 and "No name on this cut" at 4s) — the Stocks
+     board's rule: while the book is read, every figure is "…" and the empty lines say it is reading */
+  const waiting = liveShorts.status === 'loading' && liveShorts.rows.length === 0;
   const feed = liveShorts.rows;
   const board = useMemo(() => new Set(boardNames), [boardNames]);
   const cut = useMemo(
@@ -562,7 +565,7 @@ export const Shorts = () => {
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" data-shorts-asof>
             <span className={facts.stale ? 'text-warn' : ''} title="Short interest settles twice a month and is published about ten days later — the figure is never today's">
-              short interest as of {asOfDay(facts.asOf)}{facts.stale ? ' (stale)' : ''}
+              short interest as of {waiting ? '…' : asOfDay(facts.asOf)}{facts.stale ? ' (stale)' : ''}
             </span>{' '}
             · the {SHORTS_SCREEN} heaviest by % of float, floats of {SHORTS_MIN_FLOAT / 1e6}M+ shares · fee and shares to borrow as of that settlement — a name’s file has today’s · a row opens the short file
           </p>
@@ -570,25 +573,25 @@ export const Shorts = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={`Names on the grid after the cards — of the screen's ${SHORTS_SCREEN}: the latest settlement's heaviest shorts by share of the float, floats of ${SHORTS_MIN_FLOAT / 1e6}M shares or more`}>Names</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : <>{facts.names}{facts.funds ? <span className="text-textMuted"> · {facts.funds} funds</span> : null}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-count>{failed ? '—' : waiting ? '…' : <>{facts.names}{facts.funds ? <span className="text-textMuted"> · {facts.funds} funds</span> : null}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={`${SQUEEZE_TIP}\nOn this list the read uses the settlement's figures only; a name's file adds today's borrow, the last session's short volume and the fails to deliver, so it can read stronger there.`}>Squeeze setups</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-shorts-squeeze>
-              {failed ? '—' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span> <span className="text-textMuted">of {facts.stocks}</span></>}
+              {failed ? '—' : waiting ? '…' : <><span className="text-bear">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.building} building</span> <span className="text-textMuted">of {facts.stocks}</span></>}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Stocks on this screen (funds left out) with at least 20% of the float sold short — the rung the squeeze rule scores 2 points">At 20% or more</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{failed ? '—' : <>{facts.heavy}</>}</dd>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.heavy ? 'text-bear' : 'text-textPrimary'}`}>{failed ? '—' : waiting ? '…' : <>{facts.heavy}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="The stock (funds left out) with the largest share of its float sold short on this screen">Heaviest</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${facts.lead.interestPct.toFixed(1)}%` : '—'}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="The median, across the stocks here (funds left out), of the days of normal volume the shorts would need to buy back — half need more, half less">Median days to cover</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{facts.stocks ? facts.days.toFixed(1) : '—'}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : waiting ? '…' : <>{facts.stocks ? facts.days.toFixed(1) : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -612,7 +615,7 @@ export const Shorts = () => {
       {failed && <FeedFallback />}
       <Strip title="The names to know" rest="the heaviest short interest among the stocks on this cut (funds left out) · click a name to keep the grid to it" testId="shorts">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'No name on this cut'}</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : waiting ? 'Reading the short book…' : 'No name on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -623,7 +626,7 @@ export const Shorts = () => {
       </Strip>
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-shorts-grid>
         {phone ? (
-          <PhoneCards rows={rows} rowKey={r => r.ticker} card={ShortPhone} onOpen={r => navigate(`/dossier/shorts/${r.ticker}`)} empty={failed ? 'This read did not land' : 'No name on this cut'} testId="shorts" resetKey={rows} />
+          <PhoneCards rows={rows} rowKey={r => r.ticker} card={ShortPhone} onOpen={r => navigate(`/dossier/shorts/${r.ticker}`)} empty={failed ? 'This read did not land' : waiting ? 'Reading the short book' : 'No name on this cut'} testId="shorts" resetKey={rows} />
         ) : (
         <>
         <AgGridProvider modules={GRID_MODULES}>
@@ -641,8 +644,8 @@ export const Shorts = () => {
             animateRows={false}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
-            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No name on this cut')}
-            key={failed ? 'failed' : 'live'}
+            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : waiting ? 'Reading the short book' : 'No name on this cut')}
+            key={failed ? 'failed' : waiting ? 'waiting' : 'live'}
           />
         </AgGridProvider>
         </>

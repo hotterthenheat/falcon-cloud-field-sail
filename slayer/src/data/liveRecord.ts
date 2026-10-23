@@ -977,3 +977,65 @@ export function useMemberBook(id: string, name: string | null): MemberBook {
 export function memberFromRoster(id: string): UwPolitician | null {
   return congressPeople.find(p => p.politician_id === id) ?? null;
 }
+
+/* ---- ONE NAME'S OWN HEADLINES (the round-8 audit) ------------------------------------------------------------------
+   The stock page read the whole day's wire — up to sixteen pages of every story, and a daily-bars call for each story's
+   name (Western Digital, HSBC, PUMP…) — to keep the few on its own name. /news/headlines takes `ticker`: one call
+   answers the name's latest fifty, read the same way as the wire (newsFromWhales → geoFromItems), refreshed each
+   minute while a page shows it. Only the name's own closes are asked for the moves at publish. */
+export interface TickerNews {
+  status: FeedStatus;
+  events: GeoNewsEvent[];
+}
+const tickerNewsState = new Map<string, TickerNews>();
+const tickerNewsRows = new Map<string, UwNews[]>();
+const tickerNewsAt = new Map<string, number>();
+const tickerNewsListeners = new Set<() => void>();
+const TICKER_NEWS_LOADING: TickerNews = { status: 'loading', events: [] };
+function paintTickerNews(t: string): void {
+  const rows = tickerNewsRows.get(t) ?? [];
+  const midnight = nyMidnightMs();
+  const todays = rows.filter(r => !(Date.parse(r.created_at) < midnight));
+  tickerNewsState.set(t, { status: 'live', events: geoFromItems(newsFromWhales(todays, priorClose)) });
+  tickerNewsListeners.forEach(fn => fn());
+}
+async function pullTickerNews(t: string): Promise<void> {
+  tickerNewsAt.set(t, Date.now());
+  const res = await uwCall(`/news/headlines?ticker=${encodeURIComponent(t)}&limit=50&page=0`, true);
+  if (res.error || !Array.isArray(res.data)) {
+    if (tickerNewsState.get(t)?.status !== 'live') {
+      tickerNewsState.set(t, { status: 'sim', events: [] });
+      tickerNewsListeners.forEach(fn => fn());
+    }
+    return;
+  }
+  tickerNewsRows.set(t, res.data as UwNews[]);
+  paintTickerNews(t);
+  const offSession = (res.data as UwNews[]).some(r => {
+    const m = (r.meta ?? {})[t] as { curr?: { mt?: string } } | undefined;
+    const mt = String(m?.curr?.mt ?? '').toLowerCase();
+    return mt.startsWith('post') || mt.startsWith('pre');
+  });
+  if (offSession && !peekRegularCloses(t)) {
+    await loadRegularCloses(t).catch(() => null);
+    paintTickerNews(t);
+  }
+}
+export const peekTickerNews = (ticker: string): TickerNews => tickerNewsState.get(ticker.toUpperCase()) ?? TICKER_NEWS_LOADING;
+export function useTickerNews(ticker: string): TickerNews {
+  const t = ticker.toUpperCase();
+  return useSyncExternalStore(
+    fn => {
+      tickerNewsListeners.add(fn);
+      const due = () => !tickerNewsAt.has(t) || Date.now() - (tickerNewsAt.get(t) ?? 0) > 60_000;
+      if (t && due()) void pullTickerNews(t);
+      const id = typeof window !== 'undefined' ? window.setInterval(() => t && due() && void pullTickerNews(t), 15_000) : null;
+      return () => {
+        tickerNewsListeners.delete(fn);
+        if (id != null) window.clearInterval(id);
+      };
+    },
+    () => peekTickerNews(t),
+    () => TICKER_NEWS_LOADING,
+  );
+}

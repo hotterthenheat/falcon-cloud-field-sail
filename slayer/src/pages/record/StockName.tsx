@@ -57,7 +57,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { ensureBook, useBookRev } from '../../data/uwBook';
+import { ensureBook, peekEntry, useBookRev } from '../../data/uwBook';
 import GradeMeter, { GRADE_FILL, GRADE_INK } from '../../components/ui/GradeMeter';
 import { gradeOfConviction, postureRead } from '../../data/darkpool';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -75,7 +75,7 @@ import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { bracketLabel, seatLabel } from '../../data/congress';
-import { useInsiderFlow, useNewsCoverage, useNewsFeed, useTickerCongress } from '../../data/liveRecord';
+import { useInsiderFlow, useTickerCongress, useTickerNews } from '../../data/liveRecord';
 import { useStockFile } from '../../data/stockFile';
 import type { BookContract, FlowPrint } from '../../types/trace';
 import { StockNameSkeleton } from './recordSkeletons';
@@ -512,9 +512,15 @@ const StockName = () => {
   const location = useLocation();
   const { changeTicker } = useTicker();
   const bookRev = useBookRev();
+  /* THE LIGHT BOOK FIRST (the round-8 audit: 143 calls on AAPL, 187 on SPY — most of them the full book's forty dates).
+     The page opens on the name's whole-book strikes and its front expiry; the forty dates behind the All-expiries
+     levels load once that panel is on screen, or at once when the book is already whole (Pinpoint shares the cache). */
+  const [allWanted, setAllWanted] = useState(false);
+  const allRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => setAllWanted(!!peekEntry(T)?.everFull), [T]);
   useEffect(() => {
-    ensureBook(T, 'full');
-  }, [T]);
+    ensureBook(T, allWanted ? 'full' : 'board');
+  }, [T, allWanted]);
   /* the wire moves on its own; the book republishes through bookRev */
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -522,14 +528,28 @@ const StockName = () => {
     return () => window.clearInterval(id);
   }, []);
   /* the wire only (round 6): the whole record (congress and insider books) is not this page's */
-  const recordNews = useNewsFeed();
-  const newsCover = useNewsCoverage();
+  /* the name's own headlines (round 8): one call, not the whole day's wire and a bars call per story's name */
+  const recordNews = useTickerNews(T);
   /* the wire's empty line waits for the read to settle (audit round 7: "NOTHING ON THE WIRE TODAY" showed mid-read) */
-  const wireReading = recordNews.status === 'loading' || newsCover.reading;
+  const wireReading = recordNews.status === 'loading';
   const file = useStockFile(T);
   /* the quote carries the regular session's change and the extended-hours move apart (data/liveQuote.ts) */
   const quote = useLiveQuote(T);
-  const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, recordNews, bookRev, file, quote]);
+  const view = useMemo(() => buildStockOverview(T, file.flow, { allExpiries: allWanted }), [T, tick, recordNews, bookRev, file, quote, allWanted]);
+  const viewReady = !!view;
+  useEffect(() => {
+    if (allWanted || !viewReady) return;
+    const el = allRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setAllWanted(true);
+      return;
+    }
+    const io = new IntersectionObserver(es => {
+      if (es.some(e => e.isIntersecting)) setAllWanted(true);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [allWanted, viewReady, T]);
   /* THE READ IS HELD WHILE ITS SOURCES LAND (the round-8 audit: "Reads strong · Leans bullish · The money good" at "5 of
      9 sources live", then "Reads good · The money poor"). The words wait for the quote, the regular closes and the tapes;
      past 40 seconds a source that has not answered no longer holds them, and the read says it is provisional. */
@@ -1012,7 +1032,7 @@ const StockName = () => {
                 <p className="mt-1 font-mono text-[10px] text-textMuted">Reading the options book…</p>
               )}
             </div>
-            <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope="all" data-complete={money.levelsAll?.complete ? 'yes' : 'no'}>
+            <div ref={allRef} className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope="all" data-complete={money.levelsAll?.complete ? 'yes' : 'no'}>
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
                 <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">{money.levelsAll ? money.levelsAll.scopeLabel : 'All expiries'} · every listed date</span>
                 <span className="font-mono text-[11px] tnum" data-stock-gex-all title="Net gamma exposure over every strike of every listed expiry — the figure Pinpoint shows on All expiries. Positive: dealers are long gamma and their hedging absorbs moves; negative: it amplifies them">
@@ -1352,7 +1372,7 @@ const StockName = () => {
                 <span className="text-bull font-semibold">{forIt}</span> for it · <span className="text-bear font-semibold">{againstIt}</span> against
               </span>
               <span className="ml-auto text-textSecondary">
-                the read <span className={`font-bold ${GRADE_INK[grade]}`}>{grade}</span>
+                the read {held ? <span className="text-textMuted animate-pulse">reading…</span> : <span className={`font-bold ${GRADE_INK[grade]}`}>{grade}</span>}
               </span>
             </div>
           </div>
@@ -1556,7 +1576,7 @@ const StockName = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Busiest calls" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="calls">
           <div className="pb-2 mt-auto">
-            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{money.levelsAll ? <>No call volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
+            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{money.levelsToday ? <>No call volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
             {money.busiest.calls.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onWarm={warm} onOpen={() => weigh(c)} />
             ))}
@@ -1564,7 +1584,7 @@ const StockName = () => {
         </Box>
         <Box title="Busiest puts" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="puts">
           <div className="pb-2 mt-auto">
-            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{money.levelsAll ? <>No put volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
+            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{money.levelsToday ? <>No put volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
             {money.busiest.puts.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onWarm={warm} onOpen={() => weigh(c)} />
             ))}

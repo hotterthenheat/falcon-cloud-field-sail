@@ -111,10 +111,12 @@ export const FLOW_SCREENS: FlowScreen[] = [
     bearish — sentimentOf's rule, applied to the day's dominant side, and only where the day HAS a side (dayLean: at
     least half the volume on a side — a day that was mostly a no-side cross leans nowhere). */
 function leansBull(r: BookContract): boolean {
+  if (notABet(r)) return false; // a floor package or a day of spread legs leans nowhere (audit round 8)
   const l = dayLean(r).lean;
   return r.right === 'C' ? l === 'ASK' : l === 'BID';
 }
 function leansBear(r: BookContract): boolean {
+  if (notABet(r)) return false;
   const l = dayLean(r).lean;
   return r.right === 'P' ? l === 'ASK' : l === 'BID';
 }
@@ -286,7 +288,7 @@ export interface Catch {
   /** The contract's premium today */
   premium: number;
   /** Which side its day's volume leaned (dayLean): at the ask, on the bid, even, or MID — mostly mid or no side */
-  side: 'ASK' | 'BID' | 'EVEN' | 'MID';
+  side: 'ASK' | 'BID' | 'EVEN' | 'MID' | 'LEGS';
   row: BookContract;
 }
 
@@ -295,7 +297,7 @@ export interface Catch {
 export function reasonPhrase(key: WatcherKey, r: BookContract): string {
   switch (key) {
     case 'big-money':
-      return `Carried ${usd(r.premium)} of premium in the session — the top tenth of the book${floorPackaged(r) ? `; ${Math.round(r.floorPct)}% of it floor-traded multi-leg packages, the shape of compression, not a bet` : ''}`;
+      return `Carried ${usd(r.premium)} of premium in the session — the top tenth of the book${floorPackaged(r) ? `; ${Math.round(r.floorPct)}% of it floor-traded multi-leg packages, the shape of compression, not a bet` : spreadLegDay(r) ? `; ${Math.round(r.multiPct)}% of it legs of multi-leg orders — spread legs, not a single bet` : ''}`;
     case 'into-earnings':
       return `Reports in ${r.earnDays === 0 ? 'this session' : `${r.earnDays} session${r.earnDays === 1 ? '' : 's'}`}, open interest +${r.deltaOI.toLocaleString('en-US')} on ${r.volume.toLocaleString('en-US')} contracts`;
     case 'climbing':
@@ -316,6 +318,29 @@ export function reasonPhrase(key: WatcherKey, r: BookContract): string {
 export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
   return r.floorPct >= 50 && r.multiPct >= 50;
 }
+
+/** A DAY THAT WAS MOSTLY SPREAD LEGS IS NOT A SINGLE BET (audit round 8, major 1: "Largest VRT 185P $13.6M ask 100%" was
+    10,840 of its 10,847 contracts legs of multi-leg orders — the other leg, VRT Mar 19 '27 150P, all multi-leg on the bid;
+    CCJ Mar 19 '27 65P, 39,000 of 39,000 multi-leg, read "Most money · bid-leaning"; 83 of the book's 200 were 90% legs or
+    more). THE LINE IS HALF: at 50% or more of the day's contracts in multi-leg orders, most of what the contract traded —
+    and most of its side — is one leg of a package whose other legs sit on other contracts, and a leg's side says how the
+    package was filled, not which way the money leans (a call spread bought prints its short leg on the bid). Under half,
+    the single-leg trading carries the day and its lean stands. Such a contract is shown and counted as a spread leg —
+    never crowned the biggest single bet, never given a lean, kept out of the app's directional totals. */
+export const SPREAD_LEG_PCT = 50;
+/** Mostly legs of multi-leg orders, and not a floor package (that has its own label) */
+export function spreadLegDay(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
+  return !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT;
+}
+/** Not a single bet: a floor package or a day of spread legs — set apart wherever the book crowns or leans */
+export function notABet(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
+  return floorPackaged(r) || r.multiPct >= SPREAD_LEG_PCT;
+}
+/** Why a spread-leg day carries no read, in its own figure */
+export const spreadLegHint = (r: Pick<BookContract, 'multiPct'>) =>
+  `${Math.round(r.multiPct)}% of its day traded as legs of multi-leg orders — one leg of spreads whose other legs sit on other contracts. A leg's side says how the package was filled, not which way the money leans, so it gets no lean and is never ranked as the biggest single bet (${SPREAD_LEG_PCT}% or more of the day in multi-leg orders)`;
+/** One word for why a row is not a bet */
+export const notABetWord = (r: Pick<BookContract, 'floorPct' | 'multiPct'>) => (floorPackaged(r) ? 'floor package' : 'spread legs');
 
 /** ONE FLOOR FOR "FRESH" VOLUME ACROSS TRACE (audit round 5: Watchers' fresh size used 1.8× open interest, the Screener and
     Compare 1.5×): volume at least this many times the open interest reads as positions built in the session */
@@ -348,7 +373,8 @@ function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
   if (r.premium >= bigLine) out.push('big-money');
   if (r.earnDays != null && r.earnDays <= 5 && r.deltaOI > 0 && r.volume >= 3000) out.push('into-earnings');
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
-  const lean = dayLean(r).lean;
+  /* a day of spread legs has no lean to chase or sell on (audit round 8) */
+  const lean = notABet(r) ? 'UNSIDED' : dayLean(r).lean;
   if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
   else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
   if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI && r.premium >= 300_000) out.push('fresh-size');
@@ -394,7 +420,8 @@ export function buildCatches(rows: BookContract[], reasons: UserReason[] = []): 
       time: r.lastAt,
       last: r.last,
       premium: r.premium,
-      side: lean === 'UNSIDED' ? 'MID' : lean,
+      /* a day of spread legs (or a floor package) carries no side of its own (audit round 8) */
+      side: notABet(r) ? 'LEGS' : lean === 'UNSIDED' ? 'MID' : lean,
       row: r,
     });
   }

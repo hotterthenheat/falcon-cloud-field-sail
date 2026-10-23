@@ -10,7 +10,8 @@ import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
 import { darkPrint } from './traceLive';
 import { alertSides, darkPrintKey } from './sidesRule';
-import { uwCall, whalesDailyLong, whalesEarnings, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
+import { uwCall, whalesBars, whalesDailyLong, whalesEarnings, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
+import { nyIsoDate, nyMinutes as nyMinuteOf, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 
 export interface EarnRow {
   report_date?: string;
@@ -41,6 +42,10 @@ export interface StockFile {
   /** The session's tapes (flow alerts, dark prints) — read after the head of the file, so the page opens on the name,
       its price and its read first (audit round 5, phone: all skeletons after 35s); 'loading' until they land */
   tapes: 'loading' | 'live';
+  /** The session's one-minute cash bars (/stock/{t}/ohlc/1m — the same call Pinpoint's full book makes, so the two share
+      it): the tape the dark prints are drawn on. The page reads the light book (round 8: the full book's ~60 per-expiry
+      calls were for levels the page defers), whose bars are five-minute ones. Empty until they land. */
+  minutes?: Candle[];
   /** Epoch ms of the last print that landed. */
   at?: number;
 }
@@ -350,6 +355,7 @@ async function load(ticker: string): Promise<void> {
   const tapesP = Promise.all([
     flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
     darkTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
+    whalesBars(ticker, '1m', 1000).catch(() => []),
   ]);
   const [screenR, earnR, dayR, contractR] = await headP;
   const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? screenR[0] ?? null) : null;
@@ -372,10 +378,22 @@ async function load(ticker: string): Promise<void> {
   };
   files.set(ticker, head);
   emit();
-  const [flowR, darkR] = await tapesP;
+  const [flowR, darkR, barR] = await tapesP;
+  const minutes: Candle[] = [];
+  for (const b of Array.isArray(barR) ? barR : []) {
+    const time = Math.floor(Date.parse(String(b.start_time || b.end_time || '')) / 1000);
+    const close = num(b.close);
+    if (!time || !(close > 0)) continue;
+    const at = time * 1000;
+    const m = nyMinuteOf(at);
+    if (nyIsoDate(at) !== session || m < SESSION_OPEN_MIN || m >= SESSION_CLOSE_MIN) continue;
+    minutes.push({ time, open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
+  }
+  minutes.sort((a, b) => a.time - b.time);
   files.set(ticker, {
     ...head,
     tapes: 'live',
+    minutes,
     flow: flowsFrom(flowR.rows, spot, session),
     flowWindow: flowR.window,
     dark: darksFrom(darkR.rows, spot),
