@@ -53,6 +53,8 @@
 */
 
 import { impliedDaySigma } from './atr';
+import { peekDaySigma } from './uwBook';
+import { datesOf } from './flipLevel';
 import { lastSessionSupreme, moveIntoClose, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
 import { inCashSession, sessionBars } from './levelview';
 import { nyMinutes } from '../core/nyTime';
@@ -166,7 +168,8 @@ function pulledCentre(profile: ExposureProfileData, spot: number, sigma: number,
 
 export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfileData, iv: number, clock: AheadClock): Corridor {
   const spot = snapshot.spot;
-  const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
+  const one = snapshot.liveBook ? datesOf(snapshot, snapshot.chain) : null;
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, Array.isArray(one) && one.length === 1 ? one[0] : null) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
   const sigma = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   const { callWall, putWall, flip } = profile.levels;
   const gravityEnd = gravityFor(clock.minutesLeft);

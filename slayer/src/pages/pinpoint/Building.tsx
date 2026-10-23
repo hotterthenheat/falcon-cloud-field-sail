@@ -68,7 +68,7 @@
 import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { bookCandles, bookHistory, ensureBook, peekIv, snapshotOf, useBookRev, usePinpointFeed, ensureOiChange, peekOiChange } from '../../data/uwBook';
+import { bookCandles, bookHistory, ensureBook, peekDaySigma, peekIv, snapshotOf, useBookRev, usePinpointFeed, ensureOiChange, peekOiChange } from '../../data/uwBook';
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
@@ -181,7 +181,8 @@ const Building = () => {
        the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
        at once */
     const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
+    /* a book whose dates or contract facts landed (a new uwByDate — uwBook never edits a chain in place) is taken at once */
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData) || scanRef.current.uwByDate !== marketData.uwByDate;
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;
@@ -279,7 +280,7 @@ const Building = () => {
           const t = tickerFor(p);
           const linked = p.ticker === undefined;
           const iv = data ? peekIv(data.ticker) : null;
-          const scales = data && iv != null ? { atr: sessionAtr(bookCandles(data.ticker) ?? []), sigma: impliedDaySigma(data.spot, iv) } : null;
+          const scales = data && iv != null ? { atr: sessionAtr(bookCandles(data.ticker) ?? []), sigma: peekDaySigma(data.ticker) ?? impliedDaySigma(data.spot, iv) } : null;
           const distanceOf = (strike: number) => (data && scales ? fmtDistance(strike - data.spot, data.spot, unit, scales) : '');
           const head = (
             <>

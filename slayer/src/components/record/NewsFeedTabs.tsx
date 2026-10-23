@@ -30,6 +30,7 @@
 ==================================================
 */
 
+import { PublishMove } from './publishMove';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, Plus, X } from 'lucide-react';
 import { freshnessOf, type EconEvent, type GeoNewsEvent, type NewsGrade } from '../../data/newsroom';
@@ -43,7 +44,7 @@ import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './imp
 
 /** The name column's word for a story with no ticker: MACRO only for an economy or market story — a company story the
     wire left untagged is not macro (the retail pass, 2026-10-22: Moderna, Global Payments and Zurn all read MACRO) */
-export const nameWord = (item: { ticker: string | null; category: string }): string => item.ticker ?? (item.category === 'Macro' ? 'MACRO' : 'NO NAME');
+export const nameWord = (item: { ticker: string | null; category: string; mentions?: string[] }): string => item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'NO NAME');
 import { useBoardNames } from '../../data/boardNames';
 
 export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals';
@@ -58,7 +59,7 @@ export const FEED_TABS = [
 const leanOf = (g: NewsGrade): 'positive' | 'negative' | null => (g === 'ALLY' ? 'positive' : g === 'THREAT' ? 'negative' : null);
 /** The wire's columns — the same seven the rows under the map wear */
 export const FEED_COLS = '72px 104px 96px 72px minmax(0, 1fr) 76px 72px';
-const signed = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
+const signed = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 /** The tab in hand outlives the page — back from a story's page, the reader lands on the tab they left */
 /* it opens on a kind, not on "All" — the wire box above already lists every story, and the two boxes opened on the same
    list, every headline twice on the page (the retail pass, 2026-10-22) */
@@ -292,7 +293,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
               <span className="font-mono text-[9px] text-textMuted whitespace-nowrap">{e.item.source}</span>
             </span>
             {/* an unmeasured story carries no move — the same "—" the wire's own rows show, never "+0.0% · poor" */}
-            <span className={`h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum ${e.item.prediction.measured ? (e.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}`}>{e.item.prediction.measured ? signed(e.item.prediction.expMove1dPct) : '—'}</span>
+            <span className="h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
             <span className="h-5 flex items-center justify-end font-mono text-[10px] text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
               {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
             </span>

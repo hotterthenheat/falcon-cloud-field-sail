@@ -37,7 +37,9 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, dayMoveWords, changeInk } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk } from '../../data/uwBook';
+import { useDistanceUnit } from '../../data/distanceUnits';
+import { fmtDistance, impliedDaySigma } from '../../data/atr';
 import { bellDay, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
@@ -68,6 +70,18 @@ const MODULES = GRID_MODULES;
 const THEME = GRID_THEME;
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`;
+
+/* THE BOARD READS THE RULER (the third audit, 2026-10-23: $, % and σ all printed "+1.46%"): a distance from price in
+   the desk's unit — dollars, percent, or the day's implied σ (the name's own IV). With no scale for the unit (no ATR on
+   this feed) it falls back to dollars rather than print a unit with no number. */
+const Dist = ({ ticker, spot, pct }: { ticker: string; spot: number; pct: number }) => {
+  const unit = useDistanceUnit();
+  if (unit === '%') return <>{fmtPct(pct)}</>;
+  const delta = (pct / 100) * spot;
+  return <>{fmtDistance(delta, spot, unit, { atr: null, sigma: unit === 'σ' ? peekDaySigma(ticker) ?? impliedDaySigma(spot, peekIv(ticker) ?? 0) : null })}</>;
+};
+/* the nearest wall with every level it is (core/walls.ts levelRoles) — "Put wall · supreme 769" */
+const alsoSupreme = (row: BoardRow) => Math.abs(row.nearest.strike - row.supreme) < 1e-9;
 
 // ---- cell renderers: the house grammar inside the grid -----------------------
 
@@ -171,7 +185,7 @@ const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
       <span className="text-[11px] font-semibold" style={{ color: FLIP }}>
         {fmtStrike(data.flip)}
       </span>
-      {data.flipDistPct != null && <span className="text-[10px] text-textSecondary">{fmtPct(data.flipDistPct)}</span>}
+      {data.flipDistPct != null && <span className="text-[10px] text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.flipDistPct} /></span>}
     </TickFigure>
   ) : data ? (
     <span className="font-mono text-[10px] text-textMuted" title={`No flip within ±10%: dealers are ${data.regime === 'LONG' ? 'long' : 'short'} gamma across the whole range`}>
@@ -186,9 +200,10 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) =>
     <span className="inline-flex items-baseline gap-2 font-mono tnum tabular-nums">
       <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: data.nearest.kind === 'call' ? CALL_WALL : PUT_WALL }}>
         {data.nearest.kind === 'call' ? 'Call wall' : 'Put wall'}
+        {alsoSupreme(data) && <span style={{ color: SUPREME }}> · supreme</span>}
       </span>
       <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(data.nearest.strike)}</span>
-      <span className="text-[10px] text-textSecondary">{fmtPct(data.nearest.distPct)}</span>
+      <span className="text-[10px] text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.nearest.distPct} /></span>
     </span>
   ) : null;
 
@@ -274,7 +289,7 @@ const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
       className="font-mono text-[11px] tnum tabular-nums text-textSecondary"
       title={data.crossWhy ?? `Today's session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
     >
-      {data.crossWhy ? 'not available' : data.crossings == null ? '—' : `${data.crossings}×`}
+      {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? '—' : `${data.crossings}×`}
     </span>
   ) : null;
 
@@ -362,7 +377,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
                 <span style={{ color: FLIP }} className="font-semibold">
                   {fmtStrike(row.flip)}
                 </span>
-                {row.flipDistPct != null && <span className="text-textSecondary"> {fmtPct(row.flipDistPct)}</span>}
+                {row.flipDistPct != null && <span className="text-textSecondary"> <Dist ticker={row.ticker} spot={row.spot} pct={row.flipDistPct} /></span>}
               </span>
             ) : (
               <span className="text-textMuted">none nearby</span>
@@ -373,8 +388,9 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
             <span className="truncate">
               <span style={{ color: row.nearest.kind === 'call' ? CALL_WALL : PUT_WALL }} className="text-[9px] font-bold uppercase tracking-wider">
                 {row.nearest.kind === 'call' ? 'Call' : 'Put'}
+                {alsoSupreme(row) && <span style={{ color: SUPREME }}> · supreme</span>}
               </span>{' '}
-              <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary">{fmtPct(row.nearest.distPct)}</span>
+              <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary"><Dist ticker={row.ticker} spot={row.spot} pct={row.nearest.distPct} /></span>
             </span>
           </div>
           <div className="flex flex-col min-w-0">
@@ -526,7 +542,7 @@ const Board = () => {
         minWidth: 170,
         cellRenderer: WallCell,
         cellDataType: false,
-        headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate',
+        headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
       { headerName: 'Supreme', field: 'supreme', flex: 0.7, minWidth: 84, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },

@@ -8,7 +8,7 @@ export const GLOSSARY = {
   shelf: 'Shelf: a strike where dealers are long gamma and that holds at least a third of the biggest wall — their hedging slows price there',
   book: 'The book: every open option contract on the name, and the dealer hedging it implies, strike by strike and expiry by expiry',
   callWall: 'Call wall: the strike with the most call gamma — while dealers are long gamma there it tends to slow a rise; once price is through it, it can act as support',
-  putWall: 'Put wall: the strike with the most put gamma — dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate',
+  putWall: 'Put wall: the strike with the most put gamma — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
 } as const;
 
 /** The definition for a strike's kind word, as the Agenda and the Board print it */

@@ -123,6 +123,18 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
   const listed = houses.length + funds.length + (short ? 1 : 0);
   const waiting = !own || own.state === 'loading' || !held || held.state === 'loading' || shortLive.status === 'loading';
   const missed = listed === 0 && !waiting && (own?.state === 'error' || held?.state === 'error' || shortLive.status === 'error');
+  /* EVERY FACT ENDS IN AN ANSWER (the retail test, 2026-10-23: AAPL's four facts sat at "…" after 35s). A read in flight
+     is "…", then "still reading" once it has taken 20s (the feed answers three calls at a time, the options book first);
+     a read that failed says so; one that answered with nothing is a dash. */
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    const id = window.setTimeout(() => setSlow(true), 20_000);
+    return () => window.clearTimeout(id);
+  }, [ticker]);
+  const pending = <span className="text-textMuted">{slow ? 'still reading' : '…'}</span>;
+  const failedWord = <span className="text-textMuted" title="The feed did not answer this read">did not answer</span>;
+  const state = (row: { state: string } | null | undefined): 'wait' | 'error' | 'done' => (!row || row.state === 'loading' ? 'wait' : row.state === 'error' ? 'error' : 'done');
   return (
     <section id="stock-who" className="border border-borderSubtle rounded-md bg-panel scroll-mt-4" data-name-books={ticker}>
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
@@ -134,18 +146,18 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Who reported the shares, and which funds hold the name</p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <Fact label="Largest house">{largest ? largest.name : own?.state === 'loading' ? '…' : '—'}</Fact>
+          <Fact label="Largest house">{largest ? largest.name : state(own) === 'wait' ? pending : state(own) === 'error' ? failedWord : '—'}</Fact>
           <Fact label="Short interest">
             {short ? (
               <button type="button" onClick={() => navigate(`/dossier/shorts/${ticker}`)} className="hover:underline underline-offset-2" title={`Short interest as a share of the float${short.asOf ? `, settlement ${short.asOf}` : ''} — open the short file`} data-name-short>
                 <TickFigure value={short.interestPct}>{`${short.interestPct.toFixed(2)}%`}</TickFigure>
                 {short.asOf ? <span className="text-textMuted"> · {shortDay(short.asOf)}</span> : null}
               </button>
-            ) : shortLive.status === 'loading' || !siRow || siRow.state === 'loading' ? '…' : '—'}
+            ) : state(siRow) === 'wait' ? pending : state(siRow) === 'error' ? failedWord : '—'}
           </Fact>
-          <Fact label="Largest fund">{fund ? fund.name : held?.state === 'loading' ? '…' : '—'}</Fact>
+          <Fact label="Largest fund">{fund ? fund.name : state(held) === 'wait' ? pending : state(held) === 'error' ? failedWord : '—'}</Fact>
           {/* the ownership read answers fifty houses a page — fifty is the page, not the count, so it reads "50+" */}
-          <Fact label="Holders">{own?.state === 'live' || own?.okAt ? (own?.n == null ? '—' : own.n >= 50 ? '50+' : own.n) : own?.state === 'loading' || !own ? '…' : '—'}</Fact>
+          <Fact label="Holders">{own?.state === 'live' || own?.okAt ? (own?.n == null ? '—' : own.n >= 50 ? '50+' : own.n) : state(own) === 'wait' ? pending : state(own) === 'error' ? failedWord : '—'}</Fact>
         </dl>
       </div>
       {missed ? (

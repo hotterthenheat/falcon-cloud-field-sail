@@ -112,6 +112,8 @@ export function fmtDistance(deltaAbs: number, spot: number, unit: DistanceUnit, 
   const a = Math.abs(deltaAbs);
   if (unit === '$') return `${sign}$${a.toFixed(2)}`;
   if (unit === '%') return spot > 0 ? `${sign}${((a / spot) * 100).toFixed(2)}%` : '—';
-  if (unit === 'ATR') return scales.atr !== null && scales.atr > 0 ? `${sign}${(a / scales.atr).toFixed(2)} ATR` : '— ATR';
-  return scales.sigma !== null && scales.sigma > 0 ? `${sign}${(a / scales.sigma).toFixed(2)}σ` : '— σ';
+  /* NO SCALE, NO UNIT (the third audit, 2026-10-23: "— ATR above" on the Map when the feed carries no finished sessions to
+     measure an ATR from): the distance falls back to dollars rather than print a unit with no number */
+  if (unit === 'ATR') return scales.atr !== null && scales.atr > 0 ? `${sign}${(a / scales.atr).toFixed(2)} ATR` : `${sign}$${a.toFixed(2)}`;
+  return scales.sigma !== null && scales.sigma > 0 ? `${sign}${(a / scales.sigma).toFixed(2)}σ` : `${sign}$${a.toFixed(2)}`;
 }

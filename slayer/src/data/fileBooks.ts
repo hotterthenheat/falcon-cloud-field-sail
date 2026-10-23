@@ -188,6 +188,8 @@ export interface ShortRow {
   shortVolRatio: number | null;
   /** The session the short volume is from, "YYYY-MM-DD" */
   shortVolDate?: string;
+  /** The session the short volume by market is from (YYYY-MM-DD) — it can be a day behind the latest short volume */
+  exchangesDate?: string;
   /** Fails to deliver, in thousands of shares. Null when the feed does not carry it. */
   ftdK: number | null;
   /** Borrow fee, percent a year. Null when the feed did not price it. */

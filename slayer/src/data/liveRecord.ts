@@ -11,6 +11,7 @@ import { geoFromItems, type EconEvent, type GeoNewsEvent } from './newsroom';
 import type { CongressFeed, CongressTrade, InsiderFlow, InsiderTrade, TxCode } from '../types/record';
 import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwInsider, type UwNews, type UwPolitician } from './whales';
 import { nyIsoDaysBack } from './nyDate';
+import { loadRegularCloses, peekRegularCloses } from './dayChange';
 import { congressFromWhales, econFromWhales, insidersFromWhales, newsFromWhales, readInsiders, rollCongress } from './whalesMap';
 
 export type FeedStatus = 'loading' | 'live' | 'sim';
@@ -74,10 +75,46 @@ function paintNews() {
     return true;
   });
   newsRows = rows;
+  /* TODAY IS NEW YORK'S DAY (the third audit, 2026-10-23): "every story on the wire today" counted 27 of 1,393 stories
+     from before midnight — the backfill's last page crosses it. The wire on the pages is the NY day's stories only. */
+  const midnight = nyMidnightMs();
+  const todays = rows.filter(r => !(Date.parse(r.created_at) < midnight));
   const times = rows.map(r => Date.parse(r.created_at)).filter(Number.isFinite);
   const from = times.length ? Math.min(...times) : null;
-  newsCoverage = { ...newsCoverage, fromMs: from, wholeDay: newsCoverage.wholeDay || (from != null && from <= nyMidnightMs()) };
-  patch({ news: { status: 'live', events: geoFromItems(newsFromWhales(rows)) } });
+  newsCoverage = { ...newsCoverage, fromMs: from == null ? null : Math.max(from, midnight), wholeDay: newsCoverage.wholeDay || (from != null && from <= midnight) };
+  const items = newsFromWhales(todays, priorClose);
+  patch({ news: { status: 'live', events: geoFromItems(items) } });
+  wantCloses(todays);
+}
+
+/* THE CLOSE BEFORE AN AFTER-HOURS STORY'S SESSION (whalesMap.publishMove): the name's regular closes, read once a New
+   York day (data/dayChange.ts), for the names whose stories crossed outside the session; the wire repaints as they land */
+const priorClose = (ticker: string, before: string): number | null => {
+  const closes = peekRegularCloses(ticker);
+  return closes?.find(c => c.date < before)?.close ?? null;
+};
+const closesAsked = new Set<string>();
+let closesRepaint: number | null = null;
+function wantCloses(rows: UwNews[]): void {
+  const need = new Set<string>();
+  for (const r of rows) {
+    for (const [t, m] of Object.entries(r.meta ?? {})) {
+      const mt = String((m as { curr?: { mt?: string } })?.curr?.mt ?? '').toLowerCase();
+      if (mt.startsWith('post') && !closesAsked.has(t) && !peekRegularCloses(t)) need.add(t);
+    }
+  }
+  for (const t of need) {
+    closesAsked.add(t);
+    void loadRegularCloses(t)
+      .catch(() => null)
+      .then(() => {
+        if (closesRepaint != null || typeof window === 'undefined') return;
+        closesRepaint = window.setTimeout(() => {
+          closesRepaint = null;
+          paintNews();
+        }, 1500);
+      });
+  }
 }
 
 async function pullNews() {
@@ -297,9 +334,12 @@ export interface InsiderCoverage {
   restSince: string | null;
   restNewest: string | null;
   restCount: number;
+  /** True while the latest-filings read is still paging */
+  restReading: boolean;
 }
 
-let insCoverage: InsiderCoverage = { buysSince: null, buysComplete: false, buysRanOut: false, buysReading: true, buysCapped: false, bigSalesSince: null, bigSalesComplete: false, bigSalesRanOut: false, bigSalesReading: true, bigSalesCapped: false, notShares: 0, implausible: 0, bigSale: BIG_SALE, restSince: null, restNewest: null, restCount: 0 };
+let restReading = true;
+let insCoverage: InsiderCoverage = { buysSince: null, buysComplete: false, buysRanOut: false, buysReading: true, buysCapped: false, bigSalesSince: null, bigSalesComplete: false, bigSalesRanOut: false, bigSalesReading: true, bigSalesCapped: false, notShares: 0, implausible: 0, bigSale: BIG_SALE, restSince: null, restNewest: null, restCount: 0, restReading: true };
 let restRows: UwInsider[] = [];
 let wantDays = 90;
 
@@ -369,6 +409,7 @@ function paintInsiders() {
     restSince: restRows.length >= INS_LIMIT * REST_PAGES ? (restOldest ? nextIso(restOldest) : null) : restOldest,
     restNewest: newestFiling(restRows),
     restCount: restRows.length,
+    restReading,
   };
   patch({ insiders: { status: 'live', trades: read.trades } });
 }
@@ -418,8 +459,13 @@ async function pullInsiders() {
         if ((res.data as UwInsider[]).length < INS_LIMIT) break;
       }
     })();
+    void rest.finally(() => {
+      restReading = false;
+      paintInsiders();
+    });
     await Promise.all([rest, extend(buys), extend(bigSales)]);
   } catch {
+    restReading = false;
     if (snap.insiders.status !== 'live') patch({ insiders: { status: 'sim', trades: [] } });
   }
 }
@@ -739,12 +785,38 @@ interface TickerCongress {
 const TICKER_CONGRESS_WAIT: TickerCongress = { status: 'loading', trades: [], complete: false };
 const tickerCongress = new Map<string, TickerCongress>();
 
+/* THE ROSTER FOR A NAME'S PAGE TOO (the third audit, 2026-10-23): party and state come off the politician list, which
+   only the Congress page read — the earnings and stock pages' Congress rows had neither. Any page that reads a name's
+   reports reads the roster once, and the rows are re-mapped when it lands. */
+const tickerCongressRows = new Map<string, UwCongress[]>();
+let rosterAsked = false;
+function ensureRoster(): void {
+  if (rosterAsked || congressPeople.length || typeof window === 'undefined') return;
+  rosterAsked = true;
+  void whalesPoliticians()
+    .then(p => {
+      if (!Array.isArray(p) || !p.length) return;
+      congressPeople = p;
+      for (const [sym, rows] of tickerCongressRows) {
+        const box = tickerCongress.get(sym);
+        if (box?.status === 'live') tickerCongress.set(sym, { ...box, trades: congressFromWhales(rows, congressPeople).trades.filter(t => t.ticker.toUpperCase() === sym) });
+      }
+      if (snap.congress.status === 'live') paintCongress();
+      listeners.forEach(fn => fn());
+    })
+    .catch(() => {
+      rosterAsked = false;
+    });
+}
+
 function ensureTickerCongress(sym: string) {
   if (tickerCongress.has(sym) || typeof window === 'undefined') return;
   tickerCongress.set(sym, TICKER_CONGRESS_WAIT);
+  ensureRoster();
   void (async () => {
     const res = await uwCall(`/congress/recent-trades?ticker=${encodeURIComponent(sym)}&limit=200`);
     const rows = Array.isArray(res.data) ? (res.data as UwCongress[]) : [];
+    tickerCongressRows.set(sym, rows);
     const oldest = rows.map(r => (r.transaction_date || '').slice(0, 10)).filter(Boolean).sort()[0] ?? null;
     tickerCongress.set(sym, res.error
       ? { status: 'sim', trades: [], complete: false }

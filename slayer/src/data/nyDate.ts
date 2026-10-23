@@ -7,7 +7,8 @@
   calendar days on New York's clock, never between instants. A full timestamp is first turned into its New York day.
 */
 
-import { nyIsoDate } from '../core/nyTime';
+import { nyIsoDate, nySessionPhase } from '../core/nyTime';
+import { isTradingDay } from '../core/calendar';
 
 const BARE = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?Z?)?$/;
 
@@ -59,3 +60,23 @@ export function boardMondayIso(today = nyTodayIso()): string {
   at.setUTCDate(at.getUTCDate() + shift);
   return at.toISOString().slice(0, 10);
 }
+
+/** THE SESSION A "TODAY" READ STANDS ON (the third audit, 2026-10-23): today once today's session has opened; before the
+    open, on a weekend or a holiday, the last session that did trade. Flow alerts, dark prints and the day's premium are
+    filtered to this day and labelled with it, so a pre-market page never sums last week's alerts as "today". */
+export function lastSessionIso(today = nyTodayIso(), phase: 'before' | 'open' | 'after' = nySessionPhase()): string {
+  const [y, m, d] = today.split('-').map(Number);
+  const at = new Date(y, m - 1, d);
+  if (isTradingDay(at) && phase !== 'before') return today;
+  for (let i = 0; i < 10; i++) {
+    at.setDate(at.getDate() - 1);
+    if (isTradingDay(at)) break;
+  }
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+}
+
+/** "Oct 22" for a "2026-10-22" */
+export const shortDay = (iso: string): string => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+};

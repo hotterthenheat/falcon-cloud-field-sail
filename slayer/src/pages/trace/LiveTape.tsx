@@ -38,7 +38,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { dayLean, indexRoot, plural, useAlertTrades, useFlowAlerts, useNameTopContracts, usePrintStream, usd as fmtUsd, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
+import { dayLean, indexRoot, lastRegularClose, plural, useAlertTrades, useFlowAlerts, useNameTopContracts, usePrintStream, usd as fmtUsd, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
+import { useDeskSession } from '../../data/deskSession';
+import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { printKey, useWatch, watchPrint } from '../../context/WatchContext';
 import WatchStar from '../../components/trace/WatchStar';
@@ -103,7 +105,7 @@ interface TapeCut {
 const TAPE_CUT_DEFAULT: TapeCut = { view: 'STREAM', kind: 'ALL', lean: 'ALL', prem: '0', expiry: null, q: '' };
 const PREM_KEYS: PremKey[] = ['0', '100000', '500000', '1000000'];
 const LEAN_KEYS: SentFilter[] = ['ALL', 'BULLISH', 'BEARISH', 'NEUTRAL'];
-const KIND_KEYS: FlowFilter[] = ['ALL', 'SWEEP', 'BLOCK', 'MULTI', 'SINGLE'];
+const KIND_KEYS: FlowFilter[] = ['ALL', 'SWEEP', 'BLOCK', 'MULTI', 'SINGLE', 'COMPRESSION', 'BURST'];
 
 function cutToQuery(c: TapeCut): string {
   const p = new URLSearchParams();
@@ -155,6 +157,8 @@ const KIND_OPTIONS: DropdownOption<FlowFilter>[] = [
   { value: 'BLOCK', label: 'Blocks', hint: `One leg, ${BLOCK_MIN_SIZE} contracts or $${BLOCK_MIN_PREMIUM / 1000}K and up, in one print` },
   { value: 'MULTI', label: 'Multi-leg', hint: 'A print with legs — part of a spread' },
   { value: 'SINGLE', label: 'Single prints', hint: 'One leg, under the block line' },
+  { value: 'COMPRESSION', label: 'Compression', hint: 'OPRA cbmo / mctp packages and arbitrage-tagged prints — they net open interest down between members; not a bet, kept out of every bullish/bearish total' },
+  { value: 'BURST', label: 'Alert bursts', hint: 'A flow alert of several prints whose largest single trade is not known to clear the block line' },
 ];
 /* "Every print", not "Both ways": the mid prints are in it too, and they have a card of their own */
 const LEAN_OPTIONS: DropdownOption<SentFilter>[] = [
@@ -163,7 +167,7 @@ const LEAN_OPTIONS: DropdownOption<SentFilter>[] = [
   { value: 'BEARISH', label: 'Bearish', hint: 'Puts bought, calls sold' },
   { value: 'NEUTRAL', label: 'Neutral (mid)', hint: 'Traded at the mid — neither side pressed' },
 ];
-const KIND_WORD: Record<PrintKind, string> = { SWEEP: 'Sweep', BLOCK: 'Block', MULTI: 'Multi-leg', SINGLE: 'Single' };
+const KIND_WORD: Record<PrintKind, string> = { SWEEP: 'Sweep', BLOCK: 'Block', MULTI: 'Multi-leg', SINGLE: 'Single', COMPRESSION: 'Compression · not a bet', BURST: 'Burst' };
 
 /** Fixed widths where a header or a cell would otherwise clip; the kind takes the rest.
     Every width here clears its widest cell: a column narrower than its cell paints a clipped ellipsis. */
@@ -227,6 +231,8 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'ale
     segs.push(` at [[${fmtUsd(L.premium)}]]`);
   }
   if (summary.sweeps > 2) segs.push(` · ${summary.sweeps} sweeps`);
+  /* compression stands apart — named, never read (traceLive printCondition) */
+  if (summary.compression.count > 0) segs.push(` · ${summary.compression.count.toLocaleString('en-US')} compression ${summary.compression.count === 1 ? 'print' : 'prints'} (${fmtUsd(summary.compression.premium)}) — packages that net open interest down, not bets, so they are in none of these totals`);
   if (rows.length >= 20 && zdte / rows.length > 0.25) segs.push(` · 0DTE is ${Math.round((zdte / rows.length) * 100)}% of the ${noun}`);
   segs.push('.');
   return segs;
@@ -335,7 +341,7 @@ const phoneRow = (r: TapeRow) => {
         </span>,
         <span key="z">{plural(r.p.size, 'contract')}</span>,
         <span key="l" className={SENT_TEXT[s]}>
-          {r.p.extended ? 'after hours' : s.toLowerCase()}
+          {r.p.compression ? 'compression' : r.p.extended ? 'after hours' : s.toLowerCase()}
         </span>,
         printKind(r.p) === 'SWEEP' ? (
           <span key="k" className="text-warn">
@@ -354,6 +360,8 @@ const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
 export const matchesTape = (r: FlowPrint, nq: string) => nq === '' || norm(`${r.ticker}${r.strike}${r.right}`).includes(nq);
 
 // ---- the page ---------------------------------------------------------------------
+const tapeIsoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+
 const LiveTape = () => {
   const { marketData } = useMarketData();
   const alerts = useFlowAlerts(40);
@@ -387,9 +395,28 @@ const LiveTape = () => {
      question goes out when the tape resumes. */
   const heldQuery = useRef(tapeQuery);
   if (!paused) heldQuery.current = tapeQuery;
-  const stream = usePrintStream(paused ? heldQuery.current : tapeQuery, paused || away || lane !== 'prints');
+  /* THE SESSION CARD IS OBEYED (the third audit, 2026-10-22: after the close the tape held only after-hours prints under
+     "Session · Regular", and the day's own session could not be reached): on Regular the tape keeps regular-session
+     prints only, and once the session has ended it walks back from its 16:15 close — the last regular stretch — and
+     says so. After hours (or any other session card) is the live feed as it prints. */
+  const deskSession = useDeskSession();
+  const [closedAt, setClosedAt] = useState(() => lastRegularClose());
+  useEffect(() => {
+    const id = window.setInterval(() => setClosedAt(c => {
+      const n = lastRegularClose();
+      return n?.closeMs === c?.closeMs ? c : n;
+    }), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const regularOnly = deskSession === 'rth';
+  const anchor = regularOnly && closedAt ? closedAt : null;
+  const keepRegular = useCallback((p: FlowPrint) => !p.extended, []);
+  const stream = usePrintStream(paused ? heldQuery.current : tapeQuery, paused || away || lane !== 'prints', { untilMs: anchor?.closeMs ?? null, keep: regularOnly ? keepRegular : undefined });
   const tapeDown = (lane === 'alerts' ? alerts : stream).fault != null;
-  const liveRows = lane === 'alerts' ? alerts.rows : stream.rows;
+  /* THE ALERTS IN THE ORDER THEIR TIME COLUMN SAYS (the third audit: "newest first" was the vendor's created_at while the
+     Time column shows each alert's first fill, start_time) — by the fill's millisecond, newest first */
+  const alertRows = useMemo(() => [...alerts.rows].sort((a, b) => (b.epochMs ?? 0) - (a.epochMs ?? 0)), [alerts.rows]);
+  const liveRows = lane === 'alerts' ? alertRows : stream.rows;
   const rows = frozen ?? liveRows;
   useEffect(() => {
     if (paused) setFrozen(f => f ?? liveRows);
@@ -490,10 +517,10 @@ const LiveTape = () => {
       ...PREM_CHIPS.map(c => {
         /* the floor goes to the vendor (min_premium) and refills the tape from its whole day — a count of the prints on
            screen now said "No print this size" and then the pick filled the grid (the ship pass, 2026-10-22) */
-        return { value: c.value, label: c.label, hint: `The day's prints of ${c.label.replace('≥', '')} and up, from the vendor` };
+        return { value: c.value, label: c.label, hint: `The vendor's prints of ${c.label.replace('≥', '')} and up — the newest ${TAPE_CAP.toLocaleString('en-US')} of them, walked back from ${anchor ? `the ${nyClock(anchor.closeMs)} ET close` : 'now'}, not the whole day` };
       }),
     ];
-  }, [rows, flowFilter, sentFilter, searchQuery, cutExpiry]);
+  }, [rows, flowFilter, sentFilter, searchQuery, cutExpiry, anchor]);
 
   const filtered = useMemo(() => {
     const minPrem = Number(minPremKey);
@@ -557,6 +584,8 @@ const LiveTape = () => {
     let bull: FlowPrint | null = null;
     let bear: FlowPrint | null = null;
     for (const p of beamRows) {
+      /* a compression package is never the largest bet, the top bull or the top bear */
+      if (p.compression) continue;
       if (!all || p.premium > all.premium) all = p;
       const s = sentimentOf(p);
       if (s === 'BULLISH' && (!bull || p.premium > bull.premium)) bull = p;
@@ -578,8 +607,11 @@ const LiveTape = () => {
   /* ONE SNAPSHOT FOR THE HEAD AND THE SENTENCE (the audit, 2026-10-22): the sentence was throttled to 8s, so it named
      an RKLB print as the largest under a head that named a META one. Both now read the same rows on every render. */
   const read = useMemo<ReadSeg[]>(
-    () => (beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? (lane === 'alerts' ? 'Awaiting the first alerts…' : 'Awaiting the first prints…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints')),
-    [beamRows, beamSummary, tapeDown, rows.length, lane]
+    () => {
+      const lead: ReadSeg[] = lane === 'prints' && anchor ? [`The regular session has closed — on the Regular session card the tape is its last stretch, walked back from the 16:15 ET close${anchor.iso !== tapeIsoToday() ? ` of ${anchor.iso}` : ''} (after-hours prints are on the After hours card). `] : [];
+      return lead.concat(beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? (lane === 'alerts' ? 'Awaiting the first alerts…' : 'Awaiting the first prints…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints'));
+    },
+    [beamRows, beamSummary, tapeDown, rows.length, lane, anchor]
   );
   const windowSpan = useMemo(() => {
     const times = beamRows.map(r => r.time).filter(t => t !== '—').sort();
@@ -683,7 +715,7 @@ const LiveTape = () => {
         header: 'OTM %',
         align: 'right',
         sortValue: r => (r.p.spot > 0 ? r.p.otmPct : Number.NEGATIVE_INFINITY),
-        render: r => (r.p.spot > 0 && Number.isFinite(r.p.otmPct) ? <span className="text-textPrimary">{indexRoot(r.p.ticker) ? '≈' : ''}{pctSigned(r.p.otmPct, 1)}</span> : <span className="text-textMuted" title={r.p.spot > 0 ? 'A whole-point index level is too coarse for this distance' : undefined}>—</span>),
+        render: r => (r.p.spot > 0 && Number.isFinite(r.p.otmPct) ? <span className="text-textPrimary">{indexRoot(r.p.ticker) ? '≈' : ''}{pctSigned(r.p.otmPct, 1)}</span> : <span className="text-textMuted" title={r.p.spot > 0 ? 'A whole-point index level is too coarse for this distance (XSP, VIX)' : 'The print carries no underlying price and no index level is in hand'}>—</span>),
       },
       {
         key: 'quote',
@@ -734,6 +766,7 @@ const LiveTape = () => {
         render: r => {
           const s = sentimentOf(r.p);
           /* after the close a print is set against a thin post-market quote — labelled, never read */
+          if (r.p.compression) return <span className="text-[11px] font-semibold uppercase text-textMuted" title="A compression package (OPRA cbmo / mctp, or the vendor's arbitrage tag) — it nets open interest down between members, so it is not a bet and is in no bullish or bearish total">compression</span>;
           if (r.p.extended) return <span className="text-[11px] font-semibold uppercase text-textMuted" title="Printed after hours — set against a post-market quote, so it carries no read">after hrs</span>;
           return <span className={`text-[11px] font-semibold ${SENT_TEXT[s]}`}>{s}</span>;
         },
@@ -786,7 +819,7 @@ const LiveTape = () => {
         render: r => {
           const k = printKind(r.p);
           return (
-            <span className="text-[11px] text-textSecondary" title={r.p.trades ? `A flow alert: ${r.p.trades} prints on this contract` : k === 'MULTI' ? "The print's OPRA condition marks it one leg of a multi-leg order" : undefined}>
+            <span className="text-[11px] text-textSecondary" title={k === 'COMPRESSION' ? 'A compression package — OPRA cbmo / mctp or the vendor’s arbitrage tag: not a bet' : r.p.trades ? `A flow alert: ${r.p.trades} prints on this contract${k === 'BURST' ? ' — its largest single trade is not known to clear the block line, so it is not called a block' : ''}` : k === 'MULTI' ? "The print's OPRA condition marks it one leg of a multi-leg order" : undefined}>
               {k === 'SWEEP' ? <span className="text-warn font-semibold">Sweep</span> : KIND_WORD[k]}
               {r.p.trades && r.p.trades > 1 ? <span className="text-textMuted"> · {r.p.trades} prints</span> : null}
             </span>
@@ -846,10 +879,11 @@ const LiveTape = () => {
                 {markedCount} tracked
               </span>
             </Fact>
-            <Fact label="Window" testId="window" title="The first and last print in this view, New York — every figure in this head and the sentence covers these prints only">
+            <Fact label="Window" testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick After hours on the Session card for what prints now` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
               {windowSpan ? `${windowSpan} ET` : '—'}
+              {lane === 'prints' && anchor && <span className="text-textSecondary"> · regular session, to the close{anchor.iso !== tapeIsoToday() ? ` of ${anchor.iso.slice(5).replace('-', '/')}` : ''}</span>}
             </Fact>
-            <Fact label="Premium" testId="premium" title="Call and put premium in this view">
+            <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? `, compression packages left out (${fmtUsd(beamSummary.compression.premium)})` : ''}`}>
               <span className="text-bull">{beamSummary.callCount}C</span> {fmtUsd(beamSummary.callPremium)} <span className="text-textSecondary">/</span> <span className="text-bear">{beamSummary.putCount}P</span> {fmtUsd(beamSummary.putPremium)}
             </Fact>
             <Fact label="Sweeps · blocks · multi-leg" testId="kinds" title={`Sweeps, blocks (one leg, ${BLOCK_MIN_SIZE} contracts or $${BLOCK_MIN_PREMIUM / 1000}K and up) and multi-leg prints in this view; ${beamSummary.other} single prints besides`}>
@@ -858,8 +892,13 @@ const LiveTape = () => {
             <Fact label="P/C premium" testId="pc" title="Put premium divided by call premium in this view">
               {beamSummary.callPremium > 0 ? beamSummary.pcRatio.toFixed(2) : '—'}
             </Fact>
-            <Fact label="0DTE" testId="odte" title="Share of this view's prints expiring today">
-              <span className="text-textPrimary">{Math.round(zdteShare * 100)}%</span> <span className="text-textSecondary">of prints</span>
+            {beamSummary.compression.count > 0 && (
+              <Fact label="Compression · not a bet" testId="compression" title="OPRA cbmo / mctp packages and arbitrage-tagged prints in this view — they net open interest down between members; shown, never read, and in no other figure here">
+                {beamSummary.compression.count} <span className="text-textSecondary">· {fmtUsd(beamSummary.compression.premium)}</span>
+              </Fact>
+            )}
+            <Fact label="0DTE" testId="odte" title={`Share of this view's ${lane === 'alerts' ? 'alerts' : 'prints'} expiring today`}>
+              <span className="text-textPrimary">{Math.round(zdteShare * 100)}%</span> <span className="text-textSecondary">of {lane === 'alerts' ? 'alerts' : 'prints'}</span>
             </Fact>
             {tickerOnly && topDay.rows.length > 0 && (
               <Fact label={`${tickerOnly}'s biggest today · whole day`} testId="name-day" title={`${tickerOnly}'s contracts with the most premium today, the whole day — the vendor's screener, not the window of prints above. Each with its day's lean: at the ask, on the bid, or mostly mid / no side`}>
@@ -895,7 +934,8 @@ const LiveTape = () => {
         controls={
           <>
             <LiveHold paused={paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
-            <StaleMark at={(lane === 'alerts' ? alerts : stream).at} ttlMs={FLOW_TTL_MS} fault={(lane === 'alerts' ? alerts : stream).fault} />
+            {/* a closed session's stretch is complete, not stale — it is not polled because nothing newer belongs to it */}
+            {!(lane === 'prints' && anchor) && <StaleMark at={(lane === 'alerts' ? alerts : stream).at} ttlMs={FLOW_TTL_MS} fault={(lane === 'alerts' ? alerts : stream).fault} />}
             <span className="inline-flex rounded-md border border-borderSubtle overflow-hidden" data-tape-lane>
               {(['prints', 'alerts'] as const).map(k => (
                 <button key={k} type="button" onClick={() => setLane(k)} aria-pressed={lane === k} className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${lane === k ? 'bg-chip text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>
@@ -1012,6 +1052,7 @@ const LiveTape = () => {
         hasPrev={openIdx > 0}
         hasNext={openIdx >= 0 && openIdx < displayRows.length - 1}
         tapeRows={rows}
+        tapeNoun={lane === 'alerts' ? 'alerts' : 'prints'}
         onOpenPrint={setOpenPrint}
       />
     </>

@@ -5,7 +5,7 @@
   ink from the right, the bid's share the quiet track left of it.
 */
 
-import { dayLean } from '../../data/traceLive';
+import { dayLean, LEAN_EDGE, sideShares } from '../../data/traceLive';
 
 /* THE SIDE IN ONE INK (2026-10-13, the partner's rule at Noah's word): the ask share was green and the bid share red —
    direction inks on a fact about SIDE, the reading the tape's own quote cell refuses: a put bought at the ask is not
@@ -15,7 +15,8 @@ import { dayLean } from '../../data/traceLive';
    ALL THREE SIDES (the re-audit, 2026-10-22: QQQ 725C read "ASK 56%" on 166 at the ask against 128 on the bid, while
    38,000 of its 38,304 contracts were a no-side cross): given the day's contracts by side, the bar is ask · mid · bid
    over the WHOLE volume, and a lean is called only when it is real — at least half the day on a side, and that side
-   58% or more of it. A day that was mostly mid or no side says MID. */
+   LEAN_EDGE (55%) or more of it — the one rule (traceLive dayLean) every lean on Trace reads. A day that was mostly mid or
+   no side says MID. */
 const LeanCell = ({ askPct: raw, split }: { askPct: number; split?: { ask: number; bid: number; mid: number } }) => {
   if (split) {
     const l = dayLean({ askPct: raw, volume: split.ask + split.bid + split.mid, sideVol: split });
@@ -26,9 +27,10 @@ const LeanCell = ({ askPct: raw, split }: { askPct: number; split?: { ask: numbe
         </span>
       );
     }
-    const a = Math.round(l.ask);
-    const b = Math.round(l.bid);
-    const m = Math.max(0, 100 - a - b);
+    const sh = sideShares(split.bid, split.mid, split.ask);
+    const a = sh.ask;
+    const b = sh.bid;
+    const m = sh.mid;
     const label = l.lean === 'ASK' ? `ASK ${a}%` : l.lean === 'BID' ? `BID ${b}%` : l.lean === 'UNSIDED' ? `MID ${m}%` : 'EVEN';
     const tone = l.lean === 'ASK' || l.lean === 'BID' ? 'text-textPrimary' : 'text-textMuted';
     const total = split.ask + split.bid + split.mid;
@@ -57,12 +59,13 @@ const LeanCell = ({ askPct: raw, split }: { askPct: number; split?: { ask: numbe
   /* whole percents — a raw share printed "ASK 98.97826700536268%" */
   const askPct = Math.round(Math.max(0, Math.min(100, raw)));
   const bidPct = 100 - askPct;
-  /* near-even is EVEN, not "MID": the mid volume is not in this split at all */
-  const even = Math.abs(askPct - 50) < 6;
-  const label = even ? 'EVEN' : bidPct >= 50 ? `BID ${bidPct}%` : `ASK ${askPct}%`;
+  /* near-even is EVEN, not "MID": the mid volume is not in this split at all — the same edge as the split's (dayLean) */
+  const l = dayLean({ askPct, volume: 0 }).lean;
+  const even = l === 'EVEN';
+  const label = even ? 'EVEN' : l === 'BID' ? `BID ${bidPct}%` : `ASK ${askPct}%`;
   const tone = even ? 'text-textMuted' : 'text-textPrimary';
   return (
-    <span className="inline-flex flex-col items-end gap-[3px] w-16" title={`Of the premium or volume that traded at the bid or the ask: ${askPct}% at the ask, ${bidPct}% on the bid (mid and no-side not in this split)`}>
+    <span className="inline-flex flex-col items-end gap-[3px] w-16" title={`Of the premium or volume that traded at the bid or the ask: ${askPct}% at the ask, ${bidPct}% on the bid (mid and no-side not in this split) — a lean from ${LEAN_EDGE}% on a side`}>
       <span className={`font-mono text-[11px] font-semibold uppercase tnum leading-[14px] ${tone}`}>{label}</span>
       <span className="flex w-16 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]">
         <span className="h-full bg-textPrimary/80 ml-auto" style={{ width: `${askPct}%` }} />

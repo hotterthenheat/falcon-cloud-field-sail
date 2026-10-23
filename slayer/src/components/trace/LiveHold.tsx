@@ -25,22 +25,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { nyClock } from '../../core/nyTime';
 import { Pause, Play } from 'lucide-react';
-import { sessionPhase, type SessionPhase } from '../../data/traceLive';
+import { marketPhase, type MarketPhase } from '../../data/traceLive';
 
 /* THE BADGE SAYS THE SESSION (the re-audit, 2026-10-22: every page wore LIVE after the close while its prints were
-   after-hours ones): Live in the regular session; After hours, Pre-market or Closed outside it — the page still follows
-   the vendor, the word says what kind of tape that is */
-const PHASE_WORD: Record<SessionPhase, string> = { regular: 'Live', after: 'After hours', pre: 'Pre-market', closed: 'Closed' };
-const PHASE_HINT: Record<SessionPhase, string> = {
+   after-hours ones) — and it is a LABEL, not a button (the third audit: the "AFTER HOURS" badge was the pause button, so
+   a reader who pressed it to see the session froze the feed). Pause is its own button beside it, worded as what it does.
+   From 16:00 to 16:15 the stock options have closed and the index and ETF options have not — the badge says both. */
+const PHASE_WORD: Record<MarketPhase, string> = { regular: 'Live', late: 'Stocks closed · index to 16:15', after: 'After hours', pre: 'Pre-market', closed: 'Closed' };
+const PHASE_HINT: Record<MarketPhase, string> = {
   regular: 'The regular session is open',
+  late: 'Stock options closed at 16:00; the index and ETF options (SPX, SPY, QQQ, IWM…) trade their regular session to 16:15',
   after: 'The regular session has closed — what prints now is after hours, against thin post-market quotes',
   pre: 'Before the bell — what prints now is pre-market',
   closed: 'The market is closed — the page shows the last session',
 };
-function usePhase(): SessionPhase {
-  const [phase, setPhase] = useState<SessionPhase>(() => sessionPhase());
+function usePhase(): MarketPhase {
+  const [phase, setPhase] = useState<MarketPhase>(() => marketPhase());
   useEffect(() => {
-    const id = window.setInterval(() => setPhase(sessionPhase()), 30_000);
+    const id = window.setInterval(() => setPhase(marketPhase()), 30_000);
     return () => window.clearInterval(id);
   }, []);
   return phase;
@@ -81,36 +83,44 @@ const clock = (d: Date) => nyClock(d, { zone: true });
 
 export const LiveHold = ({ paused, onToggle, heldAt }: { paused: boolean; onToggle: () => void; heldAt?: Date | null }) => {
   const phase = usePhase();
+  const live = phase === 'regular' || phase === 'late';
   return (
-  <span className="inline-flex items-center gap-2 shrink-0" data-live-hold data-session-phase={phase}>
-    <button
-      onClick={onToggle}
-      aria-pressed={paused}
-      title={paused ? 'Resume — the page follows the book again' : `${PHASE_HINT[phase]} · hold the page — nothing moves under you until you resume`}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border font-mono text-[11px] font-semibold uppercase tracking-wider transition-colors ${
-        paused
-          ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]'
-          : /* the live signal's own form per theme: a silver glow on the dark terminal, a silver highlighter on paper (tokens.css --live-*) */
-            /* the breath is the mark's, not the button's: the whole button falling to 0.3 read as DISABLED on whichever
-               page a glance caught it at its low (the audit, 2026-10-22) */
-            phase === 'regular'
-            ? 'tone-live hover:opacity-90'
-            : 'border-borderSubtle bg-chip text-textSecondary hover:text-textPrimary'
-      }`}
-    >
-      {paused ? (
-        <>
-          <Play className="w-3 h-3" /> Paused
-        </>
-      ) : (
-        <>
-          <Pause className={`w-3 h-3 ${phase === 'regular' ? 'animate-live-breathe' : ''}`} /> {PHASE_WORD[phase]}
-        </>
-      )}
-    </button>
-    {paused && heldAt && (
-      <span className="font-mono text-[11px] text-textMuted uppercase tracking-wider whitespace-nowrap tnum">as of {clock(heldAt)}</span>
-    )}
-  </span>
+    <span className="inline-flex items-center gap-2 shrink-0" data-live-hold data-session-phase={phase}>
+      {/* the session, as a word — never pressed */}
+      <span
+        role="status"
+        title={PHASE_HINT[phase]}
+        className={`inline-flex items-center gap-1.5 px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap ${live ? 'text-textPrimary' : 'text-textSecondary'}`}
+        data-session-badge
+      >
+        {live && <span className="w-1.5 h-1.5 rounded-full bg-silver animate-live-breathe" aria-hidden />}
+        {PHASE_WORD[phase]}
+      </span>
+      <button
+        onClick={onToggle}
+        aria-pressed={paused}
+        title={paused ? 'Resume — the page follows the feed again' : 'Pause — hold the page; nothing moves under you until you resume'}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border font-mono text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+          paused
+            ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]'
+            : /* the live signal's own form per theme (tokens.css --live-*) while the session runs */
+              live
+              ? 'tone-live hover:opacity-90'
+              : 'border-borderSubtle bg-chip text-textSecondary hover:text-textPrimary'
+        }`}
+        data-hold-button
+      >
+        {paused ? (
+          <>
+            <Play className="w-3 h-3" /> Resume
+          </>
+        ) : (
+          <>
+            <Pause className="w-3 h-3" /> Pause
+          </>
+        )}
+      </button>
+      {paused && heldAt && <span className="font-mono text-[11px] text-textMuted uppercase tracking-wider whitespace-nowrap tnum">paused · as of {clock(heldAt)}</span>}
+    </span>
   );
 };

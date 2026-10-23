@@ -46,7 +46,7 @@ import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { statHelp } from '../../components/record/statHelp';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
-const signed = (n: number, digits = 1) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`;
+const signed = (n: number, digits = 1) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(digits)}`;
 const assetsB = (b: number) => moneyM(b * 1000);
 /** Millions of shares, one way everywhere: a decimal under 100M, whole above, a B past a billion */
 const sharesM = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(2)}B` : m >= 100 ? `${m.toFixed(0)}M` : `${m.toFixed(1)}M`);
@@ -121,7 +121,7 @@ const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <spa
 const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
 const InstValue = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{moneyB(data.valueB)}</span> : null);
 const InstChange = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.changePct)}`}>{signed(data.changePct)}%</span> : null);
-const InstStatus = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span title={data.status === 'held' ? `Held: ${data.changePct >= 0 ? '+' : ''}${data.changePct.toFixed(1)}% units versus the prior 13F, inside the ±2% band` : undefined} className={`font-mono text-[11px] ${data.status === 'added' || data.status === 'new' ? 'text-bull' : data.status === 'cut' || data.status === 'closed' ? 'text-bear' : 'text-textSecondary'}`}>{positionWord(data.status)}</span> : null);
+const InstStatus = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span title={data.status === 'held' ? `Held: ${data.changePct >= 0 ? '+' : data.changePct < 0 ? '−' : ''}${Math.abs(data.changePct).toFixed(1)}% units versus the prior 13F, inside the ±2% band` : undefined} className={`font-mono text-[11px] ${data.status === 'added' || data.status === 'new' ? 'text-bull' : data.status === 'cut' || data.status === 'closed' ? 'text-bear' : 'text-textSecondary'}`}>{positionWord(data.status)}</span> : null);
 const InstBookPct = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.pctOfBook.toFixed(1)}%</span> : null);
 
 const InstCard = ({ row, on, onToggle }: { row: InstitutionRow; on: boolean; onToggle: () => void }) => (
@@ -263,12 +263,12 @@ export const Institutions = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Lines")}>Lines</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : <>{facts.lines}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-institutions-count>{failed ? '—' : <>{facts.lines.toLocaleString('en-US')}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Houses")}>Houses</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">
-              {failed ? '—' : live.progress ? <span className="text-textSecondary" title="The rest of the houses are still landing">{facts.houses} · reading {live.progress.done} of {live.progress.total}</span> : <>{facts.houses}</>}
+              {failed ? '—' : live.progress ? <span className="text-textSecondary" title="The rest of the houses are still landing">{facts.houses.toLocaleString('en-US')} · reading {live.progress.done} of {live.progress.total}</span> : <>{facts.houses.toLocaleString('en-US')}</>}
             </dd>
           </div>
           <div>
@@ -291,7 +291,7 @@ export const Institutions = () => {
       <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-institutions-sentence>
         {facts.lead ? (
           <>
-            <span className="text-textPrimary font-semibold">{facts.lead.name}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
+            <span className="text-textPrimary font-semibold">{facts.lead.name}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses.toLocaleString('en-US')} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines.toLocaleString('en-US')} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
           </>
         ) : live.status === 'loading' ? (
           'Reading the 13Fs.'

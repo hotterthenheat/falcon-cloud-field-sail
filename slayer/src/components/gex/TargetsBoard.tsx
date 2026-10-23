@@ -63,7 +63,8 @@ import JingleBell from '../ui/JingleBell';
 import { heatLaneColor } from './heatmap';
 import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import { AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
-import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, weakestLabel, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, closeLeanWords, nearestWallLabel, targetName, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { LONG_GAMMA, SHORT_GAMMA } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import { chanceLabel, holdLabel, holdShort, pathFlowWords, pathLean } from '../../data/wall';
 import { GLOSSARY, kindTip } from './glossary';
@@ -89,7 +90,9 @@ const WINDOW_OPTIONS: DropdownOption<number>[] = STRIKE_WINDOWS.map(w => ({ valu
 type Kind = 'named' | 'shelf' | 'trapdoor' | 'thin';
 /* A WALL % ONLY ON A WALL (the audit's M3: "Wall 5%" on the 764 trapdoor — a named level with negative weight read as
    'named'): a role names the strike, but only a strike that absorbs (dealers long gamma) carries a size */
-const kindOf = (t: Target): Kind => (t.isShelf ? (t.role ? 'named' : 'shelf') : t.isWall ? 'thin' : 'trapdoor');
+/* A STRIKE WITH ALMOST NO NET IS THIN, NOT A TRAPDOOR (the retail test, 2026-10-23: 774 TRAPDOOR on −$0.7M) — the
+   tag follows the strike's own net sign on the Levels card's contracts, and a near-zero net is neither */
+const kindOf = (t: Target): Kind => (t.isShelf ? (t.role ? 'named' : 'shelf') : t.isWall || t.flat ? 'thin' : 'trapdoor');
 /** What a strike that is not a wall does, in the cell's few words */
 const notWallWords = (t: Target) => (t.role === 'put wall' ? 'short gamma — a break can accelerate' : 'pushes the move along');
 
@@ -107,11 +110,18 @@ const HoldBeam = ({ t, w = 52, h = 6 }: { t: Target; w?: number | string; h?: nu
   );
 };
 
+/* EVERY LEVEL THE STRIKE IS, IN THE ONE ORDER (the retail test, 2026-10-23: 769 read PUT WALL here and SUPREME on the
+   Map): supreme · call wall · put wall, then shelf or trapdoor when it is none of them */
 const Tags = ({ t, yours }: { t: Target; yours?: string }) => (
   <>
-    {(t.role || kindOf(t) !== 'thin') && (
-      <span className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: t.role ? ROLE_INK[t.role] : t.isShelf ? 'rgb(var(--text-muted))' : WARM }} title={kindTip(t.role ?? (t.isShelf ? 'shelf' : 'trapdoor'))}>
-        {t.role ?? (t.isShelf ? 'shelf' : 'trapdoor')}
+    {t.roles.map(r => (
+      <span key={r} className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: ROLE_INK[r] }} title={kindTip(r)}>
+        {r}
+      </span>
+    ))}
+    {!t.roles.length && kindOf(t) !== 'thin' && (
+      <span className="text-[8px] uppercase tracking-widest whitespace-nowrap" style={{ color: t.isShelf ? 'rgb(var(--text-muted))' : WARM }} title={kindTip(t.isShelf ? 'shelf' : 'trapdoor')}>
+        {t.isShelf ? 'shelf' : 'trapdoor'}
       </span>
     )}
     {t.pin && <span className="text-[8px] uppercase tracking-widest text-textMuted">pin</span>}
@@ -394,9 +404,9 @@ const COLS: Record<TargetsDensity, { template: string; min: number; span: string
   /* # · strike · from spot · reached · holds · if it breaks · built · at stake · why · actions */
   full: { template: AGENDA_COLUMNS, min: AGENDA_MIN_W, span: 'col-span-10' },
   /* # · strike · from spot · reached · holds · at stake · actions */
-  compact: { template: '32px 140px 64px 64px 96px 120px 120px', min: 712, span: 'col-span-7' },
+  compact: { template: '32px 160px 64px 64px 104px 120px 120px', min: 740, span: 'col-span-7' },
   /* strike · reached · holds · actions */
-  tight: { template: 'minmax(92px,120px) 48px 84px minmax(52px,1fr)', min: 300, span: 'col-span-4' },
+  tight: { template: 'minmax(92px,128px) 48px 92px minmax(52px,1fr)', min: 316, span: 'col-span-4' },
 };
 
 interface Props {
@@ -499,14 +509,14 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The smallest wall price is likely to reach, sized against the biggest wall on this ticker (when only one wall is in reach, that one)">{weakestLabel(agenda)}</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: SILVER }}>
-              {agenda.weakestWall ? (agenda.wallsInReach === 1 ? `${fmtStrike(agenda.weakestWall.strike)} · the only one` : `${fmtStrike(agenda.weakestWall.strike)} · ${holdLabel(agenda.weakestWall.hold)}`) : '—'}
+            <dt className="text-[10px] text-textMuted cursor-help" title="The nearest wall price is likely to reach (a 15% chance or more) — a named call or put wall or a shelf, either side of price — with every level it is. The table below tags the same strikes">{nearestWallLabel(agenda)}</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: agenda.nearestWall?.roles[0] ? ROLE_INK[agenda.nearestWall.roles[0]] : SILVER }} data-nearest-wall>
+              {agenda.nearestWall ? targetName(agenda.nearestWall) : 'none in reach'}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The strike the close is most likely to land on, and the chance">The close leans to</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.closesNear ? `${fmtStrike(agenda.closesNear.strike)} · ${agenda.closesNear.odds.toFixed(0)}%` : '—'}</dd>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike the close is most likely to land on, and the chance — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>The close leans to</dt>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${agenda.closesNear ? 'text-textPrimary' : 'text-textMuted'}`} data-close-lean>{closeLeanWords(agenda)}</dd>
           </div>
         </dl>
       </div>
@@ -547,10 +557,10 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       <div className={`${pad} pb-2 overflow-x-auto`} data-targets-rows onPointerLeave={() => setHover(null)}>
         <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: cols.template, minWidth: cols.min }}>
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
-          {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
+          {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price')}
           {headCell(clock.inSession ? 'Reached' : 'Reached next', true, 'whitespace-nowrap', clock.inSession ? 'The chance price touches this strike before the close' : 'The chance price touches this strike next session')}
-          {headCell('Wall size', true, '', "How big the hedging here is next to the biggest wall on this ticker's own chain (that one is 100%). A dash: too thin to be a wall. It is size, not the chance price turns here")}
+          {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
           {full && headCell(agenda.targets[0]?.buildOvernight ? 'Built overnight' : clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', agenda.targets[0]?.buildOvernight ? "Hedging added (building) or taken off (draining) at this strike in yesterday's trading — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma" : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
           {wide && headCell('At stake', false, '', 'The dollars of dealer hedging that come into play if price reaches this strike')}
@@ -582,9 +592,12 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                   </div>
                 )}
                 <div className="text-right font-mono text-[11px] tnum text-textPrimary">{pct(t.reach)}</div>
-                <div className="flex items-center justify-end gap-2 font-mono text-[11px] tnum font-semibold" style={{ color: t.isShelf ? SILVER : kindOf(t) === 'trapdoor' ? WARM : 'rgb(var(--text-muted))' }}>
-                  {t.isShelf ? holdShort(t.hold) : '—'}
-                  <HoldBeam t={t} w={wide ? 52 : 36} />
+                {/* THE COLUMN SAYS SOMETHING ON EVERY ROW (the retail test, 2026-10-23: "—" on every row but 770): the strike's
+                    own net gamma, signed and in the one gamma ink, the wall's share of the top wall as its bar */}
+                <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-[11px] tnum font-semibold" style={{ color: t.flat ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `${holdShort(t.hold)} of the top wall` : undefined} data-target-net={Math.round(t.net)}>
+                  {t.net > 0 ? '+' : t.net < 0 ? '−' : ''}
+                  {fmtDollars(Math.abs(t.net))}
+                  {wide && <HoldBeam t={t} w={28} />}
                 </div>
                 {full && <div className="font-mono text-[10px] leading-[13px] tnum line-clamp-2">{breakWords(t)}</div>}
                 {full && <div className={`font-mono text-[10px] leading-[13px] tnum line-clamp-2 ${material ? 'text-textPrimary' : 'text-textMuted'}`}>{buildWords(t, clock.inSession)}</div>}
@@ -608,8 +621,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
       {card && cardTarget && <RowCard t={cardTarget} at={card} inSession={clock.inSession} onClose={() => setCard(null)} />}
       <p className={`${pad} pb-4 pt-2 text-[12px] leading-relaxed text-textSecondary`} data-targets-foot>
         {lead ? `${fmtStrike(lead.strike)} is ${reachedWord} ${pct(lead.reach)} of the time. ` : ''}
-        {agenda.weakestWall ? (agenda.wallsInReach === 1 ? `The only wall in reach is ${fmtStrike(agenda.weakestWall.strike)}. ` : `The smallest wall in reach is ${fmtStrike(agenda.weakestWall.strike)}, at ${holdLabel(agenda.weakestWall.hold)}. `) : ''}
-        {agenda.closesNear ? `The close leans to ${fmtStrike(agenda.closesNear.strike)} at ${agenda.closesNear.odds.toFixed(0)}%.` : ''}
+        {agenda.nearestWall ? `${agenda.wallsInReach === 1 ? 'The only wall in reach is' : 'The nearest wall in reach is'} ${targetName(agenda.nearestWall)}. ` : ''}
+        {agenda.closesNear ? `The close leans to ${fmtStrike(agenda.closesNear.strike)} at ${agenda.closesNear.odds.toFixed(0)}%.` : agenda.closeTop ? 'The close has no clear lean — no single strike is likely enough.' : ''}
       </p>
     </section>
   );

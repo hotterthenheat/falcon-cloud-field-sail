@@ -144,7 +144,7 @@ export const HouseFile = () => {
       { headerName: 'Side', field: 'book', width: 84, valueFormatter: p => (p.value === 'stock' ? (p.data?.security ?? 'Shares') : p.value === 'calls' ? 'Call' : 'Put'), headerTooltip: 'Call, put, or the shares. The filing does not name a strike or an expiry.' },
       { headerName: 'Change', field: 'status', width: 92, cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${STATUS_INK[data.status]}`}>{positionWord(data.status)}</span> : null), headerTooltip: 'Against the house\'s prior 13F: new, added (2% more units or over), cut (2% fewer or over), sold out, or held (within 2% either way — NVDA +1.6% reads held)' },
       { headerName: 'Units', field: 'sharesM', width: 96, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}M`, headerTooltip: 'Shares the house reported holding (for a call or put line, the shares the options cover), millions' },
-      { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : ''}{data.unitsChangeM.toFixed(1)}M</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
+      { headerName: 'Units Δ', field: 'unitsChangeM', width: 100, type: 'rightAligned', cellRenderer: ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.unitsChangeM)}`}>{data.unitsChangeM > 0 ? '+' : data.unitsChangeM < 0 ? '−' : ''}{Math.abs(data.unitsChangeM).toFixed(1)}M</span> : null), headerTooltip: 'Change in units since the house\'s prior 13F' },
       { headerName: 'Value', field: 'valueB', width: 96, type: 'rightAligned', valueFormatter: p => moneyB(Number(p.value)), headerTooltip: 'The line\'s market value on the filing' },
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: 'Unusual Whales\' estimate of the average price the house paid' },
       { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales\' perc_of_share_value) — over the whole filing, not only the lines read here' },
@@ -220,7 +220,7 @@ export const HouseFile = () => {
               </span>
               <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
                 <span className="text-[13px] font-bold text-textPrimary">{moneyB(r.valueB)}</span>
-                <span className={`text-[9px] ${ink(r.unitsChangeM)}`}>{r.unitsChangeM > 0 ? '+' : ''}{r.unitsChangeM.toFixed(1)}M</span>
+                <span className={`text-[9px] ${ink(r.unitsChangeM)}`}>{r.unitsChangeM > 0 ? '+' : r.unitsChangeM < 0 ? '−' : ''}{Math.abs(r.unitsChangeM).toFixed(1)}M</span>
               </span>
             </button>
           ))}
@@ -377,7 +377,7 @@ export const ShortFile = () => {
         {lead ? (
           <>
             {' '}
-            <span className="text-textPrimary font-semibold">{lead.exchange}</span> printed the heaviest short volume, {lead.ratio.toFixed(0)}% of that market.
+            <span className="text-textPrimary font-semibold">{lead.exchange}</span> printed the heaviest short volume{row.exchangesDate ? ` on ${asOfDay(row.exchangesDate)}` : ''}, {lead.ratio.toFixed(0)}% of that market{row.exchangesDate && row.shortVolDate && row.exchangesDate !== row.shortVolDate ? ` — the by-market figures are a session behind the ${row.shortVolRatio != null ? `${row.shortVolRatio.toFixed(0)}% ` : ''}short volume of ${asOfDay(row.shortVolDate)}` : ''}.
           </>
         ) : null}
       </p>
@@ -399,7 +399,7 @@ export const ShortFile = () => {
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="short-know">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The markets to know</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">where the short volume printed · click one to keep the grid to it</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">where the short volume printed{row.exchangesDate ? ` on ${asOfDay(row.exchangesDate)}` : ''} · click one to keep the grid to it</span>
         </div>
         <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
           {toKnow.map(e => (
@@ -432,7 +432,7 @@ export const ShortFile = () => {
       </>
       ) : null}
       <ShortHistory ticker={t} />
-      {row.ftdDays.length > 0 ? <Board title="Fails to deliver" rest="The day, the shares that failed, and the close" testId="short-ftd" rows={row.ftdDays.map(d => ({ id: d.date, date: d.date, quantity: d.quantity, price: d.price }))} cols={FTD_COLS} /> : null}
+      {row.ftdDays.length > 0 ? <Board title="Fails to deliver" rest={`The day, the shares that failed, and the close · newest first, the latest on file ${asOfDay(row.ftdDays[0]?.date)} (the SEC publishes fails about two weeks late)`} testId="short-ftd" rows={row.ftdDays.map(d => ({ id: d.date, date: d.date, quantity: d.quantity, price: d.price }))} cols={FTD_COLS} /> : null}
     </Page>
     </>
   );
@@ -535,7 +535,7 @@ export const FundFile = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">${fund.aumB.toFixed(0)}B</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(fund.aumB)}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Fee")}>Fee</dt>
@@ -710,6 +710,7 @@ const TYPE_OPTIONS: DropdownOption<TypePick>[] = [
 const OWNER_FILE_OPTIONS: DropdownOption<OwnerPick>[] = [
   { value: 'any', label: 'Any owner', short: 'All', hint: 'Self, spouse, joint or a dependent' },
   { value: 'Self', label: 'Self', hint: "The member's own holding" },
+  { value: 'Undisclosed', label: 'Not stated', hint: 'The filing does not say whose holding it is' },
   { value: 'Spouse', label: 'Spouse', hint: "The spouse's holding" },
   { value: 'Joint', label: 'Joint', hint: 'A joint account' },
   { value: 'Dependent', label: 'Dependent', hint: "A dependent's holding" },

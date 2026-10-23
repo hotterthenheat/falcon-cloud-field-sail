@@ -10,7 +10,7 @@ import { vendorFault, type FeedFault } from '../components/ui/liveRead';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
 import { isoDate, isTradingDay, sessionsBetween } from '../core/calendar';
-import { nyParts } from '../core/nyTime';
+import { nyParts, nyWallTime } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
 
 const POLL_MS = 4_000;
@@ -53,7 +53,7 @@ function rowsOf(data: unknown): Record<string, unknown>[] {
    that keep trading to 16:15 (SPX, NDX, RUT, VIX, XSP and SPY, QQQ, IWM, DIA…) — the re-audit, 2026-10-22: SPY's panes cut
    at 16:00 read net puts +$6.90M against a day of +$17.27M. Before 09:30 is pre-market, after the close is after hours,
    and a closed day is closed. */
-const LATE_CLOSE = new Set(['SPX', 'SPXW', 'NDX', 'NDXP', 'XSP', 'RUT', 'RUTW', 'MRUT', 'VIX', 'VIXW', 'XND', 'DJX', 'OEX', 'XEO', 'SPY', 'QQQ', 'IWM', 'DIA', 'MDY', 'EEM', 'EFA', 'GLD', 'SLV', 'TLT', 'XLE', 'XLF', 'XLK', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'SMH']);
+const LATE_CLOSE = new Set(['SPX', 'SPXW', 'NDX', 'NDXP', 'XSP', 'RUT', 'RUTW', 'MRUT', 'VIX', 'VIXW', 'XND', 'DJX', 'OEX', 'XEO', 'SPY', 'QQQ', 'IWM', 'DIA', 'MDY', 'EEM', 'EFA', 'GLD', 'SLV', 'TLT', 'XLE', 'XLF', 'XLK', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'SMH', 'SOXX', 'SOXL', 'IBIT', 'KRE', 'KWEB', 'FXI', 'EWZ', 'EWY', 'UNG', 'UVXY', 'UVIX', 'HYG', 'LQD', 'GDX', 'XBI', 'USO', 'TQQQ', 'SQQQ']);
 export const SESSION_OPEN = 570;
 /** New York minute the regular session ends for this name's options — 16:15 for the late-closing index and ETF options */
 export function sessionEndMin(ticker?: string | null): number {
@@ -73,6 +73,42 @@ export function sessionPhase(at: Date = new Date()): SessionPhase {
   return 'closed';
 }
 
+/** THE MARKET'S CLOCK, BY INSTRUMENT (the third audit, 2026-10-22: from 16:00 to 16:15 the badge said "After hours" while
+    SPX, SPY and QQQ options were still in their regular session). 'late' is 16:00–16:15 on a session day: stock options
+    have closed, the index and ETF options that keep trading to 16:15 have not. */
+export type MarketPhase = SessionPhase | 'late';
+export function marketPhase(at: Date = new Date()): MarketPhase {
+  const ph = sessionPhase(at);
+  if (ph !== 'after') return ph;
+  const p = nyParts(at);
+  return p.hour * 60 + p.minute < 975 ? 'late' : 'after';
+}
+/** Where one name's options stand: in the regular session until its own close (16:00, or 16:15 for the late closers) */
+export function sessionPhaseFor(ticker: string | null | undefined, at: Date = new Date()): SessionPhase {
+  const ph = marketPhase(at);
+  if (ph !== 'late') return ph;
+  return sessionEndMin(ticker) === 975 ? 'regular' : 'after';
+}
+
+/** THE LAST REGULAR SESSION THAT HAS ENDED — its New York day and the instant of its 16:15 close (the last options to
+    close) — or null while one is still running (09:30–16:15 on a session day). After the close, before the open and on a
+    closed day, the Trace pages that read "the regular session" read this one (the third audit: after the close the Live
+    Tape and the dark pool showed only after-hours prints under a "Regular" session card). */
+export function lastRegularClose(at: Date = new Date()): { iso: string; closeMs: number; openMs: number } | null {
+  const p = nyParts(at);
+  const m = p.hour * 60 + p.minute;
+  const d = new Date(p.year, p.month - 1, p.day);
+  if (isTradingDay(d) && m >= SESSION_OPEN && m < 975) return null;
+  if (!(isTradingDay(d) && m >= 975)) {
+    d.setDate(d.getDate() - 1);
+    for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
+  }
+  const y = d.getFullYear();
+  const mo = d.getMonth() + 1;
+  const da = d.getDate();
+  return { iso: isoDate(d), closeMs: nyWallTime(y, mo, da, 16, 15), openMs: nyWallTime(y, mo, da, 9, 30) };
+}
+
 /** A Trace figure in money with a real minus sign ("−$4.2K", never "-$4.2K") */
 export const usd = (v: number): string => {
   const a = Math.abs(v);
@@ -89,7 +125,13 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocal
 /** THE DAY'S SIDES, ALL THREE (the re-audit, 2026-10-22: QQQ 725C read "ask" on 166 at the ask against 128 on the bid
     while 38,000 of its 38,304 contracts were a no-side cross). Shares of the WHOLE day's volume — at the ask, on the bid,
     and at the mid or with no side — and a lean only where one is real: at least half the day traded on a side, and
-    that side carried 58% or more of the sided volume. */
+    that side carried LEAN_EDGE (55%) or more of the sided volume.
+    ONE RULE ACROSS TRACE (the third audit, 2026-10-22: the card's anchor used 55/45 of ask ÷ (ask + bid) ignoring the
+    mid, the Lean cell 58/42 with an "unsided" rule, the Tracker a ±6 band): every lean on Trace — the Lean cell, the
+    Screener's words, the Tracker, Compare, the card — is this function. It reads CONTRACTS by side, because that is what
+    the vendor carries per contract (the screener has no premium by side); a name's net premium is a separate figure and
+    says so where it is drawn. */
+export const LEAN_EDGE = 55;
 export interface DayLean {
   ask: number;
   bid: number;
@@ -101,15 +143,32 @@ export function dayLean(r: { askPct: number; volume: number; sideVol?: { ask: nu
   if (!sv) {
     const a = Number.isFinite(r.askPct) ? r.askPct : NaN;
     if (!Number.isFinite(a)) return { ask: NaN, bid: NaN, mid: NaN, lean: 'UNSIDED' };
-    return { ask: a, bid: 100 - a, mid: 0, lean: a >= 58 ? 'ASK' : a <= 42 ? 'BID' : 'EVEN' };
+    return { ask: a, bid: 100 - a, mid: 0, lean: a >= LEAN_EDGE ? 'ASK' : a <= 100 - LEAN_EDGE ? 'BID' : 'EVEN' };
   }
   const total = sv.ask + sv.bid + sv.mid;
   if (!(total > 0)) return { ask: NaN, bid: NaN, mid: NaN, lean: 'UNSIDED' };
   const pc = (v: number) => (v / total) * 100;
   const sided = sv.ask + sv.bid;
   const askOfSided = sided > 0 ? sv.ask / sided : 0.5;
-  const lean: DayLean['lean'] = sided < total * 0.5 ? 'UNSIDED' : askOfSided >= 0.58 ? 'ASK' : askOfSided <= 0.42 ? 'BID' : 'EVEN';
+  const lean: DayLean['lean'] = sided < total * 0.5 ? 'UNSIDED' : askOfSided >= LEAN_EDGE / 100 ? 'ASK' : askOfSided <= 1 - LEAN_EDGE / 100 ? 'BID' : 'EVEN';
   return { ask: pc(sv.ask), bid: pc(sv.bid), mid: pc(sv.mid), lean };
+}
+
+/** Whole-percent shares of a three-way split that always sum to 100 (largest remainder) — one rounding for every side
+    figure on a card (the third audit: "bid 44%" in one place, "BID 43%" in the bar) */
+export function sideShares(bid: number, mid: number, ask: number): { bid: number; mid: number; ask: number } {
+  const total = bid + mid + ask;
+  if (!(total > 0)) return { bid: 0, mid: 0, ask: 0 };
+  const raw = [bid, mid, ask].map(v => (v / total) * 100);
+  const fl = raw.map(Math.floor);
+  let left = 100 - fl.reduce((a, b) => a + b, 0);
+  const order = raw.map((v, i) => ({ i, r: v - Math.floor(v) })).sort((a, b) => b.r - a.r);
+  for (const o of order) {
+    if (left <= 0) break;
+    fl[o.i]++;
+    left--;
+  }
+  return { bid: fl[0], mid: fl[1], ask: fl[2] };
 }
 
 export function nyIsoToday(): string {
@@ -236,15 +295,31 @@ export function sideOfTags(tags: unknown, price: number, bid: number, ask: numbe
    ML?T / TL?T and the ?ESL / ?ASL / ?FSL family are legs of a multi-leg order. `stock_multi_vol` / `multi_vol` are the
    CONTRACT's day volumes, never this print's kind (the audit, 2026-10-22: reading them made every print on a contract
    that had ever traded in a spread a "×2 legs · CUSTOM"). */
-export function printCondition(row: Record<string, unknown>): { multi: boolean; sweep: boolean; floor: boolean } {
+/* COMPRESSION IS NOT A BET (the third audit, 2026-10-22: "Largest in window SPX 7000C bought · $642.0M" was one OPRA
+   `cbmo` print, paired in the same millisecond with an SPX 8000P sold, and 154 such prints — $2.69B — drove "bullish
+   premium leads by $2.0B"). OPRA's CBMO is a multi-leg floor trade of proprietary products and MCTP a multilateral
+   compression trade of proprietary products: SPX/XSP packages that net open interest down between members (conversions,
+   reversals, boxes — a call bought against a put sold at one strike), whatever side each leg prints on. UW's own
+   `arbitrage` tag marks the same kind of package. These carry no direction: they are labelled, counted on their own,
+   and kept out of every bullish/bearish total, the largest/top-bull/top-bear facts and the sentiment. (The vendor's
+   `futures_floor` flag rides on EVERY floor trade — slft, mlft, mfsl, tlft as well as cbmo, 1,713 of the 2,000 newest
+   $1M prints — so it alone is not compression; the condition code is.) */
+const COMPRESSION_CODES = new Set(['cbmo', 'mctp']);
+export function printCondition(row: Record<string, unknown>): { multi: boolean; sweep: boolean; floor: boolean; compression: boolean } {
   const cond = String(row.upstream_condition_detail || '').toLowerCase();
   const flags = (Array.isArray(row.report_flags) ? row.report_flags.map(String) : [String(row.report_flags || '')]).join(' ');
+  const tags = Array.isArray(row.tags) ? row.tags.map(String) : [];
   return {
-    multi: /^(ml|tl)[aecf]t$|^[mt][aecf]sl$/.test(cond) || /multi/i.test(flags),
+    multi: /^(ml|tl)[aecf]t$|^[mt][aecf]sl$/.test(cond) || cond === 'cbmo' || /multi/i.test(flags),
     sweep: cond === 'isoi' || /sweep/i.test(flags),
     floor: /floor/i.test(flags) || /^(ml|tl)ft$|^[mt]fsl$/.test(cond),
+    compression: COMPRESSION_CODES.has(cond) || tags.includes('arbitrage'),
   };
 }
+
+/** A cancelled print never traded (the third audit, 2026-10-22: 14 of 2,000 prints, $68.4M, sat on the Live Tape and in
+    every total — SPXW 270930P 8125 37 × $560.81 = $2.07M read "PAID OFFER"). Every option-trade route goes through here. */
+export const liveTrades = (rows: Record<string, unknown>[]) => rows.filter(r => r.canceled !== true && r.canceled !== 'true');
 
 /* ---- the index level (SPX, NDX, XSP, RUT, VIX) -------------------------------------------------------------------
    The vendor sends no underlying price on a CBOE index's prints (`underlying_price: null`, "missing_periscope") and
@@ -315,6 +390,7 @@ const spotIsIndexLevel = (row: Record<string, unknown>, ticker: string) => !(num
 function extendedOf(row: Record<string, unknown>): boolean {
   const flags = Array.isArray(row.report_flags) ? row.report_flags.map(String) : [String(row.report_flags || '')];
   if (flags.some(f => /extended/i.test(f))) return true;
+  if (String(row.upstream_condition_detail || '').toLowerCase() === 'exht') return true;
   const th = String(row.trading_hours || '').toLowerCase();
   return th !== '' && th !== 'rth' && th !== 'regular';
 }
@@ -332,7 +408,12 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const side = sideOfTags(row.tags, fill, bid, ask);
   /* the vendor's flag, else the clock: a fill outside the name's regular session (09:30 to 16:00, 16:15 for the index
      and ETF options) is an extended-hours print whether or not it came flagged (a HIVE call at 17:11:50 did not) */
-  const extended = extendedOf(row) || (when.minute > 0 && (when.minute < SESSION_OPEN || when.minute >= sessionEndMin(ticker)));
+  /* BY THE PRINT, NOT THE WALL CLOCK (the third audit): between 16:00 and 16:15 the vendor's own flag decides — SPY, QQQ,
+     SOXL or IBIT options at 16:14 are regular-session prints, a stock's are flagged extended_hours; before 09:30 and from
+     16:15 nothing is regular */
+  const flagged = Array.isArray(row.report_flags) || row.trading_hours != null;
+  const m = when.minute;
+  const extended = extendedOf(row) || (m > 0 && (m < SESSION_OPEN || m >= 975 || (!flagged && m >= sessionEndMin(ticker))));
   const spread = ask > bid ? ask - bid : 0;
   const fillPos = spread > 0 ? Math.min(1, Math.max(0, (fill - bid) / spread)) : side === 'ASK' ? 1 : side === 'BID' ? 0 : 0.5;
   const size = num(row.size);
@@ -343,7 +424,7 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const askVol = num(row.ask_vol);
   const bidVol = num(row.bid_vol);
   const volSum = askVol + bidVol;
-  const { multi, sweep } = printCondition(row);
+  const { multi, sweep, compression } = printCondition(row);
   const idRaw = String(row.id || `${ticker}-${when.epoch}-${i}`);
   return {
     id: hashId(idRaw),
@@ -384,6 +465,7 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     extended: extended || undefined,
     theta: row.theta != null && row.theta !== '' ? num(row.theta) : undefined,
     daySide: row.ask_vol != null || row.bid_vol != null ? { ask: askVol, bid: bidVol, mid: num(row.mid_vol) + num(row.no_side_vol) } : undefined,
+    compression: compression || undefined,
   };
 }
 
@@ -450,7 +532,7 @@ async function mapWithIndex<T>(rows: Record<string, unknown>[], fn: (r: Record<s
 }
 
 export function useOptionTape(limit = 200): LivePack<FlowPrint[]> {
-  return useLive(`tape:${limit}`, async () => mapWithIndex(await getRows(`/option-trades?limit=${limit}`), tradeToPrint), []);
+  return useLive(`tape:${limit}`, async () => mapWithIndex(liveTrades(await getRows(`/option-trades?limit=${limit}`)), tradeToPrint), []);
 }
 
 /* ONE NAME'S TAPE AND STRUCTURES (Trace › Compare, 2026-10-22): the market-wide windows are the market's latest prints
@@ -458,7 +540,7 @@ export function useOptionTape(limit = 200): LivePack<FlowPrint[]> {
    ticker_symbol filter on the same routes. */
 export function useNameTape(ticker: string | null, limit = 200): LivePack<FlowPrint[]> {
   const name = (ticker || '').trim().toUpperCase();
-  return useLive(name ? `tape:${name}:${limit}` : 'tape:name:off', async () => mapWithIndex(await getRows(`/option-trades?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`), tradeToPrint), [], !!name);
+  return useLive(name ? `tape:${name}:${limit}` : 'tape:name:off', async () => mapWithIndex(liveTrades(await getRows(`/option-trades?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)), tradeToPrint), [], !!name);
 }
 
 export function useNameSpreads(ticker: string | null, limit = 80): LivePack<SpreadTrade[]> {
@@ -490,7 +572,8 @@ export function useContractLast(occ: string | null | undefined): LivePack<Contra
   return useLive(
     sym ? `last:${sym}` : 'last:off',
     async () => {
-      const rows = await getRows(`/option-contract/${encodeURIComponent(sym)}/flow?limit=1`);
+      /* a few back, so a cancelled newest print gives way to the real last trade */
+      const rows = liveTrades(await getRows(`/option-contract/${encodeURIComponent(sym)}/flow?limit=5`));
       const r = rows[0];
       if (!r) return null;
       const side = sideOfTags(r.tags, num(r.price), num(r.nbbo_bid), num(r.nbbo_ask));
@@ -609,8 +692,15 @@ export interface PrintStream extends LivePack<FlowPrint[]> {
  *    the buffer is REPLACED by the newest prints rather than left with a hole in the middle — what is held is always
  *    one unbroken stretch of the tape.
  */
-export function usePrintStream(query: TapeQuery, hold: boolean): PrintStream {
-  const key = tapeQueryString(query);
+export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs?: number | null; keep?: (p: FlowPrint) => boolean }): PrintStream {
+  /* AN ANCHOR IN THE PAST (the third audit, 2026-10-22: after the close the tape held only after-hours prints, "Window
+     16:38:05–17:11:50 ET … all after hours" under a Regular session card, and the day's session could not be reached):
+     with `untilMs` the stream walks back from that instant — the last regular-session stretch — and does not poll, since
+     nothing newer belongs to it; `keep` drops the prints that do not (a stock's 16:00–16:15 extended prints) */
+  const untilMs = opts?.untilMs ?? null;
+  const keepRef = useRef(opts?.keep);
+  keepRef.current = opts?.keep;
+  const key = `${tapeQueryString(query)}|${untilMs ?? 'live'}`;
   const [rows, setRows] = useState<FlowPrint[]>([]);
   const [at, setAt] = useState<number | null>(null);
   const [fault, setFault] = useState<FeedFault | null>(null);
@@ -637,11 +727,24 @@ export function usePrintStream(query: TapeQuery, hold: boolean): PrintStream {
     setHasOlder(true);
     setWaiting(true);
     setFault(null);
-    const page = async (cursor: { newerThan?: number; olderThan?: number }) => {
-      const got = await getRows(`/option-trades?${tapeQueryString(query, { ...cursor, limit: TAPE_PAGE })}`);
+    /* a page's FULLNESS is the vendor's row count — a cancelled print dropped from a full page must not end the walk */
+    const page = async (cursor: { newerThan?: number; olderThan?: number }): Promise<FlowPrint[] & { full?: boolean; oldest?: number }> => {
+      const capped = untilMs && (!cursor.olderThan || cursor.olderThan > untilMs) ? { ...cursor, olderThan: untilMs } : cursor;
+      const got = await getRows(`/option-trades?${tapeQueryString(query, { ...capped, limit: TAPE_PAGE })}`);
       if (stop) return [];
-      await ensureIndexLevels(got.map(tickerOfRow));
-      return got.map(tradeToPrint);
+      const live = liveTrades(got);
+      await ensureIndexLevels(live.map(tickerOfRow));
+      const keep = keepRef.current;
+      const mapped = live.map(tradeToPrint);
+      const out: FlowPrint[] & { full?: boolean; oldest?: number } = keep ? mapped.filter(keep) : mapped;
+      out.full = got.length >= TAPE_PAGE;
+      let o = 0;
+      for (const r of got) {
+        const t = Date.parse(String(r.executed_at || ''));
+        if (Number.isFinite(t) && (o === 0 || t < o)) o = t;
+      }
+      out.oldest = o;
+      return out;
     };
     /** Everything newer than `sinceMs`, newest first; `joined` false when the walk stopped short of it */
     const newerThan = async (sinceMs: number): Promise<{ batch: FlowPrint[]; joined: boolean }> => {
@@ -650,8 +753,8 @@ export function usePrintStream(query: TapeQuery, hold: boolean): PrintStream {
       for (let n = 0; n < GAP_PAGES && !stop; n++) {
         const got = await page({ newerThan: sinceMs > 0 ? sinceMs - 1 : undefined, olderThan });
         acc = dedupe(acc.concat(got));
-        if (got.length < TAPE_PAGE) return { batch: acc, joined: true };
-        const next = oldestMs(got) + 1;
+        if (!got.full) return { batch: acc, joined: true };
+        const next = (got.oldest || oldestMs(got)) + 1;
         if (!next || (olderThan != null && next >= olderThan)) break;
         olderThan = next;
       }
@@ -668,22 +771,24 @@ export function usePrintStream(query: TapeQuery, hold: boolean): PrintStream {
         setAt(Date.now());
         setFault(null);
         setWaiting(false);
-        let more = first.length >= TAPE_PAGE;
+        let more = !!first.full;
         setHasOlder(more);
-        while (more && held.length < TAPE_CAP && !stop) {
+        let cursorMs = first.oldest || oldestMs(held);
+        for (let guard = 0; more && held.length < TAPE_CAP && !stop && guard < 12; guard++) {
           setLoadingOlder(true);
-          const cursor = oldestMs(held) + 1;
-          const older = await page({ olderThan: cursor });
+          const older = await page({ olderThan: cursorMs + 1 });
           if (stop) return;
           const before = held.length;
           held = mergePrints(held, older, 'back');
           /* the rows may have gained newer prints from the poll meanwhile — the older page joins under them, and the cap
              trims from the old end, never the new */
           setRows(prev => mergePrints(prev, older, 'back'));
-          if (older.length < TAPE_PAGE || held.length === before) {
+          const nextCursor = older.oldest || cursorMs;
+          if (!older.full || (held.length === before && nextCursor >= cursorMs)) {
             more = false;
             setHasOlder(false);
           }
+          cursorMs = Math.min(cursorMs, nextCursor);
         }
         if (held.length >= TAPE_CAP) setHasOlder(true);
       } catch (e) {
@@ -698,7 +803,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean): PrintStream {
     void boot();
     let polling = false;
     const id = window.setInterval(async () => {
-      if (!newest.current || polling) return;
+      if (untilMs || !newest.current || polling) return;
       polling = true;
       try {
         const { batch, joined } = await newerThan(newest.current - LATE_MS);
@@ -748,10 +853,13 @@ export function usePrintStream(query: TapeQuery, hold: boolean): PrintStream {
     setLoadingOlder(true);
     void getRows(`/option-trades?${tapeQueryString(query, { olderThan: oldest + 1, limit: TAPE_PAGE })}`)
       .then(async got => {
-        await ensureIndexLevels(got.map(tickerOfRow));
-        const batch = got.map(tradeToPrint);
+        const live = liveTrades(got);
+        await ensureIndexLevels(live.map(tickerOfRow));
+        const keep = keepRef.current;
+        const mapped = live.map(tradeToPrint);
+        const batch = keep ? mapped.filter(keep) : mapped;
         setRows(prev => mergePrints(prev, batch, 'back'));
-        if (batch.length < TAPE_PAGE) setHasOlder(false);
+        if (got.length < TAPE_PAGE) setHasOlder(false);
         setAt(Date.now());
       })
       .catch(() => setHasOlder(false))
@@ -796,7 +904,9 @@ function intentOf(cents: number, sized: boolean): DarkPoolIntent {
     on a fill a few cents through a tight spread, which is most of this tape. */
 export function quotePlace(pct: number, price: number): { text: string; cents: number } {
   const cents = (pct / 100) * price * 100;
-  if (!Number.isFinite(cents) || Math.abs(cents) < 0.5) return { text: 'at the mid', cents: 0 };
+  /* a quarter cent, not a half (the third audit: NVDA $211.80 into 211.80 × 211.81 read "at the mid" beside "BID" — on a
+     one-cent spread the bid IS half a cent under the mid) */
+  if (!Number.isFinite(cents) || Math.abs(cents) < 0.25) return { text: 'at the mid', cents: 0 };
   if (Math.abs(pct) < 0.1) {
     const abs = Math.abs(cents);
     const n = abs >= 10 ? String(Math.round(abs)) : (Math.round(abs * 10) / 10).toFixed(1).replace(/\.0$/, '');
@@ -838,6 +948,8 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const extended = row.ext_hour_sold_codes != null && row.ext_hour_sold_codes !== '';
   const placeCents = quotePlace(vs, price).cents;
   const intent = special || extended ? 'ROTATION' : intentOf(placeCents, sized);
+  /* an after-hours print's place in a thin post-market quote is shown in plain ink, never as a side (the third audit:
+     after-hours BID red / ASK green) — `exec` still says where it sat, the page draws it neutral */
   const exec = special ? null : execOf(price, bid, ask);
   const when = clock(row.executed_at);
   /* the vendor's tracking_id is NOT unique — distinct prints (other sizes, other cumulative volumes) share one — so the
@@ -898,10 +1010,16 @@ export function darkLevels(rows: Record<string, unknown>[], spot: number, prints
     .filter(l => l.price > 0 && l.notional > 0)
     .sort((a, b) => b.notional - a.notional);
   const sum = raw.reduce((a, l) => a + l.notional, 0) || 1;
-  /* A dollar bucket within a third of a percent of the market is the pivot.
-     Anything further is support or resistance. The feed hands back every
-     dollar that printed (META is ~30). Two of each role is the shelf — the
-     heaviest — not a fence of the same word. */
+  /* A price level within a third of a percent of the market is the pivot.
+     Anything further is support or resistance. The feed hands back its own
+     price levels — not whole dollars: NVDA's ran 211, 211.75, 212, 212.75 —
+     every one that printed. Two of each role is the shelf — the heaviest —
+     not a fence of the same word, and A SHELF HAS WEIGHT AND IS NEAR (the
+     third audit, 2026-10-22: a $24.0K level 5.7% under the market stood as
+     one of two supports): at least SHELF_MIN_SHARE of the day's dark dollars,
+     within SHELF_MAX_DIST of the market. */
+  const SHELF_MIN_SHARE = 3;
+  const SHELF_MAX_DIST = 5;
   const leveled = raw.map(l => {
     const dist = spot > 0 ? ((l.price - spot) / spot) * 100 : 0;
     const role: LevelRole = Math.abs(dist) <= 0.35 ? 'PIVOT' : dist < 0 ? 'SUPPORT' : 'RESISTANCE';
@@ -911,17 +1029,16 @@ export function darkLevels(rows: Record<string, unknown>[], spot: number, prints
       prints: l.prints,
       sharePct: (l.notional / sum) * 100,
       role,
-      defended: 0,
       distPct: dist,
       usage: role === 'SUPPORT' ? 'Rested under the market.' : role === 'RESISTANCE' ? 'Rested over the market.' : 'Rested at the market.',
     };
   });
-  const take = (role: LevelRole) => leveled.filter(l => l.role === role).slice(0, 2);
+  const take = (role: LevelRole) => leveled.filter(l => l.role === role && l.sharePct >= SHELF_MIN_SHARE && (!(spot > 0) || Math.abs(l.distPct) <= SHELF_MAX_DIST)).slice(0, 2);
   return [...take('SUPPORT'), ...take('RESISTANCE'), ...take('PIVOT')];
 }
 
 /** The posture of the sized, read prints — their dollars over the mid (bought up) against under it (sold down) */
-export function postureOf(prints: DarkPoolPrint[]): { posture: Posture; net: number; note: string } {
+export function postureOf(prints: DarkPoolPrint[]): { posture: Posture; net: number; note: string; read: number } {
   const read = prints.filter(p => p.sized && !p.extended && !p.special);
   const acc = read.reduce((a, p) => a + (p.intent === 'ACCUMULATION' ? p.notional : 0), 0);
   const dist = read.reduce((a, p) => a + (p.intent === 'DISTRIBUTION' ? p.notional : 0), 0);
@@ -938,7 +1055,8 @@ export function postureOf(prints: DarkPoolPrint[]): { posture: Posture; net: num
         : read.length
           ? 'Sized dollars sit on both sides of the mid.'
           : 'No sized print in the regular session to read.';
-  return { posture, net, note };
+  /* `read` — how many prints carried a read: none is "nothing to read", never "Balanced" (the third audit) */
+  return { posture, net, note, read: read.length };
 }
 
 export function darkView(ticker: string, prints: DarkPoolPrint[], levels: DarkPoolLevel[], spot: number, dpSharePct = 0): DarkPoolView {
@@ -1008,6 +1126,66 @@ export function useAccumTape(kind: 'dark' | 'lit', limit: number): LivePack<Dark
   return { rows, at, fault, waiting: waiting && rows.length === 0 };
 }
 
+/** THE STOCK SESSION THAT HAS ENDED — a dark or lit print is an equity print, and the equity session closes at 16:00 —
+    or null while it runs (09:30–16:00 on a session day) */
+export function lastStockClose(at: Date = new Date()): { iso: string; closeMs: number; openMs: number } | null {
+  const p = nyParts(at);
+  const m = p.hour * 60 + p.minute;
+  const d = new Date(p.year, p.month - 1, p.day);
+  if (isTradingDay(d) && m >= SESSION_OPEN && m < 960) return null;
+  if (!(isTradingDay(d) && m >= 960)) {
+    d.setDate(d.getDate() - 1);
+    for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
+  }
+  return { iso: isoDate(d), closeMs: nyWallTime(d.getFullYear(), d.getMonth() + 1, d.getDate(), 16, 0), openMs: nyWallTime(d.getFullYear(), d.getMonth() + 1, d.getDate(), 9, 30) };
+}
+
+/* THE DAY'S REGULAR-SESSION CROSSES, AFTER THE CLOSE (the third audit, 2026-10-22: after the bell the market's dark tape
+   was all "NO READ · AFTER HRS" — the recent feed is newest first and has no older cursor). The recent route can order
+   a DAY by dollars: its largest crosses, walked down by max_premium (three pages of 200), the extended-hours ones left
+   for the After hours view. What it holds is the day's LARGEST regular-session crosses, and the page says so. */
+export function useDarkRegularDay(iso: string | null): LivePack<DarkPoolPrint[]> {
+  /* a closed session does not change: read once (three pages), and again only to retry a read that failed — never on the
+     4s poll, which would spend the key's three upstream slots on a fixed answer */
+  const [box, setBox] = useState<{ key: string; rows: DarkPoolPrint[]; at: number | null; fault: FeedFault | null } | null>(null);
+  useEffect(() => {
+    if (!iso) return;
+    let stop = false;
+    let timer = 0;
+    const run = async () => {
+      try {
+        const out: DarkPoolPrint[] = [];
+        let max: number | null = null;
+        for (let i = 0; i < 3; i++) {
+          const got = await getRows(`/darkpool/recent?limit=200&date=${iso}&order_by=premium&order=desc${max != null ? `&max_premium=${max}` : ''}`);
+          const live = got.filter(r => !r.canceled);
+          out.push(...live.map((r, j) => darkPrint(r, out.length + j)).filter(p => !p.extended));
+          if (got.length < 200) break;
+          const last = num(got[got.length - 1].premium);
+          if (!(last > 0) || (max != null && last >= max)) break;
+          max = Math.floor(last);
+        }
+        if (stop) return;
+        const seen = new Set<number>();
+        const rows = out.filter(p => !seen.has(p.id) && (seen.add(p.id), true)).sort((a, b) => b.time.localeCompare(a.time));
+        setBox({ key: iso, rows, at: Date.now(), fault: null });
+      } catch (e) {
+        if (stop) return;
+        const fault = vendorFault(e instanceof Error ? e.message : 'unusual whales') ?? 'failed';
+        setBox(prev => (prev && prev.key === iso && prev.rows.length ? { ...prev, fault } : { key: iso, rows: [], at: null, fault }));
+        timer = window.setTimeout(run, 20_000);
+      }
+    };
+    void run();
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
+  }, [iso]);
+  const mine = box && iso && box.key === iso ? box : null;
+  return { rows: mine?.rows ?? [], at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: !!iso && !mine };
+}
+
 /** A name's whole day off-exchange — /darkpool/{t}/price-levels: its dark shares by $1 price bucket. The day's dark
     dollars are the buckets' shares × their price (≈, to the bucket); the share is dark shares over the day's whole
     volume (/stock/{t}/quote) — the route's own "regular_volume" covers only part of the lit tape (GEV: 0.4M beside 2.2M). */
@@ -1053,16 +1231,19 @@ export function useDarkDay(ticker: string | null): LivePack<DarkDay | null> {
   );
 }
 
-export function useNameDark(ticker: string | null): LivePack<{ view: DarkPoolView | null; lit: DarkPoolPrint[]; day: DarkDay | null }> {
+export function useNameDark(ticker: string | null, untilMs: number | null = null): LivePack<{ view: DarkPoolView | null; lit: DarkPoolPrint[]; day: DarkDay | null }> {
   const name = (ticker || '').trim().toUpperCase();
+  /* with `untilMs` (the stock close, after the bell) the name's crosses are its regular session's, walked back from the
+     close — its after-hours prints are the After hours view's */
+  const cut = untilMs ? `&older_than=${untilMs}` : '';
   return useLive(
-    name ? `name-dark:${name}` : 'name-dark:off',
+    name ? `name-dark:${name}:${untilMs ?? 'live'}` : 'name-dark:off',
     async () => {
       if (!name) return { view: null, lit: [] as DarkPoolPrint[], day: null };
       const [prints, levels, lit, dayVol] = await Promise.all([
-        getRows(`/darkpool/${encodeURIComponent(name)}?limit=200`),
+        getRows(`/darkpool/${encodeURIComponent(name)}?limit=200${cut}`),
         getRows(`/darkpool/${encodeURIComponent(name)}/price-levels`).catch(() => [] as Record<string, unknown>[]),
-        getRows(`/lit-flow/${encodeURIComponent(name)}?limit=200`).catch(() => [] as Record<string, unknown>[]),
+        getRows(`/lit-flow/${encodeURIComponent(name)}?limit=200${cut}`).catch(() => [] as Record<string, unknown>[]),
         dayVolumeOf(name),
       ]);
       const mapped = prints.filter(r => !r.canceled).map((r, i) => darkPrint(r, i));
@@ -1212,7 +1393,7 @@ export function useFlowAlerts(limit = 50): LivePack<FlowPrint[]> {
 }
 
 export function useAlertTrades(id: string | null): LivePack<FlowPrint[]> {
-  return useLive(id ? `alert-trades:${id}` : 'alert-trades:off', async () => mapWithIndex(await getRows(`/option-trades/flow-alerts/${encodeURIComponent(id!)}`), tradeToPrint), [], !!id);
+  return useLive(id ? `alert-trades:${id}` : 'alert-trades:off', async () => mapWithIndex(liveTrades(await getRows(`/option-trades/flow-alerts/${encodeURIComponent(id!)}`)), tradeToPrint), [], !!id);
 }
 
 /* No exchange / trade-code breakdown: /option-trades/exchange-breakdown is gated to the vendor's API Advanced plan
@@ -1423,6 +1604,12 @@ function canonicalDirs(kind: SpreadKind, legs: SpreadLeg[]): number[] | null {
     if (w1 !== w2 || b !== 2 * w1) return null;
     return legs.map(l => (l.strike === lo || l.strike === hi ? 1 : -1));
   }
+  /* a double calendar (two strikes, each on a near and a far expiry, one right, equal sizes): near one way, far the
+     other — the net's size is the same whichever way it went */
+  if (n === 4 && new Set(legs.map(l => l.right)).size === 1 && new Set(legs.map(l => l.expiry)).size === 2 && new Set(strikes).size === 2 && new Set(legs.map(l => l.contracts ?? 1)).size === 1) {
+    const far = Math.max(...legs.map(l => l.dte));
+    return legs.map(l => (l.dte === far ? 1 : -1));
+  }
   if (n === 4 && (kind === 'condor' || kind === 'butterfly')) {
     if (strikes.filter(k => k === lo).length !== 1 || strikes.filter(k => k === hi).length !== 1) return null;
     if (new Set(legs.map(l => l.contracts ?? 1)).size !== 1) return null;
@@ -1464,7 +1651,9 @@ export function describeStructure(legs: SpreadLeg[], netPremium: number, units: 
     if (wingsBought && bodySold) lead = `A long ${one} butterfly — the ${strikeWord(lo)} and ${strikeWord(hi)} wings bought, the ${strikeWord(strikes[1])} body sold`;
     else if (!wingsBought && !bodySold && legs.filter(l => l.strike === lo || l.strike === hi).every(l => l.side === 'SELL')) lead = `A short ${one} butterfly — the ${strikeWord(lo)} and ${strikeWord(hi)} wings sold, the ${strikeWord(strikes[1])} body bought`;
   }
-  const money = netPremium === 0 ? '' : ` — ${units > 1 ? `${units} units at ` : ''}$${(Math.abs(netPremium) / (Math.max(1, units) * 100)).toFixed(2)} ${netPremium > 0 ? 'debit' : 'credit'}${units > 1 ? ` (${usd(Math.abs(netPremium))} in all)` : ''}`;
+  /* THE MONEY IN WORDS, NEVER A SIGN TO DECODE (the third audit: "$3.90 credit … −$780" read as a loss) — "collected
+     $3.90 a unit ($780 in all)", "paid $29.80 a unit" */
+  const money = netPremium === 0 ? '' : ` — ${netPremium > 0 ? 'paid' : 'collected'} $${(Math.abs(netPremium) / (Math.max(1, units) * 100)).toFixed(2)}${units > 1 ? ` a unit on ${units} units (${usd(Math.abs(netPremium))} in all)` : ''}`;
   if (new Set(legs.map(l => l.expiry)).size !== 1) {
     return `${lead}${money}. Its legs run to different expiries, so what it is worth at the near one depends on the far leg's price then — no expiry payoff is drawn.`;
   }
@@ -1507,19 +1696,94 @@ export function describeStructure(legs: SpreadLeg[], netPremium: number, units: 
       : worstAt.kind === 'rises' || worstAt.kind === 'falls'
         ? `loses without a cap ${whereOf(worstAt)}`
         : `loses most (${sign(worst)}) ${whereOf(worstAt)}`;
-  /* the shape's own way first: a payoff that peaks inside its strikes is a bet on where it settles, one that troughs
-     inside them a bet on a move; only then is it a rise or a fall */
-  const way =
-    best > Math.max(deep, top) + eps
-      ? `a bet that the name settles ${bestAt.kind === 'strikes' ? (bestAt.a === bestAt.b ? `near ${strikeWord(bestAt.a!)}` : whereOf(bestAt)) : `near ${strikeWord(lo)}`}`
-      : worst < Math.min(deep, top) - eps
-        ? 'a bet on a move away, either way'
-        : top > deep + eps
-          ? 'it gains on a rise'
-          : deep > top + eps
-            ? 'it gains on a fall'
-            : 'its payoff is flat';
+  /* the shape's own way first: a payoff that peaks inside its strikes is a bet on where it settles; one that troughs
+     inside them pays on a move — but only on the side where the payoff past the wing is a GAIN (the third audit, 2026-10-22:
+     S7655P / B7705P / B7705C / S7715C read "a move away, either way" while a rise to 7715 still lost 66% of its max loss).
+     The payoff at the low wing, the high wing and the middle say which way it pays. */
+  const pctOfLoss = (v: number) => (worst < 0 ? `${Math.round((Math.abs(v) / Math.abs(worst)) * 100)}% of the max loss` : '');
+  const way = (() => {
+    if (best > Math.max(deep, top) + eps) return `a bet that the name settles ${bestAt.kind === 'strikes' ? (bestAt.a === bestAt.b ? `near ${strikeWord(bestAt.a!)}` : whereOf(bestAt)) : `near ${strikeWord(lo)}`}`;
+    if (worst < Math.min(deep, top) - eps) {
+      const downPays = deep > eps;
+      const upPays = top > eps;
+      if (downPays && upPays) return 'a bet on a move away, either way';
+      if (downPays) return `a bet on a fall — ${sign(deep)} at or below ${strikeWord(lo)}, while a rise to ${strikeWord(hi)} or beyond still loses ${usd(Math.abs(top))}${top < -eps ? ` (${pctOfLoss(top)})` : ''}`;
+      if (upPays) return `a bet on a rise — ${sign(top)} at or above ${strikeWord(hi)}, while a fall to ${strikeWord(lo)} or below still loses ${usd(Math.abs(deep))}${deep < -eps ? ` (${pctOfLoss(deep)})` : ''}`;
+      return `it loses wherever it settles at expiry — least on a ${deep > top ? 'fall' : 'rise'}`;
+    }
+    if (top > deep + eps) return 'it gains on a rise';
+    if (deep > top + eps) return 'it gains on a fall';
+    return 'its payoff is flat';
+  })();
   return `${lead}${money}. At expiry it ${bestWords} and ${worstWords} — ${way}.`;
+}
+
+/* THE NAME IS THE LEGS' (the third audit, 2026-10-22: an "iron condor 7650/7675" was S7650C / S7650P / B7675C / B7675P —
+   a call spread sold and a put spread bought, both bearish, $5.8K if it falls and −$4.2K if it rises; the vendor's
+   shape label is kept beside it when the two disagree). Named only from settled legs on one expiry (or a two-leg
+   calendar / diagonal); anything else keeps the vendor's name. */
+export function nameFromLegs(legs: SpreadLeg[]): { name: string; kind: SpreadKind } | null {
+  if (!legs.length || legs.some(l => l.side == null)) return null;
+  const B = (l: SpreadLeg) => l.side === 'BUY';
+  const by = (xs: SpreadLeg[]) => [...xs].sort((a, b) => a.strike - b.strike);
+  const rw = (r: 'C' | 'P') => (r === 'C' ? 'call' : 'put');
+  const eq = new Set(legs.map(l => l.contracts ?? 1)).size === 1;
+  if (new Set(legs.map(l => l.expiry)).size > 1) {
+    if (legs.length === 2 && legs[0].right === legs[1].right && B(legs[0]) !== B(legs[1])) return legs[0].strike === legs[1].strike ? { name: `${rw(legs[0].right)} calendar`, kind: 'calendar' } : { name: `${rw(legs[0].right)} diagonal`, kind: 'diagonal' };
+    return null;
+  }
+  const calls = by(legs.filter(l => l.right === 'C'));
+  const puts = by(legs.filter(l => l.right === 'P'));
+  if (legs.length === 2) {
+    if (calls.length === 2 || puts.length === 2) {
+      const [a, b] = calls.length === 2 ? calls : puts;
+      if (a.strike === b.strike || B(a) === B(b)) return null;
+      if (!eq) return { name: `${rw(a.right)} ratio spread`, kind: 'ratio' };
+      const bull = a.right === 'C' ? B(a) : !B(b);
+      return { name: `${bull ? 'bull' : 'bear'} ${rw(a.right)} spread`, kind: 'vertical' };
+    }
+    const c = calls[0];
+    const q = puts[0];
+    if (B(c) === B(q)) return c.strike === q.strike ? { name: `${B(c) ? 'long' : 'short'} straddle`, kind: 'straddle' } : { name: `${B(c) ? 'long' : 'short'} strangle`, kind: 'strangle' };
+    if (c.strike === q.strike) return { name: B(c) ? 'synthetic long' : 'synthetic short', kind: 'synthetic' };
+    return { name: B(c) ? 'bullish risk reversal' : 'bearish risk reversal', kind: 'riskReversal' };
+  }
+  if (legs.length === 3 && (calls.length === 3 || puts.length === 3)) {
+    const [a, m, b] = calls.length === 3 ? calls : puts;
+    if (new Set([a.strike, m.strike, b.strike]).size !== 3 || B(a) !== B(b) || B(a) === B(m)) return null;
+    const w = a.contracts ?? 1;
+    if ((b.contracts ?? 1) !== w || (m.contracts ?? 1) !== 2 * w) return null;
+    return { name: `${B(a) ? 'long' : 'short'} ${rw(a.right)} butterfly${m.strike - a.strike !== b.strike - m.strike ? ' (uneven wings)' : ''}`, kind: 'butterfly' };
+  }
+  if (legs.length === 4 && calls.length === 2 && puts.length === 2 && eq) {
+    const [cl, ch] = calls;
+    const [pl, ph] = puts;
+    if (cl.strike === ch.strike || pl.strike === ph.strike || B(cl) === B(ch) || B(pl) === B(ph)) return null;
+    const callBull = B(cl);
+    const putBull = !B(ph);
+    const uneven = ph.strike - pl.strike !== ch.strike - cl.strike ? ' (uneven wings)' : '';
+    if (ph.strike <= cl.strike && putBull !== callBull) {
+      const short = putBull && !callBull;
+      return ph.strike === cl.strike ? { name: `${short ? 'short' : 'long'} iron butterfly${uneven}`, kind: 'butterfly' } : { name: `${short ? 'short' : 'long'} iron condor${uneven}`, kind: 'condor' };
+    }
+    if (pl.strike === cl.strike && ph.strike === ch.strike && callBull !== putBull) return { name: callBull ? 'long box' : 'short box', kind: 'custom' };
+    if (callBull === putBull) return { name: `${callBull ? 'bullish' : 'bearish'} call + put spreads`, kind: 'vertical' };
+    return null;
+  }
+  if (legs.length === 4 && (calls.length === 4 || puts.length === 4) && eq) {
+    const [a, b, c, d] = calls.length === 4 ? calls : puts;
+    if (new Set([a.strike, b.strike, c.strike, d.strike]).size !== 4 || B(a) !== B(d) || B(b) !== B(c) || B(a) === B(b)) return null;
+    return { name: `${B(a) ? 'long' : 'short'} ${rw(a.right)} condor`, kind: 'condor' };
+  }
+  return null;
+}
+
+/** A double calendar is a shape whatever way it went: two strikes, each on a near and a far expiry, one right, equal
+    sizes — named so even when its legs cannot be settled (the third audit: such rows read "Custom" and all dashes) */
+function doubleCalendarOf(legs: SpreadLeg[]): { name: string; kind: SpreadKind } | null {
+  if (legs.length !== 4 || new Set(legs.map(l => l.right)).size !== 1 || new Set(legs.map(l => l.expiry)).size !== 2 || new Set(legs.map(l => l.strike)).size !== 2) return null;
+  if (new Set(legs.map(l => l.contracts ?? 1)).size !== 1) return null;
+  return { name: `${legs[0].right === 'C' ? 'call' : 'put'} double calendar`, kind: 'calendar' };
 }
 
 /** The structure the row stands for, settled from its legs once they are in hand */
@@ -1541,8 +1805,18 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
     if (dirs) netAbs = Math.abs(legs.reduce((a, l, i) => a + dirs[i] * l.fill * (l.contracts ?? 1) * 100, 0));
   }
   const ratioLabel = legs.length ? [...legs].sort((a, b) => a.strike - b.strike || a.right.localeCompare(b.right)).map(l => `${l.side === 'BUY' ? 'B' : l.side === 'SELL' ? 'S' : ''}${l.ratio}`).join('/') : undefined;
+  /* every distinct strike the legs carry (the vendor's strikes list had 2 for a 4-leg structure) and the name the
+     settled legs give it */
+  const legStrikes = [...new Set(legs.map(l => l.strike))].sort((a, b) => a - b);
+  const named = settled ? nameFromLegs(legs) : doubleCalendarOf(legs);
+  const vendor = t.shapeOfVendor ?? t.shape;
+  const sideTagged = raw.filter(l => String(l.side) === 'ask' || String(l.side) === 'bid').length;
   return {
     ...t,
+    strikesLabel: legStrikes.length ? legStrikes.map(k => strikeWord(k)).join(' / ') : t.strikesLabel,
+    shape: named ? named.name : t.shape,
+    kind: named ? named.kind : t.kind,
+    vendorShape: named && vendor !== 'unnamed' && !named.name.includes(vendor) ? vendor : undefined,
     legs,
     units,
     contracts: legs.reduce((a, l) => a + (l.contracts ?? 0), 0),
@@ -1553,7 +1827,11 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
     maxProfit: range ? range.maxProfit : null,
     riskNote: !settled ? 'unsettled' : !oneExpiry ? 'expiries' : !known ? 'no-net' : undefined,
     theta: positionTheta(legs) ?? NaN,
-    read: known ? describeStructure(legs, t.netPremium, units) : netAbs != null ? `The vendor left the net out and its legs print no side, so which way it went is not known. Its legs net ${usd(netAbs)} ${units > 1 ? `(${units} units, $${(netAbs / (units * 100)).toFixed(2)} a unit) ` : ''}either way — paid if it was bought, collected if it was sold.` : 'The vendor left the net out and its legs print no side — which way it went, and what it risks, is not on the record. Read the legs.',
+    /* WHAT THE LEGS' TAGS ACTUALLY SAY (the third audit: an SPX 7630/7640 card said "its legs print no side" while three
+       of its four legs carried one): the count, and why a partial set cannot settle it */
+    read: known
+      ? describeStructure(legs, t.netPremium, units)
+      : `The vendor left the net out${sideTagged === 0 ? ' and its legs print no side' : sideTagged < raw.length ? `, and only ${sideTagged} of its ${raw.length} legs print a side` : ''}, so which way it went is not known — a leg's print side is where it filled, not whether the structure was bought or sold.${netAbs != null ? ` Its legs net ${usd(netAbs)}${units > 1 ? ` (${units} units, $${(netAbs / (units * 100)).toFixed(2)} a unit)` : ''} either way — paid if it was bought, collected if it was sold.` : ' What it risks is not on the record. Read the legs.'}`,
     legsState: 'in',
   };
 }
@@ -1579,6 +1857,7 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     ticker,
     kind,
     shape: shapeName(strategy),
+    shapeOfVendor: shapeName(strategy),
     strikesLabel: strikes.length ? strikes.join(' / ') : '—',
     expiry: expiryIso ? expiryLabel(expiryIso) : '—',
     dte: expiryIso ? dteOf(expiryIso) : dteAtTrade,
@@ -1948,6 +2227,80 @@ export function useContractDays(occs: string[]): LivePack<Record<string, Contrac
     {},
     list.length > 0
   );
+}
+
+/* ---- what a mark is now, LIKE WITH LIKE (the Tracker) -------------------------------------------------------------
+   THE THEN AND THE NOW FROM ONE SOURCE AND ONE FIELD (the third audit, 2026-10-22: NVDA 220C "Moved most +28.6%" was the
+   screener's close, 0.14, against the contract's historic last, 0.18 — an after-hours fill; SPX 7700C read "Vol added
+   −200" across two sources). A contract marked off a book row (the screener's) is read again off the screener's row for
+   that exact contract — close against close, day volume against day volume, open interest against open interest. A
+   marked print is read against the contract's newest real trade on the tape route — a fill against a fill, the trade's
+   day volume against the print's. */
+export interface MarkNow {
+  /** The contract's screener row now (close, volume, open interest, sides) */
+  book: BookContract | null;
+  /** The contract's newest real trade (cancelled ones skipped) */
+  trade: { fill: number; volume: number; oi: number; time: string; day: string; extended: boolean } | null;
+}
+const markNowCache = new Map<string, { at: number; v: MarkNow }>();
+export function useMarkNow(marks: { key: string; kind: string; ticker: string; strike: number; right: 'C' | 'P'; expiry: string; occ?: string }[]): LivePack<Record<string, MarkNow>> {
+  const list = marks.filter(m => m.kind === 'contract' || m.kind === 'print').slice(0, 40);
+  const key = list.map(m => m.key).sort().join('|');
+  return useLive(
+    `mark-now:${key}`,
+    async () => {
+      const out: Record<string, MarkNow> = {};
+      for (const m of list) {
+        const hit = markNowCache.get(m.key);
+        if (hit && Date.now() - hit.at < 60_000) {
+          out[m.key] = hit.v;
+          continue;
+        }
+        const occ = (m.occ || '').toUpperCase();
+        const root = occ.match(/^([A-Z]{1,6})\d{6}[CP]\d{8}$/)?.[1] ?? m.ticker.toUpperCase();
+        const em = m.expiry.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        const iso = em ? `${em[3]}-${em[1]}-${em[2]}` : m.expiry.slice(0, 10);
+        const v: MarkNow = { book: null, trade: null };
+        try {
+          const q = `type=${m.right === 'C' ? 'call' : 'put'}&min_strike=${m.strike}&max_strike=${m.strike}&expiry_dates[]=${iso}&limit=10`;
+          let rows = await getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(root)}&${q}`);
+          if (!rows.length && root !== m.ticker.toUpperCase()) rows = await getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(m.ticker.toUpperCase())}&${q}`);
+          await ensureIndexLevels(rows.map(tickerOfRow));
+          const row = rows.find(r => !occ || String(r.option_symbol || '').toUpperCase() === occ) ?? rows[0];
+          if (row) v.book = contractRow(row, 0);
+        } catch {
+          v.book = hit?.v.book ?? null;
+        }
+        if (m.kind === 'print' && occ) {
+          try {
+            const t = liveTrades(await getRows(`/option-contract/${encodeURIComponent(occ)}/flow?limit=5`))[0];
+            if (t) {
+              const p = tradeToPrint(t);
+              v.trade = { fill: p.fill, volume: p.volume, oi: p.oi, time: p.time, day: p.epochMs ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(p.epochMs)) : '', extended: !!p.extended };
+            }
+          } catch {
+            v.trade = hit?.v.trade ?? null;
+          }
+        }
+        markNowCache.set(m.key, { at: Date.now(), v });
+        out[m.key] = v;
+      }
+      return out;
+    },
+    {},
+    list.length > 0
+  );
+}
+
+/** The New York trading day an instant's tape belongs to (tapeSessionIso's rule, for any instant) */
+export function sessionIsoAt(ms: number): string {
+  const p = nyParts(new Date(ms));
+  const d = new Date(p.year, p.month - 1, p.day);
+  if (!(isTradingDay(d) && p.hour >= 4)) {
+    d.setDate(d.getDate() - 1);
+    for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
+  }
+  return isoDate(d);
 }
 
 /** A contract's OCC symbol from its parts — "SPY", 763, P, "10/22/2026" → SPY261022P00763000; an index's weekly root

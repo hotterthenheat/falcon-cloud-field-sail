@@ -12,6 +12,7 @@
 import { dayKey, hGauss, hRange } from '../core/rng';
 import { tickerSentiment } from './news';
 import { SECTORS, UNIVERSE, type Sector } from './universe';
+import { readOfScreen } from './stockOverview';
 
 export type StockVerdict = 'ACCUMULATE' | 'HOLD' | 'AVOID';
 export type SectorVerdict = 'OVERWEIGHT' | 'NEUTRAL' | 'UNDERWEIGHT';
@@ -144,18 +145,20 @@ export function pickFromLive(input: {
   bullish: number | null;
   bearish: number | null;
   sma50?: number | null;
+  /** The vendor's screener row itself — the read is taken off it, by the same function the name's page uses */
+  row: Record<string, unknown>;
 }): StockPick {
+  /* ONE READ (the retail test, 2026-10-23: AAPL "GOOD" here and "strong" on its page) — stockOverview.readOfScreen on
+     the screener row, the page's own function on the page's own row */
+  const read = readOfScreen(input.row);
+  const at = (k: 'trend' | 'numbers' | 'money') => read.pillars.find(p => p.key === k);
   const quiet: (keyof StockSleeves)[] = ['news'];
-  const momentum = input.rsi != null ? Math.round(Math.max(0, Math.min(100, input.rsi))) : 50;
-  if (input.rsi == null) quiet.push('momentum');
-  const quality = input.epsGrowth != null ? Math.round(Math.max(0, Math.min(100, 50 + input.epsGrowth * 100))) : 50;
-  if (input.epsGrowth == null) quiet.push('quality');
-  const prem = (input.bullish ?? 0) + (input.bearish ?? 0);
-  const flow = prem > 0 ? Math.round((100 * (input.bullish ?? 0)) / prem) : 50;
-  if (!(prem > 0)) quiet.push('flow');
-  const sl: StockSleeves = { momentum, quality, flow, news: 50 };
-  const comp = composite(sl, quiet);
-  const verdict: StockVerdict = comp >= 68 ? 'ACCUMULATE' : comp <= 46 ? 'AVOID' : 'HOLD';
+  if (!at('trend')?.inRead) quiet.push('momentum');
+  if (!at('numbers')?.inRead) quiet.push('quality');
+  if (!at('money')?.inRead) quiet.push('flow');
+  const sl: StockSleeves = { momentum: at('trend')?.score ?? 50, quality: at('numbers')?.score ?? 50, flow: at('money')?.score ?? 50, news: 50 };
+  const comp = read.composite;
+  const verdict: StockVerdict = read.screen === 'STRONG' ? 'ACCUMULATE' : read.screen === 'WEAK' ? 'AVOID' : 'HOLD';
   const trend = [input.yearClose, input.sixClose, input.threeClose, input.monthClose, input.weekClose, input.price].filter((n): n is number => n != null && n > 0);
   return {
     ticker: input.ticker,
@@ -167,7 +170,7 @@ export function pickFromLive(input: {
     quiet,
     composite: comp,
     verdict,
-    thesis: thesisFor(sl, verdict, quiet),
+    thesis: read.thesis,
     trend,
     weekPct: input.weekPct ?? undefined,
     monthPct: input.monthPct ?? undefined,

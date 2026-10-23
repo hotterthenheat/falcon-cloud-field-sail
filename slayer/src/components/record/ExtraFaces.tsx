@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { ownerWord } from '../../data/whalesMap';
 import { CoSub } from './CoName';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
@@ -7,7 +8,7 @@ import { GRID_MODULES, GRID_THEME, noRows } from '../ui/houseGrid';
 import CompanyLogo from '../ui/CompanyLogo';
 import { tickerName } from '../../data/tickers';
 import { buildHoldings, type HoldingRow } from '../../data/fileBooks';
-import type { InsiderTrade } from '../../types/record';
+import type { InsiderTrade, ReportOwner } from '../../types/record';
 import { useLiveRecord } from '../../data/liveRecord';
 import { phonePin } from './pagedGrid';
 
@@ -42,7 +43,7 @@ const HoldName = ({ data }: ICellRendererParams<HoldingRow>) =>
   ) : null;
 
 const BracketCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.bracket}</span> : null);
-const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{data.owner}</span> : null);
+const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner as ReportOwner)}</span> : null);
 
 export const CongressHoldings = () => {
   const navigate = useNavigate();
@@ -165,6 +166,12 @@ export const InsiderSectorFlow = ({ trades, windowDays }: { trades: readonly Ins
           <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the open-market rows on this cut, last {windowDays} days, added up by sector · the net is dollars bought minus dollars sold, a planned sale counted like a chosen one</span>
         </div>
       </div>
+      {/* an empty cut says so in a sentence — never a grid of headers over nothing (the retail test, 2026-10-23: GME) */}
+      {rows.length === 0 ? (
+        <p className="px-5 py-3 border-t border-borderSubtle text-[12px] text-textSecondary" data-insider-sectors-empty>
+          No open-market purchase or sale on this cut in the last {windowDays} days, so there is nothing to add up by sector.
+        </p>
+      ) : (
       <div className="slayer-board border-t border-borderSubtle">
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<SectorRow>
@@ -183,6 +190,7 @@ export const InsiderSectorFlow = ({ trades, windowDays }: { trades: readonly Ins
           />
         </AgGridProvider>
       </div>
+      )}
     </div>
   );
 };

@@ -199,7 +199,7 @@ const ScaleFigure = () => {
 export const StockGuide = ({ view }: { view: StockOverview }) => (
   <div data-stock-guide>
     <Section title="The read">
-      <p>Four pillars — the trend, the numbers, the money, the news — each a handful of facts the terminal can read. Each pillar reads strong, good, caution or poor, and the four together give the name one of the same four words. Good means the facts line up for the name, poor means they line up against it, caution means they disagree or sit in the middle. Strong is kept for a name where nearly everything lines up at once, so it is rare on purpose.</p>
+      <p>Three scored pillars — the trend, the numbers, the money — each a handful of facts off the name's screener row, the same row and the same function the Stocks board reads, so the board and this page always give one word. Each pillar reads strong, good, caution or poor, and together they give the name one of the same four words. The news, and the page's other reads (the swing structure, the last print against its estimate, the dark pool), are shown beside them as context and never scored. Good means the facts line up for the name, poor means they line up against it, caution means they disagree or sit in the middle. Strong is kept for a name where nearly everything lines up at once, so it is rare on purpose.</p>
       <PillarsFigure />
     </Section>
     <Section title="A factor">
@@ -218,11 +218,11 @@ export const StockGuide = ({ view }: { view: StockOverview }) => (
       <p>The read also leans bullish, bearish or neutral. Under "Why now", each pillar is marked as agreeing with that lean or arguing against it, and the line under them names where the read fails first if it fails — the strongest pillar on the other side, or the next report when every pillar agrees.</p>
     </Section>
     <Section title="What is real">
-      <p>The trend reads the name's own sessions, the money reads the book, the flow book and the dark pool, the news reads the wire and the tape's prints. The numbers read the name's own earnings file and screener row on Unusual Whales; when the feed has no print for a name, the box says so instead of showing a guess. Every source's status and time sits in "Behind the read"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
+      <p>The scored trend, numbers and money read the name's screener row on Unusual Whales (its 20-day average, RSI, ADX, month, earnings growth, relative volume, and its call, put, bullish and bearish premium); the swing structure reads the name's own sessions, the dark pool its off-exchange prints, the news the wire. The last print reads the name's own earnings file; when the feed has no print for a name, the box says so instead of showing a guess. Every source's status and time sits in "Behind the read"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
     </Section>
     <Section title="Today">
       <p>
-        {view.name} reads {gradeOfComposite(view.composite)}: {view.pillars.map(p => `${p.name.toLowerCase()} ${gradeOf(p.score)}`).join(' · ')}.
+        {view.name} reads {gradeOfComposite(view.composite)}: {view.pillars.filter(p => p.inRead).map(p => `${p.name.toLowerCase()} ${gradeOf(p.score)}`).join(' · ')}.
       </p>
       <p className="mt-1">{view.thesis}</p>
     </Section>

@@ -56,7 +56,9 @@ export interface TraceSide {
   interest: { added: number; shed: number };
   /** dollars: the structures' NET premium, signs dropped — what changed hands, not the gross of every leg */
   structures: { count: number; paid: number; collected: number; dollars: number; list: SpreadTrade[] };
-  tape: { prints: number; dollars: number; sweeps: number };
+  /** The name's REGULAR-SESSION prints in the window — each print by its own time and flag (an SPY print at 16:14:5x is
+      regular, a stock's at 16:05 is not); `after` counts the extended-hours ones, left out of the comparison */
+  tape: { prints: number; dollars: number; sweeps: number; after: number };
   /** Sessions until the name reports, null when the calendar has none */
   earnDays: number | null;
 }
@@ -93,7 +95,10 @@ export function buildTraceSide(
   const premium = rows.reduce((a, r) => a + r.premium, 0);
   const callPrem = rows.reduce((a, r) => a + (r.right === 'C' ? r.premium : 0), 0);
   const list = spreads.filter(t => t.ticker === ticker && onClock(t.dte, tenor)).sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium));
-  const prints = tape.filter(p => p.ticker === ticker && onClock(p.dte, tenor) && moneynessFilter(p, mny));
+  const mine = tape.filter(p => p.ticker === ticker && onClock(p.dte, tenor) && moneynessFilter(p, mny));
+  /* PER PRINT, NOT BY THE WALL CLOCK (the third audit, 2026-10-22: after 16:00 the page called SPY's and QQQ's prints at
+     16:14:5x after-hours ones — index and ETF options close at 16:15 — and still named a winner) */
+  const prints = mine.filter(p => !p.extended);
   const earnDays = own.reduce<number | null>((m, r) => (r.earnDays == null ? m : m == null ? r.earnDays : Math.min(m, r.earnDays)), null);
 
   return {
@@ -137,6 +142,7 @@ export function buildTraceSide(
       prints: prints.length,
       dollars: prints.reduce((a, p) => a + p.premium, 0),
       sweeps: prints.filter(p => p.sweep).length,
+      after: mine.length - prints.length,
     },
     earnDays,
   };
@@ -162,8 +168,9 @@ const num = (v: number) => v.toLocaleString('en-US');
 /* Signed on purpose — RichRead inks +$/-$ by direction */
 export const signedUsd = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
 
-/** `tapeWindow` names the stretch both tapes cover ("from 15:58 to 16:14 ET"); `regular` is false after the close, when
-    a count of after-hours prints says nothing about which name is busier — the tape clause is then left out */
+/** `tapeWindow` names the stretch both tapes cover ("from 15:58 to 16:14 ET"); `regular` is false when either name has
+    no regular-session print in that stretch — a count of after-hours prints says nothing about which name is busier, so
+    the tape clause is then left out */
 export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over the same stretch', regular = true): TraceCompare {
   const bullish = a.net >= b.net ? a : b;
   const heavier = a.book.premium >= b.book.premium ? a : b;

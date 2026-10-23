@@ -55,7 +55,7 @@ export interface WatchedContract extends WatchBase {
   /** MM/DD/YYYY */
   expiry: string;
   /** The contract's facts at the moment it was watched — the Tracker's "then" */
-  at: { dte: number; spot: number; last: number; chgPct: number; volume: number; oi: number; premium: number; askPct: number };
+  at: { dte: number; spot: number; last: number; chgPct: number; volume: number; oi: number; premium: number; askPct: number; lastAt?: string };
   /** The vendor's OCC symbol — the Tracker reads the contract's own day by it (optional: older marks carry none) */
   occ?: string;
 }
@@ -178,7 +178,7 @@ export const watchContract = (r: BookContract, from: WatchSource): WatchedContra
   expiry: r.expiry,
   watchedAt: Date.now(),
   from,
-  at: { dte: r.dte, spot: r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct },
+  at: { dte: r.dte, spot: r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct, lastAt: r.lastAt && r.lastAt !== '—' ? r.lastAt : undefined },
   occ: r.optionSymbol,
 });
 

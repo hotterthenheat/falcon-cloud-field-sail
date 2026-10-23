@@ -49,6 +49,7 @@ import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { bookToday, isoDate } from '../core/calendar';
 import { peekEntry } from './uwBook';
 import { registeredDates } from './chainDates';
+import { callWallWords, putWallWords } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
@@ -93,7 +94,7 @@ export interface LevelFlip extends FlipRead {
 const cache = new Map<string, LevelFlip>();
 
 /** The flip of the contracts in `chain` (defaults to the snapshot's levels chain) — see the head of this file */
-export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain): LevelFlip {
+export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain, at?: number): LevelFlip {
   const spot = snapshot.spot;
   const dates = snapshot.liveBook ? datesOf(snapshot, chain) : null;
   const entry = snapshot.liveBook ? peekEntry(snapshot.ticker) : undefined;
@@ -105,7 +106,8 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   if (!want.length) return fallback();
   const listed = (snapshot.uwExpiries ?? []).map(e => e.date).filter(d => d >= floor);
   const complete = dates === 'ALL' ? listed.length === 0 || listed.every(d => want.includes(d)) : true;
-  const now = snapshot.asOf ?? Date.now();
+  /* `at`: the clock to re-price at (a finished session's close) — without the asOf's contract-vol switch */
+  const now = at ?? snapshot.asOf ?? snapshot.flipAt ?? Date.now();
   const minute = Math.floor(now / 60_000);
   const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${minute}|${chain.length}`;
   const hit = cache.get(key);
@@ -182,8 +184,8 @@ export interface RegimeRead {
  * THE BOOK READ AS ONE SENTENCE — PINPOINT'S (replacing data/gex.ts readHeatPattern on these pages, which named the
  * regime by the side of the flip: "below the flip the hedging amplifies moves, whatever the book nets to"). The regime
  * is the sign of net gamma at spot; the flip is where it changes; the levels are named as the Agenda names them — the
- * call wall (the most call hedging, a lid while dealers are long gamma there) and the put wall (the most put hedging:
- * dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate).
+ * call wall (the most call hedging) and the put wall (the most put hedging), each described from where it sits against
+ * price (core/walls.ts callWallWords / putWallWords) — a put wall above price is overhead hedging, not a floor.
  */
 export function readRegime(levels: { spot: number; flip: number; flipFound?: boolean; callWall: number; putWall: number; net?: number }): RegimeRead {
   const { spot, callWall, putWall } = levels;
@@ -208,11 +210,11 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   if (long && between && cwPct <= 1.2 && pwPct <= 1.2)
     return { key: 'PINNED', read: `Dealers are long gamma, so their hedging absorbs moves between the ${px(putWall)} put wall and the ${px(callWall)} call wall — dips get bought, rallies get sold, drift beats trend until one side gives.${flipClause}` };
   if (long)
-    return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves. ${cap(cw)} has the most call hedging${callWall > spot ? ' — the lid' : callWall < spot ? ' — price is through it, so it can act as support' : ''}; ${pw} has the most put hedging.${flipClause}` };
+    return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves. ${cap(cw)}: ${callWallWords(callWall, spot)}; ${pw}: ${putWallWords(putWall, spot)}.${flipClause}` };
   if (putWall < spot && pwPct >= 2.6)
     return { key: 'WHIPSAW', read: `Dealers are short gamma, so their hedging speeds a move up whichever way it goes, and the put wall is all the way down at ${px(putWall)}.${flipClause}` };
   return {
     key: 'AMPLIFYING',
-    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(pw)} has the most put hedging: dealers buy dips into it while it holds, but they are short gamma there too, so a break can accelerate; ${cw} has the most call hedging.${flipClause}`,
+    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(pw)}: ${putWallWords(putWall, spot)}; ${cw}: ${callWallWords(callWall, spot)}.${flipClause}`,
   };
 }

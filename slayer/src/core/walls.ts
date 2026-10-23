@@ -179,3 +179,48 @@ export function pickFlip<T extends Struck>(
   }
   return flip;
 }
+
+/* ---- ONE NAME PER STRIKE, EVERY PAGE (the retail test, 2026-10-23) --------------------------------------------------
+   SPY's 769 read "PUT WALL" on the Agenda's row and the Board, "supreme" on the Map, and the Agenda's head said the only
+   wall in reach was 770. A strike that is several levels is all of them, said in one order everywhere:
+   supreme · call wall · put wall. */
+export type LevelRole = 'supreme' | 'call wall' | 'put wall';
+export interface NamedLevels {
+  supreme?: number | null;
+  callWall?: number | null;
+  putWall?: number | null;
+}
+const same = (a: number | null | undefined, b: number) => a != null && Math.abs(a - b) < 1e-9;
+/** Every level a strike is, in the one order: supreme, call wall, put wall */
+export function levelRoles(strike: number, levels: NamedLevels): LevelRole[] {
+  const out: LevelRole[] = [];
+  if (same(levels.supreme, strike)) out.push('supreme');
+  if (same(levels.callWall, strike)) out.push('call wall');
+  if (same(levels.putWall, strike)) out.push('put wall');
+  return out;
+}
+/** "769 · supreme · put wall" — the strike and every level it is (the strike alone when it is none) */
+export function strikeWithRoles(strike: number, levels: NamedLevels, fmt: (k: number) => string = k => String(k)): string {
+  const roles = levelRoles(strike, levels);
+  return roles.length ? `${fmt(strike)} · ${roles.join(' · ')}` : fmt(strike);
+}
+
+/* ---- A WALL IN WORDS, BY WHERE IT SITS (the retail test, 2026-10-23: "the 769.00 put wall above … dealers buy dips
+   into it" — a level above price cannot be bought into on a dip). The description is written from the wall's side of
+   price. */
+export type WallPlace = 'above' | 'below' | 'at';
+export const wallPlace = (strike: number, spot: number): WallPlace => (Math.abs(strike - spot) < spot * 0.0005 ? 'at' : strike > spot ? 'above' : 'below');
+export function putWallWordsAt(place: WallPlace): string {
+  if (place === 'at') return 'the most put hedging, right at price — dealers are short gamma there, so a break below can accelerate';
+  return place === 'above'
+    ? 'the most put hedging, sitting above price — overhead put hedging, not a floor: if price rallies into it, dealers short gamma there can speed up selling, or it can act as a magnet'
+    : 'the most put hedging, below price — support while it holds; dealers are short gamma there, so a break below can accelerate';
+}
+export function callWallWordsAt(place: WallPlace): string {
+  if (place === 'at') return 'the most call hedging, right at price — dealers long gamma there lean against a move either way';
+  return place === 'above'
+    ? 'the most call hedging, above price — a lid: dealers long gamma there sell into rallies'
+    : 'the most call hedging, sitting below price — price is through it, so it can act as support on a pullback while it holds';
+}
+export const putWallWords = (strike: number, spot: number): string => putWallWordsAt(wallPlace(strike, spot));
+export const callWallWords = (strike: number, spot: number): string => callWallWordsAt(wallPlace(strike, spot));

@@ -58,7 +58,7 @@ import { StocksGuide } from '../../components/record/StocksGuide';
 import { useBoardNames } from '../../data/boardNames';
 import { aboveFifty, buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
 import { useLiveStocks } from '../../data/liveFiles';
-import { extendedLine, peekQuote, useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, priceWords, peekQuote, useLiveQuote } from '../../data/liveQuote';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
 import { SECTORS, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
@@ -99,7 +99,7 @@ const PHASE_BAR: Record<SectorRow['phase'], string> = { LEADING: 'bg-bull', IMPR
 /** The two consumer sectors by their second word on a card 150px wide — the mark and the grid carry the whole name */
 const SHORT_SECTOR: Partial<Record<Sector, string>> = { 'Consumer Discretionary': 'Discretionary', 'Consumer Staples': 'Staples' };
 
-const signedPct = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
+const signedPct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 const dirInk = (v: number) => (v >= 0 ? 'text-bull' : 'text-bear');
 /** "A, B and C" — never "A and B and C" */
 const listPhrase = (items: string[]) => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
@@ -131,16 +131,21 @@ const SectorCell = ({ data }: ICellRendererParams<StockPick>) =>
 const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
   const q = useLiveQuote(data?.ticker);
   if (!data) return null;
-  const px = q?.spot && q.spot > 0 ? q.spot : data.price;
-  return <span className="font-mono text-[11px] tnum text-textPrimary">${px.toFixed(2)}</span>;
+  /* ONE QUOTE, SAID AS WHICH PRICE (liveQuote.priceWords): outside the session the regular close, the extended print
+     and its clock in the title — the same figure the name's page leads with */
+  const words = priceWords(q);
+  const px = words?.lead ?? data.price;
+  return <span className="font-mono text-[11px] tnum text-textPrimary" title={words?.line ?? 'the screener’s last price'}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 };
 const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const q = useLiveQuote(data?.ticker);
   if (!data) return null;
-  const chg = q?.spot && q.spot > 0 ? q.changePct : data.changePct;
+  /* before the open the session has not moved: the last session's change, dated */
+  const pre = q?.phase === 'pre' && q.lastSessionPct != null;
+  const chg = pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
   const ext = extendedLine(q);
   return (
-    <span className="flex flex-col items-end leading-tight" title={`The regular session's change${ext ? ` · ${ext}, kept apart` : ''}`}>
+    <span className="flex flex-col items-end leading-tight" title={`${pre ? `The last session's change${q?.regDate ? ` (${q.regDate})` : ''}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
       <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
       {ext ? <span className="font-mono text-[8px] tnum text-textMuted whitespace-nowrap">{ext.replace('after hours', 'AH').replace('pre-market', 'pre')}</span> : null}
     </span>
@@ -190,7 +195,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
     type="button"
     onClick={onToggle}
     aria-pressed={on}
-    title={`${s.note} ${s.count} ${s.count === 1 ? 'name' : 'names'} on this board.${s.ret1w != null ? ` Their average return: ${signedPct(s.ret1w)} over a week, ${s.ret1m != null ? signedPct(s.ret1m) : '—'} over a month.` : ''} Against the average of every name here: ${signedPct(s.rs1w)} over a week, ${signedPct(s.rs1m)} over a month — the direction word reads those two. ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
+    title={`${s.note} ${s.count} ${s.count === 1 ? 'name' : 'names'} on this board.${s.ret1w != null ? ` Their average return: ${signedPct(s.ret1w)} over a week, ${s.ret1m != null ? signedPct(s.ret1m) : '—'} over a month.` : ''} Against the average of every name here: ${signedPct(s.rs1w).replace('%', ' pts')} over a week, ${signedPct(s.rs1m).replace('%', ' pts')} over a month — the direction word reads those two. ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
     className={`group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`}
     data-stocks-sector={s.sector}
     data-on={on || undefined}
@@ -213,7 +218,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
       <span className={s.ret1m != null ? dirInk(s.ret1m) : 'text-textMuted'}>{s.ret1m != null ? signedPct(s.ret1m) : '—'}</span>
     </span>
     <span className="mt-0.5 block h-[12px] font-mono text-[8px] tnum whitespace-nowrap overflow-hidden text-textMuted">
-      vs board <span className={dirInk(s.rs1m)}>{signedPct(s.rs1m)}</span> 1m · {s.count} {s.count === 1 ? 'name' : 'names'}
+      <span className={dirInk(s.rs1m)}>{s.rs1m > 0 ? '+' : s.rs1m < 0 ? '−' : ''}{Math.abs(s.rs1m).toFixed(1)} pts</span> vs board, 1m · {s.count} {s.count === 1 ? 'name' : 'names'}
     </span>
   </button>
 );
@@ -305,7 +310,7 @@ const Stocks = () => {
       /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
       { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 140, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
       { headerName: 'Sector', field: 'sector', width: 132, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.spot || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The last price' },
+      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (priceWords(peekQuote(p.data.ticker))?.lead || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The regular close outside the session (hover for the after-hours or pre-market print and its time, ET); the last price in it' },
       { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — today's close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
       { headerName: 'Year', field: 'trend', width: 92, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
       { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 88, cellRenderer: sleeveCell('momentum'), headerTooltip: 'RSI — above the 50 line the trend is up, below it is not. A dash is left out of the screen.' },

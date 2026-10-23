@@ -27,7 +27,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { SPREAD_KINDS, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
-import { dayLean, sessionEndLabel, sessionPhase, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
+import { dayLean, sessionEndLabel, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
 import type { SleeveKey } from '../../types/compass';
@@ -368,7 +368,10 @@ const Compare = () => {
   const sideB = useMemo(() => withTicks(buildTraceSide(sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso), flowB), [sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso, flowB, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
   /* after the close a count of after-hours prints names no busier name (the retail pass, 2026-10-22: "SPY the busier tape
      … 300 prints for $166.2K") — the tape clause and fact stand in the regular session, with their window named */
-  const regular = sessionPhase() === 'regular';
+  /* each print by its own time and flag (traceCompare buildTraceSide): a busier tape is called only when BOTH names have
+     regular-session prints in the stretch */
+  const regular = sideA.tape.prints > 0 && sideB.tape.prints > 0;
+  const afterLeftOut = sideA.tape.after + sideB.tape.after;
   const tapeWords = tapeSince ? `since ${nyClock(tapeSince * 1000)} ET` : 'over the same stretch';
   const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular), [sideA, sideB, tapeWords, regular]);
   const { a, b } = cmp;
@@ -640,29 +643,29 @@ const Compare = () => {
     },
     {
       /* both names over the same reach of their own tapes — the title says from when */
-      title: `${tapeSince ? `The tape · each name's prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both tapes cover` : `The tape · each name's last ${TAPE_N} prints`}${regular ? '' : ' · after the close, so mostly after-hours prints — no busier name is called'}`,
+      title: `${tapeSince ? `The tape · each name's prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both tapes cover` : `The tape · each name's last ${TAPE_N} prints`}${afterLeftOut > 0 ? ` · regular-session prints only, ${num(afterLeftOut)} after-hours ${afterLeftOut === 1 ? 'print' : 'prints'} left out` : ''}${regular ? '' : ' — one name has no regular-session print in the stretch, so no busier tape is called'}`,
       rows: [
         {
           key: 'prints',
           label: 'Prints',
-          note: regular ? the(higher(s => s.tape.prints), 'the busier tape') : the(higher(s => s.tape.prints), 'more prints after hours'),
-          lead: higher(s => s.tape.prints),
+          note: regular ? the(higher(s => s.tape.prints), 'the busier tape') : 'not compared — no regular-session prints on both',
+          lead: regular ? higher(s => s.tape.prints) : null,
           bars: s => [{ v: s.tape.prints, text: num(s.tape.prints), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{num(s.tape.prints)}</Fig>,
         },
         {
           key: 'tapeDollars',
           label: 'Tape dollars',
-          note: the(higher(s => s.tape.dollars), 'the more money on the tape'),
-          lead: higher(s => s.tape.dollars),
+          note: regular ? the(higher(s => s.tape.dollars), 'the more money on the tape') : 'not compared',
+          lead: regular ? higher(s => s.tape.dollars) : null,
           bars: s => [{ v: s.tape.dollars, text: fmtUsd(s.tape.dollars), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{fmtUsd(s.tape.dollars)}</Fig>,
         },
         {
           key: 'sweeps',
           label: 'Sweeps',
-          note: the(higher(s => s.tape.sweeps), 'the more sweeps'),
-          lead: higher(s => s.tape.sweeps),
+          note: regular ? the(higher(s => s.tape.sweeps), 'the more sweeps') : 'not compared',
+          lead: regular ? higher(s => s.tape.sweeps) : null,
           bars: s => [{ v: s.tape.sweeps, text: num(s.tape.sweeps), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{num(s.tape.sweeps)}</Fig>,
         },
@@ -819,7 +822,7 @@ const Compare = () => {
             {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
           </Champion>
           {regular && (
-            <Fact label="Busier tape" testId="busier" title={tapeSince ? `Prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `Each name's last ${TAPE_N} prints`}>
+            <Fact label="Busier tape" testId="busier" title={tapeSince ? `Regular-session prints (each by its own time and flag) since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `Each name's last ${TAPE_N} prints`}>
               {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
               {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{tapeSince ? ` since ${nyClock(tapeSince * 1000)}` : ''}</>}
             </Fact>

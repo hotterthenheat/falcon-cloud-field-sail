@@ -35,7 +35,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
-import { bookMinuteKind, deskBars, useBookMinutes } from '../../data/uwBook';
+import { bookMinuteKind, deskBars, peekSettledNet, useBookMinutes, useBookRev } from '../../data/uwBook';
+import { nyIsoDate } from '../../core/nyTime';
 import { expirySpan } from '../../data/bookWindow';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { fmtUsd } from '../../data/gex';
@@ -418,13 +419,27 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     e.preventDefault();
   };
   const plotW = hostRef.current?.clientWidth ?? 0;
+  useBookRev();
   /* WHICH SERIES THE LINE IS, SAID WHERE IT IS SHOWN (the second re-audit, 2026-10-22) */
   const kind = vendor ? bookMinuteKind(ticker) : null;
-  const kindWord = kind === 'oi' ? 'Dealer gamma · all expiries, minute by minute' : "Dealer hedging · today's trades";
+  /* THE LINE'S LAST PRINT IS THE VENDOR'S LAST PRINT, LESS WHAT HAS SETTLED (the third audit, 2026-10-23): the drawn line
+     stops with the session's bars (15:55), but the vendor prints on after the bell — TSLA's line read +$396.0M against
+     the vendor's last +$291.0M (= the net), NVDA +$47.1M against +$29.3M — and after the close the vendor's whole-book
+     total still counts the contracts that settled at 4:00 (SPY −$17.6B against the −$14.7B net: Oct 22's −$3.03B). The
+     figure is the last print the vendor sent (the replay's own minute in a replay), with the settled contracts' live
+     gamma taken off — so it IS the All-expiries net. */
+  const pool = vendor ?? [];
+  const lastPrint = at == null ? pool[pool.length - 1] ?? null : last ?? null;
+  const settled = at == null && kind === 'oi' ? peekSettledNet(ticker) : 0;
+  const lineNow = lastPrint ? (at == null ? -lastPrint.net : lastPrint.net) - (settled ?? 0) : null;
+  const lineDay = lastPrint ? nyIsoDate(lastPrint.time * 1000) : null;
+  const lineDayWords = lineDay && lineDay !== nyIsoDate() ? ` · ${expirySpan([lineDay])} session` : '';
+  const kindWord = kind === 'oi' ? `Dealer gamma through the day · all expiries${lineDayWords}` : `Dealer hedging · the session's trades${lineDayWords}`;
   const kindTitle =
     kind === 'oi'
-      ? "The vendor's open-interest dealer gamma per 1% move on every expiry, re-priced at each minute's price (spot-exposures) — the same measure as the levels' net GEX; in the session its last print is the All-expiries net (after the close it still counts the contracts that settled at 4:00)"
-      : "The vendor's dealer gamma per 1% move from today's trades (volume-based, minute by minute) — a different measure from the open-interest book the levels are read from";
+      ? "The vendor's open-interest dealer gamma per 1% move on every expiry, re-priced at each minute's price (spot-exposures) — the same measure as the levels' net GEX. Through the session it counts the contracts expiring that day; after the close those settle, and the figure under Details takes them off, so it equals the All-expiries net"
+      : "The vendor's dealer gamma per 1% move from the session's trades (volume-based, minute by minute) — a different measure from the open-interest book the levels are read from";
+  const [showDetails, setShowDetails] = useState(false);
   const bookWords = bookLabel ?? expirySpan(dates);
 
   /* A CLEAR RULE OVER THE BOOK (Noah, 2026-10-14: "the book and the day should have clear cut horizontal line between them
@@ -451,24 +466,46 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
           </div>
           {!part && <p className="mt-0.5 text-[11px] text-textMuted">The book’s net gamma through the session, spot faint beside it</p>}
         </div>
-            {part && last && (
+            {part && (
           <>
-            <PartFact label={kind === 'oi' ? 'Line now · all expiries' : "Line now · today's trades"} title={`The line's last print — ${kindTitle}. In the retail sign: positive (green) dealers long gamma, their hedging absorbs; negative (red) it amplifies`}>
-              <span style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
-                {last.net > 0 ? '+' : ''}
-                {fmtUsd(last.net)} · {last.net >= 0 ? 'absorbs' : 'amplifies'}
-              </span>
-            </PartFact>
-            <PartFact label={`Net GEX${bookWords ? ` · ${bookWords}` : ''}`} title={`Net GEX on every strike of the contracts the Levels card reads (${bookWords ?? 'its scope'}, open interest) — the Board's, the Agenda's and Compare's figure.${kind === 'oi' ? ' The line is the same measure on every expiry, so the two agree when Levels reads All expiries' : ' The line is a different measure (today\'s trades), so it can differ in sign'}`}>
+            {/* ONE HEADLINE, IN THE LEVELS CARD'S SCOPE (the retail test, 2026-10-23: "LINE NOW −$17.6B amplifies" beside
+                "NET GEX −$3.1B", NVDA "+$29.3M absorbs" beside "−$73.8M" and an AMPLIFY badge). The scope's net leads, with
+                its verb; the line's all-expiries figure sits under Details, labelled, with no verb of its own. */}
+            <PartFact label={`Net GEX${bookWords ? ` · ${bookWords}` : ''}`} title={`Net GEX on every strike of the contracts the Levels card reads (${bookWords ?? 'its scope'}, open interest, retail sign) — the Board's, the Agenda's and Compare's figure. Positive (green): dealers long gamma, their hedging absorbs moves; negative (red): it amplifies them`}>
               <span style={{ color: -bookNet >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-book={Math.round(-bookNet)}>
                 {-bookNet > 0 ? '+' : ''}
-                {fmtUsd(-bookNet)}
+                {fmtUsd(-bookNet)} · {-bookNet >= 0 ? 'absorbs' : 'amplifies'}
               </span>
             </PartFact>
-            <PartFact label="Changed sign" title="How many times today the net flipped between absorbing and amplifying">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>
-            <PartFact label="Books kept" title="How many minutes of the day have a reading of the book behind this line">
-              {minutes.length} {minutes.length === 1 ? 'minute' : 'minutes'}
-            </PartFact>
+            {last && <PartFact label="Line changed sign" title="How many times through the session the line (every expiry) flipped between absorbing and amplifying">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>}
+            <button
+              type="button"
+              className="inline-flex items-baseline gap-1 font-mono text-[11px] uppercase tracking-wider text-textMuted hover:text-textPrimary underline-offset-2 hover:underline"
+              aria-expanded={showDetails}
+              onClick={() => setShowDetails(v => !v)}
+              data-through-details-toggle
+            >
+              Details {showDetails ? '▴' : '▾'}
+            </button>
+            {showDetails && (
+              <span className="inline-flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded border border-borderSubtle/70 px-2 py-0.5" data-through-details>
+                {lineNow != null && (
+                  <PartFact
+                    label={`Line's last print · all expiries${lastPrint ? ` · ${hhmm(nyMinutes(lastPrint.time * 1000))}` : ''}`}
+                    title={`${kindTitle}.${settled ? ` The contracts that settled at 4:00 (${settled > 0 ? '+' : ''}${fmtUsd(settled)}) are taken off.` : ''}${kind === 'oi' ? ' It is the All-expiries net as of that minute: with Levels on All expiries the Net GEX above is the same measure, re-priced at the latest price, so after the bell the two differ only by the move since the vendor\'s last print.' : ''}`}
+                  >
+                    <span data-through-net={Math.round(lineNow)}>
+                      {lineNow > 0 ? '+' : ''}
+                      {fmtUsd(lineNow)}
+                      {settled ? <span className="ml-1 font-normal text-textMuted">(settled contracts off)</span> : null}
+                    </span>
+                  </PartFact>
+                )}
+                <PartFact label="Books kept" title="How many minutes of the session have a reading of the book behind this line">
+                  {minutes.length} {minutes.length === 1 ? 'minute' : 'minutes'}
+                </PartFact>
+              </span>
+            )}
           </>
         )}
         {part && !last && (

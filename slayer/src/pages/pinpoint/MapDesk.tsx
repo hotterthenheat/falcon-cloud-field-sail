@@ -240,7 +240,8 @@ const MapDesk = () => {
        the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
        at once */
     const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
+    /* a book whose dates or contract facts landed (a new uwByDate — uwBook never edits a chain in place) is taken at once */
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData) || scanRef.current.uwByDate !== marketData.uwByDate;
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;

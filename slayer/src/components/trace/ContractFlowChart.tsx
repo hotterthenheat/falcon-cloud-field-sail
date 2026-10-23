@@ -49,7 +49,7 @@ import {
 import Chip from '../ui/Chip';
 import RichRead from '../ui/RichRead';
 import { bucketMinutes, bucketTicks, flowClock, runningAvg, SESSION_MIN, type ContractTape, type LedgerBin } from '../../data/contractflow';
-import { usd as fmtUsd } from '../../data/traceLive';
+import { sideShares, usd as fmtUsd } from '../../data/traceLive';
 import { BULL, SUPREME } from '../gex/paletteInk';
 import { useResolvedTheme } from '../../theme/theme';
 
@@ -108,20 +108,21 @@ const Box = ({ children }: { children: React.ReactNode }) => (
 /** Bid / mid / ask as three named parts of one bar — never a two-way split that folds the mid into a side (the audit,
     2026-10-22: "HIT THE BID 51%" counted the mid volume as hit) */
 export const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bid: number; mid: number; ask: number; unit: string; caption?: string; className?: string }) => {
-  const total = bid + mid + ask;
-  const pct = (v: number) => (total > 0 ? Math.round((v / total) * 100) : 0);
+  /* ONE ROUNDING with the card's own side figure (traceLive sideShares — the third audit: "bid 44%" beside "BID 43%") */
+  const sh = sideShares(bid, mid, ask);
+
   const fmt = (v: number) => (unit === '$' ? fmtUsd(v) : v.toLocaleString('en-US'));
   return (
     <div className={`flex flex-col gap-1 ${className}`} title={`${fmt(bid)} on the bid · ${fmt(mid)} at the mid or no side · ${fmt(ask)} at the ask${unit === '$' ? '' : ` ${unit}`}`}>
       <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase tracking-wider">
-        <span className="text-textSecondary">Bid {pct(bid)}%</span>
-        <span className="text-textMuted">Mid {pct(mid)}%</span>
-        <span className="text-textSecondary">Ask {pct(ask)}%</span>
+        <span className="text-textSecondary">Bid {sh.bid}%</span>
+        <span className="text-textMuted">Mid {sh.mid}%</span>
+        <span className="text-textSecondary">Ask {sh.ask}%</span>
       </div>
       <span className="flex h-1.5 rounded-full overflow-hidden bg-ink/[0.06]">
-        <span className="h-full bg-bear/80" style={{ width: `${pct(bid)}%` }} />
-        <span className="h-full bg-ink/25" style={{ width: `${pct(mid)}%` }} />
-        <span className="h-full bg-bull" style={{ width: `${pct(ask)}%` }} />
+        <span className="h-full bg-bear/80" style={{ width: `${sh.bid}%` }} />
+        <span className="h-full bg-ink/25" style={{ width: `${sh.mid}%` }} />
+        <span className="h-full bg-bull" style={{ width: `${sh.ask}%` }} />
       </span>
       {caption && <span className="font-mono text-[11px] text-textMuted normal-case">{caption}</span>}
     </div>

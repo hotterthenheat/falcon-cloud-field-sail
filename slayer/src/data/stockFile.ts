@@ -5,10 +5,10 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Candle } from '../types/market';
-import { daysBetween, nyTodayIso } from './nyDate';
+import { daysBetween, lastSessionIso, nyDayOf, nyTodayIso } from './nyDate';
 import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
-import { uwCall, whalesDailyLong, whalesEarnings, whalesFlowTicker, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
+import { uwCall, whalesDailyLong, whalesEarnings, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
 
 export interface EarnRow {
   report_date?: string;
@@ -30,6 +30,8 @@ export interface StockFile {
   dark: DarkPoolPrint[];
   /** The chain's contracts, busiest by volume first (/stock/{t}/option-contracts) — the earnings page reads the same */
   contracts: Record<string, unknown>[];
+  /** The New York session the flow alerts and the dark prints are filtered to ("2026-10-22" before the open on the 23rd) */
+  session: string;
   /** Epoch ms of the last print that landed. */
   at?: number;
 }
@@ -41,8 +43,8 @@ const EMPTY_DARK: DarkPoolPrint[] = [];
 const EMPTY_CONTRACTS: Record<string, unknown>[] = [];
 /** One object per status. A fresh object on every read makes useSyncExternalStore
     treat the file as changed and warn that getSnapshot is not cached. */
-const LOADING: StockFile = { status: 'loading', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
-const FAILED: StockFile = { status: 'error', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
+const LOADING: StockFile = { status: 'loading', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
+const FAILED: StockFile = { status: 'error', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, dark: EMPTY_DARK, contracts: EMPTY_CONTRACTS };
 
 const blank = (status: StockFile['status']): StockFile => (status === 'error' ? FAILED : LOADING);
 
@@ -103,10 +105,13 @@ function daysFrom(rows: UwDaily[]): Candle[] {
 /** New York's calendar day — a contract expiring before it is dead and is never listed as busy */
 const nyToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
 
-function flowsFrom(rows: Record<string, unknown>[], spot: number): FlowPrint[] {
+function flowsFrom(rows: Record<string, unknown>[], spot: number, session: string): FlowPrint[] {
   const today = nyToday();
-  /* the flow alerts reach back over days; an alert on a contract that has since expired is not "busy" any more */
+  /* THE SESSION'S ALERTS ONLY (the third audit, 2026-10-23): the vendor's alerts reach back over days — 5 of WOLF's 11
+     "today" were from 10/16–10/21 — so the premium-today split and the tape's richest prints read only alerts created on
+     the session the page names; an alert on a contract that has since expired is not "busy" any more either */
   const live = rows.filter(row => {
+    if (nyDayOf(String(row.created_at || '')) !== session) return false;
     const exp = String(row.expiry || '').slice(0, 10);
     return !/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp >= today;
   });
@@ -225,37 +230,48 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
     });
 }
 
-/* THE TAPE THE READ STANDS ON: the newest 80 prints after the bell were all post-market (AAPL's 80 were 16:00–17:30), so
-   the read had nothing of the session. The page asks for the prints of $500K or more — the sized prints — and, once the
-   session has closed, only those up to 16:00 New York, so the 500 the vendor sends reach as far back into the session as
-   they can. The window they span is printed with the read. */
+/* THE TAPE THE READ STANDS ON. After the bell the newest prints are all post-market, so the read had nothing of the
+   session: the prints are asked for on the session the page names, up to its 16:00 New York close once that has passed.
+   SIZED IS 10,000 SHARES OR $500K (Trace's SidesRule; the third audit, 2026-10-23: asked for $500K+ alone, GME lost 16
+   of its 25 sized prints) — so the tape is two asks, the $500K+ prints and the 10,000-share+ prints, merged on the
+   vendor's tracking id. The window they span is printed with the read. */
 export const DARK_MIN_PREMIUM = 500_000;
-async function darkTape(ticker: string): Promise<Record<string, unknown>[]> {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
-  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
-  const minutes = Number(get('hour')) * 60 + Number(get('minute'));
-  const day = `${get('year')}-${get('month')}-${get('day')}`;
-  /* 16:00 New York as an instant: the offset is read off the clock itself (EDT −4, EST −5) */
-  const nyNoonUtc = Date.parse(`${day}T12:00:00Z`);
+export const DARK_MIN_SIZE = 10_000;
+async function darkTape(ticker: string, session: string): Promise<Record<string, unknown>[]> {
+  /* 16:00 New York on the session's day as an instant: the offset is read off the clock itself (EDT −4, EST −5) */
+  const nyNoonUtc = Date.parse(`${session}T12:00:00Z`);
   const nyNoonHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date(nyNoonUtc)));
   const closeMs = nyNoonUtc + (16 - nyNoonHour) * 3_600_000;
-  const after = minutes >= 16 * 60 ? `&older_than=${Math.floor(closeMs / 1000)}` : '';
-  const res = await uwCall(`/darkpool/${encodeURIComponent(ticker)}?limit=500&min_premium=${DARK_MIN_PREMIUM}${after}`, true);
-  if (res.error) throw new Error(res.error);
-  return Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+  const after = Date.now() >= closeMs ? `&older_than=${Math.floor(closeMs / 1000)}` : '';
+  const base = `/darkpool/${encodeURIComponent(ticker)}?date=${session}&limit=500${after}`;
+  const [byPrem, bySize] = await Promise.all([uwCall(`${base}&min_premium=${DARK_MIN_PREMIUM}`, true), uwCall(`${base}&min_size=${DARK_MIN_SIZE}`, true)]);
+  if (byPrem.error && bySize.error) throw new Error(byPrem.error);
+  const seen = new Set<string>();
+  const out: Record<string, unknown>[] = [];
+  for (const res of [byPrem, bySize]) {
+    for (const row of Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : []) {
+      const key = String(row.tracking_id ?? `${row.executed_at}|${row.price}|${row.size}`);
+      /* the vendor's date filter still hands back the evening before; the read is the named session's alone */
+      if (nyDayOf(String(row.executed_at || '')) !== session || seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+    }
+  }
+  return out.sort((a, b) => String(b.executed_at || '').localeCompare(String(a.executed_at || '')));
 }
 
 /** The prints the dark-pool read is built on: sized, in the regular session, priced at the quote */
 export const darkReadable = (p: DarkPoolPrint): boolean => p.intent !== 'ROTATION';
 
 async function load(ticker: string): Promise<void> {
+  const session = lastSessionIso();
   const [screenR, earnR, dayR, flowR, darkR, contractR] = await Promise.all([
     whalesScreener([ticker]).catch(() => [] as Record<string, unknown>[]),
     whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
     whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
-    whalesFlowTicker(ticker).catch(() => [] as Record<string, unknown>[]),
-    darkTape(ticker).catch(() => [] as Record<string, unknown>[]),
+    /* enough of the alerts to cover a busy name's whole session; filtered to that session in flowsFrom */
+    uwCall(`/option-trades/flow-alerts?ticker_symbol=${encodeURIComponent(ticker)}&limit=200`, true).then(r => (Array.isArray(r.data) ? (r.data as Record<string, unknown>[]) : [])).catch(() => [] as Record<string, unknown>[]),
+    darkTape(ticker, session).catch(() => [] as Record<string, unknown>[]),
     /* the same call the earnings page makes, so the two pages' busiest contracts agree */
     whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
   ]);
@@ -265,10 +281,11 @@ async function load(ticker: string): Promise<void> {
   const got = (Array.isArray(screenR) && screenR.length > 0) || days.length > 0 || (Array.isArray(earnR) && earnR.length > 0);
   files.set(ticker, {
     status: got ? 'live' : 'error',
+    session,
     screen: screen && typeof screen === 'object' ? (screen as Record<string, unknown>) : null,
     earnings: Array.isArray(earnR) ? earnR : [],
     days,
-    flow: flowsFrom(Array.isArray(flowR) ? flowR : [], spot),
+    flow: flowsFrom(Array.isArray(flowR) ? flowR : [], spot, session),
     dark: darksFrom(Array.isArray(darkR) ? darkR : [], spot),
     contracts: Array.isArray(contractR) ? (contractR as Record<string, unknown>[]) : [],
     at: got ? Date.now() : undefined,

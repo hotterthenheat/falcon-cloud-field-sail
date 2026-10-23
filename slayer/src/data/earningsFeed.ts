@@ -169,6 +169,18 @@ export const epsResultOf = (actual: number, est: number): 'beat' | 'inline' | 'm
   return a > e ? 'beat' : a < e ? 'miss' : 'inline';
 };
 
+/** IS THE PRINT OUT — the one rule (the third audit, 2026-10-23: at 19:20 the board still counted WDC "still to report"
+    and priced it "±6.5% · 0.87× fair" while its page said "Reported"). On New York's clock: a date before today is out;
+    today's before-the-open report is out from 09:30, today's after-the-close one (or one with no time set) from 16:00;
+    a report the vendor already gives a move for is out. */
+export function reportedNow(e: { iso?: string; slot: ReportSlot; timeKnown?: boolean; actualMovePct?: number | null }, today: string = nyToday(), minutes: number = nyMinutesNow()): boolean {
+  const iso = (e.iso ?? '').slice(0, 10);
+  if (!iso) return false;
+  if (iso < today || e.actualMovePct != null) return true;
+  if (iso > today) return false;
+  return minutes >= (e.slot === 'BMO' && e.timeKnown !== false ? 9 * 60 + 30 : 16 * 60);
+}
+
 function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const ticker = (row.symbol || '').toUpperCase();
   const iso = (row.report_date || '').slice(0, 10);
@@ -182,10 +194,14 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   if (weekIdx == null) return null;
   const implied = Number(impliedPct(row.expected_move_perc).toFixed(2));
   const price = Number(priceOf(row).toFixed(2));
-  const reaction = row.reaction == null || row.reaction === '' ? null : Number(row.reaction);
-  /* OUT ONCE IT IS OUT (the retail pass, 2026-10-22): Monday's to Wednesday's names, and this morning's before-open
-     ones, still showed the "±" the options had priced instead of the move the stock made */
-  const reported = iso < today || (iso === today && slotOf(row.report_time) === 'BMO' && nyMinutesNow() >= 9 * 60 + 30) || reaction != null;
+  /* the move the stock made: the slot's `reaction`, else the report's own next-session move on the name's rows
+     (post_earnings_move_1d) — PG reported before the open with both on file and its page said "the result lands once
+     the vendor posts it" (the third audit, 2026-10-23) */
+  const reactionRaw = row.reaction == null || row.reaction === '' ? null : Number(row.reaction);
+  const postMove = row.post_earnings_move_1d == null || row.post_earnings_move_1d === '' ? null : Number(row.post_earnings_move_1d);
+  const reaction = reactionRaw != null && Number.isFinite(reactionRaw) ? reactionRaw : postMove != null && Number.isFinite(postMove) ? postMove : null;
+  /* OUT ONCE IT IS OUT — ONE RULE, reportedNow, for the board and the name's page */
+  const reported = reportedNow({ iso, slot: slotOf(row.report_time), timeKnown: timeKnownOf(row.report_time), actualMovePct: reaction }, today);
   const known = isKnownName(ticker, { sp500: !!row.is_s_p_500, marketCap: num(row.marketcap) || null });
   const partial = {
     ticker,
@@ -716,6 +732,18 @@ export function ensureEarnings(): void {
       feed = { status: 'live', events };
       emit();
       if (historiesWanted) startEnrich();
+      /* the clock moves the rule: a minute's tick re-reads which prints are out (09:30, 16:00) */
+      window.setInterval(() => {
+        let changed = false;
+        for (const e of feed.events) {
+          const out = reportedNow(e);
+          if (out !== !!e.reported) {
+            e.reported = out;
+            changed = true;
+          }
+        }
+        if (changed) emit();
+      }, 60_000);
     } catch {
       if (feed.status !== 'live') {
         feed = { status: 'sim', events: [] };
@@ -745,6 +773,9 @@ export function useEarningsCoverage(): { slots: number; missed: number; historie
     [version],
   );
 }
+
+/** True when a name's past reports were asked for and did not come back — it is done, not still reading */
+export const historyMissed = (ticker: string): boolean => history.get(ticker.toUpperCase()) === 'miss';
 
 /** True only while the fortnight has not answered. An empty live list is not pending. */
 export function useEarningsPending(): boolean {

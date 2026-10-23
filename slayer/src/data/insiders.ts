@@ -253,13 +253,13 @@ export function insidersSentence(rows: InsiderTrade[], windowDays: number): stri
   const names = ranked.slice(0, 4).map(([n]) => n);
   const rest = ranked.length - names.length;
   const parts: string[] = [];
-  if (chosenBuys.length) parts.push(`${chosenBuys.length} ${chosenBuys.length === 1 ? 'purchase' : 'purchases'} someone chose to make, ${fmtM(buyValue)} — the most in ${names.join(', ')}${rest > 0 ? ` and ${rest} more ${rest === 1 ? 'name' : 'names'}` : ''}. These are the rows on this page with one obvious motive.`);
+  if (chosenBuys.length) parts.push(`${chosenBuys.length.toLocaleString('en-US')} ${chosenBuys.length === 1 ? 'purchase' : 'purchases'} someone chose to make, ${fmtM(buyValue)} — the most in ${names.join(', ')}${rest > 0 ? ` and ${rest.toLocaleString('en-US')} more ${rest === 1 ? 'name' : 'names'}` : ''}. These are the rows on this page with one obvious motive.`);
   else parts.push('No insider chose to buy in this window.');
   if (sales.length) {
     const pct = Math.round((planned.length / sales.length) * 100);
-    parts.push(`${sales.length} ${sales.length === 1 ? 'sale' : 'sales'} for ${fmtM(saleValue)}, ${pct}% of them on a 10b5-1 plan adopted months earlier — those carry no view on the day.`);
+    parts.push(`${sales.length.toLocaleString('en-US')} ${sales.length === 1 ? 'sale' : 'sales'} for ${fmtM(saleValue)}, ${pct}% of them on a 10b5-1 plan adopted months earlier — those carry no view on the day.`);
   }
   const plumbing = rows.length - market.length;
-  if (plumbing) parts.push(`${plumbing} grants, conversions and withholdings shown — not trades.`);
+  if (plumbing) parts.push(`${plumbing.toLocaleString('en-US')} grants, conversions and withholdings shown — not trades.`);
   return parts.join(' ');
 }

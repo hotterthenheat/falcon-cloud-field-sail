@@ -473,11 +473,11 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                 <div className="px-2 min-w-0">
                   <div className={`flex items-baseline gap-2 font-mono text-[14px] font-semibold tnum whitespace-nowrap ${kept ? 'text-silver' : 'text-textPrimary'}`}>
                     {fmtStrike(r.strike)}
-                    {r.role && (
-                      <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: ink }} data-build-role={r.role}>
-                        {r.role}
+                    {(r.roles?.length ? r.roles : r.role ? [r.role] : []).map(role => (
+                      <span key={role} className="text-[8px] font-bold uppercase tracking-wider" style={{ color: ROLE_INK[role] ?? ink }} data-build-role={role}>
+                        {role}
                       </span>
-                    )}
+                    ))}
                     {yours?.has(r.strike) && (
                       <span className="text-[8px] font-bold uppercase tracking-wider text-warn" data-yours>
                         you own

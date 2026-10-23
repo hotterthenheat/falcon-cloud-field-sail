@@ -44,6 +44,9 @@ const REG_RE = /\bsec\b|\bregulat|\bantitrust\b|\bdoj\b|\bftc\b|\bfda\b|\bprobe\
 const MACRO_RE =
   /\$MACRO\b|\bfed\b|\bfomc\b|\bpowell\b|\bcpi\b|\bppi\b|\bpce\b|inflation|\bpayrolls?\b|jobs report|jobless claims|unemployment|\bgdp\b|recession|central bank|\becb\b|\bboj\b|\bboe\b|\bpboc\b|\brate (?:cut|hike)s?\b|interest rates?|treasury yields?|bond yields?|\byields? (?:rise|fall|jump|climb|slide)|\btariffs?\b|trade war|\bcrude\b|\bbrent\b|\boil (?:prices?|surpasses|tops|jumps|falls|rises|slides)|\bopec\b|the dollar\b|consumer confidence|consumer sentiment|\bpmi\b|retail sales|housing starts|home sales|\beconom(?:y|ic|ies)\b|government shutdown|\bdeficit\b|\bchancellor\b|\btreasury secretary\b|\bs&p 500\b|\bnasdaq composite\b|\bdow jones\b|\bwall street\b|global markets|\b(?<!'s )stocks (?:tumble|rally|fall|rise|slide|surge|drop|climb|sink|slump)/i;
 
+const GOV_RE =
+  /\b(?:government|congress|senate|house (?:passes|votes|republicans|democrats)|white house|president|trump|biden|administration|election|parliament|prime minister|minister|ministry|cabinet|lawmakers?|legislation|bill (?:passes|signed)|sanctions?|embargo|war\b|ceasefire|military|nato|united nations|\bun\b|imf|world bank|g7|g20|budget|tax (?:cut|hike|bill|plan)|debt ceiling|stimulus|regulators?|commodit(?:y|ies)|gold (?:prices?|futures|rises|falls|climbs|slips)|silver prices?|copper prices?|natural gas|bitcoin|crypto(?:currency|currencies)? market|futures (?:rise|fall|edge|point)|stock futures|equit(?:y|ies) markets?|markets? (?:open|close|rally|slump|wrap)|asian (?:stocks|markets)|european (?:stocks|markets)|ftse|dax|nikkei|hang seng|kospi|sensex|yuan|yen|euro\b|sterling|forex)\b/i;
+
 const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boolean): NewsCategory => {
   const s = `${headline} ${(tags ?? []).join(' ')}`;
   if (/\$MACRO\b/i.test(s)) return 'Macro';
@@ -57,21 +60,50 @@ const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boo
   /* the economy, a central bank, prices or the whole market — and only when no company is the subject */
   if (MACRO_RE.test(s) && !hasTicker) return 'Macro';
   if (MACRO_RE.test(s) && /\b(?:fed|fomc|cpi|ppi|pce|gdp|payrolls?|ecb|boj|tariffs?)\b/i.test(s)) return 'Macro';
-  /* a story that names no listed company and fits no company beat — policy, politics, markets abroad, the world — is
-     the macro beat, not a company's product story (the re-audit, 2026-10-22: a thousand such rows read "NO TICKER ·
-     PRODUCT") */
-  if (!hasTicker) return 'Macro';
+  /* MACRO MEANS MACRO (the third audit, 2026-10-23): "no ticker" is not the macro beat — "MiniTool ShadowMaker 5.0
+     Introduces Cloud Sync", Chery's crash tests and a Warhound launch were filed MACRO and featured as the lead. A story
+     with no listed name is macro only when it is about the economy, a central bank, rates, prices, markets, or government
+     and policy; a press release from a company the page does not list is a company story — the Product beat. */
+  if (!hasTicker && GOV_RE.test(s)) return 'Macro';
   return 'Product';
 };
 
-const sessionMove = (meta: UwNews['meta'], ticker: string | null): number | null => {
-  if (!ticker || !meta) return null;
-  const node = meta[ticker];
+/* THE MOVE AT PUBLISH, ON THE dayChange.ts CONVENTION (the third audit, 2026-10-23). The wire's meta is the name's last
+   bar against the bar before it: in the session that is the session's move, but after the bell `curr` is the post-market
+   bar and `prev` is TODAY's regular close — so curr − prev was the after-hours move alone (GOOGL "+0.2%" on a −3.15%
+   day; 69 of 159 nodes). Now the regular session's move is today's regular close against the close before it (the name's
+   regular closes, data/dayChange.ts, when they are in hand), and the extended-hours move is kept apart, named. Before the
+   open the session has not moved: only the pre-market move is given. */
+interface MetaBar {
+  c?: string | number;
+  date?: string;
+  mt?: string;
+}
+export interface PublishMove {
+  /** The regular session's move when the story crossed, or null when it cannot be read */
+  day: number | null;
+  /** The pre-market or after-hours move at publish, or null in the session */
+  ext: number | null;
+  extWord: 'pre-market' | 'after hours' | null;
+  /** After the bell, the regular close the day's move needs a prior close for — and its date */
+  needs: { ticker: string; date: string; close: number } | null;
+}
+const pctOf = (a: number, b: number): number => Number((((a - b) / b) * 100).toFixed(2));
+export function publishMove(meta: UwNews['meta'], ticker: string | null, priorClose: (ticker: string, before: string) => number | null): PublishMove {
+  const none: PublishMove = { day: null, ext: null, extWord: null, needs: null };
+  if (!ticker || !meta) return none;
+  const node = meta[ticker] as { curr?: MetaBar; prev?: MetaBar } | undefined;
   const curr = Number(node?.curr?.c);
   const prev = Number(node?.prev?.c);
-  if (!(curr > 0) || !(prev > 0)) return null;
-  return Number((((curr - prev) / prev) * 100).toFixed(2));
-};
+  if (!(curr > 0) || !(prev > 0)) return none;
+  const mt = String(node?.curr?.mt ?? 'regular').toLowerCase();
+  if (mt.startsWith('reg') || mt === 'r') return { ...none, day: pctOf(curr, prev) };
+  if (mt.startsWith('pre')) return { ...none, ext: pctOf(curr, prev), extWord: 'pre-market' };
+  /* post-market: prev is the session's regular close; the day's move is that close against the close before its date */
+  const date = String(node?.prev?.date ?? node?.curr?.date ?? '').slice(0, 10);
+  const before = date ? priorClose(ticker, date) : null;
+  return { day: before && before > 0 ? pctOf(prev, before) : null, ext: pctOf(curr, prev), extWord: 'after hours', needs: date ? { ticker, date, close: prev } : null };
+}
 
 /* THE STORY'S NAME, CHECKED AGAINST ITS OWN HEADLINE (the ship pass, 2026-10-22): the wire's ticker tags are loose —
    a "$MACRO" Dutch consumer-confidence print came tagged BROS, and "SpaceX, Tesla consider all-stock merger" came with
@@ -98,15 +130,37 @@ function borneOut(t: string, headline: string): boolean {
   if (core.length < 4 || GENERIC.has(core.toLowerCase())) return false;
   return new RegExp(`\\b${esc(core)}\\b`, 'i').test(headline);
 }
-function storyTickers(headline: string, tags: readonly string[] | undefined): string[] {
-  if (/\$MACRO\b/i.test(headline)) return [];
+/* A NAME IN A HEADLINE IS NOT ITS SUBJECT (the third audit, 2026-10-23): "Waymo, Google and Microsoft Alums Raise $30M…"
+   came with no tags and was filed as MSFT · PRODUCT · MAJOR and put on the board, ranked third. An untagged story is
+   filed under a company only when the headline LEADS with it ("Tesla Recalls…", "COCA-COLA SAYS…", "Exclusive: Nvidia
+   …"); a company named further in is a mention — shown as "mentions MSFT", never the story's name, never on the board. */
+const leadText = (headline: string): string => headline.replace(/^\s*(?:[A-Z][\w\s'-]{0,24}:\s+)?["'“‘(]*/, '');
+const leadsWithName = (headline: string, re: RegExp): boolean => {
+  const lead = leadText(headline);
+  const m = re.exec(lead);
+  return !!m && m.index === 0;
+};
+const firstWordOf = (t: string): RegExp | null => {
+  const name = tickerName(t);
+  const core = (name?.split(/[\s,]+/)[0] ?? '').replace(/[^A-Za-z0-9.&-]/g, '');
+  return core.length >= 2 ? new RegExp(`^${esc(core)}\\b`, 'i') : null;
+};
+function storyTickers(headline: string, tags: readonly string[] | undefined): { tickers: string[]; mentions: string[] } {
+  if (/\$MACRO\b/i.test(headline)) return { tickers: [], mentions: [] };
   const tagged = [...new Set((tags ?? []).map(t => t.trim().toUpperCase()).filter(t => /^[A-Z][A-Z0-9.]{0,5}$/.test(t)))].filter(t => borneOut(t, headline));
-  if (tagged.length) return tagged;
-  const named = COMPANY_RE.find(c => c.re.test(headline));
-  if (named) return [named.ticker];
+  if (tagged.length) return { tickers: tagged, mentions: [] };
+  const named = COMPANY_RE.filter(c => c.re.test(headline));
   /* an untagged company story names its company by the listing's own name (data/tickers.ts companiesInHeadline) —
      "COCA-COLA SAYS…" is KO, "Medpace Slumps…" MEDP (the re-audit, 2026-10-22: dozens of NO TICKER rows) */
-  return companiesInHeadline(headline);
+  const listed = companiesInHeadline(headline).filter(t => !named.some(n => n.ticker === t));
+  const subject: string[] = [];
+  const mentions: string[] = [];
+  for (const n of named) (leadsWithName(headline, n.re) ? subject : mentions).push(n.ticker);
+  for (const t of listed) {
+    const re = firstWordOf(t);
+    (re && re.test(leadText(headline)) ? subject : mentions).push(t);
+  }
+  return { tickers: subject.slice(0, 1), mentions: [...new Set([...subject.slice(1), ...mentions])].slice(0, 4) };
 }
 
 /* NOT MARKET NEWS (the re-audit, 2026-10-22): the press-release wires carry paid placements — a criminal-defense firm's
@@ -116,15 +170,20 @@ const SPAM_RE =
   /\b(?:criminal defense|defense lawyers?|defense attorneys?|personal injury|injury (?:lawyers?|attorneys?)|dui (?:lawyers?|attorneys?)|divorce (?:lawyers?|attorneys?)|hellonation|law offices? of|accident (?:lawyers?|attorneys?)|estate planning attorney)\b|\|\s*[^|]{0,60}\b(?:lawyers?|attorneys?|law firm|law group)\s*$/i;
 export const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline);
 
-export function newsFromWhales(rows: UwNews[]): NewsItem[] {
+/** The regular close before a date, from the name's regular closes when they are in hand — or null */
+export type PriorClose = (ticker: string, before: string) => number | null;
+const noPrior: PriorClose = () => null;
+
+export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior): NewsItem[] {
   return rows.filter(r => !isNewsSpam(decodeEntities(r.headline || ''))).map((r) => {
     const headline = decodeEntities(r.headline || '');
     const at = Date.parse(r.created_at);
     const sent = sentimentOf(r.sentiment);
     const major = !!r.is_major;
-    const tickers = storyTickers(headline, r.tickers);
+    const { tickers, mentions } = storyTickers(headline, r.tickers);
     const ticker = tickers[0] ?? null;
-    const moved = sessionMove(r.meta, ticker);
+    const pm = publishMove(r.meta, ticker, priorClose);
+    const moved = pm.day;
     const move = moved ?? 0;
     const stamp = Number.isFinite(at) ? at : 0;
     return {
@@ -135,6 +194,7 @@ export function newsFromWhales(rows: UwNews[]): NewsItem[] {
       source: r.source || 'Wire',
       ticker,
       tickers,
+      mentions,
       headline,
       body: [`Reported by ${r.source || 'the wire'}.`],
       category: categoryOf(headline, r.tags, !!ticker),
@@ -146,9 +206,11 @@ export function newsFromWhales(rows: UwNews[]): NewsItem[] {
         expMove1dPct: move,
         expMove5dPct: move,
         confidencePct: moved != null ? 58 : 0,
-        analog: moved != null ? 'The figure is the name\'s move when the story crossed. Not a forecast.' : '',
-        playbook: moved != null ? 'The figure is how the name had moved on the session when the story crossed the wire — a snapshot at publish, not today\'s move now, and not a forecast.' : '',
+        analog: moved != null ? 'The figure is the name\'s regular-session move when the story crossed. Not a forecast.' : '',
+        playbook: moved != null ? `The figure is how the name had moved on the regular session when the story crossed the wire${pm.ext != null ? `, with the ${pm.extWord} move apart` : ''} — a snapshot at publish, not today's move now, and not a forecast.` : '',
         measured: moved != null,
+        extMovePct: pm.ext,
+        extWord: pm.extWord,
       },
     };
   });
@@ -233,8 +295,13 @@ const ownerOf = (notes?: string, issuer?: string): ReportOwner => {
   if (s.includes('dependent') || s.includes('child')) return 'Dependent';
   if (s.includes('spouse')) return 'Spouse';
   if (/\bjoint\b/.test(s)) return 'Joint';
-  return 'Self';
+  /* "undisclosed" is the filing not saying whose it is — never the member's own (the third audit, 2026-10-23) */
+  if (/\bself\b/.test((issuer || '').toLowerCase())) return 'Self';
+  return 'Undisclosed';
 };
+
+/** The owner tag in words: "not stated" when the filing does not say */
+export const ownerWord = (o: ReportOwner): string => (o === 'Undisclosed' ? 'not stated' : o);
 
 const bracketOf = (amounts: unknown): number | null => {
   const s = typeof amounts === 'string' ? amounts : Array.isArray(amounts) ? amounts.map(String).join(' ') : amounts && typeof amounts === 'object' ? JSON.stringify(amounts) : '';

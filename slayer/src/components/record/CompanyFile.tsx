@@ -85,7 +85,7 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="Dividend">{card.hasDividend == null ? '—' : card.hasDividend ? 'Pays one' : 'None'}</Fact>
             <Fact label="Dividend yield">{yieldPct != null ? <TickFigure value={yieldPct}>{`${yieldPct.toFixed(2)}%`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>
             <Fact label="EPS growth · 4q">
-              {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : ''}{growth.toFixed(1)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}
+              {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : growth < 0 ? '−' : ''}{Math.abs(growth).toFixed(1)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}
             </Fact>
           </dl>
           <p className="px-5 pb-4 text-[11px] text-textMuted">A street target, the forward estimates and the last call are not on this feed.</p>

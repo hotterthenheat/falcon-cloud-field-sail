@@ -40,8 +40,8 @@ const KIND_TEXT: Record<KeyLevelKind, string> = {
 };
 
 const KIND_BAR: Record<KeyLevelKind, string> = {
-  'call-wall': 'bg-bull/90',
-  'put-wall': 'bg-bear/80',
+  'call-wall': 'bg-glacier/90',
+  'put-wall': 'bg-ember/80',
   flip: 'bg-flip/60',
   supreme: 'bg-supreme/60',
   pin: 'bg-textMuted/60',

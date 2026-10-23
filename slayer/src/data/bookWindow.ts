@@ -2,6 +2,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday } from '../core/calendar';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
+import { bookCandles, bookRevision } from './uwBook';
 
 /*
 ==================================================
@@ -227,7 +228,7 @@ export interface SessionBook {
 const sessionMemo = new WeakMap<MarketSnapshot, Map<string, SessionBook>>();
 export function sessionBook(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionBook {
   /* one object per snapshot, scope and minute — the report memoises on the book it is handed */
-  const key = `${scope}|${Math.floor(Date.now() / 60_000)}`;
+  const key = `${scope}|${Math.floor(Date.now() / 60_000)}|${bookRevision()}`;
   let m = sessionMemo.get(snapshot);
   if (!m) sessionMemo.set(snapshot, (m = new Map()));
   const hit = m.get(key);
@@ -238,7 +239,26 @@ export function sessionBook(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): Se
   return out;
 }
 
+/* A CLOSED SESSION IS READ AT ITS OWN CLOSE (the third audit, 2026-10-23: QQQ's "Flip crossed today" read 13× and then
+   9× after the bell — the morning's book re-priced at each after-hours tick and the running clock). After the bell the
+   session's book is priced at the last cash bar's price and minute, so its flip, and every count against it, stop. */
+function frozenAtClose(out: SessionBook, ticker: string): SessionBook {
+  if (!out.after || !out.book) return out;
+  const today = nyIsoDate();
+  const bars = (bookCandles(ticker) ?? []).filter(b => nyIsoDate(b.time * 1000) === today);
+  const last = bars[bars.length - 1];
+  if (!last) return out;
+  /* the bell itself (16:00 ET), not the last bar's minute — a page on five-minute bars and one on one-minute bars read
+     the same instant and the same closing price */
+  const [y, m, d] = today.split('-').map(Number);
+  return { ...out, book: { ...out.book, spot: last.close, flipAt: nyWallTime(y, m, d, 16, 0) } };
+}
+
 function sessionBookOf(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionBook {
+  return frozenAtClose(sessionBookRaw(snapshot, scope), snapshot.ticker);
+}
+
+function sessionBookRaw(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionBook {
   const s = sessionDay();
   const isTrading = isTradingDay(nyToday());
   const after = isTrading && nySessionPhase() === 'after';

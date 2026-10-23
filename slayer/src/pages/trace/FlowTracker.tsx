@@ -43,13 +43,13 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
-import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedCross, type WatchedItem } from '../../context/WatchContext';
+import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint } from '../../context/WatchContext';
 import CrossDrilldown from '../../components/trace/CrossDrilldown';
 import type { DarkPoolPrint } from '../../types/darkpool';
 
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
-import { dayLean, expiredAtBell, occOf, tapeSessionIso, useContractDays, useLiveBook, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
+import { dayLean, expiredAtBell, occOf, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
 import { nyParts } from '../../core/nyTime';
 import { ensureBook, peekSpot, useBookRev } from '../../data/uwBook';
 import type { BookContract } from '../../types/trace';
@@ -100,11 +100,12 @@ const leanWord = (askPct: number, side?: { ask: number; bid: number; mid: number
     if (l.lean === 'EVEN') return { text: 'EVEN', ink: 'text-textMuted' };
     return { text: l.lean === 'ASK' ? `ASK ${Math.round(l.ask)}%` : `BID ${Math.round(l.bid)}%`, ink: 'text-textPrimary' };
   }
+  /* the one lean rule (traceLive dayLean), on the ask share alone when that is all the mark kept */
   const a = Math.round(askPct);
-  const bid = 100 - a;
-  const mid = Math.abs(a - 50) < 6;
+  const l = dayLean({ askPct: a, volume: 0 }).lean;
+  const mid = l === 'EVEN' || l === 'UNSIDED';
   return {
-    text: mid ? 'EVEN' : bid >= 50 ? `BID ${bid}%` : `ASK ${a}%`,
+    text: l === 'UNSIDED' ? '—' : mid ? 'EVEN' : l === 'BID' ? `BID ${100 - a}%` : `ASK ${a}%`,
     ink: mid ? 'text-textMuted' : 'text-textPrimary',
   };
 };
@@ -188,6 +189,13 @@ interface TrackRow {
   spotNow: number | null;
   spotChg: number | null;
   volAdded: number | null;
+  /** Why volume added is not a number: the mark was in an earlier session (today's whole volume is then shown) */
+  volWord?: string;
+  /** The price now — the SAME field as the price marked: the screener's close for a contract, the newest trade's fill
+      for a print — and when it was set */
+  nowPrice: number | null;
+  nowAt: string | null;
+  nowSrc?: 'close' | 'fill';
   oiDelta: number | null;
   leanThen: number | null;
   leanNow: number | null;
@@ -298,6 +306,10 @@ const FlowTracker = () => {
      because this page looked for it in another page's book) — the contract's own session off the vendor */
   const occs = useMemo(() => options.filter(w => w.kind !== 'structure').flatMap(w => occCandidates(w as { ticker: string; strike: number; right: 'C' | 'P'; expiry: string; occ?: string })), [options]);
   const days = useContractDays(occs).rows;
+  const markNow = useMarkNow(useMemo(() => options.filter(w => w.kind !== 'structure').map(w => {
+    const o = w as WatchedContract | WatchedPrint;
+    return { key: o.key, kind: o.kind, ticker: o.ticker, strike: o.strike, right: o.right, expiry: o.expiry, occ: o.occ ?? occCandidates(o)[0] };
+  }), [options])).rows;
   const todayIso = tapeSessionIso();
 
   const nq = normSymbol(query);
@@ -313,18 +325,49 @@ const FlowTracker = () => {
           const spotThen = w.at.spot;
           const spotChg = spotNow != null && spotThen > 0 ? pct(spotNow, spotThen) : null;
           if (w.kind === 'structure') {
-            return { w, live: null, chg: null, spotThen, spotNow, spotChg, volAdded: null, oiDelta: null, leanThen: null, leanNow: null, moved: spotChg ?? 0 };
+            return { w, live: null, chg: null, spotThen, spotNow, spotChg, volAdded: null, nowPrice: null, nowAt: null, oiDelta: null, leanThen: null, leanNow: null, moved: spotChg ?? 0 };
           }
           const cands = occCandidates(w);
           const occ = cands.find(o => days[o]) ?? cands[0];
           const own: ContractDayNow | null = occ ? days[occ] ?? null : null;
           const booked = byKey.get(contractKey(w)) ?? null;
-          /* the contract's own day stands in for a book row the page does not carry */
-          const live: BookContract | null = booked ?? (own && own.iso === todayIso ? bookOfDay(w, occ!, own) : null);
+          const now = markNow[w.key];
+          /* the card's row: the contract's own screener row, else the page's book, else its own day — the card only */
+          const live: BookContract | null = now?.book ?? booked ?? (own && own.iso === todayIso ? bookOfDay(w, occ!, own) : null);
+          const markDay = sessionIsoAt(w.watchedAt);
+          /* LIKE WITH LIKE: a contract's close against its close, off the screener both times; a print's fill against the
+             contract's newest trade, off the tape route both times — never one source against the other */
+          let nowPrice: number | null = null;
+          let nowAt: string | null = null;
+          let nowVol: number | null = null;
+          let nowOi: number | null = null;
+          let nowDay: string | null = null;
+          if (w.kind === 'contract') {
+            const b = now?.book ?? (booked && booked.optionSymbol ? booked : null);
+            if (b) {
+              nowPrice = b.last > 0 ? b.last : null;
+              nowAt = b.lastAt && b.lastAt !== '—' ? b.lastAt : null;
+              nowVol = b.volume;
+              nowOi = b.oi;
+              nowDay = b.lastDay ?? todayIso;
+            }
+          } else if (now?.trade) {
+            nowPrice = now.trade.fill > 0 ? now.trade.fill : null;
+            nowAt = now.trade.time.slice(0, 5);
+            nowVol = now.trade.volume;
+            nowOi = now.trade.oi;
+            nowDay = now.trade.day;
+          }
           const then = w.kind === 'contract' ? w.at.last : w.fill;
-          const chg = live && live.last > 0 ? pct(live.last, then) : null;
+          const chg = nowPrice != null && then > 0 ? pct(nowPrice, then) : null;
           const expired = expiredAtBell(isoOfExpiry(w.expiry));
-          const nowNote = live ? undefined : expired ? 'expired' : own ? `no print today · last ${own.iso.slice(5).replace('-', '/')}` : undefined;
+          const nowNote = nowPrice != null ? undefined : expired ? 'expired' : own ? `no print today · last ${own.iso.slice(5).replace('-', '/')}` : undefined;
+          /* VOLUME ADDED IS NEVER NEGATIVE: within the mark's own session it is now less then, one field; a mark from an
+             earlier session has today's whole volume added, and says so */
+          const sameDay = nowDay != null && nowDay === markDay;
+          const diff = nowVol != null && sameDay ? nowVol - w.at.volume : null;
+          const volAdded = diff != null && diff >= 0 ? diff : null;
+          const volWord = nowVol != null && !sameDay ? `${num(nowVol)} today` : undefined;
           return {
             w,
             live,
@@ -332,8 +375,12 @@ const FlowTracker = () => {
             spotThen,
             spotNow,
             spotChg,
-            volAdded: live ? live.volume - (w.kind === 'contract' ? w.at.volume : w.at.volume) : null,
-            oiDelta: live ? live.oi - w.at.oi : null,
+            volAdded,
+            volWord,
+            nowPrice,
+            nowAt,
+            nowSrc: w.kind === 'contract' ? ('close' as const) : ('fill' as const),
+            oiDelta: nowOi != null ? nowOi - w.at.oi : null,
             leanThen: w.kind === 'contract' ? w.at.askPct : null,
             leanNow: live ? live.askPct : null,
             sideNow: live?.sideVol,
@@ -343,7 +390,7 @@ const FlowTracker = () => {
         })
         .sort((a, b) => Math.abs(b.moved) - Math.abs(a.moved)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [options, byKey, nq, tick, bookRev, days, todayIso]
+    [options, byKey, nq, tick, bookRev, days, todayIso, markNow]
   );
 
   /* Three registers per column, measured over what is on screen. */
@@ -439,7 +486,7 @@ const FlowTracker = () => {
           if (w.kind === 'contract')
             return (
               <span className="text-textSecondary">
-                last <span className="text-textPrimary">${w.at.last.toFixed(2)}</span>
+                last <span className="text-textPrimary">${w.at.last.toFixed(2)}</span> <span className="text-[11px]">{w.at.lastAt ? `${w.at.lastAt} fill` : `as of ${markedAt(w.watchedAt)}`}</span>
               </span>
             );
           if (w.kind === 'print')
@@ -483,9 +530,9 @@ const FlowTracker = () => {
         align: 'right',
         sortValue: r => r.chg ?? -Infinity,
         render: r =>
-          r.live ? (
-            <span className="text-textPrimary">
-              ${r.live.last.toFixed(2)} <span className={`text-[11px] ${directionInk(r.chg ?? 0, marks.chg)}`}>{signedPct(r.chg ?? 0)}</span>
+          r.nowPrice != null ? (
+            <span className="text-textPrimary" title={r.nowSrc === 'close' ? "The screener's close for this contract now, against its close when you marked it" : "The contract's newest trade, against the print you marked — a fill against a fill"}>
+              ${r.nowPrice.toFixed(2)} {r.nowAt && <span className="text-[11px] text-textSecondary">{r.nowAt}</span>} <span className={`text-[11px] ${directionInk(r.chg ?? 0, marks.chg)}`}>{signedPct(r.chg ?? 0)}</span>
             </span>
           ) : r.w.kind === 'structure' ? (
             <Dash />
@@ -515,7 +562,16 @@ const FlowTracker = () => {
         header: 'Vol added',
         align: 'right',
         sortValue: r => r.volAdded ?? -Infinity,
-        render: r => (r.volAdded == null ? <Dash /> : <span className={weightInk(r.volAdded, marks.vol)}>{signedNum(r.volAdded)}</span>),
+        render: r =>
+          r.volAdded != null ? (
+            <span className={weightInk(r.volAdded, marks.vol)}>+{num(r.volAdded)}</span>
+          ) : r.volWord ? (
+            <span className="text-textSecondary" title="Marked in an earlier session — the volume since cannot be split from that session's, so today's whole volume is shown">
+              {r.volWord}
+            </span>
+          ) : (
+            <Dash />
+          ),
       },
       {
         key: 'oi',
@@ -586,7 +642,7 @@ const FlowTracker = () => {
           <>
             <RichRead text="Moved most since its mark: " />
             <ReadDoor onOpen={() => openRow(m)}>{champs.label(m)}</ReadDoor>
-            <RichRead text={`, [[${signedPct(m.chg!)}]] on the ${m.w.kind === 'print' ? 'fill' : 'last'}.`} />
+            <RichRead text={`, [[${signedPct(m.chg!)}]] ${m.w.kind === 'print' ? "— the contract's newest fill against the print's" : "— the screener's close now against its close at the mark"}.`} />
           </>
         ) : (
           <RichRead text="Nothing has moved since its mark yet." />
