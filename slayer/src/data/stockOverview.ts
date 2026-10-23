@@ -68,7 +68,8 @@ import { peekQuote, extendedLine, priceWords } from './liveQuote';
 import { peekLive } from './liveRecord';
 import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
 import { nyTodayIso } from './nyDate';
-import { nyClock } from '../core/nyTime';
+import { nyClock, nyIsoDate } from '../core/nyTime';
+import { peekRegularCloses, phaseOf } from './dayChange';
 import { epsResultOf, nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
 import { lookup } from './universe';
@@ -385,7 +386,14 @@ export interface ScreenPillars {
 }
 /** The scored factors, from the screener row alone */
 export function screenFactors(row: ScreenRow): ScreenPillars {
-  const last = rowNum(row, 'close');
+  /* THE SESSION'S CLOSE, NOT THE AFTER-HOURS PRINT (the round-3 audit, 2026-10-22): after the bell the screener's
+     close is the post-market price, so the scored "price against its 20-day average" read GME −1.3% while the page's
+     trend box, from the regular bars, read −0.3%. The last regular close (dayChange's daily rows) is used when read. */
+  const tk = typeof row?.ticker === 'string' ? (row.ticker as string) : '';
+  const latestRegular = tk ? peekRegularCloses(tk)?.[0] : undefined;
+  /* only today's finished session: in the session the screener's close is the live price */
+  const regular = latestRegular && latestRegular.date === nyIsoDate() && phaseOf(String(row?.market_time ?? 'post')) !== 'regular' ? latestRegular.close : undefined;
+  const last = regular != null && regular > 0 ? regular : rowNum(row, 'close');
   const ema20 = rowNum(row, 'ema_20');
   const rsi14 = rowNum(row, 'rsi_14');
   const adx14 = rowNum(row, 'adx_14');

@@ -419,7 +419,7 @@ const EarningsName = () => {
                 {reported ? (
                   e.actualMovePct != null ? (
                     <span className="text-textMuted" data-earnings-moved>
-                      the stock moved <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> the session after{e.slot === 'BMO' ? ' (the report day itself)' : ''}
+                      the stock moved <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> {e.slot === 'BMO' ? 'on the report day' : 'the session after'}
                     </span>
                   ) : (
                     <span className="text-textMuted">{e.slot === 'BMO' ? "the move is the report day's session — the vendor has not posted it yet" : "the move is the next session's — it is not made yet"}</span>

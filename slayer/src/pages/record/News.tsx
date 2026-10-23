@@ -555,9 +555,12 @@ const News = () => {
 
   /* THE STORY IN HAND — the Pulse tile's deep link opens on its story; else the first */
   const [selectedId, setSelectedId] = useState<string | null>(() => (location.state as { selectedId?: string } | null)?.selectedId ?? null);
+  /* THE LEAD FOLLOWS THE ORDER until the reader picks a story (the third audit, 2026-10-23: the first story of the first
+     page, before the wire and the board had landed, stayed "featured" — a MiniTool press release as MACRO · MAJOR) */
+  const pickedRef = useRef(!!(location.state as { selectedId?: string } | null)?.selectedId);
   useEffect(() => {
     if (rows.length === 0) return;
-    if (!selectedId || !rows.some(r => r.id === selectedId)) setSelectedId(rows[0].id);
+    if (!pickedRef.current ? selectedId !== rows[0].id : !selectedId || !rows.some(r => r.id === selectedId)) setSelectedId(rows[0].id);
   }, [rows, selectedId]);
   const selected = rows.find(r => r.id === selectedId) ?? events.find(e => e.id === selectedId) ?? null;
   /* THE GLIDE (2026-09-13; the partner: the map should "move in a flat
@@ -574,6 +577,7 @@ const News = () => {
     keepInWindow(rowsRef.current, selectedId ? `[data-news-row="${selectedId}"]` : null);
   }, [selectedId]);
   const pick = (e: GeoNewsEvent) => {
+    pickedRef.current = true;
     setSelectedId(e.id);
     if (e.origin.city) setFlyTo({ lng: e.origin.lng, lat: e.origin.lat, key: `${e.id}:${Date.now()}` });
   };
