@@ -43,7 +43,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer,
 import AnimatedNumber from '../../components/ui/AnimatedNumber';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import HoverReadout from '../../components/ui/HoverReadout';
-import { stateOf } from '../../components/earnings/volState';
+import { richText, stateOf } from '../../components/earnings/volState';
 import { BULL } from '../../components/gex/paletteInk';
 import { useTicker } from '../../context/MarketDataContext';
 import { dollars3 as fmtDollars } from './money';
@@ -452,7 +452,7 @@ const EarningsName = () => {
             <Fact label="Priced" testId="priced">
               {!pricedOk || !isPriced ? <span className="text-textMuted" title={reported ? 'Reported — the move is in' : `Rich or cheap needs ${MIN_PRICED_PRINTS} past moves on file`}>—</span> : (
               <span className={PRICED_INK[priced]}>
-                {e.richness.toFixed(2)}× {PRICED_WORD[priced]}
+                {richText(e.richness)}× {PRICED_WORD[priced]}
               </span>
               )}
             </Fact>

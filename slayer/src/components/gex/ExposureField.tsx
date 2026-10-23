@@ -1235,6 +1235,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* THE MATRIX AND THE LEVELS READ DIFFERENT CONTRACTS, SAID WHERE IT MATTERS (the retail test, 2026-10-22: row 764 read
      −$378.7M summed over "Oct 22 → Nov 2" beside "SUPREME · TODAY 764 · −$245.7M", with the note tiny at the foot) */
   const lvDate = snapshot ? levelsDate(snapshot, levelsScope) : null;
+  /* the matrix's window is said only once every listed date is in (the fourth audit's M1: "Oct 23 → Oct 29" became Nov 3) */
+  const spanWords = !snapshot?.liveBook || bookDatesIn(snapshot.ticker) ? expirySpan(chosenDates) : '…';
   const allListed = (snapshot?.uwExpiries ?? []).filter(e => snapshot?.uwByDate?.[e.date]?.length).length;
   const scopeDiffers = chosenDates.length > 0 && (levelsScope === 'ALL' ? chosenDates.length < allListed : !(chosenDates.length === 1 && chosenDates[0] === lvDate));
   const supremeDoor = (
@@ -1270,7 +1272,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           matrix row's own sum is named as the other window */}
       {scopeDiffers && supremeGreek === 'gex' && !doorCompact('supreme') && (
         <span className="text-[10px] text-warn whitespace-nowrap" title={`The matrix rows add up ${expirySpan(chosenDates)} (the Expiries card); the supreme, the walls, the flip and this figure read ${levelsLabel} (the Levels card) — so the row's own figure can differ`} data-supreme-scope-differs>
-          · {lvDate ? `${expirySpan([lvDate])} alone` : 'all expiries'} · matrix rows: {expirySpan(chosenDates)}
+          · {lvDate ? `${expirySpan([lvDate])} alone` : 'all expiries'} · matrix rows: {spanWords}
         </span>
       )}
     </button>
@@ -1853,7 +1855,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                   {d.view === 'profile' ? (
                     <ExposureProfileView surface={surfDrawn} expiries={colShown} liveSpot={book.snapshot.spot} live={!fresh} selectedStrike={kept} onSelectStrike={keep} paper={paper} />
                   ) : d.view === 'matrix' ? (
-                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={scopeDiffers ? expirySpan(chosenDates) : null} />
+                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={scopeDiffers ? spanWords : null} />
                   ) : (
                     <ExposureLedger wantCols={colGreeks.length * colWindow.length} onNatural={packs ? naturalFor(c.ticker, 'calendar') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} open={view === 'calendar' && !fresh ? openSurfaceOf(book.ticker) : null} focusOn={colFocus} greeks={colGreeks} expiries={colWindow} rings={d.rings} leg={d.legs === 'both' || d.legs === 'all' ? 'net' : d.legs} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} afterBell={d.afterBell} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} onExpiry={(many || onExpiries) ? i => { const date = listedIso(book.snapshot)[i]; if (many && date) { setOwnDates(prev => ({ ...prev, [c.ticker]: [date] })); return; } setOwnDates({}); setRange({ from: i, through: i }); } : undefined} fitKey={c.ticker} onFit={reportFit} paper={paper} />
                   )}
@@ -1922,7 +1924,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
               supreme and the walls marked on them are the Levels card's — the Board's — so the two can differ */}
           {chosenDates.length > 0 && (
             <span className={`inline-flex items-center gap-1.5 ${scopeDiffers ? 'text-textSecondary font-semibold' : 'text-textMuted/80'}`} title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show." data-legend-scope>
-              figures: {expirySpan(chosenDates)} · levels: {levelsLabel}
+              figures: {spanWords} · levels: {levelsLabel}
             </span>
           )}
           {/* the calendar's pills, named (2026-10-14 — a bare "−96%" on a cell said neither what fell nor since when) */}

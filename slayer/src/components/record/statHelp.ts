@@ -61,6 +61,7 @@ const HELP: Record<string, string> = {
   'The last': 'What it was',
   /* the wire */
   Stories: 'Headlines on the wire after the cards and the filter',
+  'Biggest priced move': 'The largest move the options price for a print, among the known names still to report in the weeks shown — smaller and unknown names are left out',
   'Biggest move': 'The regular session\'s change today for the names these stories carry — not the move when a story crossed',
   'Next print': 'The next economic release on today’s calendar, the headline ones first',
   Major: 'Headlines Unusual Whales flags as major',

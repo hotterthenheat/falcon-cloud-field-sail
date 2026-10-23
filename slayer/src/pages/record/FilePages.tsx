@@ -43,6 +43,7 @@ import { NAMES_TO_KNOW } from './recordSkeletons';
 import { asOfDay, borrowM, moneyB, moneyM, signedM } from './money';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
+import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { statHelp } from '../../components/record/statHelp';
 
 const ink = (n: number) => (n > 0 ? 'text-bull' : n < 0 ? 'text-bear' : 'text-textMuted');
@@ -127,7 +128,7 @@ const InstBookPct = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <
 const InstCard = ({ row, on, onToggle }: { row: InstitutionRow; on: boolean; onToggle: () => void }) => (
   <button type="button" onClick={onToggle} aria-pressed={on} title={on ? `Showing ${row.ticker} only — click to show every name` : `Keep the grid to ${row.ticker}`} className={CARD(on)} data-institutions-know={row.ticker} data-on={on || undefined}>
     <span className="flex items-center gap-2 min-w-0">
-      <CompanyLogo ticker={row.ticker} size={18} />
+      {row.unlisted ? null : <CompanyLogo ticker={row.ticker} size={18} />}
       <span className="font-mono text-[12px] font-bold text-textPrimary">{row.ticker}</span>
       <span className="text-[10px] text-textSecondary truncate">{row.name}</span>
     </span>
@@ -139,8 +140,32 @@ const InstCard = ({ row, on, onToggle }: { row: InstitutionRow; on: boolean; onT
   </button>
 );
 
+
+/* THE PHONE CARDS (the fourth audit's retail test, 2026-10-23): under 640px each book is a card a row — the deciding
+   fields on two lines instead of a grid whose value and side sat off-screen (components/record/PhoneCards.tsx) */
+const cellJsx = <T,>(Cell: (p: ICellRendererParams<T>) => ReactNode, data: T) => <Cell {...({ data } as ICellRendererParams<T>)} />;
+const InstPhone = (r: InstitutionRow) => (
+  <>
+    <CardLine left={cellJsx(InstName, r)} right={cellJsx(InstValue, r)} />
+    <CardLine muted left={<>{r.name} · filed {cellJsx(InstFiled, r)}</>} right={<span className="inline-flex gap-2">{cellJsx(InstBook, r)} {cellJsx(InstStatus, r)}</span>} />
+  </>
+);
+const ShortPhone = (r: ShortRow) => (
+  <>
+    <CardLine left={cellJsx(ShortName, r)} right={cellJsx(ShortInterest, r)} />
+    <CardLine muted left={cellJsx(ShortSqueeze, r)} right={<span>{r.daysToCover.toFixed(1)} days to cover</span>} />
+  </>
+);
+const EtfPhone = (r: EtfRow) => (
+  <>
+    <CardLine left={cellJsx(EtfName, r)} right={cellJsx(EtfAum, r)} />
+    <CardLine muted left={cellJsx(EtfKindCell, r)} right={<span className="inline-flex gap-1">5-day {cellJsx(EtfFlow, r)}</span>} />
+  </>
+);
+
 export const Institutions = () => {
   const navigate = useNavigate();
+  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [window, setWindow] = useState<Window>(365);
   const [book, setBook] = useState<BookPick>('any');
@@ -312,6 +337,10 @@ export const Institutions = () => {
         )}
       </Strip>
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-institutions-grid>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={r => r.id} card={InstPhone} onOpen={r => navigate(`/dossier/institutions/${houseSlug(r.name)}?line=${r.ticker}`)} empty={failed ? 'This read did not land' : 'No line on this cut'} testId="institutions" resetKey={rows} />
+        ) : (
+        <>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<InstitutionRow>
             {...phonePin}
@@ -333,6 +362,8 @@ export const Institutions = () => {
           />
         </AgGridProvider>
         {paged.bar(rows.length, 'institutions')}
+        </>
+        )}
       </div>
     </Page>
   );
@@ -431,6 +462,7 @@ const ShortSqueeze = ({ data }: ICellRendererParams<ShortRow>) => {
 
 export const Shorts = () => {
   const navigate = useNavigate();
+  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [show, setShow] = useState<Show>('all');
   const [sector, setSector] = useState<SectorPick>('all');
@@ -588,6 +620,10 @@ export const Shorts = () => {
         )}
       </Strip>
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-shorts-grid>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={r => r.ticker} card={ShortPhone} onOpen={r => navigate(`/dossier/shorts/${r.ticker}`)} empty={failed ? 'This read did not land' : 'No name on this cut'} testId="shorts" resetKey={rows} />
+        ) : (
+        <>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<ShortRow>
             {...phonePin}
@@ -607,6 +643,8 @@ export const Shorts = () => {
             key={failed ? 'failed' : 'live'}
           />
         </AgGridProvider>
+        </>
+        )}
       </div>
     </Page>
   );
@@ -699,6 +737,7 @@ const EtfCard = ({ row, on, onToggle }: { row: EtfRow; on: boolean; onToggle: ()
 
 export const EtfBook = () => {
   const navigate = useNavigate();
+  const phone = usePhoneCards();
   const [flow, setFlow] = useState<FlowPick>('any');
   const [kind, setKind] = useState<KindPick>('any');
   const [guideOpen, setGuideOpen] = useState(false);
@@ -847,6 +886,10 @@ export const EtfBook = () => {
         )}
       </Strip>
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-etf-grid>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={r => r.etf} card={EtfPhone} onOpen={r => navigate(`/dossier/etfs/${r.etf}`)} empty={failed ? 'This read did not land' : 'No fund on this cut'} testId="etfs" resetKey={rows} />
+        ) : (
+        <>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<EtfRow>
             {...phonePin}
@@ -866,6 +909,8 @@ export const EtfBook = () => {
             key={failed ? 'failed' : 'live'}
           />
         </AgGridProvider>
+        </>
+        )}
       </div>
       {focus && (
         <>

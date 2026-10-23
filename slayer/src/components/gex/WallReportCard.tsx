@@ -169,7 +169,7 @@ const GRID = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg
 // ---- the section ----------------------------------------------------------------
 
 /** `scope`: the host's chip saying which name's levels these are */
-const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false, unavailable = null }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** Plain words when the book today's session ran on is no longer available (after the close) — said instead of a table of zeros */ unavailable?: string | null; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
+const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false, unavailable: unavailableIn = null }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** Plain words when the book today's session ran on is no longer available (after the close) — said instead of a table of zeros */ unavailable?: string | null; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
   const picked = useDeskSession();
   const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : picked;
   const bars = useMemo(() => {
@@ -192,6 +192,9 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     return ch && ch.rows.length ? valueOiChange(snapshot, snapshot.chain, ch) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, bookRev]);
+  /* NOTHING PROVISIONAL (the fourth audit's M1: "SUPREME 760" — the whole book's — for seconds before today's landed) */
+  const pendingLevels = !!snapshot.liveBook && roomLevels(snapshot, '0DTE')?.complete === false;
+  const unavailable = unavailableIn ?? (pendingLevels ? 'Loading the levels’ contracts…' : null);
   const rows = useMemo<Row[]>(() => {
     /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the pin here is the pin
        the band tags (the re-audit's H6) */

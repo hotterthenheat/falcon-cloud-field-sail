@@ -25,6 +25,7 @@
 */
 
 import { ownerWord } from '../../data/whalesMap';
+import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -197,6 +198,32 @@ const LagCell = ({ data }: ICellRendererParams<CongressTrade>) => {
   );
 };
 
+/* THE PHONE CARD — the member, the asset, the side and the amount, the dates under them (components/record/PhoneCards.tsx) */
+const amountShort = (t: CongressTrade): string =>
+  t.bracket === null ? 'not disclosed' : t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketLabel(t.bracket);
+export const CongressCard = (t: CongressTrade, withMember = true) => {
+  const line = assetLine(t);
+  return (
+    <>
+      <CardLine
+        left={
+          <>
+            {withMember ? (
+              <>
+                <span className="font-semibold">{t.member.name}</span> <span className="font-mono text-[10px] text-textMuted">{seat(t)}</span>{' '}
+              </>
+            ) : null}
+            <span className={line.sym ? 'font-mono font-bold' : 'font-semibold'}>{line.title}</span>
+          </>
+        }
+        right={<span className={typeInk(t)}>{typeWord(t)}</span>}
+      />
+      <CardLine muted left={<>{ownerWord(t.owner)} · filed <When days={t.filedDaysAgo} size={10} /></>} right={<span className="text-[11px] text-textPrimary">{amountShort(t)}</span>} />
+      <CardLine muted left={<>traded <When days={t.tradedDaysAgo} size={10} /></>} right={t.lagDays < 0 ? 'before the trade' : <span className={t.late ? 'text-bear' : undefined}>{t.lagDays}d lag{t.late ? ' · late' : ''}</span>} />
+    </>
+  );
+};
+
 /* ---- the reports to know ------------------------------------------------------- */
 
 /** One big report: the stock, the member, the bracket, the chamber. A click keeps the grid to the member. */
@@ -275,6 +302,7 @@ const CongressCoverageLine = ({ coverage, window, unread }: { coverage: Congress
 
 const Congress = () => {
   const navigate = useNavigate();
+  const phone = usePhoneCards();
   const [window, setWindow] = useState<Window>(90);
   const [chamber, setChamber] = useState<ChamberPick>('both');
   const [owner, setOwner] = useState<OwnerPick>('any');
@@ -454,6 +482,10 @@ const Congress = () => {
       </div>
       {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
       <div className="slayer-board border-t border-borderSubtle" data-congress-grid>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={t => t.id} card={t => CongressCard(t)} onOpen={t => navigate(`/dossier/congress/${t.member.id}`)} empty={gridEmpty} testId="congress" resetKey={rows} />
+        ) : (
+        <>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<CongressTrade>
             {...phonePin}
@@ -476,6 +508,8 @@ const Congress = () => {
           />
         </AgGridProvider>
         {paged.bar(rows.length, 'congress-grid')}
+        </>
+        )}
       </div>
       <CongressHoldings />
     </div>

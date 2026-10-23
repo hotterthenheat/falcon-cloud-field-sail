@@ -393,7 +393,7 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
   const macroLift = macro.filter(e => e.grade === 'ALLY').length;
   const macroPress = macro.filter(e => e.grade === 'THREAT').length;
   const macroMarked = macroLift + macroPress;
-  const rest = `${named} name a listed stock${unnamed ? `, ${unnamed} more are company stories that name none the page lists` : ''}`;
+  const rest = `${named} ${named === 1 ? 'story that names' : 'that name'} a listed stock${unnamed ? ` and ${unnamed} company ${unnamed === 1 ? 'story' : 'stories'} naming none the page lists` : ''}`;
   out.push({
     key: 'macro',
     title: 'Macro backdrop',

@@ -238,7 +238,7 @@ function flowMap(rows: UwFlowStrike[]): Map<number, { call: number; put: number 
   them: spot-exposures/strike for every expiry, spot-exposures/expiry-strike for one date. Delta, vanna and charm stay on
   the greek-exposure rows (spot-exposures prints them in another unit). If the live rows fail, the snapshot is kept.
 */
-type LiveGamma = Map<number, { c: number; p: number }>;
+type LiveGamma = Map<number, { c: number; p: number; px?: number; at?: number }>;
 /** A settled date's live rows (ticker|date), kept only to come off the whole book's live total */
 const settledLive = new Map<string, LiveGamma>();
 const liveGammaCache = new Map<string, { at: number; rows: LiveGamma }>();
@@ -262,17 +262,21 @@ function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: number; 
   for (const r of rows as Record<string, unknown>[]) {
     const k = num(r.strike);
     if (!(k > 0)) continue;
-    if (stamp) {
-      const at = Date.parse(String(r.time ?? ''));
-      const px = num(r.price);
-      if (Number.isFinite(at) && px > 0 && at >= stamp.at) {
-        stamp.at = at;
-        stamp.price = px;
-      }
+    const at = Date.parse(String(r.time ?? ''));
+    const px = num(r.price);
+    /* each row's own pricing (after the vendor's overnight roll the rows of one date carry their own minutes and prices) */
+    const own = Number.isFinite(at) && px > 0;
+    if (stamp && own && at >= stamp.at) {
+      stamp.at = at;
+      stamp.price = px;
     }
     const cur = into.get(k) ?? { c: 0, p: 0 };
     cur.c += num(r.call_gamma_oi);
     cur.p += num(r.put_gamma_oi);
+    if (own && (cur.at == null || at >= cur.at)) {
+      cur.at = at;
+      cur.px = px;
+    }
     into.set(k, cur);
   }
   return rows.length;
@@ -335,12 +339,12 @@ function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma): StrikeNod
     const l = live.get(n.strike);
     const callGex = l ? -l.c : 0;
     const putGex = l ? -l.p : 0;
-    return { ...n, callGex, putGex, netGex: callGex + putGex };
+    return { ...n, callGex, putGex, netGex: callGex + putGex, gexPx: l?.px, gexAt: l?.at };
   });
   for (const [k, l] of live) {
     /* zero-gamma strikes are kept too: a new listing with no open interest yet is a date that IS in, not one missing */
     if (seen.has(k)) continue;
-    out.push({ ...emptyNode(k), callGex: -l.c, putGex: -l.p, netGex: -l.c - l.p });
+    out.push({ ...emptyNode(k), callGex: -l.c, putGex: -l.p, netGex: -l.c - l.p, gexPx: l.px, gexAt: l.at });
   }
   out.sort((a, b) => a.strike - b.strike);
   return out;

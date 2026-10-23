@@ -186,12 +186,13 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     : levels.flipFound !== false && strike === levels.flip ? { word: 'flip', ink: FLIP }
     : strike === pinStrike ? { word: 'pin', ink: MUTED }
     : null;
+  /* the one order (core/walls.ts levelRoles): supreme · call wall · put wall, then the flip */
   const levelRows = [
-    { word: 'put wall', strike: levels.putWall, ink: PUT_WALL },
+    { word: 'supreme', strike: levels.supreme, ink: SUPREME },
     { word: 'call wall', strike: levels.callWall, ink: CALL_WALL },
+    { word: 'put wall', strike: levels.putWall, ink: PUT_WALL },
     /* no crossing within ±10% is no flip — no row at a placeholder */
     ...(levels.flipFound === false ? [] : [{ word: 'flip', strike: levels.flip, ink: FLIP }]),
-    { word: 'supreme', strike: levels.supreme, ink: SUPREME },
   ];
 
   /* TODAY'S CONTRACTS OVER EACH WINDOW — the minute grid, seven books back */
@@ -365,7 +366,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
                   <button key={l.word} onClick={() => onKeep?.(l.strike)} className="flex items-baseline gap-1.5 text-left hover:opacity-80 transition-opacity" title={`Keep ${fmtStrike(l.strike)} — net GEX on ${lv?.scopeLabel ?? 'the Levels card'}`}>
                     <span className="text-[11px] uppercase tracking-wider" style={{ color: l.ink }}>{l.word}</span>
                     <span className="text-textPrimary font-semibold">{fmtStrike(l.strike)}</span>
-                    <span style={{ color: scoped != null ? rampInk(greek, -scoped) : MUTED }}>{scoped === undefined ? '…' : scoped == null ? '—' : fmtUsd(scoped)}</span>
+                    {l.word !== 'flip' && <span style={{ color: scoped != null ? rampInk(greek, -scoped) : MUTED }}>{scoped === undefined ? '…' : scoped == null ? '—' : fmtUsd(scoped)}</span>}
                   </button>
                 );
               return (
@@ -381,7 +382,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
 
         {/* HEAVIEST TODAY */}
         <section data-read-section="heaviest" className="flex flex-col gap-2">
-          <Head>Heaviest today · {label} · over {win === 'open' ? 'the session' : win}</Head>
+          <Head>Heaviest {todayScopeLabel() === 'Today' ? 'today' : '· next session'} · {label} · over {win === 'open' ? 'the session' : win}</Head>
           <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 gap-y-1 text-[11px] items-baseline">
             {heaviest.map((r, i) => {
               const role = roleOf(r.strike);

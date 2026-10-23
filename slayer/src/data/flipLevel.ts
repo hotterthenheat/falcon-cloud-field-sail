@@ -77,12 +77,16 @@ export function yearsTo(expiry: string, now: number = Date.now()): number {
 
 /** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date) — else the date's ATM
     vol. `s0`: the price the date's gamma was priced at, when it is not the search's spot. */
-const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number): GammaLeg[] => {
-  const t = yearsTo(date, now);
+const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number, perRow = false): GammaLeg[] => {
+  const t0 = yearsTo(date, now);
   const out: GammaLeg[] = [];
   for (const n of chain) {
-    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: own && n.callIv && n.callIv > 0 ? n.callIv : atmIv, t, s0 });
-    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: own && n.putIv && n.putIv > 0 ? n.putIv : atmIv, t, s0 });
+    /* EACH ROW AT ITS OWN PRICE AND MINUTE when the vendor's rows carry them (after its overnight roll every strike of a
+       date has its own) — the date's latest otherwise */
+    const own0 = perRow && n.gexPx && n.gexPx > 0 ? n.gexPx : s0;
+    const t = perRow && n.gexAt ? yearsTo(date, n.gexAt) : t0;
+    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: own && n.callIv && n.callIv > 0 ? n.callIv : atmIv, t, s0: own0 });
+    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: own && n.putIv && n.putIv > 0 ? n.putIv : atmIv, t, s0: own0 });
   }
   return out;
 };
@@ -155,7 +159,7 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
     const atm = term[d] ?? (entry.iv > 0 ? entry.iv : 0);
     const p = pinned == null ? priced[i] : null;
     const now = pinned ?? pricingClock(p?.at, wall);
-    const ls = legsOfDate(by[d], d, atm, now, d === front || snapshot.asOf != null, p && p.price > 0 && p.price !== spot ? p.price : undefined);
+    const ls = legsOfDate(by[d], d, atm, now, d === front || snapshot.asOf != null, p && p.price > 0 && p.price !== spot ? p.price : undefined, pinned == null);
     for (const l of ls) if (l.iv > 0) withVol++;
     legs.push(...ls);
   }
