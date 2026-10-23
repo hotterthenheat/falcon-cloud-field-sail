@@ -10,7 +10,8 @@ import { decide, isKnownName, type ActiveContract, type EarningsDossier, type Ea
 import { tickerName } from './tickers';
 import { MARKET_HOLIDAYS } from '../core/calendar';
 import { boardMondayIso, shortDay } from './nyDate';
-import { phaseOf } from './dayChange';
+import { loadRegularCloses, peekRegularCloses, phaseOf } from './dayChange';
+import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { nyIsoDate } from '../core/nyTime';
 import { uwCall, whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
 
@@ -257,6 +258,76 @@ export function useWireCheck(ticker: string, iso: string | undefined, slot: Repo
   }, [ticker, iso, slot]);
 }
 
+/* ---- THE REACTION SESSION'S MOVE, LIVE (round 9) ---------------------------------------------------------------
+   The calendar's `reaction` (and the board's "so far") equals the vendor's stock-state, which sat at its 10:35 print all
+   day on 10/23 — WDC +0.3% shown against −1.9% traded, AXP −3.5% against −4.2%. While a report's reacting session
+   trades, its move is read off /screener/stocks (a dozen names a call, the live close and prev_close — the close
+   before the session, the base the reaction is measured from), every minute while a page shows them; after the bell
+   the regular close (screenerRead on the name's daily rows, liveQuote's rule). */
+const nextSession = (iso: string): string => {
+  let d = addDays(iso, 1);
+  for (let i = 0; i < 10 && (weekdayOf(d) === 0 || weekdayOf(d) === 6 || MARKET_HOLIDAYS.has(d)); i++) d = addDays(d, 1);
+  return d;
+};
+const reactionIsoOf = (iso: string, slot: ReportSlot, timeKnown: boolean): string => (slot === 'BMO' && timeKnown ? iso : nextSession(iso));
+/** The reacting session is today and has opened (from 09:30) — the vendor's frozen figure is not shown then */
+const reactionSessionOn = (rIso: string, today: string = nyToday()): boolean => rIso === today && nyMinutesNow() >= 9 * 60 + 30;
+const liveMoves = new Map<string, { pct: number; live: boolean; at: number }>();
+const liveMoveAsked = new Map<string, number>();
+const LIVE_MOVE_EVERY = 60_000;
+/** Reads the move so far of reports whose reacting session is today (deduped, a minute apart a name) */
+export async function refreshReactions(items: readonly { ticker: string; iso?: string; slot: ReportSlot; timeKnown?: boolean; reported?: boolean }[]): Promise<boolean> {
+  const today = nyToday();
+  if (!reactionSessionOn(today, today)) return false;
+  const now = Date.now();
+  const want = items.filter(e => e.iso && e.reported && reactionIsoOf(e.iso, e.slot, e.timeKnown !== false) === today && now - (liveMoveAsked.get(e.ticker) ?? 0) > LIVE_MOVE_EVERY - 2000);
+  const byTicker = new Map<string, string>();
+  for (const e of want) byTicker.set(e.ticker.toUpperCase(), e.iso!);
+  const names = [...byTicker.keys()];
+  if (!names.length) return false;
+  for (const t of names) liveMoveAsked.set(t, now);
+  let changed = false;
+  for (let i = 0; i < names.length; i += 12) {
+    const rows = await whalesScreener(names.slice(i, i + 12)).catch(() => null);
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const t = String(row.ticker || '').toUpperCase();
+      const iso = byTicker.get(t);
+      if (!iso) continue;
+      const inSession = !screenerNeedsCloses(row);
+      const closes = inSession ? null : peekRegularCloses(t) ?? (await loadRegularCloses(t).catch(() => null));
+      const r = screenerRead(row, closes);
+      if (!r || r.pct == null || r.date !== today) continue;
+      const pct = Number(r.pct.toFixed(2));
+      const key = `${t}|${iso}`;
+      const had = liveMoves.get(key);
+      if (!had || had.pct !== pct || had.live !== inSession) changed = true;
+      liveMoves.set(key, { pct, live: inSession, at: Date.now() });
+    }
+  }
+  if (changed && feed.status === 'live') {
+    feed = { status: 'live', events: feed.events.map(e => {
+      const m = liveMoves.get(`${e.ticker}|${e.iso}`);
+      return m && (m.pct !== e.actualMovePct || m.live !== e.moveLive) ? { ...e, actualMovePct: m.pct, moveLive: m.live, reported: true } : e;
+    }) };
+  }
+  if (changed) emit();
+  return changed;
+}
+/** A page showing reports keeps their reacting session's move fresh (a minute apart) */
+export function useLiveReactions(items: readonly EarningsEvent[]): void {
+  const key = items.filter(e => e.reported && e.iso && e.reactionIso === nyToday()).map(e => `${e.ticker}|${e.iso}|${e.slot}|${e.timeKnown !== false ? 1 : 0}`).sort().join(',');
+  useEffect(() => {
+    if (!key) return;
+    const list = key.split(',').map(k => {
+      const [ticker, iso, slot, tk] = k.split('|');
+      return { ticker, iso, slot: slot as ReportSlot, timeKnown: tk === '1', reported: true };
+    });
+    void refreshReactions(list);
+    const id = window.setInterval(() => void refreshReactions(list), LIVE_MOVE_EVERY);
+    return () => window.clearInterval(id);
+  }, [key]);
+}
+
 function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const ticker = (row.symbol || '').toUpperCase();
   const iso = (row.report_date || '').slice(0, 10);
@@ -278,6 +349,8 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const reaction = reactionRaw != null && Number.isFinite(reactionRaw) ? reactionRaw : postMove != null && Number.isFinite(postMove) ? postMove : null;
   /* OUT ONCE IT IS OUT — ONE RULE, reportedNow, for the board and the name's page */
   const reported = reportedNow({ ticker, iso, slot: slotOf(row.report_time), timeKnown: timeKnownOf(row.report_time), actualMovePct: reaction }, today);
+  const rIso = reactionIsoOf(iso, slotOf(row.report_time), timeKnownOf(row.report_time));
+  const live = liveMoves.get(`${ticker}|${iso}`);
   const known = isKnownName(ticker, { sp500: !!row.is_s_p_500, marketCap: num(row.marketcap) || null });
   const partial = {
     ticker,
@@ -309,7 +382,12 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
     iso,
     history: false as boolean,
     reported,
-    actualMovePct: reaction != null && Number.isFinite(reaction) ? Number((reaction * 100).toFixed(2)) : null,
+    reactionIso: rIso,
+    /* THE MOVE SO FAR OFF THE LIVE PRICE (round 9: the board said WDC +0.3% while it traded −1.9% — the calendar's
+       `reaction` is the vendor's stock-state, frozen at 10:35 all day). In the reacting session the move is the
+       screener's live close against the close before the report; the vendor's figure stands only outside it */
+    actualMovePct: live ? live.pct : reactionSessionOn(rIso, today) ? null : reaction != null && Number.isFinite(reaction) ? Number((reaction * 100).toFixed(2)) : null,
+    moveLive: live ? live.live : false,
   };
   return {
     ...partial,

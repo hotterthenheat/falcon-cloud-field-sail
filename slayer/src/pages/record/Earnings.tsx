@@ -57,7 +57,7 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { richText, stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending, historyMissed } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useLiveReactions, useNextReport, useNextReportPending, historyMissed } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
 import { nyMinutes } from '../../core/nyTime';
 import { macroWindow, type MacroDate } from '../../data/events';
@@ -395,6 +395,8 @@ const Earnings = () => {
   /* EVERY REPORT, the known names marked — and the reader's own board names count as known: a name you follow is one
      you recognise, whatever its size */
   const live = useEveryReport();
+  /* the reacting session's move so far, off the live price (round 9) */
+  useLiveReactions(live);
   const pending = useEarningsPending();
   const failed = useEarningsFailed();
   const events = useMemo(() => {
