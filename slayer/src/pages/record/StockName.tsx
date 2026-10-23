@@ -231,8 +231,20 @@ const StatusTag = ({ status }: { status: SourceStatus }) => (
   </span>
 );
 /** A pillar as its word and the meter — its figure stays inside the engine */
-const PillarBar = ({ p, big = false }: { p: Pillar; big?: boolean }) => {
+const PillarBar = ({ p, big = false, held = false }: { p: Pillar; big?: boolean; held?: boolean }) => {
   const grade = gradeOf(p.score);
+  /* a provisional read holds its words until the sources it stands on are in (round 8) */
+  if (held && p.inRead) {
+    return (
+      <div className="min-w-0" data-stock-pillar={p.key} data-grade="reading" title="Held until the sources this read stands on are in">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-[10px] text-textMuted truncate">{p.name}</span>
+          <span className={`ml-auto shrink-0 font-mono ${big ? 'text-[11px]' : 'text-[10px]'} text-textMuted animate-pulse`}>reading…</span>
+        </div>
+        <div className="mt-1 h-[6px] rounded-full bg-ink/[0.04]" />
+      </div>
+    );
+  }
   /* a pillar the read leaves out says so, instead of a grade it does not have (the news: shown, never scored) */
   if (!p.inRead) {
     return (
@@ -518,6 +530,14 @@ const StockName = () => {
   /* the quote carries the regular session's change and the extended-hours move apart (data/liveQuote.ts) */
   const quote = useLiveQuote(T);
   const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, recordNews, bookRev, file, quote]);
+  /* THE READ IS HELD WHILE ITS SOURCES LAND (the round-8 audit: "Reads strong · Leans bullish · The money good" at "5 of
+     9 sources live", then "Reads good · The money poor"). The words wait for the quote, the regular closes and the tapes;
+     past 40 seconds a source that has not answered no longer holds them, and the read says it is provisional. */
+  const [holdStart] = useState(() => Date.now());
+  const settling = view?.settling ?? [];
+  const holdTimedOut = tick > 0 && Date.now() - holdStart > 40_000;
+  const held = settling.length > 0 && !holdTimedOut;
+  const provisional = settling.length > 0;
   const insiders = useInsiderFlow(T, 90);
   const marketAll = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket), [insiders]);
   /* the rows are the newest five; the foot's totals are every open-market trade of the 90 days — said so (the retail
@@ -725,10 +745,19 @@ const StockName = () => {
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             {/* THE READ, in one of three words — the figure behind it is the engine's (Noah, 2026-09-19) */}
             <Fact label="Reads" testId="screen">
-              <span className={`text-[14px] font-bold ${GRADE_INK[grade]}`}>{grade}</span>
+              {held ? (
+                <span className="text-[13px] font-semibold text-textMuted animate-pulse" title={`Held until ${settling.join(', ')} ${settling.length === 1 ? 'is' : 'are'} in`} data-stock-held>
+                  reading…
+                </span>
+              ) : (
+                <span className={`text-[14px] font-bold ${GRADE_INK[grade]}`}>
+                  {grade}
+                  {provisional && <span className="ml-1.5 font-mono text-[8px] font-normal uppercase tracking-widest text-warn" title={`Still waiting on ${settling.join(', ')}`}>provisional</span>}
+                </span>
+              )}
             </Fact>
             <Fact label="Leans" testId="lean">
-              <span className={`font-semibold ${LEAN_INK[view.lean]}`}>{view.lean}</span>
+              {held ? <span className="font-semibold text-textMuted">—</span> : <span className={`font-semibold ${LEAN_INK[view.lean]}`}>{view.lean}</span>}
             </Fact>
           </dl>
         </div>
@@ -736,7 +765,7 @@ const StockName = () => {
         {/* Two by two on a phone (the phone pass, 2026-09-13): four across ran the pillars' words into each other at 390 */}
         <div className="px-5 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3" data-stock-pillars>
           {view.pillars.map(p => (
-            <PillarBar key={p.key} p={p} big />
+            <PillarBar key={p.key} p={p} big held={held} />
           ))}
         </div>
         <div className="px-5 pb-4 flex items-center gap-2 flex-wrap" data-stock-doors>
@@ -759,7 +788,14 @@ const StockName = () => {
 
       {/* WHY NOW — the facts, the thesis, the paragraph, the agreement */}
       <Box title="Why now" sub="The biggest facts on the name right now, what is for it and against it, and whether the four pillars agree" testId="why">
+        {held ? (
+          <div className="px-5 pb-4 flex flex-col gap-2" data-stock-why-held>
+            <p className="text-[12px] leading-relaxed text-textMuted animate-pulse">Reading {settling.join(', ')} — the read and its reasons appear once the sources it stands on are in.</p>
+          </div>
+        ) : (
+        <>
         <div className="px-5 pb-3 flex flex-col gap-2">
+          {provisional && <p className="font-mono text-[9px] uppercase tracking-widest text-warn">Provisional · {settling.join(', ')} did not answer yet</p>}
           <p className="text-[12px] leading-relaxed text-textPrimary/90" data-stock-why>
             <RichRead text={view.whyNow} />
           </p>
@@ -793,11 +829,13 @@ const StockName = () => {
             {agreement.risk}
           </span>
         </div>
+        </>
+        )}
       </Box>
 
       {/* THE TREND · THE MONEY */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="The trend" sub={`The screener's trend measures · the swing structure from the name's own ${trend.sessions} sessions`} aside={<PillarBarSmall p={byKey.trend} />} testId="trend">
+        <Box title="The trend" sub={`The screener's trend measures · the swing structure from the name's own ${trend.sessions} sessions`} aside={<PillarBarSmall p={byKey.trend} held={held} />} testId="trend">
           <div className="px-5 pb-3">
             <dl className="grid grid-cols-3 gap-x-4 gap-y-2">
               <Fact label="20-day EMA" testId="ema20" tip="The 20-day exponential moving average (the screener's ema_20), and the last regular close against it — the figure the trend factor scores">
@@ -889,7 +927,7 @@ const StockName = () => {
             ))}
           </div>
         </Box>
-        <Box title="The money" sub="The live book · all expiries (every listed date) unless marked Today" aside={<PillarBarSmall p={byKey.money} />} testId="money">
+        <Box title="The money" sub="The live book · all expiries (every listed date) unless marked Today" aside={<PillarBarSmall p={byKey.money} held={held} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             <Fact label="Net DEX · VEX" testId="dex">
               <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
@@ -902,7 +940,11 @@ const StockName = () => {
             </Fact>
             <Fact label={money.volumeAvgIs30 ? "Volume · 30-day avg" : "Volume · usual"} testId="volume">
               {money.volumeToday != null ? count(money.volumeToday) : '—'} <span className="text-textMuted">· {money.volumeAvg != null ? count(money.volumeAvg) : '—'}</span>
-              {money.rvol != null && <span className={money.rvol >= 1.3 ? 'text-silver' : 'text-textMuted'}> · {money.rvol.toFixed(2)}×</span>}
+              {money.rvolPaced && (
+                <span className={money.rvol != null && money.rvol >= 1.3 ? 'text-silver' : 'text-textMuted'} title={money.rvolPaced.basis === 'paced' ? `The session's volume so far against the share of a usual day that trades by now (${Math.round(money.rvolPaced.share * 100)}%) — 1.00× is on pace for an ordinary day. Of a full day so far: ${money.rvolPaced.raw.toFixed(2)}×.` : money.rvolPaced.basis === 'full' ? "The whole session's volume against its 30-day average." : 'Too early in the session to pace — shown, not read.'}>
+                  {' '}· {money.rvolPaced.label}
+                </span>
+              )}
             </Fact>
             <Fact label="Closed in its range" testId="close">
               {money.closeInRange != null ? (
@@ -1152,7 +1194,7 @@ const StockName = () => {
       <CompanyFile ticker={T} />
       <NameBooks ticker={T} />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} reports` : ''}`} aside={<PillarBarSmall p={byKey.news} />} testId="news">
+        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} reports` : ''}`} aside={<PillarBarSmall p={byKey.news} held={held} />} testId="news">
           {news.stories.length === 0 ? (
             <div className="px-5 pb-4 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{wireReading ? 'Reading the wire' : recordNews.status === 'sim' ? 'This read did not land' : 'Nothing on the wire today'}</div>
           ) : (
@@ -1233,7 +1275,7 @@ const StockName = () => {
           sub={numbers.sample ? (file.status === 'loading' ? 'Reading the last print' : 'No print on this feed yet') : 'The last print, earnings growth, the dividend and the market cap'}
           aside={
             <div className="flex items-center gap-3">
-              {numbers.sample ? null : <PillarBarSmall p={byKey.numbers} />}
+              {numbers.sample ? null : <PillarBarSmall p={byKey.numbers} held={held} />}
             </div>
           }
           testId="numbers"
@@ -1635,9 +1677,9 @@ const StockName = () => {
 };
 
 /** The pillar's bar as a box's aside — the same bar, a shorter track */
-const PillarBarSmall = ({ p }: { p: Pillar }) => (
+const PillarBarSmall = ({ p, held = false }: { p: Pillar; held?: boolean }) => (
   <div className="w-[150px] shrink-0">
-    <PillarBar p={p} />
+    <PillarBar p={p} held={held} />
   </div>
 );
 
