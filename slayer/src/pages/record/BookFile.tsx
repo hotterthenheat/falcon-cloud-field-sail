@@ -370,7 +370,7 @@ export const ShortFile = () => {
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Fee: what a short seller pays a year to borrow the shares — high means the shares are hard to find. Rebate: the interest the lender pays back on the cash collateral; negative means the short pays more">Fee · rebate</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.feeRate == null ? '—' : `${row.feeRate.toFixed(2)}%`} · {row.rebateRate == null ? '—' : `${row.rebateRate < 0 ? '−' : ''}${Math.abs(row.rebateRate).toFixed(2)}%`}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{fileWaiting ? <span className="text-textMuted">reading today's borrow…</span> : <>{row.feeRate == null ? '—' : `${row.feeRate.toFixed(2)}%`} · {row.rebateRate == null ? '—' : `${row.rebateRate < 0 ? '−' : ''}${Math.abs(row.rebateRate).toFixed(2)}%`}</>}</dd>
           </div>
           {row.shortVolRatio != null ? (
           <div>
@@ -382,7 +382,17 @@ export const ShortFile = () => {
           ) : null}
         </dl>
       </div>
-      {squeeze && (
+      {/* NO VERDICT ON THE SETTLEMENT ALONE (audit round 10: GME read "SQUEEZE WEAK" off the settlement's fee, "the feed
+         sent no newer reading", before today's borrow landed and changed both) — held until the file's own reads settle */}
+      {squeeze && fileWaiting && (
+        <div className="mx-5 mb-3 rounded-md border border-borderMuted bg-card px-4 py-3" data-short-squeeze="reading">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-textPrimary cursor-help" title={SQUEEZE_TIP}>Squeeze setup</span>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">reading today's borrow, the short volume and the fails…</span>
+          </div>
+        </div>
+      )}
+      {squeeze && !fileWaiting && (
         <div className="mx-5 mb-3 rounded-md border border-borderMuted bg-card px-4 py-3" data-short-squeeze={squeeze.word}>
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-textPrimary cursor-help" title={SQUEEZE_TIP}>Squeeze setup</span>
@@ -844,6 +854,10 @@ export const MemberFile = () => {
     );
   }
   if (!member) return <Missing to="/dossier/congress" label="Congress" />;
+  /* "…" UNTIL THE REPORTS ARE READ (audit round 10: "Reports 0 · Purchases 0 · Sales 0 · Late 0 · T-bills hidden · 0"
+     stood for a second and a half beside "Reading their reports") */
+  const reading = book.status === 'loading';
+  const dots = <span className="text-textMuted">…</span>;
   const late = trades.filter(t => t.late).length;
   const purchases = trades.filter(t => t.type === 'Purchase').length;
   const sales = trades.filter(t => t.type.startsWith('Sale')).length;
@@ -869,26 +883,26 @@ export const MemberFile = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Reports")}>Reports</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{trades.length.toLocaleString('en-US')}{trades.length - purchases - sales > 0 ? <span className="text-textMuted"> · {(trades.length - purchases - sales).toLocaleString('en-US')} exchanged</span> : null}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{reading ? dots : trades.length.toLocaleString('en-US')}{!reading && trades.length - purchases - sales > 0 ? <span className="text-textMuted"> · {(trades.length - purchases - sales).toLocaleString('en-US')} exchanged</span> : null}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Purchases")}>Purchases</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-bull">{purchases}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-bull">{reading ? dots : purchases}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Sales")}>Sales</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-bear">{sales}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-bear">{reading ? dots : sales}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Late")}>Late</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum ${late ? 'text-bear' : 'text-textPrimary'}`}>{late}</dd>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum ${late ? 'text-bear' : 'text-textPrimary'}`}>{reading ? dots : late}</dd>
           </div>
         </dl>
       </div>
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-member-controls>
         <DropdownSelect label="Type" value={kind} options={TYPE_OPTIONS} onChange={setKind} title="Purchase, sale or exchange" testId="member-type" />
         <DropdownSelect label="Owner" value={owner} options={OWNER_FILE_OPTIONS} onChange={setOwner} title="Whose holding" testId="member-owner" />
-        <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="member-bills" />
+        <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="member-bills" reading={reading} />
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-member-sentence>
         {book.status === 'loading'

@@ -55,7 +55,7 @@ import { todayColumn, type ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
 import { putWallWords } from '../core/walls';
-import { monDayOf, peekDaySigma, peekScopeMove } from './uwBook';
+import { monDayOf, peekDaySigma, peekMoveToClose, peekScopeMove } from './uwBook';
 import { datesOf } from './flipLevel';
 
 /** The one expiry a snapshot's levels chain reads, or null for several / the whole book */
@@ -86,7 +86,10 @@ export function scopeSigma(snapshot: MarketSnapshot, minutesLeft: number, iv: nu
   const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, date) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
   const m = snapshot.liveBook ? peekScopeMove(snapshot.ticker, date) : null;
   if (m?.multi && m.until && m.move > 0) return { sigmaLeft: m.move, sigmaDay, horizon: `by ${monDayOf(m.until)}`, words: m.words };
-  return { sigmaLeft: sigmaDay * Math.sqrt(Math.max(0, minutesLeft) / SESSION_MIN), sigmaDay, horizon: null, words: m?.source === 'vendor' ? m.words : m?.words ?? 'the 30-day implied vol over one session' };
+  /* TIME-SCALED ONCE (the tenth audit's B2): the vendor's move into a same-day expiry, read in its session, is already the
+     move left to the close (uwBook peekMoveToClose); only a full session's figure is scaled by the minutes left */
+  const left = snapshot.liveBook ? peekMoveToClose(snapshot.ticker, date, minutesLeft) : null;
+  return { sigmaLeft: left ?? sigmaDay * Math.sqrt(Math.max(0, minutesLeft) / SESSION_MIN), sigmaDay, horizon: null, words: m?.source === 'vendor' ? m.words : m?.words ?? 'the 30-day implied vol over one session' };
 }
 
 

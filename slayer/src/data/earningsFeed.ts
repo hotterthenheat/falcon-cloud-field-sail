@@ -413,7 +413,10 @@ function historyOf(rows: SlotRow[], before: string) {
   const dated = rows.filter(r => (r.report_date || '') < before).sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''));
   const moved = dated.filter(r => moveOf(r.post_earnings_move_1d) != null).slice(0, 8).reverse();
   const pastMoves = moved.map(r => ({ label: qLabel((r.ending_fiscal_quarter || r.report_date || '').slice(0, 10)), movePct: moveOf(r.post_earnings_move_1d) ?? 0 }));
-  const eps = dated.filter(r => r.actual_eps != null && r.actual_eps !== '' && r.street_mean_est != null && r.street_mean_est !== '').slice(0, 8);
+  /* ONE BEAT RULE (audit round 10: WDC read 6·0·2 on the grid, 7·0·1 of 8 on its page) — the last eight reports with
+     an actual and an estimate, the print itself included once its EPS is in, as the page's quarters are counted */
+  const withOwn = rows.filter(r => (r.report_date || '').slice(0, 10) <= before.slice(0, 10)).sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''));
+  const eps = withOwn.filter(r => r.actual_eps != null && r.actual_eps !== '' && r.street_mean_est != null && r.street_mean_est !== '').slice(0, 8);
   const results = eps.map(r => epsResultOf(num(r.actual_eps), num(r.street_mean_est)));
   /* THE UPCOMING REPORT'S STREET ESTIMATE, when the vendor's row for it carries one (audit round 5: "Estimates —" sat beside
      an 8-for-8 beat history) — the row on the report's own date, not yet reported */
@@ -616,9 +619,19 @@ export function nextReportRow<R extends { report_date?: string | null }>(rows: r
     const actual = x.actual_eps != null && x.actual_eps !== '' ? 0 : x.post_earnings_move_1d != null && x.post_earnings_move_1d !== '' ? 0 : null;
     return reportedNow({ ticker: x.symbol, iso: today, slot: slotOf(x.report_time ?? undefined), timeKnown: timeKnownOf(x.report_time), actualMovePct: actual });
   };
+  /* THE REPORT WHOSE REACTING SESSION IS TODAY (audit round 10: WDC reported 10/22 after the close and its page led with
+     02/04 "time not set", nothing of last night's print or today's move). Without skipOut, yesterday's after-the-close
+     print (or one with no time set) leads the page through the session that reacts to it, as today's before-the-open
+     one does; the next report follows it. */
+  const reactingToday = (r: R): boolean => {
+    const iso = (r.report_date || '').slice(0, 10);
+    if (opts.skipOut || iso >= today) return false;
+    const x = r as unknown as { report_time?: string | null };
+    return reactionIsoOf(iso, slotOf(x.report_time ?? undefined), timeKnownOf(x.report_time)) === today;
+  };
   return (
     rows
-      .filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.report_date || '') && ((r.report_date || '').slice(0, 10) > today || ((r.report_date || '').slice(0, 10) === today && !(opts.skipOut && outToday(r)))))
+      .filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.report_date || '') && ((r.report_date || '').slice(0, 10) > today || ((r.report_date || '').slice(0, 10) === today && !(opts.skipOut && outToday(r))) || reactingToday(r)))
       .sort((a, b) => (a.report_date || '').localeCompare(b.report_date || ''))[0] ?? null
   );
 }
@@ -651,6 +664,11 @@ export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossie
   const sym = ticker.toUpperCase();
   const stamped = rows.map(r => ({ ...r, symbol: r.symbol || sym }));
   const upcoming = nextReportRow(stamped);
+  /* the report after the one the page leads with — when that one is already out (last night's print), the next date */
+  const upIso = (upcoming?.report_date || '').slice(0, 10);
+  const afterRow = upcoming
+    ? stamped.filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.report_date || '') && (r.report_date || '').slice(0, 10) > upIso && (r.report_date || '').slice(0, 10) > today).sort((a, b) => (a.report_date || '').localeCompare(b.report_date || ''))[0] ?? null
+    : null;
   const latest = stamped.slice().sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''))[0];
   const row = upcoming ?? latest;
   if (!row) return null;
@@ -715,6 +733,17 @@ export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossie
     live: true,
     crushKnown: crush != null,
     contractsReady: contracts.has(sym),
+    nextAfter: afterRow?.report_date
+      ? {
+          iso: afterRow.report_date.slice(0, 10),
+          dateLabel: labelFor(afterRow.report_date.slice(0, 10)),
+          slot: slotOf(afterRow.report_time),
+          timeKnown: timeKnownOf(afterRow.report_time),
+          estimated: estimatedOf(afterRow.source),
+          confirmed: (afterRow.source || '').toLowerCase() === 'company',
+          daysOut: tradingBetween(today, afterRow.report_date.slice(0, 10)),
+        }
+      : null,
   };
 }
 

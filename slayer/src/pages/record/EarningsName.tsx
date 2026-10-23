@@ -385,6 +385,8 @@ const EarningsName = () => {
   const split = splitOf(dossier);
   const epsBeats = split.beat;
   const pricedOk = !reported && (e.histCount ?? e.pastMoves.length) >= MIN_PRICED_PRINTS && e.richness > 0;
+  /* the ratio of the two figures shown, once the print is out too (audit round 10: AXP "options ÷ usual —" beside ±3.2% and ±3.1%) */
+  const ratioOk = (e.histCount ?? e.pastMoves.length) >= MIN_PRICED_PRINTS && e.richness > 0;
   const revBeats = quarters.filter(q => q.revBeat).length;
   const moveData = e.pastMoves.map(q => ({ label: q.label, move: q.movePct }));
   const nMoves = moveData.length;
@@ -453,6 +455,14 @@ const EarningsName = () => {
                   </>
                 )}
               </p>
+              {/* the next report after the one that is out (audit round 10: WDC's page led with 02/04 and lost last night's print) */}
+              {reported && dossier.nextAfter ? (
+                <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap" data-earnings-next>
+                  Next report {dossier.nextAfter.dateLabel} <SlotMark slot={dossier.nextAfter.slot} timeKnown={dossier.nextAfter.timeKnown} className="w-3 h-3" /> {slotWord(dossier.nextAfter)}
+                  <span className="text-textMuted">·</span>
+                  <span className={dossier.nextAfter.confirmed ? 'text-textMuted' : 'text-warn'}>{dossier.nextAfter.confirmed ? 'the company has confirmed the date' : 'date estimated — the company has not set it'}</span>
+                </p>
+              ) : null}
             </div>
           </div>
           <dl className="grid grid-cols-5 gap-x-6">
@@ -469,7 +479,7 @@ const EarningsName = () => {
               {usualText(e)}
             </Fact>
             <Fact label="Priced · options ÷ usual" testId="priced">
-              {!pricedOk || !isPriced ? <span className="text-textMuted" title={reported ? 'Reported — the move is in' : `Rich or cheap needs ${MIN_PRICED_PRINTS} past moves on file`}>—</span> : (
+              {!ratioOk || !isPriced ? <span className="text-textMuted" title={reported ? 'Reported — the move is in' : `Rich or cheap needs ${MIN_PRICED_PRINTS} past moves on file`}>—</span> : (
               <span className={PRICED_INK[priced]} title={`The options' ±${e.impliedMovePct.toFixed(1)}% over the usual ±${e.histAvgMovePct.toFixed(1)}% — rich above 1.3×, cheap below 0.85×`}>
                 {richText(e.richness)}× {PRICED_WORD[priced]} <span className="text-textMuted text-[10px]">(±{e.impliedMovePct.toFixed(1)} ÷ ±{e.histAvgMovePct.toFixed(1)})</span>
               </span>

@@ -176,7 +176,9 @@ export function shortDay(date: string): string {
 /** "Expires today" while today's session runs (or has yet to), "Expires Fri 10/23" after its close — the date the
     expiring share (uwBook peekBellShare) is read for */
 export function bellDay(): { date: string; head: string; clock: string; tip: (ticker: string) => string } {
-  const date = isoDate(bookToday());
+  /* the session the book is on, not the calendar day after the bell (after Friday's close bookToday is Saturday — the
+     Board's column read "Expires Sat 10/24") */
+  const date = isoDate(nextSession(bookToday()));
   const today = dayWordOf(date) === 'Today';
   const day = shortDay(date);
   return {

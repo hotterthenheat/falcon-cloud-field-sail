@@ -12,7 +12,7 @@
 import { dayKey, hGauss, hRange } from '../core/rng';
 import { tickerSentiment } from './news';
 import { SECTORS, UNIVERSE, type Sector } from './universe';
-import { readOfScreen } from './stockOverview';
+import { readOfScreen, verdictSentence } from './stockOverview';
 
 export type StockVerdict = 'ACCUMULATE' | 'HOLD' | 'AVOID';
 export type SectorVerdict = 'OVERWEIGHT' | 'NEUTRAL' | 'UNDERWEIGHT';
@@ -117,17 +117,11 @@ const SLEEVE_WORDS: Record<keyof StockSleeves, { name: string; good: string; bad
 function thesisFor(sl: StockSleeves, verdict: StockVerdict, quiet: readonly (keyof StockSleeves)[] = []): string {
   const ranked = (Object.keys(SLEEVE_WORDS) as (keyof StockSleeves)[])
     .filter(k => !quiet.includes(k))
-    .map(k => ({ v: sl[k], ...SLEEVE_WORDS[k] }))
-    .sort((a, b) => b.v - a.v);
-  const [best, second] = ranked;
-  const worst = ranked[ranked.length - 1];
-  const next = ranked[ranked.length - 2];
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  if (!best || !worst) return 'Not enough on the feed to screen this name.';
-  if (!second || best === worst) return cap(`${best.v >= 50 ? best.good : best.bad}.`);
-  if (verdict === 'ACCUMULATE') return cap(`${best.good}, ${second.good}; ${worst.v < 45 ? `${worst.name} ${worst.name === 'the numbers' ? 'are' : 'is'} the one soft spot` : 'nothing against it'}.`);
-  if (verdict === 'AVOID') return cap(`${worst.bad}${next ? `, ${next.bad}` : ''}; ${best.v > 65 ? `${best.name} alone cannot carry it` : 'nothing in its favour'}.`);
-  return cap(`${best.good} but ${worst.bad} — a catalyst decides.`);
+    .map(k => ({ score: sl[k], ...SLEEVE_WORDS[k] }))
+    .sort((a, b) => b.score - a.score);
+  if (!ranked.length) return 'Not enough on the feed to screen this name.';
+  /* ONE SET OF CUTS (audit round 10: UNH Money POOR beside "nothing against it") — the page's own sentence */
+  return verdictSentence(ranked, verdict === 'ACCUMULATE' ? 'STRONG' : verdict === 'AVOID' ? 'WEAK' : 'MIXED');
 }
 
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);

@@ -34,7 +34,7 @@ import { levelRoles, type LevelRole } from '../../core/walls';
 import { expirySpan, todayScopeLabel } from '../../data/bookWindow';
 import { useLevelsScope } from '../../data/levelsScope';
 import { useLevelsFor } from '../../data/levelsFor';
-import { peekDaySigma, peekEntry, peekScopeMove } from '../../data/uwBook';
+import { peekDaySigma, peekEntry, peekMoveToClose, peekScopeMove } from '../../data/uwBook';
 import { shownGreek } from './retailSign';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -251,7 +251,8 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
      the same move the reach odds read (data/wall.ts scopeSigma), and the card says which number it is */
   const scopeMove = peekScopeMove(snapshot.ticker, lv?.date ?? null);
   const multi = !!scopeMove?.multi;
-  const w1 = multi ? scopeMove!.move : sigmaDay != null ? (shut ? sigmaDay : sigmaDay * Math.sqrt(Math.min(390, minLeft) / 390)) : null;
+  /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2) */
+  const w1 = multi ? scopeMove!.move : sigmaDay != null ? (shut ? sigmaDay : peekMoveToClose(snapshot.ticker, lv?.date ?? null, minLeft) ?? sigmaDay * Math.sqrt(Math.min(390, minLeft) / 390)) : null;
   const moveDate = lv?.date ?? null;
   const moveWords = scopeMove?.words ?? (moveDate ? `the vendor's implied move into ${expirySpan([moveDate])}` : "the vendor's implied move");
   const nearest = (price: number) => surface.strikes.reduce((b, s) => (Math.abs(s - price) < Math.abs(b - price) ? s : b), surface.strikes[0]);

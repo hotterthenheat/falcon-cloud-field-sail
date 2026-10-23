@@ -39,6 +39,16 @@ export interface CalEvent {
   ticker?: string;
   slot?: ReportSlot;
   confirmed?: boolean;
+  /** Earnings: false when the vendor has no time for the report ("time not set") */
+  timeKnown?: boolean;
+  /** Earnings: the print is out, and the move its reacting session made (or is making — moveLive) */
+  reported?: boolean;
+  movePct?: number | null;
+  moveLive?: boolean;
+  /** Earnings: the session that reacts to the print, YYYY-MM-DD */
+  reactionIso?: string;
+  /** Earnings: named only by the vendor's daily catalysts, not on its earnings lists */
+  catalystOnly?: boolean;
   impliedMovePct?: number;
   /** FDA and IPO: the one line under the title */
   note?: string;
@@ -204,11 +214,15 @@ export function buildMonthCalendar(year: number, month: number): MonthCalendar {
   const catalystMacro = liveCatalysts.filter(e => e.kind === 'macro' && inMonth(e));
   const seenMacro = new Set(catalystMacro.map(e => `${dayKeyOf(e.date)}|${bare(e.title)}`));
   const econ = liveEcon.filter(e => inMonth(e) && !seenMacro.has(`${dayKeyOf(e.date)}|${bare(e.title)}`));
-  const catalystEarn = liveCatalysts.filter(e => e.kind === 'earnings' && inMonth(e));
-  const seenEarn = new Set(catalystEarn.map(e => `${dayKeyOf(e.date)}|${e.ticker}`));
-  const earn = liveEarnings.filter(e => inMonth(e) && !seenEarn.has(`${dayKeyOf(e.date)}|${e.ticker}`));
+  /* THE EARNINGS LISTS ARE THE SOURCE OF TRUTH (audit round 10: the day's catalysts won over them, so RDY, TV, BANF read
+     "after the close · date confirmed" off a report_time of "unknown", and RCBC, on the after-hours list, was missing).
+     The fortnight's reports stand as the Earnings page lists them; a name only the daily catalysts carry is added
+     after them, time not set unless the catalyst says it, never "confirmed" */
+  const earn = liveEarnings.filter(inMonth);
+  const seenEarn = new Set(earn.map(e => `${dayKeyOf(e.date)}|${e.ticker}`));
+  const catalystEarn = liveCatalysts.filter(e => e.kind === 'earnings' && inMonth(e) && !seenEarn.has(`${dayKeyOf(e.date)}|${e.ticker}`));
   const others = liveCatalysts.filter(e => inMonth(e) && e.kind !== 'macro' && e.kind !== 'earnings');
-  const events = [...marketEvents(year, month), ...econ, ...catalystMacro, ...catalystEarn, ...earn, ...others, ...fileEvents(year, month), ...liveSchedule.filter(inMonth), ...livePosts.filter(inMonth)].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const events = [...marketEvents(year, month), ...econ, ...catalystMacro, ...earn, ...catalystEarn, ...others, ...fileEvents(year, month), ...liveSchedule.filter(inMonth), ...livePosts.filter(inMonth)].sort((a, b) => a.date.getTime() - b.date.getTime());
   const byDay = new Map<string, CalEvent[]>();
   for (const e of events) {
     const k = dayKeyOf(e.date);

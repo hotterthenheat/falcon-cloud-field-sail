@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
 import { bookToday, expiryFor, isoDate, isTradingDay, nextSession } from '../core/calendar';
-import { nyIsoDate, nyMinutes } from '../core/nyTime';
+import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { pickLegWalls } from '../core/walls';
 import { registerChainDates } from './chainDates';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
@@ -77,6 +77,9 @@ interface Entry {
   impliedMove: number;
   /** One session of the surface, as a fraction of spot (interpolated 1-day). 0 until it lands. */
   dayMoveFrac: number;
+  /** The interpolated 1-day implied vol, annualised fraction (interpolated-iv, days = 1) — one FULL session's vol, which
+      the same-day expiry's own implied move stops being once its session runs (peekDaySigma) */
+  dayIv?: number;
   all: StrikeNode[];
   byDate: Record<string, StrikeNode[]>;
   expiries: { date: string; dte: number }[];
@@ -1337,7 +1340,14 @@ export function peekScopeMove(ticker: string, date?: string | null): ScopeMove |
   implied move into it; a later expiry (CROX's Nov 20) its at-the-money vol over one session on the vendor's own scale
   (k·S·σ·√(1/365) — the move over the scope's whole horizon is peekScopeMove); the 30-day IV only when the term structure
   has nothing. `date` null: the first live listing.
+  THIS IS ALWAYS A FULL SESSION'S FIGURE (the tenth audit's B2, 2026-10-23): the vendor's implied move into a same-day
+  expiry is its straddle priced NOW — the move LEFT to that close (SPY $1.17 at 15:28, $0.75 after the bell), not a
+  session's — and the pages scaled it by √(minutes left / 390) a second time (Compare ±$0.35 to the close, "Likeliest
+  close 195 · 100%" with PLTR $0.76 away). Once the same-day expiry's session has opened, one full session is the
+  vendor's interpolated 1-day vol on its own scale (k·S·σ₁·√(1/365)); the move from now to the close is peekMoveToClose,
+  scaled exactly once.
 */
+const sameDayRunning = (d: string | null): boolean => !!d && d === nyIsoDate() && nySessionPhase() !== 'before';
 export function peekDaySigma(ticker: string, date?: string | null): number | null {
   const e = peekEntry(ticker);
   if (!e || e.status !== 'live' || !(e.spot > 0)) return null;
@@ -1346,13 +1356,52 @@ export function peekDaySigma(ticker: string, date?: string | null): number | nul
   const d = date && date >= floor ? date : listed[0] ?? null;
   const session = isoDate(nextSession(bookToday()));
   const move = d ? e.termMove?.[d] : undefined;
-  if (d === session && move && move > 0) return move;
+  const k = e.termK ?? K_DEFAULT;
+  if (d === session && move && move > 0) {
+    if (!sameDayRunning(d)) return move;
+    /* the session is running: the vendor's figure is what is left of it — one full session off the 1-day vol */
+    if (e.dayIv && e.dayIv > 0) return k * e.spot * e.dayIv * Math.sqrt(1 / 365);
+    if (e.dayMoveFrac > 0 && e.dayMoveFrac < 0.2) return e.dayMoveFrac * e.spot;
+    const left = Math.max(0, CLOSE_MIN - nyMinutes());
+    return move / Math.sqrt(Math.max(0.1, left / (CLOSE_MIN - OPEN_MIN)));
+  }
   /* ONE SESSION ON THE VENDOR'S OWN SCALE (the fifth audit: ATM × S × √(1/252) ran ≈ 1.76× the vendor's one-day move):
      k·S·σ·√(1/365), k fitted off its rows — on SPY 0.68 × 763.96 × 0.174 × √(1/365) = $4.73 against its $4.74 */
-  const k = e.termK ?? K_DEFAULT;
   const atm = d ? e.termIv?.[d] : undefined;
   if (atm && atm > 0) return k * e.spot * atm * Math.sqrt(1 / 365);
   return e.iv > 0 ? k * e.spot * e.iv * Math.sqrt(1 / 365) : null;
+}
+
+/*
+  THE MOVE FROM NOW TO THE CLOSE, TIME-SCALED ONCE (the tenth audit's B2). Which number is which:
+  · the vendor's implied move into the same-day expiry, read while its session runs, IS the move to that close — taken
+    as it is, never scaled again;
+  · peekDaySigma is one full session — scaled by √(minutes left / 390).
+  `minutesLeft`: the session's minutes still to run (a full 390 outside the session). Null when the book has no move.
+  The reach odds (data/wall.ts scopeSigma), the corridor (data/ahead.ts), the Map's "One move" (TapeBox) and the Read's
+  "To the close" all read this.
+*/
+export function peekMoveToClose(ticker: string, date: string | null | undefined, minutesLeft: number): number | null {
+  const e = peekEntry(ticker);
+  if (!e || e.status !== 'live' || !(e.spot > 0)) return null;
+  const floor = isoDate(bookToday());
+  const listed = e.expiries.map(x => x.date).filter(d => d >= floor).sort();
+  const d = date && date >= floor ? date : listed[0] ?? null;
+  const move = d ? e.termMove?.[d] : undefined;
+  if (d && sameDayRunning(d) && nySessionPhase() === 'open' && move && move > 0) return move;
+  const day = peekDaySigma(ticker, date);
+  return day == null ? null : day * Math.sqrt(Math.min(CLOSE_MIN - OPEN_MIN, Math.max(0, minutesLeft)) / (CLOSE_MIN - OPEN_MIN));
+}
+
+/** The interpolated 1-day implied vol (days = 1), annualised fraction — null when the rows carry none */
+function dayIvOf(rows: UwInterp[]): number | null {
+  if (!Array.isArray(rows)) return null;
+  const ones = rows.filter(r => num(r.days) === 1 && num(r.volatility) > 0);
+  if (!ones.length) return null;
+  const row = ones.reduce((best, r) => (String(r.date ?? '') > String(best.date ?? '') ? r : best));
+  let v = num(row.volatility);
+  if (v > 3) v /= 100;
+  return v > 0 && v < 5 ? v : null;
 }
 
 /** The 1-day tenor, as a fraction of spot. The vendor prints a fraction (0.004 = 0.4%). */
@@ -1663,6 +1712,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     termK: termKOf(Array.isArray(termRows) ? termRows : [], spot) ?? prevEntry?.termK,
     termDte: termDteOf(Array.isArray(termRows) ? termRows : []) ?? prevEntry?.termDte,
     dayMoveFrac: dayFracOf(Array.isArray(interpRows) ? interpRows : []),
+    dayIv: dayIvOf(Array.isArray(interpRows) ? interpRows : []) ?? prevEntry?.dayIv,
     all: (() => {
       const base = chainFrom(strikes, spot, oiMap(Array.isArray(oiRows) ? oiRows : []), flowMap(Array.isArray(flowRows) ? flowRows : []));
       return live && live.size ? withLiveGamma(base, live) : base;
@@ -2021,7 +2071,8 @@ export function snapshotFor(ticker: string, scope: LevelsScope, mode: BookMode =
 export function peekBellShare(ticker: string): { share: number } | { share: null; why: 'none' | 'wait' } {
   const e = peekEntry(ticker);
   if (!e || e.status !== 'live') return { share: null, why: 'wait' };
-  const today = isoDate(bookToday());
+  /* the session the book is on (after Friday's bell bookToday is Saturday, and nothing "expired Saturday") */
+  const today = isoDate(nextSession(bookToday()));
   /* THE LIVE BOOK, NOT THE MORNING SNAPSHOT (the third audit, 2026-10-23: NVDA 17% against 13% live, TSLA 25 against 28,
      AAPL 23 against 25): today's date's live open-interest gamma, gross, against the whole live book's (settled dates
      off). Calls carry one sign on every date and puts the other, so the whole book's per-strike legs add to the same

@@ -45,7 +45,7 @@ import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../componen
 import { printKey, useWatch, watchPrint } from '../../context/WatchContext';
 import WatchStar from '../../components/trace/WatchStar';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
-import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE, isSpreadLeg, printKind, rankNotable, sentimentOf, summarizeTape, type PrintKind } from '../../data/tape';
+import { BLOCK_MIN_PREMIUM, BLOCK_MIN_SIZE, isSpreadLeg, notCrownable, printKind, rankNotable, sentimentOf, summarizeTape, type PrintKind } from '../../data/tape';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -267,6 +267,8 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'ale
   if (summary.sweeps > 2) segs.push(` · ${summary.sweeps} sweeps`);
   /* spread legs stand apart — each is half of a structure, read on Multi-Leg (data/tape isSpreadLeg) */
   if (summary.spreadLegs.count > 0) segs.push(` · ${summary.spreadLegs.count.toLocaleString('en-US')} ${summary.spreadLegs.count === 1 ? 'print is a leg' : 'prints are legs'} of multi-leg orders (${fmtUsd(summary.spreadLegs.premium)}) — each is half of a structure, so none is in the bullish or bearish money or the largest; Multi-Leg reads which way the structure went`);
+  /* crosses stand apart — pre-arranged, no side (audit round 10) */
+  if (summary.crosses.count > 0) segs.push(` · ${summary.crosses.count.toLocaleString('en-US')} cross ${summary.crosses.count === 1 ? 'trade' : 'trades'} (${fmtUsd(summary.crosses.premium)}) — pre-arranged between two parties, no side taken, so none is a block, in the bullish or bearish money or the largest`);
   /* compression stands apart — named, never read (traceLive printCondition) */
   if (summary.compression.count > 0) segs.push(` · ${summary.compression.count.toLocaleString('en-US')} compression ${summary.compression.count === 1 ? 'print' : 'prints'} (${fmtUsd(summary.compression.premium)}) — packages that net open interest down, not bets, so they are in none of these totals`);
   if (rows.length >= 20 && zdte / rows.length > 0.25) segs.push(` · 0DTE is ${(Math.round((zdte * 1000) / rows.length + 1e-9) / 10).toFixed(1)}% of the ${noun}`);
@@ -656,7 +658,7 @@ const LiveTape = () => {
     for (const p of beamRows) {
       /* a compression package is never the largest bet, the top bull or the top bear */
       /* …nor a cross trade (audit round 9: a 25,000-lot PLTR 175C cross was crowned "largest") */
-      if (p.compression || p.floorPackage || p.cross || isSpreadLeg(p)) continue;
+      if (notCrownable(p)) continue;
       if (!all || p.premium > all.premium) all = p;
       const s = sentimentOf(p);
       if (s === 'BULLISH' && (!bull || p.premium > bull.premium)) bull = p;

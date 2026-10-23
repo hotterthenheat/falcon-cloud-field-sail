@@ -514,7 +514,12 @@ const Earnings = () => {
     () => [
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 180, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open its page' },
       { headerName: 'Reports', field: 'daysOut', width: 210, cellRenderer: WhenCell, headerTooltip: 'The date, before the open or after the close, and whether the company has confirmed it or it is still an estimate' },
-      { headerName: 'Priced · or moved', field: 'impliedMovePct', width: 140, cellRenderer: MoveCell, type: 'rightAligned', headerTooltip: 'Before the print: the move the options charge — the at-the-money straddle as a percent of the stock ("priced"). Once the report is out: the move the stock made the session after ("moved"), or is making while that session trades ("so far"), with the price it had beside it' },
+      { headerName: 'Priced · or moved', colId: 'impliedMovePct', width: 140, cellRenderer: MoveCell,
+        /* THE CELL'S OWN TEXT AS ITS VALUE (audit round 10: the grid read plain "reported" for AXP, WDC, NEM while the board
+           said "−3.8% so far" — keyed on the unchanging implied move, the cell never re-rendered when the live reaction
+           landed); it sorts on the implied move as before */
+        valueGetter: p => (p.data ? `${moveCellText(p.data)}|${p.data.impliedMovePct}` : ''),
+        comparator: (_a, _b, na, nb) => (na.data?.impliedMovePct ?? 0) - (nb.data?.impliedMovePct ?? 0), type: 'rightAligned', headerTooltip: 'Before the print: the move the options charge — the at-the-money straddle as a percent of the stock ("priced"). Once the report is out: the move the stock made the session after ("moved"), or is making while that session trades ("so far"), with the price it had beside it' },
       { headerName: 'Usually moves', field: 'histAvgMovePct', width: 136, cellRenderer: UsualCell, type: 'rightAligned', headerTooltip: 'The average move the session after its last eight reports — or fewer, said beside it, when fewer are on file' },
       { headerName: 'Priced', field: 'richness', width: 124, cellRenderer: PricedCell, type: 'rightAligned', headerTooltip: 'The options price over the usual move — rich above 1.3×, cheap below 0.85×, fair between' },
       { headerName: 'Beat · in line · miss', field: 'beatRate8q', width: 130, cellRenderer: BeatCell, type: 'rightAligned', headerTooltip: 'Of the last eight reports that carry both an actual and an estimate: how many beat, came in line (equal to the cent) and missed' },

@@ -216,5 +216,8 @@ export interface TapeSummary {
   /** Legs of multi-leg orders (OPRA multi-leg conditions) — each leg is half of a structure, not a bet of its own: counted
       here and in the call/put money, kept out of the bullish/bearish totals and the largest */
   spreadLegs: { count: number; premium: number };
+  /** Cross trades (report_flags "cross_trade") — pre-arranged at one price, no side: in the call/put money, never a
+      block, a side's total or the largest */
+  crosses: { count: number; premium: number };
   largest: LargestPrint | null;
 }
