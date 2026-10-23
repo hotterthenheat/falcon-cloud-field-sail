@@ -40,6 +40,7 @@ import { useIsPhone } from '../../components/ui/useMediaQuery';
 import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast } from '../../data/uwBook';
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { fmtDistance, impliedDaySigma } from '../../data/atr';
+import { readLevelsScope } from '../../data/levelsScope';
 import { bellDay, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
@@ -117,7 +118,7 @@ const RemoveName = ({ ticker, remove }: { ticker: string; remove: (t: string) =>
 /* TODAY'S STRIKES NOT IN YET (the ship pass, 2026-10-22): until a name's front-date chain lands, its "Today" levels
    would be the whole book's — the cells say they are loading instead of printing the wrong book */
 const Pending = ({ data }: { data: BoardRow }) => (
-  <span className="font-mono text-[11px] text-textMuted" title={`Still loading the contracts that expire today on ${data.ticker} — the levels appear in a moment`} data-board-pending>
+  <span className="font-mono text-[11px] text-textMuted" title={readLevelsScope() === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker} — the levels appear in a moment` : `Still loading the ${todayScopeLabel() === 'Today' ? "contracts the Today levels read" : "next session's contracts"} on ${data.ticker} — the levels appear in a moment`} data-board-pending>
     …
   </span>
 );
@@ -256,7 +257,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
         )}
       </span>
       <span className="text-[10px] text-textSecondary whitespace-nowrap">
-        {chanceLabel(w.reach)} reached
+        {chanceLabel(w.reach)} {w.horizon ? `reached ${w.horizon}` : 'reached'}
         {w.isShelf && (
           <>
             {' · '}
@@ -318,7 +319,7 @@ const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
       className="font-mono text-[11px] tnum tabular-nums text-textSecondary"
       title={data.crossWhy ?? `${recordPossessive().replace(/^t/, 'T')} session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
     >
-      {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? '—' : `${data.crossings}×`}
+      {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? '—' : data.crossFlip == null ? 'no flip' : `${data.crossings}×`}
     </span>
   ) : null;
 

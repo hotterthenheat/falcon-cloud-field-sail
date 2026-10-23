@@ -12,6 +12,7 @@
 ==================================================
 */
 
+import { longDay, recordDay } from '../../data/bookWindow';
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
@@ -147,7 +148,7 @@ const ReportGuide = ({ rows, bars, from }: ReportGuideProps) => {
   return (
     <div className="px-3 py-3 flex flex-col gap-3" data-report-guide-card>
       <div>
-        <p className="text-[12px] font-semibold text-textPrimary">Each row · one of today's levels and how it did</p>
+        <p className="text-[12px] font-semibold text-textPrimary">Each row · one of {recordDay().isToday ? "today's" : `${longDay(recordDay().date)}'s`} levels and how it did</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
           Every row is one of the levels: the call wall, the put wall, the flip, the pin, the supreme — read off the Levels card at the top of the page, the same numbers the Board and Compare show. Its price is on the left with a chip that sums up its day. The strip is the whole session, from its first bar to now, with price's path drawn around the level. Every time price reached the level in a one-minute bar, the strip gets a tick: green if the level held, red if price closed through it. The facts count those ticks and say how much hedging the level has gained or lost since the open.
         </p>
@@ -180,7 +181,7 @@ const ReportGuide = ({ rows, bars, from }: ReportGuideProps) => {
           </ul>
         </div>
       )}
-      <p className="text-[11px] text-textMuted">The report reads today's session only. It starts over at the open.</p>
+      <p className="text-[11px] text-textMuted">{recordDay().isToday ? "The report reads today's session only. It starts over at the open." : `Before today's open the report reads the last session, ${longDay(recordDay().date)}, against the book that was live in it. It starts over at the open.`}</p>
     </div>
   );
 };

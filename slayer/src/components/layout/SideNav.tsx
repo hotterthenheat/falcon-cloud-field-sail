@@ -216,7 +216,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier') || pathname.startsWith('/trace');
   const live = usePinpointFeed(pathname.startsWith('/pinpoint') ? activeTicker : null);
   const quoted = useLiveQuote(onLiveDesk ? activeTicker : null);
-  const spot = onLiveDesk ? (live?.spot ?? quoted?.spot ?? null) : (live?.spot ?? marketData?.spot ?? null);
+  const spot = onLiveDesk ? (live?.spot ?? quoted?.regularPrice ?? null) : (live?.spot ?? marketData?.spot ?? null);
   /* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22): the regular session's change, the
      move outside the session in the hover; zero in the neutral ink */
   const move = live?.liveBook ? dayMoveOfSnapshot(live) : quoted ? { dayPct: quoted.changePct, extPct: quoted.extPct, phase: quoted.phase } : null;

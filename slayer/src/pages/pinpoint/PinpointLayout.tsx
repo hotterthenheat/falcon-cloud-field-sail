@@ -159,7 +159,7 @@ const PinpointLayout = () => {
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={[line, /\bbook\b/i.test(line) ? GLOSSARY.book : '', /supreme/i.test(line) ? GLOSSARY.supreme : ''].filter(Boolean).join('\n')}>{line}</p>
+          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate" title={[line, /\bbook\b/i.test(line) ? GLOSSARY.book : '', /supreme/i.test(line) ? GLOSSARY.supreme : ''].filter(Boolean).join('\n')}>{line}</p>
         </div>
 
         {/* THE SIDE: the Map's band where the row has its room (#pinpoint-head-band — the Map measures the room against

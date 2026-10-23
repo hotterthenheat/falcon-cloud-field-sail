@@ -18,13 +18,16 @@
   contract's OI × Γ × 100 × S² × 1%, data/uwBook.ts), so
   re-pricing a leg is pricing those contracts outright:
   G(S) = G₀ · Γ(S)S² / Γ(S₀)S₀², exact at spot, with no
-  constant carried. The vol a leg is re-priced with: the
-  FRONT expiry's legs use their own contract's implied
-  vol (option-contracts — loaded for every name, Board
-  or Map); every later expiry uses that date's
-  at-the-money vol off the term structure. The Map holds
-  later dates' contract vols too, but a Board-only name
-  does not, and the same ticker and scope must give the
+  constant carried. The vol a leg is re-priced with: its
+  own contract's implied vol (option-contracts) on the
+  front date and on every date holding 0.5% or more of
+  the dates' gross gamma (uwBook ownIvDates — the Map and
+  a Board-only name both read those dates' contracts);
+  a leg with no printed vol takes its expiry's smile at
+  that strike (smileOf), and the smallest dates their
+  at-the-money vol off the term structure — never a far
+  wing at the ATM vol (the fifth audit). The
+  same ticker and scope must give the
   same flip whichever page loaded it first (the second
   re-audit, 2026-10-22: NVDA All expiries read 205.38 on
   the Board and 201.70 on the Map). Time to expiry runs
@@ -47,7 +50,7 @@ import { DEFAULT_R } from '../core/carry';
 import { cumulativeFlip, netGammaAt, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
-import { inOwnIvHorizon, peekEntry, peekGammaPriced } from './uwBook';
+import { ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
 import { registeredDates } from './chainDates';
 import { callWallWords, putWallWords, wallPlace } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
@@ -188,10 +191,10 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   /* the front date: the first live listing that holds strikes — the one date every page loads contracts for */
   const front = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort()[0];
   /* WHICH DATES RE-PRICE WITH THEIR OWN CONTRACTS' VOLS (the fifth audit, 2026-10-23): the front date, and every live
-     date inside the own-vol horizon (uwBook OWN_IV_DAYS — every live date): with only the front date's own vols AAPL's
+     date holding 0.5% or more of the dates' gross gamma (uwBook ownIvDates): with only the front date's own vols AAPL's
      whole book read 336.7 (its later dates' wings at the ATM vol), against 326.0 with every contract's own. The Map and a
-     Board-only name load the same dates' contracts (uwBook), so both pages re-price with the same vols. */
-  const ownDates = new Set(want.filter(d => d === front || inOwnIvHorizon(d)));
+     Board-only name pick the same dates off the same chains and load their contracts, so both re-price with the same vols. */
+  const ownDates = ownIvDates(by, want, front);
   /* FINAL ONLY WITH THOSE DATES' OWN VOLS (the fourth audit's M1: SPY's Map read 771.25 off the at-the-money vol for
      seconds, then 772.17): until their contracts are read the flip is provisional, and the pages print "…" */
   const factsIn = pinned != null || [...ownDates].every(d => !!entry.factsDates?.has(d));

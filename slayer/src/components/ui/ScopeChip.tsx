@@ -96,7 +96,7 @@ interface ScopeChipProps {
   full?: boolean;
 }
 
-const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = false, open: openProp, onOpenChange, title, full = false }: ScopeChipProps) => {
+const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false }: ScopeChipProps) => {
   const [selfOpen, setSelfOpen] = useState(false);
   const arriving = useWorking(useNameArriving(ticker));
   const open = openProp ?? selfOpen;

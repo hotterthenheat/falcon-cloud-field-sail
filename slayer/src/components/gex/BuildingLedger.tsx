@@ -399,7 +399,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
       {/* THE READ LINE — one fixed line, the verdict first */}
       <div className={`${compact ? 'mx-4' : 'mx-5'} px-3 py-2 border-y border-borderSubtle/60 font-mono text-[11px] leading-snug select-none min-h-[34px] flex items-center`} data-build-read>
         {readRow ? (
-          <span className={`${pinned ? 'text-textPrimary' : 'text-textSecondary'} ${compact ? 'truncate' : ''}`}>
+          <span className={`${pinned ? 'text-textPrimary' : 'text-textSecondary'} ${compact ? 'line-clamp-2' : ''}`}>
             <span className="font-bold text-[12px] text-textPrimary tnum">{fmtStrike(readRow.strike)}</span>
             <span className="text-textMuted"> · </span>
             {readRow.words}
@@ -423,7 +423,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
           <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="How much the wall at the strike changed in the latest open-interest count: its size now less its size before, |now| − |was|, in dollars — + it grew, − it shrank. The same figure as the head's grew / shrank most, the Agenda and the Map's report">Change</div>
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from call contracts">Calls</div>}
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from put contracts">Puts</div>}
-          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The wall's size through today's session">The day</div>}
+          {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The wall's size through the session — the overnight count is one step, so it has none">The day</div>}
           <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The verdict on the latest open-interest change: building, draining, changed sides, or new">What's happening</div>
 
           {items.map((it, idx) => {
@@ -500,7 +500,8 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                   <Wall row={r} max={maxAbs} compact={compact} loading={data.loading} />
                   {/* the lean takes the bar's reserved right room too — inside it "call-heavy · dealers push back…" was cut to "dealers p…" */}
                   <div className={`mt-[6px] text-[10px] text-textMuted whitespace-nowrap truncate ${compact ? '-mr-[48px]' : '-mr-[168px]'}`} data-build-lean>
-                    {data.loading ? '…' : r.verdict === 'switched' ? `${r.now < 0 ? 'call-heavy' : 'put-heavy'} now · was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${data.overnight ? 'before the change' : 'at the open'}` : sideWords(r.now).replace(', so ', ' · ')}
+                    {/* compact (a phone, a pane beside others): the lean alone — "call-heavy · dealers p…" was cut mid-word */}
+                    {data.loading ? '…' : r.verdict === 'switched' ? (compact ? `now ${r.now < 0 ? 'call' : 'put'}-heavy` : `${r.now < 0 ? 'call-heavy' : 'put-heavy'} now · was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${data.overnight ? 'before the change' : 'at the open'}`) : compact ? (r.now < 0 ? 'call-heavy' : 'put-heavy') : sideWords(r.now).replace(', so ', ' · ')}
                   </div>
                 </div>
                 <div className={`px-2 text-right font-mono text-[12px] tnum ${r.verdict === 'steady' ? 'text-textMuted' : 'text-textPrimary font-semibold'}`} data-build-change>
