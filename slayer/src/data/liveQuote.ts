@@ -69,10 +69,9 @@ function quoteOf(t: string): LiveQuote | null {
   const closes = peekRegularCloses(t);
   /* after the bell the day's change needs the regular closes: until they land the quote is not given (its own
      close − prev_close would be the after-hours move alone, printed as the day's) */
-  const m = (r.market_time ?? '').toLowerCase();
-  if (!closes && !m.startsWith('reg') && !m.startsWith('pre')) return null;
+  const ch = dayChangeOf({ close: r.close, prev_close: r.prev_close, market_time: r.market_time, tape_time: r.tapeAt }, closes);
+  if (!closes && ch.phase !== 'regular' && ch.phase !== 'pre') return null;
   /* (pre-market reads the closes too, for the last session's change — loaded beside the quote, never waited on) */
-  const ch = dayChangeOf({ close: r.close, prev_close: r.prev_close, market_time: r.market_time }, closes);
   /* in the session the book's spot is fresher than our 15s read; outside it the state's last print is the one */
   const spot = ch.phase === 'regular' && bookSpot != null ? bookSpot : r.close;
   const changePct = ch.phase === 'regular' && bookSpot != null && ch.base > 0 ? ((bookSpot - ch.base) / ch.base) * 100 : ch.dayPct;
@@ -121,8 +120,9 @@ export function ensureQuote(ticker: string): void {
       raw.set(t, { close, prev_close: prev > 0 ? prev : 0, market_time: mt, tapeAt: Number.isFinite(tape) ? tape : Date.now(), at: Date.now() });
       emit();
       /* outside the session the day's change needs the regular close before today — read once a New York day */
+      const stale = Number.isFinite(tape) && nyIsoDate(tape) < nyIsoDate();
       const m = (mt ?? '').toLowerCase();
-      if (!m.startsWith('reg') && !peekRegularCloses(t)) {
+      if ((!m.startsWith('reg') || stale) && !peekRegularCloses(t)) {
         await loadRegularCloses(t).catch(() => null);
         emit();
       }

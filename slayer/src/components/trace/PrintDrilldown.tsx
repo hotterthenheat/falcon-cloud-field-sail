@@ -879,7 +879,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
             <th className={`${th} text-right`}>Volume</th>
             <th className={`${th} text-right`} title="Open interest standing that session">Open int.</th>
             <th className={`${th} text-right`} title="Against the session before">OI change</th>
-            <th className={`${th} text-right`}>Close</th>
+            <th className={`${th} text-right`} title="The regular session's close — 16:15 for index and ETF options, 16:00 for stock options. This session's is read off its own prints; the other sessions show the vendor's last price, which can be an after-hours fill (marked ≈)">Close</th>
             <th className={`${th} text-right`}>Avg</th>
             <th className={`${th} text-left`} title="The session's volume on the bid, at the mid or no side, and at the ask">Bid · mid · ask</th>
             <th className={`${th} text-right`}>Implied vol</th>
@@ -905,7 +905,10 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 <td className={`${td} text-right ${d.oiChange == null ? 'text-textMuted' : d.oiChange >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
                   {d.oiChange == null ? '—' : `${d.oiChange >= 0 ? '+' : '−'}${Math.abs(d.oiChange).toLocaleString('en-US')}`}
                 </td>
-                <td className={`${td} text-right text-textPrimary`}>{d.close > 0 ? `$${fixed(d.close)}` : '—'}</td>
+                <td className={`${td} text-right text-textPrimary whitespace-nowrap`} title={d.closeBasis === 'regular' ? `The regular session's last print${d.extLast ? `; after the close it last printed $${fixed(d.extLast.price)} at ${d.extLast.time} ET (extended hours)` : ''}` : "The vendor's last price for the session — it can be an after-hours fill"}>
+                  {d.close > 0 ? `${d.closeBasis === 'regular' ? '' : '≈'}$${fixed(d.close)}` : '—'}
+                  {d.extLast && <span className="block text-[10px] text-textMuted">ext ${fixed(d.extLast.price)} · {d.extLast.time.slice(0, 5)}</span>}
+                </td>
                 <td className={`${td} text-right text-textPrimary`}>{d.avg > 0 ? `$${fixed(d.avg)}` : '—'}</td>
                 <td className="px-2 py-1.5">
                   <span

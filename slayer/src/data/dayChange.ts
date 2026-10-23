@@ -30,6 +30,9 @@ interface StateLike {
   close?: string | number;
   prev_close?: string | number;
   market_time?: string;
+  /** The vendor's last print (tape_time, ISO or epoch ms) — a "regular" bar whose print is from an earlier New York
+      day is the last session's, not today's */
+  tape_time?: string | number;
 }
 
 const n = (v: unknown): number => {
@@ -65,7 +68,12 @@ export function regularCloses(rows: readonly UwDaily[]): { date: string; close: 
 export function dayChangeOf(state: StateLike, closes: readonly { date: string; close: number }[] | null): DayChange {
   const last = n(state.close);
   const prevClose = n(state.prev_close);
-  const phase = phaseOf(state.market_time);
+  /* A THIN NAME'S STALE BAR (the seventh audit, 2026-10-23: BLRX at 08:00 ET read "$2.06 · 15:08 ET · −2.20% the
+     session" — yesterday's last print, still marked regular because nothing has traded since): a regular bar whose
+     print is from an earlier New York day is read as the closed session it belongs to */
+  const raw = phaseOf(state.market_time);
+  const tapeMs = typeof state.tape_time === 'number' ? state.tape_time : Date.parse(String(state.tape_time ?? ''));
+  const phase: MarketPhase = raw === 'regular' && Number.isFinite(tapeMs) && nyIsoDate(tapeMs) < nyIsoDate() ? 'closed' : raw;
   /* AFTER MIDNIGHT, BEFORE THE OPEN (the third audit, 2026-10-23): the vendor's quote still says "postmarket" — the
      last bar is last evening's — but the New York day has turned. Read as post-market it measured yesterday's close
      against itself (0.00%). On a trading day before 9:30 the move is the pre-market one: the last print against the
@@ -89,7 +97,8 @@ export function dayChangeOf(state: StateLike, closes: readonly { date: string; c
     if (before && before.close > 0 && regClose > 0) {
       return {
         dayPct: ((regClose - before.close) / before.close) * 100,
-        extPct: regClose > 0 && last > 0 ? ((last - regClose) / regClose) * 100 : null,
+        /* a stale regular bar is the session's last print, not an after-hours one */
+        extPct: raw !== 'regular' && regClose > 0 && last > 0 ? ((last - regClose) / regClose) * 100 : null,
         phase,
         base: before.close,
       };

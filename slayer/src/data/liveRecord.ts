@@ -12,7 +12,7 @@ import type { CongressFeed, CongressTrade, InsiderFlow, InsiderTrade, TxCode } f
 import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwInsider, type UwNews, type UwPolitician } from './whales';
 import { nyIsoDaysBack } from './nyDate';
 import { loadRegularCloses, peekRegularCloses } from './dayChange';
-import { congressFromWhales, econFromWhales, insidersFromWhales, newsFromWhales, readInsiders, rollCongress, storyLeadTicker } from './whalesMap';
+import { congressFromWhales, econFromWhales, foreignSuspects, insidersFromWhales, markForeignIssuers, newsFromWhales, readInsiders, rollCongress, storyLeadTicker } from './whalesMap';
 
 export type FeedStatus = 'loading' | 'live' | 'sim';
 
@@ -392,6 +392,26 @@ const coverOf = (pg: Pager): { since: string | null; complete: boolean; ranOut: 
   return { since: ranOut ? oldest : oldest ? nextIso(oldest) : null, complete, ranOut, reading: !!pg.pulling, capped: !complete && !pg.pulling && pg.pages.length >= PAGE_CAP };
 };
 
+/* THE ISSUER'S OWN RECORD SETTLES A FOREIGN LISTING (audit round 7, UMC). An issuer with a market-priced row 2.5 times
+   off its listing is looked up once (/stock/{T}/info): an ADR's rows are priced in the home market's currency. Each
+   issuer is read once per visit and the books repaint when one turns out to be foreign. */
+const issuerProbe = new Map<string, Promise<boolean>>();
+const DEPOSITARY_ISSUE = /\bADR\b|\bADS\b|depositary/i;
+function probeIssuers(rows: UwInsider[]): Promise<boolean> {
+  const want = foreignSuspects(rows as Parameters<typeof foreignSuspects>[0]).filter(t => !issuerProbe.has(t));
+  for (const t of want)
+    issuerProbe.set(
+      t,
+      uwCall(`/stock/${encodeURIComponent(t)}/info`, false, true).then(res => {
+        const issue = String((res.data as { issue_type?: unknown } | null)?.issue_type ?? '');
+        const foreign = DEPOSITARY_ISSUE.test(issue);
+        if (foreign) markForeignIssuers([t]);
+        return foreign;
+      }),
+    );
+  return Promise.all(want.map(t => issuerProbe.get(t)!)).then(found => found.some(Boolean));
+}
+
 function paintInsiders() {
   const seen = new Set<string>();
   const merged: UwInsider[] = [];
@@ -406,6 +426,9 @@ function paintInsiders() {
   const s = coverOf(bigSales);
   const restOldest = oldestFiling(restRows);
   const read = readInsiders(merged);
+  void probeIssuers(merged).then(found => {
+    if (found) paintInsiders();
+  });
   insCoverage = {
     buysSince: b.since,
     buysComplete: b.complete,
@@ -675,6 +698,7 @@ function ensureTickerInsiders(sym: string) {
   void (async () => {
     const res = await uwCall(`/insider/transactions?ticker_symbol=${encodeURIComponent(sym)}`);
     const rows = Array.isArray(res.data) ? (res.data as UwInsider[]) : [];
+    await probeIssuers(rows);
     tickerIns.set(sym, res.error ? { status: 'sim', trades: [] } : { status: 'live', trades: insidersFromWhales(rows) });
     listeners.forEach(fn => fn());
   })();
@@ -729,6 +753,7 @@ function ensurePerson(slug: string, cik: string | undefined, name: string | unde
     const rows = Array.isArray(res.data) ? (res.data as (UwInsider & { reporter_cik?: string })[]) : [];
     /* by name, keep only the rows whose name reads the same as the slug (the vendor's match is a substring) */
     const own = cik ? rows : rows.filter(r => personSlug(r.owner_name || '') === slug);
+    await probeIssuers(own);
     const trades = insidersFromWhales(own).filter(t => t.daysAgo <= PERSON_DAYS);
     persons.set(key, {
       status: res.error ? 'sim' : 'live',

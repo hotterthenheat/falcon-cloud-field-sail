@@ -1023,6 +1023,16 @@ export function quotePlace(pct: number, price: number): { text: string; cents: n
   return { text: `${cents > 0 ? '+' : '−'}${n}¢`, cents };
 }
 
+/** Where a cross printed in the quote, in the read's own terms (audit round 7: GCC −3¢ read "Print MID" beside
+    "DISTRIBUTION · sold 3¢ under the mid" — MID meant inside the spread). At the ask or on the bid as before; inside the
+    spread it is "MID" only within the read's ¼¢ band, else "UNDER MID" / "OVER MID", so the label and the read agree. */
+export function execWord(p: { exec?: 'ASK' | 'BID' | 'MID' | null; vsSpotPct: number; price: number }): string | null {
+  if (!p.exec) return null;
+  if (p.exec !== 'MID') return p.exec;
+  const c = quotePlace(p.vsSpotPct, p.price).cents;
+  return c === 0 ? 'MID' : c > 0 ? 'OVER MID' : 'UNDER MID';
+}
+
 /* WHERE A DARK PRINT IS REPORTED (the vendor's market_center): every off-exchange print is reported to a FINRA trade
    reporting facility, which is all the code says — the dark venue itself is not disclosed. A letter is not a venue. */
 const FACILITY: Record<string, string> = { L: 'FINRA/Nasdaq TRF Carteret', '2': 'FINRA/Nasdaq TRF Chicago', N: 'FINRA/NYSE TRF', D: 'FINRA ADF', B: 'FINRA/Nasdaq TRF' };
@@ -2440,6 +2450,8 @@ export interface NameMinute {
   /** Net premium that minute: at the ask less on the bid */
   netCall: number;
   netPut: number;
+  /** The minute's New York day, YYYY-MM-DD — the data's own session, named on the page when it is not today's */
+  day?: string;
 }
 export function useNameMinutes(ticker: string | null): LivePack<NameMinute[]> {
   const name = (ticker || '').trim().toUpperCase();
@@ -2448,8 +2460,10 @@ export function useNameMinutes(ticker: string | null): LivePack<NameMinute[]> {
     async () =>
       (await getRows(`/stock/${encodeURIComponent(name)}/net-prem-ticks`))
         .map(r => {
-          const m = clock(r.tape_time).minute - 570;
+          const c = clock(r.tape_time);
+          const m = c.minute - 570;
           return {
+            day: c.ms > 0 ? nyDateOf(c.ms) : undefined,
             min: m,
             callVol: num(r.call_volume),
             putVol: num(r.put_volume),

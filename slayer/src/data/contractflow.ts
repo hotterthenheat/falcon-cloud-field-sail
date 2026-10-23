@@ -142,7 +142,12 @@ export interface CardDay {
   oi: number;
   /** Against the session before; null for the oldest row */
   oiChange: number | null;
+  /** The regular session's close when the session's prints are in hand (index and ETF options to 16:15, stock options to
+      16:00); else the vendor's last_price, which can be an after-hours fill (closeBasis says which) */
   close: number;
+  closeBasis?: 'regular' | 'vendor';
+  /** The newest print after the regular close, when there is one — labelled apart, never the close */
+  extLast?: { price: number; time: string };
   avg: number;
   askVol: number;
   bidVol: number;
@@ -380,6 +385,18 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
       vol += p.size;
     }
     Object.assign(own, { askVol, bidVol, midVol, neutralVol: 0, premium: prem, vol, basis: 'prints' as const });
+  }
+  /* THE CLOSE IS THE REGULAR SESSION'S (audit round 7: NVDA 220C 10/22 read "CLOSE $0.18" — the 16:12:34 extended print —
+     where the regular last was $0.15 at 15:59:59). From the session's own prints, newest first: the newest inside the
+     regular session is the close, a newer one after it is the extended last, said apart. */
+  if (own && prints.length) {
+    const reg = prints.find(p => p.min >= 0 && p.min < end);
+    const newest = prints[0];
+    if (reg) {
+      own.close = reg.price;
+      own.closeBasis = 'regular';
+    }
+    if (newest && (newest.min >= end || newest.min < 0) && newest !== reg) own.extLast = { price: newest.price, time: newest.time };
   }
   const day = own ?? null;
 

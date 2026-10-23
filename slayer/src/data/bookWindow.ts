@@ -2,7 +2,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday } from '../core/calendar';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
-import { bookCandles, bookRevision, peekEntry } from './uwBook';
+import { bookCandles, bookRevision, peekEntry, peekSessionAll } from './uwBook';
 
 /*
 ==================================================
@@ -339,7 +339,8 @@ function sessionBookRaw(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): Sessio
        session ran on. Each live date re-prices as on the headline; today's expired contracts are carried flat. */
     const e = peekEntry(snapshot.ticker);
     if (sameDay && e?.gammaLive && e.all.length) {
-      const chain = e.all.slice();
+      /* one snapshot (the seventh audit's m9): the dates' own rows with the settled day's put back, once all are in */
+      const chain = (peekSessionAll(snapshot.ticker, s.today) ?? e.all).slice();
       registerChainDates(chain, Object.keys(by).filter(d => d >= isoDate(bookToday()) && by[d]?.length));
       return {
         book: { ...snapshot, chain, uwChains: { ...snapshot.uwChains, '0DTE': chain, ALL: chain } },

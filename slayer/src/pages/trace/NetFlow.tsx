@@ -34,9 +34,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
-import { tideBetween, useTopNet, useLiveBook, useTide } from '../../data/traceLive';
+import { nyDateOf, tapeSessionIso, tideBetween, useTopNet, useLiveBook, useTide } from '../../data/traceLive';
 import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
-import { dayAdv, dayPos } from '../../components/trace/dayWords';
+import { dayAdv, dayPos, isLiveDay, shortDay } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
@@ -154,18 +154,18 @@ const NetFlow = () => {
   const market = useMemo(() => {
     if (session === 'regular') {
       const w = tideBetween(tide.rows, 570, 975);
-      return w ? { net: w.net, calls: w.calls, puts: w.puts, at: nyClock(w.last * 1000), from: nyClock(w.first * 1000), none: false, span: `${nyClock(w.first * 1000)}–${nyClock(w.last * 1000)}` } : null;
+      return w ? { net: w.net, calls: w.calls, puts: w.puts, at: nyClock(w.last * 1000), from: nyClock(w.first * 1000), none: false, span: `${nyClock(w.first * 1000)}–${nyClock(w.last * 1000)}`, day: nyDateOf(w.last * 1000) } : null;
     }
     /* EXTENDED MEANS OUTSIDE THE SESSION, AS ON EVERY OTHER TRACE PAGE (audit round 5: "Extended hours −$939.7M ·
        07:30–16:14" was the pre-market plus the whole session, its hover saying "after the close included"): the tide's
        minutes before 09:30 plus its minutes from the 16:15 close, nothing between */
     const pre = tideBetween(tide.rows, 0, 570);
     const post = tideBetween(tide.rows, 975, 24 * 60);
-    if (!pre && !post) return { net: 0, calls: 0, puts: 0, at: '', from: null, none: true, span: '' };
+    if (!pre && !post) return { net: 0, calls: 0, puts: 0, at: '', from: null, none: true, span: '', day: null as string | null };
     const calls = (pre?.calls ?? 0) + (post?.calls ?? 0);
     const puts = (pre?.puts ?? 0) + (post?.puts ?? 0);
     const span = [pre ? `${nyClock(pre.first * 1000)}–${nyClock(pre.last * 1000)}` : null, post ? `${nyClock(post.first * 1000)}–${nyClock(post.last * 1000)}` : null].filter(Boolean).join(' + ');
-    return { net: calls - puts, calls, puts, at: (post ?? pre)!.last ? nyClock((post ?? pre)!.last * 1000) : '', from: pre ? nyClock(pre.first * 1000) : post ? nyClock(post.first * 1000) : null, none: false, span };
+    return { net: calls - puts, calls, puts, at: (post ?? pre)!.last ? nyClock((post ?? pre)!.last * 1000) : '', from: pre ? nyClock(pre.first * 1000) : post ? nyClock(post.first * 1000) : null, none: false, span, day: nyDateOf((post ?? pre)!.last * 1000) as string | null };
   }, [tide.rows, session]);
   const read = useMemo<ReactNode>(() => {
     if (!facts.top || !facts.bottom) return <RichRead text="The book is still waking up." />;
@@ -173,14 +173,24 @@ const NetFlow = () => {
     const crown = (v: number, champ: boolean) => (champ ? <span className="font-semibold tnum text-supreme">{signed(v)}</span> : <Lean v={v} />);
     return (
       <>
-        {market && market.none && <RichRead text="The vendor's market tide holds no minutes outside the regular session — nothing before 09:30 or after the 16:15 close to add up. " />}
-        {market && !market.none && (
+        {market && market.none && <RichRead text={`The vendor's market tide holds no minutes outside the regular session${isLiveDay(tapeSessionIso()) ? '' : ` on ${shortDay(tapeSessionIso())}`} — nothing before 09:30 or after the 16:15 close to add up. `} />}
+        {/* EVERY WINDOW DATED, EXTENDED MONEY UNREAD (audit round 7: "Outside the regular session, the whole market's money
+            leans bearish — −$1.5M net over 07:30–09:24 ET" in bearish ink was Oct 22's pre-open, read at 07:25 on Oct 23 as
+            today's). Regular reads its lean with its day; outside the session the figure stands in plain ink, no lean
+            (SidesRule: extended prints set against thin quotes are never read). */}
+        {market && !market.none && session === 'regular' && (
           <>
-            <RichRead text={`${session === 'regular' ? "The whole market's money" : "Outside the regular session, the whole market's money"} leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
-            <Lean v={market.net} /> net {session === 'regular' ? `from ${market.from} to ${market.at}` : `over ${market.span}`} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
+            <RichRead text={`The whole market's money ${market.day && !isLiveDay(market.day) ? `on ${shortDay(market.day)} ` : 'today '}leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
+            <Lean v={market.net} /> net from {market.from} to {market.at} ET{market.day && !isLiveDay(market.day) ? `, ${shortDay(market.day)}` : ''} (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
           </>
         )}
-        <RichRead text={`On the board — the vendor's ${facts.bullish} most bullish and ${facts.bearish} most bearish names — `} />
+        {market && !market.none && session !== 'regular' && (
+          <>
+            {`Outside the regular session${market.day ? ` (${isLiveDay(market.day) ? 'today' : shortDay(market.day)}, ${market.span} ET)` : ''}, the whole market netted `}
+            <span className="font-semibold tnum text-textPrimary">{signed(market.net)}</span> (net calls <span className="tnum text-textPrimary">{signed(market.calls)}</span> less net puts <span className="tnum text-textPrimary">{signed(market.puts)}</span>) — extended-hours money trades against thin quotes and is shown, not read.{' '}
+          </>
+        )}
+        <RichRead text={`On the board — the vendor's ${facts.bullish} most bullish and ${facts.bearish} most bearish names ${dayAdv()}, vendor totals with spread legs and floor packages in them — `} />
         the bullish names sum to <Lean v={facts.calls} /> and the bearish to <Lean v={facts.puts} />.{' '}
         <ReadDoor onOpen={() => onQuery(top.ticker)} title={`Put ${top.ticker} on the pane`}>
           {top.ticker}
@@ -221,7 +231,7 @@ const NetFlow = () => {
               <span className="text-textMuted">none outside the session</span>
             ) : market ? (
               <>
-                <Lean v={market.net} /> <span className="text-textSecondary">· {market.span} ET</span>
+                {session === 'regular' ? <Lean v={market.net} /> : <span className="tnum text-textPrimary">{signed(market.net)}</span>} <span className="text-textSecondary">· {market.day && !isLiveDay(market.day) ? `${shortDay(market.day)} ` : ''}{market.span} ET</span>
               </>
             ) : (
               <span className="text-textMuted">—</span>
@@ -247,13 +257,13 @@ const NetFlow = () => {
           )}
           {/* the two ends of the board, each named for what it is; the larger of the two wears the magenta */}
           {facts.top && facts.top.net > 0 && (
-            <Champion label="Most bullish" ink={champ === facts.top ? 'supreme' : 'bull'} title="Put this name on the pane" onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
-              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· whole day</span>
+            <Champion label="Most bullish" ink={champ === facts.top ? 'supreme' : 'bull'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
+              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· {isLiveDay() ? 'whole day' : `${shortDay(tapeSessionIso())}, whole day`}</span>
             </Champion>
           )}
           {facts.bottom && facts.bottom.net < 0 && (
-            <Champion label="Most bearish" ink={champ === facts.bottom ? 'supreme' : 'bear'} title="Put this name on the pane" onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
-              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· whole day</span>
+            <Champion label="Most bearish" ink={champ === facts.bottom ? 'supreme' : 'bear'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
+              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· {isLiveDay() ? 'whole day' : `${shortDay(tapeSessionIso())}, whole day`}</span>
             </Champion>
           )}
         </>
