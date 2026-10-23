@@ -132,16 +132,23 @@ const MONEY_OPTIONS: DropdownOption<'any' | 'otm'>[] = [
 const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ? s : best), 0);
 
 /** The grid's own widths where flex would starve a cell */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, otm: 76, last: 168, doi: 124, prem: 92, iv: 124, sector: 176, lean: 96 };
+/* THE BOOK FITS A LAPTOP (audit round 4: at 1440 the "IV · Δ" header stood blank past the box, its values cut, and Vol/OI
+   and Sweep sat under the pinned Prem — fourteen columns summed 1,468px in a 1,149px box). Every visible column has its
+   floor here, the set at rest sums under the box, and the DTE (the contract cell carries the date) and the OI (the card,
+   Vol/OI and ΔOI carry it) open folded — one click away in Columns. */
+const WIDTHS: Record<string, number> = { time: 76, ticker: 84, contract: 150, dte: 56, otm: 68, last: 150, vol: 84, oi: 80, doi: 112, prem: 84, iv: 104, voloi: 72, sweep: 64, floor: 64, multi: 64, sector: 176, lean: 92 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
   otm: 'How far the strike sits from the stock, as a percent',
   voloi: 'Volume over open interest — above 1.5 the positions were built today',
+  vol: "The screener's day volume for the contract, as of its last fill (the Time column) — the card adds its session row's figure, after-hours prints included",
+  last: "The screener's last fill and the New York time it printed, with the change on the previous close — the card shows the latest regular-session print with its own time",
   sweep: 'The share of the volume that swept across exchanges',
   floor: 'The share that printed on the floor — worked orders',
   multi: 'The share that was a leg of a multi-leg structure',
-  lean: 'Whether the volume paid the ask or hit the bid',
+  lean: "The day's lean: the side's share of the contracts that traded on a side (the figure the 55% rule is called on) — the hover gives each side's share of the whole day",
+  iv: "The contract's implied volatility, and the vendor's IV change on the day (iv_change, ×100) — a change in IV, not the delta",
 };
 
 const OptionsScreener = () => {
@@ -335,7 +342,7 @@ const OptionsScreener = () => {
       { key: 'prem', header: 'Prem', align: 'right', sortValue: r => r.premium, render: r => <span className={weightInk(r.premium, marks.prem)}><TickFigure value={r.premium}>{fmtUsd(r.premium)}</TickFigure></span> },
       {
         key: 'iv',
-        header: 'IV · Δ',
+        header: 'IV · IV chg',
         align: 'right',
         sortValue: r => r.iv,
         /* a contract the vendor sends no volatility for reads "—", never "0% +0.0" */
@@ -364,7 +371,7 @@ const OptionsScreener = () => {
 
   /* SEVENTEEN COLUMNS DID NOT FIT AT 1440 (the audit, 2026-10-22): the floor share, the multi-leg share and the sector open
      folded — one click away in Columns */
-  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols_v2', ['floor', 'multi', 'sector']);
+  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols_v3', ['floor', 'multi', 'sector', 'dte', 'oi']);
   /* WHAT THE BOOK IS (the audit: "every contract that traded today" headed the vendor's top 200) */
   const pool = unusual
     ? "the vendor's 200 unusual contracts with the most premium today"

@@ -40,6 +40,8 @@ export interface TickerLevels {
   regime: 'LONG' | 'SHORT' | null;
   /** False while some of the scope's expiries are still loading — the figures are then provisional */
   complete: boolean;
+  /** One strike's net GEX on these contracts, RETAIL sign — null when the strike is not on them */
+  netAt: (strike: number) => number | null;
 }
 
 /** One name's levels for a scope — null until its book is live */
@@ -73,7 +75,12 @@ export function levelsFor(ticker: string, scope: LevelsScope): TickerLevels | nu
     flip: flip.flip,
     netGex: house === 0 ? 0 : -house,
     regime: regimeOfNet(house),
-    complete: flip.complete && !scopeDatesPending(t, scope),
+    /* "Today" before its own expiry's chain is in reads the whole book — never final */
+    netAt: (k: number) => {
+      const n = book.chain.find(x => x.strike === k);
+      return n ? (n.netGex === 0 ? 0 : -n.netGex) : null;
+    },
+    complete: flip.complete && !scopeDatesPending(t, scope) && (scope === 'ALL' || levelsDate(snap, scope) != null),
   };
 }
 

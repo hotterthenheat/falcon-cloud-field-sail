@@ -36,6 +36,7 @@
 ==================================================
 */
 
+import { dollars3 } from '../pages/record/money';
 import { dayKey, h01, hash } from '../core/rng';
 import { RECORD_UNIVERSE, recordPrice } from './recordUniverse';
 import type { InsiderFlow, InsiderKind, InsiderRole, InsiderSignal, InsiderTrade, PlanState, TxCode, TxCodeMeta } from '../types/record';
@@ -113,7 +114,7 @@ export const isChosenBuy = (t: { code: TxCode; plan: PlanState; entity?: boolean
 /** A code-P purchase by a company or a fund: a strategic stake or a private placement, not a person's chosen buy */
 export const isCorporateBuy = (t: { code: TxCode; entity?: boolean }): boolean => t.code === 'P' && !!t.entity;
 
-const EMPTY: InsiderFlow = { ticker: '', trades: [], bought: 0, sold: 0, net: 0, plannedValue: 0, compValue: 0, buyerCluster: 0, openMarketBuys: 0, signal: 'quiet', windowDays: 0 };
+const EMPTY: InsiderFlow = { ticker: '', trades: [], bought: 0, sold: 0, net: 0, plannedValue: 0, compValue: 0, buyerCluster: 0, openMarketBuys: 0, chosenSold: 0, signal: 'quiet', windowDays: 0 };
 
 /** Roll a set of filings — the simulator and the live wire share the verdict. */
 export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays: number): InsiderFlow {
@@ -122,6 +123,7 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
   let plannedValue = 0;
   let openMarketBuys = 0;
   let compValue = 0;
+  let chosenSold = 0;
   for (const t of trades) {
     const meta = TX_CODES[t.code];
     if (!meta) continue;
@@ -129,19 +131,24 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
       if (t.kind === 'BUY') {
         bought += t.value;
         if (isChosenBuy(t)) openMarketBuys += t.value;
-      } else sold += t.value;
+      } else {
+        sold += t.value;
+        if (t.plan === 'discretionary') chosenSold += t.value;
+      }
       if (t.plan === 'plan' && t.kind === 'SELL') plannedValue += t.value;
     } else compValue += t.value;
   }
   const net = bought - sold;
-  const discretionarySold = sold - plannedValue;
+  /* CHOSEN ON ONE RULE BOTH WAYS (the fourth audit, 2026-10-23): "sold by choice" was sold − planned, so it took in the
+     unstated sales while chosen buying leaves unstated buys out; both sides now count only what the filing marks chosen */
+  const discretionarySold = chosenSold;
   let signal: InsiderSignal = 'quiet';
   if (trades.length === 0) signal = 'quiet';
   else if (openMarketBuys > 0 && openMarketBuys >= discretionarySold) signal = 'accumulating';
   else if (discretionarySold > 0 && discretionarySold >= sold * 0.4) signal = 'distributing';
   else if (sold > 0) signal = 'scheduled selling';
   const recentBuyers = new Set(trades.filter(t => t.code === 'P' && t.daysAgo <= 30).map(t => t.person));
-  return { ticker, trades, bought, sold, net, plannedValue, compValue, buyerCluster: recentBuyers.size, openMarketBuys, signal, windowDays };
+  return { ticker, trades, bought, sold, net, plannedValue, compValue, buyerCluster: recentBuyers.size, openMarketBuys, chosenSold, signal, windowDays };
 }
 
 /** One name's insider filings over a window — deterministic per session day */
@@ -157,6 +164,7 @@ export function insiderFlow(ticker: string, windowDays = 90, day = dayKey()): In
   let plannedValue = 0;
   let openMarketBuys = 0;
   let compValue = 0;
+  let chosenSold = 0;
   const roster = rosterOf(sym);
   for (let i = 0; i < count; i++) {
     const s = `${seed}|${i}`;
@@ -182,7 +190,10 @@ export function insiderFlow(ticker: string, windowDays = 90, day = dayKey()): In
       if (kind === 'BUY') {
         bought += value;
         if (isChosenBuy({ code, plan })) openMarketBuys += value;
-      } else sold += value;
+      } else {
+        sold += value;
+        if (plan === 'discretionary') chosenSold += value;
+      }
       if (plan === 'plan' && kind === 'SELL') plannedValue += value;
     } else compValue += value;
   }
@@ -197,13 +208,13 @@ export function insiderFlow(ticker: string, windowDays = 90, day = dayKey()): In
   trades.sort((a, b) => a.daysAgo - b.daysAgo);
   const net = bought - sold;
   /* The verdict, in the order that is the argument: a chosen buy first and against the smallest bar */
-  const discretionarySold = sold - plannedValue;
+  const discretionarySold = chosenSold;
   let signal: InsiderSignal = 'quiet';
   if (trades.length === 0) signal = 'quiet';
   else if (openMarketBuys > 0 && openMarketBuys >= discretionarySold) signal = 'accumulating';
   else if (discretionarySold > 0 && discretionarySold >= sold * 0.4) signal = 'distributing';
   else if (sold > 0) signal = 'scheduled selling';
-  return { ticker: sym, trades, bought, sold, net, plannedValue, compValue, buyerCluster: recentBuyers.size, openMarketBuys, signal, windowDays };
+  return { ticker: sym, trades, bought, sold, net, plannedValue, compValue, buyerCluster: recentBuyers.size, openMarketBuys, chosenSold, signal, windowDays };
 }
 
 /** A stable address for a person. Names are unique across the book. */
@@ -233,20 +244,38 @@ export function insiderBuyers(windowDays = 90, day = dayKey()): InsiderFlow[] {
     .sort((a, b) => b.openMarketBuys - a.openMarketBuys);
 }
 
-const fmtM = (v: number) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${v.toFixed(0)}`);
+/* ONE FORMATTER WITH THE PAGE'S CARDS (the fourth audit, 2026-10-23: the sentence read $1.4B beside a card's $1.35B) */
+const fmtM = dollars3;
+
+/** When the smaller sales cover less of the window than the large ones: the cut and the days the smaller ones cover */
+export interface SalesSplit {
+  /** Sales of this value or more are read over the whole window */
+  big: number;
+  /** The smaller sales are only the latest filings', from this day to that (YYYY-MM-DD) */
+  from: string;
+  to: string;
+}
+const dayWord = (iso: string): string => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+};
+export const splitWords = (split: SalesSplit, windowDays: number): string =>
+  `sales of ${fmtM(split.big)}+ over ${windowDays} days, smaller sales ${dayWord(split.from)}${split.from !== split.to ? `–${dayWord(split.to)}` : ''} only`;
 
 /** What the window adds up to across the feed shown */
-export function insidersSentence(rows: InsiderTrade[], windowDays: number): string {
+export function insidersSentence(rows: InsiderTrade[], windowDays: number, split: SalesSplit | null = null): string {
   if (rows.length === 0) return `No insider filed a trade in the last ${windowDays} days.`;
   const market = rows.filter(t => TX_CODES[t.code].openMarket);
   const chosenBuys = market.filter(t => isChosenBuy(t));
-  const sales = market.filter(t => t.kind === 'SELL');
+  const allSales = market.filter(t => t.kind === 'SELL');
+  /* ONE COVERAGE PER FIGURE (the fourth audit, 2026-10-23): "$28.0B · 2,833 sales · 59% on a plan" mixed the $1M+ sales
+     of 90 days with the smaller sales of the last two days. When the two cover different spans the figure is the large
+     sales' alone, and the smaller ones are said apart with their own days. */
+  const sales = split ? allSales.filter(t => t.value >= split.big) : allSales;
+  const small = split ? allSales.filter(t => t.value < split.big) : [];
   const planned = sales.filter(t => t.plan === 'plan');
   const buyValue = chosenBuys.reduce((s, t) => s + t.value, 0);
   const saleValue = sales.reduce((s, t) => s + t.value, 0);
-  /* the LARGEST names by chosen dollars, not the newest filings (the retail pass: "$1.1B in AGMB, ECF, RAPP, FBK and
-     more" named four small recent buys), and "and more" only when there are more names than are named (GME alone read
-     "$99.2M in GME and more") */
   const byName = new Map<string, number>();
   for (const t of chosenBuys) byName.set(t.ticker, (byName.get(t.ticker) ?? 0) + t.value);
   const ranked = [...byName.entries()].sort((a, b) => b[1] - a[1]);
@@ -257,8 +286,9 @@ export function insidersSentence(rows: InsiderTrade[], windowDays: number): stri
   else parts.push('No insider chose to buy in this window.');
   if (sales.length) {
     const pct = Math.round((planned.length / sales.length) * 100);
-    parts.push(`${sales.length.toLocaleString('en-US')} ${sales.length === 1 ? 'sale' : 'sales'} for ${fmtM(saleValue)}, ${pct}% of them on a 10b5-1 plan adopted months earlier — those carry no view on the day.`);
+    parts.push(`${sales.length.toLocaleString('en-US')} ${split ? `sales of ${fmtM(split.big)} or more` : sales.length === 1 ? 'sale' : 'sales'} for ${fmtM(saleValue)}, ${pct}% of them on a 10b5-1 plan adopted months earlier — those carry no view on the day.`);
   }
+  if (split && small.length) parts.push(`Smaller sales are read for ${dayWord(split.from)}${split.from !== split.to ? `–${dayWord(split.to)}` : ''} only: ${small.length.toLocaleString('en-US')} for ${fmtM(small.reduce((s, t) => s + t.value, 0))}, kept out of the figure above.`);
   const plumbing = rows.length - market.length;
   if (plumbing) parts.push(`${plumbing.toLocaleString('en-US')} grants, conversions and withholdings shown — not trades.`);
   return parts.join(' ');

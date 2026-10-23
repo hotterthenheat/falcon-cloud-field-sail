@@ -80,3 +80,12 @@ export const shortDay = (iso: string): string => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
+
+/** A vendor stamp written on UTC's calendar ("updated": "2026-10-23" at 23:30 New York on the 22nd) as New York's day:
+    a bare date ahead of New York's today is the evening's stamp and is New York's today; a timestamp is converted */
+export function nyDayOfUtcStamp(raw?: string | null): string | null {
+  const day = nyDayOf(raw);
+  if (!day) return null;
+  const today = nyTodayIso();
+  return day > today ? today : day;
+}

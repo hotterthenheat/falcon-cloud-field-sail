@@ -34,7 +34,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useTopNet, useLiveBook, useTide } from '../../data/traceLive';
+import { tideBetween, useTopNet, useLiveBook, useTide } from '../../data/traceLive';
+import { useTraceSession } from '../../components/trace/traceSession';
 import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { type MoneynessKey } from '../../data/flowBook';
@@ -104,12 +105,19 @@ const NetFlow = () => {
   );
   /* the names a search may put on the pane: the book's */
   const known = useMemo(() => new Set(leaders.map(r => r.ticker)), [leaders]);
+  /* ANY NAME GOES ON THE PANE (audit round 4: "No contracts for PLTR today" while a PLTR suggestion showed $76.9M — only
+     the board's 40 names were taken): a well-formed ticker is read from its own /stock/{t}/net-prem-ticks once the typing
+     settles; a board name at once */
+  const typeTimer = useRef(0);
   const onQuery = (v: string) => {
     setQuery(v);
+    window.clearTimeout(typeTimer.current);
     if (!v) setPicked(null);
     else if (known.has(v)) setPicked(v);
+    else if (/^[A-Z][A-Z0-9.]{0,5}$/.test(v)) typeTimer.current = window.setTimeout(() => setPicked(v), 450);
   };
-  const unknown = query !== '' && !known.has(query) && ![...known].some(t => t.startsWith(query));
+  useEffect(() => () => window.clearTimeout(typeTimer.current), []);
+  const unknown = query !== '' && !/^[A-Z][A-Z0-9.]{0,5}$/.test(query);
 
   const sel = picked ?? leaders[0]?.ticker ?? 'SPY';
   const maxAbs = useMemo(() => Math.max(...leaders.map(l => Math.abs(l.net)), 1), [leaders]);
@@ -137,13 +145,21 @@ const NetFlow = () => {
   /* ReactNode: both named leaders are doors — clicking puts that name on the pane.
      THE PARTS ADD UP: "+$113.6M net … +$104.5M of it in calls and −$9.1M in puts" did not sum; the net is net calls LESS
      net puts, and the sentence says it that way, each figure in its meaning's ink */
+  /* THE SESSION'S OWN MARKET NET (audit round 4: "Market net · every name −$939.7M · 07:30–16:14 ET" under Session Regular
+     took in the pre-market — options do not trade at 07:30): Regular is 09:30–16:15, the tide's running figure at the last
+     regular minute less its figure before the bell; Extended hours is the whole tide, said so */
+  const session = useTraceSession();
   const market = useMemo(() => {
+    if (session === 'regular') {
+      const w = tideBetween(tide.rows, 570, 975);
+      return w ? { net: w.net, calls: w.calls, puts: w.puts, at: nyClock(w.last * 1000), from: nyClock(w.first * 1000) } : null;
+    }
     const lastPt = tide.rows.length ? tide.rows[tide.rows.length - 1] : null;
     /* THE REAL SPAN (the re-audit, 2026-10-22: "from the open" over a tide that runs 07:30–16:14): the tide's own first
        and last minute */
     const firstPt = tide.rows.length ? tide.rows[0] : null;
     return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem, at: nyClock(lastPt.time * 1000), from: firstPt ? nyClock(firstPt.time * 1000) : null } : null;
-  }, [tide.rows]);
+  }, [tide.rows, session]);
   const read = useMemo<ReactNode>(() => {
     if (!facts.top || !facts.bottom) return <RichRead text="The book is still waking up." />;
     const { top, bottom, topIsChamp } = facts;
@@ -192,7 +208,7 @@ const NetFlow = () => {
       guide={{ title: 'How to read the board', door: 'What the board, the lines and the floor mean', body: <NetFlowGuide />, testId: 'net-flow-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
         <>
-          <Fact label="Market net · every name" testId="net" title="The vendor's market tide: every name's net call premium less its net put premium, over the minutes the tide covers — pre-market included">
+          <Fact label="Market net · every name" testId="net" title={session === 'regular' ? "The vendor's market tide: every name's net call premium less its net put premium over the regular session, 09:30–16:15 ET (the tide's running figure at the close less its figure before the bell)" : "The vendor's market tide: every name's net call premium less its net put premium, over every minute the tide covers — the pre-market and after the close included (Extended hours on the Session card)"}>
             {market ? (
               <>
                 <Lean v={market.net} /> <span className="text-textSecondary">· {market.from ? `${market.from}–` : 'to '}{market.at} ET</span>
@@ -238,7 +254,7 @@ const NetFlow = () => {
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
             {unknown && (
               <span role="status" className="text-[11px] text-textSecondary" data-net-unknown>
-                No contracts for {query} today — the pane keeps {sel}
+                "{query}" is not a ticker — the pane keeps {sel}
               </span>
             )}
           </span>
@@ -256,7 +272,7 @@ const NetFlow = () => {
             <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of the board's lean</span>
-              <span>Net today</span>
+              <span title="The vendor's own ranking (top net impact) — each name's whole day by its minute ticks. Compare reads each name's flow by expiry, the one source its clocks can be cut from; on names heavy with spreads the two vendor routes can differ, and Compare says so in its Net Flow's pane row">Net today</span>
             </div>
           )}
           {leaders.length === 0 && (

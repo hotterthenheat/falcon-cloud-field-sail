@@ -10,9 +10,10 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { peekSpot, subscribeBook } from './uwBook';
-import { whalesState } from './whales';
+import { whalesScreener, whalesState } from './whales';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
-import { nyClock, nyIsoDate } from '../core/nyTime';
+import { nyClock, nyIsoDate, nySessionPhase } from '../core/nyTime';
+import { isTradingDay, today as nyTodayDate } from '../core/calendar';
 
 export interface LiveQuote {
   /** The last print (post-market after the close) */
@@ -194,4 +195,112 @@ export function useDayMoves(tickers: readonly string[]): Map<string, LiveQuote> 
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, at]);
+}
+
+/* ---- THE DAY'S MOVE OVER A WHOLE SET, FROM THE SCREENER (the fourth audit, 2026-10-23) ------------------------------
+   "Biggest move today: NVDA −4.4% · 3 of 86 read" while META (−6.98%) and AMD (−8.10%) had stories — the set was read
+   one quote at a time and named before it had landed. Now every name is read in bulk off /screener/stocks (about sixty
+   names a call, the proxy's path limit), and the result is given only when the whole set is in.
+   The screener's `close` is the last print — after the bell, the post-market one — and `intraday_change` is that last
+   print's move off the regular close (META 10/22: close 645.89, intraday_change −0.456% → 648.85, the regular close),
+   so the regular session's change is close ÷ (1 + intraday_change) against prev_close. In the session it is close
+   against prev_close. The move is labelled with the screener's own `date` (the session it belongs to). */
+export interface SetMove {
+  pct: number;
+  /** The New York session the move belongs to */
+  date: string;
+}
+export interface SetMoves {
+  /** True once every chunk of the set has answered */
+  complete: boolean;
+  /** How many names were asked */
+  asked: number;
+  moves: Map<string, SetMove>;
+}
+const setCache = new Map<string, { at: number; move: SetMove | null }>();
+const setInflight = new Set<string>();
+let setRev = 0;
+const setListeners = new Set<() => void>();
+const SET_TTL = 5 * 60_000;
+const numOf = (v: unknown): number => {
+  const x = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
+  return Number.isFinite(x) ? x : NaN;
+};
+export function screenerDayMove(row: Record<string, unknown>): SetMove | null {
+  const close = numOf(row.close);
+  const prev = numOf(row.prev_close);
+  const date = String(row.date ?? '').slice(0, 10);
+  if (!(close > 0) || !(prev > 0) || !date) return null;
+  const inSession = isTradingDay(nyTodayDate()) && nySessionPhase() === 'open' && date === nyIsoDate();
+  const ext = numOf(row.intraday_change);
+  const reg = inSession || !Number.isFinite(ext) ? close : close / (1 + ext);
+  return { pct: ((reg - prev) / prev) * 100, date };
+}
+function chunksOf(names: string[]): string[][] {
+  const out: string[][] = [];
+  let cur: string[] = [];
+  let len = 0;
+  for (const t of names) {
+    if (cur.length && len + t.length + 1 > 300) {
+      out.push(cur);
+      cur = [];
+      len = 0;
+    }
+    cur.push(t);
+    len += t.length + 1;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+function askSet(names: string[]): void {
+  const now = Date.now();
+  const want = names.filter(t => !setInflight.has(t) && !((setCache.get(t)?.at ?? 0) > now - SET_TTL));
+  if (!want.length) return;
+  want.forEach(t => setInflight.add(t));
+  for (const chunk of chunksOf(want)) {
+    void whalesScreener(chunk)
+      .catch(() => [] as Record<string, unknown>[])
+      .then(rows => {
+        const by = new Map<string, Record<string, unknown>>();
+        for (const r of Array.isArray(rows) ? rows : []) by.set(String(r.ticker ?? '').toUpperCase(), r);
+        const at = Date.now();
+        for (const t of chunk) {
+          const r = by.get(t);
+          setCache.set(t, { at, move: r ? screenerDayMove(r) : null });
+          setInflight.delete(t);
+        }
+        setRev += 1;
+        setListeners.forEach(fn => fn());
+      });
+  }
+}
+/** Every name's regular-session move in one stated set, read in bulk — `complete` only once the whole set has answered */
+export function useSetMoves(tickers: readonly string[]): SetMoves {
+  const key = [...new Set(tickers.map(t => t.toUpperCase()).filter(Boolean))].sort().join(',');
+  useEffect(() => {
+    if (key) askSet(key.split(','));
+  }, [key]);
+  const rv = useSyncExternalStore(
+    fn => {
+      setListeners.add(fn);
+      return () => {
+        setListeners.delete(fn);
+      };
+    },
+    () => setRev,
+    () => 0,
+  );
+  return useMemo(() => {
+    const moves = new Map<string, SetMove>();
+    const names = key ? key.split(',') : [];
+    let answered = 0;
+    for (const t of names) {
+      const hit = setCache.get(t);
+      if (!hit) continue;
+      answered += 1;
+      if (hit.move) moves.set(t, hit.move);
+    }
+    return { complete: names.length > 0 && answered === names.length, asked: names.length, moves };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, rv]);
 }

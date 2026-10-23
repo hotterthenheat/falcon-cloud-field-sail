@@ -533,7 +533,7 @@ const StockName = () => {
   const sessionMarks: ChartMark[] = view.timeline.filter(t => t.time != null).map(t => ({ time: t.time!, color: KIND_MARK[t.kind], on: true, size: 0.34, shape: 'circle' as const, text: `${KIND_WORD[t.kind]} · ${t.text}` }));
   /* the levels named INSIDE the plot at their left end — the axis keeps the figures alone (four named tags collided there) */
   const sessionLines = [
-    ...(trend.ema20 != null ? [{ price: trend.ema20, color: SILVER, title: '20-day', style: 'dashed' as const, name: 'plot' as const }] : []),
+    ...(trend.ema20 != null ? [{ price: trend.ema20, color: SILVER, title: '20-day EMA', style: 'dashed' as const, name: 'plot' as const }] : []),
     ...(money.levelsAll?.putWall != null ? [{ price: money.levelsAll.putWall, color: 'rgb(var(--bear))', title: 'support', style: 'dashed' as const, name: 'plot' as const }] : []),
     ...(money.levelsAll?.callWall != null ? [{ price: money.levelsAll.callWall, color: 'rgb(var(--bull))', title: 'resistance', style: 'dashed' as const, name: 'plot' as const }] : []),
   ];
@@ -730,22 +730,22 @@ const StockName = () => {
         <Box title="The trend" sub={`The screener's trend measures · the swing structure from the name's own ${trend.sessions} sessions`} aside={<PillarBarSmall p={byKey.trend} />} testId="trend">
           <div className="px-5 pb-3">
             <dl className="grid grid-cols-3 gap-x-4 gap-y-2">
-              <Fact label="20-day average" testId="ema20">
+              <Fact label="20-day EMA" testId="ema20" tip="The 20-day exponential moving average (the screener's ema_20), and the last regular close against it — the figure the trend factor scores">
                 {trend.ema20 != null ? (
                   <>
-                    {trend.ema20.toFixed(2)} <span className={`${view.price >= trend.ema20 ? 'text-bull' : 'text-bear'}`}>{pct(((view.price - trend.ema20) / trend.ema20) * 100)}</span>
+                    {trend.ema20.toFixed(2)} <span className={`${trend.refClose >= trend.ema20 ? 'text-bull' : 'text-bear'}`}>{pct(((trend.refClose - trend.ema20) / trend.ema20) * 100)}</span>
                   </>
                 ) : (
                   <span className="text-textMuted">—</span>
                 )}
               </Fact>
-              <Fact label="50-day · 200-day" testId="smas">
+              <Fact label="50 · 200-day SMA" testId="smas" tip="The 50- and 200-day simple moving averages (the screener's sma_50 and sma_200)">
                 {trend.sma50 != null ? trend.sma50.toFixed(2) : <span className="text-textMuted">needs 50</span>} <span className="text-textMuted">·</span> {trend.sma200 != null ? trend.sma200.toFixed(2) : <span className="text-textMuted">needs 200</span>}
               </Fact>
               <Fact label="Above its averages" testId="above">
                 {trend.above.count} <span className="text-textMuted">of {trend.above.of} on hand</span>
               </Fact>
-              <Fact label="RSI · ADX" testId="rsi">
+              <Fact label="RSI · ADX" testId="rsi" tip="RSI and ADX over 14 sessions — the screener's rsi_14 and adx_14, the same figures the factors below score">
                 {trend.rsi14 != null ? trend.rsi14.toFixed(0) : '—'} <span className="text-textMuted">·</span> {trend.adx14 != null ? trend.adx14.toFixed(0) : '—'}
               </Fact>
               <Fact label="Today's range" testId="atr">
@@ -757,7 +757,7 @@ const StockName = () => {
                   '—'
                 )}
               </Fact>
-              <Fact label="5 · 20 sessions" testId="changes">
+              <Fact label={trend.source === 'screener' ? 'The week · the month' : '5 · 20 sessions'} testId="changes" tip={trend.source === 'screener' ? "The screener's one_week_perc and one_month_perc — the month is the figure 'The last month' scores" : 'The change over the last 5 and 20 sessions on hand'}>
                 {trend.change5Pct != null ? <span className={trend.change5Pct >= 0 ? 'text-bull' : 'text-bear'}>{pct(trend.change5Pct)}</span> : '—'} <span className="text-textMuted">·</span>{' '}
                 {trend.change20Pct != null ? <span className={trend.change20Pct >= 0 ? 'text-bull' : 'text-bear'}>{pct(trend.change20Pct)}</span> : '—'}
               </Fact>
@@ -793,7 +793,7 @@ const StockName = () => {
                             {pct(((p.value - prev.value) / prev.value) * 100)}
                           </span>
                         )}
-                        {trend.ema20 != null && <span className="text-textMuted"> · {pct(((p.value - trend.ema20) / trend.ema20) * 100)} from the 20-day</span>}
+                        {trend.ema20 != null && <span className="text-textMuted"> · {pct(((p.value - trend.ema20) / trend.ema20) * 100)} from the 20-day EMA</span>}
                       </span>
                       {marks.map(m => (
                         <span key={m.text} className="text-[10px] leading-snug" style={{ color: m.color }}>
@@ -855,7 +855,7 @@ const StockName = () => {
                 <span className="text-textMuted">—</span>
               )}
             </Fact>
-            <Fact label="Recent dark" testId="darkshare">
+            <Fact label={money.darkWindow.complete ? 'Dark today' : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out`}>
               {money.dark.prints.length ? (
                 <>
                   {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length}</span>
@@ -913,7 +913,10 @@ const StockName = () => {
             )}
             {money.askSharePct != null && money.sweepSharePct != null && (
               <p className="mt-1.5 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-alerts>
-                flow alerts on {sessionWord} · {money.askSharePct.toFixed(0)}% of their premium on the ask · {money.sweepSharePct.toFixed(0)}% swept
+                {money.flowWindow.complete
+                  ? `${money.flowWindow.alerts} flow alerts on ${sessionWord}`
+                  : `the latest ${money.flowWindow.alerts} flow alerts on ${sessionWord}, ${money.flowWindow.from}–${money.flowWindow.to} ET`}{' '}
+                · {money.askSharePct.toFixed(0)}% of their premium on the ask · {money.sweepSharePct.toFixed(0)}% swept
               </p>
             )}
           </div>
@@ -926,7 +929,7 @@ const StockName = () => {
               <span className={money.dark.netPosturePct < 0 ? 'text-bear font-semibold' : 'text-textSecondary'}>selling</span>
               <span className="text-[9px] uppercase tracking-widest text-textMuted">
                 {money.darkWindow.read
-                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : ''}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
+                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.complete ? (money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : '') : `, from ${money.darkWindow.cover ?? money.darkWindow.from} ET to the close only — the tape in hand stops there`}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
                   : `dark pool · no read · none of the ${money.darkWindow.inHand} prints in hand is a sized regular-session print priced at the quote`}
               </span>
               <span className={money.dark.netPosturePct > 0 ? 'text-bull font-semibold' : 'text-textSecondary'}>buying</span>
@@ -1288,7 +1291,7 @@ const StockName = () => {
               </div>
             ))}
             <div className="px-5 py-3 border-t border-borderSubtle/40 text-[10.5px] leading-snug text-textSecondary">
-              <span className="text-textPrimary">{view.completeness}%</span> of the page is live. The Stocks board screens every name on the screener's fields alone, so its word for a name can differ from this page's fuller read.
+              <span className="text-textPrimary">{view.completeness}%</span> of the page is live. The word is the Stocks board's own: both read the same screener row.
             </div>
           </div>
         </div>

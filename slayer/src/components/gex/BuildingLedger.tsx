@@ -346,7 +346,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
   }, [anyKept, onClear]);
 
   /* no strike carries a change of open interest yet — the by-expiry book is still being read, not a quiet day */
-  const counted = data.rows.some(r => r.dCall !== 0 || r.dPut !== 0);
+  const counted = !data.loading && data.rows.some(r => r.dCall !== 0 || r.dPut !== 0);
   const soft = 'blur-[2px] opacity-30';
   const crisp = 'blur-0 opacity-100';
   const span = compact ? 'col-span-4' : 'col-span-7';
@@ -361,13 +361,13 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
           <div>
             <dt className="text-[10px] text-textMuted whitespace-nowrap" title={data.overnight ? "Hedging added in yesterday's trading — the overnight open-interest count, valued at today's price" : undefined}>{changeWhen(data).head}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-built>
-              {counted ? `+${fmtDollars(data.built)}` : '—'}
+              {counted ? `+${fmtDollars(data.built)}` : data.loading ? '…' : '—'}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted whitespace-nowrap">{changeWhen(data).head.replace('Built', 'Drained')}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-drained>
-              {counted ? `−${fmtDollars(data.drained)}` : '—'}
+              {counted ? `−${fmtDollars(data.drained)}` : data.loading ? '…' : '—'}
             </dd>
           </div>
           {!compact && (
@@ -375,13 +375,13 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
               <div>
                 <dt className="text-[10px] text-textMuted whitespace-nowrap">{data.overnight ? 'Grew most overnight' : 'Growing fastest'}</dt>
                 <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: SILVER }} data-build-up>
-                  {data.fastestUp ? `${fmtStrike(data.fastestUp.strike)} · ${signed(data.fastestUp.sizeChange)}` : '—'}
+                  {data.loading ? '…' : data.fastestUp ? `${fmtStrike(data.fastestUp.strike)} · ${signed(data.fastestUp.sizeChange)}` : '—'}
                 </dd>
               </div>
               <div>
                 <dt className="text-[10px] text-textMuted whitespace-nowrap">{data.overnight ? 'Shrank most overnight' : 'Fading fastest'}</dt>
                 <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-down>
-                  {data.fastestDown ? `${fmtStrike(data.fastestDown.strike)} · ${signed(data.fastestDown.sizeChange)}` : '—'}
+                  {data.loading ? '…' : data.fastestDown ? `${fmtStrike(data.fastestDown.strike)} · ${signed(data.fastestDown.sizeChange)}` : '—'}
                 </dd>
               </div>
             </>
@@ -413,7 +413,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
             <Term k="The wall now">The wall now</Term>
             {!compact && <span className="normal-case tracking-normal text-textMuted/70">· net gamma at the strike, in dollars</span>}
           </div>
-          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="Hedging added (+) or taken off (−) at the strike in the latest open-interest count, in dollars">Change</div>
+          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="Net gamma now less what it was — the latest open-interest count's change at the strike, in dollars, in the same sign as the figures beside it (calls +, puts −): now − was = change">Change</div>
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from call contracts">Calls</div>}
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from put contracts">Puts</div>}
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The wall's size through today's session">The day</div>}
@@ -454,7 +454,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
             const hovered = hover === r.strike;
             const wash = kept || hovered ? 'bg-silver/[0.05]' : '';
             const dim = anyKept && !kept;
-            const v = verdictOf(r, compact);
+            const v = data.loading ? { chip: "…", tone: "quiet" as const, words: "" } : verdictOf(r, compact);
             const above = r.strike > spot;
             const at = Math.abs(r.strike - spot) < 1e-9;
             const distance = distanceOf(r.strike).replace(/^[+−]/, '');
@@ -497,7 +497,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                   </div>
                 </div>
                 <div className={`px-2 text-right font-mono text-[12px] tnum ${r.verdict === 'steady' ? 'text-textMuted' : 'text-textPrimary font-semibold'}`} data-build-change>
-                  {signed(r.sizeChange)}
+                  {data.loading ? '…' : signed(r.change)}
                 </div>
                 {!compact && <div className="px-2 text-right font-mono text-[10px] tnum text-textSecondary">{contracts(r.dCall)}</div>}
                 {!compact && <div className="px-2 text-right font-mono text-[10px] tnum text-textSecondary">{contracts(r.dPut)}</div>}

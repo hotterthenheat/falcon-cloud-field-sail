@@ -53,7 +53,7 @@
 ==================================================
 */
 
-import { BELL_NONE, BELL_NONE_TITLE } from '../../data/flipLevel';
+import { bellNone as bellNoneWords, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
@@ -545,7 +545,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               data-clock-bell
               title={facts.bellShare != null ? `${facts.bellShare}% — ${bellDay().tip(snapshot.ticker)}` : bellNone ? BELL_NONE_TITLE(snapshot.ticker) : 'Still reading the expiry list'}
             >
-              {facts.bellShare != null ? `${facts.bellShare}%` : bellNone ? BELL_NONE : '…'}
+              {facts.bellShare != null ? `${facts.bellShare}%` : bellNone ? bellNoneWords() : '…'}
             </span>
             {facts.bellShare != null && <span className="ml-1.5 font-normal text-textSecondary">of gamma</span>}
           </ClockFact>

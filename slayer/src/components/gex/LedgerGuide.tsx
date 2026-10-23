@@ -14,7 +14,7 @@
 ==================================================
 */
 
-import { shownGamma } from './retailSign';
+import { shownGamma, shownGreek } from './retailSign';
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { attachScrollMore } from '../ui/scrollMore';
 import { fmtUsd } from '../../data/gex';
@@ -136,7 +136,7 @@ const GridFigure = () => {
         magenta: the supreme
       </text>
       <text x={292} y={168} dominantBaseline="middle" fontFamily={SANS} fontSize="11" fill={PUT_WALL}>
-        red: the put wall
+        gold: the put wall
       </text>
       <Label x={52} y={184} fill={INK_3}>
         dotted line: the market
@@ -229,10 +229,10 @@ const MatrixFigure = () => {
         magenta: the supreme
       </text>
       <text x={130} y={172} dominantBaseline="middle" fontFamily={SANS} fontSize="11" fill={PUT_WALL}>
-        red: the put wall
+        gold: the put wall
       </text>
       <text x={238} y={172} dominantBaseline="middle" fontFamily={SANS} fontSize="11" fill={CALL_WALL}>
-        green: the call wall
+        blue: the call wall
       </text>
       <Label x={8} y={188} fill={INK_3}>
         dotted line: the market
@@ -285,7 +285,7 @@ const ProfileFigure = () => {
         price runs left to right · the line is the book's gamma if price stood there
       </Label>
       <Label x={20} y={188} fill={INK_3}>
-        red rule: the put wall · green rule: the call wall
+        gold rule: the put wall · blue rule: the call wall
       </Label>
     </svg>
   );
@@ -319,7 +319,7 @@ const InWords = ({ surface, greek }: { surface: ExposureSurface; greek: Greek })
   const supremeDate = surface.expiries[supreme.e]?.date ?? '';
   return (
     <li className="text-[11.5px] leading-relaxed text-textSecondary">
-      The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
+      The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(shownGreek(greek, supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
       <span className="text-textPrimary">{supremeDate}</span>. The chart wears it in magenta.
     </li>
   );
@@ -431,7 +431,7 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
         <p className="text-[11px] text-textMuted">Today's calendar, in words</p>
         <ul className="mt-1 flex flex-col gap-1.5">
           <li className="text-[11.5px] leading-relaxed text-textSecondary">
-            The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(Math.abs(supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
+            The supreme is <span className="font-mono tnum font-semibold" style={{ color: SUPREME }}>{fmtStrike(supreme.strike)}</span>: <span className="font-mono tnum text-textPrimary">{fmtUsd(shownGreek(greek, supreme.total))}</span> of {label} hedging on the Levels card's contracts; on this calendar most of it sits on{' '}
             <span className="text-textPrimary">{supremeDate}</span>. The chart wears it in magenta.
           </li>
           <li className="text-[11.5px] leading-relaxed text-textSecondary">

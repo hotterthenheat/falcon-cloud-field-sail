@@ -60,9 +60,9 @@ export const TERMS = {
     'The strike’s structural weight today, and WHY: the bar is split into its reasons, always in this order — net GEX, open interest, volume, neighbor ratio, distance from spot. A longer segment is a bigger reason. The scale behind the bar is internal.',
   'Ranked by': 'The lens the ladder is ordered through — the composite priority, or one of its reasons alone. Rank numbers follow the lens; the bar stays the composite.',
   Class: 'What dealer hedging does at this strike — a cushion under price, resistance above it, or a magnet that pins.',
-  'Call wall': 'The heaviest call-gamma strike above price. Dealer hedging supplies stock there, so rallies often stall at it.',
-  'Put wall': 'The heaviest put-gamma strike below price. Dealer hedging bids stock there, so dips often hold it.',
-  'Gamma flip': 'The price where dealer hedging switches sides — above it moves get absorbed, below it they get amplified.',
+  'Call wall': 'The strike with the most call gamma, either side of price. Above price dealers long gamma there sell into rallies, so they often stall at it; once price is through it, it can act as support.',
+  'Put wall': 'The strike with the most put gamma, either side of price. Below price it is support while it holds; above price it is overhead put hedging, not a floor.',
+  'Gamma flip': 'The price where dealer hedging switches sides — on one side of it their hedging absorbs moves, on the other it amplifies them. Which side is which depends on the book: the side price is on wears the regime shown beside it.',
   Pin: 'The max-open-interest strike that price tends to gravitate toward into expiry.',
   Supreme: 'The single largest gamma strike on the whole book — the level that matters most today.',
   // ---- the Map's profile panel ----

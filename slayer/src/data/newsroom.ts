@@ -384,25 +384,31 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
     ink: 'neutral',
     read: `${topCat} carries ${topCatN} of ${events.length} stories today.`,
   });
-  const macro = events.filter(e => !e.item.ticker);
+  /* MACRO IS THE MACRO BEAT (the fourth audit, 2026-10-23): "1216 stories name no single stock… market-wide" counted
+     every untagged story, press releases from unlisted companies included, against the page's own rule (whalesMap
+     categoryOf: macro only when the story is about the economy, a central bank, rates, prices, markets or policy) */
+  const macro = events.filter(e => e.item.category === 'Macro');
+  const unnamed = events.filter(e => !e.item.ticker && e.item.category !== 'Macro').length;
+  const named = events.filter(e => !!e.item.ticker).length;
   const macroLift = macro.filter(e => e.grade === 'ALLY').length;
   const macroPress = macro.filter(e => e.grade === 'THREAT').length;
   const macroMarked = macroLift + macroPress;
+  const rest = `${named} name a listed stock${unnamed ? `, ${unnamed} more are company stories that name none the page lists` : ''}`;
   out.push({
     key: 'macro',
     title: 'Macro backdrop',
     ink: macroLift > macroPress ? 'bull' : macroPress > macroLift ? 'bear' : 'neutral',
     read:
       macroMarked === 0
-        ? `${macro.length} stories name no single stock, against ${events.length - macro.length} that do; ${macro.filter(e => e.item.major).length} of the market-wide ones are flagged major.`
-        : `${macro.length} index-level prints against ${events.length - macro.length} single names. The macro tape ${
+        ? `${macro.length} macro ${macro.length === 1 ? 'story' : 'stories'} — the economy, central banks, rates, markets and policy — against ${rest}; ${macro.filter(e => e.item.major).length} of the macro ones are flagged major.`
+        : `${macro.length} macro ${macro.length === 1 ? 'story' : 'stories'} against ${rest}. The macro tape ${
             macroLift > macroPress ? 'leans supportive' : macroPress > macroLift ? 'leans heavy' : 'leans neutral'
           } — single-name stories trade with that wind ${macroLift > macroPress ? 'behind' : macroPress > macroLift ? 'against' : 'beside'} them.`,
   });
   const fresh = events.filter(e => freshnessOf(e) === 'fresh');
   if (fresh.length > 0) {
     const named = fresh.slice(0, 3).map(e => e.item.ticker).filter((t): t is string => !!t);
-    const macros = fresh.slice(0, 3).filter(e => !e.item.ticker).length;
+    const macros = fresh.slice(0, 3).filter(e => !e.item.ticker && e.item.category === 'Macro').length;
     const who = [...named, macros === 1 ? 'a macro print' : macros > 1 ? `${macros} macro prints` : ''].filter(Boolean).join(', ');
     out.push({
       key: 'fresh',

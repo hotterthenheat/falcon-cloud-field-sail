@@ -32,6 +32,7 @@ import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf
 import { readLevelsScope } from './levelsScope';
 import { levelsBook } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
+import { levelsFor } from './levelsFor';
 import { readSessionClock } from './moc';
 import { getPositions } from './positions';
 import type { WallRole } from './wall';
@@ -174,7 +175,12 @@ export function buildBoardRow(ticker: string): BoardRow | null {
   }
   const gauge = buildFlipGauge(snapshot);
   const spot = snapshot.spot;
-  const { callWall, putWall, supreme } = today.levels;
+  /* THE ONE SOURCE (data/levelsFor.ts — the Dossier's too, the fourth audit's m10): the supreme, the walls, the flip and
+     net GEX the Board prints are levelsFor's, and the row waits ("…") until it says they are final */
+  const lv = levelsFor(ticker, readLevelsScope());
+  const callWall = lv?.callWall ?? today.levels.callWall;
+  const putWall = lv?.putWall ?? today.levels.putWall;
+  const supreme = lv?.supreme ?? today.levels.supreme;
   const dCall = ((callWall - spot) / spot) * 100;
   const dPut = ((putWall - spot) / spot) * 100;
   const nearest = Math.abs(dCall) <= Math.abs(dPut) ? { kind: 'call' as const, strike: callWall, distPct: dCall } : { kind: 'put' as const, strike: putWall, distPct: dPut };
@@ -206,7 +212,8 @@ export function buildBoardRow(ticker: string): BoardRow | null {
   const entry = peekEntry(ticker);
   const pending =
     !!snapshot.liveBook &&
-    (scope === '0DTE' ? !snapshot.uwChains?.['0DTE']?.length || (!entry?.full && !entry?.frontFacts) : scopeDatesPending(ticker));
+    (!lv || !lv.complete || (scope === '0DTE' ? !snapshot.uwChains?.['0DTE']?.length || (!entry?.full && !entry?.frontFacts) : scopeDatesPending(ticker)));
+  const flip = lv ? lv.flip : gauge.flip;
 
   return {
     pending,
@@ -216,9 +223,9 @@ export function buildBoardRow(ticker: string): BoardRow | null {
     spot,
     changePct: peekDayMove(snapshot.ticker)?.dayPct ?? 0,
     day: peekDayMove(snapshot.ticker),
-    regime: pending ? null : gauge.regime,
-    flip: pending ? null : gauge.flip,
-    flipDistPct: pending ? null : gauge.distPct,
+    regime: pending ? null : lv ? lv.regime : gauge.regime,
+    flip: pending ? null : flip,
+    flipDistPct: pending || flip == null || !(spot > 0) ? null : ((flip - spot) / spot) * 100,
     crossings: pending ? null : cross.crossings,
     crossWhy: cross.why,
     crossLabel: cross.label,
@@ -227,7 +234,7 @@ export function buildBoardRow(ticker: string): BoardRow | null {
     putWall,
     nearest,
     supreme,
-    netGex: snapshot.liveBook ? netGexOf(levelsBook(snapshot, readLevelsScope()).chain) : retailNet(today.netGex),
+    netGex: lv ? lv.netGex : snapshot.liveBook ? netGexOf(levelsBook(snapshot, readLevelsScope()).chain) : retailNet(today.netGex),
     bellShare: bell.share,
     bellWhy: bell.share == null ? bell.why : null,
     spark: thin(bars.map(b => b.close), SPARK_POINTS),

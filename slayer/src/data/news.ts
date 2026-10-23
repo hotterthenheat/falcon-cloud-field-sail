@@ -43,6 +43,8 @@ export interface NewsPrediction {
   /** The pre-market or after-hours move at publish, kept apart from the session's (null in the session) */
   extMovePct?: number | null;
   extWord?: 'pre-market' | 'after hours' | null;
+  /** A story that crossed before the open: the last session's own change, with that session's date (never the story's day) */
+  lastSession?: { pct: number; date: string } | null;
 }
 
 export interface NewsItem {

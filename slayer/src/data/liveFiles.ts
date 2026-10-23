@@ -8,8 +8,9 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { houseSlug, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
-import { nyDaysAgo } from './nyDate';
+import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
 import { companyName, hasVendorName, isListed, rememberCompanyName } from './tickers';
+import { screenerDayMove } from './liveQuote';
 import {
   whalesEtfFlow,
   whalesEtfHoldings,
@@ -144,10 +145,8 @@ const numOr = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 /** A vendor fraction (0.04) is a percent. A number already above 1.5 is left alone. */
-const asPct = (v: unknown): number => {
-  const n = num(v);
-  return Math.abs(n) <= 1.5 ? n * 100 : n;
-};
+/** perc_of_share_value and perc_of_total are fractions (BlackRock's $45.8B line: 0.0068 of its book) — read as such */
+const asPct = (v: unknown): number => num(v) * 100;
 /* a filing day is a New York calendar day, counted in calendar days (data/nyDate.ts) — never UTC midnight rounded */
 const daysAgo = (iso?: string): number => nyDaysAgo(iso, 999);
 const quarterOf = (iso?: string): string => {
@@ -220,8 +219,14 @@ const quartersOf = (h: UwHolding, sharesM: number, report: string): InstitutionR
 };
 
 function rowFromHolding(house: string, filed: string, h: UwHolding): InstitutionRow | null {
-  const ticker = (h.ticker || '').toUpperCase();
-  if (!/^[A-Z][A-Z0-9.]{0,5}$/.test(ticker)) return null;
+  /* A LINE WITH NO SYMBOL IS KEPT (the fourth audit, 2026-10-23): AMD's options lines filed as "00002488" and BlackRock's
+     $45.8B "9666655D" were dropped, so the page read 3,194 lines against the vendor's 3,200 and "79 largest" against 80.
+     Such a line is kept under the vendor's own identifier, named by the filing's issuer name when it gives one, and marked
+     unlisted — it opens no stock page and draws no logo. */
+  const raw = (h.ticker || '').trim().toUpperCase();
+  if (!raw) return null;
+  const unlisted = !/^[A-Z][A-Z0-9.]{0,5}$/.test(raw);
+  const ticker = raw;
   const units = num(h.units);
   const change = num(h.units_change);
   const sharesM = units / 1e6;
@@ -255,7 +260,8 @@ function rowFromHolding(house: string, filed: string, h: UwHolding): Institution
     status: statusOf(units, change),
     report,
     filedDaysAgo: daysAgo(filed),
-    company: typeof h.full_name === 'string' && h.full_name.trim() ? titleName(h.full_name) : undefined,
+    company: typeof h.full_name === 'string' && h.full_name.trim() ? titleName(h.full_name) : unlisted ? `No symbol on the filing · vendor id ${raw}` : undefined,
+    unlisted: unlisted || undefined,
     quarters: quartersOf(h, sharesM, report),
   };
 }
@@ -555,7 +561,7 @@ const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
       sector: h.sector || (/treasury|t-bill|t-note/i.test(name) ? 'Treasury' : String(h.type || '').toLowerCase() === 'bond' ? 'Corporate bond' : '—'),
       /* a Treasury is the United States' own paper; any other issue keeps what the feed said */
       country: h.country_name || (/treasury|t-bill|t-note/i.test(name) ? 'United States' : 'Not stated'),
-      asOf: h.updated ? String(h.updated).slice(0, 10) : undefined,
+      asOf: nyDayOfUtcStamp(h.updated ? String(h.updated) : null) ?? undefined,
     };
   }
   return {
@@ -564,7 +570,7 @@ const holdingOf = (h: UwEtfHolding, i: number): EtfHolding | null => {
     sharesM: num(h.shares) / 1e6,
     sector: h.sector || '—',
     country: h.country_name || 'Not stated',
-    asOf: h.updated ? String(h.updated).slice(0, 10) : undefined,
+    asOf: nyDayOfUtcStamp(h.updated ? String(h.updated) : null) ?? undefined,
   };
 };
 
@@ -625,10 +631,11 @@ async function pullEtfs() {
   }
 }
 
+/* THE FIELD'S OWN UNIT (the fourth audit, 2026-10-23): one_day_perc, one_week_perc and one_month_perc are fractions
+   (META 10/22 −0.074 = −7.4%); guessing by size (|v| ≤ 1.5 a fraction) would read a +200% month as +2% */
 const frac = (v: unknown): number | null => {
   const n = numOr(v);
-  if (n == null) return null;
-  return Math.abs(n) <= 1.5 ? n * 100 : n;
+  return n == null ? null : n * 100;
 };
 
 async function pullStocks() {
@@ -651,7 +658,8 @@ async function pullStocks() {
           name: u?.name || String(row.full_name || ticker),
           sector: asSector(ticker, typeof row.sector === 'string' ? row.sector : undefined),
           price,
-          changePct: frac(row.one_day_perc) ?? 0,
+          /* the regular session's change — the screener's one_day_perc runs to the post-market print after the bell */
+          changePct: screenerDayMove(row as Record<string, unknown>)?.pct ?? frac(row.one_day_perc) ?? 0,
           weekPct: frac(row.one_week_perc),
           monthPct: frac(row.one_month_perc),
           rsi: numOr(row.rsi_14),

@@ -36,6 +36,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { BaselineSeries, createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
 import { bookMinuteKind, deskBars, peekSettledNet, useBookMinutes, useBookRev } from '../../data/uwBook';
+import { roomLevels } from '../../data/roomLevels';
 import { nyIsoDate } from '../../core/nyTime';
 import { expirySpan } from '../../data/bookWindow';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
@@ -148,6 +149,8 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     for (const s of snapshot.chain) n += s.netGex;
     return n;
   }, [snapshot]);
+  /* nothing provisional (the fourth audit's M1: "NET GEX −$17.7B" — the whole book, the settled day in it — for seconds) */
+  const netPending = !!snapshot.liveBook && roomLevels(snapshot, '0DTE')?.complete === false;
   const minutes = useMemo<Minute[]>(() => {
     const priceAt = new Map(bars.map(b => [Math.floor(b.time / 60) * 60, b.close] as const));
     const endMin = at == null ? Infinity : at;
@@ -226,7 +229,10 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
       bottomFillColor2: alpha(amp, paper ? 0.22 : 0.3),
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: true,
+      /* NO LAST-VALUE TAG (the fourth audit's m6: the axis read −17.6B — the session's whole book, the contracts that
+         settled at 4:00 included — beside "NET GEX −$3.1B"): the line is the session's path; the figure that names the book
+         is the headline's, and the line's own last print is under Details with the settled contracts taken off */
+      lastValueVisible: false,
       crosshairMarkerRadius: 3,
       /* the axis's figures without the idle decimal ("$800M", not "$800.0M"): the axis is as wide as its widest
          figure and the tape over it shares that width (2026-10-18) — a shorter figure brings both to the edge */
@@ -434,7 +440,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
   const lineNow = lastPrint ? (at == null ? -lastPrint.net : lastPrint.net) - (settled ?? 0) : null;
   const lineDay = lastPrint ? nyIsoDate(lastPrint.time * 1000) : null;
   const lineDayWords = lineDay && lineDay !== nyIsoDate() ? ` · ${expirySpan([lineDay])} session` : '';
-  const kindWord = kind === 'oi' ? `Dealer gamma through the day · all expiries${lineDayWords}` : `Dealer hedging · the session's trades${lineDayWords}`;
+  const kindWord = kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · the session's trades${lineDayWords}`;
   const kindTitle =
     kind === 'oi'
       ? "The vendor's open-interest dealer gamma per 1% move on every expiry, re-priced at each minute's price (spot-exposures) — the same measure as the levels' net GEX. Through the session it counts the contracts expiring that day; after the close those settle, and the figure under Details takes them off, so it equals the All-expiries net"
@@ -472,10 +478,14 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
                 "NET GEX −$3.1B", NVDA "+$29.3M absorbs" beside "−$73.8M" and an AMPLIFY badge). The scope's net leads, with
                 its verb; the line's all-expiries figure sits under Details, labelled, with no verb of its own. */}
             <PartFact label={`Net GEX${bookWords ? ` · ${bookWords}` : ''}`} title={`Net GEX on every strike of the contracts the Levels card reads (${bookWords ?? 'its scope'}, open interest, retail sign) — the Board's, the Agenda's and Compare's figure. Positive (green): dealers long gamma, their hedging absorbs moves; negative (red): it amplifies them`}>
-              <span style={{ color: -bookNet >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-book={Math.round(-bookNet)}>
-                {-bookNet > 0 ? '+' : ''}
-                {fmtUsd(-bookNet)} · {-bookNet >= 0 ? 'absorbs' : 'amplifies'}
-              </span>
+              {netPending ? (
+                <span className="text-textMuted" title="Still loading the Levels card's contracts">…</span>
+              ) : (
+                <span style={{ color: -bookNet >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-book={Math.round(-bookNet)}>
+                  {-bookNet > 0 ? '+' : ''}
+                  {fmtUsd(-bookNet)} · {-bookNet >= 0 ? 'absorbs' : 'amplifies'}
+                </span>
+              )}
             </PartFact>
             {last && <PartFact label="Line changed sign" title="How many times through the session the line (every expiry) flipped between absorbing and amplifying">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>}
             <button

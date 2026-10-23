@@ -91,7 +91,7 @@ const PillarsFigure = () => {
 /** A factor row: the label and its note, the figure, the lean from the middle */
 const FactorFigure = () => {
   const rows = [
-    { label: 'Price against its 20-day average', note: 'above its average — the trend holds', value: '+2.1% · 184.30', lean: 0.7 },
+    { label: 'Price against its 20-day EMA', note: 'above its average — the trend holds', value: '+2.1% · 184.30', lean: 0.7 },
     { label: 'Call premium against put premium', note: 'the money leans to puts', value: '$4M vs $9M · 0.4×', lean: -0.55 },
     { label: 'Relative volume', note: 'ordinary', value: '1.02×', lean: 0.02 },
   ];
@@ -218,7 +218,7 @@ export const StockGuide = ({ view }: { view: StockOverview }) => (
       <p>The read also leans bullish, bearish or neutral. Under "Why now", each pillar is marked as agreeing with that lean or arguing against it, and the line under them names where the read fails first if it fails — the strongest pillar on the other side, or the next report when every pillar agrees.</p>
     </Section>
     <Section title="What is real">
-      <p>The scored trend, numbers and money read the name's screener row on Unusual Whales (its 20-day average, RSI, ADX, month, earnings growth, relative volume, and its call, put, bullish and bearish premium); the swing structure reads the name's own sessions, the dark pool its off-exchange prints, the news the wire. The last print reads the name's own earnings file; when the feed has no print for a name, the box says so instead of showing a guess. Every source's status and time sits in "Behind the read"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
+      <p>The scored trend, numbers and money read the name's screener row on Unusual Whales (its 20-day EMA, 50- and 200-day SMA, RSI, ADX, month, earnings growth, relative volume, and its call, put, bullish and bearish premium); the swing structure reads the name's own sessions, the dark pool its off-exchange prints, the news the wire. The last print reads the name's own earnings file; when the feed has no print for a name, the box says so instead of showing a guess. Every source's status and time sits in "Behind the read"; the method behind it — what was observed, derived and inferred — sits behind the fold under it.</p>
     </Section>
     <Section title="Today">
       <p>

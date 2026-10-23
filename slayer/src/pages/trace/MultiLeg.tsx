@@ -22,11 +22,12 @@
 ==================================================
 */
 
-import { useCallback, useDeferredValue, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useTraceSession } from '../../components/trace/traceSession';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { indexRoot, plural, usd as fmtUsd, useSpreads, useSpreadTrade } from '../../data/traceLive';
+import { indexRoot, lastRegularClose, plural, usd as fmtUsd, useSpreads, useSpreadTrade } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
 import BookDrill from '../../components/trace/BookDrill';
@@ -64,7 +65,8 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
   { value: 'DEBIT', label: 'Paid', hint: 'Structures that cost money to put on' },
   { value: 'CREDIT', label: 'Collected', hint: 'Structures that paid the trader to put on' },
 ];
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, strikes: 200, exp: 110, size: 72, net: 228, prem: 150, legs: 64, kind: 200, maxloss: 108, maxprofit: 108 };
+/* the set at rest sums under a 1440 box (audit round 4: the Net $ column stood half under the pinned risk columns) */
+const WIDTHS: Record<string, number> = { time: 112, ticker: 88, strikes: 168, exp: 96, size: 60, net: 168, prem: 132, legs: 56, kind: 176, maxloss: 92, maxprofit: 92 };
 /* the structure's who on the left; its risk at the right, always on screen (Max loss and Max profit stood off a 1280
    screen) */
 const PIN_LEFT = ['time', 'ticker'];
@@ -160,18 +162,20 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
          close. The old line ran four registers together and trailed off
          after the name. */
       header={
-        <span className="flex items-center gap-2.5 min-w-0">
+        /* ON A PHONE THE NAME WRAPS UNDER, never over the time (audit round 4: the shape name overlapped "16:59:23") */
+        <span className="flex items-center gap-x-2.5 gap-y-1 min-w-0 flex-wrap">
           <CompanyLogo ticker={trade.ticker} size={20} />
           <span className="font-mono text-sm font-bold text-textPrimary">{trade.ticker}</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[11px] font-semibold text-textPrimary whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: KIND_DOT[trade.kind] }} />
-            {t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[11px] font-semibold text-textPrimary min-w-0 max-w-full">
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[trade.kind] }} />
+            <span className="truncate">{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
           </span>
+          {trade.extended && <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted whitespace-nowrap">after hours</span>}
           {t.vendorShape && <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title="The vendor's own label — the legs as they were bought and sold say otherwise">vendor: {t.vendorShape}</span>}
         </span>
       }
       headerActions={
-        <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap">
+        <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap shrink-0">
           {trade.time}
           {trade.spot > 0 ? (indexRoot(trade.ticker) ? ` · index ${Math.round(trade.spot).toLocaleString('en-US')}` : ` · spot $${trade.spot.toFixed(2)}`) : ''}
         </span>
@@ -239,7 +243,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
                 <span className="text-textMuted">—</span>
               ) : (
                 <span className="text-textSecondary" title="Dollars a day the whole position gains (+) or loses (−) to time: each leg's theta × its contracts × 100, bought plus, sold minus">
-                  {theta >= 0 ? '+' : '−'}${Math.abs(theta).toFixed(2)} a day
+                  {theta >= 0 ? '+' : '−'}${Math.abs(theta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} a day
                 </span>
               )
             )}
@@ -287,7 +291,7 @@ const phoneRow = (t: SpreadTrade) => (
         <span className="truncate">{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
       </>
     }
-    aside={t.time}
+    aside={t.extended ? `${t.time} · AH` : t.time}
     figures={[
       <span key="k" className="font-bold tnum text-textPrimary">
         {t.strikesLabel}
@@ -328,7 +332,19 @@ const MultiLeg = () => {
   const [legKey, setLegKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const pack = useSpreads(SPREADS_N);
+  /* THE SESSION CARD (audit round 4: under Regular after the close the page held only 16:28–16:59 structures, unmarked):
+     Regular keeps the regular session's structures — after the close, walked back from the 16:15 close; Extended hours
+     the ones outside it, each marked */
+  const session = useTraceSession();
+  const [closed, setClosed] = useState(() => lastRegularClose());
+  useEffect(() => {
+    const id = window.setInterval(() => setClosed(c => {
+      const n = lastRegularClose();
+      return n?.closeMs === c?.closeMs ? c : n;
+    }), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const pack = useSpreads(SPREADS_N, { untilMs: session === 'regular' && closed ? closed.closeMs : null, session });
   /* NOT YET / NOT AT ALL is not "no structures": before the tape lands, and when it fails, the page had read "No
      multi-leg trades on the tape yet today" over 0 · 0 (the ship pass, 2026-10-22) */
   const tapeState: 'reading' | 'down' | 'in' = pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
@@ -408,14 +424,14 @@ const MultiLeg = () => {
     const big = [...trades].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
     return (
       <>
-        <RichRead text={`In the newest ${trades.length} multi-leg trades (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
+        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
         <ReadDoor onOpen={() => setDrill(big)}>
           {big.ticker} {big.shape === 'unnamed' ? KIND_META[big.kind].label.toLowerCase() : big.shape}
         </ReadDoor>
         <RichRead text={`, ${big.units != null ? `${plural(big.units, 'unit')} ` : ''}for [[${fmtUsd(Math.abs(big.netPremium))}]] net${big.netPremium > 0 ? ' paid' : big.netPremium < 0 ? ' collected' : ''} (${fmtUsd(big.premium)} across every leg).`} />
       </>
     );
-  }, [trades, tapeState, windowSpan]);
+  }, [trades, tapeState, windowSpan, session, closed]);
 
   const activeKind = kind === 'ALL' ? null : KIND_META[kind];
 
@@ -430,6 +446,8 @@ const MultiLeg = () => {
           <span className="inline-flex items-center gap-1.5">
             <WatchStar k={structureKey(t)} make={() => watchStructure(t, 'multi-leg')} noun="structure" />
             <span className="text-[11px] text-textPrimary">{t.time}</span>
+            {t.extended && <span className="text-[10px] uppercase text-textMuted" title="After hours — filled outside the regular session: after the close (16:15 for index and ETF options, 16:00 for a stock's) or before the open">AH</span>}
+            {t.repeats ? <span className="text-[10px] text-textMuted" title={`The vendor sent this structure ${t.repeats + 1} times under other ids — the same legs, size, money and second — shown once`}>×{t.repeats + 1}</span> : null}
           </span>
         ),
       },
@@ -501,7 +519,7 @@ const MultiLeg = () => {
               </>
             ) : t.netAbs != null && t.units ? (
               <span title="The vendor printed no net and the legs cannot settle which way it went — this is the net's size, paid if bought, collected if sold">
-                net ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">direction not reported</span>
+                net ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">either way</span>
               </span>
             ) : t.legsState === 'pending' && t.netKnown !== false ? (
               <span className="text-textMuted">…</span>
@@ -598,13 +616,13 @@ const MultiLeg = () => {
     <>
       <TraceBox
         title="The tape as structures"
-        sub={`${activeKind ? `${activeKind.label} — ${activeKind.read}` : `The newest ${SPREADS_N} structures on the tape, newest first`} · a row opens the structure with each leg`}
+        sub={`${activeKind ? `${activeKind.label} — ${activeKind.read}` : session === 'regular' ? `The regular session's structures${closed ? ', its last ones walked back from the 16:15 close' : ''}, newest first` : 'The structures outside the regular session, newest first — each marked after hours'} · repeats the vendor sends under other ids are shown once · a row opens the structure with each leg`}
         testId="multi-leg"
         data={{ kind, rows: rows.length, expiry: expiry ?? 'all' }}
         guide={{ title: 'How to read the structures', door: 'What a shape, its strikes and its risk mean', body: <StructureGuide />, testId: 'multi-leg-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Structures" testId="structures" title={`The vendor's newest ${SPREADS_N} multi-leg trades — not the whole day`}>
+            <Fact label="Structures" testId="structures" title={`The vendor's newest ${SPREADS_N} multi-leg trades${session === 'regular' ? (closed ? ' before the 16:15 close, regular-session ones only' : ', regular-session ones only') : ', the ones outside the regular session'}, repeats folded — not the whole day`}>
               {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{num(trades.length)} <span className="text-textSecondary">· {windowSpan} ET</span></>}
               {tapeState === 'in' && facts.loudKind && (
                 <span className="text-textSecondary">
@@ -617,12 +635,12 @@ const MultiLeg = () => {
               {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{facts.paid} <span className="text-textSecondary">·</span> {facts.collected}</>}
             </Fact>
             {champs.paid && champs.paid !== champs.all && (
-              <Champion label="Largest paid" ink="bull" onOpen={() => setDrill(champs.paid!)} testId="paid">
+              <Champion label="Largest paid" ink="plain" onOpen={() => setDrill(champs.paid!)} testId="paid">
                 {pill(champs.paid)}
               </Champion>
             )}
             {champs.collected && champs.collected !== champs.all && (
-              <Champion label="Largest collected" ink="bear" onOpen={() => setDrill(champs.collected!)} testId="collected">
+              <Champion label="Largest collected" ink="plain" onOpen={() => setDrill(champs.collected!)} testId="collected">
                 {pill(champs.collected)}
               </Champion>
             )}

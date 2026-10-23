@@ -39,7 +39,7 @@ import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/con
 import { memberFromRoster, useCongressCoverage, useCongressFeed, useLiveRecord, useMemberBook } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { reportDayLabelYear } from '../../data/earningsFeed';
-import { congressFromWhales } from '../../data/whalesMap';
+import { congressFromWhales, ownerWord } from '../../data/whalesMap';
 import { useVendor } from '../../data/vendorFeed';
 import { HouseSectors, ShortHistory } from '../../components/vendor/LiveDesk';
 import type { CongressTrade, ReportOwner } from '../../types/record';
@@ -112,10 +112,10 @@ const STATUS_INK: Record<PositionStatus, string> = {
 const HouseName = ({ data }: ICellRendererParams<InstitutionRow>) =>
   data ? (
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
-      <CompanyLogo ticker={data.ticker} size={16} />
-      <span className="flex flex-col leading-tight min-w-0">
-        <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <CoSub ticker={data.ticker} />
+      {data.unlisted ? <span className="w-4 shrink-0" aria-hidden /> : <CompanyLogo ticker={data.ticker} size={16} />}
+      <span className="flex flex-col leading-tight min-w-0" title={data.unlisted ? `${data.company ?? ''} — the filing gives no listed symbol` : undefined}>
+        <span className={`font-mono text-[12px] font-bold ${data.unlisted ? 'text-textSecondary' : 'text-textPrimary'}`}>{data.ticker}</span>
+        {data.unlisted ? <span className="text-[10px] text-textMuted truncate">{data.company}</span> : <CoSub ticker={data.ticker} />}
       </span>
     </span>
   ) : null;
@@ -215,8 +215,8 @@ export const HouseFile = () => {
           {toKnow.map(r => (
             <button key={r.id} type="button" onClick={() => setFocus(r.ticker)} aria-pressed={focused?.ticker === r.ticker} className={KNOW(focused?.ticker === r.ticker)} data-house-know={r.ticker}>
               <span className="flex items-center gap-2 min-w-0">
-                <CompanyLogo ticker={r.ticker} size={18} />
-                <span className="font-mono text-[12px] font-bold text-textPrimary">{r.ticker}</span>
+                {r.unlisted ? null : <CompanyLogo ticker={r.ticker} size={18} />}
+                <span className="font-mono text-[12px] font-bold text-textPrimary truncate" title={r.unlisted ? r.company : undefined}>{r.ticker}</span>
               </span>
               <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
                 <span className="text-[13px] font-bold text-textPrimary">{moneyB(r.valueB)}</span>
@@ -773,8 +773,8 @@ export const MemberFile = () => {
         cellRenderer: AssetCell,
       },
       { headerName: 'Type', field: 'type', width: 130, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] ${data.type === 'Purchase' ? 'text-bull' : data.type === 'Exchange' ? 'text-textMuted' : 'text-bear'}`}>{data.type}</span> : null), headerTooltip: 'Purchase, sale (full or partial) or exchange' },
-      { headerName: 'Owner', field: 'owner', width: 110, headerTooltip: 'Whose holding: the member\'s own, a spouse\'s, a joint account or a dependent\'s' },
-      { headerName: 'Amount', field: 'bracket', flex: 1.2, minWidth: 180, valueFormatter: p => (p.data?.amountOver != null ? `Over $${p.data.amountOver.toLocaleString('en-US')}` : bracketLabel(p.value as number | null)), headerTooltip: 'The disclosed bracket — members report a range, never an exact figure' },
+      { headerName: 'Owner', field: 'owner', width: 110, valueFormatter: p => (p.value ? ownerWord(p.value as ReportOwner) : ''), cellClass: 'uppercase', headerTooltip: 'Whose holding: the member\'s own, a spouse\'s, a joint account or a dependent\'s — "not stated" when the filing does not say' },
+      { headerName: 'Amount', field: 'bracket', flex: 1.2, minWidth: 180, valueFormatter: p => (p.data ? amountWord(p.data) : ''), headerTooltip: 'The disclosed bracket — members report a range, never an exact figure' },
       { headerName: 'Lag', field: 'lagDays', width: 90, cellRenderer: ({ data }: ICellRendererParams<CongressTrade>) => (data ? <span className={`font-mono text-[11px] tnum ${data.late ? 'text-bear' : 'text-textPrimary'}`} title={data.lagDays === 0 ? `Filed the day it traded (${data.tradedOn ?? ''}), as the filing records it` : undefined}>{data.lagDays === 0 ? 'same day' : `${data.lagDays}d`}</span> : null), headerTooltip: 'Days from the trade to the report; past 45 is late under the STOCK Act' },
     ],
     [],
@@ -860,7 +860,7 @@ export const MemberFile = () => {
                   {line.sym ? <CompanyLogo ticker={line.sym} size={18} /> : null}
                   <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.sym || k}</span>
                 </span>
-                <span className="mt-1.5 block font-mono text-[10px] tnum text-textSecondary truncate">{bracketLabel(t.bracket)}</span>
+                <span className="mt-1.5 block font-mono text-[10px] tnum text-textSecondary truncate">{amountWord(t)}</span>
               </button>
               );
             })}
@@ -886,15 +886,19 @@ export const MemberFile = () => {
       </div>
       <Board
         title="Bought, no sale reported since"
-        rest="Purchases in this year's reports with no later full sale of the same asset in them — not a holdings disclosure. The range, never a midpoint."
+        rest="Purchases in this year's reports with no later sale of any kind of the same asset in them (a partial sale takes the line off too) — not a holdings disclosure. The range, never a midpoint."
         testId="member-held"
-        rows={held.map(t => ({ id: `${assetKey(t)}-${t.owner}`, ticker: assetLine(t).sym || assetKey(t), owner: t.owner, amount: bracketLabel(t.bracket) }))}
+        rows={held.map(t => ({ id: `${holdingAssetKey(t)}|${t.owner}`, ticker: assetLine(t).sym || assetLine(t).title, owner: ownerWord(t.owner), amount: amountWord(t) }))}
         cols={HELD_COLS}
       />
     </Page>
     </>
   );
 };
+
+/** The disclosed amount as the list says it: an open-ended filing is "Over $1M", never the next bracket's range */
+const amountWord = (t: CongressTrade): string =>
+  t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketLabel(t.bracket);
 
 const HELD_COLS: ColDef<{ id: string; ticker: string; owner: string; amount: string }>[] = [
   { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 120, headerTooltip: 'The stock' },

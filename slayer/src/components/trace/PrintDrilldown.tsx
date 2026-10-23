@@ -27,7 +27,7 @@ import Fact from '../ui/Fact';
 import ErrorBoundary from '../ui/ErrorBoundary';
 import FilterTabs from '../ui/FilterTabs';
 import Chip from '../ui/Chip';
-import { sentimentOf } from '../../data/tape';
+import { isSpreadLeg, sentimentOf } from '../../data/tape';
 import { SESSION_MIN } from '../../data/contractflow';
 import { isoToDate, sessionIsoBack, sessionOnOrBefore, useContractTape, type CardDay, type ContractTape } from '../../data/contractflow';
 import { indexRoot, sessionEndLabel, sideShares, tapeSessionIso, useAlertTrades, usd as fmtUsd } from '../../data/traceLive';
@@ -128,6 +128,14 @@ function tapeVerdict(rows: CardDay[], dateIso: string): { state: TapeState; read
 
 /** Plain-English summary of what this print actually was — what the print's own fields say, nothing more. */
 function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: number } | null): string {
+  /* THE DAY CARD SPEAKS FOR THE DAY (audit round 4) — its money, its lean by the one rule, and the print it is anchored on */
+  if (p.dayCard) {
+    const lean = p.side === 'ASK' ? `leaned to the ask — ${sent === 'BULLISH' ? 'bullish' : 'bearish'} by the one rule` : p.side === 'BID' ? `leaned to the bid — ${sent === 'BULLISH' ? 'bullish' : 'bearish'} by the one rule` : 'had no lean — under 55% of its sided contracts on either side, or mostly mid';
+    const vol = day && day.vol > 0 ? day.vol : p.volume;
+    const oi = day && day.oi > 0 ? day.oi : p.oi;
+    const ratio = oi > 0 ? vol / oi : 0;
+    return `The ${p.right === 'C' ? 'call' : 'put'}'s day: ${usd(p.premium)} across ${p.size.toLocaleString('en-US')} contracts (the screener's count), and it ${lean}.${p.dayCard.last ? ` Its last ${p.dayCard.session} print was ${p.dayCard.last.size.toLocaleString('en-US')} at $${fixed(p.dayCard.last.fill)}, ${p.dayCard.last.time} ET.` : ''}${oi > 0 ? ` The day's volume is ${fixed(ratio, ratio >= 1.5 ? 1 : 2)}× the open interest${ratio >= 1.5 ? ', so at least some of it is new positioning' : ' — it could be opening or closing'}.` : ''}`;
+  }
   const who = p.side === 'ASK' ? 'paid the offer' : p.side === 'BID' ? 'hit the bid' : 'traded at the mid';
   const size = p.premium >= 1_000_000 ? 'a whale-sized' : p.premium >= 250_000 ? 'a sizeable' : 'a modest';
   const kind = printKind(p);
@@ -152,6 +160,8 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
     ? ' It is a compression print (OPRA cbmo / mctp, or the vendor’s arbitrage tag) — a package that nets open interest down between members, a call against a put at one strike — so it is not a bet and is not read bullish or bearish.'
     : p.extended
     ? ' It printed after hours, against a thin post-market quote, so it is not read bullish or bearish.'
+    : isSpreadLeg(p)
+    ? ' It is one leg of a multi-leg order — half of a structure, so on its own it is not read bullish or bearish; Multi-Leg reads which way the structure went.'
     : ` By its side and its right it reads ${sent.toLowerCase()}${sent === 'BULLISH' ? (p.right === 'P' ? ' — a put sold' : ' — a call bought') : sent === 'BEARISH' ? (p.right === 'P' ? ' — a put bought' : ' — a call sold') : ''}.`;
   const line = `${size} ${p.trades && p.trades > 1 ? `${right} ` : ''}${shape}.${read}${oiNote}`;
   return line.charAt(0).toUpperCase() + line.slice(1);
@@ -309,7 +319,8 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
   const [copied, setCopied] = useState(false);
 
   const sent = print ? sentimentOf(print) : 'NEUTRAL';
-  const sideLabel = print?.side === 'ASK' ? 'BOUGHT' : print?.side === 'BID' ? 'SOLD' : 'MID';
+  /* a DAY card's side is the day's lean (the one rule), never one print's — said as a lean */
+  const sideLabel = print?.dayCard ? (print.side === 'ASK' ? 'DAY LEANS ASK' : print.side === 'BID' ? 'DAY LEANS BID' : 'NO DAY LEAN') : print?.side === 'ASK' ? 'BOUGHT' : print?.side === 'BID' ? 'SOLD' : 'MID';
   /* THE SIDE IN ONE INK (2026-10-13, the partner's rule at Noah's word): "SOLD" wore bear red beside a green "BULLISH"
      on a put sold — the side is not the direction; the sentiment line under it carries the direction */
   const sideTone = print?.side === 'MID' ? 'text-textMuted' : 'text-textPrimary';
@@ -523,12 +534,16 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <SignalBadge tone="neutral">COMPRESSION · NOT A BET</SignalBadge>
             ) : print.extended ? (
               <SignalBadge tone="neutral">AFTER HOURS</SignalBadge>
+            ) : isSpreadLeg(print) && !print.trades && !print.dayCard ? (
+              <SignalBadge tone="neutral">SPREAD LEG · NO READ</SignalBadge>
             ) : (
               <SignalBadge tone={SENT_TONE[sent]}>{sent}</SignalBadge>
             )}
             <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
             <span className={`font-mono text-[11px] uppercase ${print.sweep ? 'text-warn font-semibold' : 'text-textMuted'}`}>
-              {print.trades && print.trades > 1
+              {print.dayCard
+                ? `The day · ${print.dayCard.last ? `last ${print.dayCard.session} print ${print.dayCard.last.time}` : 'no print in hand'}`
+                : print.trades && print.trades > 1
                 ? `Alert · ${print.trades} prints${alertFacts ? ` · largest ${alertFacts.largest.size.toLocaleString('en-US')} × $${alertFacts.largest.fill.toFixed(2)}${printKind({ ...print, largestTrade: { size: alertFacts.largest.size, premium: alertFacts.largest.premium } }) === 'BLOCK' ? ' — a block' : ''}` : ''}`
                 : { SWEEP: 'Sweep', MULTI: 'Multi-leg', BLOCK: 'Block', SINGLE: 'Single print', COMPRESSION: 'Compression', BURST: 'Alert' }[printKind(print)]}
             </span>
@@ -568,7 +583,9 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap">
                 <RichRead
                   text={
-                    print.trades && print.trades > 1
+                    print.dayCard
+                      ? `the day: ${num(print.size)} contracts (screener) · last ${print.dayCard.session} print $${fixed(print.dayCard.last?.fill ?? print.fill)} × ${num(print.dayCard.last?.size ?? 0)} at ${print.dayCard.last?.time ?? print.time} ET${print.dayCard.last?.volume ? ` (day volume ${num(print.dayCard.last.volume)} at that print)` : ''}`
+                      : print.trades && print.trades > 1
                       ? alertFacts
                         ? `last fill $${fixed(alertFacts.last.fill)} × ${num(alertFacts.last.size)} at ${alertFacts.last.time} · ${num(alertFacts.contracts)} contracts in ${alertFacts.n} prints, ${print.time}${print.fillEnd && print.fillEnd !== print.time ? `–${print.fillEnd}` : ''} ET${print.extended ? ' · after hours' : ''}`
                         : `${num(print.size)} contracts in ${print.trades} prints · ${print.time}${print.fillEnd && print.fillEnd !== print.time ? `–${print.fillEnd}` : ''} ET${alertTrades.waiting ? ' · reading its trades…' : ''}${print.extended ? ' · after hours' : ''}`
@@ -583,7 +600,11 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             </p>
             {/* THE EVIDENCE — the house's dot-leader rows; the Compass scale folded in, in words (no figure of ours in public) */}
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-print-facts>
-              <Fact label={print.trades && print.trades > 1 ? 'This alert, mostly' : 'This print'} value={print.side === 'ASK' ? 'paid the offer' : print.side === 'BID' ? 'hit the bid' : 'mid / no side'} valueCls={print.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
+              {print.dayCard ? (
+                <Fact label={`Last ${print.dayCard.session} print`} value={print.dayCard.last ? `${print.dayCard.last.side === 'ASK' ? 'paid the offer' : print.dayCard.last.side === 'BID' ? 'hit the bid' : 'mid / no side'} · ${print.dayCard.last.time}` : '—'} valueCls={!print.dayCard.last || print.dayCard.last.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
+              ) : (
+                <Fact label={print.trades && print.trades > 1 ? 'This alert, mostly' : 'This print'} value={print.side === 'ASK' ? 'paid the offer' : print.side === 'BID' ? 'hit the bid' : 'mid / no side'} valueCls={print.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
+              )}
               {/* the contract's whole session by side — the same history row the table reads, mid shown on its own */}
               <Fact label={dateIso === tapeIso ? "Today's volume by side" : 'Session volume by side'} value={dayLean ? <span title={dayLean.title}>{dayLean.text}</span> : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
               {/* THE SIGNED DISTANCE, AND THE WORD (the re-audit, 2026-10-22: a 7600 put against 7,665 read "+0.8%" under
@@ -600,7 +621,10 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                   return `${dist} · ${idx ? '≈' : ''}${fixed(Math.abs(print.otmPct), 1)}% ${otm ? 'OTM' : 'ITM'}`;
                 })()}
               />
-              <Fact label={dateIso === tapeIso && day ? "Today's volume" : 'Volume'} value={num(dayVol)} />
+              {/* ONE FIGURE, ITS SOURCE SAID (audit round 4: 146,691 on the Screener, 146,779 on the card, 146,713 elsewhere — three
+                  "today's volume"): the card's is the contract's session row (after-hours prints included); the Screener's is
+                  the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
+              <Fact label={dateIso === tapeIso && day ? "Today's volume · session row, after hours in" : 'Volume'} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
               <Fact label="Vol ÷ OI" value={`${fixed(dayOi > 0 ? dayVol / dayOi : print.volOverOI)}x`} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
               {/* the cost to cross, off the print's OWN quote; a day of time off the vendor's own theta — no model */}

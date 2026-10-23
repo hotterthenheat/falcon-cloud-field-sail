@@ -126,7 +126,14 @@ export interface InsiderTrade {
   shares: number;
   /** The filed price per share */
   price: number;
+  /** Shares × price in dollars — 0 for a row whose price is not in dollars (see `foreignPrice`) */
   value: number;
+  /** THE PRICE IS NOT IN DOLLARS: a foreign issuer's ordinary-share filing in its home currency (Takeda's ¥4,931.20 against
+      its US listing's $20.36). Kept on the row, flagged, and its value kept out of every dollar total. `listed` is the US
+      listing's price, `filedValue` shares × the filed price in that currency. */
+  foreignPrice?: { listed: number; filedValue: number };
+  /** Held indirectly (a trust, a fund, a family member) — the stake is read against that line's holding only */
+  indirect?: string;
   daysAgo: number;
   plan: PlanState;
   /** Distinct filers acting the same way in this name inside 30 days */
@@ -172,6 +179,9 @@ export interface InsiderFlow {
   buyerCluster: number;
   /** Dollars of discretionary buying — the informative subset */
   openMarketBuys: number;
+  /** Dollars of selling the filing marks chosen (not a 10b5-1 plan) — on the same rule as chosen buying: an unstated
+      sale is neither planned nor chosen */
+  chosenSold: number;
   signal: InsiderSignal;
   windowDays: number;
 }

@@ -42,14 +42,14 @@
 ==================================================
 */
 
-import { todayScopeLabel } from './bookWindow';
+import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { DEFAULT_R } from '../core/carry';
 import { cumulativeFlip, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
-import { nyIsoDate, nyMinutes } from '../core/nyTime';
-import { bookToday, isoDate } from '../core/calendar';
-import { peekEntry } from './uwBook';
+import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
+import { bookToday, isoDate, isTradingDay } from '../core/calendar';
+import { peekEntry, peekGammaPriced } from './uwBook';
 import { registeredDates } from './chainDates';
-import { callWallWords, putWallWords } from '../core/walls';
+import { callWallWords, putWallWords, wallPlace } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
@@ -75,16 +75,40 @@ export function yearsTo(expiry: string, now: number = Date.now()): number {
   return Math.max(5, mins) / YEAR_MIN;
 }
 
-/** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date) — else the date's ATM vol */
-const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean): GammaLeg[] => {
+/** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date) — else the date's ATM
+    vol. `s0`: the price the date's gamma was priced at, when it is not the search's spot. */
+const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number): GammaLeg[] => {
   const t = yearsTo(date, now);
   const out: GammaLeg[] = [];
   for (const n of chain) {
-    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: own && n.callIv && n.callIv > 0 ? n.callIv : atmIv, t });
-    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: own && n.putIv && n.putIv > 0 ? n.putIv : atmIv, t });
+    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: own && n.callIv && n.callIv > 0 ? n.callIv : atmIv, t, s0 });
+    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: own && n.putIv && n.putIv > 0 ? n.putIv : atmIv, t, s0 });
   }
   return out;
 };
+
+/** The last regular session's 4:00 ET close, as an instant — the clock a closed market's book is priced at when the
+    vendor's own pricing minute is not in hand */
+export function lastCloseAt(now: number = Date.now()): number {
+  const iso = nyIsoDate(now);
+  const [y, m, d] = iso.split('-').map(Number);
+  const todayClose = nyWallTime(y, m, d, 16, 0);
+  const day = new Date(y, m - 1, d);
+  if (isTradingDay(day) && now >= todayClose) return todayClose;
+  for (let back = 1; back < 10; back++) {
+    const p = new Date(y, m - 1, d - back);
+    if (isTradingDay(p)) return nyWallTime(p.getFullYear(), p.getMonth() + 1, p.getDate(), 16, 0);
+  }
+  return todayClose;
+}
+
+/** The clock a live leg is priced at: the minute the vendor priced its rows (after the close that is the close — the
+    flip stops moving until new rows print), else the wall clock in the session and the last close outside it */
+function pricingClock(pricedAt: number | undefined, now: number): number {
+  if (pricedAt && pricedAt > 0) return pricedAt;
+  const [y, m, d] = nyIsoDate(now).split('-').map(Number);
+  return nySessionPhase(now) === 'open' && isTradingDay(new Date(y, m - 1, d)) ? now : lastCloseAt(now);
+}
 
 export interface LevelFlip extends FlipRead {
   /** False while some of the scope's expiries have not landed — the flip is then provisional */
@@ -98,7 +122,9 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   const spot = snapshot.spot;
   const dates = snapshot.liveBook ? datesOf(snapshot, chain) : null;
   const entry = snapshot.liveBook ? peekEntry(snapshot.ticker) : undefined;
-  const fallback = (): LevelFlip => ({ ...cumulativeFlip(chain.map(n => ({ strike: n.strike, net: n.netGex })), spot), complete: true });
+  /* the running-net fallback is final only off a book that is not the live one; on the live book it stands in while the
+     dates land, and says so (the fourth audit's M1: "FLIP none nearby" for seconds on a cold load) */
+  const fallback = (final = !snapshot.liveBook): LevelFlip => ({ ...cumulativeFlip(chain.map(n => ({ strike: n.strike, net: n.netGex })), spot), complete: final });
   if (!dates || !entry || !snapshot.uwByDate) return fallback();
   const by = snapshot.uwByDate;
   const floor = isoDate(bookToday());
@@ -106,26 +132,38 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   if (!want.length) return fallback();
   const listed = (snapshot.uwExpiries ?? []).map(e => e.date).filter(d => d >= floor);
   const complete = dates === 'ALL' ? listed.length === 0 || listed.every(d => want.includes(d)) : true;
-  /* `at`: the clock to re-price at (a finished session's close) — without the asOf's contract-vol switch */
-  const now = at ?? snapshot.asOf ?? snapshot.flipAt ?? Date.now();
-  const minute = Math.floor(now / 60_000);
-  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${minute}|${chain.length}`;
+  /* `at`: the clock to re-price at (a finished session's close) — without the asOf's contract-vol switch. A pinned clock
+     (the session's report, the replay) prices the snapshot's own spot at it; the live levels price each date FROM the
+     price and AT the minute the vendor priced its rows (uwBook peekGammaPriced, the fourth audit 2026-10-23) */
+  const pinned = at ?? snapshot.asOf ?? snapshot.flipAt;
+  const wall = Date.now();
+  const priced = pinned == null ? want.map(d => peekGammaPriced(snapshot.ticker, d)) : [];
+  const sig = pinned != null ? `p${Math.floor(pinned / 60_000)}` : priced.map(p => (p ? `${p.at}@${p.price}` : '-')).join(',') + (priced.every(Boolean) ? '' : `|${Math.floor(pricingClock(undefined, wall) / 60_000)}`);
+  /* the front date: the first live listing that holds strikes — the one date every page loads contracts for */
+  const front = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort()[0];
+  /* FINAL ONLY WITH THE FRONT DATE'S OWN VOLS (the fourth audit's M1: SPY's Map read 771.25 off the at-the-money vol for
+     seconds, then 772.17): until its contracts are read the flip is provisional, and the pages print "…" */
+  const factsIn = pinned != null || !want.includes(front) || !!entry.factsDates?.has(front);
+  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;
-  /* the front date: the first live listing that holds strikes — the one date every page loads contracts for */
-  const front = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort()[0];
-  for (const d of want) {
+  for (let i = 0; i < want.length; i++) {
+    const d = want[i];
     const atm = term[d] ?? (entry.iv > 0 ? entry.iv : 0);
-    const ls = legsOfDate(by[d], d, atm, now, d === front || snapshot.asOf != null);
+    const p = pinned == null ? priced[i] : null;
+    const now = pinned ?? pricingClock(p?.at, wall);
+    const ls = legsOfDate(by[d], d, atm, now, d === front || snapshot.asOf != null, p && p.price > 0 && p.price !== spot ? p.price : undefined);
     for (const l of ls) if (l.iv > 0) withVol++;
     legs.push(...ls);
   }
-  if (!withVol) return fallback();
-  if (dates === 'ALL') {
-    /* the whole book's per-strike total less what the loaded dates hold, carried flat — G(spot) is the book's own net */
+  if (!withVol) return fallback(complete && factsIn);
+  {
+    /* the whole book's per-strike total less what the loaded dates hold, carried flat — G(spot) is the book's own net
+       (nothing on a date's own chain or a sum of dates; on the whole book a listing not loaded, or — the session's book
+       after the close — the contracts that expired at the bell) */
     const onDates = new Map<number, number>();
     for (const l of legs) onDates.set(l.strike, (onDates.get(l.strike) ?? 0) + l.g0);
     for (const n of chain) {
@@ -134,7 +172,7 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
     }
     for (const [k, v] of onDates) if (!chain.some(n => n.strike === k)) legs.push({ strike: k, g0: -v, iv: 0, t: 0 });
   }
-  const read: LevelFlip = { ...repricedFlip(legs, spot, DEFAULT_R), complete };
+  const read: LevelFlip = { ...repricedFlip(legs, spot, DEFAULT_R), complete: complete && factsIn };
   if (cache.size > 400) cache.clear();
   cache.set(key, read);
   return read;
@@ -167,11 +205,25 @@ export function flipMeaning(read: Pick<FlipRead, 'flip' | 'netAtSpot' | 'range'>
     : `Dealers are short gamma here (their hedging amplifies moves); a move ${dir} ${fmtK(read.flip)} turns them long gamma, and their hedging starts to absorb moves.`;
 }
 
+/** Which side of the flip absorbs, on THIS book (the fourth audit's m4: the tip said "above it absorbs, below it
+    amplifies" whatever the book): the side price is on wears the regime of the net, the far side the other */
+export function flipSidesWords(flip: number, spot: number, houseNet: number): string {
+  const long = houseNet < 0;
+  const aboveAbsorbs = long ? flip < spot : flip > spot;
+  return aboveAbsorbs
+    ? 'where dealer hedging switches sides. On this book, above it their hedging absorbs moves, below it amplifies them.'
+    : 'where dealer hedging switches sides. On this book, below it their hedging absorbs moves, above it amplifies them.';
+}
+
 /* ---- "expires today", one wording for every page (the Map's clock, the Board, Compare, the Agenda) -------------- */
 
-/** What "Expires today" prints when nothing on the name expires today */
-export const BELL_NONE = '— none today';
-export const BELL_NONE_TITLE = (ticker: string): string => `Nothing on ${ticker} expires ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — its nearest contracts expire on a later date`;
+/** What "Expires today" prints when nothing on the name expires that day: "nothing expires today", after the close
+    "nothing expires Fri 10/23" (the fourth audit: "— none today" sat under "EXPIRES FRI 10/23") */
+export const bellNone = (): string => {
+  const b = bellDay();
+  return `nothing ${b.head.charAt(0).toLowerCase()}${b.head.slice(1)}`;
+};
+export const BELL_NONE_TITLE = (ticker: string): string => `Nothing on ${ticker} expires ${todayScopeLabel() === 'Today' ? 'today' : `on ${shortDay(bellDay().date)}, the next session`} — its nearest contracts expire on a later date`;
 
 /* ---- the book in one sentence, on the one regime rule ----------------------------------------------------------- */
 
@@ -194,7 +246,11 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   const long = levels.net != null ? levels.net < 0 : flip != null && spot >= flip;
   /* THE WALLS ARE THE MOST CALL AND THE MOST PUT GAMMA, EITHER SIDE OF PRICE (core/walls.ts pickLegWalls, the second
      re-audit 2026-10-22) — so each is placed in words by where it actually is */
-  const side = (k: number) => (Math.abs(k - spot) < 1e-9 ? 'at price' : k > spot ? 'above' : 'below');
+  /* ONE TOLERANCE FOR "AT PRICE" (core/walls.ts wallPlace, 0.05%): the clause and the wall's words beside it agree */
+  const side = (k: number) => {
+    const p = wallPlace(k, spot);
+    return p === 'at' ? 'right at price' : p;
+  };
   const cw = `the ${px(callWall)} call wall ${side(callWall)}`;
   const pw = `the ${px(putWall)} put wall ${side(putWall)}`;
   const cwPct = (Math.abs(callWall - spot) / Math.max(spot, 1)) * 100;

@@ -43,6 +43,7 @@ import {
   type UwInterp,
   type UwIv,
   type UwTerm,
+  type UwState,
 } from './whales';
 
 const OPEN_MIN = 9 * 60 + 30;
@@ -67,6 +68,8 @@ interface Entry {
   phase?: MarketPhase;
   /** False after the bell until the regular closes land (the state's own change would be the after-hours move) */
   dayKnown?: boolean;
+  /** The last print — the after-hours or pre-market one outside the session (`spot` is then the regular close) */
+  last?: number;
   /** The stock-state as read: close, prev_close, market_time */
   state?: { close: number; prev_close: number; market_time?: string };
   iv: number;
@@ -94,6 +97,13 @@ interface Entry {
   termIv?: Record<string, number>;
   /** The front date's contract rows (open interest, vol, gamma) are painted on its chain */
   frontFacts?: boolean;
+  /** The dates whose contract rows have been read (painted, or asked and refused) — the flip re-prices the front date
+      with its contracts' own vols, so it is final only once the front date is here (the fourth audit's M1: SPY's Map
+      read 771.25 for seconds on the at-the-money vol, then 772.17) */
+  factsDates?: Set<string>;
+  /** Every listed date has landed at least once (a later refresh re-reads them in place) — until then the Map's
+      matrix window is still growing, and says so */
+  everFull?: boolean;
   /** Each expiry's own implied move (volatility/term-structure implied_move), dollars from the quote into that expiry */
   termMove?: Record<string, number>;
   /** The whole book's gamma is the vendor's live open-interest book (spot-exposures/strike), not the morning snapshot */
@@ -235,11 +245,31 @@ const liveGammaCache = new Map<string, { at: number; rows: LiveGamma }>();
 const liveGammaWait = new Map<string, Promise<LiveGamma | null>>();
 const LIVE_GAMMA_MS = 60_000;
 
-function liveGammaRows(rows: unknown, into: LiveGamma): number {
+/*
+  WHERE AND WHEN THE VENDOR PRICED THE ROWS (the fourth audit, 2026-10-23: CROX's flip read 113.89 against 115.35 — the
+  vendor's gamma was computed at the row's own price, the 120.99 regular close, at 20:15Z, and the flip re-priced it as
+  if it had been computed at the after-hours 119.44 and at the wall clock). Every spot-exposures row carries the price
+  and the minute it was priced at; the flip re-prices each leg FROM that price and AT that minute (data/flipLevel.ts),
+  so after the close it stops moving until the vendor prints a new minute, and every page reads the same flip.
+*/
+const gammaPriced = new Map<string, { price: number; at: number }>();
+/** The price and the instant the vendor priced a name's live gamma rows (one date, or the whole book) — null until in */
+export const peekGammaPriced = (ticker: string, date: string | null): { price: number; at: number } | null =>
+  gammaPriced.get(`${ticker.toUpperCase()}|${date ?? 'ALL'}`) ?? null;
+
+function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: number; at: number }): number {
   if (!Array.isArray(rows)) return 0;
   for (const r of rows as Record<string, unknown>[]) {
     const k = num(r.strike);
     if (!(k > 0)) continue;
+    if (stamp) {
+      const at = Date.parse(String(r.time ?? ''));
+      const px = num(r.price);
+      if (Number.isFinite(at) && px > 0 && at >= stamp.at) {
+        stamp.at = at;
+        stamp.price = px;
+      }
+    }
     const cur = into.get(k) ?? { c: 0, p: 0 };
     cur.c += num(r.call_gamma_oi);
     cur.p += num(r.put_gamma_oi);
@@ -259,17 +289,19 @@ export function liveGamma(ticker: string, date: string | null, priority = false)
   const job = (async (): Promise<LiveGamma | null> => {
     const out: LiveGamma = new Map();
     const t = encodeURIComponent(ticker);
+    const stamp = { price: 0, at: 0 };
     if (date) {
       const res = await uwCall(`/stock/${t}/spot-exposures/expiry-strike?expirations[]=${encodeURIComponent(date)}&limit=500`, priority);
       if (res.error) return hit?.rows ?? null;
-      liveGammaRows(res.data, out);
+      liveGammaRows(res.data, out, stamp);
     } else {
       for (let page = 0; page < 6; page++) {
         const res = await uwCall(`/stock/${t}/spot-exposures/strike?limit=500&page=${page}`, priority);
         if (res.error) return hit?.rows ?? null;
-        if (liveGammaRows(res.data, out) < 500) break;
+        if (liveGammaRows(res.data, out, stamp) < 500) break;
       }
     }
+    if (stamp.price > 0 && stamp.at > 0) gammaPriced.set(`${ticker.toUpperCase()}|${date ?? 'ALL'}`, stamp);
     liveGammaCache.set(key, { at: Date.now(), rows: out });
     return out;
   })().finally(() => liveGammaWait.delete(key));
@@ -459,6 +491,29 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
   });
 }
 
+/** A date's chain read again keeps the contract facts its last read was painted with (vols, per-contract gamma, open
+    interest, vega) until its contracts are read again — a refresh never drops the flip back to the at-the-money vol */
+function carryFacts(next: StrikeNode[], prev: readonly StrikeNode[] | undefined): StrikeNode[] {
+  if (!prev?.length) return next;
+  const at = new Map(prev.map(n => [n.strike, n]));
+  return next.map(n => {
+    const o = at.get(n.strike);
+    if (!o || !(o.callIv || o.putIv || o.callGamma || o.putGamma)) return n;
+    return {
+      ...n,
+      callIv: n.callIv || o.callIv,
+      putIv: n.putIv || o.putIv,
+      callGamma: n.callGamma || o.callGamma,
+      putGamma: n.putGamma || o.putGamma,
+      callOI: n.callOI || o.callOI,
+      putOI: n.putOI || o.putOI,
+      callVex: n.callVex || o.callVex,
+      putVex: n.putVex || o.putVex,
+      netVex: (n.callVex || o.callVex) + (n.putVex || o.putVex),
+    };
+  });
+}
+
 /** Sum the per-expiry vega already on the book onto the aggregate chain (a new aggregate — see paintLegs). */
 function vexOntoAll(entry: Entry): void {
   const agg = new Map<number, { call: number; put: number }>();
@@ -515,11 +570,14 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
   const current = cache.get(entry.ticker);
   if (!current) return;
   const byDate = { ...current.byDate };
+  const facts = new Set(current.factsDates ?? []);
   for (const [date, book] of books) {
     const chain = byDate[date];
     if (chain && book.size) byDate[date] = paintLegs(chain, book, true);
+    facts.add(date);
   }
   current.byDate = byDate;
+  current.factsDates = facts;
   vexOntoAll(current);
   current.at = Date.now();
   cache.set(current.ticker, current);
@@ -768,9 +826,22 @@ export function peekEntry(ticker: string): Entry | undefined {
   return cache.get(ticker.toUpperCase());
 }
 
+/** Every listed date of a full book has landed once — the Map's matrix window is final */
+export const bookDatesIn = (ticker: string): boolean => {
+  const e = peekEntry(ticker);
+  return !!e && (!!e.everFull || (e.status === 'live' && !e.wantFull));
+};
+
 export function peekSpot(ticker: string): number | null {
   const e = peekEntry(ticker);
   return e?.status === 'live' && e.spot > 0 ? e.spot : null;
+}
+
+/** The last print when it is not the price the page uses — after hours or pre-market — with which it is; else null */
+export function peekExtLast(ticker: string): { price: number; word: 'after hours' | 'pre-market' } | null {
+  const e = peekEntry(ticker);
+  if (!e || e.status !== 'live' || !e.last || !(e.last > 0) || Math.abs(e.last - e.spot) < 0.005) return null;
+  return e.phase === 'pre' ? { price: e.last, word: 'pre-market' } : e.phase === 'post' ? { price: e.last, word: 'after hours' } : null;
 }
 
 export function peekChange(ticker: string): number | null {
@@ -1099,6 +1170,7 @@ export function usePinpointFeed(ticker: string | null | undefined): MarketSnapsh
   const version = useBookRev();
   useEffect(() => {
     if (!ticker) return;
+    markHotName(ticker);
     ensureBook(ticker, 'full');
     startPinpoint(ticker);
     const id = window.setInterval(() => ensureBook(ticker, 'full'), 30_000);
@@ -1114,25 +1186,60 @@ export function usePinpointFeed(ticker: string | null | undefined): MarketSnapsh
   }, [ticker, scope, version]);
 }
 
+/*
+  THE NAMES ON SCREEN FIRST (the fourth audit's M1: the Board's SPY and NVDA rows sat on "…" past 30s while other names
+  filled; the Agenda's Targets stayed a skeleton as long). The key allows three calls at once across the app, so the
+  order of the queue is the order things fill: the name the desk is on, and SPY (the market's own), jump it; every
+  other name queues behind them in turn.
+*/
+const hotNames = new Set<string>(['SPY']);
+let hotActive: string | null = null;
+/** The name the desk is on — its calls jump the key's queue (SPY's always do) */
+export function markHotName(ticker: string | null | undefined): void {
+  const t = ticker?.trim().toUpperCase() || null;
+  if (t === hotActive) return;
+  if (hotActive && hotActive !== 'SPY') hotNames.delete(hotActive);
+  hotActive = t;
+  if (t) hotNames.add(t);
+}
+const isHot = (ticker: string): boolean => hotNames.has(ticker.toUpperCase());
+
+async function hotGet<T>(path: string, hot: boolean): Promise<T> {
+  const got = await uwCall(path, hot);
+  if (got.error) throw new Error(got.error);
+  return got.data as T;
+}
+
 async function loadCore(ticker: string, mode: BookMode, token: number): Promise<void> {
   const still = () => gen.get(ticker) === token;
+  const hot = isHot(ticker);
+  const t = encodeURIComponent(ticker);
   const [state, strikes, oiRows, flowRows, ivRows, termRows, interpRows, bars, live] = await Promise.all([
-    whalesState(ticker),
-    whalesGreekStrike(ticker),
+    hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker),
+    hot ? hotGet<UwGreekStrike[]>(`/stock/${t}/greek-exposure/strike`, true) : whalesGreekStrike(ticker),
     whalesOiStrike(ticker).catch(() => [] as UwGreekStrike[]),
     whalesFlowStrike(ticker).catch(() => [] as UwFlowStrike[]),
-    whalesIvRank(ticker).catch(() => []),
-    whalesTermStructure(ticker).catch(() => [] as UwTerm[]),
+    whalesIvRank(ticker, hot).catch(() => []),
+    (hot ? hotGet<UwTerm[]>(`/stock/${t}/volatility/term-structure`, true) : whalesTermStructure(ticker)).catch(() => [] as UwTerm[]),
     whalesInterpIv(ticker).catch(() => [] as UwInterp[]),
     /* A WHOLE DAY OF BARS, NOT THE LAST FEW HOURS (the ship pass, 2026-10-22): the feed hands bars newest first,
        post-market included — after the bell 500 one-minute bars reached back only to ~11:40, so the day's chart and
        "How the levels held" started late morning. 1000 / 200 cover pre-market, the session and the evening. */
     whalesBars(ticker, mode === 'full' ? '1m' : '5m', mode === 'full' ? 1000 : 200).catch(() => [] as UwBar[]),
-    liveGamma(ticker, null).catch(() => null),
+    liveGamma(ticker, null, hot).catch(() => null),
   ]);
   if (!still()) return;
   if (!state || !Array.isArray(strikes) || strikes.length === 0) throw new Error('shape');
-  const spot = num(state.close);
+  /* OUTSIDE THE SESSION THE PRICE IS THE REGULAR CLOSE (the fourth audit, 2026-10-23: the Board printed AAPL's after-hours
+     $348.60 beside the regular session's change, measured every distance from it, and the Dossier said 348.22). The
+     levels were priced at the 4:00 close (the vendor's rows carry that price), so the price on Pinpoint, and every
+     distance to a level, is that close — the Dossier's own convention (data/liveQuote.ts priceWords). The after-hours
+     or pre-market print is kept apart (`last`) and labelled where it is shown. */
+  const last = num(state.close);
+  const mt = typeof state.market_time === 'string' ? state.market_time : undefined;
+  const offPhase = dayChangeOf({ close: last, prev_close: num(state.prev_close), market_time: mt }, null).phase;
+  const regClose = num(state.prev_close);
+  const spot = (offPhase === 'post' || offPhase === 'pre') && regClose > 0 ? regClose : last;
   const prev = num(state.prev_close) || num(state.open) || spot;
   if (!(spot > 0)) throw new Error('spot');
   const ivList = Array.isArray(ivRows) ? ivRows : [];
@@ -1150,7 +1257,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     spot,
     prev,
     changePct: prev > 0 ? ((spot - prev) / prev) * 100 : 0,
-    state: { close: spot, prev_close: num(state.prev_close), market_time: typeof state.market_time === 'string' ? state.market_time : undefined },
+    state: { close: last, prev_close: num(state.prev_close), market_time: mt },
+    last,
     iv: iv > 0 ? iv : 0,
     impliedMove: impliedMoveOf(Array.isArray(termRows) ? termRows : [], nyIsoDate(), spot),
     termIv: termIvOf(Array.isArray(termRows) ? termRows : []) ?? prevEntry?.termIv,
@@ -1167,6 +1275,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     totals: prevEntry?.totals,
     totalsAt: prevEntry?.totalsAt,
     frontFacts: prevEntry?.frontFacts,
+    factsDates: prevEntry?.factsDates,
+    everFull: prevEntry?.everFull,
     flow: flowMap(Array.isArray(flowRows) ? flowRows : []),
     candles: split.cash,
     tape: split.tape,
@@ -1242,20 +1352,23 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
      three calls that fill a row's "Today" levels jump the key's queue, so each name's row fills as its own core lands
      rather than after every name's */
   let listed: { date: string; dte: number }[] = [];
-  const got = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/expiry`, true);
+  const hot = isHot(entry.ticker);
+  const got = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/expiry`, hot);
   if (got.error) return;
   listed = listingOf(got.data);
   keepTotals(entry, got.data);
   if (!still() || !listed.length) return;
-  const front = closestDate(isoDate(expiryFor(0, bookToday()).date), listed.map(r => r.date));
+  /* the first live listing when nothing is within four days (CROX: Nov 20 — the fourth audit found its Board "Today"
+     levels never loaded and read the whole book's, labelled "today loading", for good) */
+  const front = closestDate(isoDate(expiryFor(0, bookToday()).date), listed.map(r => r.date)) ?? listed.map(r => r.date).filter(d => d >= today).sort()[0];
   if (!front) return;
   let chain: StrikeNode[] = entry.byDate[front] ?? [];
   if (!chain.length || !fresh) {
     /* the front date's live gamma (one call); a chain the full book already holds keeps its other greeks */
-    const live = await liveGamma(entry.ticker, front, true).catch(() => null);
+    const live = await liveGamma(entry.ticker, front, hot).catch(() => null);
     if (live) chain = withLiveGamma(chain, live);
     else {
-      const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/strike-expiry?expiry=${encodeURIComponent(front)}`, true);
+      const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/strike-expiry?expiry=${encodeURIComponent(front)}`, hot);
       chain = !rows.error && Array.isArray(rows.data) ? chainFrom(rows.data as UwGreekStrike[], entry.spot, new Map()) : chain;
     }
   }
@@ -1269,10 +1382,11 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   /* the front date's contracts: open interest, each contract's own vol and gamma — the flip re-prices with them and
      Building values the open-interest change with them (one call a name) */
   if (chain.length) {
-    const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/option-contracts?limit=1000&expiry=${encodeURIComponent(front)}`, true);
+    const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/option-contracts?limit=1000&expiry=${encodeURIComponent(front)}`, hot);
     if (!still()) return;
     current = cache.get(entry.ticker);
     if (!current || current.full) return;
+    current.factsDates = new Set([...(current.factsDates ?? []), front]);
     if (!rows.error && Array.isArray(rows.data)) {
       const book = foldContracts(rows.data as UwContract[], front);
       const have = current.byDate[front] ?? chain;
@@ -1389,12 +1503,17 @@ export function peekBellShare(ticker: string): { share: number } | { share: null
      gross as every date's added up. The morning snapshot (greek-exposure/expiry) only stands in until the live rows land. */
   const listedToday = e.expiries.some(x => x.date === today) || e.totals?.some(t => t.date === today);
   const todayChain = e.byDate[today];
+  /* the whole live book is only final once the contracts that settled come off it (liveAll) */
+  if (e.gammaLive && todayChain?.length && peekSettledNet(e.ticker) == null) return { share: null, why: 'wait' };
   if (e.gammaLive && todayChain?.length) {
     const gross = (ch: readonly StrikeNode[]) => ch.reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
     const total = gross(liveAll(e));
     const dies = gross(todayChain);
     if (total > 0) return { share: Math.min(100, Math.round((100 * dies) / total)) };
   }
+  /* NOTHING PROVISIONAL (the fourth audit: the Board read 16% off the morning snapshot at first load, then the live 15%):
+     with the live book on, a name whose date is listed waits for that date's live rows rather than print the stand-in */
+  if (e.gammaLive && listedToday && !todayChain?.length) return { share: null, why: 'wait' };
   if (!e.totals?.length) return listedToday === false && e.expiries.length ? { share: null, why: 'none' } : { share: null, why: 'wait' };
   const live = e.totals.filter(t => t.date >= today);
   const dies = live.filter(t => t.date === today).reduce((a, t) => a + t.gross, 0);
@@ -1407,6 +1526,7 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
   const still = () => gen.get(entry.ticker) === token;
   if (entry.expiriesAt && Date.now() - entry.expiriesAt < 180_000 && Object.keys(entry.byDate).length > 0) {
     entry.full = true;
+    entry.everFull = true;
     vexOntoAll(entry);
     return;
   }
@@ -1422,10 +1542,11 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
   /* Every listed expiry. The old cut kept eight horizons and stamped the WHOLE book's
      open interest onto each of them, so a November column wore October's contracts. */
   const dates = listed.map(r => r.date).slice(0, 40);
+  const near = dates.slice(0, 6);
   const pull = (list: string[]) =>
     mapLimit(list, 3, async date => {
       try {
-        return [date, (await dateChain(entry.ticker, date, entry.spot, true)) ?? []] as const;
+        return [date, (await dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && list === near)) ?? []] as const;
       } catch {
         return [date, [] as StrikeNode[]] as const;
       }
@@ -1435,11 +1556,12 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
     const current = cache.get(entry.ticker);
     if (!current) return;
     const byDate = { ...current.byDate };
-    for (const [date, chain] of fetched) if (chain.length) byDate[date] = chain;
+    for (const [date, chain] of fetched) if (chain.length) byDate[date] = carryFacts(chain, byDate[date]);
     current.byDate = byDate;
     current.expiries = listed;
     if (done) {
       current.full = true;
+      current.everFull = true;
       current.expiriesAt = Date.now();
     }
     current.at = Date.now();
@@ -1451,7 +1573,6 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
   /* THE NEAR DATES' OPEN INTEREST AT ONCE (the ship pass, 2026-10-22): the by-expiry rows carry no open interest, and
      it was filled only after all ~40 dates had landed — on Building (today's expiry by default) every strike's change
      read +$0 for the better part of a minute. The dates on screen get theirs as soon as they are in. */
-  const near = dates.slice(0, 6);
   apply(await pull(near), dates.length <= 6);
   if (!still()) return;
   const first = cache.get(entry.ticker);
@@ -1598,7 +1719,7 @@ export function ensureOiChange(ticker: string): void {
     const seen = new Set<string>();
     for (const order of ['desc', 'asc'] as const) {
       for (let page = 0; page < OI_PAGES; page++) {
-        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`);
+        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`, isHot(t));
         const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
         let reachedZero = false;
         for (const r of rows) {

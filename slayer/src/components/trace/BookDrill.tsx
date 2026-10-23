@@ -46,7 +46,29 @@ const BookDrill = ({ list, openKey, onOpen, clipFor }: BookDrillProps) => {
   /* The anchor is a REAL print: the host's exact clip (a flow alert's), else the contract's own last trade off the
      vendor — never an invented one (data/tape bookRowToPrint) */
   const last = useContractLast(row && !clipFor?.(row) ? row.optionSymbol : null).rows;
-  const print = useMemo(() => (row ? { ...bookRowToPrint(row, clipFor?.(row) ?? last ?? undefined), occ: row.optionSymbol } : null), [row, clipFor, last]);
+  /* A DAY-BOOK ROW OPENS THE CONTRACT'S DAY (audit round 4: the Screener's NVDA 220C opened as one after-hours $18 print):
+     the day's premium, volume and lean, anchored on its latest regular-session print — the fill, the quote and the time
+     shown as that print's. A host's own clip (a flow alert's exact print, the Tracker's mark) stays that print. */
+  const print = useMemo(() => {
+    if (!row) return null;
+    const own = clipFor?.(row);
+    if (own) return { ...bookRowToPrint(row, own), occ: row.optionSymbol };
+    const day = bookRowToPrint(row);
+    return {
+      ...day,
+      occ: row.optionSymbol,
+      fill: last?.fill ?? day.fill,
+      bid: last && last.bid > 0 ? last.bid : day.bid,
+      ask: last && last.ask > 0 ? last.ask : day.ask,
+      time: last?.time ?? day.time,
+      fillPos: last && last.ask > last.bid && last.bid > 0 ? Math.min(1, Math.max(0, (last.fill - last.bid) / (last.ask - last.bid))) : 0.5,
+      /* the day is not a leg of anything — its multi-leg share is on the row, not a reason to withhold its read */
+      legs: 1,
+      strat: '—' as const,
+      theta: last?.theta ?? day.theta,
+      dayCard: { last: last ? { fill: last.fill, size: last.size, time: last.time, side: last.side, volume: last.volume ?? 0 } : null, session: last?.extended ? 'after hours' : 'regular session' },
+    };
+  }, [row, clipFor, last]);
 
   return (
     <PrintDrilldown

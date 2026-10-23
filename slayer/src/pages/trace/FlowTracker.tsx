@@ -98,12 +98,16 @@ const leanWord = (askPct: number, side?: { ask: number; bid: number; mid: number
     const l = dayLean({ askPct, volume: side.ask + side.bid + side.mid, sideVol: side });
     if (l.lean === 'UNSIDED') return { text: Number.isFinite(l.mid) ? `MID ${Math.round(l.mid)}%` : '—', ink: 'text-textMuted' };
     if (l.lean === 'EVEN') return { text: 'EVEN', ink: 'text-textMuted' };
-    return { text: l.lean === 'ASK' ? `ASK ${Math.round(l.ask)}%` : `BID ${Math.round(l.bid)}%`, ink: 'text-textPrimary' };
+    /* the share the rule is called on — the side's share of the SIDED contracts (the Lean cell's figure) */
+    return { text: l.lean === 'ASK' ? `ASK ${Math.round(l.askSided)}%` : `BID ${Math.round(l.bidSided)}%`, ink: 'text-textPrimary' };
   }
-  /* the one lean rule (traceLive dayLean), on the ask share alone when that is all the mark kept */
-  const a = Math.round(askPct);
-  const l = dayLean({ askPct: a, volume: 0 }).lean;
+  /* THE RULE ON THE UNROUNDED SHARE (audit round 4: an ask share of 54.6% was rounded to 55 BEFORE the 55% rule, so the
+     mark read "ASK 55%" and the same data now read "EVEN" — a lean change that never happened). The one lean rule
+     (traceLive dayLean) decides on the figure as kept; only the printed number is rounded. A share that rounds up to the
+     edge but sits under it prints EVEN, never "ASK 55%". */
+  const l = dayLean({ askPct, volume: 0 }).lean;
   const mid = l === 'EVEN' || l === 'UNSIDED';
+  const a = Math.round(askPct);
   return {
     text: l === 'UNSIDED' ? '—' : mid ? 'EVEN' : l === 'BID' ? `BID ${100 - a}%` : `ASK ${a}%`,
     ink: mid ? 'text-textMuted' : 'text-textPrimary',

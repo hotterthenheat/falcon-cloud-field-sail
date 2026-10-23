@@ -2,7 +2,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday } from '../core/calendar';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
-import { bookCandles, bookRevision } from './uwBook';
+import { bookCandles, bookRevision, peekEntry } from './uwBook';
 
 /*
 ==================================================
@@ -263,10 +263,28 @@ function sessionBookRaw(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): Sessio
   const isTrading = isTradingDay(nyToday());
   const after = isTrading && nySessionPhase() === 'after';
   if (!after || !snapshot.liveBook) return { book: levelsBook(snapshot, scope), label: levelsWords(snapshot, scope), why: null, after: false };
-  if (scope === 'ALL') return { book: levelsBook(snapshot, 'ALL'), label: `All expiries · at today's close`, why: null, after };
   const by = snapshot.uwByDate ?? {};
   const listed = (snapshot.uwExpiries ?? []).map(e => e.date);
   const sameDay = listed.includes(s.today) || s.today in by;
+  if (scope === 'ALL') {
+    /* THE BOOK THAT WAS LIVE IN TODAY'S SESSION, TODAY'S CONTRACTS INCLUDED (the fourth audit, 2026-10-23: the session was
+       graded against the post-close book less today's contracts — SPY's flip 776.67 beside the headline's 774.17, its
+       call wall 800 where, with Oct 22 in, it was 765). The vendor's live whole book at the bell still carries the
+       contracts that expired at 4:00 (uwBook keeps it as `all`; the levels' book takes them off): that is the book the
+       session ran on. Each live date re-prices as on the headline; today's expired contracts are carried flat. */
+    const e = peekEntry(snapshot.ticker);
+    if (sameDay && e?.gammaLive && e.all.length) {
+      const chain = e.all.slice();
+      registerChainDates(chain, Object.keys(by).filter(d => d >= isoDate(bookToday()) && by[d]?.length));
+      return {
+        book: { ...snapshot, chain, uwChains: { ...snapshot.uwChains, '0DTE': chain, ALL: chain } },
+        label: `All expiries · as live in today's session, today's ${expirySpan([s.today])} contracts included`,
+        why: null,
+        after,
+      };
+    }
+    return { book: levelsBook(snapshot, 'ALL'), label: sameDay ? `All expiries · at today's close (today's contracts expired)` : `All expiries · at today's close`, why: null, after };
+  }
   if (sameDay) {
     const chain = by[s.today];
     if (!chain?.length)

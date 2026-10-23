@@ -50,7 +50,7 @@ import { attachScrollMore } from '../ui/scrollMore';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Crosshair, Maximize2, Minimize2, Plus, X } from 'lucide-react';
-import { bookRevision, ensureBook, snapshotOf } from '../../data/uwBook';
+import { bookDatesIn, bookRevision, ensureBook, snapshotOf } from '../../data/uwBook';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 import { useAnchoredMenu } from '../ui/useAnchoredMenu';
@@ -1091,6 +1091,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      the two disagreed (775 on the door, 760 in magenta on the grid) once the per-date chains landed (2026-10-22) */
   const crowned = scoped(surface, snapshot);
   const supreme = crowned.supreme[supremeGreek];
+  /* the supreme waits for the Levels card's contracts (the fourth audit's M1: "Supreme 760 · −$2.1B" off the whole book
+     before today's landed) */
+  const supremePending = !!snapshot.liveBook && supremeGreek === 'gex' && crowned.levels?.complete === false;
   const supremeEx = crowned.expiries[supreme.e];
   /* the expiries drawn for the host's book: the window, the ceiling, what fits (see `windowFor`) */
   const shownIdx = shownFor(surface, { range, afterBell, greeks });
@@ -1224,7 +1227,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         flat={toolbar === 'band'}
       />}
       {/* a face of its own, so "Now" alone on a bare band still says which card it is (the audit's L2) */}
-      {!panel && <DropdownSelect label="Show" value={afterBell ? 'after' : 'now'} options={SHOW_OPTIONS} onChange={v => setAfterBell(v === 'after')} title="The book as it stands now, or as it will stand after today's expiries" testId="ledger-show" bare={stripsBare} flat={toolbar === 'band'} />}
+      {!panel && <DropdownSelect label="Show" value={afterBell ? 'after' : 'now'} options={SHOW_OPTIONS} onChange={v => setAfterBell(v === 'after')} title={todayScopeLabel() === 'Today' ? "The book as it stands now, or as it will stand after today's expiries" : "The book as it stands now, or as it will stand once the next session's own expiries have gone (today's already expired at the close)"} testId="ledger-show" bare={stripsBare} flat={toolbar === 'band'} />}
       {/* the colours switch left the band for Settings › Appearance (idea 10, 2026-10-13): a preference made once, not a
           read, and 150px of every row */}
     </>
@@ -1250,9 +1253,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           a wider window here can name another strike (the UI sweep, 2026-10-22) */}
       <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && supremeGreek === 'gex' && <span className="text-textMuted/70"> · {levelsLabel}</span>}</span>
       <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
-        {fmtStrike(supreme.strike)}
+        {supremePending ? '…' : fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}
-        {!doorCompact('supreme') && (
+        {!supremePending && !doorCompact('supreme') && (
           <>
             {' '}
             {/* the amount, not the date (the band's one row at 1920): the date is in the title and on the strike's card */}
@@ -1855,6 +1858,14 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     <ExposureLedger wantCols={colGreeks.length * colWindow.length} onNatural={packs ? naturalFor(c.ticker, 'calendar') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} open={view === 'calendar' && !fresh ? openSurfaceOf(book.ticker) : null} focusOn={colFocus} greeks={colGreeks} expiries={colWindow} rings={d.rings} leg={d.legs === 'both' || d.legs === 'all' ? 'net' : d.legs} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} afterBell={d.afterBell} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} onExpiry={(many || onExpiries) ? i => { const date = listedIso(book.snapshot)[i]; if (many && date) { setOwnDates(prev => ({ ...prev, [c.ticker]: [date] })); return; } setOwnDates({}); setRange({ from: i, through: i }); } : undefined} fitKey={c.ticker} onFit={reportFit} paper={paper} />
                   )}
                 </div>
+                {/* NOTHING PROVISIONAL, SAID (the fourth audit's M1: the matrix's window grew from "Oct 23 → Oct 29" to Nov 3 as
+                    the dates landed, its figures with it, and the supreme read the whole book for seconds): until every
+                    listed date and the levels' contracts are in, the book is veiled and says why */}
+                {book.snapshot.liveBook && !fresh && (!bookDatesIn(c.ticker) || roomLevels(levelsBook(book.snapshot, levelsScope), '0DTE')?.complete === false) && (
+                  <div className="absolute inset-0 z-10 grid place-items-center bg-card/80 backdrop-blur-[2px]" data-ledger-loading={c.ticker}>
+                    <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">Loading {c.ticker}'s expiries…</span>
+                  </div>
+                )}
                 {/* THE READ — this name's, glass over the right of its own book
                     (the whole column when names are tight), in its lead greek */}
                 {read && (
