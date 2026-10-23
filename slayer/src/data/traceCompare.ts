@@ -63,13 +63,13 @@ export interface TraceSide {
     ivLater: boolean;
     /** The contracts left out of every figure above (audit round 8, major 2): floor packages and days of spread legs — the
         Screener's exclusions — with their premium */
-    apart: { count: number; premium: number; floor: number; legs: number };
+    apart: { count: number; premium: number; floor: number; legs: number; crosses: number };
     /** Contracts whose volume ran past their standing interest — the Screener's "new positioning" */
     builtToday: number;
   };
   /** Open interest added and shed by one session's trading (`day`, YYYY-MM-DD — the newest count on the side's rows);
       `lagging` rows still on the count before are left out (audit round 7) */
-  interest: { added: number; shed: number; day: string | null; lagging: number; pending: boolean };
+  interest: { added: number; shed: number; day: string | null; lagging: number; pending: boolean; apartCount: number };
   /** dollars: the structures' NET premium, signs dropped — what changed hands, not the gross of every leg */
   structures: { count: number; paid: number; collected: number; dollars: number; list: SpreadTrade[] };
   /** The name's REGULAR-SESSION prints in the window — each print by its own time and flag (an SPY print at 16:14:5x is
@@ -161,18 +161,21 @@ export function buildTraceSide(
         return Math.round(weighted(pool, r => r.iv, pool.reduce((a, r) => a + r.volume, 0)));
       })(),
       ivLater: bets.some(r => r.dte >= 1 && r.iv > 0),
-      apart: { count: out.length, premium: out.reduce((a, r) => a + r.premium, 0), floor: out.filter(r => floorPackaged(r)).length, legs: out.filter(r => !floorPackaged(r)).length },
+      apart: { count: out.length, premium: out.reduce((a, r) => a + r.premium, 0), floor: out.filter(r => floorPackaged(r)).length, legs: out.filter(r => !floorPackaged(r) && r.multiPct >= 50).length, crosses: out.filter(r => !floorPackaged(r) && r.multiPct < 50).length },
       builtToday: bets.filter(r => r.oi > 0 && r.volOverOI >= FRESH_VOL_OI).length,
     },
+    /* THE SAME CONTRACTS AS THE BOOK SECTION (audit round 9, minor 5: "+230,095 SPY" here counted the floor packages,
+       spread legs and crosses the book above left out — its 68 bets added +201,962): the bets only, the rest said apart */
     interest: (() => {
-      const day = rows.reduce<string | null>((m, r) => (r.oiDay && (!m || r.oiDay > m) ? r.oiDay : m), null);
-      const on = rows.filter(r => !day || !r.oiDay || r.oiDay === day);
+      const day = bets.reduce<string | null>((m, r) => (r.oiDay && (!m || r.oiDay > m) ? r.oiDay : m), null);
+      const on = bets.filter(r => !day || !r.oiDay || r.oiDay === day);
       return {
+        apartCount: out.length,
         added: on.reduce((a, r) => a + (r.deltaOI > 0 ? r.deltaOI : 0), 0),
         shed: on.reduce((a, r) => a + (r.deltaOI < 0 ? r.deltaOI : 0), 0),
         day,
-        lagging: rows.length - on.length,
-        pending: rows.length > 0 && rows.every(r => r.oiPending),
+        lagging: bets.length - on.length,
+        pending: bets.length > 0 && bets.every(r => r.oiPending),
       };
     })(),
     structures: {
@@ -234,7 +237,7 @@ export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over
     { name: b.ticker },
     `${lean(b)}. `,
     ...(heavier
-      ? [{ name: heavier.ticker }, ` carries more premium — ${fmtUsd(heavier.book.premium)} across its ${num(heavier.book.count)} standing contract${heavier.book.count === 1 ? '' : 's'} with the most premium, on ${num(heavier.book.volume)} volume${heavier.book.apart.count ? ` (${num(heavier.book.apart.count)} more — floor packages and spread legs, ${fmtUsd(heavier.book.apart.premium)} — left out: legs of packages, not bets)` : ''}${showTape ? ' — and ' : '. '}`]
+      ? [{ name: heavier.ticker }, ` carries more premium — ${fmtUsd(heavier.book.premium)} across its ${num(heavier.book.count)} standing contract${heavier.book.count === 1 ? '' : 's'} with the most premium, on ${num(heavier.book.volume)} volume${heavier.book.apart.count ? ` (${num(heavier.book.apart.count)} more — floor packages, spread legs and crosses, ${fmtUsd(heavier.book.apart.premium)} — left out: packages, legs and crosses, not bets)` : ''}${showTape ? ' — and ' : '. '}`]
       : [`Neither name has a contract standing ${cutWords}, so neither carries more premium${showTape ? '; ' : '. '}`]),
     ...(!showTape
       ? []

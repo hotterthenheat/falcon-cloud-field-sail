@@ -45,7 +45,7 @@ const HoldName = ({ data }: ICellRendererParams<HoldingRow>) =>
 const BracketCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.bracket}</span> : null);
 const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner as ReportOwner)}</span> : null);
 
-export const CongressHoldings = () => {
+export const CongressHoldings = ({ since }: { since?: string | null } = {}) => {
   const navigate = useNavigate();
   const congress = useCongressBook();
   const rows = useMemo(() => {
@@ -70,7 +70,7 @@ export const CongressHoldings = () => {
       <div className="px-5 border-t border-borderSubtle/60">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>Bought, no sale reported since</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">purchases in the reports read with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">{/* (round 9) which window it covers — every report read, not the window above */}over every report read{since ? `, trades since ${since.slice(5, 7)}/${since.slice(8, 10)}/${since.slice(2, 4)}` : ''} — not only the window above · purchases with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
         </div>
       </div>
       <div className="slayer-board border-t border-borderSubtle">
@@ -80,7 +80,8 @@ export const CongressHoldings = () => {
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
-            overlayNoRowsTemplate={noRows('No holding on this cut')}
+            overlayNoRowsTemplate={noRows(congress.status === 'live' ? 'No holding on this cut' : congress.status === 'sim' ? 'This read did not land' : 'Reading the reports…')}
+            key={congress.status}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.key}

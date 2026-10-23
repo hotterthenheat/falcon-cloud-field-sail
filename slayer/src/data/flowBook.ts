@@ -332,15 +332,40 @@ export const SPREAD_LEG_PCT = 50;
 export function spreadLegDay(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
   return !floorPackaged(r) && r.multiPct >= SPREAD_LEG_PCT;
 }
-/** Not a single bet: a floor package or a day of spread legs — set apart wherever the book crowns or leans */
-export function notABet(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
-  return floorPackaged(r) || r.multiPct >= SPREAD_LEG_PCT;
+/** A DAY THAT WAS MOSTLY CROSSES (audit round 9, minor 2: "Largest PLTR 175C Dec 18" was one 25,000-lot cross — cross_volume
+    25,000 of 25,028, report_flags ["cross_trade"] — crowned on the Live Tape, the Screener and Watchers): a cross is a
+    pre-arranged trade printed between two parties at one price, no side taken on the screen. Half the day or more in
+    crosses and the contract is set apart like a floor package — out of the crowns, the leans and the directional totals,
+    said as "a cross". */
+export const CROSS_PCT = 50;
+export function crossDay(r: { crossPct?: number }): boolean {
+  return (r.crossPct ?? 0) >= CROSS_PCT;
+}
+export const crossHint = (r: { crossPct?: number; volume?: number }) =>
+  `${Math.round(r.crossPct ?? 0)}% of its day${r.volume ? ` (${Math.round(((r.crossPct ?? 0) / 100) * r.volume).toLocaleString('en-US')} of ${r.volume.toLocaleString('en-US')} contracts)` : ''} printed as cross trades — pre-arranged between two parties at one price, not bought or sold on the screen — so it gets no lean and is never ranked as the biggest single bet (${CROSS_PCT}% or more of the day in crosses)`;
+/** Not a single bet: a floor package, a day of spread legs or a day of crosses — set apart wherever the book crowns or leans */
+export function notABet(r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number }): boolean {
+  return floorPackaged(r) || r.multiPct >= SPREAD_LEG_PCT || crossDay(r);
 }
 /** Why a spread-leg day carries no read, in its own figure */
 export const spreadLegHint = (r: Pick<BookContract, 'multiPct'>) =>
   `${Math.round(r.multiPct)}% of its day traded as legs of multi-leg orders — one leg of spreads whose other legs sit on other contracts. A leg's side says how the package was filled, not which way the money leans, so it gets no lean and is never ranked as the biggest single bet (${SPREAD_LEG_PCT}% or more of the day in multi-leg orders)`;
 /** One word for why a row is not a bet */
-export const notABetWord = (r: Pick<BookContract, 'floorPct' | 'multiPct'>) => (floorPackaged(r) ? 'floor package' : 'spread legs');
+export const notABetWord = (r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number }) => (floorPackaged(r) ? 'floor package' : r.multiPct >= SPREAD_LEG_PCT ? 'spread legs' : crossDay(r) ? 'a cross' : 'spread legs');
+
+/** Why a not-a-bet row is set apart, in full (the hover) */
+export const notABetHint = (r: Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number; volume?: number }) =>
+  floorPackaged(r)
+    ? `${Math.round(r.floorPct)}% of its day traded on the floor and ${Math.round(r.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down, not a directional bet`
+    : r.multiPct >= SPREAD_LEG_PCT
+      ? spreadLegHint(r)
+      : crossHint(r);
+/** The set's label: "Floor packages", "Spread legs", "Crosses", or "Packages, legs & crosses" when mixed */
+export function notABetLabel(rows: (Pick<BookContract, 'floorPct' | 'multiPct'> & { crossPct?: number })[]): string {
+  const kinds = new Set(rows.map(r => (floorPackaged(r) ? 'f' : r.multiPct >= SPREAD_LEG_PCT ? 'l' : 'c')));
+  if (kinds.size > 1) return 'Packages, legs & crosses';
+  return kinds.has('f') ? 'Floor packages' : kinds.has('l') ? 'Spread legs' : rows.length === 1 ? 'One cross' : 'Crosses';
+}
 
 /** ONE FLOOR FOR "FRESH" VOLUME ACROSS TRACE (audit round 5: Watchers' fresh size used 1.8× open interest, the Screener and
     Compare 1.5×): volume at least this many times the open interest reads as positions built in the session */
@@ -365,10 +390,13 @@ export function doiTail(r: Pick<BookContract, 'prevOI' | 'deltaOI' | 'deltaOIPct
 /** A DEEP-IN-THE-MONEY, LONG-DATED CONTRACT IS LIKELY NOT A BET (retail, 2026-10-23: NVDA's top "bet" on the Live Tape was a
     2028 put 88.5% in the money, ΔOI +57): 25% or more in the money with six months or more to run trades like the
     stock — a stock replacement, a roll or a financing leg — not a directional view. Flagged wherever bets are crowned. */
+/* A MONTH, NOT SIX (audit round 9, minor 8: Compare listed SPY 520C Dec 18 — 32% in the money, delta .99, 56 days — as a
+   bet): 25% or more in the money with a month or more to run already moves one-for-one with the stock */
+export const STOCK_LIKE_DTE = 30;
 export function stockLike(r: { otmPct: number; dte: number }): boolean {
-  return Number.isFinite(r.otmPct) && r.otmPct <= -25 && r.dte >= 180;
+  return Number.isFinite(r.otmPct) && r.otmPct <= -25 && r.dte >= STOCK_LIKE_DTE;
 }
-export const STOCK_LIKE_HINT = 'Deep in the money and long-dated — it trades like the stock: likely a stock replacement, a roll or a financing leg, not a directional bet';
+export const STOCK_LIKE_HINT = 'Deep in the money (25% or more) with a month or more to run — it trades like the stock (delta near 1): likely a stock replacement, a roll or a financing leg, not a directional bet';
 
 /** The book's big-money line: its 90th-percentile premium, $25M at the least */
 export function bigMoneyLine(rows: BookContract[]): number {

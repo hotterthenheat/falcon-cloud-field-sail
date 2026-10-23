@@ -2,7 +2,6 @@ import { pickFlip } from '../core/walls';
 import { buildExposureProfile } from './exposure';
 import { sessionBars } from './levelview';
 import { levelFlip, regimeOfNet } from './flipLevel';
-import { levelTicks } from './levelRecord';
 import { recordDay, sessionBook } from './bookWindow';
 import type { Candle, GexSnapshot, MarketSnapshot } from '../types/market';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
@@ -116,6 +115,25 @@ export function countFlipCrossings(candles: readonly Candle[], snaps: readonly G
   return crossings;
 }
 
+/**
+ * TIMES PRICE CROSSED THE FLIP — ONE DEFINITION FOR THE BOARD AND THE MAP (the ninth audit's M2, 2026-10-23: the Board
+ * counted the flip's TESTS — bars whose range reached it — on 5-minute bars, NVDA 10× against 26 changes of side on the
+ * one-minute bars). A crossing is a one-minute close on the other side of the flip from the last close that was not on
+ * it: closes changing side. A close exactly on the flip changes nothing. The Map's report counts tests (bars that reached
+ * it) beside this; the word is "crossed N×" wherever this count is printed.
+ */
+export function flipCrossings(bars: readonly Candle[], flip: number): number {
+  let side = 0;
+  let n = 0;
+  for (const b of bars) {
+    const s = Math.sign(b.close - flip);
+    if (s === 0) continue;
+    if (side !== 0 && s !== side) n++;
+    side = s;
+  }
+  return n;
+}
+
 export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
   const { ticker, spot, chain } = snapshot;
   /* THE ONE FLIP (data/flipLevel.ts): where the book's net gamma, re-priced at that price, crosses zero — off the
@@ -139,7 +157,7 @@ export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
      else (TSLA 1× on the Board against 11 on the Map) */
   const candles = sessionBars(ticker) ?? [];
   if (flip === null || tooEarly(candles)) return { ...base, bars: candles.length };
-  return { ...base, crossings: levelTicks(candles, flip, flip >= spot ? 'call' : 'put').length, bars: candles.length };
+  return { ...base, crossings: flipCrossings(candles, flip), bars: candles.length };
 }
 
 /**
@@ -189,7 +207,8 @@ export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0
   if (read.flip === null) out = { crossings: !tooEarly(candles) ? 0 : null, flip: null, label: sb.label, why: null, complete: read.complete, early: tooEarly(candles) };
   else if (tooEarly(candles)) out = { crossings: null, flip: read.flip, label: sb.label, why: null, complete: read.complete, early: true };
   /* the side rule the Map's report uses (WallReportCard: flip ≥ spot is tested from below) */
-  else out = { crossings: levelTicks(candles, read.flip, read.flip >= book.spot ? 'call' : 'put').length, flip: read.flip, label: sb.label, why: null, complete: read.complete };
+  /* closes changing side of the flip, on one-minute bars (flipCrossings) — the Map's flip row prints the same count */
+  else out = { crossings: flipCrossings(candles, read.flip), flip: read.flip, label: sb.label, why: null, complete: read.complete };
   /* kept once the whole session is in (its last bar at 15:55 or later) and the book's dates have all landed */
   if (closed && read.complete && nyMinutes(last.time * 1000) >= 15 * 60 + 55) {
     if (frozenCross.size > 200) frozenCross.clear();

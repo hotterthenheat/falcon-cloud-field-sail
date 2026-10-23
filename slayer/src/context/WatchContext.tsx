@@ -33,6 +33,7 @@ import type { DarkPoolIntent, DarkPoolPrint } from '../types/darkpool';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { SpreadTrade } from '../data/flowBook';
+import { liveSpotOf } from '../data/traceLive';
 
 const STORAGE_KEY = 'slayer_trace_watch';
 
@@ -181,7 +182,8 @@ export const watchContract = (r: BookContract, from: WatchSource): WatchedContra
   expiry: r.expiry,
   watchedAt: Date.now(),
   from,
-  at: { dte: r.dte, spot: r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct, lastAt: r.lastAt && r.lastAt !== '—' ? r.lastAt : undefined },
+  /* THE SPOT AT MARK TIME IS THE LIVE ONE (audit round 9: "Spot then $212.75" was the screener's frozen stock-state) */
+  at: { dte: r.dte, spot: liveSpotOf(r.ticker) || r.spot, last: r.last, chgPct: r.chgPct, volume: r.volume, oi: r.oi, premium: r.premium, askPct: r.askPct, lastAt: r.lastAt && r.lastAt !== '—' ? r.lastAt : undefined },
   occ: r.optionSymbol,
 });
 

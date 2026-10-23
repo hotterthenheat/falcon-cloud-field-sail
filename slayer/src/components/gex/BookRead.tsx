@@ -178,7 +178,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   /* the printed figures in the reader's sign (retailSign.ts); the inks read the kept value */
   const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const { levels } = surface;
-  const verdict = readRegime(levels);
+  const verdict = readRegime(levels, k => (lv ? lv.netAt(k) : null));
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
   /* EVERY ROLE, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" dropped its put wall):
      "supreme · put wall", in the first role's ink */

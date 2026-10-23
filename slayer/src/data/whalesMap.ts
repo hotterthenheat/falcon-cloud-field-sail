@@ -173,6 +173,7 @@ const SHORT_NAMES: [string, string][] = [
   ['Microsoft', 'MSFT'], ['Alphabet', 'GOOGL'], ['Seagate', 'STX'], ['Texas Instruments', 'TXN'], ['Applied Materials', 'AMAT'],
   ['Lam Research', 'LRCX'], ['General Motors', 'GM'], ['Ford Motor', 'F'], ['American Express', 'AXP'], ['Mastercard', 'MA'],
   ['Thermo Fisher', 'TMO'], ['Medtronic', 'MDT'], ['Honeywell', 'HON'], ['3M', 'MMM'], ['UPS', 'UPS'], ['FedEx', 'FDX'],
+  ['BP', 'BP'], ['Shell', 'SHEL'], ['TotalEnergies', 'TTE'], ['Toyota', 'TM'], ['Nike', 'NKE'], ['Visa', 'V'], ['Uber', 'UBER'],
 ];
 const SHORT_NAME_RE = SHORT_NAMES.map(([name, ticker]) => ({ ticker, re: new RegExp(`(?<![\\w&-])(?:${esc(name)}|${esc(name.toUpperCase())})(?:'s|’s)?(?![\\w&-])`) }));
 
@@ -180,7 +181,7 @@ const SHORT_NAME_RE = SHORT_NAMES.map(([name, ticker]) => ({ ticker, re: new Reg
    "CPI", "FUTURE" (FutureFuel), "Tesla Eyes" (Second Sight). A tag stands when the headline writes it as a symbol
    ($T, (T), NASDAQ: T) or names the company by its distinctive word; otherwise it is dropped — a missing tag costs
    less than a story filed under the wrong company. */
-const GENERIC = new Set(['first', 'second', 'general', 'united', 'american', 'national', 'global', 'international', 'new', 'the', 'great', 'western', 'eastern', 'southern', 'northern', 'capital', 'financial', 'world', 'canada', 'china', 'japan', 'india', 'europe', 'asia']);
+const GENERIC = new Set(['first', 'second', 'general', 'united', 'american', 'national', 'global', 'international', 'new', 'the', 'great', 'western', 'eastern', 'southern', 'northern', 'capital', 'financial', 'world', 'canada', 'china', 'japan', 'india', 'europe', 'asia', 'german', 'germany', 'french', 'france', 'british', 'britain', 'european', 'swiss', 'chinese', 'japanese', 'korean', 'russian', 'ukrainian', 'mexican', 'canadian', 'israeli', 'iranian', 'saudi', 'turkish', 'italian', 'spanish', 'dutch', 'irish']);
 function borneOut(t: string, headline: string): boolean {
   const T = esc(t);
   if (new RegExp(`\\$${T}\\b|\\(${T}\\)|\\b(?:NASDAQ|NYSE|AMEX|OTC)\\s*:\\s*${T}\\b`, 'i').test(headline)) return true;
@@ -216,7 +217,37 @@ const BROKER_LEAD_RE = /^\s*(?:[A-Z][\w&.'-]*\s+){1,4}?(?:raises|lifts|boosts|cu
    vendor's other bare-word tags). A headline about an index's level or its points is the market's move: no company is
    its subject, it files under Macro, and a tick of the tape is not major news. */
 export const INDEX_MOVE_RE =
-  /^\W*(?:the\s+)?(?:nasdaq(?: composite| 100)?|dow(?: jones)?(?: industrials| industrial average)?|s&p(?: 500)?|nyse composite|russell (?:2000|1000|3000)|djia|spx|ndx)\b(?:[^.;]|\.(?=\d)){0,40}?\b(?:up|down|rises?|falls?|gains?|loses?|drops?|climbs?|slips?|jumps?|sinks?|closes?|opens?|ends?|extends?|pares?|turns?|hits?|tops?|record)\b(?:[^.;]|\.(?=\d)){0,40}?(?:\bpoints?\b|\bpts\b|%|\brecord\b|\bhigh\b|\blow\b)/i;
+  /^\W*(?:breaking:\s*)?(?:(?:u\.?s\.?|britain'?s|uk'?s|germany'?s|france'?s|japan'?s|europe'?s|hong kong'?s|china'?s)\s+)?(?:the\s+)?(?:nasdaq(?: composite| 100)?|dow(?: jones)?(?: industrials| industrial average)?|s&p(?: 500)?(?: e-?mini)?|nyse composite|russell (?:2000|1000|3000)|djia|spx|ndx|ftse(?: 100| 250| mib)?|dax|cac(?: 40)?|nikkei(?: 225)?|topix|hang seng|stoxx(?: 600| europe 600| 50)?|euro stoxx(?: 50)?|kospi|asx(?: 200)?|sensex|nifty(?: 50)?|shanghai composite|csi 300|ibex(?: 35)?|tsx|smi|aex)\b(?:[^.;]|\.(?=\d)){0,40}?\b(?:up|down|rises?|rose|falls?|fell|gains?|loses?|drops?|dropped|climbs?|slips?|jumps?|sinks?|closes?|opens?|ends?|extends?|pares?|turns?|hits?|tops?|record)\b(?:[^.;]|\.(?=\d)){0,40}?(?:\bpoints?\b|\bpts\b|%|\brecord\b|\bhigh\b|\blow\b)/i;
+/* MACRO IS MAJOR ONLY WHEN IT MOVES MARKETS (round 9: 163 of 665 stories read MAJOR, most of them Macro — "Trump: I have
+   not spoken to Elon", "Trump leaves the White House en route to Florida", humanitarian missions, ceasefire dates in one
+   town, "BRITAIN'S FTSE 100 DOWN 0.51%"). The vendor flags every geopolitical line major; a Macro story keeps the flag
+   only for what moves prices: central banks and rates, the big data prints (inflation, jobs, GDP, retail sales, the
+   PMIs and sentiment where the US or a major economy prints them), tariffs and trade policy, the fiscal calendar
+   (shutdowns, the debt ceiling, budgets with market stakes), sanctions, and war or supply news that touches oil or the
+   Gulf's shipping. The tape's own ticks (index and futures levels, gold's moves, order imbalances, currency-strength
+   charts) are never major. */
+const MACRO_MOVING_RE = new RegExp(
+  [
+    /* central banks on policy */
+    String.raw`\b(?:fed|fomc|federal reserve|powell|ecb|lagarde|boj|bank of japan|ueda|boe|bank of england|bailey|pboc|people's bank of china|bank of canada|snb|rba|reserve bank)\b[^.]{0,80}\b(?:rates?|hikes?|cuts?|decision|policy|inflation|tighten\w*|eas\w+|qe|qt|balance sheet|neutral)\b`,
+    String.raw`\binterest rate decision\b|\brate (?:decision|hike|cut)s?\b`,
+    /* the big data prints — the US, or a major economy's inflation and growth */
+    String.raw`^\W*(?:breaking:\s*)?(?:us|u\.s\.)\b[^.]{0,40}\b(?:cpi|pce|inflation|payrolls?|nonfarm|jobs report|unemployment|jobless claims|gdp|retail sales|pmi|ism|sentiment|durable goods|ppi|housing starts)\b`,
+    String.raw`\b(?:eurozone|euro area|china|chinese|japan|uk|britain|germany|german)\b[^.]{0,40}\b(?:cpi|inflation|gdp)\b`,
+    String.raw`\bmichigan (?:consumer )?sentiment\b|\bconference board\b[^.]{0,30}\bconfidence\b`,
+    /* trade policy */
+    String.raw`\btariffs?\b|\btrade (?:deal|war|talks|agreement|deficit)\b|\bexport controls?\b`,
+    /* the fiscal calendar */
+    String.raw`\b(?:government )?shutdown\b|\bdebt (?:ceiling|limit)\b|\bstimulus\b|\btreasury (?:yields?|auction|refunding)\b|\b10-year yield\b`,
+    /* sanctions, and war or supply that touches oil and shipping */
+    String.raw`\bsanctions?\b`,
+    String.raw`\b(?:hormuz|opec\+?|crude (?:oil )?(?:output|supply|exports?|reserves?)|oil (?:prices?|supply|output|exports?|embargo)|strategic petroleum reserve|spr)\b`,
+    String.raw`\biran\b[^.]{0,60}\b(?:strikes?|attacks?|war)\b|\b(?:strikes?|attacks?|war)\b[^.]{0,60}\biran\b`,
+  ].join('|'),
+  'i',
+);
+const MACRO_TICK_RE = /\b(?:e-?mini|futures)\b[^.]{0,40}\b(?:fell|rose|up|down|gain|lost|drop)|\bspot (?:gold|silver)\b|\bimbalance\b|\bcurrency strength\b|\byen index\b|\beffective federal funds rate\b|\bfinancial stability report\b|^\W*boj:/i;
+export const macroMoves = (headline: string): boolean => MACRO_MOVING_RE.test(headline) && !MACRO_TICK_RE.test(headline);
 const INDEX_TAGS = new Set(['NDAQ', 'ICE', 'SPGI', 'CME', 'DJI', 'DIA', 'QQQ', 'SPY', 'IWM', 'CBOE', 'MSCI']);
 function storyTickers(headline: string, tags: readonly string[] | undefined): { tickers: string[]; mentions: string[] } {
   if (/\$MACRO\b/i.test(headline)) return { tickers: [], mentions: [] };
@@ -278,7 +309,7 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
     const { tickers, mentions } = storyTickers(headline, r.tickers);
     const ticker = tickers[0] ?? null;
     const category = categoryOf(headline, r.tags, !!ticker);
-    const major = !!r.is_major && (!!ticker || category === 'Macro') && !ROUTINE_RE.test(headline) && !INDEX_MOVE_RE.test(headline);
+    const major = !!r.is_major && (!!ticker || (category === 'Macro' && macroMoves(headline))) && !ROUTINE_RE.test(headline) && !INDEX_MOVE_RE.test(headline);
     const pm = publishMove(r.meta, ticker, priorClose, r.created_at);
     const moved = pm.day;
     const move = moved ?? 0;
@@ -628,6 +659,22 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
       unread += 1;
       continue;
     }
+    /* THE ASSET IN THE TYPE FIELD (round 9: Richard W. Allen's AutoZone sale read "Not named on the filing" — the vendor
+       put "AutoZone, Inc. Common Stock (AZO) S \n[ST] … SUBHOLDING OF: …" in txn_type and "SP" in the notes). When the
+       notes name no asset and the type field carries more than its code, the asset (and its symbol) is read from there,
+       the trailing transaction code taken off. */
+    const txnAsset = (() => {
+      if (cleanNotes(r.notes)) return null;
+      const raw = String(r.txn_type || '');
+      const [first, ...rest] = raw.split(/\n/);
+      const head = first.replace(/\s+[PSE](?:\s*\(partial\))?\s*$/i, '').trim();
+      if (head.length < 4 || /^(?:purchase|sale|sell|buy|exchange)/i.test(head)) return null;
+      const notes = [head, ...rest].join(' ');
+      const sym = /\(([A-Z][A-Z0-9.]{0,5})\)/.exec(head)?.[1] ?? '';
+      return { notes, sym, owner: /^sp$/i.test(String(r.notes || '').trim()) ? 'spouse' : undefined };
+    })();
+    const notesUsed = txnAsset ? txnAsset.notes : r.notes;
+    const tickerRaw = r.ticker || txnAsset?.sym || '';
     /* ONE REPORT IS EVERY FIELD OF IT (audit round 5, 2026-10-23): the id cut the notes to 40 characters and left out the
        owner (`issuer`: self, spouse, joint…), so a spouse's trade merged into the member's and a call option into the
        stock bought beside it — Whitehouse read 30 of 37, Pelosi 26 / 18 of 28 / 20, the 90-day book 673 of 699. Only a
@@ -642,11 +689,11 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
       /* the notes join the id: two unnamed treasury bills bought the same day were one row id (duplicate grid rows) */
       id,
       member,
-      ticker: r.ticker && !NO_NAME.test(r.ticker.trim()) && !maturity(r.ticker) ? r.ticker : '',
-      assetDescription: namedAsset(r.issuer, r.ticker, r.notes),
-      assetKind: assetKindOf(r.notes, r.issuer),
+      ticker: tickerRaw && !NO_NAME.test(tickerRaw.trim()) && !maturity(tickerRaw) ? tickerRaw : '',
+      assetDescription: namedAsset(r.issuer, tickerRaw || undefined, notesUsed),
+      assetKind: assetKindOf(notesUsed, r.issuer),
       type,
-      owner: ownerOf(r.notes, r.issuer),
+      owner: ownerOf(notesUsed, txnAsset?.owner && /^undisclosed$/i.test(String(r.issuer || '').trim()) ? txnAsset.owner : r.issuer),
       bracket: bracketOf(r.amounts),
       amountOver: overOf(r.amounts) ?? undefined,
       lagDays: lag,

@@ -40,6 +40,7 @@ import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
 import { sessionBars } from '../../data/levelview';
 import { flipSidesWords } from '../../data/flipLevel';
+import { flipCrossings } from '../../data/flipGauge';
 import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev } from '../../data/uwBook';
 import { oiWhen, valueOiChange } from '../../data/building';
 import { longDay, recordDay } from '../../data/bookWindow';
@@ -225,13 +226,23 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
            calls were added to it): the call wall is the most call gamma, so its size is its call gamma; the put wall's its
            put gamma; the supreme (the most net) and the pin by the net — Building's rule (data/building.ts basis), decided
            by the strike so the levels sharing a row share one figure */
-        const basis = price === levels.supreme ? 'net' : price === levels.callWall && price !== levels.putWall ? 'calls' : price === levels.putWall && price !== levels.callWall ? 'puts' : 'net';
+        const basis = price === levels.supreme ? 'net' : price === levels.callWall && price !== levels.putWall ? 'calls' : price === levels.putWall && price !== levels.callWall ? 'puts' : price === levels.callWall && price === levels.putWall ? 'both' : 'net';
         const now = basis === 'calls' ? node.callGex : basis === 'puts' ? node.putGex : node.netGex;
         const added = basis === 'calls' ? v?.call ?? 0 : basis === 'puts' ? v?.put ?? 0 : (v?.call ?? 0) + (v?.put ?? 0);
         const size = Math.abs(now) - Math.abs(now - added);
         const legWord = basis === 'net' ? '' : `${basis} `;
         const switched = basis === 'net' && Math.sign(now) !== Math.sign(now - added) && Math.abs(now - added) > 0.05 * Math.max(1, Math.abs(now));
-        if (switched) {
+        if (basis === 'both') {
+          /* BOTH WALLS ON ONE STRIKE, EACH BY ITS OWN LEG (the ninth audit's M3): the call wall's calls and the put wall's
+             puts, both said — never the net (NVDA 212.50 "shrank $14M" while both legs grew) */
+          const leg = (g: number, a: number) => Math.abs(g) - Math.abs(g - a);
+          const cs = leg(node.callGex, v?.call ?? 0);
+          const ps = leg(node.putGex, v?.put ?? 0);
+          const w = (x: number) => (Math.abs(x) < 0.5 ? 'held' : `${x > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(x))}`);
+          trendFig = `calls ${w(cs)} · puts ${w(ps)}`;
+          trendWord = oiWords?.day ? oiWords.day : 'overnight';
+          trend = `the call wall and the put wall on one strike, each read by its own leg: its call gamma ${w(cs)}, its put gamma ${w(ps)} ${trendWord}`;
+        } else if (switched) {
           /* a strike that changed sides has no one size — both figures, retail sign */
           const f = (x: number) => `${-x > 0 ? '+' : -x < 0 ? '−' : ''}${fmtUsdShort(Math.abs(x))}`;
           trendFig = `flipped ${f(now - added)} → ${f(now)}`;
@@ -243,9 +254,24 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         } else {
           /* the wall's size in words, no sign beside a signed net (the seventh audit: "−$171M" read as the net falling) */
           trendFig = `${legWord}${size > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(size))}`;
+          /* the supreme that is also a wall: its net, then each wall's own leg (the ninth audit's M3) */
+          if (basis === 'net' && price === levels.supreme && (price === levels.callWall || price === levels.putWall)) {
+            const leg = (g: number, a: number) => Math.abs(g) - Math.abs(g - a);
+            const w = (x: number) => (Math.abs(x) < 0.5 ? 'held' : `${x > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(x))}`);
+            const legs = [price === levels.callWall ? `calls ${w(leg(node.callGex, v?.call ?? 0))}` : null, price === levels.putWall ? `puts ${w(leg(node.putGex, v?.put ?? 0))}` : null].filter(Boolean).join(' · ');
+            trendFig = `net ${trendFig} · ${legs}`;
+          }
           trendWord = oiWords?.day ? oiWords.day : 'overnight';
           trend = `${basis === 'calls' ? 'its call gamma ' : basis === 'puts' ? 'its put gamma ' : ''}${size > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(size))} ${trendWord}${basis === 'net' ? '' : ` — a ${basis === 'calls' ? 'call' : 'put'} wall is the most ${basis === 'calls' ? 'call' : 'put'} gamma, so it is read by that leg`}`;
         }
+      }
+      if (key === 'flip' && bars.length >= 2) {
+        /* THE BOARD'S COUNT, THE BOARD'S WORD (the ninth audit's M2): the flip is a price, not a strike — its row carries how
+           many times price crossed it (one-minute closes changing side, data/flipGauge.ts flipCrossings) beside its tests */
+        const n = flipCrossings(bars, price);
+        trendFig = `crossed ${n}×`;
+        trendWord = 'not a strike';
+        trend = `price crossed the flip ${n}× (closes changing side) — the count the Board prints; the tests are the bars that reached it`;
       }
       const lastTouch = ticks.length ? nyClock(ticks[ticks.length - 1].time * 1000) : null;
       const grade: Row['grade'] =
@@ -358,7 +384,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
             <span role="columnheader" className="text-right" title="Tests where the bar closed back on the near side — the level held">Held</span>
             <span role="columnheader" className="text-right" title="Tests where the bar closed through the level">Broke</span>
             <span role="columnheader" className="text-right" title="The time price last reached the level">Last</span>
-            <span role="columnheader" className={desk} title={`How the hedging at the level changed in the overnight open-interest count${oiWords ? ` — ${oiWords.long}` : ''}, on these contracts, each valued at its own gamma. The flip is a price, not a strike, so it has none${oiWords?.pending ? ` · ${oiWords.pending}` : ''}`}>{oiWords?.day ? `Built ${oiWords.day}` : 'Built overnight'}</span>
+            <span role="columnheader" className={desk} title={`How the hedging at the level changed in the overnight open-interest count${oiWords ? ` — ${oiWords.long}` : ''}, on these contracts, each valued at its own gamma. The flip is a price, not a strike, so it has none${oiWords?.pending ? ` · ${oiWords.pending}` : ''}`}>{oiWords?.day ? `Built ${oiWords.day}` : oiNow ? 'Built overnight' : 'Built …'}</span>
             <span role="columnheader" className={`${desk} text-right whitespace-nowrap`} title={rates.sessions > 0 ? `How often the level's first test held, over the ${rates.sessions} sessions before ${dayW} — each read off its own open, never a later book` : `No sessions before ${dayW} on hand`}>
               Before {rec.isToday ? 'today' : rec.date.slice(5).replace('-', '/')}
             </span>

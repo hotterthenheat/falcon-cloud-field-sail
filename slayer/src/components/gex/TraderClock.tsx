@@ -523,7 +523,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                 <span data-clock-now>
                   {inSession && current ? (
                     <>
-                      <span className="tnum">{hhmm(nowMin)}</span> <span className="font-normal text-textSecondary">{(SHORT_NAME[current.key] ?? current.name).toLowerCase()}</span>
+                      <span className="tnum">{hhmm(nowMin)}</span> <span className="font-normal text-textSecondary" title={current.key === 'charm' ? GLOSSARY.charm : undefined}>{(SHORT_NAME[current.key] ?? current.name).toLowerCase()}</span>
                     </>
                   ) : (
                     <span className="font-normal text-textSecondary">{cash ? clock.label.toLowerCase() : 'outside this window'}</span>
@@ -533,7 +533,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               <ClockFact label="Next">
                 {nextPhase ? (
                   <>
-                    <span className="font-normal text-textSecondary">{(SHORT_NAME[nextPhase.key] ?? nextPhase.name).toLowerCase()}</span> <span className="tnum">{untilNext}m</span>
+                    <span className="font-normal text-textSecondary underline decoration-dotted decoration-textMuted/60 underline-offset-2 cursor-help" title={`${nextPhase.name} starts in ${untilNext} minutes${nextPhase.key === 'charm' ? `\n${GLOSSARY.charm}` : ''}`}>{(SHORT_NAME[nextPhase.key] ?? nextPhase.name).toLowerCase()}</span> <span className="tnum">{untilNext}m</span>
                   </>
                 ) : inSession ? (
                   <span className="font-normal text-textSecondary">{cash ? 'the close' : shown === 'pre' ? 'the open' : 'the end'}</span>

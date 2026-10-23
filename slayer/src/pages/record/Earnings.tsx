@@ -444,7 +444,8 @@ const Earnings = () => {
     const cut = (show === 'all' ? events : events.filter(e => pricedKnown(e) && stateOf(e) === show)).filter(e => week === 'both' || String(e.weekIdx) === week);
     const named = askedIn ? cut.filter(e => e.ticker === asked) : cut;
     /* still to report first, soonest first; the reports already out follow, newest first */
-    return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut));
+    /* (round 9) within a day the known and the largest names first — page one opened on a run of obscure names with "—" */
+    return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut) || Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0) || b.impliedMovePct - a.impliedMovePct);
   }, [events, show, askedIn, asked, week]);
   /* THE GRID PAGES ITSELF (the third audit, 2026-10-23): it was handed a 40-row slice, so a header sort ordered only the
      page in view. Every row goes in and the grid's own pagination pages it, as on Insiders and Congress — a sort runs
@@ -557,10 +558,19 @@ const Earnings = () => {
               ) : scored.length === 0 ? (
                 <span className="text-textMuted">{weekHistOut > 0 ? 'reading the usual moves' : `none with ${MIN_PRICED_PRINTS}+ past moves on file`}</span>
               ) : (
-                <span title={`Known names still to report ${weekWords} with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${ahead.length}. A name with fewer, or none, is not called rich or cheap`}>
-                  <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
-                  <span className="text-textMuted"> · of {scored.length}</span>
-                  {weekHistOut > 0 && <span className="text-textMuted" title="The known names' past reports are read one by one (the feed allows three at a time); the count grows as they land, and stops when every one is in"> · histories {weekKnown.length - weekHistOut} of {weekKnown.length} read</span>}
+                <span title={`Known names still to report ${weekWords} with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${ahead.length}. A name with fewer, or none, is not called rich or cheap. Rich: the options charge more than 1.3× the usual move; cheap: under 0.85×; fair between`}>
+                  {/* THE COUNT SAYS IT IS STILL COUNTING (round 9: the counts ticked up with no cue) */}
+                  {weekHistOut > 0 && <span className="text-warn" title="The known names' past reports are read one by one (the feed allows three at a time); the counts grow as they land, and stop when every one is in" data-earnings-priced-reading>reading {ahead.length - weekHistOut} of {ahead.length} · so far </span>}
+                  <span className={weekHistOut > 0 ? 'opacity-60' : ''}>
+                    <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
+                    <span className="text-textMuted"> · of {scored.length}</span>
+                  </span>
+                </span>
+              )}
+              {/* the colours' key, whatever the count says (round 9) */}
+              {!failed && !pending && (
+                <span className="block text-[9px] font-sans text-textMuted" data-earnings-legend>
+                  <span className="text-warn">rich</span> over 1.3× the usual move · fair between · <span className="text-bull">cheap</span> under 0.85×
                 </span>
               )}
             </Fact>

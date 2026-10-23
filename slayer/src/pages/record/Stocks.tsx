@@ -167,7 +167,7 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const ext = b ? batchExt(b) : q ? extendedLine(q) : data.extPct != null ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
   const day = b && !b.live ? ` (${b.date})` : q?.regDate ? ` (${q.regDate})` : '';
   return (
-    <span className="flex flex-col items-end leading-tight" title={`${pre ? `The last session's change${day}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
+    <span className="flex flex-col items-end justify-center h-full leading-tight" title={`${pre ? `The last session's change${day}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
       <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
       {ext ? <span className="font-mono text-[8px] tnum text-textMuted whitespace-nowrap">{ext.replace('after hours', 'AH').replace('pre-market', 'pre')}</span> : null}
     </span>
@@ -449,7 +449,7 @@ const Stocks = () => {
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the measures, the screen and the rotation mean" testId="stocks-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list but the vendor's screener has no row for ${unscreened.length === 1 ? 'it' : 'them'}, so ${unscreened.length === 1 ? 'it is' : 'they are'} not screened here` : undefined}>
             The {picks.length || 'house list’s'} names the terminal files{unscreened.length ? ` (${unscreened.join(', ')}: no row on the vendor's screener, so not screened)` : ''} — not the whole market — each read on the trend, the numbers and the money from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
           </p>
         </div>

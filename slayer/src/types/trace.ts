@@ -74,6 +74,11 @@ export interface FlowPrint {
   /** A compression package (OPRA cbmo / mctp, or the vendor's `arbitrage` tag) — not a bet; kept out of every
       directional total (data/traceLive printCondition) */
   compression?: boolean;
+  /** A cross trade (report_flags "cross_trade") — pre-arranged between two parties, no side taken; out of every crown */
+  cross?: boolean;
+  /** The quote at the print gives no read: crossed (bid at or over the ask) or one side's quote minutes older than the
+      fill — the side is MID, whatever the vendor tagged */
+  quoteNoRead?: 'crossed' | 'stale';
   /** A flow alert that is a floor package, not a bet (audit round 6): one leg of a no-side package filed in the same
       millisecond as alerts on the root's other contracts, or a contract whose day was mostly floor-traded multi-leg
       packages (flowBook floorPackaged) — set apart wherever alerts are ranked, never called a block */
@@ -134,6 +139,8 @@ export interface BookContract {
   floorPct: number;
   /** Ask-side share of the day's volume, 0-100 — bid side is the remainder */
   askPct: number;
+  /** Share of the day's volume printed as cross trades (the vendor's cross_volume), 0-100 */
+  crossPct?: number;
 
   // -- the overnight ledger (Footprints reads these; day-stable) --
   /** Prior session's OI — deltaOI's base */

@@ -175,7 +175,7 @@ const PinpointLayout = () => {
             cards' own width makes `flex-wrap` carry the side to its own line instead. */}
         <div className="flex-[3_1_0%] min-w-[400px] max-sm:min-w-0 max-sm:basis-full flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
           <div id="pinpoint-head-band" className="empty:hidden min-w-0 flex-1 [&>[data-ledger-toolbar]]:border-0 [&>[data-ledger-toolbar]]:bg-transparent [&>[data-ledger-toolbar]]:p-0" data-shell-band />
-          <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 [&_:where(button)]:hit" data-shell-cards>
+          <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 max-sm:ml-0 max-sm:w-full max-sm:justify-start max-sm:gap-1.5 [&_:where(button)]:hit" data-shell-cards>
             <SessionBook />
             {/* ONE LEVELS CARD FOR THE WHOLE DESK (the ship pass, 2026-10-22): the Map, the Agenda, the Board and Compare all
                 read their supreme, walls, flip and net GEX off the contracts it picks, so one ticker shows one set of

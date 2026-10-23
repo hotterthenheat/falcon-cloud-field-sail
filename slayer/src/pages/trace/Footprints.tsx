@@ -43,7 +43,7 @@ import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import ReadDoor from '../../components/trace/ReadDoor';
 import { earnMarks, weightInk, type InkMarks } from '../../components/trace/earnedInk';
-import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import LeanCell from '../../components/trace/LeanCell';
@@ -201,7 +201,7 @@ const Footprints = () => {
     const cut = runFootprintScreen(book, screen);
     const sided = side === 'ALL' ? cut : cut.filter(r => r.right === side);
     const nq = normSymbol(query);
-    return nq === '' ? sided : sided.filter(r => normSymbol(`${r.ticker}${r.strike}${r.right}`).includes(nq));
+    return nq === '' ? sided : sided.filter(r => matchesContract(query, r));
   }, [book, screen, side, query]);
   const shown = rows;
 
@@ -210,7 +210,7 @@ const Footprints = () => {
   const filtered = useMemo(() => {
     const sided = side === 'ALL' ? book : book.filter(r => r.right === side);
     const nq = normSymbol(query);
-    return nq === '' ? sided : sided.filter(r => normSymbol(`${r.ticker}${r.strike}${r.right}`).includes(nq));
+    return nq === '' ? sided : sided.filter(r => matchesContract(query, r));
   }, [book, side, query]);
   const cutWord = useMemo(() => {
     const bits = [query ? `matching "${query}"` : '', side === 'C' ? 'calls only' : side === 'P' ? 'puts only' : ''].filter(Boolean);
@@ -506,8 +506,8 @@ const Footprints = () => {
               </Champion>
             )}
             {champs.fastest && (
-              <Champion label="Fastest build" ink="supreme" onOpen={() => setOpenKey(champs.fastest!.key)} testId="fastest">
-                {pill(champs.fastest, `+${num(Math.round(champs.fastest.deltaOIPct))}%`)}
+              <Champion label={`Fastest build · ≥${num(FASTEST_MIN_PREV_OI)} OI before`} ink="supreme" title={`The biggest percentage build in open interest among contracts with at least ${num(FASTEST_MIN_PREV_OI)} contracts of open interest before — a contract that went from 3 to 300 is +9,900% on next to nothing, so it is not ranked here`} onOpen={() => setOpenKey(champs.fastest!.key)} testId="fastest">
+                {pill(champs.fastest, `+${num(Math.round(champs.fastest.deltaOIPct))}% from ${num(champs.fastest.prevOI)}`)}
               </Champion>
             )}
           </>

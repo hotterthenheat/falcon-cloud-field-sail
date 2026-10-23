@@ -19,7 +19,7 @@
 ==================================================
 */
 
-import { CoSub } from '../../components/record/CoName';
+import { CoSub, useSeen } from '../../components/record/CoName';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -35,7 +35,7 @@ import { When } from '../../components/record/when';
 import { EtfsGuide, InstitutionsGuide, ShortsGuide } from '../../components/record/FileGuides';
 import { useBoardNames } from '../../data/boardNames';
 import { houseSlug, positionWord, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type ShortRow } from '../../data/fileBooks';
-import { HOUSE_LINES, SHORTS_MIN_FLOAT, SHORTS_SCREEN, useCompanyName, useEtfs, useInstitutions, useShorts, wantAllHouses } from '../../data/liveFiles';
+import { HOUSE_LINES, SHORTS_MIN_FLOAT, SHORTS_SCREEN, fundHoldingsRead, useCompanyName, useEtfs, useInstitutions, useShorts, wantAllHouses, wantFundHoldings } from '../../data/liveFiles';
 import { tickerName } from '../../data/tickers';
 import { FeedFallback } from '../../components/ui/liveRead';
 
@@ -311,6 +311,10 @@ export const Institutions = () => {
     navigate(`/dossier/institutions/${houseSlug(e.data.name)}?line=${e.data.ticker}`);
   };
 
+  /* READING, NOT NOTHING (round 9: "NO LINE ON THIS CUT" stood under "Reading the 13Fs") */
+  const instReading = !failed && feed.length === 0 && (live.status === 'loading' || (!!live.progress && live.progress.done < live.progress.total));
+  /* the cards and the largest line are over the houses read so far — said on them (round 9) */
+  const newestWords = live.held && live.progress ? `among the ${live.progress.done} newest filers` : '';
   return (
     <Page testId="institutions" attrs={{ 'data-window': window }}>
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the filings" testId="institutions-guide" viewport>
@@ -348,7 +352,7 @@ export const Institutions = () => {
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Largest line")}>Largest line</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : live.status === 'loading' && feed.length === 0 ? '…' : <>{facts.lead ? `${facts.lead.ticker} ${moneyB(facts.lead.valueB)}` : '—'}{newestWords && facts.lead ? <span className="text-textMuted text-[10px]"> · {newestWords}</span> : null}</>}</dd>
           </div>
         </dl>
       </div>
@@ -371,9 +375,9 @@ export const Institutions = () => {
         )}
       </p>
       {failed && <FeedFallback />}
-      <Strip title="The lines to know" rest="the largest reported line in each name, biggest first · click one to keep the grid to that name" testId="institutions">
+      <Strip title="The lines to know" rest={`the largest reported line in each name, biggest first${newestWords ? ` — ${newestWords}` : ''} · click one to keep the grid to that name`} testId="institutions">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'No line on this cut'}</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -384,7 +388,7 @@ export const Institutions = () => {
       </Strip>
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-institutions-grid>
         {phone ? (
-          <PhoneCards rows={rows} rowKey={r => r.id} card={InstPhone} onOpen={r => navigate(`/dossier/institutions/${houseSlug(r.name)}?line=${r.ticker}`)} empty={failed ? 'This read did not land' : 'No line on this cut'} testId="institutions" resetKey={rows} />
+          <PhoneCards rows={rows} rowKey={r => r.id} card={InstPhone} onOpen={r => navigate(`/dossier/institutions/${houseSlug(r.name)}?line=${r.ticker}`)} empty={failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut'} testId="institutions" resetKey={rows} />
         ) : (
         <>
         <AgGridProvider modules={GRID_MODULES}>
@@ -403,8 +407,8 @@ export const Institutions = () => {
             animateRows={false}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
-            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No line on this cut')}
-            key={failed ? 'failed' : 'live'}
+            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : instReading ? 'Reading the 13Fs…' : 'No line on this cut')}
+            key={failed ? 'failed' : instReading ? 'reading' : 'live'}
           />
         </AgGridProvider>
         {paged.bar(rows.length, 'institutions')}
@@ -734,19 +738,27 @@ const EtfKindCell = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span cla
 const EtfAum = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{assetsB(data.aumB)}</span> : null);
 const EtfFlow = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className={`font-mono text-[11px] tnum ${ink(data.flow5dM)}`}>{signedM(data.flow5dM)}</span> : null);
 const EtfFee = ({ data }: ICellRendererParams<EtfRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.expensePct == null ? '—' : `${data.expensePct.toFixed(2)}%`}</span> : null);
-const EtfTop = ({ data }: ICellRendererParams<EtfRow>) =>
+/* the fund's holdings are read once its cell is on screen (round 9 — liveFiles.wantFundHoldings) */
+const EtfTop = ({ data }: ICellRendererParams<EtfRow>) => {
+  const [ref, seen] = useSeen<HTMLSpanElement>();
+  const etf = data?.etf ?? '';
+  useEffect(() => {
+    if (seen && etf) wantFundHoldings(etf);
+  }, [seen, etf]);
+  if (!data) return null;
+  if (!fundHoldingsRead(data.etf)) return <span ref={ref} className="font-mono text-[11px] text-textMuted" title="Reading the fund's holdings">…</span>;
   /* a fund with no line on the feed — a dash, not "— · 0.0%" */
-  data && (!data.topHolding || data.topHolding === '—' || !(data.topWeight > 0)) ? (
-    <span className="font-mono text-[11px] text-textMuted">—</span>
-  ) : data ? (
-    <span className="inline-flex items-center gap-1.5 min-w-0" title={`${data.topHolding} · ${data.topWeight.toFixed(2)}% of the fund`}>
+  if (!data.topHolding || data.topHolding === '—' || !(data.topWeight > 0)) return <span ref={ref} className="font-mono text-[11px] text-textMuted">—</span>;
+  return (
+    <span ref={ref} className="inline-flex items-center gap-1.5 min-w-0" title={`${data.topHolding} · ${data.topWeight.toFixed(2)}% of the fund`}>
       {/* a bond fund's largest line is an issue name, not a symbol — no logo for it */}
       {/^[A-Z][A-Z0-9.]{0,5}$/.test(data.topHolding) && <CompanyLogo ticker={data.topHolding} size={14} />}
       <span className="font-mono text-[11px] tnum text-textSecondary truncate">
         {data.topHolding} · {data.topWeight.toFixed(data.topWeight < 1 ? 2 : 1)}%
       </span>
     </span>
-  ) : null;
+  );
+};
 
 const HoldName = ({ data }: ICellRendererParams<EtfHolding>) =>
   data ? (
@@ -811,6 +823,9 @@ export const EtfBook = () => {
   const toggleFund = (etf: string) => setPicks(p => (p.includes(`fund:${etf}`) ? p.filter(x => x !== `fund:${etf}`) : [...p, `fund:${etf}`]));
   const toKnow = useMemo(() => [...cut].sort((a, b) => Math.abs(b.flow5dM) - Math.abs(a.flow5dM)).slice(0, NAMES_TO_KNOW), [cut]);
   const focus = useMemo(() => [...rows].sort((a, b) => b.aumB - a.aumB)[0], [rows]);
+  useEffect(() => {
+    if (focus) wantFundHoldings(focus.etf);
+  }, [focus]);
   const holdings = useMemo(() => (focus ? liveEtfs.holdingsOf(focus.etf) : []), [focus, liveEtfs]);
   const facts = useMemo(() => {
     const inflow = [...rows].sort((a, b) => b.flow5dM - a.flow5dM)[0];
@@ -862,6 +877,8 @@ export const EtfBook = () => {
     navigate(`/dossier/etfs/${e.data.etf}`);
   };
 
+  /* READING, NOT ZERO (round 9: "Funds 0 · Assets $0 · NO FUND ON THIS CUT" beside "Reading the funds") */
+  const etfReading = !failed && liveEtfs.status === 'loading' && liveEtfs.rows.length === 0;
   return (
     <Page testId="etf-book">
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the funds" testId="etfs-guide" viewport>
@@ -878,19 +895,19 @@ export const EtfBook = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Funds")}>Funds</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-etf-count>{failed ? '—' : <>{facts.funds}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-etf-count>{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{facts.funds}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{assetsB(facts.aum)}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{assetsB(facts.aum)}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={`${statHelp("Five-day flow")} Every fund is summed over the same sessions${flowSpan ? ` (${flowSpan})` : ''}.`}>Five-day flow{flowSpan ? ` · ${flowSpan}` : ''}</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(facts.net)}`}>{failed ? '—' : <>{signedM(facts.net)}</>}</dd>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${etfReading ? 'text-textMuted' : ink(facts.net)}`}>{failed ? '—' : etfReading ? '…' : <>{signedM(facts.net)}</>}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("In the book")}>In the book</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{focus ? focus.etf : '—'}</>}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : etfReading ? <span className="text-textMuted">…</span> : <>{focus ? focus.etf : '—'}</>}</dd>
           </div>
         </dl>
       </div>
@@ -933,7 +950,7 @@ export const EtfBook = () => {
       {failed && <FeedFallback />}
       <Strip title="The funds to know" rest="the largest five-day flow, either way · click a fund to keep the grid to it" testId="etfs">
         {toKnow.length === 0 ? (
-          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : 'No fund on this cut'}</div>
+          <div className="h-[70px] flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut'}</div>
         ) : (
           <KnowGrid>
             {toKnow.map(r => (
@@ -944,7 +961,7 @@ export const EtfBook = () => {
       </Strip>
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-etf-grid>
         {phone ? (
-          <PhoneCards rows={rows} rowKey={r => r.etf} card={EtfPhone} onOpen={r => navigate(`/dossier/etfs/${r.etf}`)} empty={failed ? 'This read did not land' : 'No fund on this cut'} testId="etfs" resetKey={rows} />
+          <PhoneCards rows={rows} rowKey={r => r.etf} card={EtfPhone} onOpen={r => navigate(`/dossier/etfs/${r.etf}`)}  empty={failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut'} testId="etfs" resetKey={rows} />
         ) : (
         <>
         <AgGridProvider modules={GRID_MODULES}>
@@ -962,8 +979,8 @@ export const EtfBook = () => {
             animateRows={false}
             tooltipShowDelay={350}
             tooltipHideDelay={8000}
-            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No fund on this cut')}
-            key={failed ? 'failed' : 'live'}
+            overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : etfReading ? 'Reading the funds…' : 'No fund on this cut')}
+            key={failed ? 'failed' : etfReading ? 'reading' : 'live'}
           />
         </AgGridProvider>
         </>

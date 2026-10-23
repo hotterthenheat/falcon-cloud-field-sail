@@ -113,6 +113,9 @@ export const isChosenBuy = (t: { code: TxCode; plan: PlanState; entity?: boolean
 
 /** A code-P purchase by a company or a fund: a strategic stake or a private placement, not a person's chosen buy */
 export const isCorporateBuy = (t: { code: TxCode; entity?: boolean }): boolean => t.code === 'P' && !!t.entity;
+/** An open-market trade either way by a company or a fund (round 9: Saba Capital's buys read CORPORATE while its PDX sale
+    read CHOSEN and counted in "sold by choice") — the filer is classed the same way for its sales */
+export const isCorporateTrade = (t: { code: TxCode; entity?: boolean }): boolean => !!t.entity && !!TX_CODES[t.code]?.openMarket;
 
 const EMPTY: InsiderFlow = { ticker: '', trades: [], bought: 0, sold: 0, net: 0, plannedValue: 0, compValue: 0, buyerCluster: 0, openMarketBuys: 0, chosenSold: 0, signal: 'quiet', windowDays: 0 };
 
@@ -133,7 +136,7 @@ export function summariseFlow(ticker: string, trades: InsiderTrade[], windowDays
         if (isChosenBuy(t)) openMarketBuys += t.value;
       } else {
         sold += t.value;
-        if (t.plan === 'discretionary') chosenSold += t.value;
+        if (t.plan === 'discretionary' && !t.entity) chosenSold += t.value;
       }
       if (t.plan === 'plan' && t.kind === 'SELL') plannedValue += t.value;
     } else compValue += t.value;

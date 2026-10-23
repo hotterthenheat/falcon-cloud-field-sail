@@ -52,7 +52,8 @@ export const CoSub = ({ ticker, fallback, className = 'text-[10px] text-textMute
   const v = n && n.toUpperCase() !== ticker.toUpperCase() ? n : fallback && fallback.toUpperCase() !== ticker.toUpperCase() ? fallback : '';
   return (
     <span ref={ref} className={className} title={v || undefined}>
-      {v}
+      {/* never a blank line while the name is asked (round 9): the ticker stands until it lands */}
+      {v || <span className="opacity-60">{ticker.toUpperCase()}</span>}
     </span>
   );
 };

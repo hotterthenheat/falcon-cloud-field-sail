@@ -567,7 +567,8 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
         <>
           {/* THE CLOCK IT STARTS AT, SAID (the second re-audit, 2026-10-22: the axis began at 08:02 with no word that the
               first ninety minutes are pre-market) */}
-          <Head title="Delta and vega" rest={`${span ?? 'All expiries'} · ${flowSpanWords(flow)}`} />
+          {/* no window in hand yet is not "All expiries" (the ninth audit's m4: one frame of it under Today) */}
+          <Head title="Delta and vega" rest={`${span ?? (dates == null ? '…' : 'All expiries')} · ${flowSpanWords(flow)}`} />
           <HouseChart lines={flow} />
         </>
       ) : windowed ? <Quiet>No flow for this window.</Quiet> : waiting ? <Quiet>Reading the session.</Quiet> : null}
@@ -610,12 +611,16 @@ function flowSpanWords(lines: LineSpec[]): string {
   const to = b >= 16 * 60 ? `${hhmm(b)} after hours` : hhmm(b);
   /* DATED WHEN IT IS NOT TODAY'S (the seventh audit's m6: "pre-market 07:30 → 16:14 after hours" read at 07:17 was
      Thursday's series, said as if it were the day in progress) */
+  /* A SPAN THAT RUNS INTO THE SESSION SAYS SO (the ninth audit's m4: "pre-market 07:30 → 13:24" read as if 13:24 were
+     pre-market): the clocks, then which parts of the day they cover */
+  const parts = [a < 9 * 60 + 30 ? 'pre-market' : null, a < 16 * 60 && b >= 9 * 60 + 30 ? 'session' : null, b >= 16 * 60 ? 'after hours' : null].filter(Boolean) as string[];
+  const joined = parts.length > 1 ? `${hhmm(a)} → ${hhmm(b)}, ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : `${from} → ${to}`;
   const day = nyIsoDate(pts[pts.length - 1].t * 1000);
-  if (day === nyIsoDate()) return `${from} → ${to}`;
+  if (day === nyIsoDate()) return joined;
   const [y, m, d] = day.split('-').map(Number);
   const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
-  return `${dow} ${mon} ${d} · ${from} → ${to}`;
+  return `${dow} ${mon} ${d} · ${joined}`;
 }
 
 function stillListed(rows: Record<string, unknown>[], today: string): Record<string, unknown>[] {
@@ -907,7 +912,8 @@ export function HouseSectors() {
   const total = valued.reduce((a, r) => a + r.value, 0);
   const rows = valued.map(r => ({
     sector: r.sector,
-    value: compact(r.value),
+    /* dollars, said as dollars (round 9: "1.16T", "401.00B") */
+    value: `$${compact(r.value)}`,
     weight: total > 0 ? `${((r.value / total) * 100).toFixed(1)}%` : '',
     positions: r.positions != null ? Math.round(r.positions).toLocaleString('en-US') : '',
   }));

@@ -298,8 +298,14 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     snapshot,
     strikes: profile.strikes,
     maxAbs: profile.maxAbs,
-    read: readRegime(levels).read,
-    expiryCount: surface?.expiries.length ?? 1,
+    /* the walls' words follow each strike's own net sign (core/walls.ts) — retail sign, off the scope's contracts */
+    read: readRegime(levels, k => (lv ? lv.netAt(k) : (() => {
+      const n = lens.chain.find(x => Math.abs(x.strike - k) < 1e-9);
+      return n ? retailNet(n.netGex) : null;
+    })())).read,
+    /* the expiries THESE figures read (the ninth audit's m4: "61 STRIKES · 25 EXPIRIES" under "TODAY'S CONTRACTS") — one
+       on Today or a picked date, every listed one on All expiries */
+    expiryCount: expiry === 'ALL' ? (snapshot.uwExpiries?.length || surface?.expiries.length || 1) : 1,
     expiry,
   };
 }

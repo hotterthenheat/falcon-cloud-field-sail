@@ -659,7 +659,7 @@ export const FundFile = () => {
         {fundPaged.bar(rows.length, 'fund-holdings')}
       </div>
       <Board title="Sectors" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by sector, from the fund’s own weights — not only the lines above'} testId="fund-sectors" rows={sectors.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={SECTOR_COLS} reading={weights.status === 'loading'} />
-      <Board title="Countries" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by country, from the fund’s own weights'} testId="fund-countries" rows={countries.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={COUNTRY_COLS} reading={weights.status === 'loading'} />
+      <Board title="Countries" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : `The whole fund by country, from the fund’s own weights${(() => { const t = countries.reduce((a, c) => a + c.weight, 0); return countries.length && Math.abs(t - 100) > 2 ? ` — the fund's file adds to ${t.toFixed(0)}%, as sent` : ''; })()}`} testId="fund-countries" rows={countries.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={COUNTRY_COLS} reading={weights.status === 'loading'} />
     </Page>
     </>
   );

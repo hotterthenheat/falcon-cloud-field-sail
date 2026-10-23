@@ -29,7 +29,7 @@ import { buildExposureProfile } from './exposure';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge, sessionFlipCrossings } from './flipGauge';
 import { getBoardNames } from './boardNames';
-import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
+import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, peekPriceAt, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
 import { readLevelsScope } from './levelsScope';
 import { levelsBook, recordDay } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
@@ -43,6 +43,8 @@ import type { Candle, MarketSnapshot } from '../types/market';
 export interface BoardRow {
   ticker: string;
   spot: number;
+  /** When the price was printed (epoch ms) */
+  priceAt: number | null;
   /** The regular session's change, percent — 0 while `day.dayPct` is not known */
   changePct: number;
   /** The day's move with the move outside the session kept apart (after hours / pre-market) */
@@ -66,6 +68,8 @@ export interface BoardRow {
   putWall: number;
   /** The wall nearer to spot, and how far it is */
   nearest: { kind: 'call' | 'put'; strike: number; distPct: number };
+  /** The nearest wall's strike net, RETAIL sign — its words follow it (core/walls.ts) */
+  nearestNet: number | null;
   supreme: number;
   /** Net GEX on the Levels card's contracts, in the RETAIL sign (the vendor's): positive = dealers long gamma, their
       hedging absorbs moves; negative = short gamma, it amplifies them. The house's internal sign is the opposite
@@ -269,6 +273,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
     yours: { positions: mine.length, contracts: mine.reduce((s, p) => s + p.contracts, 0) },
     ticker: snapshot.ticker,
     spot,
+    priceAt: peekPriceAt(snapshot.ticker),
     changePct: peekDayMove(snapshot.ticker)?.dayPct ?? 0,
     day: peekDayMove(snapshot.ticker),
     regime: pending ? null : lv ? lv.regime : gauge.regime,
@@ -283,6 +288,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
     callWall,
     putWall,
     nearest,
+    nearestNet: lv ? lv.netAt(nearest.strike) : null,
     supreme,
     netGex: lv ? lv.netGex : snapshot.liveBook ? netGexOf(levelsBook(snapshot, readLevelsScope()).chain) : retailNet(today.netGex),
     bellShare: bell.share,

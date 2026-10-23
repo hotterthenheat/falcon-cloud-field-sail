@@ -16,7 +16,9 @@
 ==================================================
 */
 
-import { notABet } from '../../data/flowBook';
+import { crossDay, floorPackaged, notABet, SPREAD_LEG_PCT } from '../../data/flowBook';
+
+const notABetNoCross = (r: { floorPct: number; multiPct: number }) => floorPackaged(r) || r.multiPct >= SPREAD_LEG_PCT;
 import { useMemo } from 'react';
 import { useContractLast } from '../../data/traceLive';
 import PrintDrilldown from './PrintDrilldown';
@@ -65,7 +67,9 @@ const BookDrill = ({ list, openKey, onOpen, clipFor }: BookDrillProps) => {
       fillPos: last && last.ask > last.bid && last.bid > 0 ? Math.min(1, Math.max(0, (last.fill - last.bid) / (last.ask - last.bid))) : 0.5,
       /* the day is not a leg of anything — unless half or more of it traded as legs of multi-leg orders (audit round 8,
          flowBook notABet): then its side is the packages', and the card gives it no read */
-      legs: notABet(row) ? 2 : 1,
+      legs: notABet(row) && !crossDay(row) ? 2 : 1,
+      /* a day of crosses has no side either (audit round 9) — said as a cross, not as spread legs */
+      cross: crossDay(row) && !notABetNoCross(row) ? true : day.cross,
       strat: '—' as const,
       theta: last?.theta ?? day.theta,
       dayCard: { last: last ? { fill: last.fill, size: last.size, time: last.time, side: last.side, volume: last.volume ?? 0 } : null, session: last?.extended ? 'after hours' : 'regular session' },

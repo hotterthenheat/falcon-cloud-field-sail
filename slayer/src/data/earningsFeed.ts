@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Sector } from './universe';
 import { lookup } from './universe';
 import { decide, isKnownName, type ActiveContract, type EarningsDossier, type EarningsEvent, type EarningsQuarter, type NextReport, type ReportSlot } from './earnings';
-import { tickerName } from './tickers';
+import { rememberCompanyNames, tickerName, titleCompany } from './tickers';
 import { MARKET_HOLIDAYS } from '../core/calendar';
 import { boardMondayIso, shortDay } from './nyDate';
 import { loadRegularCloses, peekRegularCloses, phaseOf } from './dayChange';
@@ -121,7 +121,7 @@ const SECTOR: Record<string, Sector> = {
 const sectorOf = (raw: string | undefined, ticker: string): Sector =>
   (raw && SECTOR[raw]) || lookup(ticker)?.sector || 'Industrials';
 
-const titleName = (s: string): string => s.toLowerCase().replace(/\b[a-z]/g, m => m.toUpperCase());
+const titleName = (s: string): string => titleCompany(s.toUpperCase());
 
 /* THE EXPECTED MOVE'S UNIT (the data audit, 2026-10-22): the spec types `expected_move_perc` as a fraction of the price
    ("0.08" is 8%), every row. The old "1.5 and over is already a percent" guess printed FSP's 4.08 (a 408% straddle on a
@@ -276,11 +276,18 @@ const liveMoves = new Map<string, { pct: number; live: boolean; at: number }>();
 const liveMoveAsked = new Map<string, number>();
 const LIVE_MOVE_EVERY = 60_000;
 /** Reads the move so far of reports whose reacting session is today (deduped, a minute apart a name) */
-export async function refreshReactions(items: readonly { ticker: string; iso?: string; slot: ReportSlot; timeKnown?: boolean; reported?: boolean }[]): Promise<boolean> {
+export async function refreshReactions(items: readonly { ticker: string; iso?: string; slot: ReportSlot; timeKnown?: boolean; reported?: boolean; known?: boolean }[]): Promise<boolean> {
   const today = nyToday();
   if (!reactionSessionOn(today, today)) return false;
   const now = Date.now();
-  const want = items.filter(e => e.iso && e.reported && reactionIsoOf(e.iso, e.slot, e.timeKnown !== false) === today && now - (liveMoveAsked.get(e.ticker) ?? 0) > LIVE_MOVE_EVERY - 2000);
+  /* after the bell each name's regular close is a daily-row read — the known names only, at most thirty */
+  const afterBell = nyMinutesNow() >= 16 * 60;
+  /* a move read in the session is the day's move once the bell has rung */
+  if (afterBell) for (const [k, v] of liveMoves) if (v.live) liveMoves.set(k, { ...v, live: false });
+  const want = items
+    .filter(e => e.iso && e.reported && reactionIsoOf(e.iso, e.slot, e.timeKnown !== false) === today && now - (liveMoveAsked.get(e.ticker) ?? 0) > LIVE_MOVE_EVERY - 2000)
+    .filter(e => !afterBell || (e.known !== false && !liveMoves.has(`${e.ticker.toUpperCase()}|${e.iso}`)))
+    .slice(0, afterBell ? 30 : Infinity);
   const byTicker = new Map<string, string>();
   for (const e of want) byTicker.set(e.ticker.toUpperCase(), e.iso!);
   const names = [...byTicker.keys()];
@@ -315,12 +322,12 @@ export async function refreshReactions(items: readonly { ticker: string; iso?: s
 }
 /** A page showing reports keeps their reacting session's move fresh (a minute apart) */
 export function useLiveReactions(items: readonly EarningsEvent[]): void {
-  const key = items.filter(e => e.reported && e.iso && e.reactionIso === nyToday()).map(e => `${e.ticker}|${e.iso}|${e.slot}|${e.timeKnown !== false ? 1 : 0}`).sort().join(',');
+  const key = items.filter(e => e.reported && e.iso && e.reactionIso === nyToday()).map(e => `${e.ticker}|${e.iso}|${e.slot}|${e.timeKnown !== false ? 1 : 0}|${e.known ? 1 : 0}`).sort().join(',');
   useEffect(() => {
     if (!key) return;
     const list = key.split(',').map(k => {
-      const [ticker, iso, slot, tk] = k.split('|');
-      return { ticker, iso, slot: slot as ReportSlot, timeKnown: tk === '1', reported: true };
+      const [ticker, iso, slot, tk, kn] = k.split('|');
+      return { ticker, iso, slot: slot as ReportSlot, timeKnown: tk === '1', reported: true, known: kn === '1' };
     });
     void refreshReactions(list);
     const id = window.setInterval(() => void refreshReactions(list), LIVE_MOVE_EVERY);
@@ -900,6 +907,8 @@ export function ensureEarnings(): void {
         }
       }
       if (!events.length) throw new Error('empty');
+      /* the calendar's names serve every name cell that would otherwise ask the stock's info (round 9) */
+      rememberCompanyNames(batches.flat().map(r => [String(r.symbol || ''), r.full_name] as const));
       /* A SECOND SHARE CLASS (the re-audit, 2026-10-22: BBDO read "—" everywhere): a symbol that is another symbol on
          the same day with a class letter added is that company's other class; its history is filed under the first */
       const byDay = new Map<string, Set<string>>();
@@ -1070,4 +1079,43 @@ export function useEveryReportQuiet(): { status: 'loading' | 'live' | 'sim'; eve
   const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => ({ status: feed.status as 'loading' | 'live' | 'sim', events: feed.status === 'live' ? feed.events : [] }), [version]);
+}
+
+/* THE NEXT PRINT, READ NARROW (round 9: the News page's "Next print" chip had the whole fortnight read — ~25 calendar
+   pages — to name one report). Until the fortnight is read (the calendar below asks for it once it is on screen), the
+   chip reads today's two lists and the next session's before-the-open list, the first page of each — three calls. */
+let near: { status: 'loading' | 'live' | 'sim'; events: EarningsEvent[] } = { status: 'loading', events: [] };
+let nearStarted = false;
+function ensureNear(): void {
+  if (nearStarted || typeof window === 'undefined') return;
+  nearStarted = true;
+  const today = nyToday();
+  let next = addDays(today, 1);
+  for (let i = 0; i < 10 && (weekdayOf(next) === 0 || weekdayOf(next) === 6 || MARKET_HOLIDAYS.has(next)); i++) next = addDays(next, 1);
+  const asks: [('premarket' | 'afterhours'), string][] = [['premarket', today], ['afterhours', today], ['premarket', next]];
+  const session = weekdayOf(today) !== 0 && weekdayOf(today) !== 6 && !MARKET_HOLIDAYS.has(today);
+  void Promise.all((session ? asks : asks.slice(2)).map(([slot, date]) => whalesEarningsSlot(slot, date).catch(() => null)))
+    .then(lists => {
+      const seen = new Set<string>();
+      const events: EarningsEvent[] = [];
+      for (const rows of lists) {
+        for (const row of Array.isArray(rows) ? (rows as SlotRow[]) : []) {
+          const ev = baseEvent(row, today);
+          if (!ev || seen.has(`${ev.ticker}-${ev.iso}`)) continue;
+          seen.add(`${ev.ticker}-${ev.iso}`);
+          events.push(ev);
+        }
+      }
+      near = { status: lists.some(l => Array.isArray(l)) ? 'live' : 'sim', events };
+      emit();
+    });
+}
+/** The reports of today and the next session — the fortnight's when it is read, else three narrow reads */
+export function useNearReports(): { status: 'loading' | 'live' | 'sim'; events: EarningsEvent[]; fortnight: boolean } {
+  const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
+  useEffect(() => {
+    if (feed.status !== 'live') ensureNear();
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => (feed.status === 'live' ? { status: 'live' as const, events: feed.events, fortnight: true } : { ...near, fortnight: false }), [version]);
 }

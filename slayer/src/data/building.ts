@@ -80,8 +80,14 @@ export interface BuildRow {
       leg that makes it — levelsFor legsAt), the supreme and every other strike by |net now| − |net was| (the eighth audit's
       M2: the 765 call wall "shrank $341M" off its net while 8,499 calls were added to it) */
   sizeChange: number;
-  /** What `sizeChange` measures */
-  basis: 'calls' | 'puts' | 'net';
+  /** What `sizeChange` measures — 'both' on a strike that is the call wall AND the put wall (and not the supreme): each
+      role by its own leg, `callSize` and `putSize` (the ninth audit's M3: NVDA 212.50 "shrank $14M" off its net while
+      6,018 calls and 4,549 puts were added) */
+  basis: 'calls' | 'puts' | 'net' | 'both';
+  /** The call leg's size change |now| − |was| (+ grew) — set when `basis` is 'both' */
+  callSize?: number;
+  /** The put leg's size change |now| − |was| (+ grew) — set when `basis` is 'both' */
+  putSize?: number;
   /** |now| − |open| on the net, whatever the strike is — the totals' figure */
   netSizeChange: number;
   /** Net gamma now less what it was, in the RETAIL sign every page prints (calls +, puts −): the one change a strike shows
@@ -314,8 +320,14 @@ export const switchedWords = (fromRetail: number, toRetail: number): string => {
 };
 /** A wall's size change in words — "grew $171M" / "shrank $171M" — never a sign beside a signed net (the seventh audit) */
 export const sizeWords = (v: number): string => (Math.abs(v) < 0.5 ? 'held its size' : `${v > 0 ? 'grew' : 'shrank'} ${fmtDollars(Math.abs(v))}`);
+/** A strike that is both walls, each role by its own leg: "calls grew $12M · puts grew $9M" */
+export const bothWords = (r: Pick<BuildRow, 'callSize' | 'putSize'>): string =>
+  [r.callSize != null ? `calls ${sizeWords(r.callSize)}` : null, r.putSize != null ? `puts ${sizeWords(r.putSize)}` : null].filter(Boolean).join(' · ');
 
-export const sideWords = (v: number) => (v < 0 ? 'call-heavy, so dealers push back on moves here' : 'put-heavy, so dealers push moves along here');
+/* NO BEHAVIOUR WORDS ON A $0 STRIKE (the ninth audit's m4: "$0 · put-heavy · dealers push moves along here") */
+export const sideWords = (v: number) => (Math.abs(v) < 0.5 ? 'no gamma here' : v < 0 ? 'call-heavy, so dealers push back on moves here' : 'put-heavy, so dealers push moves along here');
+/** The lean alone, for a compact cell: "call-heavy" · "put-heavy" · "no gamma" */
+export const leanWord = (v: number) => (Math.abs(v) < 0.5 ? 'no gamma' : v < 0 ? 'call-heavy' : 'put-heavy');
 
 /** Today's snapshots by the bars' own session cut — the same cut every session feature uses */
 export function todaySnapshots(snaps: readonly GexSnapshot[], bars: readonly Candle[]): GexSnapshot[] {
@@ -424,10 +436,17 @@ export function buildBuilding(
     /* THE LEG THAT MAKES THE LEVEL (the eighth audit's M2): a call wall is the most call gamma, so it grew when its call
        gamma grew; a put wall by its puts; the supreme (the most net) and every other strike by the net */
     const kRoles = levelRoles(K, levels);
-    const basis: BuildRow['basis'] = kRoles.includes('supreme') ? 'net' : kRoles.includes('call wall') && !kRoles.includes('put wall') ? 'calls' : kRoles.includes('put wall') && !kRoles.includes('call wall') ? 'puts' : 'net';
-    const legNow = basis === 'calls' ? nowC : basis === 'puts' ? nowP : now;
-    const legOpen = basis === 'calls' ? nowC - callAddedSigned : basis === 'puts' ? nowP - putAddedSigned : open;
-    const sizeChange = basis === 'net' ? netSizeChange : Math.abs(legNow) - Math.abs(legOpen);
+    /* …AND A STRIKE THAT IS BOTH WALLS BY EACH LEG (the ninth audit's M3: NVDA 212.50, the call wall and the put wall, read
+       "draining · shrank $14M" off its net while both legs grew) — the call wall's role by its calls, the put wall's by its
+       puts, both said; only the supreme is read by the net */
+    const isCall = kRoles.includes('call wall');
+    const isPut = kRoles.includes('put wall');
+    const basis: BuildRow['basis'] = kRoles.includes('supreme') ? 'net' : isCall && isPut ? 'both' : isCall ? 'calls' : isPut ? 'puts' : 'net';
+    const callSize = Math.abs(nowC) - Math.abs(nowC - callAddedSigned);
+    const putSize = Math.abs(nowP) - Math.abs(nowP - putAddedSigned);
+    const legNow = basis === 'calls' ? nowC : basis === 'puts' ? nowP : basis === 'both' ? Math.abs(nowC) + Math.abs(nowP) : now;
+    const legOpen = basis === 'calls' ? nowC - callAddedSigned : basis === 'puts' ? nowP - putAddedSigned : basis === 'both' ? Math.abs(nowC - callAddedSigned) + Math.abs(nowP - putAddedSigned) : open;
+    const sizeChange = basis === 'net' ? netSizeChange : basis === 'both' ? callSize + putSize : Math.abs(legNow) - Math.abs(legOpen);
 
     /* The shape: the wall's size through the day at today's units */
     const series = sampled.map(snap => {
@@ -467,7 +486,9 @@ export function buildBuilding(
     const byClose = real ? 0 : (sizeChange / elapsedMin) * minutesLeft;
 
     const role: BuildRole = K === levels.callWall ? 'call wall' : K === levels.putWall ? 'put wall' : K === levels.supreme ? 'supreme' : null;
-    rows.push({ strike: K, role, roles: kRoles, pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, basis, netSizeChange, change: shownGamma(now) - shownGamma(open), shape, when, verdict, byClose, words: '' });
+    /* the supreme that is also a wall keeps its net, and says each wall's leg beside it (the ninth audit's M3) */
+    const wallLegs = basis === 'both' || (basis === 'net' && (isCall || isPut));
+    rows.push({ strike: K, role, roles: kRoles, pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, basis, ...(wallLegs ? { callSize: isCall ? callSize : undefined, putSize: isPut ? putSize : undefined } : {}), netSizeChange, change: shownGamma(now) - shownGamma(open), shape, when, verdict, byClose, words: '' });
     maxAbs = Math.max(maxAbs, Math.abs(now));
     maxChange = Math.max(maxChange, Math.abs(callAdded), Math.abs(putAdded));
   }
@@ -512,7 +533,9 @@ export function buildBuilding(
     const change =
       r.verdict === 'switched'
         ? `It ${switchedWords(shownGamma(r.open), shownGamma(r.now))} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`
-        : `${legWord} ${sizeWords(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)${r.basis === 'net' ? why : ''}`;
+        : r.basis === 'both'
+          ? `It is the call wall and the put wall, each read by its own leg: ${bothWords(r)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`
+          : `${legWord} ${sizeWords(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)${r.basis === 'net' ? why : ''}${r.basis === 'net' && (r.callSize != null || r.putSize != null) ? `; as the ${[r.callSize != null ? 'call wall' : null, r.putSize != null ? 'put wall' : null].filter(Boolean).join(' and ')}, each read by its own leg: ${bothWords(r)}` : ''}`;
     const when = r.when ? `, ${whenWords(r.when)}` : '';
     const pace = clock.inSession && !real && r.verdict !== 'steady' ? ` At today's pace ${signed(r.byClose)} ${r.byClose >= 0 ? 'more' : 'further'} by the close.` : '';
     switch (r.verdict) {

@@ -62,7 +62,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The flip's rule in a reader's words — the one statement of it on the pages (keep it the code's: see the head) */
 export const FLIP_RULE =
-  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero (the nearest crossing within ±10%). Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold; the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
+  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. When the profile crosses more than once, the flip stays on the crossing it stood on while that crossing is still there (the first read takes the one nearest price), the other is named beside it, and the flip moves only when its crossing closes — and says so. Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold; the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
 
@@ -167,6 +167,68 @@ function pricingClock(pricedAt: number | undefined, now: number): number {
 export interface LevelFlip extends FlipRead {
   /** False while some of the scope's expiries have not landed — the flip is then provisional */
   complete: boolean;
+  /** Another price where the profile crosses zero inside the range, nearest the flip — null when it crosses once */
+  second?: number | null;
+  /** The flip moved today because the crossing it stood on closed: where it was, and when (epoch ms) */
+  moved?: { from: number; at: number } | null;
+}
+
+/*
+  TWO CROSSINGS, ONE FLIP, NO SILENT SWAP (the ninth audit's M4, 2026-10-23: SPY's Today flip read 764.21 → 772.62 →
+  764.04 → 772.06 → 773.13 → 764.36 → 763.96 within 35 minutes — with ~2.5h to expiry the profile crossed zero twice, and
+  the nearer crossing opened and closed as the minute's rows re-priced). When the profile crosses more than once, the flip
+  stays on the crossing it stood on while that crossing is still there (within STICK_FRAC of price), and the other is
+  disclosed (`second`). It moves only when its crossing closes — and then says so (`moved`). The choice is kept per name,
+  contracts and New York day, in this browser (localStorage), so a reload with the same inputs reads the same flip; a
+  first read takes the crossing nearest price.
+*/
+const STICK_FRAC = 0.004;
+const sticky = new Map<string, { flip: number; moved: { from: number; at: number } | null }>();
+const STICK_STORE = 'pinpoint.flipStick.v1';
+let stickLoaded = false;
+function loadStick(): void {
+  if (stickLoaded) return;
+  stickLoaded = true;
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STICK_STORE) : null;
+    if (!raw) return;
+    const today = nyIsoDate();
+    const got = JSON.parse(raw) as Record<string, { flip: number; moved: { from: number; at: number } | null }>;
+    for (const [k, v] of Object.entries(got)) if (k.endsWith(`|${today}`) && v && Number.isFinite(v.flip)) sticky.set(k, v);
+  } catch {
+    /* no storage: the choice lives for this page */
+  }
+}
+function saveStick(): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const today = nyIsoDate();
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of sticky) if (k.endsWith(`|${today}`)) out[k] = v;
+    localStorage.setItem(STICK_STORE, JSON.stringify(out));
+  } catch {
+    /* no storage */
+  }
+}
+/** The flip among the profile's crossings, with hysteresis (see above) — `key` names the name, contracts and day */
+export function stickFlip(key: string, read: FlipRead, spot: number, now: number = Date.now()): { flip: number | null; second: number | null; moved: { from: number; at: number } | null } {
+  loadStick();
+  const xs = read.crossings ?? (read.flip != null ? [read.flip] : []);
+  const otherOf = (f: number) => xs.filter(x => Math.abs(x - f) > 1e-6).sort((a, b) => Math.abs(a - f) - Math.abs(b - f))[0] ?? null;
+  if (read.flip == null || !xs.length) return { flip: read.flip, second: null, moved: null };
+  const prev = sticky.get(key);
+  let flip = read.flip;
+  let moved = prev?.moved ?? null;
+  if (prev) {
+    const near = [...xs].sort((a, b) => Math.abs(a - prev.flip) - Math.abs(b - prev.flip))[0];
+    if (near != null && Math.abs(near - prev.flip) <= STICK_FRAC * spot) flip = near;
+    else moved = { from: prev.flip, at: now };
+  }
+  if (!prev || Math.abs(prev.flip - flip) > 1e-9 || prev.moved !== moved) {
+    sticky.set(key, { flip, moved });
+    saveStick();
+  }
+  return { flip, second: xs.length > 1 ? otherOf(flip) : null, moved };
 }
 
 const cache = new Map<string, LevelFlip>();
@@ -250,7 +312,18 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   const hit = cache.get(set.key);
   if (hit) return hit;
   if (!set.withVol) return fallback(set.complete);
-  const read: LevelFlip = { ...repricedFlip(set.legs, spot, DEFAULT_R), complete: set.complete };
+  const raw = repricedFlip(set.legs, spot, DEFAULT_R);
+  let read: LevelFlip = { ...raw, complete: set.complete, second: null, moved: null };
+  /* the live levels pick among crossings with hysteresis (stickFlip) — once final, so a provisional read never moves the
+     kept choice; a pinned clock (a session's report, the replay) takes the crossing nearest its price */
+  const live = at == null && snapshot.asOf == null && snapshot.flipAt == null;
+  if (live && set.complete && raw.flip != null) {
+    const dates = datesOf(snapshot, chain);
+    const stick = stickFlip(`${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : (dates ?? []).join(',')}|${nyIsoDate()}`, raw, spot);
+    read = { ...read, flip: stick.flip, second: stick.second, moved: stick.moved, beyond: stick.flip == null ? null : raw.netAtSpot < 0 ? 'short' : 'long' };
+  } else if ((raw.crossings?.length ?? 0) > 1 && raw.flip != null) {
+    read = { ...read, second: raw.crossings!.filter(x => x !== raw.flip).sort((a, b) => Math.abs(a - raw.flip!) - Math.abs(b - raw.flip!))[0] ?? null };
+  }
   if (cache.size > 400) cache.clear();
   cache.set(set.key, read);
   return read;
@@ -337,7 +410,7 @@ export interface RegimeRead {
  * call wall (the most call hedging) and the put wall (the most put hedging), each described from where it sits against
  * price (core/walls.ts callWallWords / putWallWords) — a put wall above price is overhead hedging, not a floor.
  */
-export function readRegime(levels: { spot: number; flip: number; flipFound?: boolean; callWall: number; putWall: number; net?: number }): RegimeRead {
+export function readRegime(levels: { spot: number; flip: number; flipFound?: boolean; callWall: number; putWall: number; net?: number }, netAt?: (strike: number) => number | null): RegimeRead {
   const { spot, callWall, putWall } = levels;
   const flip = levels.flipFound === false ? null : levels.flip;
   /* one strike format on every page (the seventh audit's m2: "769.00" here, "769" everywhere else) */
@@ -365,12 +438,12 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   if (long && between && cwPct <= 1.2 && pwPct <= 1.2)
     return { key: 'PINNED', read: `Dealers are long gamma, so their hedging absorbs moves between the ${px(callWall)} call wall and the ${px(putWall)} put wall — dips get bought, rallies get sold, drift beats trend until one side gives.${flipClause}` };
   if (long)
-    return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves. ${cap(cw)}: ${callWallWords(callWall, spot)}; ${pw}: ${putWallWords(putWall, spot)}.${flipClause}` };
+    return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}` };
   if (putWall < spot && pwPct >= 2.6)
     return { key: 'WHIPSAW', read: `Dealers are short gamma, so their hedging speeds a move up whichever way it goes, and the put wall is all the way down at ${px(putWall)}.${flipClause}` };
   return {
     key: 'AMPLIFYING',
     /* the one order (core/walls.ts LEVEL_ORDER): the call wall, then the put wall (the seventh audit's m2) */
-    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(cw)}: ${callWallWords(callWall, spot)}; ${pw}: ${putWallWords(putWall, spot)}.${flipClause}`,
+    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}`,
   };
 }

@@ -26,7 +26,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { floorPackaged, notABet, spreadLegHint, SPREAD_KINDS, stockLike, STOCK_LIKE_HINT, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
+import { floorPackaged, notABet, notABetHint, spreadLegHint, SPREAD_KINDS, stockLike, STOCK_LIKE_HINT, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
 import { dayLean, lastRegularClose, nyDateOf, nyIsoToday, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
@@ -568,7 +568,7 @@ const Compare = () => {
       ],
     },
     {
-      title: `The book · each name's standing contracts with the most premium (up to 80) — floor packages and spread legs left out${a.book.apart.count || b.book.apart.count ? ` (${a.ticker} ${num(a.book.apart.count)} · ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} · ${fmtUsd(b.book.apart.premium)})` : ''}: legs of packages, not bets`,
+      title: `The book · each name's standing contracts with the most premium (up to 80) — floor packages, spread legs and crosses left out${a.book.apart.count || b.book.apart.count ? ` (${a.ticker} ${num(a.book.apart.count)} · ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} · ${fmtUsd(b.book.apart.premium)})` : ''}: legs of packages, not bets`,
       rows: [
         {
           key: 'count',
@@ -657,7 +657,7 @@ const Compare = () => {
     {
       /* WHOSE TRADING (audit round 7): the change of the newest published count — "OI after Oct 22's trading" — both names
          on the same day, or each says its own */
-      title: `Footprints · open interest on those contracts, ${oiDayTitle}`,
+      title: `Footprints · open interest on those contracts, ${oiDayTitle}${a.interest.apartCount || b.interest.apartCount ? ` — the book's bets only; floor packages, spread legs and crosses left out (${a.ticker} ${num(a.interest.apartCount)}, ${b.ticker} ${num(b.interest.apartCount)})` : ''}`,
       rows: [
         {
           key: 'added',
@@ -812,7 +812,7 @@ const Compare = () => {
       <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
         <CompanyLogo ticker={s.ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s heaviest contracts</span>
-        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· by dollars · packages &amp; spread legs apart · a row opens the card</span>
+        <span className="text-[10.5px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">· by dollars · packages &amp; spread legs apart · a row opens the card</span>
       </div>
       {listOf(s.rows).map(r => (
         <button
@@ -831,8 +831,8 @@ const Compare = () => {
                 floor pkg
               </span>
             ) : notABet(r) ? (
-              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={`${spreadLegHint(r)} — not ranked`}>
-                spread legs
+              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={`${notABetHint(r)} — not ranked`}>
+                {r.multiPct >= 50 ? 'spread legs' : 'a cross'}
               </span>
             ) : stockLike(r) ? (
               <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={STOCK_LIKE_HINT}>
@@ -844,7 +844,7 @@ const Compare = () => {
           <span className="font-mono text-[12px] tnum font-semibold text-textPrimary text-right">{fmtUsd(r.premium)}</span>
           <span className="font-mono text-[10.5px] tnum text-textSecondary text-right whitespace-nowrap max-sm:hidden">{num(r.volume)} vol</span>
           <span className="flex justify-end">
-            <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} />
+            <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} crossPct={r.crossPct} />
           </span>
         </button>
       ))}
@@ -857,19 +857,19 @@ const Compare = () => {
       <div className="px-5 flex items-center gap-2 border-y border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
         <CompanyLogo ticker={s.ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s structures</span>
-        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· the tape reconstructed · the most net premium first</span>
+        <span className="text-[10.5px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">· the tape reconstructed · the most net premium first</span>
       </div>
       {s.structures.list.slice(0, CMP_LISTED).map(t => (
         <div
           key={t.id}
           /* On a phone: the kind, the strikes and the dollars; the expiry and the debit/credit go */
           className="px-5 grid grid-cols-[96px_minmax(0,1fr)_120px_96px_76px] max-sm:grid-cols-[96px_minmax(0,1fr)_76px] items-center gap-x-3 border-b border-borderSubtle/40 hover:bg-silver/[0.04] transition-colors"
-          style={{ height: CMP_LIST_ROW_H }}
+          style={{ minHeight: CMP_LIST_ROW_H }}
           data-compare-structure={t.id}
           title={SPREAD_KINDS.find(k => k.key === t.kind)?.read}
         >
           <span className="text-[11.5px] font-semibold text-textPrimary whitespace-nowrap">{kindOf(t)}</span>
-          <span className="font-mono text-[12px] tnum font-semibold text-textPrimary whitespace-nowrap truncate">{t.strikesLabel}</span>
+          <span className="font-mono text-[12px] tnum font-semibold text-textPrimary break-words sm:whitespace-nowrap sm:truncate">{t.strikesLabel}</span>
           <span className="font-mono text-[10px] tnum text-textMuted whitespace-nowrap max-sm:hidden">
             {t.expiry} · {t.dte}d
           </span>
@@ -921,7 +921,7 @@ const Compare = () => {
             {netHeld ? <>{cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}</> : <span className="text-textMuted">…</span>}
           </Champion>
           {cmp.heavier ? (
-            <Champion label="Heavier premium" ink="supreme" title={`The name with more premium across its standing contracts with the most premium (up to 80), floor packages and spread legs left out (${a.ticker} ${num(a.book.apart.count)} for ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} for ${fmtUsd(b.book.apart.premium)}) — put it on Net Flow's pane`} onOpen={() => toNetFlow(cmp.heavier!.ticker)} testId="heavier">
+            <Champion label="Heavier premium" ink="supreme" title={`The name with more premium across its standing contracts with the most premium (up to 80), floor packages, spread legs and crosses left out (${a.ticker} ${num(a.book.apart.count)} for ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} for ${fmtUsd(b.book.apart.premium)}) — put it on Net Flow's pane`} onOpen={() => toNetFlow(cmp.heavier!.ticker)} testId="heavier">
               {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
             </Champion>
           ) : (
@@ -934,10 +934,19 @@ const Compare = () => {
               {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
               {!cmp.busier ? (
                 a.tape.prints === 0 ? <span className="text-textMuted">—</span> : <span title="Both names printed the same number of regular-session prints over the same stretch">level <span className="text-textMuted">·</span> {num(a.tape.prints)} prints each{tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}</span>
-              ) : cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}{(() => {
+              ) : cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : (() => {
+                /* PLAIN WORDS (audit round 9: "300 prints since 13:10 · 120.6/s"): how many prints, over how long, and the
+                   other name's count beside it */
+                const other = cmp.busier === a ? b : a;
                 const sec = cmp.busier.tape.lastMs && tapeSince ? (Math.max(a.tape.lastMs ?? 0, b.tape.lastMs ?? 0) - tapeSince * 1000) / 1000 : 0;
-                return sec >= 1 ? <span className="text-textMuted"> · {(cmp.busier.tape.prints / sec).toFixed(sec < 60 ? 1 : 2)}/s</span> : null;
-              })()}</>}
+                const span = sec >= 1 ? (sec < 90 ? `the last ${Math.round(sec)} seconds` : `the last ${Math.round(sec / 60)} minutes`) : null;
+                return (
+                  <>
+                    {cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{span ? ` in ${span}` : tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}
+                    <span className="text-textMuted"> · {other.ticker} {num(other.tape.prints)}</span>
+                  </>
+                );
+              })()}
             </Fact>
           )}
         </>

@@ -64,7 +64,7 @@ const TraceLayout = () => {
             </span>
             <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{active.label}</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{active.subtitle}</p>
+          <p className="mt-0.5 text-[11px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">{active.subtitle}</p>
         </div>
         <div className="flex items-center gap-2 max-sm:w-full sm:shrink-0" data-trace-picker>
           {picker && <TickerSearch value={activeTicker} onChange={changeTicker} />}

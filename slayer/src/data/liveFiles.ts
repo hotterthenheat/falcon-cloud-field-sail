@@ -9,7 +9,7 @@ import { houseSector, houseSlug, type EtfHolding, type EtfKind, type EtfRow, typ
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
-import { companyName, hasVendorName, isListed, rememberCompanyName, subscribeCompanyNames } from './tickers';
+import { companyName, hasVendorName, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames } from './tickers';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { loadRegularCloses } from './dayChange';
 import {
@@ -738,32 +738,71 @@ function fundRow(e: { etf: string; kind: EtfKind }, [infoR, holdR, flowR]: FundR
   };
   return { row, held };
 }
+/* THE HOLDINGS WHEN THEY ARE SHOWN (round 9: the index read /holdings for all 18 funds — up to 250 lines each — for one
+   "Largest holding" column; 63 requests at load). The index reads each fund's info and flows; a fund's holdings are read
+   when its largest-holding cell (or card) comes on screen, or it is the fund whose book the page shows, and the row's
+   largest line, equity share and as-of date are filled in then. */
+const etfReads = new Map<string, FundReads>();
+let etfCommon: string[] = [];
+const etfHoldAsked = new Set<string>();
+const etfHoldRead = new Set<string>();
 async function pullEtfs() {
   try {
     const rows: EtfRow[] = [];
-    const holdings: Record<string, EtfHolding[]> = {};
     /* every fund asked at once — one by one, the head read "6 funds" for the half-minute the rest took to land */
-    const reads = await Promise.all(ETF_LIST.map(e => readFund(e.etf)));
+    const reads: FundReads[] = await Promise.all(
+      ETF_LIST.map(e =>
+        Promise.all([whalesEtfInfo(e.etf).catch(() => null as UwEtfInfo | null), Promise.resolve([] as UwEtfHolding[]), whalesEtfFlow(e.etf).catch(() => [] as UwEtfFlow[])]),
+      ),
+    );
     const dateSets = reads.map(r => flowDates(r[2])).filter(d => d.size > 0);
     const common = dateSets.length ? [...dateSets[0]].filter(d => dateSets.every(set => set.has(d))).sort().reverse().slice(0, 5) : [];
+    etfCommon = common;
     for (let k = 0; k < ETF_LIST.length; k++) {
-      const got = fundRow(ETF_LIST[k], reads[k], common);
+      const read = reads[k];
+      /* a fund whose holdings already landed (its own page, or an earlier ask) keeps them */
+      const had = etfReads.get(ETF_LIST[k].etf);
+      if (had && etfHoldRead.has(ETF_LIST[k].etf)) read[1] = had[1];
+      etfReads.set(ETF_LIST[k].etf, read);
+      const got = fundRow(ETF_LIST[k], read, common);
       if (!got) continue;
-      holdings[ETF_LIST[k].etf] = got.held;
       rows.push(got.row);
     }
     if (rows.length === 0) throw new Error('no fund landed');
-    /* what each fund's file covers: the lines read (the route sends the largest 250), their weight, the fund's own count */
-    const holdingsCover: Snap['holdingsCover'] = {};
-    for (const r of rows) {
-      const held = holdings[r.etf] ?? [];
-      holdingsCover[r.etf] = { lines: held.length, weight: held.reduce((a, h) => a + h.weight, 0), fundCount: r.holdingsCount > 0 ? r.holdingsCount : null };
-    }
+    const holdings: Snap['holdings'] = { ...snap.holdings };
+    const holdingsCover: Snap['holdingsCover'] = { ...snap.holdingsCover };
     emit({ etfStatus: 'live', etfs: rows, holdings, holdingsCover });
   } catch {
     if (snap.etfs.length === 0) emit({ etfStatus: 'error' });
   }
 }
+/** Reads one fund's holdings for the index (once), and fills its row in */
+export function wantFundHoldings(etf: string): void {
+  const t = etf.toUpperCase();
+  if (!t || etfHoldAsked.has(t) || typeof window === 'undefined') return;
+  etfHoldAsked.add(t);
+  void whalesEtfHoldings(t)
+    .catch(() => [] as UwEtfHolding[])
+    .then(hold => {
+      etfHoldRead.add(t);
+      const e = ETF_LIST.find(x => x.etf === t) ?? { etf: t, kind: 'broad' as EtfKind };
+      const prev = etfReads.get(t);
+      const read: FundReads = [prev?.[0] ?? null, Array.isArray(hold) ? hold : [], prev?.[2] ?? []];
+      etfReads.set(t, read);
+      const got = fundRow(e, read, etfCommon);
+      if (!got) {
+        emit({});
+        return;
+      }
+      emit({
+        etfs: snap.etfs.map(r => (r.etf === t ? { ...r, topHolding: got.row.topHolding, topWeight: got.row.topWeight, equityPct: got.row.equityPct, holdingsAsOf: got.row.holdingsAsOf, holdingsCount: r.holdingsCount || got.row.holdingsCount } : r)),
+        holdings: { ...snap.holdings, [t]: got.held },
+        holdingsCover: { ...snap.holdingsCover, [t]: { lines: got.held.length, weight: got.held.reduce((a, h) => a + h.weight, 0), fundCount: got.row.holdingsCount > 0 ? got.row.holdingsCount : null } },
+      });
+    });
+}
+/** True once the index has this fund's holdings */
+export const fundHoldingsRead = (etf: string): boolean => etfHoldRead.has(etf.toUpperCase());
 
 /* ONE FUND'S PAGE READS ONE FUND (round 8: etfs/SPY read the info, the flows and the holdings of all 18 funds to draw
    one). The fund's own three reads; its five-day flow is its own five newest dates (the index's common window is for
@@ -801,6 +840,7 @@ async function pullStocks() {
       const part = await whalesScreener(tickers.slice(i, i + 12));
       if (Array.isArray(part)) rows.push(...part);
     }
+    rememberCompanyNames(rows.map(r => [String(r.ticker || ''), String(r.full_name || '')] as const));
     /* THE REGULAR CLOSE FROM THE DAILY ROWS (audit round 6): the screener has none — its close is the last print and its
        intraday_change is off the OPEN — so outside the session each name's regular closes are read (loadRegularCloses,
        the quote's and the top bar's source; the list's quotes read the same cached rows) */
@@ -1036,7 +1076,8 @@ export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | nul
   /* the index's book when the ETFs page has read it; this one fund otherwise (round 8) */
   const s = useFiles();
   const t = etf.toUpperCase();
-  const fromBook = s.etfStatus === 'live' ? s.etfs.find(r => r.etf === t) ?? null : null;
+  /* (round 9) the index's row only once its holdings are read — the index reads them on demand */
+  const fromBook = s.etfStatus === 'live' && etfHoldRead.has(t) ? s.etfs.find(r => r.etf === t) ?? null : null;
   useEffect(() => {
     if (!fromBook) ensureOneFund(t);
   }, [t, fromBook]);
