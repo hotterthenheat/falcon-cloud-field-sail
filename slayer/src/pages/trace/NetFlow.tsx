@@ -38,6 +38,7 @@ import { nyDateOf, tapeSessionIso, tideBetween, useTopNet, useLiveBook, useTide 
 import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
 import { dayAdv, dayPos, isLiveDay, shortDay } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
+import { useQParam } from '../../components/trace/addressCut';
 import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { type MoneynessKey } from '../../data/flowBook';
@@ -69,7 +70,9 @@ const NetFlow = () => {
   const { marketData, activeTicker } = useMarketData();
   /* Arriving through a door: the name goes on the pane and the clock is set before the first paint */
   const handoff = (useLocation().state ?? null) as NetFlowHandoff | null;
-  const [picked, setPicked] = useState<string | null>(() => (typeof handoff?.ticker === 'string' && /^[A-Z0-9.]{1,6}$/.test(handoff.ticker) ? handoff.ticker : null));
+  /* the name in the address (?q=) — a search link carries it (the owner, 2026-10-23) */
+  const [qParam, setQParam] = useQParam();
+  const [picked, setPicked] = useState<string | null>(() => (typeof handoff?.ticker === 'string' && /^[A-Z0-9.]{1,6}$/.test(handoff.ticker) ? handoff.ticker : /^[A-Z][A-Z0-9.]{0,5}$/.test(qParam) ? qParam : null));
   /* THE FIELD IS NOT THE PICK: anything typed went on the pane — "ZZZZ" drew letter logos and an invented price line.
      The field holds what is typed; the pane takes a name only when the book carries it, and keeps the last real one
      meanwhile. */
@@ -118,6 +121,7 @@ const NetFlow = () => {
   const typeTimer = useRef(0);
   const onQuery = (v: string) => {
     setQuery(v);
+    setQParam(v);
     window.clearTimeout(typeTimer.current);
     if (!v) setPicked(null);
     else if (known.has(v)) setPicked(v);

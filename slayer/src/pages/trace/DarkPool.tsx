@@ -31,9 +31,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { darkView, execWord, lastStockClose, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, usd as fmtUsd } from '../../data/traceLive';
+import { darkView, execWord, lastStockClose, nyIsoToday, olderDarkDay, olderNameDark, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, useOlderPages, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
+import { useQParam } from '../../components/trace/addressCut';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { gradeOfPosture, POSTURE_WORD, type DarkTapeView } from '../../data/darkpool';
 import { crossKey, watchedCross } from '../../context/WatchContext';
@@ -51,7 +52,7 @@ import { earnMarks, weightInk } from '../../components/trace/earnedInk';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { nyClock } from '../../core/nyTime';
 import { DarkPoolGuide } from '../../components/trace/TraceGuide';
 import { DP_SHELF_H, DP_STRIP_HEAD_H, TracePageSkeleton } from './traceSkeletons';
@@ -134,15 +135,15 @@ type LeaderRow = DarkLeaderRow & { sector: string; sectorMax: number };
    the box opens on every name's crosses in one tape, the Live Tape's own grammar; the search cuts it to a name, and
    then the shelves stand and the facts are the name's. The scope chip that followed the frame is gone with it.
    Remembered across route changes within a session. */
-let queryMemory = '';
+const queryMemory = { q: '' };
+
+const darkIdOf = (p: DarkPoolPrint) => `${p.ticker}-${p.id}`;
+const NO_PRINTS: DarkPoolPrint[] = [];
 
 const DarkPool = () => {
   const { marketData } = useMarketData();
-  const [query, setQueryState] = useState(queryMemory);
-  const setQuery = (q: string) => {
-    queryMemory = q;
-    setQueryState(q);
-  };
+  /* the search is in the address (?q=), so a link carries it (the owner, 2026-10-23) */
+  const [query, setQuery] = useQParam(queryMemory);
   const [tapeKind, setTapeKind] = useState<'dark' | 'lit'>('dark');
   /* AFTER THE CLOSE, THE DAY'S SESSION FIRST (the third audit, 2026-10-22: after the bell every cross read "NO READ ·
      AFTER HRS"): once the stock session has ended the page opens on the day's regular-session crosses, and the
@@ -162,7 +163,13 @@ const DarkPool = () => {
   const dpSession: 'regular' | 'after' = traceSession === 'extended' ? 'after' : 'regular';
   const regularView = !!closed && dpSession === 'regular';
   const darkLive = useAccumTape('dark', 200);
-  const darkReg = useDarkRegularDay(regularView ? closed!.iso : null);
+  const darkReg0 = useDarkRegularDay(regularView ? closed!.iso : null);
+  /* ENDLESS (the owner, 2026-10-23): the day's next-largest crosses page in as the reader scrolls (max_premium, walked
+     down); a typed name's crosses page back through its day (older_than). The market's live feed has no older cursor. */
+  const q0 = query.trim().toUpperCase();
+  const named0 = /^[A-Z][A-Z0-9.]{0,5}$/.test(q0) ? q0 : null;
+  const regOlder = useOlderPages(`dreg:${closed?.iso ?? ''}`, darkReg0.rows, darkIdOf, inHand => olderDarkDay(closed!.iso, inHand), regularView && !named0 && tapeKind === 'dark');
+  const darkReg = useMemo(() => ({ ...darkReg0, rows: regOlder.rows }), [darkReg0, regOlder.rows]);
   const dark = regularView ? darkReg : darkLive;
   const litLive = useAccumTape('lit', 200);
   /* OWN-TERMS PRINTS STAND APART (audit round 4: "SPY $773.13 126,437 $97.8M" five times and "QQQ $725.39" four inflated
@@ -189,7 +196,10 @@ const DarkPool = () => {
   const sector = 'all' as string;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const nameView = named && tapeKind !== 'lit' ? nameBook.rows.view : null;
+  const nameDayIso = regularView ? closed!.iso : nyIsoToday();
+  const nameOlder = useOlderPages(`dname:${named ?? ''}:${nameDayIso}`, nameBook.rows.view?.prints ?? NO_PRINTS, darkIdOf, inHand => olderNameDark(named!, inHand, nameDayIso), !!named && tapeKind !== 'lit');
+  const nameView0 = named && tapeKind !== 'lit' ? nameBook.rows.view : null;
+  const nameView = useMemo(() => (nameView0 && nameOlder.rows.length > nameView0.prints.length ? { ...nameView0, prints: nameOlder.rows } : nameView0), [nameView0, nameOlder.rows]);
   const liveView = useMemo(() => {
     if (!nameView) return null;
     const ps = nameView.prints.filter(p => (terms === 'own' ? !!p.special : !p.special));
@@ -831,7 +841,7 @@ const DarkPool = () => {
         </div>
         )}
         {/* THE CROSSES — the grid grows with its rows, the page scrolls; a row opens the cross's card */}
-        <TraceGrid rows={cut} columns={columns} hidden={hidden} widths={WIDTHS} flexes={{ says: 2 }} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={selected} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} testId="dark-pool" />
+        <TraceGrid rows={cut} columns={columns} hidden={hidden} widths={WIDTHS} flexes={{ says: 2 }} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={selected} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} endless={named && tapeKind !== 'lit' ? endlessOf(nameOlder, `${named}'s crosses`, `the start of ${named}'s day reached`, hold.paused) : regularView && tapeKind === 'dark' ? endlessOf(regOlder, 'crosses', "the day's crosses reached", hold.paused) : { onNear: () => {}, state: 'end', note: `${num(cut.length)} ${tapeKind === 'lit' ? 'lit prints' : 'crosses'} in hand — the market's ${tapeKind === 'lit' ? 'lit' : 'dark'} feed has no older cursor, so it grows as prints arrive; type a name to page back through its day` }} testId="dark-pool" />
         {(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) && cut.length === 0 ? <FeedFallback fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} /> : null}
       </TraceBox>
 

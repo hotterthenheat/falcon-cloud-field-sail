@@ -38,9 +38,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { dayLean, indexRoot, quoteNoReadWords, lastRegularClose, plural, tapeSessionIso, tideBetween, useDayBigAlerts, useDayTopContracts, useTide, useAlertTrades, useFlowAlerts, useNameTopContracts, usePrintStream, usd as fmtUsd, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
+import { dayLean, indexRoot, quoteNoReadWords, lastRegularClose, plural, tapeSessionIso, tideBetween, useDayBigAlerts, useDayTopContracts, useTide, useAlertTrades, useFlowAlerts, useNameTopContracts, useOlderPages, olderAlerts, usePrintStream, usd as fmtUsd, TAPE_CAP, type TapeQuery } from '../../data/traceLive';
 import { useTraceSession } from '../../components/trace/traceSession';
-import { nyClock } from '../../core/nyTime';
+import { nyClock, nyWallTime } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { printKey, useWatch, watchPrint } from '../../context/WatchContext';
 import WatchStar from '../../components/trace/WatchStar';
@@ -52,7 +52,7 @@ import DropdownSelect, { type DropdownOption } from '../../components/ui/Dropdow
 import RichRead from '../../components/ui/RichRead';
 import PrintDrilldown from '../../components/trace/PrintDrilldown';
 import ReadDoor from '../../components/trace/ReadDoor';
-import FlowSearch, { matchesContract, parseContractQuery } from '../../components/trace/FlowSearch';
+import FlowSearch, { matchesContract, searchMiss, parseContractQuery } from '../../components/trace/FlowSearch';
 import ContractCell from '../../components/trace/ContractCell';
 import LeanCell from '../../components/trace/LeanCell';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
@@ -369,6 +369,7 @@ const phoneRow = (r: TapeRow) => {
       lead={<WatchStar k={printKey(r.p)} make={() => watchPrint(r.p, 'tape')} noun="print" />}
       title={
         <>
+          <CompanyLogo ticker={r.p.ticker} size={15} />
           <span className="font-bold">{r.p.ticker}</span>
           <span className="font-bold tnum">{r.p.strike}</span>
           <span className={r.p.right === 'C' ? 'text-bull' : 'text-bear'}>{r.p.right === 'C' ? 'call' : 'put'}</span>
@@ -407,6 +408,8 @@ export const matchesTape = (r: FlowPrint, q: string) => norm(q) === '' || matche
 // ---- the page ---------------------------------------------------------------------
 const ALERT_PACK_HINT = "Flow alerts that are legs of a floor package, not bets: no side, filed in the same millisecond as alerts on the root's other contracts, or on a contract whose day was mostly floor-traded multi-leg packages (half or more on the floor and in packages). Set apart, never ranked, never called a block";
 const tapeIsoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+
+const alertIdOf = (p: FlowPrint) => p.vendorId || String(p.id);
 
 const LiveTape = () => {
   const { marketData } = useMarketData();
@@ -475,7 +478,14 @@ const LiveTape = () => {
   /* EXTENDED HOURS IS ONLY THE EXTENDED PRINTS: between 16:00 and 16:15 the feed still carries the index and ETF options'
      regular-session prints, which are not after hours */
   const keepExtended = useCallback((p: FlowPrint) => !!p.extended, []);
-  const stream = usePrintStream(paused ? heldQuery.current : tapeQuery, paused || away || lane !== 'prints', { untilMs: anchor?.closeMs ?? null, keep: regularOnly ? keepRegular : keepExtended });
+  /* THE SESSION'S FIRST INSTANT — the endless tape pages back to it and no further: 09:30 on Regular (the closed session's,
+     after the bell), the day's 04:00 outside it */
+  const startMs = useMemo(() => {
+    const iso = anchor?.iso ?? tapeSessionIso();
+    const [y, m, d] = iso.split('-').map(Number);
+    return regularOnly ? nyWallTime(y, m, d, 9, 30) : nyWallTime(y, m, d, 4, 0);
+  }, [anchor?.iso, regularOnly]);
+  const stream = usePrintStream(paused ? heldQuery.current : tapeQuery, paused || away || lane !== 'prints', { untilMs: anchor?.closeMs ?? null, keep: regularOnly ? keepRegular : keepExtended, startMs });
   /* THE ALERTS LANE READS THE SESSION TOO (audit round 4: it opened on after-hours alerts under Regular) */
   /* read only while the Alerts lane is up (audit round 9: the hidden lane polled the alerts every 4s) */
   const alerts = useFlowAlerts(40, { untilMs: anchor?.closeMs ?? null, session: regularOnly ? 'regular' : 'extended', enabled: lane === 'alerts' });
@@ -486,7 +496,9 @@ const LiveTape = () => {
   const headReading = tapeReading && !frozen;
   /* THE ALERTS IN THE ORDER THEIR TIME COLUMN SAYS (the third audit: "newest first" was the vendor's created_at while the
      Time column shows each alert's first fill, start_time) — by the fill's millisecond, newest first */
-  const alertRows = useMemo(() => [...alerts.rows].sort((a, b) => (b.epochMs ?? 0) - (a.epochMs ?? 0)), [alerts.rows]);
+  /* the alerts page back too, from the oldest filing in hand to the session's start (the endless lists) */
+  const alertsOlder = useOlderPages(`alerts:${anchor?.closeMs ?? 'live'}:${regularOnly}`, alerts.rows, alertIdOf, (inHand: FlowPrint[]) => olderAlerts(inHand, startMs, regularOnly ? 'regular' : 'extended'), lane === 'alerts' && !paused);
+  const alertRows = useMemo(() => [...alertsOlder.rows].sort((a, b) => (b.epochMs ?? 0) - (a.epochMs ?? 0)), [alertsOlder.rows]);
   const liveRows = lane === 'alerts' ? alertRows : stream.rows;
   const rows = frozen ?? liveRows;
   useEffect(() => {
@@ -500,27 +512,37 @@ const LiveTape = () => {
 
   const summary = useMemo(() => summarizeTape(rows), [rows]);
 
-  /* Scrolled down: new prints wait in the pill instead of jumping the rows. */
-  useEffect(() => {
-    const onScroll = () => setAway(window.scrollY > 280);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  /* Scrolled into the rows (the grid's own window — TraceGrid onDeep): new prints wait in the pill instead of jumping the
+     rows; back at the top they join */
+  const [topSignal, setTopSignal] = useState(0);
   useEffect(() => {
     if (away || paused || lane !== 'prints') return;
     if (stream.pending) stream.flush();
   }, [away, paused, lane, stream]);
-  useEffect(() => {
-    if (lane !== 'prints' || paused) return;
-    const onScroll = () => {
-      if (!stream.hasOlder || stream.loadingOlder) return;
-      const node = document.documentElement;
-      if (node.scrollHeight - window.scrollY - window.innerHeight < 480) stream.loadOlder();
+  /* THE ENDLESS FOOT (the owner, 2026-10-23): older prints page in as the reader nears the bottom, to the session's start */
+  const sessionWord = regularOnly ? `${anchor ? `the ${shortDay(anchor.iso)} ` : 'the '}session's start (09:30 ET)` : "the day's start (04:00 ET)";
+  const endless = useMemo(() => {
+    if (lane === 'alerts') {
+      const n = alertsOlder.loaded;
+      return {
+        onNear: alertsOlder.loadOlder,
+        state: paused ? ('idle' as const) : alertsOlder.state,
+        note: alertsOlder.state === 'end' ? `${n.toLocaleString('en-US')} alerts loaded — ${sessionWord} reached` : alertsOlder.state === 'cap' ? `${n.toLocaleString('en-US')} alerts loaded — the most held at once` : `${n.toLocaleString('en-US')} alerts loaded, newest first — scroll for older ones`,
+      };
+    }
+    const n = stream.rows.length;
+    const state = paused ? ('idle' as const) : stream.loadingOlder ? ('loading' as const) : stream.hasOlder ? ('more' as const) : stream.olderEnd === 'cap' ? ('cap' as const) : ('end' as const);
+    return {
+      onNear: stream.loadOlder,
+      state,
+      note:
+        state === 'end'
+          ? `${n.toLocaleString('en-US')} prints loaded — ${sessionWord} reached`
+          : state === 'cap'
+            ? `${n.toLocaleString('en-US')} prints loaded — the most the page holds at once (${TAPE_CAP.toLocaleString('en-US')}); narrow the cut with the search or a card to reach further back`
+            : `${n.toLocaleString('en-US')} prints loaded, newest first${paused ? ' — paused' : ' — scroll for older ones, back to ' + sessionWord}`,
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [lane, paused, stream]);
+  }, [lane, alertsOlder, stream, paused, sessionWord]);
 
   /* THE EXPIRY CUT — the dates the prints in the buffer actually carry, as
      a calendar; every expiry where the page opens (see bookExpiry). */
@@ -589,7 +611,7 @@ const LiveTape = () => {
       ...PREM_CHIPS.map(c => {
         /* the floor goes to the vendor (min_premium) and refills the tape from its whole day — a count of the prints on
            screen now said "No print this size" and then the pick filled the grid (the ship pass, 2026-10-22) */
-        return { value: c.value, label: c.label, hint: `The vendor's prints of ${c.label.replace('≥', '')} and up — the newest ${TAPE_CAP.toLocaleString('en-US')} of them, walked back from ${anchor ? `the ${nyClock(anchor.closeMs)} ET close` : 'now'}, not the whole day` };
+        return { value: c.value, label: c.label, hint: `The vendor's prints of ${c.label.replace('≥', '')} and up — the newest of them, paged back as you scroll, from ${anchor ? `the ${nyClock(anchor.closeMs)} ET close` : 'now'}, not the whole day` };
       }),
     ];
   }, [rows, flowFilter, sentFilter, searchQuery, cutExpiry, anchor]);
@@ -797,7 +819,8 @@ const LiveTape = () => {
         sortValue: r => r.p.ticker,
         render: r => (
           <span className="inline-flex items-center gap-1.5">
-            {/* no monogram tile beside the bold symbol — for a name without a mark it printed the ticker twice */}
+            {/* the company's mark, as on the Screener (the owner, 2026-10-23: the logos were missing on the tape) */}
+            <CompanyLogo ticker={r.p.ticker} size={15} />
             <span className="font-bold text-textPrimary">{r.p.ticker}</span>
           </span>
         ),
@@ -1021,20 +1044,19 @@ const LiveTape = () => {
         guide={{ title: 'How to read the tape', door: 'What a print, its fill and its conviction mean', body: <LiveTapeGuide />, testId: 'live-tape-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label={lane === 'prints' ? headReading || rows.length === 0 ? 'These figures cover · reading the prints…' : `These figures cover · last ${rows.length.toLocaleString('en-US')} prints${spanLength(rows) ? ` · ${spanLength(rows)}` : ''} · not the day` : 'These figures cover · the alerts in hand'} testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick Extended hours on the Session card for what prints after it` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
+            <Fact label={lane === 'prints' ? headReading || rows.length === 0 ? 'These figures cover · reading the prints…' : `These figures cover · the ${rows.length.toLocaleString('en-US')} prints loaded${spanLength(rows) ? ` · ${spanLength(rows)}` : ''} · not the day` : 'These figures cover · the alerts in hand'} testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick Extended hours on the Session card for what prints after it` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
               {headReading ? <span className="text-textMuted">—</span> : windowSpan ? `${windowSpan} ET` : '—'}
               {cutSpan && cutSpan !== windowSpan && <span className="text-textSecondary" title="The span of the prints this cut keeps"> · this cut {cutSpan}</span>}
               {lane === 'prints' && anchor && <span className="text-textSecondary"> · regular session, to the {anchor.iso !== tapeIsoToday() ? `${shortDay(anchor.iso)} close` : 'close'}</span>}
             </Fact>
-            <Fact label={lane === 'alerts' ? 'Alerts' : 'Prints'} testId="prints" title={lane === 'alerts' ? "The vendor's newest flow alerts — each one an aggregate of a contract's prints in one burst" : 'The prints in hand — the newest stretch of the tape, unbroken, up to 2,000 — not the whole day'}>
+            <Fact label={lane === 'alerts' ? 'Alerts' : 'Prints'} testId="prints" title={lane === 'alerts' ? "The vendor's newest flow alerts — each one an aggregate of a contract's prints in one burst" : 'The prints loaded — the newest stretch of the tape, unbroken, and older pages as you scroll toward the session\'s start — not the whole day unless the start is reached'}>
               {headReading ? <span className="text-textMuted">—</span> : searchQuery.trim() && filtered.length === 0 && rows.length > 0 ? (
                 /* a search that matched nothing says so — never "0 of 2,000 · at the max" (audit round 10, minor 1) */
                 <span className="text-textSecondary" data-tape-search-none>no {lane === 'alerts' ? 'alerts' : 'prints'} for {searchQuery.trim()} in this window</span>
               ) : <>{filtered.length}{' '}
               <span className="text-textSecondary">
                 of {rows.length}{lane === 'alerts' ? ' alerts' : ''}
-                {lane === 'prints' && stream.hasOlder ? ' · older still coming' : ''}
-                {lane === 'prints' && !stream.hasOlder && rows.length >= TAPE_CAP ? ' · at the max' : ''}
+                {lane === 'prints' ? ` loaded${stream.hasOlder ? ' · older on scroll' : stream.olderEnd === 'cap' ? ' · at the cap' : ' · to the start'}` : ''}
                 {' · '}
                 {markedCount} tracked
               </span></>}
@@ -1258,7 +1280,8 @@ const LiveTape = () => {
                 type="button"
                 onClick={() => {
                   stream.flush();
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  setTopSignal(n => n + 1);
+                  setAway(false);
                 }}
                 className="rounded-full border border-borderSubtle bg-chip px-3 py-1 font-mono text-[11px] text-textPrimary"
               >
@@ -1285,7 +1308,10 @@ const LiveTape = () => {
             rowClass={FADE_ROW}
             animate={false}
             autoHeight
-            emptyText={tapeReading && !frozen ? (tickerOnly ? `Reading ${tickerOnly}'s prints…` : lane === 'alerts' ? 'Reading the alerts…' : 'Reading the tape…') : rows.length === 0 ? (tapeDown ? 'This read did not land — the tape will fill when the feed answers' : lane === 'alerts' ? 'No alerts in this view yet' : 'No prints in this view yet') : 'No prints on this cut — loosen a card: the order, the kind, the lean, the floor or the expiry'}
+            endless={endless}
+            onDeep={setAway}
+            topSignal={topSignal}
+            emptyText={tapeReading && !frozen ? (tickerOnly ? `Reading ${tickerOnly}'s prints…` : lane === 'alerts' ? 'Reading the alerts…' : 'Reading the tape…') : rows.length === 0 ? (tapeDown ? 'This read did not land — the tape will fill when the feed answers' : lane === 'alerts' ? 'No alerts in this view yet' : 'No prints in this view yet') : searchQuery.trim() ? searchMiss(searchQuery, lane === 'alerts' ? 'alert loaded' : 'print loaded') : 'No prints on this cut — loosen a card: the order, the kind, the lean, the floor or the expiry'}
             testId="live-tape"
           />
         </div>

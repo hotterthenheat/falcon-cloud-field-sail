@@ -54,7 +54,7 @@ import { dayAdv, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, oiR
 import { SectorName } from '../../components/trace/SectorMark';
 import WatchStar from '../../components/trace/WatchStar';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { ScreenerGuide } from '../../components/trace/TraceGuide';
 import { contractKey, watchContract } from '../../context/WatchContext';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
@@ -92,6 +92,7 @@ const phoneRow = (r: BookContract) => (
     lead={<WatchStar k={contractKey(r)} make={() => watchContract(r, 'screener')} />}
     title={
       <>
+        <CompanyLogo ticker={r.ticker} size={15} />
         <span className="font-bold">{r.ticker}</span>
         <span className="font-bold tnum">{r.strike}</span>
         <span className={r.right === 'C' ? 'text-bull' : 'text-bear'}>{r.right === 'C' ? 'call' : 'put'}</span>
@@ -142,7 +143,7 @@ const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ?
    floor here, the set at rest sums under the box, and the DTE (the contract cell carries the date) and the OI (the card,
    Vol/OI and ΔOI carry it) open folded — one click away in Columns. */
 /* the lean fits its words at 1440 (retail, round 10: "bid 53%…") */
-const WIDTHS: Record<string, number> = { time: 72, ticker: 84, contract: 132, dte: 56, otm: 70, last: 134, vol: 84, oi: 80, doi: 112, prem: 84, iv: 96, voloi: 64, sweep: 56, floor: 64, multi: 64, sector: 176, lean: 132 };
+const WIDTHS: Record<string, number> = { time: 76, ticker: 84, contract: 132, dte: 56, otm: 70, last: 140, vol: 84, oi: 80, doi: 120, prem: 84, iv: 92, voloi: 66, sweep: 60, floor: 64, multi: 64, sector: 176, lean: 132 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
@@ -429,10 +430,10 @@ const OptionsScreener = () => {
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols_v3', ['floor', 'multi', 'sector', 'dte', 'oi']);
   /* WHAT THE BOOK IS (the audit: "every contract that traded today" headed the vendor's top 200) */
   const pool = unusual
-    ? `from the vendor's unusual list — its 200 unusual contracts with the most premium ${dayAdv()}, the pool every unusual screen (bullish, bearish, new positioning, conviction calls and puts) reads`
+    ? `from the vendor's unusual list — the ${num(liveBook.length)} unusual contracts loaded, most premium ${dayAdv()} first (more as you scroll), the pool every unusual screen (bullish, bearish, new positioning, conviction calls and puts) reads`
     : screen === 'active'
-      ? `the 200 single-stock contracts with the most volume ${dayAdv()}`
-      : `the 200 contracts with the most premium ${dayAdv()}`;
+      ? `the ${num(liveBook.length)} single-stock contracts loaded, most volume ${dayAdv()} first — more as you scroll`
+      : `the ${num(liveBook.length)} contracts loaded, most premium ${dayAdv()} first — more as you scroll`;
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
   const screenOptions = useMemo<DropdownOption<ScreenKey>[]>(() => FLOW_SCREENS.map(s => ({ value: s.key, label: s.label, hint: s.hint })), []);
   const tenorGroups = useMemo(() => [{ title: 'Tenor', options: SLEEVES.map(s => ({ value: s.key, label: s.label, hint: s.blurb })) }], []);
@@ -522,7 +523,7 @@ const OptionsScreener = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(pack.older, 'contracts', "the vendor's list for the day is done", hold.paused)} emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
         {pack.fault && rows.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
       <BookDrill list={rows} openKey={openKey} onOpen={setOpenKey} tick={tick} />

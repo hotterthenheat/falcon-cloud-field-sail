@@ -306,13 +306,32 @@ interface TraceGridProps<T> {
   pinRight?: string[];
   /** The row on a phone, two lines (PhoneRow) — given, a phone shows it in place of the columns */
   phoneRow?: (row: T) => ReactNode;
+  /** ENDLESS SCROLL (the owner, 2026-10-23: "make it infinite"): no pages — the rows scroll in a window the height of the
+      screen, and near the bottom the grid asks for the next older page (`onNear`), once, while `state` is 'more'. The foot
+      under the rows says where the reading stands: loading, the start reached, the cap, or a button to ask by hand. */
+  endless?: EndlessFeed;
+  /** The reader has scrolled into the rows (past the first two) — new rows then wait in a pill instead of jumping */
+  onDeep?: (deep: boolean) => void;
+  /** Changing it glides the window back to the top (the pill's "N new ↑") */
+  topSignal?: number;
+  /** The rows on screen, in the grid's own order, as the reader scrolls (Multi-Leg reads their legs) */
+  onVisible?: (rows: T[]) => void;
   testId: string;
 }
 
-export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, testId }: TraceGridProps<T>) => {
+/** The state of an endless grid's older pages */
+export interface EndlessFeed {
+  onNear: () => void;
+  state: 'more' | 'loading' | 'end' | 'cap' | 'idle';
+  /** What the rows loaded are, and why it stopped — the foot's words */
+  note?: ReactNode;
+}
+
+export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
   const gridRef = useRef<AgGridReact<T>>(null);
   const phone = useIsPhone() && !!phoneRow;
   const hiddenSet = hidden ?? new Set<string>();
+  const endlessOn = !!endless;
   const columnDefs = useMemo(() => {
     if (phone && phoneRow) {
       /* one column, the row in two lines */
@@ -321,7 +340,16 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
     const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes);
     for (const d of defs) {
       if (pinLeft?.includes(d.colId ?? '')) d.pinned = 'left';
-      else if (pinRight?.includes(d.colId ?? '')) d.pinned = 'right';
+      else if (pinRight?.includes(d.colId ?? '')) {
+        d.pinned = 'right';
+        /* an endless window carries a vertical scrollbar beside the right-pinned figure — room for it, so the figure is
+           never clipped ("$13.1K" read "$13.1") */
+        if (endlessOn && d.width) {
+          d.width += 14;
+          d.minWidth = d.width;
+          d.flex = d.width;
+        }
+      }
     }
     if (initialSort) {
       const d = defs.find(x => x.colId === initialSort.key);
@@ -329,7 +357,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
     }
     return defs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, hiddenSet, widths, tooltips, flexes, phone, phoneRow, pinLeft, pinRight]);
+  }, [columns, hiddenSet, widths, tooltips, flexes, phone, phoneRow, pinLeft, pinRight, endlessOn]);
   const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
   /* A CUT — the search cleared, a card turned, "Show all" — IS A CROSSFADE, NEVER A SLIDE AND NEVER A SWAP (2026-09-20).
      Two complaints from Noah, the same afternoon, on the book:
@@ -436,7 +464,13 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
      on the house curve with absolute writes each frame so a tick cannot
      shove the scroll mid-glide; reduced motion jumps. */
   const [showTop, setShowTop] = useState(false);
-  const paged = gridRows.length > TRACE_PAGE;
+  /* endless: a window the height of the screen once the rows overflow half a page; never the pager */
+  const windowed = !!endless && gridRows.length > TRACE_PAGE / 2;
+  const paged = !endless && gridRows.length > TRACE_PAGE;
+  const endlessRef = useRef(endless);
+  endlessRef.current = endless;
+  const onDeepRef = useRef(onDeep);
+  onDeepRef.current = onDeep;
   const rowPx = phone ? 58 : 39;
   const headPx = phone ? 0 : 32;
   /* One page in the window, the numbers under it. autoHeight on a paged book
@@ -450,9 +484,41 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
   };
   /* v36 scrolls the whole grid viewport (`.ag-grid-viewport`); older builds scrolled the body */
   const viewport = () => wrapRef.current?.querySelector<HTMLElement>('.ag-grid-viewport, .ag-body-viewport') ?? null;
-  const onBodyScroll = (e: BodyScrollEvent<T>) => {
-    if (e.direction === 'vertical') setShowTop(e.top > 600);
+  const nearEnd = (api: { getLastDisplayedRowIndex: () => number; getDisplayedRowCount: () => number }) => {
+    const en = endlessRef.current;
+    if (!en || en.state !== 'more') return;
+    const n = api.getDisplayedRowCount();
+    if (n > 0 && api.getLastDisplayedRowIndex() >= n - 30) en.onNear();
   };
+  const onVisibleRef = useRef(onVisible);
+  onVisibleRef.current = onVisible;
+  const visTimer = useRef(0);
+  const tellVisible = (api: { getFirstDisplayedRowIndex: () => number; getLastDisplayedRowIndex: () => number; getDisplayedRowAtIndex: (i: number) => { data?: T } | undefined }) => {
+    if (!onVisibleRef.current) return;
+    window.clearTimeout(visTimer.current);
+    visTimer.current = window.setTimeout(() => {
+      const out: T[] = [];
+      const a = Math.max(0, api.getFirstDisplayedRowIndex());
+      const b = api.getLastDisplayedRowIndex();
+      for (let i = a; i <= b && out.length < 60; i++) {
+        const d = api.getDisplayedRowAtIndex(i)?.data;
+        if (d) out.push(d);
+      }
+      onVisibleRef.current?.(out);
+    }, 250);
+  };
+  const onBodyScroll = (e: BodyScrollEvent<T>) => {
+    if (e.direction !== 'vertical') return;
+    setShowTop(e.top > 600);
+    onDeepRef.current?.(e.top > 80);
+    nearEnd(e.api);
+    tellVisible(e.api);
+  };
+  /* ONLY ON DEMAND: a scroll near the bottom asks (onBodyScroll), or the foot's button — rows landing never chain another
+     page on their own (a cut that keeps few rows would otherwise walk the whole day unasked) */
+  useEffect(() => {
+    if (topSignal) scrollToTop();
+  }, [topSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   /* Rows cut down under the reader (a card, the search) pull the scroll back without a scroll event */
   useEffect(() => {
     setShowTop((viewport()?.scrollTop ?? 0) > 600);
@@ -512,12 +578,12 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
        drawn, and the other 66 landed in a second task ~230ms later — the grid draws rows in animation frames by
        default, a scrolling grid's habit. Ours never scroll (autoHeight, 80 rows at rest), so suppressAnimationFrame
        puts every row in the first paint, and the whole box comes up over the table curve (index.css grid-in). */
-    <div ref={wrapRef} className="slayer-board relative border-t border-borderSubtle animate-grid-in" style={autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-grid={testId} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined}>
+    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''}`} style={windowed ? { height: `min(${pageHeight}px, calc(100dvh - 72px))`, minHeight: 360 } : autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-grid={testId} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<T>
           ref={gridRef}
           theme={phone ? TRACE_PHONE_THEME : TRACE_GRID_THEME}
-          domLayout={autoHeight && !paged ? 'autoHeight' : undefined}
+          domLayout={autoHeight && !paged && !windowed ? 'autoHeight' : undefined}
           rowData={gridRows}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
@@ -528,7 +594,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
           rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
           suppressCellFocus
           suppressAnimationFrame
-          rowBuffer={200}
+          rowBuffer={windowed ? 40 : 200}
           animateRows={glide}
           pagination={paged}
           paginationPageSize={TRACE_PAGE}
@@ -541,7 +607,18 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
         />
       </AgGridProvider>
       {paged && <PageBar page={pager.page} pages={Math.max(pager.pages, Math.ceil(gridRows.length / TRACE_PAGE))} onPage={n => gridRef.current?.api.paginationGoToPage(n)} testId={testId} />}
-      {showTop && !autoHeight && (
+      {endless && (gridRows.length > 0 || endless.state === 'loading') && (
+        <div className="px-5 py-2.5 border-t border-borderSubtle flex items-center gap-3 font-mono text-[11px] text-textSecondary" data-endless-foot={endless.state}>
+          <span className="min-w-0 break-words">{endless.note}</span>
+          {endless.state === 'more' && (
+            <button type="button" onClick={endless.onNear} className="ml-auto shrink-0 rounded-md border border-borderSubtle bg-chip px-2.5 py-1 text-textPrimary hover:border-borderMuted" data-endless-more>
+              Load older ↓
+            </button>
+          )}
+          {endless.state === 'loading' && <span className="ml-auto shrink-0 text-textMuted">Loading older…</span>}
+        </div>
+      )}
+      {showTop && (!autoHeight || windowed) && (
         <button
           onClick={scrollToTop}
           title="Back to top"
@@ -557,3 +634,15 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
 };
 
 export default TraceBox;
+
+/** An endless grid's foot from a list's older pages (traceLive useOlderPages): how many are loaded, and why it stopped */
+export function endlessOf(o: { state: EndlessFeed['state']; loaded: number; loadOlder: () => void } | undefined, noun: string, endWords: string, paused = false): EndlessFeed | undefined {
+  if (!o) return undefined;
+  const n = `${o.loaded.toLocaleString('en-US')} ${noun} loaded`;
+  const state = paused ? 'idle' : o.state;
+  return {
+    onNear: o.loadOlder,
+    state,
+    note: state === 'end' ? `${n} — ${endWords}` : state === 'cap' ? `${n} — the most the page holds at once` : state === 'idle' ? `${n}${paused ? ' — paused' : ''}` : `${n} — scroll for more`,
+  };
+}

@@ -42,6 +42,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQParam } from '../../components/trace/addressCut';
 import { useMarketData } from '../../context/MarketDataContext';
 import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint } from '../../context/WatchContext';
 import CrossDrilldown from '../../components/trace/CrossDrilldown';
@@ -60,7 +61,7 @@ import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import { DOOR, DOOR_GROUP_TEXT } from '../../components/trace/door';
 import { directionInk, earnMarks, weightInk } from '../../components/trace/earnedInk';
-import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol, parseContractQuery } from '../../components/trace/FlowSearch';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
 import WatchStar from '../../components/trace/WatchStar';
@@ -296,7 +297,8 @@ const FlowTracker = () => {
     ],
     [toggleWatch]
   );
-  const [query, setQuery] = useState('');
+  /* the search is in the address (?q=) and takes a contract too (the owner, 2026-10-23) */
+  const [query, setQuery] = useQParam();
   /** The open card: a contract's key, and the print clip when opened from a print row. */
   const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } } | null>(null);
 
@@ -340,7 +342,7 @@ const FlowTracker = () => {
   const rows = useMemo<TrackRow[]>(
     () =>
       options
-        .filter(w => nq === '' || normSymbol(w.ticker).includes(nq))
+        .filter(w => nq === '' || (w.kind === 'structure' ? normSymbol(w.ticker) === normSymbol(parseContractQuery(query)?.ticker ?? query) || normSymbol(w.ticker).includes(nq) : matchesContract(query, { ticker: w.ticker, strike: w.strike, right: w.right, expiry: w.expiry })))
         .map(w => {
           const isIndex = INDEX_ROOTS.has(w.ticker.toUpperCase());
           if (!isIndex) ensureBook(w.ticker, 'board');
@@ -744,7 +746,7 @@ const FlowTracker = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="marks" tickersOnly />
+            <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="marks" />
           </>
         }
         sentence={read}
@@ -755,7 +757,7 @@ const FlowTracker = () => {
             Nothing is under watch. The mark at the left of any row on the <ReadDoor onOpen={() => navigate('/trace/live-tape')}>Live Tape</ReadDoor>, the <ReadDoor onOpen={() => navigate('/trace/screener')}>Screener</ReadDoor> or any other Trace page keeps it here, with what it has done since.
           </div>
         ) : (
-          <TraceGrid rows={rows} columns={columns} widths={WIDTHS} flexes={FLEXES} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedKey} rowClass={dimGone} autoHeight emptyText="Nothing under watch on that name" testId="tracker" />
+          <TraceGrid rows={rows} columns={columns} widths={WIDTHS} flexes={FLEXES} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedKey} rowClass={dimGone} autoHeight emptyText={query.trim() && total > 0 ? searchMiss(query, 'mark') : "Nothing under watch on that name"} testId="tracker" />
         )}
       </TraceBox>
 
