@@ -283,6 +283,12 @@ export interface UwContract {
 
 const enc = (ticker: string) => encodeURIComponent(ticker);
 export const whalesState = (ticker: string) => uw<UwState>(`/stock/${enc(ticker)}/stock-state`);
+/** The quote: the last trade (price, epoch-ms time) and the NBBO — read when the stock-state has stalled in the session */
+export interface UwQuote {
+  last_trade?: { price?: string | number; time?: number };
+  market_time?: string;
+}
+export const whalesQuote = (ticker: string) => uw<UwQuote>(`/stock/${enc(ticker)}/quote`);
 export const whalesGreekStrike = (ticker: string) => uw<UwGreekStrike[]>(`/stock/${enc(ticker)}/greek-exposure/strike`);
 export const whalesGreekExpiry = (ticker: string) => uw<UwGreekStrike[]>(`/stock/${enc(ticker)}/greek-exposure/expiry`);
 export const whalesGreekStrikeExpiry = (ticker: string, expiry: string) =>
