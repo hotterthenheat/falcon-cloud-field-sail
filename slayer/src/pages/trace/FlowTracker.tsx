@@ -703,7 +703,7 @@ const FlowTracker = () => {
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="marks" tickersOnly />
           </>
         }

@@ -698,7 +698,7 @@ const MultiLeg = () => {
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <StaleMark at={pack.at} ttlMs={FLOW_TTL_MS} fault={pack.fault} />
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="structures" span />
             <DropdownSelect label="Screen" value={kind} options={SHAPE_OPTIONS} onChange={setKind} title="Which structures" testId="multi-leg-shape" />

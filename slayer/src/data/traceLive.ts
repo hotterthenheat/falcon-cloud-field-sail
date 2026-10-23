@@ -255,41 +255,81 @@ export function dteFrom(iso: string, fromIso: string = tapeSessionIso()): number
 /** Days to expiry from the tape's session */
 const dteOf = (iso: string): number => dteFrom(iso);
 
-export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true): LivePack<T> {
-  const [box, setBox] = useState<CacheBox<T> | null>(null);
-  const [waiting, setWaiting] = useState(true);
-  useEffect(() => {
-    if (!enabled) {
-      setWaiting(false);
-      return;
-    }
-    let stop = false;
-    const run = async () => {
-      try {
-        const rows = await load();
-        if (stop) return;
-        setBox({ key, rows, at: Date.now(), fault: null });
-        setWaiting(false);
-      } catch (e) {
-        if (stop) return;
+/* ONE READ PER REQUEST, SHARED (audit round 8: Compare's head said SPY −$13.3M while its own pane said −$14.0M — the
+   same /net-prem-ticks read by two hooks polling 2s apart; and every page opened cold, re-asking what the page before had
+   just read — Watchers 28s, Dark Pool 25s, Footprints 20s, Net Flow 18s). Every hook asking the same key now shares one
+   box and one poll: two figures off one route are one snapshot, and a page opened a minute after another that read the
+   same route draws that answer at once — stamped with its time (StaleMark) — while the fresh one is asked for. An answer
+   older than LIVE_KEEP_MS is not shown on a new page; it waits for the fresh read like a first visit. */
+interface LiveShared {
+  box: CacheBox<unknown> | null;
+  subs: Set<() => void>;
+  timer: number | null;
+  running: boolean;
+  load: () => Promise<unknown>;
+  empty: unknown;
+}
+const liveShared = new Map<string, LiveShared>();
+const LIVE_KEEP_MS = 2 * 60_000;
+function liveNotify(sh: LiveShared) {
+  for (const fn of sh.subs) fn();
+}
+function liveRun(key: string) {
+  const sh = liveShared.get(key);
+  if (!sh || sh.running) return;
+  sh.running = true;
+  sh.load()
+    .then(
+      rows => {
+        sh.box = { key, rows, at: Date.now(), fault: null };
+      },
+      e => {
         const fault = vendorFault(e instanceof Error ? e.message : 'unusual whales') ?? 'failed';
-        setBox(prev => (prev && prev.key === key ? { ...prev, fault } : { key, rows: empty, at: null, fault }));
-        setWaiting(false);
+        sh.box = sh.box && sh.box.key === key ? { ...sh.box, fault } : { key, rows: sh.empty, at: null, fault };
       }
-    };
-    void run();
-    const id = window.setInterval(run, POLL_MS);
+    )
+    .finally(() => {
+      sh.running = false;
+      liveNotify(sh);
+    });
+}
+export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true): LivePack<T> {
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let sh = liveShared.get(key);
+    if (!sh) {
+      sh = { box: null, subs: new Set(), timer: null, running: false, load, empty };
+      liveShared.set(key, sh);
+    }
+    const me = sh;
+    me.load = load;
+    me.empty = empty;
+    /* an answer kept from an earlier page past its keep is not drawn as this page's */
+    if (!me.subs.size && me.box && (me.box.at == null || Date.now() - me.box.at > LIVE_KEEP_MS)) me.box = null;
+    const fn = () => force(n => n + 1);
+    me.subs.add(fn);
+    if (me.timer == null) {
+      if (!me.box || me.box.at == null || Date.now() - me.box.at >= POLL_MS) liveRun(key);
+      me.timer = window.setInterval(() => liveRun(key), POLL_MS);
+    }
+    fn();
     return () => {
-      stop = true;
-      window.clearInterval(id);
+      me.subs.delete(fn);
+      if (!me.subs.size && me.timer != null) {
+        window.clearInterval(me.timer);
+        me.timer = null;
+      }
     };
     // `key` is the request. `load` closes over the same key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled]);
   /* A NEW KEY NEVER WEARS THE OLD KEY'S ROWS (the ship pass, 2026-10-22): the box outlived its request, so a Net Flow pane
      moved from SPY to META drew SPY's minutes under META's name until the next answer landed */
-  const mine = box && box.key === key ? box : null;
-  return { rows: mine?.rows ?? empty, at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: enabled && !mine && (waiting || !!box) };
+  const sh = enabled ? liveShared.get(key) : undefined;
+  const kept = sh && sh.box && sh.box.key === key && (sh.subs.size > 0 || (sh.box.at != null && Date.now() - sh.box.at <= LIVE_KEEP_MS)) ? sh.box : null;
+  const mine = kept as CacheBox<T> | null;
+  return { rows: mine?.rows ?? empty, at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: enabled && !mine };
 }
 
 async function getRows(path: string): Promise<Record<string, unknown>[]> {

@@ -55,33 +55,53 @@ export interface Hold<T> {
   value: T;
   /** When the hold began — null while live */
   heldAt: Date | null;
+  /** Paused before the first read landed: the page keeps reading until it does, then holds there */
+  waitingFirst: boolean;
 }
 
-export function useHold<T>(live: T, resetKey?: unknown): Hold<T> {
+/* PAUSED BEFORE THE FIRST READ NEVER FREEZES AN EMPTY PAGE (audit round 8, major 5): `ready` says the page's first read
+   has landed. Pressed before it, the hold keeps following the feed until the read lands and holds THAT moment — the badge
+   says so meanwhile ("paused · holds at the first read") — never a frozen "$0 · Nothing". */
+export function useHold<T>(live: T, resetKey?: unknown, ready = true): Hold<T> {
   const [paused, setPaused] = useState(false);
   const [heldAt, setHeldAt] = useState<Date | null>(null);
   const held = useRef(live);
-  if (!paused) held.current = live;
+  const heldReady = useRef(ready);
+  if (!paused || !heldReady.current) {
+    held.current = live;
+    heldReady.current = ready;
+  }
+  const waitingFirst = paused && !ready && !heldReady.current;
 
   // A new key (the active ticker) releases the hold.
   useEffect(() => {
     setPaused(false);
     setHeldAt(null);
   }, [resetKey]);
+  /* the hold's moment is when the first read landed, if it was pressed before */
+  const wasWaiting = useRef(false);
+  useEffect(() => {
+    if (waitingFirst) wasWaiting.current = true;
+    else if (paused && wasWaiting.current) {
+      wasWaiting.current = false;
+      setHeldAt(new Date());
+    }
+  }, [waitingFirst, paused]);
 
   const toggle = () => {
     const next = !paused;
     setPaused(next);
     setHeldAt(next ? new Date() : null);
+    if (!next) wasWaiting.current = false;
   };
 
-  return { paused, toggle, value: paused ? held.current : live, heldAt };
+  return { paused, toggle, value: paused ? held.current : live, heldAt, waitingFirst };
 }
 
 // 24-hour New York, like every clock on Trace ("14:03 ET"), never "02:03 PM" and never the machine's zone (core/nyTime).
 const clock = (d: Date) => nyClock(d, { zone: true });
 
-export const LiveHold = ({ paused, onToggle, heldAt }: { paused: boolean; onToggle: () => void; heldAt?: Date | null }) => {
+export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { paused: boolean; onToggle: () => void; heldAt?: Date | null; waitingFirst?: boolean }) => {
   const phase = usePhase();
   const live = phase === 'regular' || phase === 'late';
   return (
@@ -120,7 +140,8 @@ export const LiveHold = ({ paused, onToggle, heldAt }: { paused: boolean; onTogg
           </>
         )}
       </button>
-      {paused && heldAt && <span className="font-mono text-[11px] text-textMuted uppercase tracking-wider whitespace-nowrap tnum">paused · as of {clock(heldAt)}</span>}
+      {paused && waitingFirst && <span className="font-mono text-[11px] text-textMuted uppercase tracking-wider whitespace-nowrap" title="Paused before the first read landed — the page keeps reading until it does, then holds there">paused before the first read · holds when it lands</span>}
+      {paused && !waitingFirst && heldAt && <span className="font-mono text-[11px] text-textMuted uppercase tracking-wider whitespace-nowrap tnum">paused · as of {clock(heldAt)}</span>}
     </span>
   );
 };

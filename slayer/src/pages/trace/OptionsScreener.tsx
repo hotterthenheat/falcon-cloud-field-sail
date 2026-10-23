@@ -34,7 +34,7 @@ import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/
 import { useMarketData } from '../../context/MarketDataContext';
 import { dayLean, useContracts, usd as fmtUsd } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
-import { applyFilters, floorPackaged, FRESH_VOL_OI, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
+import { applyFilters, floorPackaged, FRESH_VOL_OI, notABet, spreadLegDay, spreadLegHint, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -79,6 +79,7 @@ const PIN_RIGHT = ['prem'];
 
 /** The day's side in words */
 const leanWords = (r: BookContract) => {
+  if (notABet(r)) return floorPackaged(r) ? 'floor package · no lean' : `spread legs ${Math.round(r.multiPct)}% · no lean`;
   const l = dayLean(r);
   /* the share the rule is called on (the sided volume), and an even day's larger side too (retail, 2026-10-23) */
   return l.lean === 'ASK' ? `ask ${Math.round(l.askSided)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bidSided)}%` : l.lean === 'UNSIDED' ? (Number.isFinite(l.mid) ? `mid/no side ${Math.round(l.mid)}%` : '—') : `even · ${l.askSided >= 50 ? `ask ${shyPct(l.askSided)}%` : `bid ${shyPct(l.bidSided)}%`}`;
@@ -244,6 +245,8 @@ const OptionsScreener = () => {
     let fresh = 0;
     let pkgPrem = 0;
     let pkg = 0;
+    let legPrem = 0;
+    let legs = 0;
     const names = new Set<string>();
     for (const r of rows) {
       if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI) fresh++;
@@ -253,23 +256,32 @@ const OptionsScreener = () => {
         pkg++;
         continue;
       }
+      /* A DAY OF SPREAD LEGS IS SET APART THE SAME WAY (audit round 8, major 1) */
+      if (spreadLegDay(r)) {
+        legPrem += r.premium;
+        legs++;
+        continue;
+      }
       prem += r.premium;
       if (r.right === 'C') callPrem += r.premium;
     }
-    return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, pkgPrem, pkg };
+    return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, pkgPrem, pkg, legPrem, legs };
   }, [rows]);
   const champs = useMemo(() => {
     /* a day that was mostly floor-traded multi-leg packages — compression's shape — is named apart, never crowned the
        largest without saying so (the third audit; flowBook floorPackaged) */
-    const by = (pick: (r: BookContract) => boolean) => rows.filter(r => !floorPackaged(r) && pick(r)).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
-    const packaged = rows.filter(floorPackaged).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
+    /* …and so is a day that was mostly spread legs (audit round 8: "Largest VRT 185P $13.6M" was 10,840 of 10,847 contracts
+       in multi-leg orders) — the biggest SINGLE bet is the biggest contract that was neither */
+    const by = (pick: (r: BookContract) => boolean) => rows.filter(r => !notABet(r) && pick(r)).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
+    const packaged = rows.filter(notABet).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
     return { call: by(r => r.right === 'C'), put: by(r => r.right === 'P'), all: by(() => true), packaged };
   }, [rows]);
   const sentence = useMemo(() => {
     if (rows.length === 0) return 'Nothing on this cut.';
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-    const pkgWords = facts.pkg ? ` (${plural(facts.pkg, 'floor-package contract', 'floor-package contracts')}, ${fmtUsd(facts.pkgPrem)}, left out — mostly floor-traded multi-leg packages, not bets)` : '';
-    return `${fmtUsd(facts.prem)} across ${plural(rows.length - facts.pkg, 'contract', 'contracts')}${pkgWords} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
+    const apart = [facts.pkg ? `${plural(facts.pkg, 'floor-package contract', 'floor-package contracts')} (${fmtUsd(facts.pkgPrem)}, mostly floor-traded multi-leg packages)` : '', facts.legs ? `${plural(facts.legs, 'spread-leg contract', 'spread-leg contracts')} (${fmtUsd(facts.legPrem)}, half or more of the day in multi-leg orders)` : ''].filter(Boolean);
+    const pkgWords = apart.length ? ` (${apart.join(' and ')} left out — legs of packages, not bets of their own)` : '';
+    return `${fmtUsd(facts.prem)} across ${plural(rows.length - facts.pkg - facts.legs, 'contract', 'contracts')}${pkgWords} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
   }, [rows.length, facts]);
   /* AN EMPTY CUT NAMES THE CARDS THAT EMPTIED IT */
   const emptyText = useMemo(() => {
@@ -389,7 +401,7 @@ const OptionsScreener = () => {
       { key: 'sweep', header: 'Sweep', align: 'right', sortValue: r => r.sweepPct, render: r => <span className={r.sweepPct >= 40 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.sweepPct)}%</span> },
       { key: 'floor', header: 'Floor', align: 'right', sortValue: r => r.floorPct, render: r => (r.floorPct === 0 ? <span className="text-textSecondary">—</span> : <span className={r.floorPct >= 50 ? 'text-textPrimary font-bold' : 'text-textPrimary'}>{Math.round(r.floorPct)}%</span>) },
       { key: 'multi', header: 'Multi', align: 'right', sortValue: r => r.multiPct, render: r => <span className={r.multiPct >= 30 ? 'font-semibold text-textPrimary' : 'text-textPrimary'}>{Math.round(r.multiPct)}%</span> },
-      { key: 'lean', header: 'Lean', align: 'right', sortValue: r => r.askPct, render: r => <LeanCell askPct={r.askPct} split={r.sideVol} /> },
+      { key: 'lean', header: 'Lean', align: 'right', sortValue: r => r.askPct, render: r => <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} /> },
       { key: 'sector', header: 'Sector', sortValue: r => r.sector ?? '', render: r => <SectorName sector={r.sector} /> },
     ],
     [marks, oiCover]
@@ -420,7 +432,7 @@ const OptionsScreener = () => {
         guide={{ title: 'How to read the book', door: 'What a row, the inks and the shares mean', body: <ScreenerGuide />, testId: 'screener-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label={facts.pkg ? 'Premium · packages out' : 'Premium'} testId="premium" title={facts.pkg ? `The day's premium of the contracts on this cut, less ${num(facts.pkg)} whose day was mostly floor-traded multi-leg packages (${fmtUsd(facts.pkgPrem)}) — set apart, not bets` : "The day's premium of the contracts on this cut"}>
+            <Fact label={facts.pkg || facts.legs ? 'Premium · packages & legs out' : 'Premium'} testId="premium" title={facts.pkg || facts.legs ? `The day's premium of the contracts on this cut, less ${num(facts.pkg)} whose day was mostly floor-traded multi-leg packages (${fmtUsd(facts.pkgPrem)}) and ${num(facts.legs)} whose day was half or more legs of multi-leg orders (${fmtUsd(facts.legPrem)}) — set apart, not single bets` : "The day's premium of the contracts on this cut"}>
               {fmtUsd(facts.prem)}
               {/* no premium, no split — "calls 0% / puts 100%" on $0 was a division by nothing */}
               {facts.prem > 0 && (
@@ -437,22 +449,22 @@ const OptionsScreener = () => {
               {facts.fresh}
             </Fact>
             {champs.call && champs.call !== champs.all && (
-              <Champion label="Top call" ink="plain" title="The call with the most premium among contracts whose day was not mostly floor-traded multi-leg packages — a floor package is set apart, not a bet" onOpen={() => setOpenKey(champs.call!.key)} testId="top-call">
+              <Champion label="Top call" ink="plain" title="The biggest single bet among the calls: the most premium among contracts whose day was not mostly floor-traded packages or spread legs (half or more in multi-leg orders) — those are set apart, not bets" onOpen={() => setOpenKey(champs.call!.key)} testId="top-call">
                 {pill(champs.call)}
               </Champion>
             )}
             {champs.put && champs.put !== champs.all && (
-              <Champion label="Top put" ink="plain" title="The put with the most premium among contracts whose day was not mostly floor-traded multi-leg packages — a floor package is set apart, not a bet" onOpen={() => setOpenKey(champs.put!.key)} testId="top-put">
+              <Champion label="Top put" ink="plain" title="The biggest single bet among the puts: the most premium among contracts whose day was not mostly floor-traded packages or spread legs (half or more in multi-leg orders) — those are set apart, not bets" onOpen={() => setOpenKey(champs.put!.key)} testId="top-put">
                 {pill(champs.put)}
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Largest" ink="supreme" title="The most premium among contracts whose day was not mostly floor-traded multi-leg packages" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
+              <Champion label="Largest" ink="supreme" title="The biggest single bet by premium — the most premium among contracts whose day was not mostly floor-traded packages or spread legs (half or more in multi-leg orders). Not a side: the Lean column says which way it leaned" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
                 {pill(champs.all)}
               </Champion>
             )}
             {champs.packaged && (!champs.all || champs.packaged.premium > champs.all.premium) && (
-              <Champion label="Floor packages · not a bet" ink="plain" title={`More premium, but ${Math.round(champs.packaged.floorPct)}% of its day traded on the floor and ${Math.round(champs.packaged.multiPct)}% in multi-leg packages — the shape of compression (OPRA cbmo), which nets open interest down, not a directional bet`} onOpen={() => setOpenKey(champs.packaged!.key)} testId="packaged">
+              <Champion label={floorPackaged(champs.packaged) ? 'Floor packages · not a bet' : 'Spread legs · not a bet'} ink="plain" title={floorPackaged(champs.packaged) ? `More premium, but ${Math.round(champs.packaged.floorPct)}% of its day traded on the floor and ${Math.round(champs.packaged.multiPct)}% in multi-leg packages — the shape of compression (OPRA cbmo), which nets open interest down, not a directional bet` : `More premium, but ${spreadLegHint(champs.packaged)}`} onOpen={() => setOpenKey(champs.packaged!.key)} testId="packaged">
                 {pill(champs.packaged)}
               </Champion>
             )}
@@ -460,7 +472,7 @@ const OptionsScreener = () => {
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <StaleMark at={pack.at} ttlMs={FLOW_TTL_MS} fault={pack.fault} />
             <FlowSearch value={query} onChange={setQuery} rows={book} countNoun="contracts" span />
             <DropdownSelect label="Screen" value={screen} options={screenOptions} onChange={setScreen} title="The question asked of the book" testId="screener-screen" />

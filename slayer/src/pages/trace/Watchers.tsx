@@ -39,7 +39,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { buildCatches, floorPackaged, FRESH_VOL_OI, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
+import { buildCatches, floorPackaged, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
 import { dayLean, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, dayPos, earnWords, shyPct } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
@@ -70,7 +70,8 @@ import { createViewStore } from '../../data/savedViews';
 import { expiryLabel, pctSigned } from '../../core/format';
 
 /** A day's lean with the figure it is called on (audit round 7: "bid", "ask", "even" with no share) — the one lean rule */
-const leanText = (r: Parameters<typeof dayLean>[0]): string => {
+const leanText = (r: BookContract): string => {
+  if (notABet(r)) return floorPackaged(r) ? 'floor package · no lean' : `spread legs ${Math.round(r.multiPct)}% · no lean`;
   const l = dayLean(r);
   if (l.lean === 'ASK') return `ask ${Math.round(l.askSided)}%`;
   if (l.lean === 'BID') return `bid ${Math.round(l.bidSided)}%`;
@@ -158,9 +159,12 @@ const Watchers = () => {
 
   /* THE MARKET'S BOOK ONLY (audit round 5: the shell's active ticker was silently added — the market's top 200 plus its
      top 80 — so changing the ticker elsewhere changed the "market" figures). A name is read with the search. */
-  const liveBook = useLiveBook(null).rows;
+  const bookPack = useLiveBook(null);
+  const liveBook = bookPack.rows;
+  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "Contracts caught 0 … Nothing flagged today" while the book loaded) */
+  const reading = bookPack.waiting && liveBook.length === 0;
   // The shared hold (see LiveHold): book and tick freeze together while paused.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !reading);
   const { book: heldBook, tick } = hold.value;
   /* THE EXPIRY CUT: the watchers run over the cut book */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
@@ -229,6 +233,8 @@ const Watchers = () => {
 
   /* ReactNode, not a string: the newest contract is a DOOR, opening the same card (Noah, 2026-08-30). */
   const read = useMemo<ReactNode>(() => {
+    if (reading) return <RichRead text="Reading the market's book…" />;
+    if (bookPack.fault && heldBook.length === 0) return <RichRead text="The book did not answer — the watchers run when it does." />;
     if (catches.length === 0) return <RichRead text={`Nothing flagged ${dayAdv()} — the desk is watching.`} />;
     const byRule = new Map<string, number>();
     for (const a of catches) for (const r of a.rules) byRule.set(r, (byRule.get(r) ?? 0) + 1);
@@ -255,7 +261,7 @@ const Watchers = () => {
         <RichRead text={`, last at $${latest.last.toFixed(2)} (${latest.time} ET), ${fmtUsd(latest.premium)} ${dayAdv()}.`} />
       </>
     );
-  }, [catches, reasonOf, bookSize, stand.expired]);
+  }, [catches, reasonOf, bookSize, stand.expired, reading, bookPack.fault, heldBook.length]);
 
   const activeRule = rule === 'ALL' ? null : reasonOf(rule);
   /* The Reason card: every reason, the desk's then yours */
@@ -360,7 +366,7 @@ const Watchers = () => {
         sortValue: a => a.row.askPct,
         // The tape's rule: the side in one ink
         /* THE LEAN PRINTS ITS FIGURE (audit round 7: "bid", "ask", "even" with no share) — the house lean cell, the one rule */
-        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
+        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} legsPct={a.row.multiPct} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' || a.side === 'LEGS' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
       },
       {
         key: 'vol',
@@ -409,8 +415,10 @@ const Watchers = () => {
   const champs = useMemo(() => {
     /* a day that was mostly floor-traded multi-leg packages (compression's shape) is not crowned "most money" — it is
        named on its own (flowBook floorPackaged) */
-    const by = (pick: (a: Catch) => boolean) => shown.filter(a => !floorPackaged(a.row) && pick(a)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
-    const packaged = shown.filter(a => floorPackaged(a.row)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
+    /* …nor is a day of spread legs (audit round 8: "Most money · bid-leaning CCJ 65P" was 39,000 of 39,000 contracts in
+       multi-leg orders) — set apart with the packages, never given a lean */
+    const by = (pick: (a: Catch) => boolean) => shown.filter(a => !notABet(a.row) && pick(a)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
+    const packaged = shown.filter(a => notABet(a.row)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
     return { ask: by(a => a.side === 'ASK'), bid: by(a => a.side === 'BID'), all: by(() => true), packaged };
   }, [shown]);
   const facts = useMemo(() => {
@@ -442,8 +450,8 @@ const Watchers = () => {
           <>
             {/* the most frequent reason, named, its count after — never a reason read as a noun */}
             <Fact label="Contracts caught" testId="caught" title={`Contracts on the market's book (the ${num(bookSize)} standing ones among the vendor's 200 with the most premium ${dayAdv()}, every name — the terminal's ticker is not added) that meet a reason — each counted once, whatever number of reasons it meets`}>
-              {num(facts.total)}
-              {facts.loudName && (
+              {reading ? <span className="text-textMuted">—</span> : num(facts.total)}
+              {!reading && facts.loudName && (
                 <span className="text-textSecondary">
                   {' '}
                   · most often {facts.loudName} ({facts.loudCount})
@@ -451,7 +459,7 @@ const Watchers = () => {
               )}
             </Fact>
             <Fact label="From your reasons" testId="mine">
-              <span className={facts.mine > 0 ? 'text-textPrimary' : 'text-textSecondary'}>{facts.mine}</span>
+              {reading ? <span className="text-textMuted">—</span> : <span className={facts.mine > 0 ? 'text-textPrimary' : 'text-textSecondary'}>{facts.mine}</span>}
             </Fact>
             {champs.ask && champs.ask !== champs.all && (
               <Champion label="Most money · ask-leaning" ink="plain" onOpen={() => setOpenKey(champs.ask!.row.key)} testId="top-ask">
@@ -464,12 +472,12 @@ const Watchers = () => {
               </Champion>
             )}
             {champs.all && (
-              <Champion label={`Most money ${dayAdv()}`} ink="supreme" title="The most premium among contracts whose day was not mostly floor-traded multi-leg packages" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
+              <Champion label={`Most money ${dayAdv()}`} ink="supreme" title="The biggest single bet by premium — among contracts whose day was not mostly floor-traded packages or spread legs (half or more in multi-leg orders)" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
                 {pill(champs.all)}
               </Champion>
             )}
             {champs.packaged && (!champs.all || champs.packaged.premium > champs.all.premium) && (
-              <Champion label="Floor packages · not a bet" ink="plain" title={`More premium, but ${Math.round(champs.packaged.row.floorPct)}% of its day traded on the floor and ${Math.round(champs.packaged.row.multiPct)}% in multi-leg packages — the shape of compression (OPRA cbmo), which nets open interest down, not a directional bet`} onOpen={() => setOpenKey(champs.packaged!.row.key)} testId="packaged">
+              <Champion label={floorPackaged(champs.packaged.row) ? 'Floor packages · not a bet' : 'Spread legs · not a bet'} ink="plain" title={floorPackaged(champs.packaged.row) ? `More premium, but ${Math.round(champs.packaged.row.floorPct)}% of its day traded on the floor and ${Math.round(champs.packaged.row.multiPct)}% in multi-leg packages — the shape of compression (OPRA cbmo), which nets open interest down, not a directional bet` : `More premium, but ${spreadLegHint(champs.packaged.row)}`} onOpen={() => setOpenKey(champs.packaged!.row.key)} testId="packaged">
                 {pill(champs.packaged)}
               </Champion>
             )}
@@ -477,7 +485,7 @@ const Watchers = () => {
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="contracts" span />
             <DropdownSelect label="Reason" value={rule} options={reasonOptions} onChange={setRule} title="Which watcher's catches" testId="watchers-reason" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="watchers-side" />
@@ -501,7 +509,7 @@ const Watchers = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText="Nothing on the book meets a reason yet — the desk is watching" testId="watchers" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
       </TraceBox>
 
       <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} tick={tick} />
