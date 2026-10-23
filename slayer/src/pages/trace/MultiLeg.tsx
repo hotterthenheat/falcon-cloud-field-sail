@@ -64,7 +64,7 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
   { value: 'DEBIT', label: 'Paid', hint: 'Structures that cost money to put on' },
   { value: 'CREDIT', label: 'Collected', hint: 'Structures that paid the trader to put on' },
 ];
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, strikes: 170, exp: 110, size: 72, net: 116, prem: 104, legs: 64, kind: 168, maxloss: 108, maxprofit: 108 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, strikes: 200, exp: 110, size: 72, net: 228, prem: 150, legs: 64, kind: 200, maxloss: 108, maxprofit: 108 };
 /* the structure's who on the left; its risk at the right, always on screen (Max loss and Max profit stood off a 1280
    screen) */
 const PIN_LEFT = ['time', 'ticker'];
@@ -165,8 +165,9 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
           <span className="font-mono text-sm font-bold text-textPrimary">{trade.ticker}</span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[11px] font-semibold text-textPrimary whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: KIND_DOT[trade.kind] }} />
-            {trade.shape === 'unnamed' ? KIND_META[trade.kind].label : trade.shape}
+            {t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}
           </span>
+          {t.vendorShape && <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title="The vendor's own label — the legs as they were bought and sold say otherwise">vendor: {t.vendorShape}</span>}
         </span>
       }
       headerActions={
@@ -219,11 +220,12 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
             {fact(
               'Net a unit',
               <>
-                {t.net === 0 ? (t.netAbs != null && units ? <>${(t.netAbs / (units * 100)).toFixed(2)} <span className="text-[11px] text-textSecondary">way not printed</span></> : '—') : <>${Math.abs(t.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span></>}
+                {t.net === 0 ? (t.netAbs != null && units ? <>${(t.netAbs / (units * 100)).toFixed(2)} <span className="text-[11px] text-textSecondary">direction not reported</span></> : '—') : <><span className="text-[11px] text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}</>}
               </>
             )}
             {fact('Size', units != null ? <span title={t.ratioLabel ? `${t.ratioLabel} a unit · ${plural(t.contracts ?? 0, 'contract')} in all` : undefined}>{num(units)}× {t.ratioLabel && <span className="text-[11px] text-textSecondary">{t.ratioLabel}</span>}</span> : '…')}
-            {fact(t.netKnown === false ? 'Net, either way' : t.netPremium >= 0 ? 'Net paid' : 'Net collected', t.netKnown === false ? (t.netAbs != null ? fmtUsd(t.netAbs) : '—') : fmtUsd(Math.abs(t.netPremium)))}
+            {fact(t.netKnown === false ? 'Net, direction not reported' : t.netPremium >= 0 ? 'Net paid' : 'Net collected', t.netKnown === false ? (t.netAbs != null ? fmtUsd(t.netAbs) : '—') : fmtUsd(Math.abs(t.netPremium)))}
+            {fact('Strikes', t.strikesLabel)}
             {fact('Gross of the legs', fmtUsd(t.premium))}
             {fact('IV', t.iv > 0 ? `${t.iv.toFixed(1)}%` : '—')}
           </div>
@@ -268,10 +270,10 @@ const netWords = (t: SpreadTrade) =>
   t.legsState === 'pending' && t.net === 0 && t.netKnown !== false
     ? '…'
     : t.net !== 0
-      ? `$${Math.abs(t.net).toFixed(2)} ${t.net > 0 ? 'debit' : 'credit'}`
+      ? `${t.net > 0 ? 'paid' : 'collected'} $${Math.abs(t.net).toFixed(2)} a unit`
       : t.netAbs != null && t.units
-        ? `$${(t.netAbs / (t.units * 100)).toFixed(2)} · way not printed`
-        : 'net not printed';
+        ? `net $${(t.netAbs / (t.units * 100)).toFixed(2)} a unit, direction not reported`
+        : 'net not reported';
 const sizeWords = (t: SpreadTrade) => (t.units != null ? `${num(t.units)}×` : t.legsState === 'pending' ? '…' : '—');
 
 /** A structure on a phone — the strikes on the figures line, so they never run into the time (the retail pass,
@@ -291,7 +293,7 @@ const phoneRow = (t: SpreadTrade) => (
         {t.strikesLabel}
       </span>,
       <span key="p" className="font-semibold text-textPrimary">
-        {t.netKnown === false ? (t.netAbs != null ? `${fmtUsd(t.netAbs)} either way` : `${fmtUsd(t.premium)} gross`) : `${fmtUsd(Math.abs(t.netPremium))} ${t.netPremium > 0 ? 'paid' : 'collected'}`}
+        {t.netKnown === false ? (t.netAbs != null ? `net ${fmtUsd(t.netAbs)}, direction not reported` : `${fmtUsd(t.premium)} gross, net not reported`) : `${t.netPremium > 0 ? 'paid' : 'collected'} ${fmtUsd(Math.abs(t.netPremium))}`}
       </span>,
       <span key="n">
         {sizeWords(t)} · {netWords(t)}
@@ -388,12 +390,14 @@ const MultiLeg = () => {
     const byKind = new Map<SpreadKind, number>();
     const names = new Set<string>();
     let prem = 0;
+    let signed = 0;
     let paid = 0;
     let collected = 0;
     for (const t of trades) {
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
       names.add(t.ticker);
       prem += Math.abs(t.netPremium);
+      if (t.netKnown !== false) signed += t.netPremium;
       /* a structure whose net the vendor left out is neither — it was counted as paid */
       if (t.netKnown !== false && t.netPremium > 0) paid++;
       else if (t.netKnown !== false && t.netPremium < 0) collected++;
@@ -404,7 +408,7 @@ const MultiLeg = () => {
     const big = [...trades].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
     return (
       <>
-        <RichRead text={`In the newest ${trades.length} multi-leg trades (${windowSpan} ET): ${fmtUsd(prem)} of net premium on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
+        <RichRead text={`In the newest ${trades.length} multi-leg trades (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
         <ReadDoor onOpen={() => setDrill(big)}>
           {big.ticker} {big.shape === 'unnamed' ? KIND_META[big.kind].label.toLowerCase() : big.shape}
         </ReadDoor>
@@ -493,11 +497,11 @@ const MultiLeg = () => {
                 out is no figure, not "$0.00 debit" (its size, either way, when the shape's legs can say it) */}
             {t.net !== 0 ? (
               <>
-                ${Math.abs(t.net).toFixed(2)} <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span>
+                <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}
               </>
             ) : t.netAbs != null && t.units ? (
-              <span title="The vendor printed no net and the legs no side — this is the net's size either way">
-                ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">way n/a</span>
+              <span title="The vendor printed no net and the legs cannot settle which way it went — this is the net's size, paid if bought, collected if sold">
+                net ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">direction not reported</span>
               </span>
             ) : t.legsState === 'pending' && t.netKnown !== false ? (
               <span className="text-textMuted">…</span>
@@ -515,11 +519,14 @@ const MultiLeg = () => {
         render: t => (
           <span className={weightInk(Math.abs(t.netPremium), marks.prem)} title={`${fmtUsd(t.premium)} across every leg`}>
             {t.netKnown === false ? (
-              t.netAbs != null ? <span className="text-textSecondary" title="Paid if it was bought, collected if it was sold — the way is not printed">±{fmtUsd(t.netAbs)}</span> : <span className="text-textMuted">—</span>
+              t.netAbs != null ? <span className="text-textSecondary" title="Paid if it was bought, collected if it was sold — the direction is not reported">net {fmtUsd(t.netAbs)}</span> : <span className="text-textMuted" title="The vendor printed no net and the legs carry no settled direction">not reported</span>
             ) : t.netPremium === 0 ? (
               <span className="text-textMuted">—</span>
             ) : (
-              <TickFigure value={t.netPremium}>{`${t.netPremium > 0 ? '+' : '−'}${fmtUsd(Math.abs(t.netPremium))}`}</TickFigure>
+              <TickFigure value={t.netPremium}>
+                <span className="text-[11px] text-textSecondary">{t.netPremium > 0 ? 'paid ' : 'collected '}</span>
+                {fmtUsd(Math.abs(t.netPremium))}
+              </TickFigure>
             )}
           </span>
         ),

@@ -414,6 +414,7 @@ export function shortRowFromFile(
   const venues = arr(reads.svx);
   if (venues.length && !out.exchanges.length) {
     const day = venues.reduce((m, v) => (String(v.date ?? '') > m ? String(v.date ?? '') : m), '');
+    if (day) out.exchangesDate = day.slice(0, 10);
     out.exchanges = venues
       .filter(v => String(v.date ?? '') === day)
       .map(v => ({ exchange: String(v.exchange_name || v.market_center || '—'), shortM: num(v.short_volume) / 1e6, totalM: num(v.total_volume) / 1e6 }));
@@ -493,14 +494,19 @@ async function pullShorts() {
       const fund = FUND_TYPES.test(String(f.issue_type ?? ''));
       return { ...r, sector: uwSector(rawSector) ?? (rawSector || (fund ? 'Fund' : r.sector)), fund };
     });
-    emit({ shortStatus: 'live', shorts: out });
+    /* ONE READ, SHOWN WHOLE (the retail test, 2026-10-23: "2 strong · 22 building", then "19 building" minutes apart on
+       a Sep 30 settlement). The book was shown before the prior settlement landed, so the change-in-shares point arrived
+       later for some names and not others. It is shown once the prior settlement has been read for every batch (each
+       asked twice before it is given up) — the same data, the same counts, every load. */
     /* the settlement before, for the same names — the change in shares short; forty names a call (the proxy takes
        paths under 400 characters) */
     const prior = new Date(Date.parse(`${newest}T12:00:00Z`) - 25 * 86_400_000).toISOString().slice(0, 10);
     const before = new Date(Date.parse(`${newest}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
     const older: ShortRow[] = [];
     for (let i = 0; i < tickers.length; i += 40) {
-      const back = await uwCall(`/short_screener?tickers=${tickers.slice(i, i + 40).map(encodeURIComponent).join(',')}&min_market_date=${prior}&max_market_date=${before}&limit=200`).catch(() => null);
+      const path = `/short_screener?tickers=${tickers.slice(i, i + 40).map(encodeURIComponent).join(',')}&min_market_date=${prior}&max_market_date=${before}&limit=200`;
+      let back = await uwCall(path).catch(() => null);
+      if (!back || back.error || !Array.isArray(back.data)) back = await uwCall(path).catch(() => null);
       if (back && !back.error && Array.isArray(back.data)) older.push(...(back.data as UwShort[]).map(shortFrom).filter((r): r is ShortRow => !!r));
     }
     if (older.length) {
@@ -508,8 +514,9 @@ async function pullShorts() {
       const merged = collapseShorts([...out, ...older]);
       const byT = new Map(out.map(r => [r.ticker, r]));
       out = merged.map(r => ({ ...r, sector: byT.get(r.ticker)?.sector ?? r.sector, fund: byT.get(r.ticker)?.fund, borrowAsOf: newest }));
-      emit({ shorts: out.slice() });
     }
+    out.sort((a, b) => b.interestPct - a.interestPct || a.ticker.localeCompare(b.ticker));
+    emit({ shortStatus: 'live', shorts: out });
   } catch {
     if (snap.shorts.length === 0) emit({ shortStatus: 'error' });
   }
@@ -657,6 +664,7 @@ async function pullStocks() {
           bullish: numOr(row.bullish_premium),
           bearish: numOr(row.bearish_premium),
           sma50: numOr(row.sma_50),
+          row: row as Record<string, unknown>,
         }),
       );
     }

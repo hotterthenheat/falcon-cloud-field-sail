@@ -281,7 +281,7 @@ const Footprints = () => {
         header: 'OTM %',
         align: 'right',
         sortValue: r => r.otmPct,
-        render: r => <span className="text-textPrimary">{pctSigned(r.otmPct, 1)}</span>,
+        render: r => (Number.isFinite(r.otmPct) ? <span className="text-textPrimary">{pctSigned(r.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
       },
       {
         key: 'oi',

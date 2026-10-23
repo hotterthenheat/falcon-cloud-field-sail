@@ -311,7 +311,7 @@ const LedgerGuide = ({ surface, greek, view = 'calendar', mode, paper = false }:
 );
 
 /** The two sides' colours in words, for the ramp on the screen */
-const sideWords = (mode?: HeatMode) => (mode === 'thermal-yellow' ? { absorb: 'Blue', amplify: 'red and orange' } : { absorb: 'Glacier blue', amplify: 'ember orange' });
+const sideWords = (mode?: HeatMode) => (mode === 'thermal-yellow' ? { absorb: 'Green', amplify: 'red and orange' } : { absorb: 'Glacier blue', amplify: 'ember orange' });
 
 const InWords = ({ surface, greek }: { surface: ExposureSurface; greek: Greek }) => {
   const label = greek.toUpperCase();
@@ -332,7 +332,7 @@ const MatrixWords = ({ surface, greek, mode }: { surface: ExposureSurface; greek
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The matrix · one strike per row, a column per greek</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), green the call wall, red the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
+          Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), blue the call wall, gold the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
         </p>
         <FigureBox>
           <MatrixFigure />
@@ -412,7 +412,7 @@ const CalendarWords = ({ surface, greek, mode }: { surface: ExposureSurface; gre
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The grid · one strike per row, one date per column</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Each row is a strike, a price level. Each column is an expiry date, today first and later dates to the right. Each cell is a capsule: the figure inside is how much dealer hedging sits at that strike for that date. Brighter means more. {w.absorb} pushes back against a move there, {w.amplify} pushes it along. The strike printed in magenta is the supreme: the strike with the most hedging on the Levels card's contracts, the same one the Board and Compare show. The cell with the star is the heaviest single cell on this calendar. A strike's ink names its level: green the call wall, red the put wall, magenta the supreme; a dotted underline marks the gamma pin, a silver one a strike you own. Hover a strike for the words.
+          Each row is a strike, a price level. Each column is an expiry date, today first and later dates to the right. Each cell is a capsule: the figure inside is how much dealer hedging sits at that strike for that date. Brighter means more. {w.absorb} pushes back against a move there, {w.amplify} pushes it along. The strike printed in magenta is the supreme: the strike with the most hedging on the Levels card's contracts, the same one the Board and Compare show. The cell with the star is the heaviest single cell on this calendar. A strike's ink names its level: blue the call wall, gold the put wall, magenta the supreme; a dotted underline marks the gamma pin, a silver one a strike you own. Hover a strike for the words.
         </p>
         <FigureBox>
           <GridFigure />

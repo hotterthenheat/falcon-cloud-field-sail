@@ -679,6 +679,13 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           <CompanyLogo ticker={activeTicker} size={16} />
           <span className="text-[12px] font-semibold text-textPrimary">{activeTicker}</span>
           {spot != null ? <span className="font-mono text-[11px] tnum text-textPrimary">${spot.toFixed(2)}</span> : <span className="font-mono text-[11px] tnum text-textMuted">—</span>}
+          {/* THE DAY'S MOVE ON THE PHONE TOO (the retail test, 2026-10-23: the strip showed the price and no change) — the
+              same words as the rail's: the session's change, "pre-market +x%" before the open */}
+          {changeText && change != null && (
+            <span className="font-mono text-[10px] tnum whitespace-nowrap" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
+              {changeText}
+            </span>
+          )}
         </button>
         <button onClick={onOpenPalette} aria-label="Search or jump to…" className="ml-auto p-1.5 rounded-md border border-borderSubtle text-textMuted">
           <Search className="w-3.5 h-3.5" />

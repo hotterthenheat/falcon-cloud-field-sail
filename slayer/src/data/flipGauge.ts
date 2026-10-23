@@ -5,6 +5,8 @@ import { levelFlip, regimeOfNet } from './flipLevel';
 import { levelTicks } from './levelRecord';
 import { sessionBook } from './bookWindow';
 import type { Candle, GexSnapshot, MarketSnapshot } from '../types/market';
+import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
+import { isTradingDay, today as nyToday } from '../core/calendar';
 
 /*
 ==================================================
@@ -137,15 +139,49 @@ export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
  * nothing. The flip here is the one of the book the session ran on (data/bookWindow.ts sessionBook); null with `why`
  * when that book is no longer available.
  */
-export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): { crossings: number | null; flip: number | null; label: string; why: string | null } {
-  const sb = sessionBook(snapshot, scope);
-  if (!sb.book) return { crossings: null, flip: null, label: sb.label, why: sb.why };
-  const read = levelFlip(sb.book, sb.book.chain);
+export interface SessionCrossings {
+  crossings: number | null;
+  flip: number | null;
+  label: string;
+  why: string | null;
+}
+
+/* A FINISHED SESSION'S COUNT IS FROZEN (the third audit, 2026-10-23: QQQ's "Flip crossed today" read 13× and then 9×
+   after the bell — the morning book's flip was re-priced at each after-hours tick and the running clock). Once the
+   session has closed, its flip is read ONCE, at the session's own close (the last cash bar's price and minute), the
+   count is taken against it, and the answer is kept for that session: after-hours prints and the clock no longer move
+   it. Before the next open there is no session today yet, and the count says so rather than re-counting yesterday. */
+const frozenCross = new Map<string, SessionCrossings>();
+
+export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionCrossings {
   const candles = sessionBars(snapshot.ticker) ?? [];
-  if (read.flip === null) return { crossings: candles.length >= GAUGE_MIN_BARS ? 0 : null, flip: null, label: sb.label, why: null };
-  if (candles.length < GAUGE_MIN_BARS) return { crossings: null, flip: read.flip, label: sb.label, why: null };
+  const last = candles[candles.length - 1];
+  const today = nyIsoDate();
+  const barDay = last ? nyIsoDate(last.time * 1000) : null;
+  if (barDay && barDay < today && isTradingDay(nyToday()) && nySessionPhase() === 'before')
+    return { crossings: null, flip: null, label: 'Today', why: 'The session has not opened yet — today’s count starts at 9:30 ET.' };
+  const sb = sessionBook(snapshot, scope);
+  const key = `${snapshot.ticker}|${scope}|${barDay ?? today}`;
+  if (sb.after) {
+    const hit = frozenCross.get(key);
+    if (hit) return hit;
+  }
+  if (!sb.book) return { crossings: null, flip: null, label: sb.label, why: sb.why };
+  /* after the bell the session book is already priced at the session's own close (data/bookWindow.ts frozenAtClose) */
+  const closed = sb.after && !!last;
+  const book = sb.book;
+  const read = levelFlip(book, book.chain);
+  let out: SessionCrossings;
+  if (read.flip === null) out = { crossings: candles.length >= GAUGE_MIN_BARS ? 0 : null, flip: null, label: sb.label, why: null };
+  else if (candles.length < GAUGE_MIN_BARS) out = { crossings: null, flip: read.flip, label: sb.label, why: null };
   /* the side rule the Map's report uses (WallReportCard: flip ≥ spot is tested from below) */
-  return { crossings: levelTicks(candles, read.flip, read.flip >= snapshot.spot ? 'call' : 'put').length, flip: read.flip, label: sb.label, why: null };
+  else out = { crossings: levelTicks(candles, read.flip, read.flip >= book.spot ? 'call' : 'put').length, flip: read.flip, label: sb.label, why: null };
+  /* kept once the whole session is in (its last bar at 15:55 or later) and the book's dates have all landed */
+  if (closed && read.complete && nyMinutes(last.time * 1000) >= 15 * 60 + 55) {
+    if (frozenCross.size > 200) frozenCross.clear();
+    frozenCross.set(key, out);
+  }
+  return out;
 }
 
 /** The words the strip prints for a regime — one place, so the strip and its

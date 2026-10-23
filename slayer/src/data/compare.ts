@@ -21,7 +21,8 @@
 ==================================================
 */
 
-import { bookCandles, peekBellShare, peekIv, peekSpot } from './uwBook';
+import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot } from './uwBook';
+import { scopeDateOf } from './wall';
 import { UNIVERSE } from './universe';
 import { SESSION_MIN, buildCloseOdds, type AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
@@ -196,7 +197,8 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   const lens = snapshot.liveBook && snapshot.uwChains?.[expiry]?.length ? { ...snapshot, chain: snapshot.uwChains[expiry]! } : snapshot;
   const gauge = buildFlipGauge(lens);
   const iv = peekIv(ticker) ?? 0.2;
-  const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
+  /* the expiry this side reads: its own implied move, not the 30-day IV (data/uwBook.ts peekDaySigma) */
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(ticker, scopeDateOf(lens)) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
   const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   const scales: DistanceScales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: sigmaDay };
 

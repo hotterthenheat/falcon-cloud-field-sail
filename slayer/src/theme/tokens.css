@@ -124,7 +124,7 @@
      0.72) computes for the capsules, so a word and its bar agree on the dark
      terminal; on paper each is cut deep enough to read as text */
   --thermal-warm: 227 72 50;
-  --thermal-cool: 88 139 192;
+  --thermal-cool: 76 175 96; /* green: absorbs, the one sign rule (2026-10-23) */
   /* The clock's pressure pair — a phase that pushes (ember) or absorbs (glacier) */
   --ember: 245 197 66;
   --glacier: 122 189 215;
@@ -252,7 +252,7 @@
      outside the band) — one step redder than the alert's amber so the two
      stay apart; the cool pole a deep steel-blue */
   --thermal-warm: 196 62 10; /* 5.2:1 on white (was 3.6) */
-  --thermal-cool: 29 97 168;
+  --thermal-cool: 0 118 52; /* green on paper */
   --ember: 146 86 4; /* 5.9:1 (was 4.9) — the put figures on the ladder tile read this on paper */
   --glacier: 3 105 161;
   /* the wire's beats cut for paper — the same seven hues, 5.6:1 to 7.3:1 on white (the dark

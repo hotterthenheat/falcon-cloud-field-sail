@@ -63,7 +63,7 @@ const hhmm = (unix: number) => nyClock(unix * 1000);
 /** Each level in one plain line — the row's hover */
 const LEVEL_TIPS: Record<string, string> = {
   'call wall': 'the strike with the most call gamma, either side of price; while dealers are long gamma there it tends to slow a rise, and once price is through it, it can act as support.',
-  'put wall': 'the strike with the most put gamma, either side of price; dealers buy dips into it while it holds, but they are short gamma there, so a break can accelerate.',
+  'put wall': 'the strike with the most put gamma, either side of price; below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet.',
   'gamma flip': 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
   flip: 'where dealer hedging switches sides. Above it hedging absorbs moves, below it amplifies them.',
   'gamma pin': 'the strike with the most open contracts near price; price often drifts toward it, mostly through lunch.',
@@ -229,14 +229,18 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       return { key, label, ink, labels: [{ label, ink }], price, side, ticks, tests, held, broke, last: lastTouch, trend, trendFig, trendWord, grade, rate: RATE_OF[key] ?? null };
     };
     const spot = levels.spot;
+    /* ONE COUNT PER STRIKE (the third audit, 2026-10-23: QQQ 708 read PUT WALL 32/23/9 and SUPREME 32/24/8 — the put wall
+       was always tested from above, the supreme from its side of price, so one strike had two counts and two rows). Every
+       level is tested from the side of price it sits on, so levels on one strike share one count and one row. */
+    const sideOf = (k: number): 'call' | 'put' => (k >= spot ? 'call' : 'put');
     const out: Row[] = [
-      mk('call', 'Call wall', CALL_WALL, levels.callWall, 'call'),
+      mk('call', 'Call wall', CALL_WALL, levels.callWall, sideOf(levels.callWall)),
       /* no crossing within ±10% is no flip, and no row — the card's foot says so */
-      ...(levels.flipFound === false ? [] : [mk('flip', 'Gamma flip', FLIP, levels.flip, levels.flip >= spot ? 'call' : 'put')]),
-      mk('put', 'Put wall', PUT_WALL, levels.putWall, 'put'),
+      ...(levels.flipFound === false ? [] : [mk('flip', 'Gamma flip', FLIP, levels.flip, sideOf(levels.flip))]),
+      mk('put', 'Put wall', PUT_WALL, levels.putWall, sideOf(levels.putWall)),
       /* a pin only where dealers are long gamma and price is near it (data/exposure.ts) */
-      ...(levels.pinFound === false ? [] : [mk('pin', 'Gamma pin', 'rgb(var(--text-primary))', levels.pin, levels.pin >= spot ? 'call' : 'put')]),
-      mk('supreme', 'Supreme', SUPREME, levels.supreme, levels.supreme >= spot ? 'call' : 'put'),
+      ...(levels.pinFound === false ? [] : [mk('pin', 'Gamma pin', 'rgb(var(--text-primary))', levels.pin, sideOf(levels.pin))]),
+      mk('supreme', 'Supreme', SUPREME, levels.supreme, sideOf(levels.supreme)),
     ];
     // Highest price first — the section reads like the ladder above it
     const sorted = out.sort((a, b) => b.price - a.price || a.key.localeCompare(b.key));
@@ -246,7 +250,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     const merged: Row[] = [];
     for (const r of sorted) {
       const last = merged[merged.length - 1];
-      if (last && Math.abs(last.price - r.price) < 1e-9 && last.side === r.side) {
+      if (last && Math.abs(last.price - r.price) < 1e-9) {
         last.labels.push({ label: r.label, ink: r.ink });
         last.rate = last.rate ?? r.rate;
         last.key = `${last.key}+${r.key}`;

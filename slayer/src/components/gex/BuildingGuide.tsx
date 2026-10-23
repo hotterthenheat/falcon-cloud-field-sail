@@ -133,9 +133,10 @@ const LedgerFigure = () => {
         show
       </text>
       {/* the spot rule */}
-      <line x1={10} x2={338} y1={74} y2={74} stroke="#ededed" strokeOpacity={0.35} />
-      <text x={346} y={76.5} fontSize={6.5} fill="#a3a3a3" fontFamily={MONO} letterSpacing={0.6}>
-        SPY
+      <line x1={10} x2={318} y1={74} y2={74} stroke="#ededed" strokeOpacity={0.35} />
+      <text x={374} y={76.5} fontSize={6.5} textAnchor="end" fill="#a3a3a3" fontFamily={MONO} letterSpacing={0.6}>
+        {/* a made-up name and prices (the third audit, 2026-10-23: "SPY 486.40" read as a real, stale quote) */}
+        XYZ · example
       </text>
       <rect x={378} y={69} width={34} height={10} rx={2} fill="#ededed" />
       <text x={395} y={76.5} fontSize={7} fontWeight={700} textAnchor="middle" fill="#0a0a0a" fontFamily={MONO}>

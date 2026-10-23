@@ -50,7 +50,7 @@ import { attachScrollMore } from '../ui/scrollMore';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Crosshair, Maximize2, Minimize2, Plus, X } from 'lucide-react';
-import { ensureBook, snapshotOf } from '../../data/uwBook';
+import { bookRevision, ensureBook, snapshotOf } from '../../data/uwBook';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 import { useAnchoredMenu } from '../ui/useAnchoredMenu';
@@ -78,7 +78,7 @@ import { VIEWS_FOR, readLedgerView, writeLedgerView, type LedgerView } from './l
 import ExposureMatrix from './ExposureMatrix';
 import DayMoveText from './DayMoveText';
 import { DataCard } from './BookProvenance';
-import { ABSORB, AMPLIFY, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
+import { ABSORB, AMPLIFY, CALL_WALL, PUT_WALL, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import ExposureProfileView from './ExposureProfileView';
 
 /* THE LEGS (the competitive audit, 2026-10-13 — a net-only grid was the category's toy-grade marker): the net, one leg
@@ -472,7 +472,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   }, [ownKey, onNameDates, ownDates]);
   const scopedCache = useRef(new WeakMap<ExposureSurface, { key: string; out: ExposureSurface }>());
   const scoped = (surf: ExposureSurface, snap: MarketSnapshot, dates: string[] = chosenDates): ExposureSurface => {
-    const key = `${levelsScope}|${dates.join(',')}`;
+    const key = `${levelsScope}|${dates.join(',')}|${bookRevision()}`;
     const hit = scopedCache.current.get(surf);
     if (hit?.key === key) return hit.out;
     /* THE LEVELS ARE THE LEVELS CARD'S (the ship pass, 2026-10-22): the matrix draws the Expiries card's dates, but the
@@ -1249,11 +1249,6 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {/* the window it is crowned over, said on the door — the Agenda and the Board crown the Levels card's (today's), so
           a wider window here can name another strike (the UI sweep, 2026-10-22) */}
       <span className="text-[11px] text-textMuted">Supreme{!doorCompact('supreme') && supremeGreek === 'gex' && <span className="text-textMuted/70"> · {levelsLabel}</span>}</span>
-      {scopeDiffers && supremeGreek === 'gex' && !doorCompact('supreme') && (
-        <span className="text-[10px] text-warn whitespace-nowrap" title={`The matrix rows add up ${expirySpan(chosenDates)} (the Expiries card); the supreme, the walls, the flip and this figure read ${levelsLabel} (the Levels card) — so the row's own figure can differ`} data-supreme-scope-differs>
-          · matrix {expirySpan(chosenDates)}
-        </span>
-      )}
       <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
         {fmtStrike(supreme.strike)}
         {/* tight: the strike alone — the date and the amount stay in the title */}
@@ -1267,6 +1262,14 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           </>
         )}
       </span>
+      {/* THE FIGURE'S WINDOW, SAID AFTER THE FIGURE (the retail test, 2026-10-23: "· MATRIX OCT 23 → NOV 3 769 · −$595.1M"
+          read as the matrix's figure while the row said −$657.5M): the amount is the Levels card's contracts, and the
+          matrix row's own sum is named as the other window */}
+      {scopeDiffers && supremeGreek === 'gex' && !doorCompact('supreme') && (
+        <span className="text-[10px] text-warn whitespace-nowrap" title={`The matrix rows add up ${expirySpan(chosenDates)} (the Expiries card); the supreme, the walls, the flip and this figure read ${levelsLabel} (the Levels card) — so the row's own figure can differ`} data-supreme-scope-differs>
+          · {lvDate ? `${expirySpan([lvDate])} alone` : 'all expiries'} · matrix rows: {expirySpan(chosenDates)}
+        </span>
+      )}
     </button>
   );
   /* on the band every door wears the same edge — the guide and fullscreen had none (the owner, 2026-10-14) */
@@ -1581,7 +1584,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {toolbar === 'band' && !noteSeen && (
         <div className="shrink-0 flex items-start gap-3 px-4 py-2 border-b border-borderSubtle/60 bg-silver/[0.04] text-[11px] text-textSecondary" data-map-note>
           <p className="min-w-0 flex-1 leading-relaxed">
-            <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'blue means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, green the call wall, red the put wall. Click a row to keep it on every box.
+            <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'green means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, blue the call wall, gold the put wall. Click a row to keep it on every box.
           </p>
           <button type="button" onClick={dismissNote} className="hit shrink-0 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] text-textPrimary hover:border-borderMuted transition-colors" data-map-note-close>
             Got it
@@ -1893,11 +1896,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
             supreme
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-bull" />
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: CALL_WALL }} />
             call wall
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-bear" />
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: PUT_WALL }} />
             put wall
           </span>
           <span className="inline-flex items-center gap-1.5">

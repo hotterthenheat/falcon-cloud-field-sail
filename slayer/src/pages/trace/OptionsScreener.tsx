@@ -34,7 +34,7 @@ import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/
 import { useMarketData } from '../../context/MarketDataContext';
 import { dayLean, useContracts, usd as fmtUsd } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
-import { applyFilters, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
+import { applyFilters, floorPackaged, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -132,7 +132,7 @@ const MONEY_OPTIONS: DropdownOption<'any' | 'otm'>[] = [
 const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ? s : best), 0);
 
 /** The grid's own widths where flex would starve a cell */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, otm: 76, last: 118, doi: 124, prem: 92, iv: 124, sector: 176, lean: 96 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, otm: 76, last: 168, doi: 124, prem: 92, iv: 124, sector: 176, lean: 96 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
@@ -231,8 +231,11 @@ const OptionsScreener = () => {
     return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size };
   }, [rows]);
   const champs = useMemo(() => {
-    const by = (pick: (r: BookContract) => boolean) => rows.filter(pick).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
-    return { call: by(r => r.right === 'C'), put: by(r => r.right === 'P'), all: by(() => true) };
+    /* a day that was mostly floor-traded multi-leg packages — compression's shape — is named apart, never crowned the
+       largest without saying so (the third audit; flowBook floorPackaged) */
+    const by = (pick: (r: BookContract) => boolean) => rows.filter(r => !floorPackaged(r) && pick(r)).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
+    const packaged = rows.filter(floorPackaged).reduce<BookContract | null>((a, r) => (a === null || r.premium > a.premium ? r : a), null);
+    return { call: by(r => r.right === 'C'), put: by(r => r.right === 'P'), all: by(() => true), packaged };
   }, [rows]);
   const sentence = useMemo(() => {
     if (rows.length === 0) return 'Nothing on this cut.';
@@ -286,8 +289,14 @@ const OptionsScreener = () => {
         key: 'otm',
         header: 'OTM %',
         align: 'right',
-        sortValue: r => r.otmPct,
-        render: r => <span className="text-textPrimary">{pctSigned(r.otmPct, 1)}</span>,
+        sortValue: r => (Number.isFinite(r.otmPct) ? r.otmPct : Number.NEGATIVE_INFINITY),
+        /* NO BLANK CELL (the third audit: XSP's OTM % was empty): a dash, and why */
+        render: r =>
+          Number.isFinite(r.otmPct) ? (
+            <span className="text-textPrimary">{pctSigned(r.otmPct, 1)}</span>
+          ) : (
+            <span className="text-textMuted" title={r.spot > 0 ? "The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)" : 'No underlying price on this row'}>—</span>
+          ),
       },
       {
         key: 'last',
@@ -296,7 +305,10 @@ const OptionsScreener = () => {
         sortValue: r => (Number.isFinite(r.chgPct) ? r.chgPct : -Infinity),
         render: r => (
           <span className="text-textPrimary">
-            ${r.last.toFixed(2)} {Number.isFinite(r.chgPct) ? <span className={`text-[11px] ${r.chgPct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>{pctSigned(r.chgPct, 1)}</span> : <span className="text-[11px] text-textMuted">new</span>}
+            ${r.last.toFixed(2)}{' '}
+            {/* THE PRICE'S TIME (the third audit: prices differ by cents across pages with no time) — the last fill's */}
+            {r.lastAt && r.lastAt !== '—' && <span className="text-[11px] text-textSecondary" title="New York time of the last fill this price is">{r.lastAt}</span>}{' '}
+            {Number.isFinite(r.chgPct) ? <span className={`text-[11px] ${r.chgPct >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>{pctSigned(r.chgPct, 1)}</span> : <span className="text-[11px] text-textMuted">new</span>}
           </span>
         ),
       },
@@ -402,8 +414,13 @@ const OptionsScreener = () => {
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Largest" ink="supreme" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
+              <Champion label="Largest" ink="supreme" title="The most premium today among contracts whose day was not mostly floor-traded multi-leg packages" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
                 {pill(champs.all)}
+              </Champion>
+            )}
+            {champs.packaged && (!champs.all || champs.packaged.premium > champs.all.premium) && (
+              <Champion label="Floor packages · not a bet" ink="plain" title={`More premium, but ${Math.round(champs.packaged.floorPct)}% of its day traded on the floor and ${Math.round(champs.packaged.multiPct)}% in multi-leg packages — the shape of compression (OPRA cbmo), which nets open interest down, not a directional bet`} onOpen={() => setOpenKey(champs.packaged!.key)} testId="packaged">
+                {pill(champs.packaged)}
               </Champion>
             )}
           </>

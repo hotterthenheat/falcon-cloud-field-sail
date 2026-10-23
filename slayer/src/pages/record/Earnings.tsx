@@ -49,7 +49,6 @@ import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import { FeedFallback } from '../../components/ui/liveRead';
-import { PageBar } from '../../components/ui/PageBar';
 import DropdownSelect, { CARD, type DropdownOption } from '../../components/ui/DropdownSelect';
 import TickerLookup from '../../components/ui/TickerLookup';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
@@ -58,12 +57,12 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending, historyMissed } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
 import { macroWindow, type MacroDate } from '../../data/events';
 import { useBoardNames } from '../../data/boardNames';
 import { statHelp } from '../../components/record/statHelp';
-import { phonePin } from '../../components/record/pagedGrid';
+import { phonePin, usePagedGrid } from '../../components/record/pagedGrid';
 
 type WeekPick = '0' | '1' | 'both';
 type ShowPick = 'all' | VolState;
@@ -72,12 +71,17 @@ type Layout = 'list' | 'board';
 /** A shelf on the board, and the week's list, before "+ more" opens that day. */
 const SHELF = 4;
 const LIST_CAP = 8;
-const REPORT_PAGE = 40;
 const rankEvents = (list: EarningsEvent[]) =>
   [...list].sort((a, b) => Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0) || b.impliedMovePct - a.impliedMovePct);
 
+/* on a Saturday or a Sunday the board opens on the COMING week (data/nyDate.ts boardMondayIso) — the hint says so (the
+   third audit, 2026-10-23: it said "the current week" over next week's dates) */
+const nyWeekend = (): boolean => {
+  const d = new Date(`${nyTodayIso()}T12:00:00Z`).getUTCDay();
+  return d === 0 || d === 6;
+};
 const WEEK_OPTIONS: DropdownOption<WeekPick>[] = [
-  { value: '0', label: 'This week', hint: 'Monday to Friday of the current week' },
+  { value: '0', label: 'This week', hint: nyWeekend() ? 'Monday to Friday of the coming week — on a weekend the board opens on the week ahead' : 'Monday to Friday of the current week' },
   { value: '1', label: 'Next week', hint: 'The week after' },
   { value: 'both', label: 'Both weeks', hint: 'The whole fortnight, one week under the other' },
 ];
@@ -385,7 +389,6 @@ const Earnings = () => {
   const [show, setShow] = useState<ShowPick>('all');
   const [layout, setLayout] = useState<Layout>('board');
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
-  const [reportPage, setReportPage] = useState(0);
   const [guideOpen, setGuideOpen] = useState(false);
   /* THE NAME ASKED FOR, and its answer */
   const [asked, setAsked] = useState<string | null>(null);
@@ -403,17 +406,22 @@ const Earnings = () => {
     /* still to report first, soonest first; the reports already out follow, newest first */
     return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut));
   }, [events, show, askedIn, asked, week]);
-  /* a new cut starts the grid on its first page (the re-audit, 2026-10-22: it stayed on page 3 of an older cut) */
-  useEffect(() => setReportPage(0), [week, show, asked]);
-  const reportPages = Math.max(1, Math.ceil(shown.length / REPORT_PAGE));
-  const reportAt = Math.min(reportPage, reportPages - 1);
-  const reportRows = shown.slice(reportAt * REPORT_PAGE, (reportAt + 1) * REPORT_PAGE);
+  /* THE GRID PAGES ITSELF (the third audit, 2026-10-23): it was handed a 40-row slice, so a header sort ordered only the
+     page in view. Every row goes in and the grid's own pagination pages it, as on Insiders and Congress — a sort runs
+     over every report. A new cut starts on the first page. */
+  const paged = usePagedGrid<EarningsEvent>();
+  useEffect(() => {
+    paged.props.ref.current?.api?.paginationGoToPage(0);
+  }, [week, show, asked, paged.props.ref]);
   /* the pricing facts are told over the known names still to report whose usual move is in — a print that is out is
      not priced any more, and a count that grows as histories land says how many are in */
   /* the head counts the weeks the Week card shows — the same cut as the board and the grid */
   const weekEvents = events.filter(inWeeks);
   const weekKnown = knownEvents.filter(inWeeks);
   const ahead = weekKnown.filter(e => !e.reported);
+  /* the week's known names whose past reports have not landed — the same names the head counts, so the figure is the
+     progress of one stated set, never a fortnight-wide number that moved between loads (the retail test, 2026-10-23) */
+  const weekHistOut = weekKnown.filter(e => e.history === false && !historyMissed(e.ticker)).length;
   const scored = ahead.filter(pricedKnown);
   const cover = useEarningsCoverage();
   const rich = scored.filter(e => stateOf(e) === 'RICH').length;
@@ -436,7 +444,7 @@ const Earnings = () => {
   const sentence = useMemo(() => {
     const parts = [
       `${weekEvents.length} reports ${weekWords}, ${weekKnown.length} of them known names, ${ahead.length} of those still to report`,
-      `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${cover.historiesPending ? ` (${cover.historiesPending} still reading)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
+      `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${weekKnown.length - weekHistOut} of ${weekKnown.length} read)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
     if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
     parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
@@ -489,7 +497,8 @@ const Earnings = () => {
               ) : (
                 <span title={`Known names still to report ${weekWords} with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${ahead.length}. A name with fewer, or none, is not called rich or cheap`}>
                   <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
-                  <span className="text-textMuted"> · of {scored.length}{cover.historiesPending ? ` (${cover.historiesPending} reading)` : ''}</span>
+                  <span className="text-textMuted"> · of {scored.length}</span>
+                  {weekHistOut > 0 && <span className="text-textMuted" title="The known names' past reports are read one by one (the feed allows three at a time); the count grows as they land, and stops when every one is in"> · histories {weekKnown.length - weekHistOut} of {weekKnown.length} read</span>}
                 </span>
               )}
             </Fact>
@@ -702,9 +711,10 @@ const Earnings = () => {
           <AgGridProvider modules={GRID_MODULES}>
             <AgGridReact<EarningsEvent>
               {...phonePin}
+              {...paged.props}
               theme={GRID_THEME}
               domLayout="autoHeight"
-              rowData={reportRows}
+              rowData={shown}
               overlayNoRowsTemplate={noRows(failed ? 'This read did not land' : 'No report on this cut')}
               key={failed ? 'failed' : 'live'}
               columnDefs={columnDefs}
@@ -721,7 +731,7 @@ const Earnings = () => {
             />
           </AgGridProvider>
           )}
-          {!pending && <PageBar page={reportAt} pages={reportPages} onPage={setReportPage} testId="earnings" />}
+          {!pending && paged.bar(shown.length, 'earnings')}
         </div>
       </div>
     </>

@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { postureOf, quotePlace, useAccumTape, useNameDark, usd as fmtUsd } from '../../data/traceLive';
+import { lastStockClose, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useNameDark, usd as fmtUsd } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { gradeOfPosture, POSTURE_WORD, type DarkTapeView } from '../../data/darkpool';
 import { crossKey, watchedCross } from '../../context/WatchContext';
@@ -56,6 +56,9 @@ import { DP_SHELF_H, DP_STRIP_HEAD_H, TracePageSkeleton } from './traceSkeletons
 const num = (v: number) => v.toLocaleString('en-US');
 const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
 const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textMuted');
+/* an after-hours print's place in a thin post-market quote is shown, never inked as a side (the third audit) */
+const placeInk = (p: DarkPoolPrint, cents: number) => (p.extended ? 'text-textSecondary' : cents === 0 ? 'text-textMuted' : dirInk(cents));
+const execInk = (p: DarkPoolPrint) => (p.extended || !p.exec || p.exec === 'MID' ? 'text-textMuted' : p.exec === 'ASK' ? 'text-bull' : 'text-bear');
 
 /* THE CARDS — the cuts as labelled cards (the walk, 2026-09-09 — never chip rows) */
 type ReadCut = 'all' | DarkPoolIntent;
@@ -130,11 +133,26 @@ const DarkPool = () => {
     setQueryState(q);
   };
   const [tapeKind, setTapeKind] = useState<'dark' | 'lit'>('dark');
-  const dark = useAccumTape('dark', 200);
+  /* AFTER THE CLOSE, THE DAY'S SESSION FIRST (the third audit, 2026-10-22: after the bell every cross read "NO READ ·
+     AFTER HRS"): once the stock session has ended the page opens on the day's regular-session crosses, and the
+     after-hours prints are a separate, labelled view. In the session there is one live tape. */
+  const [closed, setClosed] = useState(() => lastStockClose());
+  useEffect(() => {
+    const id = window.setInterval(() => setClosed(c => {
+      const n = lastStockClose();
+      return n?.closeMs === c?.closeMs ? c : n;
+    }), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const [dpSession, setDpSession] = useState<'regular' | 'after'>('regular');
+  const regularView = !!closed && dpSession === 'regular';
+  const darkLive = useAccumTape('dark', 200);
+  const darkReg = useDarkRegularDay(regularView ? closed!.iso : null);
+  const dark = regularView ? darkReg : darkLive;
   const lit = useAccumTape('lit', 200);
   const q = query.trim().toUpperCase();
   const named = /^[A-Z][A-Z0-9.]{0,5}$/.test(q) ? q : null;
-  const nameBook = useNameDark(named);
+  const nameBook = useNameDark(named, regularView ? closed!.closeMs : null);
   const [read, setRead] = useState<ReadCut>('all');
   const [size, setSize] = useState<SizeCut>('any');
   const [where, setWhere] = useState<WhereCut>('anywhere');
@@ -144,7 +162,7 @@ const DarkPool = () => {
 
   const liveView = named && tapeKind !== 'lit' ? nameBook.rows.view : null;
   const nameDay = named ? nameBook.rows.day : null;
-  const liveTape = useMemo<(DarkTapeView & { lit: boolean; note: string }) | null>(() => {
+  const liveTape = useMemo<(DarkTapeView & { lit: boolean; note: string; read: number }) | null>(() => {
     const prints = named ? (tapeKind === 'lit' ? nameBook.rows.lit : []) : tapeKind === 'lit' ? lit.rows : dark.rows;
     if (named && tapeKind !== 'lit') return null;
     const views = new Map<string, DarkPoolView>();
@@ -189,6 +207,7 @@ const DarkPool = () => {
       largest,
       lit: tapeKind === 'lit',
       note: pos.note,
+      read: pos.read,
     };
   }, [dark.rows, lit.rows, nameBook.rows.lit, tapeKind, named]);
   const hold = useHold(useMemo(() => ({ view: liveView, tape: liveTape, tick: marketData }), [liveView, liveTape, marketData]), named ?? 'market');
@@ -198,14 +217,15 @@ const DarkPool = () => {
   const headNow = useMemo(
     () =>
       view
-        ? { ticker: view.ticker, dpSharePct: view.dpSharePct, posture: view.posture, netPosturePct: view.netPosturePct, postureNote: view.postureNote, totalNotional: view.totalNotional }
+        ? { ticker: view.ticker, dpSharePct: view.dpSharePct, posture: view.posture, netPosturePct: view.netPosturePct, postureNote: view.postureNote, totalNotional: view.totalNotional, read: postureOf(view.prints).read }
         : tape
           ? {
               ticker: 'The market',
               dpSharePct: tape.dpSharePct,
               posture: tape.posture,
               netPosturePct: tape.netPosturePct,
-              postureNote: `${tape.lit ? 'On the lit tape' : POSTURE_WORD[tape.posture]} across ${tape.names.length} names — ${fmtUsd(tape.totalNotional)} ${tape.lit ? 'printed on the exchanges' : 'crossed off-exchange'} in the last ${num(tape.crosses)} prints. ${tape.note}`,
+              postureNote: `${tape.lit ? 'On the lit tape' : tape.read === 0 ? 'Nothing to read' : POSTURE_WORD[tape.posture]} across ${tape.names.length} names — ${fmtUsd(tape.totalNotional)} ${tape.lit ? 'printed on the exchanges' : 'crossed off-exchange'} in ${regularView && !tape.lit ? `the day's ${num(tape.crosses)} largest regular-session crosses` : `the last ${num(tape.crosses)} prints`}. ${tape.note}`,
+              read: tape.read,
               totalNotional: tape.totalNotional,
             }
           : null,
@@ -342,10 +362,10 @@ const DarkPool = () => {
           ]),
       { key: 'time', header: 'Time', sortValue: p => p.time, render: p => <span className="text-textSecondary tnum">{p.time}</span> },
       { key: 'price', header: 'Price', align: 'right', sortValue: p => p.price, render: p => <span className="font-mono tnum font-bold text-textPrimary">${p.price.toFixed(2)}</span> },
-      { key: 'vs', header: 'vs mid', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${place.cents === 0 ? 'text-textMuted' : dirInk(place.cents)}`}>{place.text}</span>; } },
+      { key: 'vs', header: 'vs mid', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${placeInk(p, place.cents)}`}>{place.text}</span>; } },
       { key: 'shares', header: 'Shares', align: 'right', sortValue: p => p.size, render: p => <span className={`font-mono tnum ${weightInk(p.size, marks.size)}`}>{num(p.size)}</span> },
       { key: 'dollars', header: 'Dollars', align: 'right', sortValue: p => p.notional, render: p => <span className={`font-mono tnum ${weightInk(p.notional, marks.notional)}`}>{fmtUsd(p.notional)}</span> },
-      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-[10px] ${p.exec === 'ASK' ? 'text-bull' : p.exec === 'BID' ? 'text-bear' : 'text-textMuted'}`} title={p.extended ? 'After hours' : undefined}>{p.exec ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
+      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-[10px] ${execInk(p)}`} title={p.extended ? 'After hours — where it sat in a thin post-market quote, not a side' : undefined}>{p.exec ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
       /* a shelf is a name's (its day by price) — the market's tape has none, so the column stands only on a name */
       ...(view
         ? [
@@ -398,7 +418,7 @@ const DarkPool = () => {
               {fmtUsd(p.notional)}
             </span>,
             <span key="s">{num(p.size)} sh</span>,
-            <span key="v" className={place.cents === 0 ? 'text-textMuted' : dirInk(place.cents)}>
+            <span key="v" className={placeInk(p, place.cents)}>
               {place.text}
             </span>,
             p.sized && !p.extended && !p.special ? <IntentTag key="r" intent={p.intent} /> : <span key="r" className="text-textMuted uppercase text-[10px]">{noReadWord(p)}</span>,
@@ -540,7 +560,9 @@ const DarkPool = () => {
             ? `${view.ticker}'s off-exchange crosses with the read attached — who is most likely behind each print, and the liquidity shelves they left · a shelf cuts the grid to it`
             : tapeKind === 'lit'
               ? "Every name's latest lit prints — trades on the exchanges, not off them — on one tape, newest first, each set against the quote · a row opens its card · a name typed cuts the tape to it"
-              : "The market's latest off-exchange crosses — the vendor's recent feed, about $100K and up — on one tape, newest first, with the read attached · a row opens the cross's card · a name typed cuts the tape to it"
+              : regularView
+                ? `The day's largest off-exchange crosses of the regular session (${closed!.iso}, 09:30–16:00 ET) — the vendor's crosses by dollars, after-hours ones on the After hours card — with the read attached · a row opens the cross's card · a name typed cuts the tape to it`
+                : `The market's latest off-exchange crosses — the vendor's recent feed, about $100K and up — on one tape, newest first${closed ? ', after hours: shown, never read' : ''} · a row opens the cross's card · a name typed cuts the tape to it`
         }
         testId="dark-pool"
         data={{ ticker: view ? view.ticker : 'market', read, size, where, crosses: cut.length }}
@@ -559,7 +581,11 @@ const DarkPool = () => {
             )}
             <Fact label="Posture" testId="posture">
               {/* which side leads, then how far it leans in the four words — never the figure (data/darkpool.ts gradeOfPosture).
-                  Balanced stands alone: a poor lean is no lean. The steps wear the side's ink. */}
+                  Balanced stands alone: a poor lean is no lean. The steps wear the side's ink. NOTHING READ is not
+                  balanced (the third audit) — it says so. */}
+              {head.read === 0 ? (
+                <span className="text-textMuted" data-posture-read="none" title="No sized regular-session cross at the quote in this view — nothing to read">Nothing to read</span>
+              ) : (
               <span
                 className={`inline-flex items-center gap-2 ${head.posture === 'ACCUMULATING' ? 'text-bull' : head.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'}`}
                 data-posture-read={gradeOfPosture(head.netPosturePct)}
@@ -568,6 +594,7 @@ const DarkPool = () => {
                 <GradeMeter grade={gradeOfPosture(head.netPosturePct)} fill={head.posture === 'ACCUMULATING' ? 'bg-bull' : head.posture === 'DISTRIBUTING' ? 'bg-bear/80' : 'bg-ink/30'} className="w-12" />
                 {head.posture !== 'BALANCED' && <span>{gradeOfPosture(head.netPosturePct)}</span>}
               </span>
+              )}
             </Fact>
             <Fact label="On this cut" testId="cut">
               {fmtUsd(facts.dollars)} <span className="text-textMuted">· {cut.length} {litLane ? 'prints' : 'crosses'}</span>
@@ -602,12 +629,22 @@ const DarkPool = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
-            <StaleMark at={named ? nameBook.at : tapeKind === 'lit' ? lit.at : dark.at} ttlMs={FLOW_TTL_MS} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />
+            {/* the closed session's crosses are read once and do not go stale */}
+            {!(regularView && !named && tapeKind !== 'lit') && <StaleMark at={named ? nameBook.at : tapeKind === 'lit' ? lit.at : dark.at} ttlMs={FLOW_TTL_MS} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />}
             {/* THE SEARCH, the Live Tape's own: a name typed cuts the tape to it; a prefix narrows it */}
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} tickersOnly countNoun="names" span />
             <DropdownSelect label="Read" value={read} options={READ_OPTIONS} onChange={setRead} title="What the cross is doing" testId="dark-pool-read" />
             <DropdownSelect label="Size" value={size} options={SIZE_OPTIONS} onChange={setSize} title="Every cross, or the sized ones" testId="dark-pool-size" />
             <DropdownSelect label="Where" value={where} options={whereOptions} onChange={setWhere} title="Where the cross printed" testId="dark-pool-where" />
+            {closed && (
+              <span className="inline-flex rounded-md border border-borderSubtle overflow-hidden" data-dark-session title={`The stock session of ${closed.iso} has closed: the day's regular-session crosses, or what has printed after hours since`}>
+                {(['regular', 'after'] as const).map(k => (
+                  <button key={k} type="button" onClick={() => setDpSession(k)} aria-pressed={dpSession === k} className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${dpSession === k ? 'bg-chip text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>
+                    {k === 'regular' ? 'Regular session' : 'After hours'}
+                  </button>
+                ))}
+              </span>
+            )}
             <span className="inline-flex rounded-md border border-borderSubtle overflow-hidden" data-dark-kind>
               {(['dark', 'lit'] as const).map(k => (
                 <button key={k} type="button" onClick={() => setTapeKind(k)} aria-pressed={tapeKind === k} className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${tapeKind === k ? 'bg-chip text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>
@@ -632,7 +669,7 @@ const DarkPool = () => {
         <div className="border-t border-borderSubtle" data-dark-pool-shelves>
           <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 font-mono text-[9px] uppercase tracking-widest" style={{ height: DP_STRIP_HEAD_H }}>
             <span className="text-textPrimary">The shelves</span>
-            <span className="text-textMuted normal-case tracking-normal font-sans text-[10px]">· where the day's dark shares rested, by $1 price · {shelfWords} · lowest at the left</span>
+            <span className="text-textMuted normal-case tracking-normal font-sans text-[10px]">· where the day's dark shares rested, by the vendor's price levels — a shelf holds 3% or more of the day's dark dollars within 5% of the market · {shelfWords} · lowest at the left</span>
           </div>
           {/* Two across on a phone, three rows (the phone pass, 2026-09-13): six cells in 350px ran their figures into each other, and three still did */}
           {/* six shelves across from 1024, three from 640 (the device sweep, 2026-10-18: six at 768 left each shelf 110px and
@@ -661,7 +698,7 @@ const DarkPool = () => {
                     <span className="flex items-baseline gap-2">
                       <span className="font-mono text-[13px] font-bold tnum text-textPrimary">${l.price.toFixed(2)}</span>
                       <span className={`font-mono text-[10px] tnum ${dirInk(l.distPct)}`}>{signedPct(l.distPct)}</span>
-                      <span className="ml-auto min-w-0 truncate font-mono text-[9px] text-textMuted tnum whitespace-nowrap" title="The name's dark prints in hand that landed on this price — the day's shares by price carry no count">{l.prints} in hand{l.defended > 0 ? ` · held ${l.defended}×` : ''}</span>
+                      <span className="ml-auto min-w-0 truncate font-mono text-[9px] text-textMuted tnum whitespace-nowrap" title="The name's dark prints in hand that landed on this price — the day's shares by price carry no count">{l.prints} in hand</span>
                     </span>
                     <span className="flex items-center gap-2">
                       <span className="relative h-0.5 flex-1 rounded-full bg-ink/[0.06] overflow-hidden">
@@ -683,12 +720,12 @@ const DarkPool = () => {
       {/* BOX 2 — WHERE THE DARK MONEY WENT: the market's dark tape by sector and by name */}
       <TraceBox
         title="Where the dark money went"
-        sub="Off-exchange dollars in the market's latest dark prints (about $100K and up), by name, the heaviest first · a name goes on the box above"
+        sub={regularView ? `Off-exchange dollars in the day's largest regular-session crosses (${closed!.iso}), by name, the heaviest first · a name goes on the box above` : "Off-exchange dollars in the market's latest dark prints (about $100K and up), by name, the heaviest first · a name goes on the box above"}
         testId="dark-leaders"
         data={{ sector, names: leaderRows.length }}
         facts={
           <>
-            <Fact label="Dark tape in hand" testId="tape" title="The market's latest dark prints, collected while this page is open — not the whole day">
+            <Fact label="Dark tape in hand" testId="tape" title={regularView ? "The day's largest regular-session crosses by dollars — the vendor's top crosses, not every one" : "The market's latest dark prints, collected while this page is open — not the whole day"}>
               {fmtUsd(leaders.totalNotional)} <span className="text-textMuted">· {num(leaders.totalPrints)} crosses{leaderWindow ? ` · ${leaderWindow}` : ''}</span>
             </Fact>
             <Fact label="Names" testId="names" title="The names in the market's latest dark prints — the vendor's recent feed carries no sector">

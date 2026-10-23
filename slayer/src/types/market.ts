@@ -158,6 +158,9 @@ export interface MarketSnapshot {
   /** The instant (epoch ms) a book is read as of — set only for a session that has closed, so its flip is re-priced at
       that session's own clock rather than now (data/bookWindow.ts sessionBook) */
   asOf?: number;
+  /** A finished session's clock for the flip alone (epoch ms) — its close — so the flip and every count against it stop
+      moving after the bell, without the asOf's contract-vol switch (data/bookWindow.ts sessionBook, data/flipLevel.ts) */
+  flipAt?: number;
 }
 
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS';

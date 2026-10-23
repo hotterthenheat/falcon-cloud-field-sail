@@ -12,6 +12,7 @@ import { now } from '../core/clock';
 import { nyClock } from '../core/nyTime';
 import type { TapeOrder } from '../types/market';
 import type { BookContract, FlowPrint, PrintSentiment, StratTag, TapeSummary } from '../types/trace';
+import { dayLean } from './traceLive';
 
 // ---- deterministic RNG ------------------------------------------------------
 function hash(seed: string): number {
@@ -124,12 +125,16 @@ export function bookRowToPrint(
      traceLive's useContractLast); without one the card speaks for the DAY — the day's volume and premium at the last
      price, the spread unknown — never a made-up print. */
   const fill = clip?.fill ?? row.last;
-  const side: FlowPrint['side'] = clip?.side ?? (row.askPct >= 55 ? 'ASK' : row.askPct <= 45 ? 'BID' : 'MID');
+  /* without a clip the card stands for the DAY, and the day's side is the one lean rule (traceLive dayLean) — it was its
+     own 55/45 of ask ÷ (ask + bid), blind to the mid (the third audit) */
+  const lean = dayLean(row).lean;
+  const side: FlowPrint['side'] = clip?.side ?? (lean === 'ASK' ? 'ASK' : lean === 'BID' ? 'BID' : 'MID');
   const bidQ = clip?.bid != null && clip.bid > 0 ? clip.bid : fill;
   const askQ = clip?.ask != null && clip.ask > 0 ? clip.ask : fill;
   const fillPos = askQ > bidQ ? Math.min(1, Math.max(0, (fill - bidQ) / (askQ - bidQ))) : 0.5;
   const size = clip?.size ?? row.volume;
-  const bidPct = 100 - row.askPct;
+  const dl = dayLean(row);
+  const bidPct = Number.isFinite(dl.bid) && row.sideVol ? Math.round((row.sideVol.bid / Math.max(1, row.sideVol.ask + row.sideVol.bid)) * 100) : 100 - row.askPct;
   /* the anchor's own kind: a real clip says what IT was (its OPRA condition) — the day's multi-leg or sweep share only
      speaks when the card stands for the day, so a single 2-lot never wears "×2 legs · Custom" */
   const multi = clip ? !!clip.multi : row.multiPct >= 30;
@@ -152,7 +157,7 @@ export function bookRowToPrint(
     side,
     /* where the fill sat in its quote, −100 at the bid to +100 at the ask; without a quote, the day's ask share */
     flowScore: askQ > bidQ ? Math.round((fillPos - 0.5) * 200) : Math.round((row.askPct - 50) * 2),
-    ratioLabel: side === 'MID' ? 'MID' : bidPct >= 50 ? `BID ${Math.round(bidPct)}%` : `ASK ${Math.round(row.askPct)}%`,
+    ratioLabel: dl.lean === 'UNSIDED' || dl.lean === 'EVEN' ? (dl.lean === 'EVEN' ? 'EVEN' : 'MID') : dl.lean === 'BID' ? `BID ${Math.round(bidPct)}%` : `ASK ${100 - Math.round(bidPct)}%`,
     ratioBidPct: bidPct,
     size,
     premium: clip ? Math.round(clip.premium ?? fill * size * 100) : Math.round(row.premium),
@@ -173,7 +178,9 @@ export function bookRowToPrint(
     Calls bought and puts sold read bullish; puts bought and calls sold read bearish; a mid print reads neither — and so
     does a print outside the regular session, set against a thin post-market quote. */
 export function sentimentOf(p: FlowPrint): PrintSentiment {
-  if (p.side === 'MID' || p.extended) return 'NEUTRAL';
+  /* a compression package (OPRA cbmo / mctp, or the vendor's arbitrage tag) nets open interest down between members — it
+     is not a bet either way (traceLive printCondition) */
+  if (p.side === 'MID' || p.extended || p.compression) return 'NEUTRAL';
   return (p.right === 'C' && p.side === 'ASK') || (p.right === 'P' && p.side === 'BID') ? 'BULLISH' : 'BEARISH';
 }
 
@@ -211,12 +218,20 @@ export function rankNotable(prints: FlowPrint[]): FlowPrint[] {
 /* THE KINDS SAY WHAT THEY COUNT (the partner's tape, at Noah's word 2026-10-13 — every non-sweep was a "block" before):
    a block is SIZE in one print — one leg, at least BLOCK_MIN_SIZE contracts or BLOCK_MIN_PREMIUM dollars. A print with
    legs is a multi-leg print, whatever its size; the rest are single prints. */
-export type PrintKind = 'SWEEP' | 'BLOCK' | 'MULTI' | 'SINGLE';
+/* A COMPRESSION print is its own kind (not a bet — the package nets interest down); a FLOW ALERT of several prints is a
+   BURST unless its LARGEST SINGLE trade is known and clears the block line (the third audit, 2026-10-22: alerts were
+   counted as blocks on their total_size — "one leg, ≥100 contracts or $250K in one print" — though no one print was) */
+export type PrintKind = 'SWEEP' | 'BLOCK' | 'MULTI' | 'SINGLE' | 'COMPRESSION' | 'BURST';
 export const BLOCK_MIN_SIZE = 100;
 export const BLOCK_MIN_PREMIUM = 250_000;
-export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size' | 'premium'>): PrintKind {
+export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size' | 'premium'> & Partial<Pick<FlowPrint, 'compression' | 'trades' | 'largestTrade'>>): PrintKind {
+  if (p.compression) return 'COMPRESSION';
   if (p.sweep) return 'SWEEP';
   if (p.legs > 1 || p.strat !== '—') return 'MULTI';
+  if (p.trades != null && p.trades > 1) {
+    const L = p.largestTrade;
+    return L && (L.size >= BLOCK_MIN_SIZE || L.premium >= BLOCK_MIN_PREMIUM) ? 'BLOCK' : 'BURST';
+  }
   if (p.size >= BLOCK_MIN_SIZE || p.premium >= BLOCK_MIN_PREMIUM) return 'BLOCK';
   return 'SINGLE';
 }
@@ -231,9 +246,17 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
   let sweeps = 0;
   let blocks = 0;
   let multi = 0;
+  let compCount = 0;
+  let compPremium = 0;
   let largest: FlowPrint | null = null;
 
   for (const p of prints) {
+    /* compression is shown on its own and kept out of every directional total, the call/put money and the largest */
+    if (p.compression) {
+      compCount++;
+      compPremium += p.premium;
+      continue;
+    }
     if (p.right === 'C') {
       callCount++;
       callPremium += p.premium;
@@ -267,7 +290,8 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
     sweeps,
     blocks,
     multi,
-    other: prints.length - sweeps - blocks - multi,
+    other: prints.length - compCount - sweeps - blocks - multi,
+    compression: { count: compCount, premium: compPremium },
     largest: largest
       ? { ticker: largest.ticker, strike: largest.strike, right: largest.right, premium: largest.premium }
       : null,

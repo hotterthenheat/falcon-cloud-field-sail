@@ -43,7 +43,7 @@
 */
 
 import { sessionStarts } from './indicators';
-import { pickLegWalls } from '../core/walls';
+import { levelRoles, pickLegWalls, type LevelRole } from '../core/walls';
 import { DEFAULT_R } from '../core/carry';
 import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate } from '../core/calendar';
@@ -60,6 +60,8 @@ export type BuildVerdict = 'building' | 'draining' | 'steady' | 'switched' | 'ne
 export interface BuildRow {
   strike: number;
   role: BuildRole;
+  /** Every level the strike is, in the one order (core/walls.ts levelRoles) — 769 is "supreme · put wall" */
+  roles: LevelRole[];
   pin: boolean;
   /** Net hedging at the strike now — signed dollars, house sign */
   now: number;
@@ -335,7 +337,7 @@ export function buildBuilding(
     const byClose = real ? 0 : (sizeChange / elapsedMin) * minutesLeft;
 
     const role: BuildRole = K === levels.callWall ? 'call wall' : K === levels.putWall ? 'put wall' : K === levels.supreme ? 'supreme' : null;
-    rows.push({ strike: K, role, pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, shape, when, verdict, byClose, words: '' });
+    rows.push({ strike: K, role, roles: levelRoles(K, levels), pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, shape, when, verdict, byClose, words: '' });
     maxAbs = Math.max(maxAbs, Math.abs(now));
     maxChange = Math.max(maxChange, Math.abs(callAdded), Math.abs(putAdded));
   }

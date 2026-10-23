@@ -27,7 +27,7 @@
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';
 import { isoDate, isTradingDay } from '../core/calendar';
-import { sideOfTags, printCondition, sessionEndMin, tapeSessionIso } from './traceLive';
+import { liveTrades, sideOfTags, printCondition, sessionEndMin, tapeSessionIso } from './traceLive';
 
 export type FlowSide = 'BID' | 'MID' | 'ASK';
 
@@ -108,6 +108,8 @@ export interface CardPrint {
   ask: number;
   sweep: boolean;
   multi: boolean;
+  /** A compression package (OPRA cbmo / mctp) — not a bet */
+  compression?: boolean;
   /** % */
   iv: number;
 }
@@ -153,6 +155,11 @@ export interface CardDay {
   multiPct: number;
   premium: number;
   trades: number;
+  /** Contracts the vendor reports CANCELLED that session — already out of `vol`, but in its side buckets and its premium */
+  canceledVol: number;
+  /** How the row's side split and premium were set: off the session's own prints (exact, cancelled ones dropped), or the
+      vendor's row with the cancelled share taken out of the premium at its average price (≈) and the sides as sent */
+  basis: 'prints' | 'vendor' | 'vendor-less-canceled';
 }
 
 /** The underlying's minute: running net call / put premium and the minute's contracts by side */
@@ -210,6 +217,13 @@ const pad = (n: number) => String(n).padStart(2, '0');
 function dayRow(r: Record<string, unknown>): CardDay {
   const iso = String(r.date || '').slice(0, 10);
   const vol = num(r.volume);
+  /* THE CANCELLED CONTRACTS COME OUT (the third audit, 2026-10-22: SPXW 270930P 8125 — volume 107, but its side buckets
+     summed 181 with canceled_volume 74, and its total_premium $10.1M carried the two cancelled $2.07M prints while the
+     card's session line said $6.0M). The vendor's volume is already net of them; its premium is not, and is taken down
+     by the cancelled contracts at the row's average price (≈); its sides cannot be told apart and are marked. */
+  const canceledVol = num(r.canceled_volume);
+  const gross = num(r.total_premium);
+  const premium = canceledVol > 0 && vol + canceledVol > 0 ? gross * (vol / (vol + canceledVol)) : gross;
   return {
     iso,
     date: iso ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}` : '—',
@@ -225,8 +239,10 @@ function dayRow(r: Record<string, unknown>): CardDay {
     iv: num(r.implied_volatility) * 100,
     sweepPct: vol > 0 ? (num(r.sweep_volume) / vol) * 100 : 0,
     multiPct: vol > 0 ? (num(r.multi_leg_volume) / vol) * 100 : 0,
-    premium: num(r.total_premium),
+    premium,
     trades: num(r.trades),
+    canceledVol,
+    basis: canceledVol > 0 ? 'vendor-less-canceled' : 'vendor',
   };
 }
 
@@ -280,8 +296,7 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
     get(`/stock/${encodeURIComponent(ticker.toUpperCase())}/net-prem-ticks?${q}`).catch(() => null),
   ]);
 
-  const prints: CardPrint[] = rows(flowRaw)
-    .filter(r => !r.canceled)
+  const prints: CardPrint[] = liveTrades(rows(flowRaw))
     .map((r, i) => {
       const at = nyOf(r.executed_at);
       const price = num(r.price);
@@ -300,6 +315,7 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
         ask,
         sweep: cond.sweep,
         multi: cond.multi,
+        compression: cond.compression || undefined,
         iv: num(r.implied_volatility) * 100,
       };
     })
@@ -347,7 +363,25 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
 
   const hist = rows(histRaw, 'chains').map(dayRow).filter(d => d.iso).sort((a, b) => b.iso.localeCompare(a.iso));
   for (let i = 0; i < hist.length; i++) hist[i].oiChange = i + 1 < hist.length ? hist[i].oi - hist[i + 1].oi : null;
-  const day = hist.find(d => d.iso === dateIso) ?? null;
+  /* the card's session, when every one of its prints is in hand: its side split and premium are its own prints' — the
+     cancelled ones already dropped — so the history row, the session strip and the card's facts are one window */
+  const own = hist.find(d => d.iso === dateIso);
+  if (own && fromPrints) {
+    let askVol = 0;
+    let bidVol = 0;
+    let midVol = 0;
+    let prem = 0;
+    let vol = 0;
+    for (const p of prints) {
+      if (p.side === 'ASK') askVol += p.size;
+      else if (p.side === 'BID') bidVol += p.size;
+      else midVol += p.size;
+      prem += p.premium;
+      vol += p.size;
+    }
+    Object.assign(own, { askVol, bidVol, midVol, neutralVol: 0, premium: prem, vol, basis: 'prints' as const });
+  }
+  const day = own ?? null;
 
   let net: ContractTape['net'] = null;
   const ticks = rows(ticksRaw)

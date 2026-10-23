@@ -55,8 +55,9 @@ export interface DarkPoolLevel {
   /** Share of session dark-pool notional, 0–100 */
   sharePct: number;
   role: LevelRole;
-  /** Times intraday price reversed off this shelf */
-  defended: number;
+  /** Times intraday price reversed off this shelf — only where it is counted from real bars (Trace's live shelves carry
+      none, and say nothing; the third audit removed a hard-coded "defended 0×") */
+  defended?: number;
   /** Signed % distance from spot */
   distPct: number;
   /** How to actually trade against the shelf */

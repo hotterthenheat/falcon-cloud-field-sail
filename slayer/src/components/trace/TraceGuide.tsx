@@ -63,7 +63,13 @@ export const SidesRule = () => (
       <b className="text-textPrimary">A dark-pool cross</b> over the mid was paid up for — buyer-initiated — and reads <span className="text-bull">accumulation</span>; under the mid it was sold down — seller-initiated — and reads <span className="text-bear">distribution</span>; at the mid it leans neither way. Only a sized cross (10,000 shares or $500K) priced at the quote carries a read.
     </p>
     <p className="mt-2">
-      <b className="text-textPrimary">After the close</b> prints keep coming against thin post-market quotes: they are labelled after hours and never read bullish, bearish, accumulation or distribution. The badge by Live says which session it is.
+      <b className="text-textPrimary">After the close</b> prints keep coming against thin post-market quotes: they are labelled after hours and never read bullish, bearish, accumulation or distribution. Each print is judged by its own time and flag — index and ETF options (SPX, SPY, QQQ…) trade their regular session to 16:15, stock options to 16:00. The badge beside Pause says which session it is.
+    </p>
+    <p className="mt-2">
+      <b className="text-textPrimary">A compression print</b> — OPRA's cbmo or mctp, or a print the vendor tags arbitrage — is a package that nets open interest down between members (a call bought against a put sold at one strike). It is labelled "compression · not a bet", counted on its own, and kept out of every bullish or bearish total and the largest, top-bull and top-bear facts. A cancelled print never traded and is dropped everywhere.
+    </p>
+    <p className="mt-2">
+      <b className="text-textPrimary">A lean</b> — at the ask, on the bid, even — is one rule on every page: at least half the day's contracts traded on a side, and that side holds 55% or more of them; otherwise it is even, or mostly mid / no side. It counts contracts, because that is what the vendor carries per contract; a name's net premium is its own figure.
     </p>
   </Section>
 );

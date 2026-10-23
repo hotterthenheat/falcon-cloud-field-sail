@@ -40,6 +40,9 @@ export interface NewsPrediction {
   playbook: string;
   /** False when this is a live headline with no session print. Absent on the sample, which always has a model number. */
   measured?: boolean;
+  /** The pre-market or after-hours move at publish, kept apart from the session's (null in the session) */
+  extMovePct?: number | null;
+  extWord?: 'pre-market' | 'after hours' | null;
 }
 
 export interface NewsItem {
@@ -53,6 +56,9 @@ export interface NewsItem {
   ticker: string | null;
   /** Every name on the headline. Absent on the sample, which has one. */
   tickers?: string[];
+  /** Companies the headline names but is not about (an untagged story that does not lead with them) — never the
+      story's name, never on the board */
+  mentions?: string[];
   headline: string;
   /** THE STORY (2026-09-28): its paragraphs under the headline — the simulator's templated copy (data/newsBody.ts); at
       launch the provider's opening paragraphs or summary */

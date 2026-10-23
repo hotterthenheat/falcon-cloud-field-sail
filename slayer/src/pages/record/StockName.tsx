@@ -52,6 +52,7 @@
 ==================================================
 */
 
+import { PublishMove } from '../../components/record/publishMove';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, ChevronDown } from 'lucide-react';
@@ -69,6 +70,7 @@ import type { UTCTimestamp } from 'lightweight-charts';
 import { fmtClockLocal, fmtDayLocal } from '../../components/gex/chartTime';
 import { shownGamma } from '../../components/gex/retailSign';
 import { When } from '../../components/record/when';
+import { shortDay } from '../../data/nyDate';
 import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
@@ -178,7 +180,7 @@ const JUMPS: [string, string][] = [
   ['congress', 'Congress'],
   ['who', 'Who is in it'],
 ];
-const pct = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
+const pct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 /** A chart point's seconds, said as the reader's day or minute */
 const dayOf = (t: number) => fmtDayLocal(t as UTCTimestamp);
 const clockOf = (t: number) => fmtClockLocal(t as UTCTimestamp);
@@ -227,6 +229,18 @@ const StatusTag = ({ status }: { status: SourceStatus }) => (
 /** A pillar as its word and the meter — its figure stays inside the engine */
 const PillarBar = ({ p, big = false }: { p: Pillar; big?: boolean }) => {
   const grade = gradeOf(p.score);
+  /* a pillar the read leaves out says so, instead of a grade it does not have (the news: shown, never scored) */
+  if (!p.inRead) {
+    return (
+      <div className="min-w-0" data-stock-pillar={p.key} data-grade="none" title="Shown for context — the board has no wire for every name, so the read leaves this out on both">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-[10px] text-textMuted truncate">{p.name}</span>
+          <span className={`ml-auto shrink-0 font-mono ${big ? 'text-[11px]' : 'text-[10px]'} text-textMuted`}>not scored</span>
+        </div>
+        <div className="mt-1 h-[6px] rounded-full bg-ink/[0.04]" />
+      </div>
+    );
+  }
   return (
     <div className="min-w-0" data-stock-pillar={p.key} data-grade={grade}>
       <div className="flex items-baseline gap-2 min-w-0">
@@ -253,7 +267,10 @@ const SignedBar = ({ v, thick = false }: { v: number; thick?: boolean }) => {
 const FactorRow = ({ f }: { f: Factor }) => (
   <div className="px-5 py-2 grid items-center gap-x-4 border-t border-borderSubtle/40" style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr) 96px' }} data-stock-factor={f.key} data-lean={f.lean.toFixed(2)}>
     <span className="min-w-0">
-      <span className="block text-[11px] text-textPrimary truncate">{f.label}</span>
+      <span className="block text-[11px] text-textPrimary truncate">
+        {f.label}
+        {f.context && <span className="ml-1.5 font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Shown for context; not in the read">context</span>}
+      </span>
       <span className="block text-[9px] text-textMuted truncate">{f.note}</span>
     </span>
     <span className="font-mono text-[11px] tnum text-textPrimary truncate">{f.value}</span>
@@ -292,13 +309,15 @@ const LEVEL_WORDS: Record<string, string> = {
   call: 'dealer hedging supplies stock there — resistance',
   supreme: 'the heaviest strike on the book',
 };
-const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number; putWall: number; flip: number; callWall: number; supreme: number }) => {
+/* the flip is drawn only when levelsFor found one — null means net gamma does not cross zero within ±10%, and the scale
+   says so instead of putting a "flip" on spot (the third audit, 2026-10-23: GME read "25.14 FLIP · 25.14 SPOT") */
+const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number; putWall: number | null; flip: number | null; callWall: number | null; supreme: number }) => {
   const [hot, setHot] = useState<string | null>(null);
   const marks = [
-    { key: 'put', price: putWall, word: 'put wall', ink: 'rgb(var(--bear))' },
-    { key: 'flip', price: flip, word: 'flip', ink: SILVER },
+    ...(putWall != null ? [{ key: 'put', price: putWall, word: 'put wall', ink: 'rgb(var(--bear))' }] : []),
+    ...(flip != null ? [{ key: 'flip', price: flip, word: 'flip', ink: SILVER }] : []),
     { key: 'spot', price: spot, word: 'spot', ink: 'rgb(var(--text-primary))' },
-    { key: 'call', price: callWall, word: 'call wall', ink: 'rgb(var(--bull))' },
+    ...(callWall != null ? [{ key: 'call', price: callWall, word: 'call wall', ink: 'rgb(var(--bull))' }] : []),
     { key: 'supreme', price: supreme, word: 'supreme', ink: 'rgb(var(--supreme))' },
   ].sort((a, b) => a.price - b.price);
   const lo = marks[0].price;
@@ -328,10 +347,10 @@ const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number;
           <span className="block text-textMuted">{LEVEL_WORDS[hotMark.key]}</span>
         </ScaleCard>
       )}
-      <svg width="100%" height={54} className="block overflow-visible" role="img" aria-label={`The book on a price scale: put wall ${putWall}, flip ${flip.toFixed(2)}, spot ${spot.toFixed(2)}, call wall ${callWall}, supreme ${supreme}`} data-stock-scale={hot ?? 'rest'}>
+      <svg width="100%" height={54} className="block overflow-visible" role="img" aria-label={`The book on a price scale: put wall ${putWall ?? 'none'}, flip ${flip != null ? flip.toFixed(2) : 'none within ±10%'}, spot ${spot.toFixed(2)}, call wall ${callWall ?? 'none'}, supreme ${supreme}`} data-stock-scale={hot ?? 'rest'}>
         <line x1="0%" x2="100%" y1={27} y2={27} stroke="rgb(var(--ink))" strokeOpacity={0.14} />
         {/* the likely range between the walls, faint */}
-        <rect x={`${x(putWall)}%`} y={24} width={`${Math.max(0, x(callWall) - x(putWall))}%`} height={6} fill={SILVER} fillOpacity={0.1} />
+        {putWall != null && callWall != null && <rect x={`${x(putWall)}%`} y={24} width={`${Math.max(0, x(callWall) - x(putWall))}%`} height={6} fill={SILVER} fillOpacity={0.1} />}
         {marks.map((m, i) => {
           const up = rows[i] === 1;
           const isSpot = m.key === 'spot';
@@ -443,7 +462,7 @@ const StockName = () => {
   const quote = useLiveQuote(T);
   const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, record.news, bookRev, file, quote]);
   const insiders = useInsiderFlow(T, 90);
-  const marketInsiders = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket).slice(0, 5), [insiders]);
+  const marketInsiders = useMemo(() => insiders.trades.filter(t => TX_CODES[t.code].openMarket).sort((a, b) => (b.tradedOn ?? '').localeCompare(a.tradedOn ?? '') || a.daysAgo - b.daysAgo).slice(0, 5), [insiders]);
   /* the name's own Congress reports, not the market book's latest few weeks */
   const congressBook = useTickerCongress(T, 180);
   const congressAll = useMemo(() => [...congressBook.trades].sort((a, b) => a.filedDaysAgo - b.filedDaysAgo), [congressBook]);
@@ -495,6 +514,9 @@ const StockName = () => {
   const maxPrem = Math.max(1, ...view.prints.buys.map(p => p.premium), ...view.prints.sells.map(p => p.premium));
   const prem = money.callPremium + money.putPremium;
   const callShare = prem > 0 ? (100 * money.callPremium) / prem : 50;
+  const sidePrem = money.bullishPremium + money.bearishPremium;
+  const bullShare = sidePrem > 0 ? (100 * money.bullishPremium) / sidePrem : 50;
+  const sessionWord = file.session ? shortDay(file.session) : 'the session';
   const up = view.changePct >= 0;
   const live = view.sources.filter(s => s.status === 'live').length;
   const maxPts = Math.max(0.1, ...view.contributions.map(c => Math.abs(c.points)));
@@ -512,8 +534,8 @@ const StockName = () => {
   /* the levels named INSIDE the plot at their left end — the axis keeps the figures alone (four named tags collided there) */
   const sessionLines = [
     ...(trend.ema20 != null ? [{ price: trend.ema20, color: SILVER, title: '20-day', style: 'dashed' as const, name: 'plot' as const }] : []),
-    { price: money.levels.putWall, color: 'rgb(var(--bear))', title: 'support', style: 'dashed' as const, name: 'plot' as const },
-    { price: money.levels.callWall, color: 'rgb(var(--bull))', title: 'resistance', style: 'dashed' as const, name: 'plot' as const },
+    ...(money.levelsAll?.putWall != null ? [{ price: money.levelsAll.putWall, color: 'rgb(var(--bear))', title: 'support', style: 'dashed' as const, name: 'plot' as const }] : []),
+    ...(money.levelsAll?.callWall != null ? [{ price: money.levelsAll.callWall, color: 'rgb(var(--bull))', title: 'resistance', style: 'dashed' as const, name: 'plot' as const }] : []),
   ];
   /* the scale holds the line and any level near it (within a quarter of the line's own span past either end), with a
      little air — a wall far from the line is left off the scale rather than flattening thirty sessions into a thread */
@@ -613,11 +635,18 @@ const StockName = () => {
                 <span className="font-mono text-[11px] font-bold text-textSecondary">{T}</span>
                 <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the read, the pillars and the factors mean" testId="stock-guide" />
               </div>
-              <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+              <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={view.priceLine ?? undefined}>
                 <span className="font-mono text-[12px] tnum text-textPrimary">
                   $<AnimatedNumber value={view.price} format={v => v.toFixed(2)} />
-                </span>{' '}
-                <span className={`font-mono tnum ${up ? 'text-bull' : 'text-bear'}`} title="The regular session's change: today's close against the close before it" data-stock-day>{pct(view.changePct, 2)} today</span>
+                </span>
+                {view.priceLine ? <span className="font-mono tnum text-textMuted" data-stock-price-line> {view.priceLine.replace(/^[\d.]+\s?/, '')}</span> : null}{' '}
+                {view.lastSession ? (
+                  <span className={`font-mono tnum ${view.lastSession.pct >= 0 ? 'text-bull' : 'text-bear'}`} title="Before the open: the last regular session's change, close against the close before it" data-stock-day>
+                    · {pct(view.lastSession.pct, 2)} {view.lastSession.date ? shortDay(view.lastSession.date) : 'last session'}
+                  </span>
+                ) : (
+                  <span className={`font-mono tnum ${up ? 'text-bull' : 'text-bear'}`} title="The regular session's change: the regular close (or the last print in the session) against the close before it" data-stock-day>· {pct(view.changePct, 2)} {view.marketWord === 'market open' ? 'today' : 'the session'}</span>
+                )}
                 {view.extLine ? <span className="font-mono tnum text-textSecondary" data-stock-ext> · {view.extLine}</span> : <> · {view.marketWord}</>}
                 {view.sector ? ` · ${view.sector}` : ''}
               </p>
@@ -698,7 +727,7 @@ const StockName = () => {
 
       {/* THE TREND · THE MONEY */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="The trend" sub={`From the name's own sessions · ${trend.sessions} on hand`} aside={<PillarBarSmall p={byKey.trend} />} testId="trend">
+        <Box title="The trend" sub={`The screener's trend measures · the swing structure from the name's own ${trend.sessions} sessions`} aside={<PillarBarSmall p={byKey.trend} />} testId="trend">
           <div className="px-5 pb-3">
             <dl className="grid grid-cols-3 gap-x-4 gap-y-2">
               <Fact label="20-day average" testId="ema20">
@@ -836,32 +865,57 @@ const StockName = () => {
               )}
             </Fact>
           </dl>
-          {/* THE BOOK ON A PRICE SCALE */}
+          {/* THE BOOK ON A PRICE SCALE — both scopes from Pinpoint's levelsFor, each under its own scopeLabel */}
           <div className="px-5 pb-1">
-            <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-levels-scope="all">
-              <span className="text-textPrimary font-semibold">All expiries</span>
-              <span className="normal-case tracking-normal">every listed date · the walls, the flip and the supreme as Pinpoint reads its All scope</span>
+            <div className="flex items-center justify-between gap-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-levels-scope="all">
+              <span className="text-textPrimary font-semibold shrink-0">{money.levelsAll?.scopeLabel ?? 'All expiries'}</span>
+              <span className="normal-case tracking-normal truncate">every listed date · as Pinpoint reads its All expiries scope{money.levelsAll && !money.levelsAll.complete ? ' · still loading' : ''}</span>
             </div>
-            <LevelsScale spot={view.price} putWall={money.levels.putWall} flip={money.levels.flip} callWall={money.levels.callWall} supreme={money.levels.supreme} />
-            {money.levelsToday ? (
-              <p className="mt-1 font-mono text-[10px] tnum text-textSecondary" data-stock-levels-scope="today" title="The same read on the nearest live expiry alone — Pinpoint's Today scope, the one its desk opens on (after the bell, the next session's expiry)">
-                <span className="text-textPrimary font-semibold uppercase tracking-widest text-[9px]">Today</span>
-                {money.levelsTodayDate ? <span className="text-textMuted"> (the {money.levelsTodayDate.slice(5).replace('-', '/')} expiry — Pinpoint's Today scope)</span> : null} · put wall <span className="text-bear">{money.levelsToday.putWall}</span> · flip {money.levelsToday.flipFound ? money.levelsToday.flip.toFixed(2) : 'none within ±10%'} · call wall <span className="text-bull">{money.levelsToday.callWall}</span> · supreme {money.levelsToday.supreme}
+            {money.levelsAll ? (
+              <>
+                <LevelsScale spot={view.price} putWall={money.levelsAll.putWall} flip={money.levelsAll.flip} callWall={money.levelsAll.callWall} supreme={money.levelsAll.supreme} />
+                {money.levelsAll.flip == null && <p className="font-mono text-[10px] text-textMuted" data-stock-flip="none">No flip within ±10% — net gamma stays {money.levelsAll.regime === 'SHORT' ? 'short' : 'long'} across the range.</p>}
+              </>
+            ) : (
+              <p className="py-3 font-mono text-[10px] text-textMuted" data-stock-levels-pending>The levels land with the options book.</p>
+            )}
+            {money.levelsToday && money.levelsToday.date == null ? (
+              <p className="mt-1 font-mono text-[10px] text-textMuted" data-stock-levels-scope="today-pending">Pinpoint's nearest-expiry scope is still reading this name's front expiry.</p>
+            ) : money.levelsToday ? (
+              <p className="mt-1 font-mono text-[10px] tnum text-textSecondary" data-stock-levels-scope="today" title="Pinpoint's Today scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
+                <span className="text-textPrimary font-semibold uppercase tracking-widest text-[9px]">{money.levelsToday.scopeLabel}</span> · put wall <span className="text-bear">{money.levelsToday.putWall ?? '—'}</span> · flip {money.levelsToday.flip != null ? money.levelsToday.flip.toFixed(2) : 'no flip within ±10%'} · call wall <span className="text-bull">{money.levelsToday.callWall ?? '—'}</span> · supreme {money.levelsToday.supreme} · net GEX <Money v={money.levelsToday.netGex} /> {money.levelsToday.regime ? <span className="text-textMuted">· {money.levelsToday.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span> : null}
               </p>
             ) : (
-              <p className="mt-1 font-mono text-[10px] text-textMuted" data-stock-levels-scope="today-none">No expiry lists today on this name — Pinpoint's Today scope is empty here.</p>
+              <p className="mt-1 font-mono text-[10px] text-textMuted" data-stock-levels-scope="today-none">Pinpoint's nearest-expiry scope has no book on this name yet.</p>
             )}
           </div>
           {prem > 0 ? (
           <div className="px-5 pb-2" data-stock-flow>
-            <div className="flex items-center justify-between font-mono text-[10px] tnum">
+            <div className="flex items-center justify-between gap-2 font-mono text-[10px] tnum">
               <span className={callShare >= 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>calls {fmtMoney(money.callPremium)}</span>
-              <span className="text-[9px] uppercase tracking-widest text-textMuted">premium today{money.askSharePct != null && money.sweepSharePct != null ? ` · ${money.askSharePct.toFixed(0)}% on the ask · ${money.sweepSharePct.toFixed(0)}% swept` : ''}</span>
+              <span className="text-[9px] uppercase tracking-widest text-textMuted text-center" title="The screener's call_premium and put_premium: every dollar paid for calls and for puts">option premium · {sessionWord} · {Math.round(callShare)}% calls</span>
               <span className={callShare < 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>puts {fmtMoney(money.putPremium)}</span>
             </div>
             <div className="mt-1.5">
               <ShareBar left={callShare} />
             </div>
+            {sidePrem > 0 && (
+              <>
+                <div className="mt-2 flex items-center justify-between gap-2 font-mono text-[10px] tnum" data-stock-side>
+                  <span className={bullShare >= 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>bullish {fmtMoney(money.bullishPremium)}</span>
+                  <span className="text-[9px] uppercase tracking-widest text-textMuted text-center" title="Bullish: calls bought at the ask and puts sold at the bid. Bearish: puts bought at the ask and calls sold at the bid. The screener's bullish_premium and bearish_premium">the side of the trade · {Math.round(bullShare)}% bullish</span>
+                  <span className={bullShare < 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>bearish {fmtMoney(money.bearishPremium)}</span>
+                </div>
+                <div className="mt-1.5">
+                  <ShareBar left={bullShare} />
+                </div>
+              </>
+            )}
+            {money.askSharePct != null && money.sweepSharePct != null && (
+              <p className="mt-1.5 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-alerts>
+                flow alerts on {sessionWord} · {money.askSharePct.toFixed(0)}% of their premium on the ask · {money.sweepSharePct.toFixed(0)}% swept
+              </p>
+            )}
           </div>
           ) : (
             <div className="px-5 pb-2 font-mono text-[10px] uppercase tracking-widest text-textMuted">No option premium on the screener yet</div>
@@ -872,7 +926,7 @@ const StockName = () => {
               <span className={money.dark.netPosturePct < 0 ? 'text-bear font-semibold' : 'text-textSecondary'}>selling</span>
               <span className="text-[9px] uppercase tracking-widest text-textMuted">
                 {money.darkWindow.read
-                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of $500K+${money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : ''}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
+                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : ''}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
                   : `dark pool · no read · none of the ${money.darkWindow.inHand} prints in hand is a sized regular-session print priced at the quote`}
               </span>
               <span className={money.dark.netPosturePct > 0 ? 'text-bull font-semibold' : 'text-textSecondary'}>buying</span>
@@ -886,7 +940,7 @@ const StockName = () => {
           {(todayPoints.length > 1 || darkPoints.length > 1) && (
             <div className="px-5 pb-3" data-stock-dark-prints={darkPoints.length}>
               <div className="mb-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-widest text-textMuted">
-                <span>{darkPoints.length > 1 ? "today's tape · the off-exchange prints of $500K+ under it, shares by minute" : "today's tape"}</span>
+                <span>{darkPoints.length > 1 ? `${sessionWord} tape · the off-exchange prints of 10K shares or $500K+ under it, shares by minute` : `${sessionWord} tape`}</span>
                 <span>{darkPoints.length > 1 ? `${money.dark.prints.length} ${money.dark.prints.length === 1 ? 'print' : 'prints'}` : ''}</span>
               </div>
               <SessionsChart
@@ -988,7 +1042,7 @@ const StockName = () => {
                   <span className="font-mono text-[10px] tnum text-textMuted">{ago(s.item.minutesAgo)}</span>
                   <span className="min-w-0 truncate text-[11.5px] text-textSecondary group-hover:text-textPrimary transition-colors">{s.item.headline}</span>
                   <NewsFlag major={s.item.major} lean={s.grade === 'ALLY' ? 'positive' : s.grade === 'THREAT' ? 'negative' : null} />
-                  <span className={`text-right font-mono text-[11px] font-semibold tnum ${s.item.prediction.measured ? (s.item.prediction.expMove1dPct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}`}>{s.item.prediction.measured ? pct(s.item.prediction.expMove1dPct) : '—'}</span>
+                  <span className="text-right font-mono text-[11px] font-semibold tnum whitespace-nowrap"><PublishMove p={s.item.prediction} short /></span>
                 </button>
               ))}
             </div>
@@ -1310,17 +1364,17 @@ const StockName = () => {
 
       {/* THE TAPE — the biggest buys and sells, then the busiest calls and puts; each pair shares one bottom edge */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="Biggest buys" sub="The tape's richest prints on the name today, paid on the ask · click one to weigh it" testId="buys">
+        <Box title="Biggest buys" sub={`The richest flow alerts on the name on ${sessionWord}, paid on the ask · click one to weigh it`} testId="buys">
           <div className="pb-2 mt-auto">
-            {view.prints.buys.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No rich prints paid up on {T} yet today</div>}
+            {view.prints.buys.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No rich alerts paid up on {T} on {sessionWord}</div>}
             {view.prints.buys.map(p => (
               <PrintRow key={p.id} p={p} maxPrem={maxPrem} onWarm={warm} onOpen={() => weigh(p)} />
             ))}
           </div>
         </Box>
-        <Box title="Biggest sells" sub="The tape's richest prints on the name today, hit on the bid · click one to weigh it" testId="sells">
+        <Box title="Biggest sells" sub={`The richest flow alerts on the name on ${sessionWord}, hit on the bid · click one to weigh it`} testId="sells">
           <div className="pb-2 mt-auto">
-            {view.prints.sells.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No rich prints hit the bid on {T} yet today</div>}
+            {view.prints.sells.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No rich alerts hit the bid on {T} on {sessionWord}</div>}
             {view.prints.sells.map(p => (
               <PrintRow key={p.id} p={p} maxPrem={maxPrem} onWarm={warm} onOpen={() => weigh(p)} />
             ))}

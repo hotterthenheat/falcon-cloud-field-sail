@@ -24,6 +24,7 @@
 ==================================================
 */
 
+import { ownerWord } from '../../data/whalesMap';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -66,6 +67,7 @@ const CHAMBER_OPTIONS: DropdownOption<ChamberPick>[] = [
 const OWNER_OPTIONS: DropdownOption<OwnerPick>[] = [
   { value: 'any', label: 'Any', hint: 'The member, their spouse, a joint account or a dependent' },
   { value: 'Self', label: 'Self', hint: "The member's own holding" },
+  { value: 'Undisclosed', label: 'Not stated', hint: 'The filing does not say whose holding it is' },
   { value: 'Spouse', label: 'Spouse', hint: "The spouse's holding" },
   { value: 'Joint', label: 'Joint', hint: 'A joint account' },
   { value: 'Dependent', label: 'Dependent', hint: "A dependent child's holding" },
@@ -154,7 +156,7 @@ const TypeCell = ({ data }: ICellRendererParams<CongressTrade>) =>
   ) : null;
 
 const OwnerCell = ({ data }: ICellRendererParams<CongressTrade>) =>
-  data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{data.owner}</span> : null;
+  data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner)}</span> : null;
 
 /** The ten rungs as a ladder, the disclosed one lit — never a midpoint */
 const Ladder = ({ bracket }: { bracket: number }) => (

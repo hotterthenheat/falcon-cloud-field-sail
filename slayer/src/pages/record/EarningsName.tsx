@@ -35,7 +35,6 @@
 ==================================================
 */
 
-import { nyParts } from '../../core/nyTime';
 import { useLiveQuote } from '../../data/liveQuote';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -51,7 +50,7 @@ import { dollars3 as fmtDollars } from './money';
 import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
-import { MIN_PRICED_PRINTS, useLiveDossier } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, reportedNow, useLiveDossier } from '../../data/earningsFeed';
 import { useStockCard } from '../../data/liveFiles';
 import { FUND_TYPES } from '../../data/liveFiles';
 import { type ActiveContract, type EarningsDossier } from '../../data/earnings';
@@ -175,7 +174,7 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
                 onMouseEnter={ev => setHover({ r, x: ev.clientX, y: ev.clientY })}
                 onMouseMove={ev => setHover({ r, x: ev.clientX, y: ev.clientY })}
                 className="relative flex-1 min-w-0 rounded hover:bg-ink/[0.04] transition-colors cursor-default"
-                aria-label={`${r.label}: moved ${r.movePct >= 0 ? '+' : ''}${r.movePct.toFixed(1)}%, ${r.pl >= 0 ? 'covered' : 'fell short of'} today's price by $${Math.abs(r.pl).toFixed(2)} per share`}
+                aria-label={`${r.label}: moved ${r.movePct >= 0 ? '+' : r.movePct < 0 ? '−' : ''}${Math.abs(r.movePct).toFixed(1)}%, ${r.pl >= 0 ? 'covered' : 'fell short of'} today's price by $${Math.abs(r.pl).toFixed(2)} per share`}
                 data-replay-bar={r.label}
               >
                 <span className={`absolute left-1/2 -translate-x-1/2 w-[22px] rounded-[2px] ${r.pl >= 0 ? 'bg-bull/90' : 'bg-bear/80'}`} style={r.pl >= 0 ? { bottom: '50%', height: Math.max(3, (Math.abs(r.pl) / maxAbs) * H) } : { top: '50%', height: Math.max(3, (Math.abs(r.pl) / maxAbs) * H) }} />
@@ -288,7 +287,7 @@ const ActiveRow = ({ c, maxVol, onOpen, onWarm }: { c: ActiveContract; maxVol: n
       </span>
     </div>
     <span className="font-mono text-[10px] text-textMuted tnum">
-      {c.fromSpotPct === 0 ? 'at the money' : `${c.fromSpotPct > 0 ? '+' : ''}${c.fromSpotPct}% from spot`} ·{' '}
+      {c.fromSpotPct === 0 ? 'at the money' : `${c.fromSpotPct > 0 ? '+' : c.fromSpotPct < 0 ? '−' : ''}${Math.abs(c.fromSpotPct)}% from spot`} ·{' '}
       {/* already through its breakeven at today's price (the $385 put on a $373.63 TSLA) — not "breaks even −0%" */}
       {c.breakevenPct > 0 ? `breaks even ${c.right === 'CALL' ? '+' : '−'}${c.breakevenPct}% by expiry` : 'past its breakeven at today\'s price'}
     </span>
@@ -365,8 +364,8 @@ const EarningsName = () => {
   /* the stock NOW — the calendar row's price is the one the options were priced against, stale once the print is out
      (TSLA read $386.55 after closing the night at $373.63) */
   const spotNow = quote?.spot && quote.spot > 0 ? quote.spot : e.price;
-  const nowNy = nyParts(new Date());
-  const reported = e.daysOut < 0 || (e.daysOut === 0 && nowNy.hour * 60 + nowNy.minute >= (e.slot === 'AMC' ? 16 * 60 : 9 * 60 + 30));
+  /* the board's own rule (earningsFeed.reportedNow), so the two never disagree on whether a print is out */
+  const reported = reportedNow(e);
   const nQ = quarters.length || 0;
   const hasRev = quarters.some(q => q.revEstB > 0);
   const split = splitOf(dossier);
@@ -396,7 +395,8 @@ const EarningsName = () => {
         ? 'No volume on the chain today'
         : 'Reading the chain';
 
-  const marketInsiders = insiders.trades.filter(t => TX_CODES[t.code].openMarket).slice(0, 6);
+  /* newest trade first (the third audit, 2026-10-23: PG read 10/05, 08/20, 08/24, 08/21 — filing order) */
+  const marketInsiders = insiders.trades.filter(t => TX_CODES[t.code].openMarket).sort((a, b) => (b.tradedOn ?? '').localeCompare(a.tradedOn ?? '') || a.daysAgo - b.daysAgo).slice(0, 6);
 
   return (
     <>
@@ -417,7 +417,13 @@ const EarningsName = () => {
                 {reported ? 'Reported' : 'Reports'} {e.dateLabel} <SlotMark slot={e.slot} timeKnown={e.timeKnown} className="w-3 h-3" /> {slotWord(e)}
                 <span className="text-textMuted">·</span>
                 {reported ? (
-                  <span className="text-textMuted">the result lands on the feed once the vendor posts it</span>
+                  e.actualMovePct != null ? (
+                    <span className="text-textMuted" data-earnings-moved>
+                      the stock moved <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> the session after{e.slot === 'BMO' ? ' (the report day itself)' : ''}
+                    </span>
+                  ) : (
+                    <span className="text-textMuted">{e.slot === 'BMO' ? "the move is the report day's session — the vendor has not posted it yet" : "the move is the next session's — it is not made yet"}</span>
+                  )
                 ) : (
                   <span className={e.confirmed ? 'text-textMuted' : 'text-warn'}>{e.confirmed ? 'the company has confirmed the date' : 'date estimated — the company has not set it'}</span>
                 )}
@@ -454,9 +460,9 @@ const EarningsName = () => {
               {nQ ? <><span className="text-bull">{split.beat}</span> · {split.inline} · <span className="text-bear">{split.miss}</span> <span className="text-textMuted">of {nQ}</span>{hasRev ? <span className="text-textMuted"> · revenue {revBeats} of {nQ}</span> : null}</> : <span className="text-textMuted">—</span>}
             </Fact>
             <Fact label={`Last ${nQ || ''} with an estimate`} testId="last8">
-              <span className="inline-flex gap-[3px] align-middle" title="each square one quarter with an estimate, oldest first — green beat, grey in line, red missed">
+              <span className="inline-flex gap-[3px] align-middle" title="each square one quarter with an estimate, oldest first — green beat, amber in line, red missed">
                 {quarters.map(q => (
-                  <span key={q.label} className={`w-2 h-2 rounded-[2px] ${q.epsResult === 'inline' ? 'bg-ink/30' : q.epsBeat ? 'bg-bull' : 'bg-bear/60'}`} />
+                  <span key={q.label} className={`w-2 h-2 rounded-[2px] ${q.epsResult === 'inline' ? 'bg-warn/70' : q.epsBeat ? 'bg-bull' : 'bg-bear/60'}`} />
                 ))}
               </span>
             </Fact>
@@ -507,14 +513,14 @@ const EarningsName = () => {
                   <Bar dataKey="est" fill={WHITE_DIM} radius={[2, 2, 0, 0]} barSize={9} isAnimationActive={false} />
                   <Bar dataKey="actual" radius={[2, 2, 0, 0]} barSize={9} isAnimationActive={false}>
                     {epsData.map(q => (
-                      <Cell key={q.label} fill={q.inline ? 'rgb(var(--text-muted))' : q.beat ? BULL : BEAR} fillOpacity={q.beat ? 0.9 : 0.8} />
+                      <Cell key={q.label} fill={q.inline ? 'rgb(var(--warn))' : q.beat ? BULL : BEAR} fillOpacity={q.beat ? 0.9 : 0.8} />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <p className="mt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">
-              grey the estimate · <span className="text-bull">green beat</span> · grey in line · <span className="text-bear">red missed</span>
+              grey the estimate · <span className="text-bull">green beat</span> · <span className="text-warn">amber in line</span> · <span className="text-bear">red missed</span>
             </p>
           </div>
         </Box>
@@ -525,7 +531,7 @@ const EarningsName = () => {
                 <BarChart data={moveData} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
                   <CartesianGrid {...GRID} />
                   <XAxis dataKey="label" {...AXIS} />
-                  <YAxis {...AXIS} width={40} tickFormatter={(v: number) => `${v > 0 ? '+' : ''}${v}%`} />
+                  <YAxis {...AXIS} width={40} tickFormatter={(v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}%`} />
                   <Tooltip
                     isAnimationActive={false}
                     cursor={{ fill: 'rgba(255,255,255,0.04)' }}

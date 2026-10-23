@@ -30,7 +30,7 @@ import Chip from '../ui/Chip';
 import { sentimentOf } from '../../data/tape';
 import { SESSION_MIN } from '../../data/contractflow';
 import { isoToDate, sessionIsoBack, sessionOnOrBefore, useContractTape, type CardDay, type ContractTape } from '../../data/contractflow';
-import { indexRoot, sessionEndLabel, tapeSessionIso, usd as fmtUsd } from '../../data/traceLive';
+import { indexRoot, sessionEndLabel, sideShares, tapeSessionIso, useAlertTrades, usd as fmtUsd } from '../../data/traceLive';
 import { printKind } from '../../data/tape';
 import { isTradingDay, isoDate } from '../../core/calendar';
 import type { NetMetric } from './ContractFlowChart';
@@ -60,6 +60,20 @@ function spreadAndTheta(p: FlowPrint): { spreadPct: number | null; thetaPct: num
   return { spreadPct, thetaPct };
 }
 
+/* A DAY OF THETA CANNOT TAKE MORE THAN THE OPTION IS WORTH (the third audit, 2026-10-22: NVDA 220C read "210.7% of the
+   fill · $0.38 a share" on a $0.18 fill, a day from expiry). The vendor's theta is a per-share, per-day RATE — the slope
+   of the model's value at that instant — and in an option's last day the slope runs far past what is left, because the
+   value goes to zero by the bell. A share's day of decay is the smaller of the rate and the price; when the rate is the
+   larger, the card says so in words. */
+function thetaWords(p: FlowPrint, thetaPct: number | null): { text: string; warn: boolean; title?: string } {
+  if (thetaPct == null || p.theta == null) return { text: '—', warn: false };
+  const rate = Math.abs(p.theta);
+  const dp = (v: number) => (v < 0.1 ? 3 : 2);
+  if (rate < p.fill) return { text: `${thetaPct.toFixed(1)}% of the fill · $${rate.toFixed(dp(rate))} a share`, warn: false };
+  const when = p.dte <= 0 ? 'expires today' : p.dte === 1 ? 'expires tomorrow' : `expires in ${p.dte} days`;
+  return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share decays by then`, title: `The vendor's theta is a rate — $${rate.toFixed(dp(rate))} a share a day at this instant — and in an option's last days it runs past the price, because the value goes to zero at expiry. A day cannot take more than the $${p.fill.toFixed(2)} it is worth.`, warn: true };
+}
+
 const TABLE_TABS = [
   { value: 'orders', label: 'Flow orders' },
   { value: 'history', label: 'Volume & open interest' },
@@ -86,8 +100,10 @@ function tapeVerdict(rows: CardDay[], dateIso: string): { state: TapeState; read
   const i = rows.findIndex(r => r.iso === dateIso);
   if (i < 0) return null;
   const today = rows[i];
-  /* its last five sessions — a month back the contract was another animal (far from the money, far from expiry) */
-  const past = rows.slice(i + 1, i + 6).filter(r => r.vol > 0);
+  /* its last five sessions — a month back the contract was another animal (far from the money, far from expiry). A session
+     it did not trade is a session of zero, and counts (the third audit, 2026-10-22: SPXW 6250P read "18.8× its median
+     over the 3 sessions before" where the five sessions' median was 1 — the zero days had been dropped) */
+  const past = rows.slice(i + 1, i + 6);
   if (past.length < 3) return null;
   const med = (xs: number[]) => {
     const s = [...xs].sort((a, b) => a - b);
@@ -98,7 +114,9 @@ function tapeVerdict(rows: CardDay[], dateIso: string): { state: TapeState; read
   const sweptDelta = today.sweepPct - sweptTypical;
   const state: TapeState = volX >= 2.5 || sweptDelta >= 25 ? 'UNUSUAL' : volX >= 1.4 ? 'BUSY' : 'ORDINARY';
   const oi = today.oiChange == null ? '' : ` · open interest ${today.oiChange >= 0 ? '+' : '−'}${Math.abs(today.oiChange).toLocaleString('en-US')} on the session before`;
-  const bits = `${volX.toFixed(1)}× its median volume over the ${past.length} sessions before · swept ${Math.round(today.sweepPct)}% vs ${Math.round(sweptTypical)}% typical${oi}`;
+  const medVol = med(past.map(p => p.vol));
+  const quiet = past.filter(p => p.vol === 0).length;
+  const bits = `${medVol > 0 ? `${volX.toFixed(1)}× its median volume (${medVol.toLocaleString('en-US')})` : `${today.vol.toLocaleString('en-US')} contracts against a median of 0`} over the ${past.length} sessions before${quiet ? `, ${quiet} of them with no trade` : ''} · swept ${Math.round(today.sweepPct)}% vs ${Math.round(sweptTypical)}% typical${oi}`;
   const read =
     state === 'UNUSUAL'
       ? `${bits} — this is not how it normally trades.`
@@ -130,7 +148,9 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
       : oi > 0
         ? ` The day's volume is ${fixed(ratio, 2)}× the open interest — it could be opening or closing.`
         : '';
-  const read = p.extended
+  const read = p.compression
+    ? ' It is a compression print (OPRA cbmo / mctp, or the vendor’s arbitrage tag) — a package that nets open interest down between members, a call against a put at one strike — so it is not a bet and is not read bullish or bearish.'
+    : p.extended
     ? ' It printed after hours, against a thin post-market quote, so it is not read bullish or bearish.'
     : ` By its side and its right it reads ${sent.toLowerCase()}${sent === 'BULLISH' ? (p.right === 'P' ? ' — a put sold' : ' — a call bought') : sent === 'BEARISH' ? (p.right === 'P' ? ' — a put bought' : ' — a call sold') : ''}.`;
   const line = `${size} ${p.trades && p.trades > 1 ? `${right} ` : ''}${shape}.${read}${oiNote}`;
@@ -148,6 +168,8 @@ interface PrintDrilldownProps {
   /** The live tape buffer — THE SEQUENCE reads the same contract's other
       prints out of it (isolated trade, or one leg of a working order?) */
   tapeRows?: FlowPrint[];
+  /** What the list you were watching holds — prints, or flow alerts */
+  tapeNoun?: 'prints' | 'alerts';
   /** Swap the drilldown to a sibling print from the sequence */
   onOpenPrint?: (p: FlowPrint) => void;
 }
@@ -171,14 +193,20 @@ const SequenceStrip = ({
   print,
   siblings,
   onOpenPrint,
+  noun = 'prints',
 }: {
   print: FlowPrint;
   siblings: FlowPrint[];
   onOpenPrint?: (p: FlowPrint) => void;
+  noun?: 'prints' | 'alerts';
 }) => {
   const n = siblings.length;
   const read = useMemo(() => {
     if (n <= 1) return 'Isolated — the only row on this contract in the list you were watching.';
+    if (noun === 'alerts') {
+      const total = siblings.reduce((a, p) => a + p.premium, 0);
+      return `Part of a run — ${n} alerts on this contract in the list you were watching · ${fmtUsd(total)} across them · ${siblings[n - 1].time} → ${siblings[0].time}.`;
+    }
     const total = siblings.reduce((a, p) => a + p.premium, 0);
     const by = (side: FlowPrint['side']) => siblings.filter(p => p.side === side);
     const lots = (xs: FlowPrint[]) => xs.reduce((a, p) => a + p.size, 0).toLocaleString('en-US');
@@ -194,7 +222,7 @@ const SequenceStrip = ({
       `${oldest} → ${newest}`,
     ];
     return `${parts.join(' · ')}.`;
-  }, [siblings, n]);
+  }, [siblings, n, noun]);
 
   const shown = siblings.slice(0, SEQ_SHOWN);
 
@@ -249,7 +277,7 @@ const SequenceStrip = ({
             );
           })}
           {n > SEQ_SHOWN && (
-            <span className="px-1.5 py-1 font-mono text-[11px] text-textMuted tnum">…and {n - SEQ_SHOWN} more on the tape</span>
+            <span className="px-1.5 py-1 font-mono text-[11px] text-textMuted tnum">…and {n - SEQ_SHOWN} more {noun === 'alerts' ? 'alerts' : 'on the tape'}</span>
           )}
         </div>
       )}
@@ -257,7 +285,7 @@ const SequenceStrip = ({
   );
 };
 
-const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPrev, hasNext, tapeRows, onOpenPrint }: PrintDrilldownProps) => {
+const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPrev, hasNext, tapeRows, tapeNoun = 'prints', onOpenPrint }: PrintDrilldownProps) => {
   const navigate = useNavigate();
   const { changeTicker } = useMarketData();
 
@@ -302,14 +330,27 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
 
   // Is this session unusual FOR THIS CONTRACT? Judged against its own history.
   const verdict = useMemo(() => (cf ? tapeVerdict(cf.history, dateIso) : null), [cf, dateIso]);
-  /* the day's side split, off the contract's own history row for the session */
-  const dayLean = cf?.day ? (() => {
-    const d = cf.day;
-    const t = d.askVol + d.bidVol + d.midVol + d.neutralVol;
-    if (!(t > 0)) return null;
-    const pc = (v: number) => Math.round((v / t) * 100);
-    return { text: `ask ${pc(d.askVol)}% · bid ${pc(d.bidVol)}% · mid ${pc(d.midVol + d.neutralVol)}%`, lead: d.askVol > d.bidVol ? 'ask' : d.bidVol > d.askVol ? 'bid' : 'even' };
+  /* THE DAY'S SIDE SPLIT IS THE STRIP'S (the third audit, 2026-10-22: "bid 44%" here off the vendor's history row and
+     "BID 43%" in the strip's bar off its minutes; and the history row's sides still held the cancelled contracts): one
+     source — the card's own window, its prints when all are in hand, else the vendor's regular-session minutes — and one
+     rounding (traceLive sideShares), the very figures the strip's bar draws */
+  const dayLean = cf ? (() => {
+    const t = cf.minutes.reduce((a, m) => ({ ask: a.ask + m.askVol, bid: a.bid + m.bidVol, mid: a.mid + m.midVol }), { ask: 0, bid: 0, mid: 0 });
+    if (!(t.ask + t.bid + t.mid > 0)) return null;
+    const sh = sideShares(t.bid, t.mid, t.ask);
+    return { text: `ask ${sh.ask}% · bid ${sh.bid}% · mid ${sh.mid}%`, title: `${(t.ask + t.bid + t.mid).toLocaleString('en-US')} contracts — ${cf.window.label}${cf.window.source === 'prints' ? ', cancelled prints left out' : ''}` };
   })() : null;
+  /* AN ALERT'S LAST FILL IS ITS LAST TRADE (the third audit: "last fill $X × N" put the alert's total_size beside its
+     last price) — the alert's own trades, newest last; its largest single trade says whether any one was a block */
+  const isAlert = !!print?.trades && print.trades > 1 && !!print.alertId;
+  const alertTrades = useAlertTrades(isAlert ? print!.alertId! : null);
+  const alertFacts = useMemo(() => {
+    const t = alertTrades.rows;
+    if (!isAlert || !t.length) return null;
+    const last = t.reduce((a, p) => ((p.epochMs ?? 0) > (a.epochMs ?? 0) ? p : a), t[0]);
+    const largest = t.reduce((a, p) => (p.premium > a.premium ? p : a), t[0]);
+    return { last, largest, n: t.length, contracts: t.reduce((a, p) => a + p.size, 0) };
+  }, [alertTrades.rows, isAlert]);
   const nextIso = useMemo(() => {
     const d = isoToDate(dateIso);
     for (let i = 0; i < 10; i++) {
@@ -338,6 +379,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
 
   /* the print's own cost to cross — its quote and the vendor's theta, never a model */
   const cost = print ? spreadAndTheta(print) : { spreadPct: null, thetaPct: null };
+  const theta = print ? thetaWords(print, cost.thetaPct) : { text: '—', warn: false };
   /* the day's own volume and open interest — the contract's session row — for every claim about the day */
   const day = cf?.day && dateIso === tapeIso ? { vol: cf.day.vol, oi: cf.day.oi } : null;
   const dayVol = day && day.vol > 0 ? day.vol : print?.volume ?? 0;
@@ -477,14 +519,18 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 multi-leg
               </span>
             )}
-            {print.extended ? (
+            {print.compression ? (
+              <SignalBadge tone="neutral">COMPRESSION · NOT A BET</SignalBadge>
+            ) : print.extended ? (
               <SignalBadge tone="neutral">AFTER HOURS</SignalBadge>
             ) : (
               <SignalBadge tone={SENT_TONE[sent]}>{sent}</SignalBadge>
             )}
             <span className="font-mono text-[11px] text-textSecondary tnum">{print.time}</span>
             <span className={`font-mono text-[11px] uppercase ${print.sweep ? 'text-warn font-semibold' : 'text-textMuted'}`}>
-              {print.trades && print.trades > 1 ? `Alert · ${print.trades} prints` : { SWEEP: 'Sweep', MULTI: 'Multi-leg', BLOCK: 'Block', SINGLE: 'Single print' }[printKind(print)]}
+              {print.trades && print.trades > 1
+                ? `Alert · ${print.trades} prints${alertFacts ? ` · largest ${alertFacts.largest.size.toLocaleString('en-US')} × $${alertFacts.largest.fill.toFixed(2)}${printKind({ ...print, largestTrade: { size: alertFacts.largest.size, premium: alertFacts.largest.premium } }) === 'BLOCK' ? ' — a block' : ''}` : ''}`
+                : { SWEEP: 'Sweep', MULTI: 'Multi-leg', BLOCK: 'Block', SINGLE: 'Single print', COMPRESSION: 'Compression', BURST: 'Alert' }[printKind(print)]}
             </span>
             {print.spot > 0 && (
               <span className="font-mono text-[11px] text-textMuted tnum">
@@ -520,7 +566,15 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 <span className="font-mono text-[11px] tnum text-textMuted">{fixed(print.ask)}</span>
               </span>
               <span className="font-mono text-[11px] text-textSecondary tnum whitespace-nowrap">
-                <RichRead text={`${print.trades && print.trades > 1 ? 'last fill' : 'filled'} $${fixed(print.fill)} × ${num(print.size)} · ${print.time}${print.fillEnd && print.fillEnd !== print.time ? `–${print.fillEnd}` : ''} ET${print.extended ? ' · after hours' : ''}`} />
+                <RichRead
+                  text={
+                    print.trades && print.trades > 1
+                      ? alertFacts
+                        ? `last fill $${fixed(alertFacts.last.fill)} × ${num(alertFacts.last.size)} at ${alertFacts.last.time} · ${num(alertFacts.contracts)} contracts in ${alertFacts.n} prints, ${print.time}${print.fillEnd && print.fillEnd !== print.time ? `–${print.fillEnd}` : ''} ET${print.extended ? ' · after hours' : ''}`
+                        : `${num(print.size)} contracts in ${print.trades} prints · ${print.time}${print.fillEnd && print.fillEnd !== print.time ? `–${print.fillEnd}` : ''} ET${alertTrades.waiting ? ' · reading its trades…' : ''}${print.extended ? ' · after hours' : ''}`
+                      : `filled $${fixed(print.fill)} × ${num(print.size)} · ${print.time} ET${print.extended ? ' · after hours' : ''}`
+                  }
+                />
               </span>
             </div>
             {/* THE READ — one sentence, the terminal talks first */}
@@ -531,7 +585,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-print-facts>
               <Fact label={print.trades && print.trades > 1 ? 'This alert, mostly' : 'This print'} value={print.side === 'ASK' ? 'paid the offer' : print.side === 'BID' ? 'hit the bid' : 'mid / no side'} valueCls={print.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
               {/* the contract's whole session by side — the same history row the table reads, mid shown on its own */}
-              <Fact label={dateIso === tapeIso ? "Today's volume by side" : 'Session volume by side'} value={dayLean ? dayLean.text : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
+              <Fact label={dateIso === tapeIso ? "Today's volume by side" : 'Session volume by side'} value={dayLean ? <span title={dayLean.title}>{dayLean.text}</span> : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
               {/* THE SIGNED DISTANCE, AND THE WORD (the re-audit, 2026-10-22: a 7600 put against 7,665 read "+0.8%" under
                   "Strike vs spot" — that was how far out of the money it is, not strike less spot) */}
               <Fact
@@ -557,8 +611,8 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               />
               <Fact
                 label="A day of theta"
-                value={cost.thetaPct == null ? '—' : `${fixed(cost.thetaPct, 1)}% of the fill · $${fixed(Math.abs(print.theta ?? 0), Math.abs(print.theta ?? 0) < 0.1 ? 3 : 2)} a share`}
-                valueCls={cost.thetaPct == null ? 'text-textMuted' : 'text-textPrimary'}
+                value={theta.title ? <span title={theta.title}>{theta.text}</span> : theta.text}
+                valueCls={cost.thetaPct == null ? 'text-textMuted' : theta.warn ? 'text-warn' : 'text-textPrimary'}
               />
             </div>
           </div>
@@ -566,7 +620,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
           {/* THE SEQUENCE — siblings from the live buffer, before the window
               history: "am I looking at a one-off or a series?" is the first
               question after "what is it?" */}
-          {tapeRows && <SequenceStrip print={print} siblings={siblings} onOpenPrint={onOpenPrint} />}
+          {tapeRows && <SequenceStrip print={print} siblings={siblings} onOpenPrint={onOpenPrint} noun={tapeNoun} />}
 
           {/* THE TAPE — the shape that is ours, not theirs: both instruments
               stacked full-width on ONE clock, crosshairs synced, and a lime
@@ -796,7 +850,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 <td className="px-2 py-1.5">
                   <span
                     className="flex h-[3px] w-24 rounded-full overflow-hidden bg-ink/[0.14]"
-                    title={`${Math.round(pc(d.bidVol))}% on the bid · ${Math.round(pc(d.midVol + d.neutralVol))}% mid or no side · ${Math.round(pc(d.askVol))}% at the ask`}
+                    title={`${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).bid}% on the bid · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).mid}% mid or no side · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).ask}% at the ask${d.basis === 'prints' ? ' — off the session’s own prints, cancelled ones left out' : d.canceledVol > 0 ? ` — the vendor’s sides, which still hold ${d.canceledVol.toLocaleString('en-US')} cancelled contracts it cannot attribute` : ''}`}
                   >
                     <span className="h-full bg-bear/80" style={{ width: `${pc(d.bidVol)}%` }} />
                     <span className="h-full bg-ink/30" style={{ width: `${pc(d.midVol + d.neutralVol)}%` }} />
@@ -806,7 +860,10 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 <td className={`${td} text-right text-textPrimary`}>{d.iv > 0 ? `${fixed(d.iv, 1)}%` : '—'}</td>
                 <td className={`${td} text-right ${d.sweepPct >= 50 ? 'text-warn' : 'text-textPrimary'}`}>{Math.round(d.sweepPct)}%</td>
                 <td className={`${td} text-right text-textPrimary`}>{Math.round(d.multiPct)}%</td>
-                <td className={`${td} text-right text-textPrimary`}>{usd(d.premium)}</td>
+                <td className={`${td} text-right text-textPrimary`} title={d.basis === 'vendor-less-canceled' ? `${d.canceledVol.toLocaleString('en-US')} cancelled contracts taken out at the session's average price — ≈` : d.basis === 'prints' ? "The session's own prints, cancelled ones left out" : undefined}>
+                  {d.basis === 'vendor-less-canceled' ? '≈' : ''}
+                  {usd(d.premium)}
+                </td>
                 <td className={`${td} text-right text-textPrimary`}>{fixed((d.premium / premSum) * 100, 1)}%</td>
               </tr>
             );

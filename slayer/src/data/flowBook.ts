@@ -228,9 +228,11 @@ export const WATCHERS: WatcherRule[] = [
   {
     key: 'big-money',
     label: 'Big money',
-    /* the rule is the contract's DAY premium ($25M and up) — it never looked at one print */
-    reason: 'Carried $25M or more of premium today',
-    hint: "A contract whose day's premium reached $25M",
+    /* the rule is the contract's DAY premium — it never looked at one print. RELATIVE, so it stays rare (the third audit,
+       2026-10-22: "$25M and up" fired on 146 of the book's 174 — the book IS the day's heaviest contracts): the top tenth
+       of the book's own premium today, and $25M at the least */
+    reason: "In the top tenth of the book's premium today ($25M at the least)",
+    hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M",
   },
   {
     key: 'into-earnings',
@@ -293,7 +295,7 @@ export interface Catch {
 export function reasonPhrase(key: WatcherKey, r: BookContract): string {
   switch (key) {
     case 'big-money':
-      return `Carried ${usd(r.premium)} of premium today — $25M and up`;
+      return `Carried ${usd(r.premium)} of premium today — the top tenth of the book${floorPackaged(r) ? `; ${Math.round(r.floorPct)}% of it floor-traded multi-leg packages, the shape of compression, not a bet` : ''}`;
     case 'into-earnings':
       return `Reports in ${r.earnDays === 0 ? 'this session' : `${r.earnDays} session${r.earnDays === 1 ? '' : 's'}`}, open interest +${r.deltaOI.toLocaleString('en-US')} on ${r.volume.toLocaleString('en-US')} contracts`;
     case 'climbing':
@@ -307,10 +309,25 @@ export function reasonPhrase(key: WatcherKey, r: BookContract): string {
   }
 }
 
-function rulesFor(r: BookContract): WatcherKey[] {
+/** A DAY THAT WAS MOSTLY FLOOR PACKAGES (the third audit, 2026-10-22: "Most money today SPX 7000C · $1.6B" was 16,950 of
+    21,494 contracts on the floor in multi-leg packages — the cbmo compression the tape labels; the screener carries no
+    per-print condition, so the day's floor and multi-leg shares are what say it): half the day or more on the floor AND
+    half or more in multi-leg packages. Such a contract is not crowned "most money" without saying so. */
+export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): boolean {
+  return r.floorPct >= 50 && r.multiPct >= 50;
+}
+
+/** The book's big-money line: its 90th-percentile premium, $25M at the least */
+export function bigMoneyLine(rows: BookContract[]): number {
+  if (!rows.length) return 25_000_000;
+  const s = rows.map(r => r.premium).sort((a, b) => a - b);
+  return Math.max(25_000_000, s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
+}
+
+function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
   const out: WatcherKey[] = [];
   // "Big enough to move the day" has to stay RARE or the words mean nothing.
-  if (r.premium >= 25_000_000) out.push('big-money');
+  if (r.premium >= bigLine) out.push('big-money');
   if (r.earnDays != null && r.earnDays <= 5 && r.deltaOI > 0 && r.volume >= 3000) out.push('into-earnings');
   // Climbing and falling are mirror predicates — chasers vs sellers, same bar.
   const lean = dayLean(r).lean;
@@ -343,8 +360,9 @@ export function buildCatches(rows: BookContract[], reasons: UserReason[] = []): 
   const sig = reasonsSignature(reasons);
   if (catchCache && catchCache.rows === rows && catchCache.sig === sig) return catchCache.catches;
   const catches: Catch[] = [];
+  const bigLine = bigMoneyLine(rows);
   for (const r of rows) {
-    const house = rulesFor(r);
+    const house = rulesFor(r, bigLine);
     const mine = myReasonsFor(r, reasons);
     const all = [...house, ...mine];
     if (!all.length) continue;
@@ -524,8 +542,13 @@ export interface SpreadTrade {
   size: number;
   /** Per-UNIT price (net premium over units × 100): positive = debit paid, negative = credit collected; 0 = not known */
   net: number;
-  /** The vendor's name for the shape, spelled out ("put diagonal spread", "time butterfly") */
+  /** The shape's name — from the settled legs once they are in hand (traceLive nameFromLegs), else the vendor's, spelled
+      out ("put diagonal spread", "time butterfly") */
   shape: string;
+  /** The vendor's own name, kept when the legs name the structure otherwise */
+  vendorShape?: string;
+  /** The vendor's own name, always (the row's `shape` may be the legs' once they settle) */
+  shapeOfVendor?: string;
   /** Signed net premium: + paid, − collected (the vendor's net_premium); premium is the gross of every leg */
   netPremium: number;
   /** How many legs the vendor counted */

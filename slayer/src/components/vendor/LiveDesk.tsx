@@ -224,9 +224,20 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
           <span key={l.name} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <span aria-hidden className="inline-block w-2.5 h-[2px] rounded-full self-center" style={{ background: l.ink }} />
             <span className="text-textMuted">{l.name}</span>
-            {/* a series by expiry is a set of dates, not a clock: its total; a series in time: its last print */}
-            <span style={{ color: l.ink }}>{fmtLast(l.pts[0].label ? l.pts.reduce((a, p) => a + p.v, 0) : l.pts[l.pts.length - 1].v)}</span>
-            <span className="text-textMuted">{l.pts[0].label ? 'total' : 'last'}</span>
+            {/* a series by expiry is a set of dates, not a clock. A dollar or count series is summed across them; a rate (an
+                IV, a percent) is never summed (the third audit, 2026-10-23: "IV 446.8% total") — its front expiry is shown,
+                named by its date. A series in time: its last print. */}
+            {l.pts[0].label && format !== 'compact' ? (
+              <>
+                <span style={{ color: l.ink }}>{fmtLast(l.pts[0].v)}</span>
+                <span className="text-textMuted">front · {l.pts[0].label}</span>
+              </>
+            ) : (
+              <>
+                <span style={{ color: l.ink }}>{fmtLast(l.pts[0].label ? l.pts.reduce((a, p) => a + p.v, 0) : l.pts[l.pts.length - 1].v)}</span>
+                <span className="text-textMuted">{l.pts[0].label ? 'total' : 'last'}</span>
+              </>
+            )}
           </span>
         ))}
       </div>

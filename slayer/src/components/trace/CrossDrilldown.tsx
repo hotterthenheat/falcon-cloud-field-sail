@@ -19,7 +19,7 @@ import GradeMeter from '../ui/GradeMeter';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 import { nyClock } from '../../core/nyTime';
-import { quotePlace, useDarkDay, useStockMinutes } from '../../data/traceLive';
+import { postureOf, quotePlace, useDarkDay, useStockMinutes } from '../../data/traceLive';
 import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
@@ -85,6 +85,9 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
   const midN = crosses.filter(p => quotePlace(p.vsSpotPct, p.price).cents === 0).length;
   const sided = underDol + overDol;
   const underPct = sided > 0 ? (underDol / sided) * 100 : 0;
+  /* AFTER HOURS IS NOT A SIDE (the third audit, 2026-10-22: an after-hours tape wore "UNDER THE MID 64%" in red): where
+     the crosses in view are all extended-hours prints, the split is drawn in plain ink */
+  const allAfter = crosses.length > 0 && crosses.every(p => p.extended);
   const hasDay = bars.length > 0;
   const extendedBars = bars.some(b => b.extended);
 
@@ -195,13 +198,13 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
         {sided > 0 ? (
           <div className="mt-2 flex flex-col gap-1 max-w-[460px]">
             <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase tracking-wider">
-              <span className={underPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>Under the mid {Math.round(underPct)}%</span>
-              <span className="text-textMuted normal-case tracking-normal">{midN} at the mid</span>
-              <span className={underPct < 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>Over the mid {100 - Math.round(underPct)}%</span>
+              <span className={allAfter ? 'text-textSecondary' : underPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>Under the mid {Math.round(underPct)}%</span>
+              <span className="text-textMuted normal-case tracking-normal">{midN} at the mid{allAfter ? ' · after hours, no read' : ''}</span>
+              <span className={allAfter ? 'text-textSecondary' : underPct < 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>Over the mid {100 - Math.round(underPct)}%</span>
             </div>
             <span className="flex h-1.5 rounded-full overflow-hidden bg-ink/[0.06]">
-              <span className="h-full bg-bear/80" style={{ width: `${underPct}%` }} />
-              <span className="h-full bg-bull" style={{ width: `${100 - underPct}%` }} />
+              <span className={`h-full ${allAfter ? 'bg-ink/30' : 'bg-bear/80'}`} style={{ width: `${underPct}%` }} />
+              <span className={`h-full ${allAfter ? 'bg-ink/50' : 'bg-bull'}`} style={{ width: `${100 - underPct}%` }} />
             </span>
           </div>
         ) : (
@@ -389,18 +392,22 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <RichRead text={print.read} />
             </p>
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-cross-facts>
-              <Fact label="Vs the quote" value={quotePlace(print.vsSpotPct, print.price).text} valueCls={quotePlace(print.vsSpotPct, print.price).cents === 0 ? 'text-textMuted' : quotePlace(print.vsSpotPct, print.price).cents > 0 ? 'text-bull' : 'text-bear'} />
+              <Fact label="Vs the quote" value={`${quotePlace(print.vsSpotPct, print.price).text}${print.extended ? ' · after hours' : ''}`} valueCls={quotePlace(print.vsSpotPct, print.price).cents === 0 || print.extended ? 'text-textMuted' : quotePlace(print.vsSpotPct, print.price).cents > 0 ? 'text-bull' : 'text-bear'} />
               <Fact label={print.lit ? 'Printed on' : 'Reported to'} value={print.lit ? print.venue : print.facility ?? venueWord(print.venue)} />
               {print.special && <Fact label="Trade kind" value={print.special} valueCls="text-warn" />}
-              <Fact label="Shelf" value={shelf ? <span className={ROLE_INK[shelf.role]}>${shelf.price.toFixed(2)} · {ROLE_WORD[shelf.role]} · defended {shelf.defended}×</span> : <span className="text-textMuted">between shelves</span>} />
+              <Fact label="Shelf" value={shelf ? <span className={ROLE_INK[shelf.role]}>${shelf.price.toFixed(2)} · {ROLE_WORD[shelf.role]} · {shelf.sharePct.toFixed(0)}% of the day's dark dollars</span> : <span className="text-textMuted">between shelves</span>} />
               <Fact
                 label={`${print.ticker}, prints in hand`}
                 value={
                   view ? (
-                    <span className={view.posture === 'ACCUMULATING' ? 'text-bull' : view.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'}>
-                      {POSTURE_WORD[view.posture]}
-                      {view.posture !== 'BALANCED' ? ` · ${gradeOfPosture(view.netPosturePct)}` : ''}
-                    </span>
+                    postureOf(view.prints).read === 0 ? (
+                      <span className="text-textMuted" title="No sized regular-session cross at the quote — nothing to read">nothing to read</span>
+                    ) : (
+                      <span className={view.posture === 'ACCUMULATING' ? 'text-bull' : view.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'}>
+                        {POSTURE_WORD[view.posture]}
+                        {view.posture !== 'BALANCED' ? ` · ${gradeOfPosture(view.netPosturePct)}` : ''}
+                      </span>
+                    )
                   ) : '—'
                 }
               />
@@ -453,8 +460,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                         <td className={`${td} text-right text-textPrimary`}>${p.price.toFixed(2)}</td>
                         <td className={`${td} text-right text-textPrimary`}>{num(p.size)}</td>
                         <td className={`${td} text-right ${p.notional >= 1_000_000 ? 'text-textPrimary font-semibold' : 'text-textPrimary'}`}>{fmtUsd(p.notional)}</td>
-                        <td className={`${td} ${p.exec === 'MID' || !p.exec ? 'text-textMuted' : 'text-textPrimary'}`}>{sideWord(p)}</td>
-                        <td className={`${td} text-right ${place.cents > 0 ? 'text-bull' : place.cents < 0 ? 'text-bear' : 'text-textMuted'}`}>{place.text}</td>
+                        <td className={`${td} ${p.exec === 'MID' || !p.exec || p.extended ? 'text-textMuted' : 'text-textPrimary'}`}>{sideWord(p)}</td>
+                        <td className={`${td} text-right ${p.extended ? 'text-textSecondary' : place.cents > 0 ? 'text-bull' : place.cents < 0 ? 'text-bear' : 'text-textMuted'}`}>{place.text}</td>
                         <td className={td}>{p.sized && !p.extended && !p.special ? <IntentTag intent={p.intent} /> : <span className="text-textMuted uppercase text-[10px]">{noReadWord(p)}</span>}</td>
                       </tr>
                     );

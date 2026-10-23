@@ -25,7 +25,8 @@ export type Party = 'D' | 'R' | 'I' | '';
 /** 'Sale' is a sale the filing does not mark full or partial (the vendor's bare "Sell") */
 export type ReportType = 'Purchase' | 'Sale' | 'Sale (Full)' | 'Sale (Partial)' | 'Exchange';
 /** Whose holding the report covers — the member, their spouse, a joint account, a dependent */
-export type ReportOwner = 'Self' | 'Spouse' | 'Joint' | 'Dependent';
+/** 'Undisclosed': the filing does not say whose holding it is (the vendor's issuer "undisclosed") — shown as "not stated" */
+export type ReportOwner = 'Self' | 'Spouse' | 'Joint' | 'Dependent' | 'Undisclosed';
 export type AssetKind = 'Stock' | 'Stock Option' | 'Corporate Bond' | 'Municipal Security' | 'Fund' | 'Crypto' | 'Other';
 
 /** One of the ten statutory amount rungs, in the form's checkbox order A–J */

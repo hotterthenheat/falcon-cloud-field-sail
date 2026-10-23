@@ -39,7 +39,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { buildCatches, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
+import { buildCatches, floorPackaged, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
 import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
@@ -76,7 +76,7 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
 /** the print reads "18,479 @ $1.12" — 118 cut it to "@ $..."; the reason wraps to two lines, so it gives the room */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 104, clipprem: 100, sideCol: 72, otm: 76, earn: 92 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 132, clipprem: 100, sideCol: 72, otm: 76, earn: 92 };
 const FLEXES: Record<string, number> = { reason: 3 };
 const PIN_LEFT = ['time', 'ticker', 'contract'];
 const PIN_RIGHT = ['clipprem'];
@@ -86,7 +86,7 @@ const TOOLTIPS: Record<string, string> = {
   time: "When the contract last printed today, New York",
   clip: "The contract's last fill today",
   clipprem: "The contract's premium today — every print, not one",
-  sideCol: "Where its day's volume leaned — at the ask or on the bid (58% or more of the sided volume, with at least half the day on a side), even, or mostly mid / no side",
+  sideCol: "Where its day's volume leaned — at the ask or on the bid (55% or more of the sided volume, with at least half the day on a side), even, or mostly mid / no side",
   voloi: 'Volume over open interest — above 1.5 the positions were built today',
 };
 
@@ -120,7 +120,7 @@ const phoneRow = (a: Catch) => (
       <span key="p" className="font-semibold text-textPrimary">
         {fmtUsd(a.premium)} today
       </span>,
-      <span key="s">last ${a.last.toFixed(2)}</span>,
+      <span key="s">last ${a.last.toFixed(2)} at {a.time}</span>,
       <span key="z">{num(a.row.volume)} vol · {a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : a.side === 'MID' ? 'mid/no side' : 'even'}</span>,
     ]}
   />
@@ -328,7 +328,11 @@ const Watchers = () => {
         header: 'Last fill',
         align: 'right',
         sortValue: a => a.last,
-        render: a => <span className="text-textPrimary">${a.last.toFixed(2)}</span>,
+        render: a => (
+          <span className="text-textPrimary" title="The contract's last fill, and its New York time">
+            ${a.last.toFixed(2)} <span className="text-[11px] text-textSecondary">{a.time}</span>
+          </span>
+        ),
       },
       {
         key: 'clipprem',
@@ -371,7 +375,7 @@ const Watchers = () => {
         header: 'OTM %',
         align: 'right',
         sortValue: a => a.row.otmPct,
-        render: a => <span className="text-textPrimary">{pctSigned(a.row.otmPct, 1)}</span>,
+        render: a => (Number.isFinite(a.row.otmPct) ? <span className="text-textPrimary">{pctSigned(a.row.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
       },
       {
         key: 'earn',
@@ -390,8 +394,11 @@ const Watchers = () => {
      strip — facts left, champions as pills right — and the column chooser.
      The side champions wear the plain ink: a side is not a direction. */
   const champs = useMemo(() => {
-    const by = (pick: (a: Catch) => boolean) => shown.filter(pick).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
-    return { ask: by(a => a.side === 'ASK'), bid: by(a => a.side === 'BID'), all: by(() => true) };
+    /* a day that was mostly floor-traded multi-leg packages (compression's shape) is not crowned "most money" — it is
+       named on its own (flowBook floorPackaged) */
+    const by = (pick: (a: Catch) => boolean) => shown.filter(a => !floorPackaged(a.row) && pick(a)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
+    const packaged = shown.filter(a => floorPackaged(a.row)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
+    return { ask: by(a => a.side === 'ASK'), bid: by(a => a.side === 'BID'), all: by(() => true), packaged };
   }, [shown]);
   const facts = useMemo(() => {
     const byRule = new Map<string, number>();
@@ -444,8 +451,13 @@ const Watchers = () => {
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Most money today" ink="supreme" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
+              <Champion label="Most money today" ink="supreme" title="The most premium today among contracts whose day was not mostly floor-traded multi-leg packages" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
                 {pill(champs.all)}
+              </Champion>
+            )}
+            {champs.packaged && (!champs.all || champs.packaged.premium > champs.all.premium) && (
+              <Champion label="Floor packages · not a bet" ink="plain" title={`More premium, but ${Math.round(champs.packaged.row.floorPct)}% of its day traded on the floor and ${Math.round(champs.packaged.row.multiPct)}% in multi-leg packages — the shape of compression (OPRA cbmo), which nets open interest down, not a directional bet`} onOpen={() => setOpenKey(champs.packaged!.row.key)} testId="packaged">
+                {pill(champs.packaged)}
               </Champion>
             )}
           </>

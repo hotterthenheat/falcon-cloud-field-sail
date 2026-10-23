@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
-import { bookToday, expiryFor, isoDate } from '../core/calendar';
+import { bookToday, expiryFor, isoDate, nextSession } from '../core/calendar';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { pickLegWalls } from '../core/walls';
 import { registerChainDates } from './chainDates';
@@ -94,6 +94,8 @@ interface Entry {
   termIv?: Record<string, number>;
   /** The front date's contract rows (open interest, vol, gamma) are painted on its chain */
   frontFacts?: boolean;
+  /** Each expiry's own implied move (volatility/term-structure implied_move), dollars from the quote into that expiry */
+  termMove?: Record<string, number>;
   /** The whole book's gamma is the vendor's live open-interest book (spot-exposures/strike), not the morning snapshot */
   gammaLive?: boolean;
 }
@@ -275,6 +277,23 @@ export function liveGamma(ticker: string, date: string | null, priority = false)
   return job;
 }
 
+/** The live gamma still carried by contracts that have settled (dates before the book's day), RETAIL sign, dollars per
+    1% — what the vendor's whole-book figures (spot-exposures/strike, the minute series) still count after the close.
+    0 when nothing settled is listed; null while a settled date's live rows are not in yet. */
+export function peekSettledNet(ticker: string): number | null {
+  const e = cache.get(ticker.toUpperCase());
+  if (!e) return null;
+  const floor = isoDate(bookToday());
+  const settled = (e.expiries ?? []).map(x => x.date).filter(d => d < floor);
+  let sum = 0;
+  for (const d of settled) {
+    const rows = settledLive.get(`${e.ticker}|${d}`);
+    if (!rows) return null;
+    for (const v of rows.values()) sum += v.c + v.p;
+  }
+  return sum;
+}
+
 /** A chain with its gamma replaced by the live open-interest book (house sign) — strikes the live book holds that the
     chain lacks are added, strikes it lacks carry no gamma */
 function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma): StrikeNode[] {
@@ -412,10 +431,15 @@ function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook>
   return by;
 }
 
-function paintLegs(nodes: StrikeNode[], book: Map<number, LegBook>, oi: boolean): void {
-  for (const n of nodes) {
-    const leg = book.get(n.strike);
-    if (!leg) continue;
+/* NEW NODES, NEVER THE OLD ONES EDITED (the third audit, 2026-10-23: CROX's Map flip read 114.43 against 114.77 on
+   Compare and levelsFor — the Map's levels were cached on the snapshot object, and the contract vols the flip re-prices
+   with were then painted INTO that same snapshot's nodes, so the cache never saw them land). A chain that gains its
+   contract facts is a new chain; whatever is keyed on the old one recomputes. */
+function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi: boolean): StrikeNode[] {
+  return nodes.map(n0 => {
+    const leg = book.get(n0.strike);
+    if (!leg) return n0;
+    const n: StrikeNode = { ...n0 };
     if (oi) {
       n.callOI = leg.callOI;
       n.putOI = leg.putOI;
@@ -431,10 +455,11 @@ function paintLegs(nodes: StrikeNode[], book: Map<number, LegBook>, oi: boolean)
       n.callVol = leg.callVol;
       n.putVol = leg.putVol;
     }
-  }
+    return n;
+  });
 }
 
-/** Sum the per-expiry vega already on the book onto the aggregate chain. */
+/** Sum the per-expiry vega already on the book onto the aggregate chain (a new aggregate — see paintLegs). */
 function vexOntoAll(entry: Entry): void {
   const agg = new Map<number, { call: number; put: number }>();
   for (const chain of Object.values(entry.byDate)) {
@@ -447,13 +472,14 @@ function vexOntoAll(entry: Entry): void {
     }
   }
   if (!agg.size) return;
-  for (const n of entry.all) {
+  let changed = false;
+  const next = entry.all.map(n => {
     const v = agg.get(n.strike);
-    if (!v) continue;
-    n.callVex = v.call;
-    n.putVex = v.put;
-    n.netVex = v.call + v.put;
-  }
+    if (!v || (n.callVex === v.call && n.putVex === v.put)) return n;
+    changed = true;
+    return { ...n, callVex: v.call, putVex: v.put, netVex: v.call + v.put };
+  });
+  if (changed) entry.all = next;
 }
 
 /** A handful at a time. Forty expiry books at once stall the page that is trying to paint. */
@@ -488,10 +514,12 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
   if (!still()) return;
   const current = cache.get(entry.ticker);
   if (!current) return;
+  const byDate = { ...current.byDate };
   for (const [date, book] of books) {
-    const chain = current.byDate[date];
-    if (chain && book.size) paintLegs(chain, book, true);
+    const chain = byDate[date];
+    if (chain && book.size) byDate[date] = paintLegs(chain, book, true);
   }
+  current.byDate = byDate;
   vexOntoAll(current);
   current.at = Date.now();
   cache.set(current.ticker, current);
@@ -620,7 +648,15 @@ export function expiryDateFor(ticker: string, choice: string): string | null {
   if (!entry) return null;
   const dte = LADDER_DTE.find(([label]) => label === choice)?.[1];
   if (dte == null) return null;
-  return closestDate(isoDate(expiryFor(dte, bookToday()).date), Object.keys(entry.byDate));
+  /* THE DATE chainsFor HANDS THE PAGES, NOT THE NEAREST WITHIN FOUR DAYS (the third audit, 2026-10-23: CROX's Expiry
+     card said "Next session · Oct 23" while its Today scope read Nov 20 — closestDate gives up past four days, chainsFor
+     then falls back to the first live date). The same resolution, step for step. */
+  const floor = isoDate(bookToday());
+  const dates = Object.keys(entry.byDate).filter(d => d >= floor);
+  const hit = closestDate(isoDate(expiryFor(dte, bookToday()).date), dates);
+  if (hit && entry.byDate[hit]?.length) return hit;
+  if (choice !== '0DTE') return null;
+  return [...dates].sort().find(d => entry.byDate[d]?.length) ?? null;
 }
 
 const LIVE_KEYS = ['callGex', 'putGex', 'netGex', 'callDex', 'putDex', 'netDex', 'callVex', 'putVex', 'netVex', 'callVanna', 'putVanna', 'netVanna', 'callCharm', 'putCharm', 'netCharm', 'callOI', 'putOI'] as const;
@@ -845,6 +881,38 @@ function termIvOf(rows: UwTerm[]): Record<string, number> | null {
   return Object.keys(out).length ? out : null;
 }
 
+/** Each expiry's own implied move off the term structure, dollars — null when the rows carry none */
+function termMoveOf(rows: UwTerm[], spot: number): Record<string, number> | null {
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    const d = String(r.expiry ?? '');
+    const v = num(r.implied_move);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && v > 0 && v < spot * 0.5) out[d] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/*
+  ONE SESSION'S EXPECTED MOVE, DOLLARS (the third audit, 2026-10-23: "EXPECTED MOVE ±$7.32", which drives every reach
+  odd, was the 30-day IV off iv-rank — 15.2% — while the Oct 23 ATM vol is 17.4% and the vendor's own implied move into
+  Oct 23 is $4.74). The move is the expiry the levels read: when that expiry IS the coming session, the vendor's own
+  implied move into it; a later expiry (CROX's Nov 20) its at-the-money vol over one session; the 30-day IV only when the
+  term structure has nothing. `date` null: the first live listing.
+*/
+export function peekDaySigma(ticker: string, date?: string | null): number | null {
+  const e = peekEntry(ticker);
+  if (!e || e.status !== 'live' || !(e.spot > 0)) return null;
+  const floor = isoDate(bookToday());
+  const listed = e.expiries.map(x => x.date).filter(d => d >= floor).sort();
+  const d = date && date >= floor ? date : listed[0] ?? null;
+  const session = isoDate(nextSession(bookToday()));
+  const move = d ? e.termMove?.[d] : undefined;
+  if (d === session && move && move > 0) return move;
+  const atm = d ? e.termIv?.[d] : undefined;
+  if (atm && atm > 0) return e.spot * atm * Math.sqrt(1 / 252);
+  return e.iv > 0 ? e.spot * e.iv * Math.sqrt(1 / 252) : null;
+}
+
 /** The 1-day tenor, as a fraction of spot. The vendor prints a fraction (0.004 = 0.4%). */
 function dayFracOf(rows: UwInterp[]): number {
   if (!Array.isArray(rows)) return 0;
@@ -1011,6 +1079,9 @@ export function subscribeBook(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
+/** The book's revision — bumps whenever any name's book lands or changes. Caches keyed on a snapshot key on this too. */
+export const bookRevision = (): number => rev;
+
 export function useBookRev(): number {
   return useSyncExternalStore(
     fn => {
@@ -1083,6 +1154,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     iv: iv > 0 ? iv : 0,
     impliedMove: impliedMoveOf(Array.isArray(termRows) ? termRows : [], nyIsoDate(), spot),
     termIv: termIvOf(Array.isArray(termRows) ? termRows : []) ?? prevEntry?.termIv,
+    termMove: termMoveOf(Array.isArray(termRows) ? termRows : [], spot) ?? prevEntry?.termMove,
     dayMoveFrac: dayFracOf(Array.isArray(interpRows) ? interpRows : []),
     all: (() => {
       const base = chainFrom(strikes, spot, oiMap(Array.isArray(oiRows) ? oiRows : []), flowMap(Array.isArray(flowRows) ? flowRows : []));
@@ -1203,7 +1275,8 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     if (!current || current.full) return;
     if (!rows.error && Array.isArray(rows.data)) {
       const book = foldContracts(rows.data as UwContract[], front);
-      if (book.size) paintLegs(chain, book, true);
+      const have = current.byDate[front] ?? chain;
+      if (book.size && have.length) current.byDate = { ...current.byDate, [front]: paintLegs(have, book, true) };
       current.frontFacts = true;
       current.at = Date.now();
       cache.set(entry.ticker, current);
@@ -1308,8 +1381,21 @@ export function snapshotFor(ticker: string, scope: LevelsScope, mode: BookMode =
     listing is not in yet. One number for the Board, Compare, the Agenda and the Trader's Clock. */
 export function peekBellShare(ticker: string): { share: number } | { share: null; why: 'none' | 'wait' } {
   const e = peekEntry(ticker);
-  if (!e || e.status !== 'live' || !e.totals?.length) return { share: null, why: 'wait' };
+  if (!e || e.status !== 'live') return { share: null, why: 'wait' };
   const today = isoDate(bookToday());
+  /* THE LIVE BOOK, NOT THE MORNING SNAPSHOT (the third audit, 2026-10-23: NVDA 17% against 13% live, TSLA 25 against 28,
+     AAPL 23 against 25): today's date's live open-interest gamma, gross, against the whole live book's (settled dates
+     off). Calls carry one sign on every date and puts the other, so the whole book's per-strike legs add to the same
+     gross as every date's added up. The morning snapshot (greek-exposure/expiry) only stands in until the live rows land. */
+  const listedToday = e.expiries.some(x => x.date === today) || e.totals?.some(t => t.date === today);
+  const todayChain = e.byDate[today];
+  if (e.gammaLive && todayChain?.length) {
+    const gross = (ch: readonly StrikeNode[]) => ch.reduce((a, n) => a + Math.abs(n.callGex) + Math.abs(n.putGex), 0);
+    const total = gross(liveAll(e));
+    const dies = gross(todayChain);
+    if (total > 0) return { share: Math.min(100, Math.round((100 * dies) / total)) };
+  }
+  if (!e.totals?.length) return listedToday === false && e.expiries.length ? { share: null, why: 'none' } : { share: null, why: 'wait' };
   const live = e.totals.filter(t => t.date >= today);
   const dies = live.filter(t => t.date === today).reduce((a, t) => a + t.gross, 0);
   if (!live.some(t => t.date === today)) return { share: null, why: 'none' };
@@ -1465,7 +1551,12 @@ export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
    oi-change is the real thing: each contract's open interest this morning against the session before. Summed here to
    the strike, calls and puts apart. Pages are ordered by the size of the change, so the first few hold everything that
    moved a wall. */
-const OI_PAGES = 6;
+/* BOTH DIRECTIONS (the third audit, 2026-10-23): the vendor's default order is the largest INCREASE first — six pages
+   of it ran out at a change of 0 and never reached one contract that was closed. SPY's 770 call wall read "steady
+   −$95K" over −2,995 calls (−$70.5M), 769 "+$0" over −6,478 puts; 110 of the 342 Oct 23 contracts fell and none were
+   counted. Increases are read largest first (order=desc), decreases largest first (order=asc), each until its pages
+   reach a change of 0 — everything past that point is unchanged. */
+const OI_PAGES = 14;
 
 /** One contract's open-interest change: the vendor's oi_diff_plain — this morning's open interest (curr_date, set
     overnight from the previous session's trading) against the session before's (last_date) */
@@ -1486,6 +1577,9 @@ export interface OiChange {
   currDate: string | null;
 }
 const oiChangeCache = new Map<string, OiChange>();
+const oiChangeAt = new Map<string, number>();
+/* the count is set once overnight — re-read every half hour, so a page left open across the roll picks up the new one */
+const OI_CHANGE_MS = 30 * 60_000;
 const oiChangeWait = new Set<string>();
 
 /* KEYED BY CONTRACT, NOT BY STRIKE (the Pinpoint audit, 2026-10-22): the strike-only parse dropped the expiry and summed
@@ -1494,28 +1588,39 @@ const oiChangeWait = new Set<string>();
    expiry, strike and side; Building picks the contracts in scope and values each with its own gamma. */
 export function ensureOiChange(ticker: string): void {
   const t = ticker.toUpperCase();
-  if (!t || oiChangeCache.has(t) || oiChangeWait.has(t)) return;
+  if (!t || oiChangeWait.has(t)) return;
+  if (oiChangeCache.has(t) && Date.now() - (oiChangeAt.get(t) ?? 0) < OI_CHANGE_MS) return;
   oiChangeWait.add(t);
   void (async () => {
     const out: OiChangeRow[] = [];
     let lastDate: string | null = null;
     let currDate: string | null = null;
-    for (let page = 0; page < OI_PAGES; page++) {
-      const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}`);
-      const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
-      for (const r of rows) {
-        const occ = parseOcc(String(r.option_symbol ?? ''));
-        const diff = num(r.oi_diff_plain);
-        if (!occ || !diff) continue;
-        const cd = String(r.curr_date ?? '');
-        const ld = String(r.last_date ?? '');
-        if (cd && (!currDate || cd > currDate)) currDate = cd;
-        if (ld && (!lastDate || ld > lastDate)) lastDate = ld;
-        out.push({ expiry: occ.expiry, strike: occ.strike, right: occ.right === 'CALL' ? 'C' : 'P', diff, currDate: cd, lastDate: ld });
+    const seen = new Set<string>();
+    for (const order of ['desc', 'asc'] as const) {
+      for (let page = 0; page < OI_PAGES; page++) {
+        const res = await uwCall(`/stock/${encodeURIComponent(t)}/oi-change?limit=500&page=${page}&order=${order}`);
+        const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+        let reachedZero = false;
+        for (const r of rows) {
+          const sym = String(r.option_symbol ?? '');
+          const occ = parseOcc(sym);
+          const diff = num(r.oi_diff_plain);
+          if (order === 'desc' ? diff <= 0 : diff >= 0) reachedZero = true;
+          if (!occ || !diff || seen.has(sym)) continue;
+          seen.add(sym);
+          const cd = String(r.curr_date ?? '');
+          const ld = String(r.last_date ?? '');
+          if (cd && (!currDate || cd > currDate)) currDate = cd;
+          if (ld && (!lastDate || ld > lastDate)) lastDate = ld;
+          out.push({ expiry: occ.expiry, strike: occ.strike, right: occ.right === 'CALL' ? 'C' : 'P', diff, currDate: cd, lastDate: ld });
+        }
+        if (res.error || rows.length < 500 || reachedZero) break;
       }
-      if (rows.length < 500) break;
     }
+    /* nothing came back (every page failed): keep the last count rather than print an empty one */
+    if (!out.length && oiChangeCache.has(t)) return;
     oiChangeCache.set(t, { rows: out, lastDate, currDate });
+    oiChangeAt.set(t, Date.now());
     emit();
   })().finally(() => {
     oiChangeWait.delete(t);

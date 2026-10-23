@@ -96,7 +96,7 @@ export function ladderExpiryOptions(ticker?: string): ExpiryChoice<ExposureExpir
       const d = new Date(`${hit}T00:00:00`);
       const wd = d.toLocaleDateString('en-US', { weekday: 'short' });
       return o.value === '0DTE'
-        ? { ...o, label: `Next listed · ${fmtDay(d)}`, hint: `Nothing on ${ticker} expires ${fmtDay(o.date)} — its next listing`, date: d }
+        ? { ...o, label: `${fmtDay(d)} · next expiry`, hint: `Nothing on ${ticker} expires ${fmtDay(o.date)} — its next listing`, date: d }
         : { ...o, label: `${fmtDay(d)} · ${wd}`, hint: `${sessionsBetween(base, d)} session${sessionsBetween(base, d) === 1 ? '' : 's'} out — ${ticker}'s nearest listing`, date: d };
     })
     .filter(o => {

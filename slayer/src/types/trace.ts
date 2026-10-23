@@ -71,6 +71,11 @@ export interface FlowPrint {
   /** The CONTRACT's day so far by side — at the ask, on the bid, at the mid or no side (the vendor's ask_vol, bid_vol,
       mid_vol + no_side_vol on the print) */
   daySide?: { ask: number; bid: number; mid: number };
+  /** A compression package (OPRA cbmo / mctp, or the vendor's `arbitrage` tag) — not a bet; kept out of every
+      directional total (data/traceLive printCondition) */
+  compression?: boolean;
+  /** A flow alert's largest single trade, when its trades have been read — the block test reads it, never total_size */
+  largestTrade?: { size: number; premium: number };
 }
 
 // ---- the day book (data/flowBook.ts) ----------------------------------------
@@ -181,7 +186,9 @@ export interface TapeSummary {
   blocks: number;
   /** Prints with legs */
   multi: number;
-  /** The rest: single prints under the block line */
+  /** The rest: single prints under the block line, and alerts of several small prints */
   other: number;
+  /** Compression packages, counted apart and in no other figure here */
+  compression: { count: number; premium: number };
   largest: LargestPrint | null;
 }

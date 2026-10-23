@@ -116,7 +116,7 @@ const Tag = ({ tone, children }: { tone: Tone; children: ReactNode }) => (
 );
 
 /** The levels' table: tag · strike · distance · dollars, a hairline under each row */
-const LEVEL_COLS = 'grid grid-cols-[72px_minmax(0,1fr)_52px_68px] items-center gap-x-1.5 h-6 border-b border-borderSubtle/40 last:border-b-0';
+const LEVEL_COLS = 'grid grid-cols-[72px_minmax(0,1fr)_48px_104px] items-center gap-x-1.5 h-6 border-b border-borderSubtle/40 last:border-b-0';
 /** The heaviest's table: rank · strike (+ its role) · dollars · what it did over the window */
 const HEAVY_COLS = 'grid grid-cols-[14px_minmax(0,1fr)_68px_60px] items-center gap-x-1.5 h-6 border-b border-borderSubtle/40 last:border-b-0';
 
@@ -154,12 +154,18 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
      read off the side's whole chain when the window does not reach it */
   const NODE_KEY: Record<Greek, 'netGex' | 'netDex' | 'netVex' | 'netVanna' | 'netCharm'> = { gex: 'netGex', dex: 'netDex', vex: 'netVex', vanna: 'netVanna', charm: 'netCharm' };
   const sideChain = (s.snapshot.liveBook && s.snapshot.uwChains?.[s.expiry]?.length ? s.snapshot.uwChains[s.expiry] : s.snapshot.chain) ?? [];
-  const valueAt = (strike: number | null, g: Greek = greek): number | null => {
+  /* THE LEG THAT DEFINES THE LEVEL (the third audit, 2026-10-23: CALL WALL 770 printed +$32.7M — the strike's NET —
+     when the wall is the most CALL gamma, +$222.7M; TSLA's put wall 375 −$1.6M over −$34.9M of put gamma). A wall
+     prints its own leg, named; the supreme and the flip print the net. */
+  const LEG_KEY: Record<'call' | 'put', Record<'gex', 'callGex' | 'putGex'>> = { call: { gex: 'callGex' }, put: { gex: 'putGex' } };
+  const valueAt = (strike: number | null, g: Greek = greek, leg: 'net' | 'call' | 'put' = 'net'): number | null => {
     if (strike == null) return null;
     const r = rowOf(strike);
-    if (r) return r[g].net;
+    if (r) return r[g][leg];
     const n = sideChain.find(x => Math.abs(x.strike - strike) < 1e-9);
-    return n ? (n[NODE_KEY[g]] ?? null) : null;
+    if (!n) return null;
+    if (leg !== 'net' && g === 'gex') return n[LEG_KEY[leg].gex] ?? null;
+    return leg === 'net' ? (n[NODE_KEY[g]] ?? null) : null;
   };
   const roleOf = (strike: number): { word: string; tone: Tone } | null =>
     strike === s.levels.supreme ? { word: 'supreme', tone: 'supreme' }
@@ -200,8 +206,11 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       {fmtStrike(k)}
     </button>
   );
-  const Level = ({ word, tone, k, g = greek }: { word: string; tone: Tone; k: number | null; g?: Greek }) => (
-    <div className={LEVEL_COLS} data-side-level={word} title={SIDE_TIPS[word] ?? `The strike with the most ${word} on these contracts`}>
+  const Level = ({ word, tone, k, g = greek }: { word: string; tone: Tone; k: number | null; g?: Greek }) => {
+    const leg: 'net' | 'call' | 'put' = word === 'call wall' ? 'call' : word === 'put wall' ? 'put' : 'net';
+    const legWord = leg === 'net' ? 'net' : g === 'gex' ? (leg === 'call' ? 'calls' : 'puts') : leg === 'call' ? 'call γ' : 'put γ';
+    return (
+    <div className={LEVEL_COLS} data-side-level={word} title={`${SIDE_TIPS[word] ?? `The strike with the most ${word} on these contracts`}. The figure is the strike's ${leg === 'net' ? 'net' : `${leg}-leg`} ${GREEK_LABEL[g]}${leg !== 'net' ? ` — the leg that makes it the ${word}` : ''}.`}>
       <Tag tone={tone}>{word}</Tag>
       {k == null ? (
         <span className="col-span-3 font-mono text-[11px] text-textMuted">{word === 'flip' ? 'none nearby' : 'none'}</span>
@@ -209,11 +218,15 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         <>
           <Door k={k} />
           <span className="font-mono text-[10px] tnum tabular-nums text-textMuted text-right">{dist(k)}</span>
-          <span className="text-right"><Money v={valueAt(k, g)} g={g} /></span>
+          <span className="text-right whitespace-nowrap" data-side-level-leg={leg}>
+            <span className="mr-1 font-mono text-[9px] uppercase tracking-wider text-textMuted">{legWord}</span>
+            <Money v={valueAt(k, leg === 'net' ? g : 'gex', leg)} g={leg === 'net' ? g : 'gex'} />
+          </span>
         </>
       )}
     </div>
-  );
+    );
+  };
 
   const windowRail = (
     <span className="flex items-center gap-0.5 shrink-0" role="group" aria-label="Window" data-side-window={win}>

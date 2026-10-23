@@ -11,7 +11,8 @@
 ==================================================
 */
 import { whalesDaily, type UwDaily } from './whales';
-import { nyIsoDate } from '../core/nyTime';
+import { nyIsoDate, nySessionPhase } from '../core/nyTime';
+import { isTradingDay, today as nyToday } from '../core/calendar';
 
 export type MarketPhase = 'pre' | 'regular' | 'post' | 'closed';
 
@@ -64,7 +65,12 @@ export function regularCloses(rows: readonly UwDaily[]): { date: string; close: 
 export function dayChangeOf(state: StateLike, closes: readonly { date: string; close: number }[] | null): DayChange {
   const last = n(state.close);
   const prevClose = n(state.prev_close);
-  const phase = phaseOf(state.market_time);
+  let phase = phaseOf(state.market_time);
+  /* AFTER MIDNIGHT, BEFORE THE OPEN (the third audit, 2026-10-23): the vendor's quote still says "postmarket" — the
+     last bar is last evening's — but the New York day has turned. Read as post-market it measured yesterday's close
+     against itself (0.00%). On a trading day before 9:30 the move is the pre-market one: the last print against the
+     last regular close (the quote's prev_close, which after the bell IS that close). */
+  if (phase === 'post' && isTradingDay(nyToday()) && nySessionPhase() === 'before') phase = 'pre';
   if (phase === 'post' || phase === 'closed') {
     /* the last regular session (today after the bell; Friday on a weekend or a holiday) against the session before
        it — never the last session against itself, which read ≈0% all weekend */

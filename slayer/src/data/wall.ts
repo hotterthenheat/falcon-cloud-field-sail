@@ -54,6 +54,15 @@ import type { Building } from './building';
 import { todayColumn, type ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
+import { putWallWords } from '../core/walls';
+import { peekDaySigma } from './uwBook';
+import { datesOf } from './flipLevel';
+
+/** The one expiry a snapshot's levels chain reads, or null for several / the whole book */
+export const scopeDateOf = (snapshot: MarketSnapshot): string | null => {
+  const d = datesOf(snapshot, snapshot.chain);
+  return Array.isArray(d) && d.length === 1 ? d[0] : null;
+};
 
 /* ---- the constants, named so they can be calibrated ------------------------------ */
 
@@ -323,7 +332,7 @@ export const pathFlowWords = (side: WallSide, flow: number): string => {
 };
 
 /** The put wall in plain words — the most put hedging, and what a short-gamma floor does when it gives */
-export const PUT_WALL_WORDS = 'the most put hedging; dealers buy dips into it while it holds, but they are short gamma here, so a break can accelerate';
+export const PUT_WALL_WORDS = 'the most put hedging; dealers are short gamma there — below price it is support while it holds and a break can accelerate; above price it is overhead hedging, not a floor';
 
 function wallOdds(K: number, ctx: Ctx): WallOdds {
   const { spot, strikes, levels, clock } = ctx;
@@ -433,7 +442,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
                 ? 'lighter than a typical wall on this name'
                 : 'thin for this name'
           : role === 'put wall'
-            ? PUT_WALL_WORDS
+            ? putWallWords(K, spot)
             : 'pushes moves along rather than back — dealers are short gamma here: a trapdoor, not a wall',
     },
     {
@@ -496,7 +505,7 @@ function wallOdds(K: number, ctx: Ctx): WallOdds {
     weight > 0
       ? `${who} is reached by ${clock.inSession ? 'the close' : 'the next close'} ${chanceLabel(reach)} of the time; it is ${holdLabel(hold)} on this chain. ${cap(breakPath.words)}. ${cap(holdPath.words)}.`
       : role === 'put wall'
-        ? `${who}: ${PUT_WALL_WORDS}. ${cap(breakPath.words)}.`
+        ? `${who}: ${putWallWords(K, spot)}. ${cap(breakPath.words)}.`
         : `${who} is not a wall: dealers are short gamma there, so the hedging pushes moves along rather than back. ${cap(breakPath.words)}.`;
 
   return { strike: K, side, role, weight, weightEff, expiresToday, touches, breaks, build, speed, prints, distanceSigma, reach, hold, factors, breakPath, holdPath, sentence };
@@ -525,7 +534,8 @@ export function buildWallContext(
   const topWall = Math.max(1, ...strikes.map(s => wallWeight(s.strike, spot, strikes)));
   const todayBars = bars as Candle[];
   const marketPer1Pct = dollarsPer1Pct(todayBars) ?? 1;
-  const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
+  /* the expiry the levels read: its own implied move (data/uwBook.ts peekDaySigma), the 30-day IV only as a fallback */
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
   const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   return {
     ticker: snapshot.ticker,

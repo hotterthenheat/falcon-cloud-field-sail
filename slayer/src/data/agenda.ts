@@ -43,8 +43,9 @@
 
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
-import { PUT_WALL_WORDS, buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
+import { buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
 import type { Building, BuildVerdict } from './building';
+import { levelRoles, putWallWordsAt, type LevelRole } from '../core/walls';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
@@ -72,6 +73,12 @@ export interface Target {
   pin: boolean;
   /** Hedging here pushes back. Else a trapdoor: it pushes the move along */
   isWall: boolean;
+  /** Net gamma at the strike on the scope's contracts, RETAIL sign (+ dealers long gamma, absorbs), dollars per 1% */
+  net: number;
+  /** So little net gamma here (under FLAT_SHARE of the window's heaviest strike) it is neither a wall nor a trapdoor */
+  flat: boolean;
+  /** Every level the strike is, in the one order (core/walls.ts levelRoles): supreme · call wall · put wall */
+  roles: LevelRole[];
   /** Pushes back AND holds at least a third of the heaviest strike — a wall or a shelf,
       the wall board's own rule. A thinner absorbing strike is not a wall and gets no odds */
   isShelf: boolean;
@@ -136,7 +143,12 @@ export interface Agenda {
   weakestWall: Target | null;
   /** How many walls are in reach — one is "the only wall in reach", not the smallest */
   wallsInReach: number;
+  /** The nearest wall price can plausibly reach — a named call or put wall or an absorbing shelf, whichever side */
+  nearestWall: Target | null;
+  /** The strike the close most likely lands on — null when no strike is likely enough to call it a lean (LEAN_MIN) */
   closesNear: { strike: number; odds: number } | null;
+  /** The best single strike's odds even when it is no lean, for the words */
+  closeTop: { strike: number; odds: number } | null;
   sentence: string;
 }
 
@@ -146,6 +158,14 @@ const pct = chanceLabel;
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
 /** A wall in reach is one the day can plausibly get to */
 const IN_REACH = 0.15;
+/* A STRIKE WITH ALMOST NO NET GAMMA IS NEITHER (the retail test, 2026-10-23: 774 tagged TRAPDOOR on −$0.7M) */
+export const FLAT_SHARE = 0.03;
+/* "THE CLOSE LEANS TO 766 · 6%" IS NOT A LEAN (the retail test, 2026-10-23): one strike's odds have to reach this
+   before the page says the close leans anywhere */
+export const LEAN_MIN = 15;
+/** How far a challenger must out-score the last watch-first to replace it (a share of the leader's score) */
+const HOLD_LEAD = 0.12;
+const leaderOf = new Map<string, number>();
 
 /* the path's flow said with the way it leans (data/wall.ts pathFlowWords) — "pushes the move along" only when it does */
 const flowWords = (flow: number, side: WallSide) => (flow === 0 ? '' : `, ${pathFlowWords(side, flow)}`);
@@ -190,7 +210,7 @@ function wordsOf(o: WallOdds, shelf: boolean): string {
     : o.weight > 0
       ? `too thin to be a wall; a move ${dir} ${run}`
       : o.role === 'put wall'
-        ? `put wall: ${PUT_WALL_WORDS}; a break ${dir} ${run}`
+        ? `put wall: ${putWallWordsAt(o.side === 'call' ? 'above' : 'below')}; a move ${dir} ${run}`
         : `a trapdoor (dealers short gamma) — a move ${dir} through it ${run}`;
 }
 
@@ -216,6 +236,7 @@ export function buildAgenda(
   const buildAt = new Map(building.rows.map(r => [r.strike, r]));
   const nodeAt = new Map(snapshot.chain.map(n => [n.strike, n]));
   const asc = [...profile.strikes].sort((a, b) => a.strike - b.strike);
+  const heaviestNet = Math.max(1, ...asc.map(s => Math.abs(s.gex.net)));
 
   const targets: Target[] = asc
     .map((s, i) => ({ s, i }))
@@ -233,6 +254,9 @@ export function buildAgenda(
         role: o.role,
         pin: !!s.pin,
         isWall: o.weight > 0,
+        net: s.gex.net === 0 ? 0 : -s.gex.net,
+        flat: Math.abs(s.gex.net) < FLAT_SHARE * heaviestNet,
+        roles: levelRoles(s.strike, profile.levels),
         isShelf,
         distancePct: ((s.strike - spot) / spot) * 100,
         distanceSigma: o.distanceSigma,
@@ -269,6 +293,16 @@ export function buildAgenda(
   }
 
   const byMatters = [...targets].sort((a, b) => b.matters - a.matters);
+  /* A LEADER IS KEPT UNTIL ANOTHER CLEARLY BEATS IT (the third audit, 2026-10-23: "Watch first" flipped 765 ↔ 762 on
+     after-hours ticks of ±$0.15). The last leader stays first while it scores within HOLD_LEAD of the top; a
+     challenger has to pass it by more than that to take the spot. */
+  const key = `${ticker}|${profile.expiry}`;
+  const prevLead = leaderOf.get(key);
+  if (byMatters.length > 1 && prevLead != null && byMatters[0].strike !== prevLead) {
+    const i = byMatters.findIndex(t => t.strike === prevLead);
+    if (i > 0 && byMatters[i].matters >= byMatters[0].matters * (1 - HOLD_LEAD)) byMatters.unshift(...byMatters.splice(i, 1));
+  }
+  if (byMatters[0]) leaderOf.set(key, byMatters[0].strike);
   const sorters: Record<AgendaOrder, (a: Target, b: Target) => number> = {
     matters: (a, b) => b.matters - a.matters,
     nearest: (a, b) => Math.abs(a.distancePct) - Math.abs(b.distancePct),
@@ -276,24 +310,30 @@ export function buildAgenda(
     weakest: (a, b) => Number(b.isShelf) - Number(a.isShelf) || a.hold - b.hold || b.reach - a.reach,
     biggest: (a, b) => b.stake - a.stake,
   };
-  const ordered = [...targets].sort(sorters[order]).map((t, i) => ({ ...t, rank: i + 1, why: whyOf(t, order, marketPer1Pct) }));
+  const ordered = (order === 'matters' ? [...byMatters] : [...targets].sort(sorters[order])).map((t, i) => ({ ...t, rank: i + 1, why: whyOf(t, order, marketPer1Pct) }));
 
   /* THE WATCH-FIRST THREE ARE ALWAYS "MATTERS MOST" — the day's sentence and the Board's watch-first; the podium on the
      page shows the chosen order's own first three (TargetsBoard) */
   const first = byMatters.slice(0, 3).map(t => ordered.find(x => x.strike === t.strike) ?? t);
   const mostReached = ordered.length ? ordered.reduce((a, b) => (b.reach > a.reach ? b : a)) : null;
-  const wallsInReach = ordered.filter(t => t.isShelf && t.reach >= IN_REACH);
-  const weakestWall = wallsInReach.length ? wallsInReach.reduce((a, b) => (b.hold < a.hold ? b : a)) : null;
-  const closesNear = close.top[0] ? { strike: close.top[0].strike, odds: close.top[0].odds } : null;
+  /* THE WALLS IN REACH ARE EVERY WALL THE TABLE NAMES (the retail test, 2026-10-23: "Only wall in reach 770 · the only
+     one" above a row tagging 769 PUT WALL, nearer): the absorbing shelves and the named call and put walls alike */
+  const isWallRow = (t: Target) => t.isShelf || t.role === 'call wall' || t.role === 'put wall' || t.roles.includes('call wall') || t.roles.includes('put wall');
+  const wallsInReach = ordered.filter(t => isWallRow(t) && t.reach >= IN_REACH);
+  const shelvesInReach = wallsInReach.filter(t => t.isShelf);
+  const weakestWall = shelvesInReach.length ? shelvesInReach.reduce((a, b) => (b.hold < a.hold ? b : a)) : null;
+  const nearestWall = wallsInReach.length ? wallsInReach.reduce((a, b) => (Math.abs(b.distancePct) < Math.abs(a.distancePct) ? b : a)) : null;
+  const closeTop = close.top[0] ? { strike: close.top[0].strike, odds: close.top[0].odds } : null;
+  const closesNear = closeTop && closeTop.odds >= LEAN_MIN ? closeTop : null;
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall || lead.flat ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';
 
-  return { ticker, spot, marketPer1Pct, sigmaLeft, inSession: clock.inSession, order, targets: ordered, first, mostReached, weakestWall, wallsInReach: wallsInReach.length, closesNear, sentence };
+  return { ticker, spot, marketPer1Pct, sigmaLeft, inSession: clock.inSession, order, targets: ordered, first, mostReached, weakestWall, wallsInReach: wallsInReach.length, nearestWall, closesNear, closeTop, sentence };
 }
 
 /** The agenda as the page lists it: the strikes within `half` of spot either side, numbered in the chosen order. The
@@ -310,6 +350,13 @@ export function trimAgenda(agenda: Agenda, half: number): Agenda {
 
 /** "The smallest wall in reach" — or "the only wall in reach" when it is alone */
 export const weakestLabel = (a: Pick<Agenda, 'wallsInReach'>): string => (a.wallsInReach === 1 ? 'Only wall in reach' : 'Smallest wall in reach');
+
+/** The head's wall fact: the nearest wall in reach, with every level it is — "769 · supreme · put wall" */
+export const nearestWallLabel = (a: Pick<Agenda, 'wallsInReach'>): string => (a.wallsInReach === 1 ? 'Only wall in reach' : a.wallsInReach > 1 ? 'Nearest wall in reach' : 'Walls in reach');
+export const targetName = (t: Pick<Target, 'strike' | 'roles' | 'isShelf'>): string => `${fmtStrike(t.strike)}${t.roles.length ? ` · ${t.roles.join(' · ')}` : t.isShelf ? ' · shelf' : ''}`;
+/** The close in words: a lean only past LEAN_MIN, else "no clear lean" */
+export const closeLeanWords = (a: Pick<Agenda, 'closesNear' | 'closeTop'>): string =>
+  a.closesNear ? `${fmtStrike(a.closesNear.strike)} · ${a.closesNear.odds.toFixed(0)}%` : a.closeTop ? 'no clear lean' : '—';
 
 /** Building's word for today's change at a strike, for the row */
 export const buildWords = (t: Target, inSession: boolean): string =>

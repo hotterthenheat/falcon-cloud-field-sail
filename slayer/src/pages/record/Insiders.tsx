@@ -312,7 +312,11 @@ const Insiders = () => {
   const failed = status === 'sim';
   const waiting = status === 'loading';
   /* THE TOTALS ARE PARTIAL WHILE THE PAGES LOAD (the retail pass, 2026-10-22: Filings read 4685, then 4900) */
-  const reading = coverage.buysReading || coverage.bigSalesReading || coverage.restCount === 0;
+  const reading = coverage.buysReading || coverage.bigSalesReading || coverage.restReading;
+  /* PROGRESS, SAID AS HOW FAR BACK (the retail test, 2026-10-23: "reading…" sat for 30s with nothing to say how far it
+     had come): the filings are paged newest first, so the totals are complete back to the oldest day both reads reach */
+  const readBack = [coverage.buysReading ? coverage.buysSince : null, coverage.bigSalesReading ? coverage.bigSalesSince : null].filter((d): d is string => !!d).sort().reverse()[0] ?? null;
+  const readingWord = readBack ? ` · read back to ${shortDay(readBack)} of ${window} days` : ' · reading the first pages';
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No filing on this cut';
   const cut = useMemo(() => {
     const board = new Set(boardNames);
@@ -420,14 +424,14 @@ const Insiders = () => {
             <dt className="text-[10px] text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-count>
               {failed || waiting ? '—' : facts.filings.toLocaleString()}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title="The filings are still being paged back; the totals grow until the window is read"> · reading…</span> : null}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title="The filings are still being paged back, newest first; the totals grow until the window is read">{readingWord}</span> : null}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Purchases (code P — on the open market or in a private placement) that a person chose to make, not on a 10b5-1 plan. Purchases by companies and funds — strategic stakes — are counted apart under Company & fund buys">Chosen buying</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
               {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · reading…</span> : null}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
             </dd>
           </div>
           <div>
@@ -440,7 +444,7 @@ const Insiders = () => {
             <dt className="text-[10px] text-textMuted cursor-help" title="Dollars of shares insiders sold in the open market — planned or not">Sold in the market</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
               {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · reading…</span> : null}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
             </dd>
           </div>
           <div>
