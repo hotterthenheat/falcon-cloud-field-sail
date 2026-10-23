@@ -65,6 +65,8 @@ import { isoDate } from '../../core/calendar';
 import { expiryLabel, pctSigned } from '../../core/format';
 import { LiveTapeGuide } from '../../components/trace/TraceGuide';
 import type { FlowPrint, PrintSentiment, TapeSummary } from '../../types/trace';
+import { floorPackaged, FRESH_VOL_OI, stockLike, STOCK_LIKE_HINT, VENDOR_TOTAL_NOTE, volOiText } from '../../data/flowBook';
+import { dayAdv, dayPos, expiryWords, isLiveDay, sameDayWords, shortDay } from '../../components/trace/dayWords';
 
 const MAX_ROWS = 120;
 /* The shared chooser stores the HIDDEN set (see ColumnChooser); the old
@@ -186,7 +188,7 @@ const TOOLTIPS: Record<string, string> = {
   prem: 'Dollars paid — size × fill × 100',
   dayRatio: "This contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean only when at least half the day traded on a side. On the alerts lane: the alert's own premium by side",
   sentiment: "Bullish (calls bought, puts sold), bearish (puts bought, calls sold) or neutral (mid) — by the side the vendor tags and the right",
-  volOverOi: "Today's volume against open interest — above 1.5, positions were built today",
+  volOverOi: "The session's volume against open interest — at 1.5 and above, positions were built in the session; \"new\" when there was no open interest",
   iv: 'Implied volatility of the contract',
   tag: 'The kind of print — a sweep, a block, a multi-leg print (with its structure), or a single print',
 };
@@ -220,7 +222,7 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'ale
       ? ext === rows.length
         ? 'none is read bullish or bearish — after the close a print is set against a thin post-market quote'
         : rows.every(r => r.compression || isSpreadLeg(r) || r.extended)
-          ? `none is read bullish or bearish — every ${noun === 'alerts' ? 'alert' : 'print'} here is a compression package, a leg of a spread${ext ? ' or after hours' : ''}`
+          ? `none is read bullish or bearish — every ${noun === 'alerts' ? 'alert' : 'print'} here is a compression package${ext ? ', a leg of a spread or after hours' : ' or a leg of a spread'}`
           : `no premium has a side — every ${noun === 'alerts' ? 'alert' : 'print'} traded at the mid, or carries no read${ext ? ' (after hours)' : ''}`
       : `${lead.toLowerCase()} premium leads by ${fmtUsd(Math.abs(summary.netPremium))} — ${fmtUsd(summary.bullPremium)} bullish (calls bought, puts sold) against ${fmtUsd(summary.bearPremium)} bearish (puts bought, calls sold); calls ${fmtUsd(summary.callPremium)} and puts ${fmtUsd(summary.putPremium)} in all`
   );
@@ -231,6 +233,8 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'ale
     if (hit) segs.push({ print: hit, label: `${L.ticker} ${L.strike}${L.right}` });
     else segs.push(`${L.ticker} ${L.strike}${L.right}`);
     segs.push(` at [[${fmtUsd(L.premium)}]]`);
+    /* a deep-in-the-money, long-dated contract trades like the stock — said, not crowned as a bet (retail, 2026-10-23) */
+    if (hit && stockLike(hit)) segs.push(` — ${Math.abs(hit.otmPct).toFixed(0)}% in the money with ${hit.dte} days to run: likely a stock replacement or a roll, not a directional bet`);
   }
   if (summary.sweeps > 2) segs.push(` · ${summary.sweeps} sweeps`);
   /* spread legs stand apart — each is half of a structure, read on Multi-Leg (data/tape isSpreadLeg) */
@@ -257,10 +261,16 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'ale
    glance. The dot's POSITION on the rail and the word carry the side; the
    colour stays where it is information. */
 const SIDE_WORD: Record<FlowPrint['side'], string> = { ASK: 'ask', BID: 'bid', MID: 'mid' };
+/** A day's lean in words, with the share it is decided on even when it falls short of a call ("even · ask 52%") */
+const leanWords = (l: ReturnType<typeof dayLean>) =>
+  l.lean === 'ASK' ? `ask ${Math.round(l.askSided)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bidSided)}%` : l.lean === 'UNSIDED' ? 'mostly mid / no side' : `even · ${l.askSided >= 50 ? `ask ${Math.round(l.askSided)}%` : `bid ${Math.round(l.bidSided)}%`}`;
+/** Why a floor package is set apart, in its own figures */
+const FLOOR_HINT = (c: { floorPct: number; multiPct: number }) => `${Math.round(c.floorPct)}% of its day traded on the floor and ${Math.round(c.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down, not a directional bet`;
 /* A FILL OUTSIDE ITS QUOTE SAYS SO (the retail pass, 2026-10-22: an NVDA fill of $7.86 read "BID" over a bid of 7.90 —
    right, it sold through the bid, but the word alone looked wrong): under the bid / over the ask */
 const sideWordOf = (p: FlowPrint) =>
-  p.bid > 0 && p.ask > p.bid && p.fill < p.bid - 0.005 ? 'under bid' : p.bid > 0 && p.ask > p.bid && p.fill > p.ask + 0.005 ? 'over ask' : SIDE_WORD[p.side];
+  /* a locked quote (bid = ask) still has an ask to fill over (audit round 5: 7.39 into 7.38 × 7.38 read "ASK") */
+  p.bid > 0 && p.ask >= p.bid && p.fill < p.bid - 0.005 ? 'under bid' : p.bid > 0 && p.ask >= p.bid && p.fill > p.ask + 0.005 ? 'over ask' : SIDE_WORD[p.side];
 const QuoteCell = ({ print }: { print: FlowPrint }) => (
   <span className="inline-flex flex-col items-end gap-[2px] leading-none align-middle">
     <span className="inline-flex items-baseline gap-1">
@@ -294,7 +304,7 @@ const SizeCell = ({ print }: { print: FlowPrint }) => (
 const SENT_TEXT: Record<PrintSentiment, string> = {
   BULLISH: 'text-bull',
   BEARISH: 'text-bear',
-  NEUTRAL: 'text-textMuted',
+  NEUTRAL: 'text-textSecondary', // raised from muted (retail, 2026-10-23: closed-session rows read greyed out)
 };
 
 // ---- the row model --------------------------------------------------------------
@@ -622,15 +632,19 @@ const LiveTape = () => {
      an RKLB print as the largest under a head that named a META one. Both now read the same rows on every render. */
   const read = useMemo<ReadSeg[]>(
     () => {
-      const lead: ReadSeg[] = lane === 'prints' && anchor ? [`The regular session has closed — on the Regular session card the tape is its last stretch, walked back from the 16:15 ET close${anchor.iso !== tapeIsoToday() ? ` of ${anchor.iso}` : ''} (the prints after it are under Extended hours on the Session card). `] : [];
+      const lead: ReadSeg[] = lane === 'prints' && anchor ? [`The regular session has closed — on the Regular session card the tape is its last stretch, walked back from the 16:15 ET close${anchor.iso !== tapeIsoToday() ? ` of ${shortDay(anchor.iso)}` : ''} (the prints after it are under Extended hours on the Session card). `] : [];
       return lead.concat(beamRows.length === 0 ? [tapeDown ? 'The tape did not answer — nothing to read yet.' : rows.length === 0 ? (lane === 'alerts' ? 'Awaiting the first alerts…' : 'Awaiting the first prints…') : `No ${lane === 'alerts' ? 'alerts' : 'prints'} in this view.`] : tapeRead(beamRows, beamSummary, lane === 'alerts' ? 'alerts' : 'prints'));
     },
     [beamRows, beamSummary, tapeDown, rows.length, lane, anchor]
   );
-  const windowSpan = useMemo(() => {
-    const times = beamRows.map(r => r.time).filter(t => t !== '—').sort();
+  /* THE WINDOW IS THE LABEL'S PRINTS (audit round 5: "Window · last 2,000 prints" under a filter showed the filtered
+     subset's span) — the span of every print in hand; a cut's own span rides beside it */
+  const spanOf = (xs: FlowPrint[]) => {
+    const times = xs.map(r => r.time).filter(t => t !== '—').sort();
     return times.length ? `${times[0]}–${times[times.length - 1]}` : null;
-  }, [beamRows]);
+  };
+  const windowSpan = useMemo(() => spanOf(rows), [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cutSpan = useMemo(() => (scopeActive ? spanOf(beamRows) : null), [scopeActive, beamRows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* The card's bookmark, by tape id — the card only knows the id, the store
      wants the print; the rows ref keeps this callback stable. */
@@ -785,9 +799,9 @@ const LiveTape = () => {
         render: r => {
           const s = sentimentOf(r.p);
           /* after the close a print is set against a thin post-market quote — labelled, never read */
-          if (r.p.compression) return <span className="text-[11px] font-semibold uppercase text-textMuted" title="A compression package (OPRA cbmo / mctp, or the vendor's arbitrage tag) — it nets open interest down between members, so it is not a bet and is in no bullish or bearish total">compression</span>;
-          if (r.p.extended) return <span className="text-[11px] font-semibold uppercase text-textMuted" title="Printed after hours — set against a post-market quote, so it carries no read">after hrs</span>;
-          if (isSpreadLeg(r.p)) return <span className="text-[11px] font-semibold uppercase text-textMuted" title="One leg of a multi-leg order (its OPRA condition says so) — half of a structure, not a bet of its own; Multi-Leg reads which way the structure went">spread leg</span>;
+          if (r.p.compression) return <span className="text-[11px] font-semibold uppercase text-textSecondary" title="A compression package (OPRA cbmo / mctp, or the vendor's arbitrage tag) — it nets open interest down between members, so it is not a bet and is in no bullish or bearish total">compression</span>;
+          if (r.p.extended) return <span className="text-[11px] font-semibold uppercase text-textSecondary" title="Printed after hours — set against a post-market quote, so it carries no read">after hrs</span>;
+          if (isSpreadLeg(r.p)) return <span className="text-[11px] font-semibold uppercase text-textSecondary" title="One leg of a multi-leg order (its OPRA condition says so) — half of a structure, not a bet of its own; Multi-Leg reads which way the structure went">spread leg</span>;
           return <span className={`text-[11px] font-semibold ${SENT_TEXT[s]}`}>{s}</span>;
         },
       },
@@ -819,7 +833,7 @@ const LiveTape = () => {
         align: 'right',
         sortValue: r => r.p.volOverOI,
         // ≥1.5 = positions built TODAY — weight carries it, never a hue.
-        render: r => <span className={`font-mono tnum ${r.p.volOverOI >= 1.5 ? 'font-bold text-textPrimary' : 'text-textPrimary'}`}>{r.p.volOverOI.toFixed(2)}</span>,
+        render: r => <span className={`font-mono tnum ${r.p.oi > 0 && r.p.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'}`} title={r.p.oi > 0 ? undefined : 'No open interest before the session — a new contract, nothing to divide by'}>{volOiText(r.p)}</span>,
       },
       {
         key: 'iv',
@@ -862,6 +876,7 @@ const LiveTape = () => {
     <>
       {p.ticker} {p.strike}
       {p.right} {p.compression ? 'compression' : p.extended ? 'after hours' : isSpreadLeg(p) ? 'spread leg' : p.side === 'ASK' ? 'bought' : p.side === 'BID' ? 'sold' : 'mid'} · {fmtUsd(p.premium)}
+      {stockLike(p) && <span title={STOCK_LIKE_HINT}> · stock-like</span>}
     </>
   );
   /* THE WHOLE DAY, MARKET-WIDE (audit round 4: after the close the head described 23 seconds — "Window 16:14:36–16:14:59
@@ -876,13 +891,14 @@ const LiveTape = () => {
     return Date.UTC(y, m - 1, d, 8, 0); // 04:00 New York (EDT) or 03:00 (EST) — the alerts' day starts before either
   }, [dayIso]);
   const dayTide = useTide('market', '', showDay);
-  const dayTop = useDayTopContracts(5, showDay);
+  /* twenty, so the three shown are bets after the floor packages are set apart (audit round 5) */
+  const dayTop = useDayTopContracts(20, showDay);
   const dayAlerts = useDayBigAlerts(dayOpenMs, anchor?.closeMs ?? null, regularOnly ? 'regular' : 'extended', 5_000_000, 200, showDay);
   const dayNet = useMemo(() => tideBetween(dayTide.rows, regularOnly ? 570 : 975, regularOnly ? 975 : 1440), [dayTide.rows, regularOnly]);
 
   /* THE NAME'S WHOLE DAY (the retail pass: "biggest NVDA bets today" — the tape cut to a name covers its window only):
      with one name typed, its contracts by the day's premium, from the vendor's screener */
-  const topDay = useNameTopContracts(tickerOnly || null, 3);
+  const topDay = useNameTopContracts(tickerOnly || null, 6);
 
   const readNode = read.map((seg, i) =>
     typeof seg === 'string' ? (
@@ -918,7 +934,8 @@ const LiveTape = () => {
             </Fact>
             <Fact label={lane === 'prints' ? `Window · last ${rows.length.toLocaleString('en-US')} prints` : 'Window'} testId="window" title={`The first and last print in this view, New York — every figure in this head and the sentence covers these prints only${lane === 'prints' && anchor ? `. The Session card says Regular and the session has closed, so the tape is the last regular-session stretch, walked back from the ${anchor.iso} close; pick Extended hours on the Session card for what prints after it` : lane === 'prints' && regularOnly ? '. Regular-session prints only (the Session card)' : ''}`}>
               {windowSpan ? `${windowSpan} ET` : '—'}
-              {lane === 'prints' && anchor && <span className="text-textSecondary"> · regular session, to the close{anchor.iso !== tapeIsoToday() ? ` of ${anchor.iso.slice(5).replace('-', '/')}` : ''}</span>}
+              {cutSpan && cutSpan !== windowSpan && <span className="text-textSecondary" title="The span of the prints this cut keeps"> · this cut {cutSpan}</span>}
+              {lane === 'prints' && anchor && <span className="text-textSecondary"> · regular session, to the {anchor.iso !== tapeIsoToday() ? `${shortDay(anchor.iso)} close` : 'close'}</span>}
             </Fact>
             <Fact label="Premium" testId="premium" title={`Call and put premium in this view${beamSummary.compression.count ? `, compression packages left out (${fmtUsd(beamSummary.compression.premium)})` : ''}`}>
               <span className="text-bull">{beamSummary.callCount}C</span> {fmtUsd(beamSummary.callPremium)} <span className="text-textSecondary">/</span> <span className="text-bear">{beamSummary.putCount}P</span> {fmtUsd(beamSummary.putPremium)}
@@ -939,18 +956,19 @@ const LiveTape = () => {
                 {beamSummary.spreadLegs.count} <span className="text-textSecondary">· {fmtUsd(beamSummary.spreadLegs.premium)}</span>
               </Fact>
             )}
-            <Fact label="0DTE" testId="odte" title={`Share of this view's ${lane === 'alerts' ? 'alerts' : 'prints'} expiring today`}>
+            <Fact label="0DTE" testId="odte" title={`Share of this view's ${lane === 'alerts' ? 'alerts' : 'prints'} on contracts expiring the day they printed (0 days to expiry)`}>
               <span className="text-textPrimary">{Math.round(zdteShare * 100)}%</span> <span className="text-textSecondary">of {lane === 'alerts' ? 'alerts' : 'prints'}</span>
             </Fact>
             {tickerOnly && topDay.rows.length > 0 && (
-              <Fact label={`${tickerOnly}'s biggest today · whole day`} testId="name-day" title={`${tickerOnly}'s contracts with the most premium today, the whole day — the vendor's screener, not the window of prints above. Each with its day's lean: at the ask, on the bid, or mostly mid / no side`}>
+              <Fact label={`${tickerOnly}'s biggest ${dayAdv(dayIso)} · whole day`} testId="name-day" title={`${tickerOnly}'s contracts with the most premium ${dayAdv(dayIso)}, the whole day — the vendor's screener, not the window of prints above. Each with its day's lean (the one lean rule) and its share of the sided volume; a floor package or a deep-in-the-money, long-dated contract is marked — neither is a directional bet`}>
                 {topDay.rows.slice(0, 2).map((c, i) => {
                   const l = dayLean(c);
                   return (
                     <span key={c.key}>
                       {i > 0 && <span className="text-textSecondary"> · </span>}
                       {c.strike}
-                      {c.right} {expiryLabel(c.expiry)} {fmtUsd(c.premium)} <span className="text-textSecondary">{l.lean === 'ASK' ? 'ask' : l.lean === 'BID' ? 'bid' : l.lean === 'UNSIDED' ? 'mid/no side' : 'even'}</span>
+                      {c.right} {expiryLabel(c.expiry)} {fmtUsd(c.premium)} <span className="text-textSecondary">{leanWords(l)}</span>
+                      {floorPackaged(c) ? <span className="text-warn" title={FLOOR_HINT(c)}> · floor package</span> : stockLike(c) ? <span className="text-warn" title={STOCK_LIKE_HINT}> · stock-like</span> : null}
                     </span>
                   );
                 })}
@@ -1037,7 +1055,7 @@ const LiveTape = () => {
               </div>
               <div className="grid gap-x-8 gap-y-2 md:grid-cols-3 text-[11px]">
                 <div className="min-w-0" data-tape-day-tide>
-                  <div className="text-textMuted">Market net premium · every name</div>
+                  <div className="text-textMuted" title={`The vendor's market tide. ${VENDOR_TOTAL_NOTE}`}>Market net premium · every name</div>
                   {dayNet ? (
                     <div className="font-mono tnum text-textPrimary">
                       <span className={dayNet.net >= 0 ? 'text-bull' : 'text-bear'}>{dayNet.net >= 0 ? '+' : ''}{fmtUsd(dayNet.net)}</span>
@@ -1052,23 +1070,34 @@ const LiveTape = () => {
                   )}
                 </div>
                 <div className="min-w-0" data-tape-day-top>
-                  <div className="text-textMuted" title="The screener's contracts with the most premium today, the whole day, each with its day's lean (the one lean rule)">Most premium today · per contract</div>
+                  <div className="text-textMuted" title={`The screener's contracts with the most premium ${dayAdv(dayIso)}, the whole day, each with its day's lean (the one lean rule). A contract whose day was mostly floor-traded multi-leg packages — the shape of compression — is set apart below, labelled, not ranked as a bet`}>Most premium {dayAdv(dayIso)} · per contract · floor packages apart</div>
                   {dayTop.rows.length ? (
-                    dayTop.rows.slice(0, 3).map(c => {
-                      const l = dayLean(c);
-                      return (
-                        <div key={c.key} className="font-mono tnum text-textPrimary truncate">
-                          {c.ticker} {c.strike}
-                          {c.right} {expiryLabel(c.expiry)} · {fmtUsd(c.premium)} <span className="text-textSecondary">{l.lean === 'ASK' ? `ask ${Math.round(l.askSided)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bidSided)}%` : l.lean === 'UNSIDED' ? 'mostly mid / no side' : 'even'}</span>
-                        </div>
-                      );
-                    })
+                    <>
+                      {dayTop.rows.filter(c => !floorPackaged(c)).slice(0, 3).map(c => {
+                        const l = dayLean(c);
+                        return (
+                          <div key={c.key} className="font-mono tnum text-textPrimary truncate">
+                            {c.ticker} {c.strike}
+                            {c.right} {expiryLabel(c.expiry)} · {fmtUsd(c.premium)} <span className="text-textSecondary">{leanWords(l)}</span>
+                            {stockLike(c) && <span className="text-warn" title={STOCK_LIKE_HINT}> · stock-like</span>}
+                          </div>
+                        );
+                      })}
+                      {(() => {
+                        const packs = dayTop.rows.filter(c => floorPackaged(c)).slice(0, 3);
+                        return packs.length ? (
+                          <div className="font-mono tnum text-textSecondary truncate" title={packs.map(c => `${c.ticker} ${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)} — ${FLOOR_HINT(c)}`).join('\n')} data-tape-day-packages>
+                            <span className="text-warn">Floor packages · not a bet:</span> {packs.map(c => `${c.ticker} ${c.strike}${c.right} ${expiryLabel(c.expiry)} ${fmtUsd(c.premium)}`).join(' · ')}
+                          </div>
+                        ) : null;
+                      })()}
+                    </>
                   ) : (
                     <div className="font-mono text-textMuted">{dayTop.waiting ? '…' : '—'}</div>
                   )}
                 </div>
                 <div className="min-w-0" data-tape-day-alerts>
-                  <div className="text-textMuted" title="The vendor's flow alerts of $5M and up filed today, largest first — each an aggregate of a contract's prints in one burst; its side is the side that carried 60% of its whole premium">Largest flow alerts today · $5M and up</div>
+                  <div className="text-textMuted" title="The vendor's flow alerts of $5M and up filed in the session, largest first — each an aggregate of a contract's prints in one burst; its side is the side that carried 60% of its whole premium">Largest flow alerts {dayAdv(dayIso)} · $5M and up</div>
                   {dayAlerts.rows.length ? (
                     dayAlerts.rows.slice(0, 3).map(a => (
                       <button key={a.id} type="button" onClick={() => setOpenPrint(a)} className="block w-full text-left font-mono tnum text-textPrimary truncate hover:text-silver" data-tape-day-alert>

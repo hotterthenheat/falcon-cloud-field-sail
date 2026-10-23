@@ -180,6 +180,13 @@ export function sideShares(bid: number, mid: number, ask: number): { bid: number
 export function nyIsoToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
 }
+/** The New York calendar day of an instant, YYYY-MM-DD */
+export function nyDateOf(ms: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(ms));
+}
+/** Newest first by the full instant, never by the time of day alone (audit round 5: the lit lane sorted 10/21's 16:00
+    closing cross among 10/22's prints by "16:00:00") */
+export const byNewest = (a: { epochMs?: number; time: string }, b: { epochMs?: number; time: string }) => (b.epochMs ?? 0) - (a.epochMs ?? 0) || b.time.localeCompare(a.time);
 
 function clock(iso: unknown): { time: string; minute: number; epoch: number; ms: number } {
   const raw = typeof iso === 'number' ? iso : typeof iso === 'string' ? Date.parse(iso) : NaN;
@@ -936,12 +943,10 @@ export function quotePlace(pct: number, price: number): { text: string; cents: n
   /* a quarter cent, not a half (the third audit: NVDA $211.80 into 211.80 × 211.81 read "at the mid" beside "BID" — on a
      one-cent spread the bid IS half a cent under the mid) */
   if (!Number.isFinite(cents) || Math.abs(cents) < 0.25) return { text: 'at the mid', cents: 0 };
-  if (Math.abs(pct) < 0.1) {
-    const abs = Math.abs(cents);
-    const n = abs >= 10 ? String(Math.round(abs)) : (Math.round(abs * 10) / 10).toFixed(1).replace(/\.0$/, '');
-    return { text: `${cents > 0 ? '+' : '−'}${n}¢`, cents };
-  }
-  return { text: `${pct > 0 ? '+' : '−'}${Math.abs(pct).toFixed(2)}%`, cents };
+  /* ONE UNIT, CENTS (audit round 5: the "vs mid" column mixed ¢ and % — "+0.5¢" beside "+3.04%") */
+  const abs = Math.abs(cents);
+  const n = abs >= 10 ? Math.round(abs).toLocaleString('en-US') : (Math.round(abs * 10) / 10).toFixed(1).replace(/\.0$/, '');
+  return { text: `${cents > 0 ? '+' : '−'}${n}¢`, cents };
 }
 
 /* WHERE A DARK PRINT IS REPORTED (the vendor's market_center): every off-exchange print is reported to a FINRA trade
@@ -954,7 +959,20 @@ const SPECIAL_WORD: Record<string, string> = {
   derivative_priced: 'derivative-priced trade',
   prior_reference_price: 'prior-reference-price trade',
   stopped_stock: 'stopped-stock trade',
+  /* AUCTION PRINTS ARE NOT A READ (audit round 5, 2026-10-23: the lit lane's "largest lit print IEF $36.1M — read as
+     accumulation" was the Nasdaq official closing price, a cross priced in the closing auction, not against the quote).
+     The opening and closing crosses and the official open and close are matched in the auction: no side, no read. */
+  cross_trade: 'auction cross',
+  opening_print: 'opening-auction print',
+  closing_print: 'closing-auction print',
+  reopening_print: 'reopening-auction print',
+  nasdaq_official_close_price: 'official closing price',
+  nasdaq_official_opening_price: 'official opening price',
+  official_close_price: 'official closing price',
+  official_open_price: 'official opening price',
 };
+/** The auction codes among SPECIAL_WORD — read as "priced in the auction", not "by its terms" */
+const AUCTION_CODES = new Set(['cross_trade', 'opening_print', 'closing_print', 'reopening_print', 'nasdaq_official_close_price', 'nasdaq_official_opening_price', 'official_close_price', 'official_open_price']);
 
 export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kind: 'dark' | 'lit' = 'dark'): DarkPoolPrint {
   const price = num(row.price);
@@ -970,7 +988,10 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const codes = [row.sale_cond_codes, row.trade_code].flatMap(c => (Array.isArray(c) ? c : [c])).filter(c => c != null && c !== '').map(String);
   /* only the codes that price a trade by its own terms — an intermarket sweep or an odd lot is priced at the quote */
   const own = codes.filter(c => c in SPECIAL_WORD);
-  const special = own.length ? [...new Set(own.map(c => SPECIAL_WORD[c]))].join(', ') : null;
+  /* an auction print names its auction ("closing-auction print"), not the generic cross word beside it */
+  const ownWords = [...new Set((own.some(c => AUCTION_CODES.has(c) && c !== 'cross_trade') ? own.filter(c => c !== 'cross_trade') : own).map(c => SPECIAL_WORD[c]))];
+  const special = ownWords.length ? ownWords.join(', ') : null;
+  const auction = own.some(c => AUCTION_CODES.has(c));
   const sized = size >= 10_000 || notional >= 500_000;
   /* AFTER HOURS (the vendor's ext_hour_sold_codes "extended_hours_trade"): the quote it is set against is the thin
      post-market one, so the print is shown and labelled, never read */
@@ -987,7 +1008,9 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const place = quotePlace(vs, price);
   const where = place.cents === 0 ? 'at the mid' : place.cents > 0 ? `${place.text.slice(1)} over the mid` : `${place.text.slice(1)} under the mid`;
   const read = special
-    ? `${/^[aeiou]/i.test(special) ? 'An' : 'A'} ${special} — priced by its terms, not the quote; no read.`
+    ? auction
+      ? `${/^[aeiou]/i.test(special) ? 'An' : 'A'} ${special} — priced in the auction, not against the quote; no read.`
+      : `${/^[aeiou]/i.test(special) ? 'An' : 'A'} ${special} — priced by its terms, not the quote; no read.`
     : extended
       ? `After hours, ${where} of a post-market quote — no read.`
       : sized
@@ -1001,6 +1024,9 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   return {
     id,
     time: when.time,
+    epochMs: when.ms || undefined,
+    dateIso: when.ms ? nyDateOf(when.ms) : undefined,
+    auction: auction || undefined,
     ticker: String(row.ticker || '').toUpperCase(),
     price,
     size,
@@ -1199,7 +1225,9 @@ export function useDarkRegularDay(iso: string | null): LivePack<DarkPoolPrint[]>
         for (let i = 0; i < 3; i++) {
           const got = await getRows(`/darkpool/recent?limit=200&date=${iso}&order_by=premium&order=desc${max != null ? `&max_premium=${max}` : ''}`);
           const live = got.filter(r => !r.canceled);
-          out.push(...live.map((r, j) => darkPrint(r, out.length + j)).filter(p => !p.extended));
+          /* the session's own day only — a route's date filter is not trusted (audit round 5: the lit route returned the
+             day before's closing cross for "?date=") */
+          out.push(...live.map((r, j) => darkPrint(r, out.length + j)).filter(p => !p.extended && (!p.dateIso || p.dateIso === iso)));
           if (got.length < 200) break;
           const last = num(got[got.length - 1].premium);
           if (!(last > 0) || (max != null && last >= max)) break;
@@ -1207,7 +1235,7 @@ export function useDarkRegularDay(iso: string | null): LivePack<DarkPoolPrint[]>
         }
         if (stop) return;
         const seen = new Set<number>();
-        const rows = out.filter(p => !seen.has(p.id) && (seen.add(p.id), true)).sort((a, b) => b.time.localeCompare(a.time));
+        const rows = out.filter(p => !seen.has(p.id) && (seen.add(p.id), true)).sort(byNewest);
         setBox({ key: iso, rows, at: Date.now(), fault: null });
       } catch (e) {
         if (stop) return;
@@ -1241,11 +1269,13 @@ export function useLitRegularDay(close: { iso: string; closeMs: number } | null,
         const out: DarkPoolPrint[] = [];
         for (const n of names) {
           const got = await getRows(`/lit-flow/${encodeURIComponent(n)}?date=${close.iso}&older_than=${close.closeMs}&min_premium=500000&limit=200`);
-          out.push(...got.filter(r => !r.canceled).map((r, i) => darkPrint(r, out.length + i, 0, 'lit')).filter(p => !p.extended));
+          /* the session's NY day only (audit round 5, blocker: 15 of 57 "10/22" lit prints, $99.8M of $159.4M, were 10/21's
+             16:00 closing cross — `?date=` with `older_than` does not hold the route to the day) */
+          out.push(...got.filter(r => !r.canceled).map((r, i) => darkPrint(r, out.length + i, 0, 'lit')).filter(p => !p.extended && p.dateIso === close.iso));
           if (stop) return;
         }
         const seen = new Set<number>();
-        const rows = out.filter(p => !seen.has(p.id) && (seen.add(p.id), true)).sort((a, b) => b.time.localeCompare(a.time));
+        const rows = out.filter(p => !seen.has(p.id) && (seen.add(p.id), true)).sort(byNewest);
         if (!stop) setBox({ key, rows, at: Date.now(), fault: null });
       } catch (e) {
         if (!stop) setBox({ key, rows: [], at: null, fault: vendorFault(e instanceof Error ? e.message : 'unusual whales') ?? 'failed' });
@@ -1352,13 +1382,17 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
         getRows(`/lit-flow/${encodeURIComponent(name)}?limit=200${cut}`).catch(() => [] as Record<string, unknown>[]),
         stockLastOf(name),
       ]);
-      const mapped = prints.filter(r => !r.canceled).map((r, i) => darkPrint(r, i));
+      /* the session's NY day only — after the close the route walked back from the close runs into the day before when a
+         name printed fewer than 200 crosses (audit round 5) */
+      const day0 = untilMs ? nyDateOf(untilMs) : nyIsoToday();
+      const onDay = (p: DarkPoolPrint) => !p.dateIso || p.dateIso === day0;
+      const mapped = prints.filter(r => !r.canceled).map((r, i) => darkPrint(r, i)).filter(onDay);
       /* the stock's own last trade, never a cross's price (a cross may be an own-terms print far off the market); the
          newest cross priced at the quote only when the quote does not answer */
       const spot = quote.price > 0 ? quote.price : mapped.find(p => !p.special)?.price || 0;
       const dayVol = quote.vol;
       const day = darkDayOf(levels, dayVol);
-      return { view: darkView(name, mapped, darkLevels(levels, spot, mapped), spot, day && Number.isFinite(day.sharePct) ? day.sharePct : 0), lit: lit.filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, 'lit')), day };
+      return { view: darkView(name, mapped, darkLevels(levels, spot, mapped), spot, day && Number.isFinite(day.sharePct) ? day.sharePct : 0), lit: lit.filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, 'lit')).filter(onDay), day };
     },
     { view: null, lit: [], day: null },
     !!name
@@ -1431,6 +1465,7 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
       const at = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
       return sessionsBetween(at(session), at(er));
     })(),
+    earnIso: /^\d{4}-\d{2}-\d{2}$/.test(String(row.next_earnings_date || '').slice(0, 10)) ? String(row.next_earnings_date).slice(0, 10) : null,
     prevSpark: [],
     sideVol: { ask, bid, mid },
     expired: expiredAtBell(expiryIso),
@@ -1749,7 +1784,13 @@ function whereOf(at: { kind: 'below' | 'above' | 'strikes' | 'falls' | 'rises' |
 /* THE SENTENCE IS THE LEGS' (the re-audit, 2026-10-22: a fixed line per vendor shape called a SHORT fly "wings bought,
    body sold" and a condor that profits on a fall "collects if the name goes nowhere"). Said from the settled legs: what
    was bought and sold, the money, where the expiry payoff is best and worst, and which way it gains. */
-export function describeStructure(legs: SpreadLeg[], netPremium: number, units: number): string {
+/** A shape's name without its directional verdict — "bull put spread" → "put spread", "bullish risk reversal" → "risk
+    reversal" — for a structure that is shown but not read (a compression package, an after-hours fill) */
+export function neutralShape(name: string): string {
+  return name.replace(/\b(bullish|bearish|bull|bear)\s+/gi, '').trim();
+}
+
+export function describeStructure(legs: SpreadLeg[], netPremium: number, units: number, unread = false): string {
   if (!legs.length) return '';
   if (legs.some(l => l.side == null)) return 'The record does not say which legs were bought and which were sold — no single set of buys and sells adds up to its net — so its risk is not drawn. Read the legs.';
   const word = (l: SpreadLeg) => `${l.contracts ?? 1} ${strikeWord(l.strike)} ${l.right === 'C' ? 'call' : 'put'}${(l.contracts ?? 1) === 1 ? '' : 's'}`;
@@ -1831,7 +1872,8 @@ export function describeStructure(legs: SpreadLeg[], netPremium: number, units: 
     if (deep > top + eps) return 'it gains on a fall';
     return 'its payoff is flat';
   })();
-  return `${lead}${money}. At expiry it ${bestWords} and ${worstWords} — ${way}.`;
+  /* a structure shown but not read (compression, after hours) keeps its payoff and drops the verdict */
+  return unread ? `${lead}${money}. At expiry it ${bestWords} and ${worstWords}.` : `${lead}${money}. At expiry it ${bestWords} and ${worstWords} — ${way}.`;
 }
 
 /* THE NAME IS THE LEGS' (the third audit, 2026-10-22: an "iron condor 7650/7675" was S7650C / S7650P / B7675C / B7675P —
@@ -1924,7 +1966,12 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
   /* every distinct strike the legs carry (the vendor's strikes list had 2 for a 4-leg structure) and the name the
      settled legs give it */
   const legStrikes = [...new Set(legs.map(l => l.strike))].sort((a, b) => a - b);
-  const named = settled ? nameFromLegs(legs) : doubleCalendarOf(legs);
+  const named0 = settled ? nameFromLegs(legs) : doubleCalendarOf(legs);
+  /* A COMPRESSION PACKAGE OR AN AFTER-HOURS FILL KEEPS ITS SHAPE, NOT ITS VERDICT (audit round 5: "Largest · SPX bullish
+     risk reversal · $271.0K" was an OPRA cbmo floor package; an after-hours "bull put spread" was read against thin
+     post-market quotes) — the shape's name without bull / bear */
+  const unread = !!t.compression || !!t.extended;
+  const named = named0 && unread ? { ...named0, name: neutralShape(named0.name) } : named0;
   const vendor = t.shapeOfVendor ?? t.shape;
   const sideTagged = raw.filter(l => String(l.side) === 'ask' || String(l.side) === 'bid').length;
   return {
@@ -1946,7 +1993,7 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
     /* WHAT THE LEGS' TAGS ACTUALLY SAY (the third audit: an SPX 7630/7640 card said "its legs print no side" while three
        of its four legs carried one): the count, and why a partial set cannot settle it */
     read: known
-      ? describeStructure(legs, t.netPremium, units)
+      ? `${describeStructure(legs, t.netPremium, units, unread)}${t.compression ? ` A compression package (OPRA ${t.code ?? 'cbmo'}) — a floor package that nets open interest down between members, not a bet: shown, never read bullish or bearish.` : t.extended ? ' Filled after hours, against thin post-market quotes — the shape is shown, not read for direction.' : ''}`
       : `The vendor left the net out${sideTagged === 0 ? ' and its legs print no side' : sideTagged < raw.length ? `, and only ${sideTagged} of its ${raw.length} legs print a side` : ''}, so which way it went is not known — a leg's print side is where it filled, not whether the structure was bought or sold.${netAbs != null ? ` Its legs net ${usd(netAbs)}${units > 1 ? ` (${units} units, $${(netAbs / (units * 100)).toFixed(2)} a unit)` : ''} either way — paid if it was bought, collected if it was sold.` : ' What it risks is not on the record. Read the legs.'}`,
     legsState: 'in',
   };
@@ -1966,8 +2013,13 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
   const dteAtTrade = num(row.min_dte);
   const tradeDay = when.epoch > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(when.epoch * 1000)) : '';
   const expiryIso = tradeDay ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + dteAtTrade * 86_400_000).toISOString().slice(0, 10) : '';
+  const code = String(row.code || '').toLowerCase();
   return {
     id: String(row.id || `${ticker}-${when.epoch}-${strikes.join('-')}`),
+    /* OPRA's condition on the structure (mlet, mlat, cbmo…) — cbmo / mctp is a compression package, not a bet (audit
+       round 5: spreadOf never read it, and Multi-Leg crowned one "Largest", read bullish) */
+    code: code || undefined,
+    compression: COMPRESSION_CODES.has(code) || undefined,
     minute: when.minute,
     extended: when.minute > 0 && (when.minute < SESSION_OPEN || when.minute >= sessionEndMin(ticker)) ? true : undefined,
     time: when.time,

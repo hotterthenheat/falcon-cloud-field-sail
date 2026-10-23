@@ -26,7 +26,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { SPREAD_KINDS, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
+import { floorPackaged, SPREAD_KINDS, stockLike, STOCK_LIKE_HINT, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
 import { dayLean, lastRegularClose, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
@@ -36,6 +36,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
 import ScopeChip from '../../components/ui/ScopeChip';
+import { daysFromToday, isLiveDay, oiSpanWords, sameDayWords, shortDay } from '../../components/trace/dayWords';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import LeanCell from '../../components/trace/LeanCell';
@@ -370,7 +371,15 @@ const Compare = () => {
     const lastPt = rows.length ? rows[rows.length - 1] : null;
     return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem } : null;
   };
-  const withTicks = (side: TraceSide, _rows: PaneFlowPoint[]): TraceSide => side;
+  /* ONE SOURCE FOR THE HEADLINE NET (audit round 5, the decision): uncut, the card's net, calls and puts are the vendor's
+     minute ticks over the regular session — the same /stock/{t}/net-prem-ticks Net Flow's pane and Intervals read — so
+     Trace agrees with itself (round 5: QQQ +$24.1M here by expiry, −$53.6M on its own pane, −$54.9M on Net Flow). Only a
+     clock cut needs per-expiry money, and reads the expiry route, labelled so. */
+  const withTicks = (side: TraceSide, rows: PaneFlowPoint[]): TraceSide => {
+    if (!uncut) return side;
+    const t = ticksOf(rows);
+    return t ? { ...side, net: t.net, netCall: t.calls, netPut: t.puts, netSource: 'ticks' } : side;
+  };
   const todayIso = tapeSessionIso();
   const heldFpeA = frozen.current.fpeA;
   const heldFpeB = frozen.current.fpeB;
@@ -386,7 +395,7 @@ const Compare = () => {
   const regular = !afterClose && sideA.tape.prints > 0 && sideB.tape.prints > 0;
   const afterLeftOut = sideA.tape.after + sideB.tape.after;
   const tapeWords = tapeSince ? `since ${nyClock(tapeSince * 1000)} ET` : 'over the same stretch';
-  const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular), [sideA, sideB, tapeWords, regular]);
+  const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular, sameDayWords(todayIso)), [sideA, sideB, tapeWords, regular, todayIso]);
   const { a, b } = cmp;
 
   /* The first chip follows the frame until it holds a name (the Pinpoint Compare's rule);
@@ -418,7 +427,15 @@ const Compare = () => {
     const l = dayLean({ askPct: s.book.askPct, volume: s.book.volume, sideVol: s.book.side });
     return l.lean === 'ASK' ? 'at the ask' : l.lean === 'BID' ? 'on the bid' : l.lean === 'UNSIDED' ? 'mostly mid / no side' : 'even';
   };
-  const reportWords = (s: TraceSide) => (s.earnDays == null ? 'not reporting' : s.earnDays === 0 ? 'reports today' : s.earnDays === 1 ? 'reports tomorrow' : `in ${s.earnDays} sessions`);
+  /* from the report's own date against New York's today (dayWords), never "today" for a past session's */
+  const reportWords = (s: TraceSide) => {
+    if (s.earnDays == null) return 'not reporting';
+    const iso = s.earnIso;
+    const d = iso ? daysFromToday(iso) : NaN;
+    if (d === 0) return 'reports today';
+    if (d === 1) return 'reports tomorrow';
+    return `in ${s.earnDays} trading day${s.earnDays === 1 ? '' : 's'}${iso ? ` (${shortDay(iso)})` : ''}`;
+  };
   /* Two bearish names have no bullish one — the leader is the less bearish */
   const leansWords = cmp.bullish.net >= 0 ? 'the more bullish' : 'the less bearish';
   const nearer = (): 'a' | 'b' | null => {
@@ -430,7 +447,7 @@ const Compare = () => {
 
   const sections: { title: string; rows: Row[] }[] = [
     {
-      title: `${uncut ? 'Net flow · every expiry, the whole day' : "Net flow · the clock's expiries, the whole day"} — the vendor's flow by expiry, premium at the ask less on the bid${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''}`,
+      title: `${uncut ? `Net flow · every expiry, the regular session (09:30 to the close) — the vendor's minute ticks, the figure Net Flow's pane and Intervals show` : "Net flow · the clock's expiries, the whole day — by expiry (the vendor's expiry route)"}, premium at the ask less on the bid${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''} · a vendor total: spread legs and floor packages are in it`,
       rows: [
         {
           key: 'net',
@@ -460,20 +477,20 @@ const Compare = () => {
            routes disagree on put money): what Net Flow's pane reads — the minute ticks, 09:30 to the close — beside it */
         {
           key: 'ticks',
-          label: "Net Flow's pane",
-          hint: "The charts above and Net Flow's pane draw the vendor's minute ticks (/stock/{t}/net-prem-ticks), 09:30 to the close. The figures above are the vendor's flow by expiry (/stock/{t}/flow-per-expiry), the whole day — the one source every clock can be cut from. The two routes carry the same contracts by side, but on names heavy with spreads their put money can disagree, even in sign; checked against the prints' own side tags, the by-expiry figure is the one that agrees.",
+          label: uncut ? 'By expiry (vendor\'s expiry route)' : "Net Flow's pane",
+          hint: "Two vendor routes. The minute ticks (/stock/{t}/net-prem-ticks), 09:30 to the close, are what the headline, the charts, Net Flow's pane and Intervals read. The flow by expiry (/stock/{t}/flow-per-expiry), the whole day, is the only one a clock can be cut by. The two carry the same contracts by side, but on names heavy with spreads their put money can disagree, even in sign. Both are vendor totals that include spread legs and floor packages.",
           note: (() => {
             const off = [a, b].filter(sd => {
               const t = ticksOf(sd === a ? flowA : flowB);
-              return t && Math.sign(t.puts) !== Math.sign(sd.netPut) && Math.abs(t.puts - sd.netPut) > 1e6;
+              const e = sd.byExpiry;
+              return t && e && Math.sign(t.puts) !== Math.sign(e.puts) && Math.abs(t.puts - e.puts) > 1e6;
             });
-            return off.length
-              ? `the charts' minute ticks · ${off.map(sd => sd.ticker).join(', ')} puts flip sign by route`
-              : "the charts' minute ticks, 09:30 to the close";
+            const what = uncut ? 'the expiry route, the whole day' : "the minute ticks, 09:30 to the close";
+            return off.length ? `${what} · ${off.map(sd => sd.ticker).join(', ')} puts flip sign by route` : what;
           })(),
           lead: null,
           cell: s => {
-            const t = ticksOf(s === a ? flowA : flowB);
+            const t = uncut ? (s.byExpiry ?? null) : ticksOf(s === a ? flowA : flowB);
             return t ? (
               <>
                 <Fig lit={false} ink={dirInk(t.net)}>{signedUsd(t.net)}</Fig>
@@ -487,12 +504,12 @@ const Compare = () => {
       ],
     },
     {
-      title: 'Same-day money · contracts expiring today, every strike',
+      title: `Same-day money · contracts ${sameDayWords(todayIso)}, every strike — by expiry (the vendor's expiry route)`,
       rows: [
         {
           key: 'odte',
           label: 'Same-day net',
-          note: a.odte.net === b.odte.net ? 'the same lean today' : `${(a.odte.net > b.odte.net ? a : b).ticker} ${Math.max(a.odte.net, b.odte.net) >= 0 ? 'the more bullish' : 'the less bearish'} today`,
+          note: a.odte.net === b.odte.net ? 'the same lean' : `${(a.odte.net > b.odte.net ? a : b).ticker} ${Math.max(a.odte.net, b.odte.net) >= 0 ? 'the more bullish' : 'the less bearish'}`,
           lead: higher(s => s.odte.net),
           bars: s => [{ v: s.odte.net, text: signedUsd(s.odte.net), ink: barInk(s.odte.net) }],
           cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.odte.net)}>{signedUsd(s.odte.net)}</Fig>,
@@ -500,11 +517,11 @@ const Compare = () => {
         {
           key: 'odteSides',
           label: 'Same-day calls · puts',
-          note: 'net calls · net puts, expiring today',
+          note: `net calls · net puts, ${sameDayWords(todayIso)}`,
           lead: null,
           bars: s => [
-            { v: s.odte.calls, text: signedUsd(s.odte.calls), ink: barInk(s.odte.calls), name: 'Same-day net calls', desc: 'at the ask less on the bid, expiring today' },
-            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: putInk(s.odte.puts), name: 'Same-day net puts', desc: 'bought lean bearish — expiring today' },
+            { v: s.odte.calls, text: signedUsd(s.odte.calls), ink: barInk(s.odte.calls), name: 'Same-day net calls', desc: `at the ask less on the bid, ${sameDayWords(todayIso)}` },
+            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: putInk(s.odte.puts), name: 'Same-day net puts', desc: `bought lean bearish — ${sameDayWords(todayIso)}` },
           ],
           cell: s => (
             <>
@@ -517,7 +534,7 @@ const Compare = () => {
         {
           key: 'odteVol',
           label: 'Same-day volume',
-          note: the(higher(s => s.odte.vol), 'the busier today'),
+          note: the(higher(s => s.odte.vol), 'the busier'),
           lead: higher(s => s.odte.vol),
           bars: s => [{ v: s.odte.vol, text: num(s.odte.vol), ink: 'silver', after: `${num(s.odte.trades)} prints` }],
           cell: (s, lit) => (
@@ -594,7 +611,7 @@ const Compare = () => {
         },
         {
           key: 'iv',
-          label: 'Implied vol · past today',
+          label: `Implied vol · past ${isLiveDay(todayIso) ? 'today' : shortDay(todayIso)}`,
           note: the(higher(s => s.book.iv), 'the richer'),
           lead: higher(s => s.book.iv),
           bars: s => [{ v: s.book.iv, text: `${s.book.iv}%`, ink: 'silver' }],
@@ -621,7 +638,7 @@ const Compare = () => {
         {
           key: 'added',
           label: 'Interest added',
-          note: the(higher(s => s.interest.added), 'added the more overnight'),
+          note: the(higher(s => s.interest.added), `added the more ${oiSpanWords(todayIso)}`),
           lead: higher(s => s.interest.added),
           bars: s => [{ v: s.interest.added, text: s.interest.added > 0 ? `+${num(s.interest.added)}` : '0', ink: s.interest.added > 0 ? 'bull' : 'mute' }],
           cell: (s, lit) => (
@@ -689,7 +706,7 @@ const Compare = () => {
         {
           key: 'prints',
           label: 'Prints',
-          note: regular ? the(higher(s => s.tape.prints), 'the busier tape') : 'not compared — no regular-session prints on both',
+          note: regular ? the(higher(s => s.tape.prints), 'the busier tape') : afterClose ? "not compared — the session has closed; each name's last prints are not its day" : 'not compared — no regular-session prints on both',
           lead: regular ? higher(s => s.tape.prints) : null,
           bars: s => [{ v: s.tape.prints, text: num(s.tape.prints), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{num(s.tape.prints)}</Fig>,
@@ -755,7 +772,13 @@ const Compare = () => {
   const gutter = phone ? 'mx-3' : 'mx-5';
 
   /* ---- the lists under the rows ---------------------------------------------------- */
-  const listed = useMemo(() => [...a.rows.slice(0, CMP_LISTED), ...b.rows.slice(0, CMP_LISTED)], [a.rows, b.rows]);
+  /* FLOOR PACKAGES STAND APART (audit round 5: "QQQ's heaviest contracts" crowned QQQ 740P $49.0M, 99% floor-traded
+     packages): the bets ranked by dollars, then the packages among the heaviest, each labelled — not a bet */
+  const listOf = (rows: BookContract[]) => {
+    const top = rows.slice(0, CMP_LISTED + 3);
+    return [...rows.filter(r => !floorPackaged(r)).slice(0, CMP_LISTED), ...top.filter(r => floorPackaged(r)).slice(0, 2)];
+  };
+  const listed = useMemo(() => [...listOf(a.rows), ...listOf(b.rows)], [a.rows, b.rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const kindOf = (t: SpreadTrade) => SPREAD_KINDS.find(k => k.key === t.kind)?.label ?? t.kind;
 
   const Lists = ({ s, side }: { s: TraceSide; side: 'a' | 'b' }) => (
@@ -764,9 +787,9 @@ const Compare = () => {
       <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
         <CompanyLogo ticker={s.ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s heaviest contracts</span>
-        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· by dollars · a row opens the card</span>
+        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· by dollars · floor packages apart · a row opens the card</span>
       </div>
-      {s.rows.slice(0, CMP_LISTED).map(r => (
+      {listOf(s.rows).map(r => (
         <button
           key={r.key}
           type="button"
@@ -776,8 +799,17 @@ const Compare = () => {
           style={{ height: CMP_LIST_ROW_H }}
           data-compare-contract={r.key}
         >
-          <span className="min-w-0 flex items-center">
+          <span className="min-w-0 flex items-center gap-1.5">
             <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} />
+            {floorPackaged(r) ? (
+              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={`${Math.round(r.floorPct)}% of its day traded on the floor and ${Math.round(r.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down: not a bet, so not ranked`}>
+                floor pkg
+              </span>
+            ) : stockLike(r) ? (
+              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={STOCK_LIKE_HINT}>
+                stock-like
+              </span>
+            ) : null}
           </span>
           <span className="font-mono text-[10px] tnum text-textMuted text-right max-sm:hidden">{r.dte}d</span>
           <span className="font-mono text-[12px] tnum font-semibold text-textPrimary text-right">{fmtUsd(r.premium)}</span>
@@ -822,7 +854,7 @@ const Compare = () => {
       ))}
       {s.structures.list.length === 0 && (
         <div className="px-5 flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted" style={{ height: CMP_LIST_ROW_H }}>
-          No structures on this cut today
+          No structures on this cut {isLiveDay(todayIso) ? 'today' : `on ${shortDay(todayIso)}`}
         </div>
       )}
     </div>
@@ -831,7 +863,7 @@ const Compare = () => {
   return (
     <TraceBox
       title="Two names, side by side"
-      sub="Net flow, the money expiring today, the book, the footprints, the structures and the tape — the first name against the second · pick either name, swap them, cut them to one clock"
+      sub="Net flow, the same-day money, the book, the footprints, the structures and the tape — the first name against the second · pick either name, swap them, cut them to one clock"
       testId="compare"
       data={{ a: aTicker, b: bTicker, clock: tenor, money: mny }}
       guide={{ title: 'How to read the card', door: 'What the rows, the panes and the lists mean', body: <CompareGuide />, testId: 'compare-guide', open: guideOpen, onOpen: setGuideOpen }}
@@ -847,13 +879,13 @@ const Compare = () => {
           </>
         ) : (
         <>
-          <Fact label={`${a.ticker} net`} testId="a-net">
+          <Fact label={`${a.ticker} net`} testId="a-net" title={a.netSource === 'ticks' ? "Net premium over the regular session — the vendor's minute ticks, the figure Net Flow's pane and Intervals show. A vendor total: spread legs and floor packages are in it" : "Net premium on the clock's expiries, the whole day — by expiry (the vendor's expiry route). A vendor total: spread legs and floor packages are in it"}>
             <span className={dirInk(a.net)}>{signedUsd(a.net)}</span>
           </Fact>
-          <Fact label={`${b.ticker} net`} testId="b-net">
+          <Fact label={`${b.ticker} net`} testId="b-net" title={b.netSource === 'ticks' ? "Net premium over the regular session — the vendor's minute ticks, the figure Net Flow's pane and Intervals show. A vendor total: spread legs and floor packages are in it" : "Net premium on the clock's expiries, the whole day — by expiry (the vendor's expiry route). A vendor total: spread legs and floor packages are in it"}>
             <span className={dirInk(b.net)}>{signedUsd(b.net)}</span>
           </Fact>
-          <Fact label="Expiring today · net" testId="same-day" title="Net call premium less net put premium on each name's contracts expiring today — the vendor's flow by expiry">
+          <Fact label={`${isLiveDay(todayIso) ? 'Expiring today' : `Expired ${shortDay(todayIso)}`} · net`} testId="same-day" title={`Net call premium less net put premium on each name's contracts ${sameDayWords(todayIso)} — by expiry (the vendor's expiry route), the whole day`}>
             <span className={dirInk(a.odte.net)}>{a.odte.has ? signedUsd(a.odte.net) : '—'}</span> <span className="text-textMuted">·</span> <span className={dirInk(b.odte.net)}>{b.odte.has ? signedUsd(b.odte.net) : '—'}</span>
           </Fact>
           <Champion label={`Leans ${leansWords}`} ink={cmp.bullish.net >= 0 ? 'bull' : 'bear'} onOpen={() => toNetFlow(cmp.bullish.ticker)} testId="bullish">
@@ -879,7 +911,7 @@ const Compare = () => {
             <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">A</span>
             {/* The two chips wear the same clothes (Noah, 2026-09-09): the first in the full following look
                 with its silver link, the second its own name with no link at all */}
-            <ScopeChip ticker={aTicker} linked={aFollows} full quote onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
+            <ScopeChip ticker={aTicker} linked={aFollows} full quote closeOutside onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
             <button
               type="button"
               onClick={onSwap}
@@ -891,7 +923,7 @@ const Compare = () => {
               <ArrowLeftRight className="w-3.5 h-3.5" />
             </button>
             <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">B</span>
-            <ScopeChip ticker={bTicker} quote onPick={next => setBPick(next)} title="The second name — pick another" />
+            <ScopeChip ticker={bTicker} quote closeOutside onPick={next => setBPick(next)} title="The second name — pick another" />
           </span>
           {/* The two cuts as labelled cards — ONE pair for both names */}
           <DropdownSelect label="Clock" value={tenor} options={CLOCK_OPTIONS} onChange={setTenor} title="How far out the contracts run — both names" testId="compare-clock" />
@@ -1010,7 +1042,7 @@ const Compare = () => {
         <Lists s={b} side="b" />
       </div>
       <p className="px-5 flex items-center border-t border-borderSubtle text-[11px] text-textMuted" style={{ height: 40 }} data-compare-foot>
-        Only names on today's book can be compared — a name off it falls back to the frame's, or to the busiest.
+        Only names on the session's book ({shortDay(todayIso)}) can be compared — a name off it falls back to the frame's, or to the busiest.
       </p>
         </>
       )}

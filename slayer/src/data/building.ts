@@ -46,7 +46,8 @@ import { sessionStarts } from './indicators';
 import { levelRoles, pickLegWalls, type LevelRole } from '../core/walls';
 import { DEFAULT_R } from '../core/carry';
 import { dollarGammaPerContract } from '../core/gammaFlip';
-import { bookToday, isoDate } from '../core/calendar';
+import { bookToday, isoDate, isTradingDay } from '../core/calendar';
+import { recordDay } from './bookWindow';
 import { datesOf, yearsTo } from './flipLevel';
 import { peekEntry, type OiChange } from './uwBook';
 import { shownGamma } from '../components/gex/retailSign';
@@ -142,13 +143,66 @@ export interface Building {
   loading: boolean;
 }
 
-/** The change's time words: the vendor's count is set overnight from yesterday's trading — never "today" */
-export const changeWhen = (b: Pick<Building, 'overnight' | 'inSession'>): { short: string; long: string; head: string } =>
-  b.overnight
-    ? { short: 'overnight', long: "in yesterday's trading (the overnight open-interest count)", head: 'Built overnight' }
-    : b.inSession
-      ? { short: 'today', long: 'today', head: 'Built today' }
-      : { short: 'last session', long: 'in the last session', head: 'Built last session' };
+/*
+  THE OVERNIGHT COUNT, NAMED BY THE SESSION IT COUNTS (the fifth audit, 2026-10-23: at 01:00 ET Friday the change was
+  called "yesterday's trading" while it was Wednesday's — OI 10-21 → 10-22; Thursday's count is set the next morning).
+  The vendor's oi-change runs from the open interest of `last_date` to that of `curr_date`; the contracts opened and
+  closed in between were traded on `last_date`'s session. The words name that session by its date, and say so when the
+  latest finished session's count is not out yet.
+*/
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monDay = (iso: string): string => {
+  const [, m, d] = iso.split('-').map(Number);
+  return m && d ? `${MON[m - 1]} ${d}` : iso;
+};
+export interface OiWhen {
+  /** "Oct 21's trading" — null when the count's dates are not known */
+  trade: string | null;
+  /** "in Oct 21's trading" */
+  short: string;
+  /** "Oct 21's trading (open interest 10-21 → 10-22)" */
+  long: string;
+  /** "Oct 21" — for a short head */
+  day: string | null;
+  /** "Oct 22's count is not out yet — it is set before the next open" — null when the count is the latest */
+  pending: string | null;
+}
+export function oiWhen(dates: { from: string; to: string } | null | undefined): OiWhen {
+  if (!dates) return { trade: null, short: 'in the overnight open-interest count', long: 'the overnight open-interest count', day: null, pending: null };
+  const trade = `${monDay(dates.from)}'s trading`;
+  /* the latest session that has finished: today's after its close, else the one before the session on record */
+  const rec = recordDay();
+  const finished = rec.done ? rec.date : lastSessionBefore(rec.date);
+  const pending = dates.from < finished ? `${monDay(finished)}'s count is not out yet — the vendor publishes it before the next open` : null;
+  return { trade, short: `in ${trade}`, long: `${trade} (open interest ${dates.from.slice(5)} → ${dates.to.slice(5)})`, day: monDay(dates.from), pending };
+}
+function lastSessionBefore(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  for (let back = 1; back < 12; back++) {
+    const p = new Date(y, m - 1, d - back);
+    if (isTradingDay(p)) return isoDate(p);
+  }
+  return iso;
+}
+
+/** The change's time words: the vendor's count names the session it counts (oiWhen) — never "today" or "yesterday" */
+export const changeWhen = (b: Pick<Building, 'overnight' | 'inSession'> & { oiDates?: Building['oiDates'] }): { short: string; long: string; head: string; drained: string; grew: string; shrank: string; pending: string | null } => {
+  if (b.overnight) {
+    const w = oiWhen(b.oiDates);
+    return {
+      short: w.short,
+      long: w.long,
+      head: w.day ? `Built ${w.day}` : 'Built overnight',
+      drained: w.day ? `Drained ${w.day}` : 'Drained overnight',
+      grew: w.day ? `Grew most ${w.day}` : 'Grew most overnight',
+      shrank: w.day ? `Shrank most ${w.day}` : 'Shrank most overnight',
+      pending: w.pending,
+    };
+  }
+  return b.inSession
+    ? { short: 'today', long: 'today', head: 'Built today', drained: 'Drained today', grew: 'Growing fastest', shrank: 'Fading fastest', pending: null }
+    : { short: 'in the last session', long: 'in the last session', head: 'Built last session', drained: 'Drained last session', grew: 'Grew most', shrank: 'Shrank most', pending: null };
+};
 
 /** Net gamma in the retail sign a reader knows: "+$1.2B" / "−$245M" */
 const retail = (house: number) => {
@@ -268,7 +322,12 @@ export function buildBuilding(
     real &&
     !!entry?.wantFull &&
     oiChange!.rows.some(r => r.expiry >= floor && (scopeDates === 'ALL' || (Array.isArray(scopeDates) && scopeDates.includes(r.expiry))) && !!snapshot.uwByDate?.[r.expiry]?.length && !entry.factsDates?.has(r.expiry));
-  const loading = !!snapshot.liveBook && (!real || factsMissing);
+  /* NO WHOLE-BOOK STAND-IN (the fifth audit, 2026-10-23: TSLA 420 read "+$25M" — final +$3M — and 400 "+$73.8M", the
+     All figure, under "Today · Oct 23" while its chain loaded): until the scope's own chain is in, and its levels are
+     final, nothing is printed but "…" */
+  const scopeMissing = !!snapshot.liveBook && !snapshot.uwChains?.[profile.expiry]?.length;
+  const levelsPending = !!snapshot.liveBook && profile.levels.complete === false;
+  const loading = !!snapshot.liveBook && (!real || factsMissing || scopeMissing || levelsPending);
   const hasOi = (real && !loading) || (!snapshot.liveBook && today.length >= 2 && today.some(s => s.levels.some(l => l.callOI !== undefined)));
   const first = today[0];
   const last = today[today.length - 1];
@@ -366,19 +425,26 @@ export function buildBuilding(
      then what stands there (Noah, 2026-09-13: "easily understandable…
      word wise as well"); the strike itself is printed by the surface */
   const whenWords = (w: BuildRow['when']) => (w === 'early' ? 'mostly early in the day' : w === 'middle' ? 'mostly through the middle of the day' : w === 'late' ? 'mostly late in the day' : '');
-  const when = changeWhen({ overnight: real, inSession: clock.inSession });
+  const oiDates = real && oiChange?.lastDate && oiChange.currDate ? { from: oiChange.lastDate, to: oiChange.currDate } : null;
+  const when = changeWhen({ overnight: real, inSession: clock.inSession, oiDates });
   const day = when.short;
+  /* "before Oct 21's trading" — the state the count starts from */
+  const before = real ? `before ${oiWhen(oiDates).trade ?? 'the overnight count'}` : 'at the open';
   for (const r of rows) {
     /* NET GAMMA IN THE RETAIL SIGN, as every other page prints it (the retail test: "now $245M, put-heavy" here against
        −$245M elsewhere) */
     const stand = `now ${retail(r.now)}, ${sideWords(r.now)}`;
     if (!hasOi) {
-      r.words = loading ? `Loading the overnight open-interest count — ${stand}.` : `No open interest on this feed yet — ${stand}.`;
+      /* nothing provisional while loading — not even the strike's "now", which may still be the whole book's */
+      r.words = loading ? (scopeMissing || levelsPending ? 'Loading the contracts these levels are read from…' : 'Loading the overnight open-interest count…') : `No open interest on this feed yet — ${stand}.`;
       continue;
     }
     const dominant = Math.abs(r.callAdded) >= Math.abs(r.putAdded) ? 'calls' : 'puts';
-    /* the net change, now − was (retail sign), the figure the row's CHANGE column prints — the verdict is the size's */
-    const change = `net ${signed(r.change)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`;
+    /* ONE SIGN FOR "THE CHANGE" (the fifth audit, 2026-10-23: 769 read "draining · net +$175M overnight" with CHANGE
+       +$175M, while the head said "Shrank most 769 · −$175M" and the Map "−$175M taken off"): the change a strike shows
+       is its wall's SIZE change, |now| − |was| — + grew, − shrank — the figure the CHANGE column, the head's grew/shrank
+       most, the Agenda and the Map's report all print */
+    const change = `${signed(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`;
     const when = r.when ? `, ${whenWords(r.when)}` : '';
     const pace = clock.inSession && !real && r.verdict !== 'steady' ? ` At today's pace ${signed(r.byClose)} ${r.byClose >= 0 ? 'more' : 'further'} by the close.` : '';
     switch (r.verdict) {
@@ -389,10 +455,10 @@ export function buildBuilding(
         r.words = `Draining, ${dominant}. ${change}${when} — ${stand}.${pace}`;
         break;
       case 'switched':
-        r.words = `Changed sides, now ${r.now < 0 ? 'calls' : 'puts'}; it was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${real ? 'before yesterday’s trading' : 'at the open'}. ${change} — ${stand}.${pace}`;
+        r.words = `Changed sides, now ${r.now < 0 ? 'calls' : 'puts'}; it was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${before}. ${change} — ${stand}.${pace}`;
         break;
       case 'new':
-        r.words = `New ${day}: nothing sat here ${real ? 'before yesterday’s trading' : 'at the open'}. ${change} — ${stand}.${pace}`;
+        r.words = `New ${day}: nothing sat here ${before}. ${change} — ${stand}.${pace}`;
         break;
       default:
         /* steady is "small for this strike" — the change is still printed, with its share of the strike's size */
@@ -454,16 +520,16 @@ export function buildBuilding(
   const levelWords = (name: string, open: number | null, now: number | null, close: number | null, ch: Challenger | null): string => {
     const moved =
       open != null && now != null && open !== now
-        ? `moved from ${fmtStrike(open)} to ${fmtStrike(now)} ${real ? 'overnight' : 'today'}`
+        ? `moved from ${fmtStrike(open)} to ${fmtStrike(now)} ${real ? day : 'today'}`
         : now != null
           ? real
-            ? `at ${fmtStrike(now)}, where it was before yesterday's trading`
+            ? `at ${fmtStrike(now)}, where it was ${before}`
             : `at ${fmtStrike(now)} since the open`
           : name === 'Flip'
             ? 'no flip within ±10%'
             : `none — no ${name === 'Call wall' ? 'call' : 'put'} gamma in the window`;
     const ahead = real || close == null || now == null ? '' : close === now ? ` · holds ${horizon}` : ` · ${horizon} it moves to ${fmtStrike(close)}`;
-    const chal = ch ? ` · ${fmtStrike(ch.strike)} grew the most ${name === 'Call wall' ? 'call' : 'put'} gamma${real ? ' overnight' : ''}, ${fmtDollars(ch.needs)} short${ch.by ? `, there by ${ch.by} at today's pace` : !real && ch.outrun ? ', but the wall is growing faster' : ''}` : '';
+    const chal = ch ? ` · ${fmtStrike(ch.strike)} grew the most ${name === 'Call wall' ? 'call' : 'put'} gamma${real ? ` ${day}` : ''}, ${fmtDollars(ch.needs)} short${ch.by ? `, there by ${ch.by} at today's pace` : !real && ch.outrun ? ', but the wall is growing faster' : ''}` : '';
     return `${moved}${ahead}${chal}`;
   };
 
@@ -487,15 +553,16 @@ export function buildBuilding(
 
   /* THE SENTENCE */
   let sentence: string;
-  if (!hasOi) sentence = loading ? 'Loading the overnight open-interest count…' : 'Open interest is not on this feed yet, so nothing can be read as built or drained.';
+  if (!hasOi) sentence = loading ? (scopeMissing || levelsPending ? 'Loading the contracts these levels are read from…' : 'Loading the overnight open-interest count…') : 'Open interest is not on this feed yet, so nothing can be read as built or drained.';
   else {
     const parts: string[] = [];
     if (real) {
       /* THE OVERNIGHT COUNT, SAID AS ONE (the Pinpoint audit, 2026-10-22: "new hedging today" over a change that was set
          overnight from yesterday's trading) */
-      if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} grew most overnight: ${fmtDollars(fastestUp.sizeChange)} of hedging added in yesterday's trading${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
+      if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} grew most: ${signed(fastestUp.sizeChange)} of hedging added ${day}${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
       if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} shrank most, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
-      if (!parts.length) parts.push('Nothing was built or drained in the overnight open-interest count.');
+      if (!parts.length) parts.push(`Nothing was built or drained ${day}.`);
+      if (when.pending) parts.push(`${when.pending}.`);
     } else if (clock.inSession) {
       if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} is being built: ${fmtDollars(fastestUp.sizeChange)} of new hedging today${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
       if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} is draining, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
@@ -510,6 +577,5 @@ export function buildBuilding(
     sentence = parts.join(' ');
   }
 
-  const oiDates = real && oiChange?.lastDate && oiChange.currDate ? { from: oiChange.lastDate, to: oiChange.currDate } : null;
   return { ticker, spot, rows, maxAbs, maxChange, built, drained, fastestUp, fastestDown, spotAfter, elapsedMin, minutesLeft, inSession: clock.inSession, heading, sentence, hasOi, overnight: real || loading, oiDates, loading };
 }

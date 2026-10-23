@@ -35,16 +35,18 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts' }: { askPct: number; 
        contracts — while the lean was called on the bid's 59.9% of the SIDED ones): a side's lean is its share of the sided
        volume; a mostly-mid day prints the mid's share of the whole. The hover gives all three shares of the whole. */
     const askS = Math.round(l.askSided);
-    const label = l.lean === 'ASK' ? `ASK ${askS}%` : l.lean === 'BID' ? `BID ${100 - askS}%` : l.lean === 'UNSIDED' ? `MID ${m}%` : 'EVEN';
-    const tone = l.lean === 'ASK' || l.lean === 'BID' ? 'text-textPrimary' : 'text-textMuted';
+    /* AN EVEN DAY STILL SAYS WHICH WAY IT TIPPED (retail, 2026-10-23: NVDA's Screener read "EVEN" on nearly every row and
+       answered nothing) — the larger side's share of the sided volume, lower-case and quiet: short of the 55% call */
+    const label = l.lean === 'ASK' ? `ASK ${askS}%` : l.lean === 'BID' ? `BID ${100 - askS}%` : l.lean === 'UNSIDED' ? `MID ${m}%` : askS >= 50 ? `ask ${askS}%` : `bid ${100 - askS}%`;
+    const tone = l.lean === 'ASK' || l.lean === 'BID' ? 'text-textPrimary' : 'text-textSecondary';
     const total = split.ask + split.bid + split.mid;
     const noun = unit === 'premium' ? 'premium' : `${total.toLocaleString('en-US')} contracts`;
     return (
       <span
         className="inline-flex flex-col items-end gap-[3px] w-16"
-        title={`${l.lean === 'ASK' || l.lean === 'BID' ? `${l.lean === 'ASK' ? 'At the ask' : 'On the bid'}: ${l.lean === 'ASK' ? askS : 100 - askS}% of the ${unit === 'premium' ? 'premium' : 'contracts'} that traded on a side — the share the lean is called on (${LEAN_EDGE}% or more, with at least half the ${unit === 'premium' ? 'premium' : 'day'} on a side). ` : ''}Of the ${unit === 'premium' ? "alert's whole" : "day's"} ${noun}: ${a}% at the ask, ${b}% on the bid, ${m}% at the mid or with no side${l.lean === 'UNSIDED' ? ' — under half traded on a side, so no lean is called' : ''}`}
+        title={`${l.lean === 'ASK' || l.lean === 'BID' ? `${l.lean === 'ASK' ? 'At the ask' : 'On the bid'}: ${l.lean === 'ASK' ? askS : 100 - askS}% of the ${unit === 'premium' ? 'premium' : 'contracts'} that traded on a side — the share the lean is called on (${LEAN_EDGE}% or more, with at least half the ${unit === 'premium' ? 'premium' : 'day'} on a side). ` : l.lean === 'EVEN' ? `Even — ${askS >= 50 ? `${askS}% at the ask` : `${100 - askS}% on the bid`} of the ${unit === 'premium' ? 'premium' : 'contracts'} that traded on a side, short of the ${LEAN_EDGE}% a lean is called on. ` : ''}Of the ${unit === 'premium' ? "alert's whole" : "day's"} ${noun}: ${a}% at the ask, ${b}% on the bid, ${m}% at the mid or with no side${l.lean === 'UNSIDED' ? ' — under half traded on a side, so no lean is called' : ''}`}
       >
-        <span className={`font-mono text-[11px] font-semibold uppercase tnum leading-[14px] ${tone}`}>{label}</span>
+        <span className={`font-mono text-[11px] font-semibold ${l.lean === 'EVEN' ? '' : 'uppercase'} tnum leading-[14px] ${tone}`}>{label}</span>
         <span className="flex w-16 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]">
           <span className="h-full bg-ink/[0.0]" style={{ width: `${b}%` }} />
           <span className="h-full bg-ink/30" style={{ width: `${m}%` }} />
@@ -67,11 +69,11 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts' }: { askPct: number; 
   /* near-even is EVEN, not "MID": the mid volume is not in this split at all — the same edge as the split's (dayLean) */
   const l = dayLean({ askPct, volume: 0 }).lean;
   const even = l === 'EVEN';
-  const label = even ? 'EVEN' : l === 'BID' ? `BID ${bidPct}%` : `ASK ${askPct}%`;
-  const tone = even ? 'text-textMuted' : 'text-textPrimary';
+  const label = even ? (askPct >= 50 ? `ask ${askPct}%` : `bid ${bidPct}%`) : l === 'BID' ? `BID ${bidPct}%` : `ASK ${askPct}%`;
+  const tone = even ? 'text-textSecondary' : 'text-textPrimary';
   return (
     <span className="inline-flex flex-col items-end gap-[3px] w-16" title={`Of the premium or volume that traded at the bid or the ask: ${askPct}% at the ask, ${bidPct}% on the bid (mid and no-side not in this split) — a lean from ${LEAN_EDGE}% on a side`}>
-      <span className={`font-mono text-[11px] font-semibold uppercase tnum leading-[14px] ${tone}`}>{label}</span>
+      <span className={`font-mono text-[11px] font-semibold ${even ? '' : 'uppercase'} tnum leading-[14px] ${tone}`}>{label}</span>
       <span className="flex w-16 h-[3px] rounded-full overflow-hidden bg-ink/[0.14]">
         <span className="h-full bg-textPrimary/80 ml-auto" style={{ width: `${askPct}%` }} />
       </span>

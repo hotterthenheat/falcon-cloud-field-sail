@@ -185,8 +185,22 @@ const stakeTip = (t: InsiderTrade): string => (t.indirect ? `${stakeWords(t)} �
 const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={stakeTip(data)}>
-      {data.stakePct < 0 ? '—' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
-      {data.indirect && data.stakePct >= 0 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> of line</span> : null}
+      {/* PLAIN WORDS AT THE ENDS (audit round 5: "100.0% of line" read as nothing): a buy into an empty holding is the first
+          purchase, a sale of everything an exit; between them the share of the holding (of that account, when indirect) */}
+      {data.stakePct < 0
+        ? '—'
+        : data.stakePct >= 99.95
+          ? data.kind === 'BUY'
+            ? data.indirect
+              ? 'first buy in this account'
+              : 'first purchase'
+            : data.indirect
+              ? 'sold the whole account'
+              : 'sold all they held'
+          : data.stakePct < 0.1
+            ? '<0.1%'
+            : `${data.stakePct.toFixed(1)}%`}
+      {data.indirect && data.stakePct >= 0 && data.stakePct < 99.95 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> of account</span> : null}
     </span>
   ) : null;
 
@@ -439,7 +453,7 @@ const Insiders = () => {
       { headerName: 'Shares', field: 'shares', width: 100, cellRenderer: SharesCell, type: 'rightAligned', headerTooltip: 'Shares in the transaction' },
       { headerName: 'Price', field: 'price', width: 96, cellRenderer: PriceCell, type: 'rightAligned', headerTooltip: 'The filed price per share' },
       { headerName: 'Value', field: 'value', width: 104, cellRenderer: ValueCell, type: 'rightAligned', headerTooltip: 'Shares times the filed price' },
-      { headerName: 'Of stake', field: 'stakePct', width: 118, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's own holding this trade was" },
+      { headerName: 'Of holding', field: 'stakePct', width: 176, cellRenderer: StakeCell, type: 'rightAligned', headerTooltip: "The share of the insider's holding this trade was — \"first purchase\" when they held none before, \"sold all they held\" when nothing was left; an indirect line (a trust, a fund) counts that account alone" },
       {
         headerName: 'Chose to?',
         field: 'plan',
@@ -473,6 +487,16 @@ const Insiders = () => {
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
             {show === 'market' ? 'Open-market purchases and sales only' : 'Every filing, the plumbing named for what it is'} · newest first · a row opens their book
           </p>
+          {/* THE READ'S PROGRESS, UP FRONT (audit round 5: "read back to Aug 22 of 90 days · partial" was a quiet footnote) */}
+          {!failed && (
+            <p className={`mt-1 font-mono text-[10px] uppercase tracking-widest ${reading || waiting ? 'text-warn' : 'text-textSecondary'}`} data-insiders-progress={reading || waiting ? 'reading' : 'complete'}>
+              {waiting
+                ? `Reading the filings · 0 of ${window} days so far`
+                : reading
+                  ? `Reading · ${readBack ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${readBack}T12:00:00Z`)) / 86_400_000))) : 0} of ${window} days so far — the totals grow as older filings land`
+                  : `Complete · the read is done for ${window} days (what each part covers is under the controls)`}
+            </p>
+          )}
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>

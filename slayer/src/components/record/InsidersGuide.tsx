@@ -173,8 +173,8 @@ export const InsidersGuide = () => (
       <p>Most insider selling runs off a plan adopted months earlier; a chosen purchase is the loudest row here, because there are many reasons to sell and one reason to buy. A purchase (code P) can be on the open market or in a private placement. When the buyer is a company or a fund — Volkswagen taking a stake in Rivian, a bank buying into a broker — it is a strategic stake, marked "corporate" and counted apart under Company &amp; fund buys, never as chosen buying.</p>
       <FlagFigure />
     </Section>
-    <Section title="Of stake">
-      <p>The trade as a share of what the insider held, so a sale reads against what they kept.</p>
+    <Section title="Of holding">
+      <p>The trade as a share of what the insider held, so a sale reads against what they kept. A buy by someone who held none before reads "first purchase"; a sale that left nothing reads "sold all they held". A line held through a trust or a fund ("of account") counts that account alone — the filer's direct shares are another line.</p>
       <StakeFigure />
     </Section>
     <Section title="The window">

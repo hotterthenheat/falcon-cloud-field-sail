@@ -21,6 +21,8 @@ export interface UwPolitician {
   chamber?: string;
   politician_id: string;
   district?: string;
+  /** The Congress biographical directory id — only a member of Congress has one */
+  bioguide_id?: string | null;
 }
 
 export interface UwEcon {

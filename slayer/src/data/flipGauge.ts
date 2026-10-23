@@ -3,10 +3,9 @@ import { buildExposureProfile } from './exposure';
 import { sessionBars } from './levelview';
 import { levelFlip, regimeOfNet } from './flipLevel';
 import { levelTicks } from './levelRecord';
-import { sessionBook } from './bookWindow';
+import { recordDay, sessionBook } from './bookWindow';
 import type { Candle, GexSnapshot, MarketSnapshot } from '../types/market';
-import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
-import { isTradingDay, today as nyToday } from '../core/calendar';
+import { nyIsoDate, nyMinutes } from '../core/nyTime';
 
 /*
 ==================================================
@@ -156,10 +155,11 @@ const frozenCross = new Map<string, SessionCrossings>();
 export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): SessionCrossings {
   const candles = sessionBars(snapshot.ticker) ?? [];
   const last = candles[candles.length - 1];
-  const today = nyIsoDate();
+  /* BEFORE TODAY'S OPEN THE COUNT IS THE LAST SESSION'S, NAMED BY ITS DATE (the fifth audit, 2026-10-23): sessionBars
+     and sessionBook both read the session on record (data/bookWindow.ts recordDay) — that day's bars against the book
+     that was live in it, labelled "Thu Oct 22 · against the book live then", never "today" */
+  const today = recordDay().date;
   const barDay = last ? nyIsoDate(last.time * 1000) : null;
-  if (barDay && barDay < today && isTradingDay(nyToday()) && nySessionPhase() === 'before')
-    return { crossings: null, flip: null, label: 'Today', why: 'The session has not opened yet — today’s count starts at 9:30 ET.' };
   const sb = sessionBook(snapshot, scope);
   const key = `${snapshot.ticker}|${scope}|${barDay ?? today}`;
   if (sb.after) {

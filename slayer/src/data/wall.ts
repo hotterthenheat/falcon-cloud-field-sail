@@ -55,7 +55,7 @@ import { todayColumn, type ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData, StrikeExposure } from '../types/gex';
 import type { Candle, MarketSnapshot } from '../types/market';
 import { putWallWords } from '../core/walls';
-import { peekDaySigma } from './uwBook';
+import { monDayOf, peekDaySigma, peekScopeMove } from './uwBook';
 import { datesOf } from './flipLevel';
 
 /** The one expiry a snapshot's levels chain reads, or null for several / the whole book */
@@ -63,6 +63,32 @@ export const scopeDateOf = (snapshot: MarketSnapshot): string | null => {
   const d = datesOf(snapshot, snapshot.chain);
   return Array.isArray(d) && d.length === 1 ? d[0] : null;
 };
+
+/*
+  THE REACH ODDS' HORIZON (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20 and its odds ran on one session at
+  the ATM vol, $4.95, against the vendor's $14.98 into Nov 20). A scope whose expiry is the coming session reads that
+  session's move, scaled to the minutes left; a later expiry reads the vendor's implied move into it, over its whole
+  horizon — the odds are then "by Nov 20" and every label says so (`horizon`). One rule for the Agenda, the Board's
+  watch-first, Compare and the corridor.
+*/
+export interface ScopeSigma {
+  /** One standard move from now to the horizon, dollars */
+  sigmaLeft: number;
+  /** One session's move, dollars (the ruler's σ) */
+  sigmaDay: number;
+  /** "by Nov 20" for a multi-day scope — null when the horizon is the coming session's close */
+  horizon: string | null;
+  /** Which number the move is, in words ("the vendor's implied move into Nov 20") */
+  words: string;
+}
+export function scopeSigma(snapshot: MarketSnapshot, minutesLeft: number, iv: number, date: string | null = scopeDateOf(snapshot)): ScopeSigma {
+  const spot = snapshot.spot;
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, date) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
+  const m = snapshot.liveBook ? peekScopeMove(snapshot.ticker, date) : null;
+  if (m?.multi && m.until && m.move > 0) return { sigmaLeft: m.move, sigmaDay, horizon: `by ${monDayOf(m.until)}`, words: m.words };
+  return { sigmaLeft: sigmaDay * Math.sqrt(Math.max(0, minutesLeft) / SESSION_MIN), sigmaDay, horizon: null, words: m?.source === 'vendor' ? m.words : m?.words ?? 'the 30-day implied vol over one session' };
+}
+
 
 /* ---- the constants, named so they can be calibrated ------------------------------ */
 
@@ -286,6 +312,8 @@ interface Ctx {
   /** The heaviest wall weight on this chain, measured the way every wall is — the 100% of the wall reading */
   topWall: number;
   sigmaLeft: number;
+  /** "by Nov 20" when the odds run to a later expiry than the coming session (scopeSigma) — null for the close */
+  horizon: string | null;
   speed: number | null;
   printsUp: number;
   /** Dollars of stock dealers must BUY if vol drops a point — the window's net vanna */
@@ -535,9 +563,10 @@ export function buildWallContext(
   const todayBars = bars as Candle[];
   const marketPer1Pct = dollarsPer1Pct(todayBars) ?? 1;
   /* the expiry the levels read: its own implied move (data/uwBook.ts peekDaySigma), the 30-day IV only as a fallback */
-  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
-  const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const ss = scopeSigma(snapshot, clock.minutesLeft, iv);
+  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : (impliedDaySigma(spot, iv) ?? spot * 0.01) * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   return {
+    horizon: snapshot.liveBook ? ss.horizon : null,
     ticker: snapshot.ticker,
     spot,
     strikes,

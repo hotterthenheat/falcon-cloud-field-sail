@@ -23,7 +23,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { windowLabel, type IntervalWindow } from '../../data/flowBook';
+import { VENDOR_TOTAL_NOTE, windowLabel, type IntervalWindow } from '../../data/flowBook';
 import { SESSION_OPEN, sessionEndLabel, sessionEndMin, sessionPhase, useNameMinutes, usd as fmtUsd, type NameMinute } from '../../data/traceLive';
 import { nyParts } from '../../core/nyTime';
 import type { Column } from '../../components/ui/DataTable';
@@ -240,7 +240,7 @@ const Windows = () => {
         data={{ name, window: sel?.label, rows: quarters.length }}
         facts={
           <>
-            <Fact label="The session" testId="session" title={`${name}'s option contracts traded ${closed ? '' : 'so far '}in the regular session (09:30–${sessionEndLabel(name)} ET), every expiry`}>
+            <Fact label="The session" testId="session" title={`${name}'s option contracts traded ${closed ? '' : 'so far '}in the regular session (09:30–${sessionEndLabel(name)} ET), every expiry — the vendor's minute ticks (/stock/{t}/net-prem-ticks), the figure Net Flow's pane and Compare's net show. ${VENDOR_TOTAL_NOTE}`}>
               {state !== 'in' ? <span className="text-textMuted">—</span> : <>{num(day.vol)} <span className="text-textSecondary">contracts · lean</span> <span className={callInk(day.netCall - day.netPut)}>{signed(day.netCall - day.netPut)}</span></>}
             </Fact>
             <Fact label="This quarter hour" testId="window">
@@ -274,7 +274,7 @@ const Windows = () => {
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
             <StaleMark at={pack.at} ttlMs={FLOW_TTL_MS} fault={pack.fault} />
-            <ScopeChip ticker={name} quote onPick={t => addr.set({ name: t, win: 'live' })} title="The name whose session is cut into quarter hours" />
+            <ScopeChip ticker={name} quote closeOutside onPick={t => addr.set({ name: t, win: 'live' })} title="The name whose session is cut into quarter hours" />
             <span className="inline-flex items-center gap-1.5 flex-wrap" data-windows-nav data-span>
               <button type="button" onClick={() => pos > 0 && setWin(quarters[pos - 1].idx)} disabled={pos <= 0} aria-label="Previous quarter hour" className={stepBtn}>
                 <ChevronLeft className="w-3.5 h-3.5" />

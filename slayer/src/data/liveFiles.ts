@@ -528,8 +528,11 @@ async function pullShorts() {
   }
 }
 
-const flow5 = (rows: UwEtfFlow[]): { flow5dM: number; flows: EtfRow['flows'] } => {
-  const sorted = [...rows].filter(r => r.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+/* ONE WINDOW FOR EVERY FUND (audit round 5, 2026-10-23: "Five-day flow −$6.14B" summed each fund's own latest five rows —
+   some funds' through 10/22, others' through 10/21 — so the total mixed windows). The five most recent dates every fund
+   with flows carries are the window; each fund's flow is summed over exactly those days. */
+const flow5 = (rows: UwEtfFlow[], days?: Set<string>): { flow5dM: number; flows: EtfRow['flows'] } => {
+  const sorted = [...rows].filter(r => r.date && (!days || days.has(String(r.date).slice(0, 10)))).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const last = sorted.slice(0, 5);
   const flows = last.map(r => ({ day: String(r.date).slice(5, 10).replace('-', '/'), flowM: Math.round(num(r.change_prem) / 1e6) })).reverse();
   return { flow5dM: flows.reduce((s, f) => s + f.flowM, 0), flows };
@@ -584,6 +587,11 @@ async function pullEtfs() {
         whalesEtfHoldings(e.etf).catch(() => [] as UwEtfHolding[]),
         whalesEtfFlow(e.etf).catch(() => [] as UwEtfFlow[]),
       ])));
+    const dateSets = reads.map(r => (Array.isArray(r[2]) ? new Set(r[2].map(x => String(x.date || '').slice(0, 10)).filter(Boolean)) : new Set<string>())).filter(d => d.size > 0);
+    const common = dateSets.length ? [...dateSets[0]].filter(d => dateSets.every(set => set.has(d))).sort().reverse().slice(0, 5) : [];
+    const window = new Set(common);
+    const flowFrom = common.length ? common[common.length - 1] : null;
+    const flowTo = common.length ? common[0] : null;
     for (let k = 0; k < ETF_LIST.length; k++) {
       const e = ETF_LIST[k];
       const [infoR, holdR, flowR] = reads[k];
@@ -593,7 +601,7 @@ async function pullEtfs() {
       const held = (Array.isArray(holdR) ? holdR : []).map(holdingOf).filter((h): h is EtfHolding => !!h).sort((a, b) => b.weight - a.weight);
       holdings[e.etf] = held;
       const top = held[0];
-      const flow = flow5(Array.isArray(flowR) ? flowR : []);
+      const flow = flow5(Array.isArray(flowR) ? flowR : [], common.length ? window : undefined);
       const equity = held.filter(h => !/bond|treasury|fixed/i.test(h.sector)).reduce((s, h) => s + h.weight, 0);
       rows.push({
         etf: e.etf,
@@ -615,6 +623,9 @@ async function pullEtfs() {
         callVol: numOr(info?.call_vol),
         putVol: numOr(info?.put_vol),
         flows: flow.flows,
+        flowFrom,
+        flowTo,
+        flowDays: common.length,
         holdingsAsOf: held.reduce<string | null>((m, h) => (h.asOf && (!m || h.asOf > m) ? h.asOf : m), null),
       });
     }

@@ -50,6 +50,8 @@ export interface EarningsEvent {
   pastMoves: { label: string; movePct: number }[];
   /** implied ÷ realized — the mispricing everything hangs on */
   richness: number;
+  /** The street's EPS estimate for the upcoming report, when the vendor's row for it carries one */
+  nextEpsEst?: number | null;
   /** % of the last 8 quarters beaten */
   beatRate8q: number;
   /** −1…+1 — analyst estimate drift into the print */

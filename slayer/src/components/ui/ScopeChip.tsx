@@ -48,7 +48,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
-import { extendedLine, useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, priceWords, useLiveQuote } from '../../data/liveQuote';
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
 import useFocusTrap from './useFocusTrap';
@@ -74,6 +74,9 @@ interface ScopeChipProps {
   /** Print the live price and change on an own-name chip. Off where the
       host already prints its own price beside the chip. */
   quote?: boolean;
+  /** Outside the regular session print the REGULAR CLOSE as the price, the extended-hours move beside it (the Trace
+      pages, audit round 5: Compare's chip read QQQ's after-hours print, $703.29, beside the regular session's −2.86%) */
+  closeOutside?: boolean;
   /** Optionally controlled, like TickerQuickPick — a host with keys owns it */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -85,7 +88,7 @@ interface ScopeChipProps {
   full?: boolean;
 }
 
-const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, open: openProp, onOpenChange, title, full = false }: ScopeChipProps) => {
+const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = false, open: openProp, onOpenChange, title, full = false }: ScopeChipProps) => {
   const [selfOpen, setSelfOpen] = useState(false);
   const arriving = useWorking(useNameArriving(ticker));
   const open = openProp ?? selfOpen;
@@ -135,7 +138,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, open: openProp
 
   /* The live quote. A dash until stock-state answers. Never the simulator. */
   const live = useLiveQuote(quote && (!follows || full) ? ticker : null);
-  const price = live?.spot;
+  const price = closeOutside ? priceWords(live)?.lead : live?.spot;
   const change = live?.changePct;
 
   const menu =

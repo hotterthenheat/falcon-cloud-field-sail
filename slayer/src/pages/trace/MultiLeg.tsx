@@ -100,6 +100,10 @@ const KIND_DOT: Record<SpreadKind, string> = {
   custom: 'rgb(var(--text-muted))',
 };
 
+/** A compression package, said once (SidesRule) */
+const COMPRESSION_HINT = "OPRA's cbmo / mctp — a floor package that nets open interest down between members (a call bought against a put sold at one strike). Not a bet: shown and labelled, kept out of the largest, the paid / collected counts and the read";
+const shapeWord = (t: SpreadTrade) => (t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape);
+
 const KIND_META = Object.fromEntries(SPREAD_KINDS.map(k => [k.key, k])) as Record<SpreadKind, (typeof SPREAD_KINDS)[number]>;
 
 const RISK_WHY: Record<NonNullable<SpreadTrade['riskNote']>, string> = {
@@ -170,7 +174,8 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[trade.kind] }} />
             <span className="truncate">{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
           </span>
-          {trade.extended && <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted whitespace-nowrap">after hours</span>}
+          {trade.extended && <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted whitespace-nowrap" title="Filled after hours against thin post-market quotes — the shape is shown, not read for direction">after hours · not read</span>}
+          {trade.compression && <span className="font-mono text-[10px] uppercase tracking-wider text-warn whitespace-nowrap" title={COMPRESSION_HINT}>compression · not a bet</span>}
           {t.vendorShape && <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title="The vendor's own label — the legs as they were bought and sold say otherwise">vendor: {t.vendorShape}</span>}
         </span>
       }
@@ -288,7 +293,8 @@ const phoneRow = (t: SpreadTrade) => (
     title={
       <>
         <span className="font-bold">{t.ticker}</span>
-        <span className="truncate">{t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}</span>
+        <span className="truncate">{shapeWord(t)}</span>
+        {t.compression && <span className="text-[10px] uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
       </>
     }
     aside={t.extended ? `${t.time} · AH` : t.time}
@@ -402,14 +408,19 @@ const MultiLeg = () => {
   const read = useMemo<ReactNode>(() => {
     if (tapeState === 'reading') return <RichRead text="Reading the tape's structures." />;
     if (tapeState === 'down') return <RichRead text="This read did not land — the structures fill when the feed answers." />;
-    if (trades.length === 0) return <RichRead text="No multi-leg trades on the tape yet today." />;
+    if (trades.length === 0) return <RichRead text="No multi-leg trades on the tape in this window." />;
     const byKind = new Map<SpreadKind, number>();
     const names = new Set<string>();
     let prem = 0;
     let signed = 0;
     let paid = 0;
     let collected = 0;
-    for (const t of trades) {
+    /* COMPRESSION IS SET APART (audit round 5): counted and labelled, out of the money, the counts and the biggest */
+    const packs = trades.filter(t => t.compression);
+    const packMoney = packs.reduce((a, t) => a + Math.abs(t.netPremium), 0);
+    const bets = trades.filter(t => !t.compression);
+    if (bets.length === 0) return <RichRead text={`The ${trades.length} multi-leg trades in hand (${windowSpan} ET) are all compression packages — ${fmtUsd(packMoney)} in their nets, not bets.`} />;
+    for (const t of bets) {
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
       names.add(t.ticker);
       prem += Math.abs(t.netPremium);
@@ -418,15 +429,16 @@ const MultiLeg = () => {
       if (t.netKnown !== false && t.netPremium > 0) paid++;
       else if (t.netKnown !== false && t.netPremium < 0) collected++;
     }
-    const unpriced = trades.length - paid - collected;
+    const unpriced = bets.length - paid - collected;
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
     /* THE BIGGEST BY ITS NET (the audit, 2026-10-22: "$1.3M collected" was the gross of every leg; the net was ~$830K) */
-    const big = [...trades].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
+    const big = [...bets].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
     return (
       <>
-        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}. Biggest: `} />
+        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest: `} />
         <ReadDoor onOpen={() => setDrill(big)}>
           {big.ticker} {big.shape === 'unnamed' ? KIND_META[big.kind].label.toLowerCase() : big.shape}
+          {big.extended ? ' (after hours, not read)' : ''}
         </ReadDoor>
         <RichRead text={`, ${big.units != null ? `${plural(big.units, 'unit')} ` : ''}for [[${fmtUsd(Math.abs(big.netPremium))}]] net${big.netPremium > 0 ? ' paid' : big.netPremium < 0 ? ' collected' : ''} (${fmtUsd(big.premium)} across every leg).`} />
       </>
@@ -469,7 +481,16 @@ const MultiLeg = () => {
         render: t => (
           <span className="inline-flex items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap" title={t.read ?? KIND_META[t.kind].read}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
-            {t.shape === 'unnamed' ? KIND_META[t.kind].label : t.shape}
+            {shapeWord(t)}
+            {t.compression ? (
+              <span className="text-[10px] uppercase text-warn" title={COMPRESSION_HINT}>
+                compression · not a bet
+              </span>
+            ) : t.extended ? (
+              <span className="text-[10px] uppercase text-textMuted" title="Filled after hours against thin post-market quotes — the shape is shown, not read for direction">
+                not read
+              </span>
+            ) : null}
           </span>
         ),
       },
@@ -592,7 +613,8 @@ const MultiLeg = () => {
      strip — facts left, champions as pills right — and the column chooser.
      The bull/bear pills only show when they are not the magenta one. */
   const champs = useMemo(() => {
-    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(pick).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
+    /* no compression package is a champion (audit round 5: "Largest · SPX bullish risk reversal · $271.0K" was a cbmo) */
+    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(t => !t.compression && pick(t)).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
     return { paid: by(t => t.netKnown !== false && t.netPremium > 0), collected: by(t => t.netKnown !== false && t.netPremium < 0), all: by(() => true) };
   }, [shown]);
   const facts = useMemo(() => {
@@ -600,6 +622,7 @@ const MultiLeg = () => {
     let collected = 0;
     const byKind = new Map<SpreadKind, number>();
     for (const t of trades) {
+      if (t.compression) continue;
       if (t.netKnown !== false && t.netPremium > 0) paid++;
       else if (t.netKnown !== false && t.netPremium < 0) collected++;
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
@@ -607,7 +630,7 @@ const MultiLeg = () => {
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
     return { paid, collected, loudKind: loud ? KIND_META[loud[0]].label : '', loudCount: loud ? loud[1] : 0 };
   }, [trades]);
-  const pill = (t: SpreadTrade) => `${t.ticker} ${t.shape === 'unnamed' ? KIND_META[t.kind].label.toLowerCase() : t.shape} · ${fmtUsd(Math.abs(t.netPremium))} net`;
+  const pill = (t: SpreadTrade) => `${t.ticker} ${t.shape === 'unnamed' ? KIND_META[t.kind].label.toLowerCase() : t.shape}${t.extended ? ' (AH, not read)' : ''} · ${fmtUsd(Math.abs(t.netPremium))} net`;
   /* the IV and the stock open folded — one click away in Columns (sixteen columns did not fit at 1440) */
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_multileg_cols_v2', ['iv', 'stock']);
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
@@ -631,7 +654,7 @@ const MultiLeg = () => {
                 </span>
               )}
             </Fact>
-            <Fact label="Paid · collected" testId="money">
+            <Fact label="Paid · collected" testId="money" title="Structures paid to put on · collected — compression packages (OPRA cbmo / mctp) are not counted: they are not bets">
               {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{facts.paid} <span className="text-textSecondary">·</span> {facts.collected}</>}
             </Fact>
             {champs.paid && champs.paid !== champs.all && (

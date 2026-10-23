@@ -769,6 +769,13 @@ export const EtfBook = () => {
     const net = rows.reduce((s, r) => s + r.flow5dM, 0);
     return { funds: rows.length, aum, net, inflow, outflow };
   }, [rows]);
+  /* the sessions every fund's flow is summed over (data/liveFiles.ts flow5 — one window for all) */
+  const flowSpan = useMemo(() => {
+    const r = feed.find(x => x.flowFrom && x.flowTo);
+    if (!r?.flowFrom || !r.flowTo) return '';
+    const md = (iso: string) => `${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
+    return `${md(r.flowFrom)}–${md(r.flowTo)}${r.flowDays && r.flowDays < 5 ? `, ${r.flowDays} days` : ''}`;
+  }, [feed]);
   const columnDefs = useMemo<ColDef<EtfRow>[]>(
     () => [
       { headerName: 'Fund', field: 'etf', flex: 1.3, minWidth: 180, cellRenderer: EtfName, headerTooltip: 'The fund — click the row to open the fund' },
@@ -828,7 +835,7 @@ export const EtfBook = () => {
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{failed ? '—' : <>{assetsB(facts.aum)}</>}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Five-day flow")}>Five-day flow</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`${statHelp("Five-day flow")} Every fund is summed over the same sessions${flowSpan ? ` (${flowSpan})` : ''}.`}>Five-day flow{flowSpan ? ` · ${flowSpan}` : ''}</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(facts.net)}`}>{failed ? '—' : <>{signedM(facts.net)}</>}</dd>
           </div>
           <div>

@@ -35,6 +35,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
 import { tideBetween, useTopNet, useLiveBook, useTide } from '../../data/traceLive';
+import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
+import { dayAdv, dayPos } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
@@ -152,13 +154,18 @@ const NetFlow = () => {
   const market = useMemo(() => {
     if (session === 'regular') {
       const w = tideBetween(tide.rows, 570, 975);
-      return w ? { net: w.net, calls: w.calls, puts: w.puts, at: nyClock(w.last * 1000), from: nyClock(w.first * 1000) } : null;
+      return w ? { net: w.net, calls: w.calls, puts: w.puts, at: nyClock(w.last * 1000), from: nyClock(w.first * 1000), none: false, span: `${nyClock(w.first * 1000)}–${nyClock(w.last * 1000)}` } : null;
     }
-    const lastPt = tide.rows.length ? tide.rows[tide.rows.length - 1] : null;
-    /* THE REAL SPAN (the re-audit, 2026-10-22: "from the open" over a tide that runs 07:30–16:14): the tide's own first
-       and last minute */
-    const firstPt = tide.rows.length ? tide.rows[0] : null;
-    return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem, at: nyClock(lastPt.time * 1000), from: firstPt ? nyClock(firstPt.time * 1000) : null } : null;
+    /* EXTENDED MEANS OUTSIDE THE SESSION, AS ON EVERY OTHER TRACE PAGE (audit round 5: "Extended hours −$939.7M ·
+       07:30–16:14" was the pre-market plus the whole session, its hover saying "after the close included"): the tide's
+       minutes before 09:30 plus its minutes from the 16:15 close, nothing between */
+    const pre = tideBetween(tide.rows, 0, 570);
+    const post = tideBetween(tide.rows, 975, 24 * 60);
+    if (!pre && !post) return { net: 0, calls: 0, puts: 0, at: '', from: null, none: true, span: '' };
+    const calls = (pre?.calls ?? 0) + (post?.calls ?? 0);
+    const puts = (pre?.puts ?? 0) + (post?.puts ?? 0);
+    const span = [pre ? `${nyClock(pre.first * 1000)}–${nyClock(pre.last * 1000)}` : null, post ? `${nyClock(post.first * 1000)}–${nyClock(post.last * 1000)}` : null].filter(Boolean).join(' + ');
+    return { net: calls - puts, calls, puts, at: (post ?? pre)!.last ? nyClock((post ?? pre)!.last * 1000) : '', from: pre ? nyClock(pre.first * 1000) : post ? nyClock(post.first * 1000) : null, none: false, span };
   }, [tide.rows, session]);
   const read = useMemo<ReactNode>(() => {
     if (!facts.top || !facts.bottom) return <RichRead text="The book is still waking up." />;
@@ -166,14 +173,15 @@ const NetFlow = () => {
     const crown = (v: number, champ: boolean) => (champ ? <span className="font-semibold tnum text-supreme">{signed(v)}</span> : <Lean v={v} />);
     return (
       <>
-        {market && (
+        {market && market.none && <RichRead text="The vendor's market tide holds no minutes outside the regular session — nothing before 09:30 or after the 16:15 close to add up. " />}
+        {market && !market.none && (
           <>
-            <RichRead text={`The whole market's money leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
-            <Lean v={market.net} /> net{market.from ? ` from ${market.from}` : ''} to {market.at} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
+            <RichRead text={`${session === 'regular' ? "The whole market's money" : "Outside the regular session, the whole market's money"} leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
+            <Lean v={market.net} /> net {session === 'regular' ? `from ${market.from} to ${market.at}` : `over ${market.span}`} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
           </>
         )}
         <RichRead text={`On the board — the vendor's ${facts.bullish} most bullish and ${facts.bearish} most bearish names — `} />
-        the bullish names sum to <Lean v={facts.calls} /> and the bearish to <Lean v={facts.puts} put />.{' '}
+        the bullish names sum to <Lean v={facts.calls} /> and the bearish to <Lean v={facts.puts} />.{' '}
         <ReadDoor onOpen={() => onQuery(top.ticker)} title={`Put ${top.ticker} on the pane`}>
           {top.ticker}
         </ReadDoor>
@@ -201,24 +209,28 @@ const NetFlow = () => {
   return (
     <TraceBox
       title="Which way the money leans"
-      sub="The vendor's most bullish and most bearish names, ranked by today's net premium — net calls less net puts · click a name and its session goes on the pane"
+      sub={`The vendor's most bullish and most bearish names, ranked by ${dayPos()} net premium — net calls less net puts, a vendor total with spread legs and floor packages in it · click a name and its session goes on the pane`}
       testId="net-flow"
       className="md:flex-1 md:min-h-0"
       data={{ picked: sel, names: leaders.length }}
       guide={{ title: 'How to read the board', door: 'What the board, the lines and the floor mean', body: <NetFlowGuide />, testId: 'net-flow-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
         <>
-          <Fact label="Market net · every name" testId="net" title={session === 'regular' ? "The vendor's market tide: every name's net call premium less its net put premium over the regular session, 09:30–16:15 ET (the tide's running figure at the close less its figure before the bell)" : "The vendor's market tide: every name's net call premium less its net put premium, over every minute the tide covers — the pre-market and after the close included (Extended hours on the Session card)"}>
-            {market ? (
+          <Fact label="Market net · every name" testId="net" title={session === 'regular' ? "The vendor's market tide: every name's net call premium less its net put premium over the regular session, 09:30–16:15 ET (the tide's running figure at the close less its figure before the bell). A vendor total: it includes spread legs and floor packages" : "The vendor's market tide, outside the regular session only (Extended hours on the Session card): every name's net call premium less its net put premium over the tide's minutes before 09:30 plus its minutes from the 16:15 close — the session itself is not in it. A vendor total: it includes spread legs and floor packages"}>
+            {market && market.none ? (
+              <span className="text-textMuted">none outside the session</span>
+            ) : market ? (
               <>
-                <Lean v={market.net} /> <span className="text-textSecondary">· {market.from ? `${market.from}–` : 'to '}{market.at} ET</span>
+                <Lean v={market.net} /> <span className="text-textSecondary">· {market.span} ET</span>
               </>
             ) : (
               <span className="text-textMuted">—</span>
             )}
           </Fact>
-          <Fact label="The board · bullish · bearish" testId="sides" title="The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market">
-            <Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} put className="font-normal" />
+          <Fact label="The board · bullish · bearish" testId="sides" title={`The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market. ${VENDOR_TOTAL_NOTE}`}>
+            {/* the bearish names' sum is a sum of names' NET premium, below zero — bearish, red (audit round 5: it wore the
+                put-premium ink and read bullish green) */}
+            <Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" />
           </Fact>
           <Fact label="Names" testId="names">
             {leaders.length} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span>
@@ -272,12 +284,12 @@ const NetFlow = () => {
             <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of the board's lean</span>
-              <span title="The vendor's own ranking (top net impact) — each name's whole day by its minute ticks. Compare reads each name's flow by expiry, the one source its clocks can be cut from; on names heavy with spreads the two vendor routes can differ, and Compare says so in its Net Flow's pane row">Net today</span>
+              <span title={`The vendor's own ranking (top net impact) — each name's whole day by its minute ticks; Compare's net and Intervals read the same ticks over the regular session. ${VENDOR_TOTAL_NOTE}`}>Net {dayAdv()}</span>
             </div>
           )}
           {leaders.length === 0 && (
             <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-board-empty>
-              {top.fault ? 'This read did not land' : 'No name has leaned yet today'}
+              {top.fault ? 'This read did not land' : `No name has leaned yet ${dayAdv()}`}
             </p>
           )}
           {leaders.map((l, i) => {
@@ -306,7 +318,7 @@ const NetFlow = () => {
                     <span className={`absolute left-0 top-0 h-full ${l.net >= 0 ? 'bg-bull/60' : 'bg-bear/60'}`} style={{ width: `${Math.round((Math.abs(l.net) / maxAbs) * 100)}%` }} />
                   </span>
                   {facts.hasVol ? (
-                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${l.count} contracts traded on ${l.ticker} today`}>
+                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${l.count} contracts traded on ${l.ticker} ${dayAdv()}`}>
                       C {fmtUsd(l.netCall)} · P {fmtUsd(l.netPut)} · {num(l.volume)} vol · {l.count} cons
                     </span>
                   ) : (

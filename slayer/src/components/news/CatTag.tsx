@@ -17,6 +17,7 @@ export const CAT_COLOR: Record<NewsCategory, string> = {
   'M&A': 'rgb(var(--cat-ma))', // pink — deals
   Product: 'rgb(var(--cat-product))', // sage — launches
   Regulatory: 'rgb(var(--cat-regulatory))', // muted rose — friction
+  General: 'rgb(var(--text-muted))', // grey — a story of no named beat
 };
 
 const CatTag = ({ category, size = 10 }: { category: NewsCategory; size?: 9 | 10 }) => (

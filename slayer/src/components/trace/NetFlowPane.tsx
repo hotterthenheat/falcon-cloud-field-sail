@@ -44,7 +44,7 @@ import {
   LineStyle,
 } from 'lightweight-charts';
 import { bookCandles, dayBars, ensureBook, useBookRev } from '../../data/uwBook';
-import { bookSession } from '../../data/flowBook';
+import { bookSession, VENDOR_TOTAL_NOTE } from '../../data/flowBook';
 import { indexRoot, usePaneFlow } from '../../data/traceLive';
 import { nyClock, nyParts, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
 import { getResolvedTheme, readToken, useColourVision, useResolvedTheme } from '../../theme/theme';
@@ -335,9 +335,9 @@ const NetFlowPane = ({
     [book, dteMax, onTicker, searchNames]
   );
 
-  useEffect(() => {
-    refNameRef.current = ref;
-  }, [ref]);
+  /* the readout names THIS pane's name (retail, 2026-10-23: Compare's QQQ pane read "SPY" on hover) — set as it renders,
+     so a hover before the effect lands never wears the default */
+  refNameRef.current = ref;
 
   const resetView = useCallback(() => {
     const chart = chartRef.current;
@@ -769,14 +769,21 @@ const NetFlowPane = ({
               every expiry
             </span>
           )}
-          <span>
+          <span title={`${ticker ? "The vendor's minute ticks for the name (/stock/{t}/net-prem-ticks), 09:30 to the close" : "The vendor's net flow by expiry (/net-flow/expiry)"}. ${VENDOR_TOTAL_NOTE}`}>
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
             <span className={ncp >= 0 ? 'text-bull' : 'text-bear'}>{tail ? fmtUsd(ncp) : '—'}</span>
           </span>
-          <span>
+          <span title={VENDOR_TOTAL_NOTE}>
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net puts</span>
             <span className={npp >= 0 ? 'text-bear' : 'text-bull'}>{tail ? fmtUsd(npp) : '—'}</span>
           </span>
+          {/* THE NET, SAID (audit round 5): the figure Compare's headline and Intervals print for the same name and window */}
+          {ticker && tail && (
+            <span title="Net calls less net puts, 09:30 to the close — the vendor's minute ticks; the same figure as Compare's net and Intervals' lean">
+              <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net</span>
+              <span className={ncp - npp >= 0 ? 'text-bull' : 'text-bear'}>{ncp - npp < 0 ? '−' : '+'}{fmtUsd(Math.abs(ncp - npp))}</span>
+            </span>
+          )}
           {headVol != null && tail && <span className="text-textSecondary">{headVol.toLocaleString('en-US')} vol</span>}
         </span>
         {onExpand && (
@@ -810,7 +817,7 @@ const NetFlowPane = ({
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.spot }} />
             <span ref={tipSpotLabelRef} className="font-mono text-[11px] uppercase tracking-wider text-textMuted">
-              SPY
+              {ref}
             </span>
             <span ref={tipSpotRef} className="ml-auto font-mono text-[11px] tnum text-textPrimary">
               —

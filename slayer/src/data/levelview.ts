@@ -15,7 +15,8 @@
 */
 
 import Simulator from '../core/simulator';
-import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyMinutes, nySession } from '../core/nyTime';
+import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyIsoDate, nyMinutes, nySession } from '../core/nyTime';
+import { recordDay } from './bookWindow';
 import { bookCandles, bookHistory, peekEntry } from './uwBook';
 import type { Candle, MarketSnapshot } from '../types/market';
 
@@ -74,7 +75,14 @@ export function sessionCut(bars: readonly Candle[]): Candle[] {
     session cut the focus chip's touches use. */
 export function sessionBars(ticker: string) {
   const live = bookCandles(ticker);
-  if (live && live.length > 1) return live;
+  /* THE SESSION ON RECORD, DATE-CHECKED (the fifth audit, 2026-10-23): the vendor's bars are the last day's, so before
+     today's open they are the previous session's — they are returned only for the session on record (recordDay), and the
+     pages name that day; bars of any other day are not that session's */
+  if (live && live.length > 1) {
+    const day = recordDay().date;
+    const own = live.filter(b => nyIsoDate(b.time * 1000) === day);
+    return own.length > 1 ? own : [];
+  }
   const bars = Simulator.peekCandles(ticker);
   if (!bars || bars.length === 0) return null;
   return sessionCut(bars);

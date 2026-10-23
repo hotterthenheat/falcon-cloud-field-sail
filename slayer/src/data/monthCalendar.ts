@@ -19,6 +19,7 @@
 import { now } from '../core/clock';
 import { type ReportSlot } from './earnings';
 import { uwCall } from './whales';
+import { econImpact } from './econImpact';
 
 export type CalImpact = 'high' | 'medium' | 'low';
 export type CalKind = 'macro' | 'earnings' | 'market' | 'fda' | 'schedule' | 'post';
@@ -72,9 +73,6 @@ const nthWeekday = (year: number, month: number, weekday: number, nth: number): 
   return new Date(year, month, 1 + offset + (nth - 1) * 7);
 };
 
-/** The headline releases — a release whose title names one of these is marked high; every other one medium. The
-    vendor's calendar carries no impact field, so this is the one rule the page applies (listed in the guide). */
-const HIGH_IMPACT = /\b(CPI|consumer price|PPI|producer price|payroll|nonfarm|unemployment|FOMC|fed (funds|rate|interest)|rate decision|GDP|PCE|retail sales|ISM)\b/i;
 
 /** New York's wall clock for an instant: the calendar draws every date on New York's day */
 const nyParts = (iso: string): { y: number; m: number; d: number; hh: number; mm: number } | null => {
@@ -96,22 +94,35 @@ function ensureEcon(): void {
   void uwCall('/market/economic-calendar').then(res => {
     const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
     const out: CalEvent[] = [];
-    rows.forEach((r, i) => {
+    /* ONE ROW PER RELEASE (audit round 5: every release showed twice — the vendor repeats each at the same minute): a
+       release at the same instant under the same title is the same release, kept once with the forecast and prior
+       either copy carries */
+    const byKey = new Map<string, CalEvent>();
+    rows.forEach(r => {
       const at = nyParts(String(r.time ?? ''));
       const title = String(r.event ?? '').trim();
       if (!at || !title) return;
       const period = String(r.reported_period ?? '').trim();
-      out.push({
-        id: `macro-econ-${title}-${String(r.time)}-${i}`,
+      const key = `${Date.parse(String(r.time))}|${title.toLowerCase()}|${period.toLowerCase()}`;
+      const had = byKey.get(key);
+      if (had) {
+        if (!had.forecast && r.forecast != null && String(r.forecast) !== '') had.forecast = String(r.forecast);
+        if (!had.previous && r.prev != null && String(r.prev) !== '') had.previous = String(r.prev);
+        return;
+      }
+      const ev: CalEvent = {
+        id: `macro-econ-${key}`,
         kind: 'macro',
         date: new Date(at.y, at.m, at.d, at.hh, at.mm),
         time: hhmm(at.hh, at.mm),
         title: period ? `${title} · ${period}` : title,
-        impact: HIGH_IMPACT.test(title) ? 'high' : 'medium',
+        impact: econImpact(title),
         region: 'USD',
         forecast: r.forecast != null && String(r.forecast) !== '' ? String(r.forecast) : undefined,
         previous: r.prev != null && String(r.prev) !== '' ? String(r.prev) : undefined,
-      });
+      };
+      byKey.set(key, ev);
+      out.push(ev);
     });
     liveEcon = out;
     bumpCalendar();

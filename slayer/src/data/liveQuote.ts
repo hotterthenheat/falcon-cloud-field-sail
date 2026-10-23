@@ -30,6 +30,13 @@ export interface LiveQuote {
   /** Before the open the session's change is not yet made: the LAST session's change, kept so a pre-market page can
       say "−1.2% Oct 22" instead of a bare 0.00% (null when the rows have not landed) */
   lastSessionPct: number | null;
+  /** THE REGULAR PRICE (audit round 5: Pinpoint and Dossier showed $763.96 and $763.97 for one SPY — one page the
+      after-hours print, the other the close): in the session the last print; outside it the last regular close. Every
+      page that prints "the price" prints this one */
+  regularPrice: number;
+  /** The extended-hours print (pre-market or after hours) when it differs from the regular price, else null — shown
+      apart, labelled by `phase`, timed by `tapeAt` */
+  extPrice: number | null;
   /** Epoch ms of the vendor's last print (tape_time), else of our read */
   tapeAt: number;
   at: number;
@@ -81,12 +88,15 @@ function quoteOf(t: string): LiveQuote | null {
     const b = a ? past[past.indexOf(a) + 1] : undefined;
     lastSessionPct = a && b && b.close > 0 ? ((a.close - b.close) / b.close) * 100 : null;
   } else if (ch.phase !== 'regular') {
-    regClose = ch.base > 0 ? ch.base * (1 + ch.dayPct / 100) : null;
+    /* to the hundredth of a cent — the product of base and change carries float dust (763.9699999…) */
+    regClose = ch.base > 0 ? Number((ch.base * (1 + ch.dayPct / 100)).toFixed(4)) : null;
     regDate = past[0]?.date ?? null;
   }
+  const regularPrice = ch.phase === 'regular' || regClose == null ? spot : regClose;
+  const extPrice = ch.phase !== 'regular' && regClose != null && Math.abs(spot - regClose) >= 0.005 ? spot : null;
   const prev = memo.get(t);
   if (prev && prev.spot === spot && prev.changePct === changePct && prev.extPct === ch.extPct && prev.phase === ch.phase && prev.regClose === regClose && prev.lastSessionPct === lastSessionPct && prev.tapeAt === r.tapeAt) return prev;
-  const next: LiveQuote = { spot, changePct, extPct: ch.extPct, phase: ch.phase, regClose, regDate, lastSessionPct, tapeAt: r.tapeAt, at: r.at };
+  const next: LiveQuote = { spot, changePct, extPct: ch.extPct, phase: ch.phase, regClose, regDate, lastSessionPct, regularPrice, extPrice, tapeAt: r.tapeAt, at: r.at };
   memo.set(t, next);
   return next;
 }

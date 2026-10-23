@@ -132,7 +132,7 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick }: Props) => {
       case 'analyst':
         return newest.filter(e => e.item.category === 'Analyst');
       case 'deals':
-        return newest.filter(e => e.item.category === 'M&A' || e.item.category === 'Product' || e.item.category === 'Regulatory');
+        return newest.filter(e => e.item.category === 'M&A' || e.item.category === 'Product' || e.item.category === 'Regulatory' || e.item.category === 'General');
       default:
         return newest;
     }

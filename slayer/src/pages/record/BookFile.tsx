@@ -31,12 +31,12 @@ import { FUND_TYPES, shortRowFromFile, useCompanyName, useEtfFile, useEtfWeights
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { useShortReads } from '../../data/shortFile';
 import { tickerName } from '../../data/tickers';
-import { AssetCell, CongressCard, assetKey, assetLine } from './Congress';
+import { AssetCell, BillsSwitch, CongressCard, assetKey, assetLine } from './Congress';
 import { PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { holdingAssetKey } from '../../data/fileBooks';
 import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
-import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, seatLabel } from '../../data/congress';
+import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, isTreasuryBill, seatLabel } from '../../data/congress';
 import { memberFromRoster, useCongressCoverage, useCongressFeed, useLiveRecord, useMemberBook } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { reportDayLabelYear } from '../../data/earningsFeed';
@@ -736,7 +736,10 @@ export const MemberFile = () => {
   const [kind, setKind] = useState<TypePick>('any');
   const [owner, setOwner] = useState<OwnerPick>('any');
   const [picks, setPicks] = useState<string[]>([]);
-  const trades = book.trades;
+  /* Treasury bills hidden by default, counted (audit round 5) — the equity trades surface */
+  const [hideBills, setHideBills] = useState(true);
+  const billsHidden = hideBills ? book.trades.filter(isTreasuryBill).length : 0;
+  const trades = useMemo(() => (hideBills ? book.trades.filter(t => !isTreasuryBill(t)) : book.trades), [book.trades, hideBills]);
   const cut = useMemo(
     () => trades.filter(t => (kind === 'any' || typeOf(t) === kind) && (owner === 'any' || t.owner === owner)),
     [trades, kind, owner],
@@ -836,13 +839,14 @@ export const MemberFile = () => {
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-member-controls>
         <DropdownSelect label="Type" value={kind} options={TYPE_OPTIONS} onChange={setKind} title="Purchase, sale or exchange" testId="member-type" />
         <DropdownSelect label="Owner" value={owner} options={OWNER_FILE_OPTIONS} onChange={setOwner} title="Whose holding" testId="member-owner" />
+        <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="member-bills" />
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-member-sentence>
         {book.status === 'loading'
           ? 'Reading their reports.'
           : book.status === 'sim'
             ? 'Their reports did not load.'
-            : <>{trades.length} {trades.length === 1 ? 'report' : 'reports'} of trades made in the last year{book.complete ? '' : ` — the read stopped at ${trades.length}, so older ones in the year may be missing`}. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days.{book.unreadTypes ? ` ${book.unreadTypes} with an unreadable type left out.` : ''} Amounts are the disclosed ranges, nothing finer.</>}
+            : <>{trades.length} {trades.length === 1 ? 'report' : 'reports'} of trades made in the last year{book.complete ? '' : ` — the read stopped at ${trades.length}, so older ones in the year may be missing`}. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days.{book.unreadTypes ? ` ${book.unreadTypes} with an unreadable type left out.` : ''}{billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from these counts.` : ''} Amounts are the disclosed ranges, nothing finer.</>}
       </p>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="member-know">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">

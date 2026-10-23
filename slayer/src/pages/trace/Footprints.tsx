@@ -29,8 +29,9 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { FOOTPRINT_SCREENS, runFootprintScreen, type FootprintScreenKey } from '../../data/flowBook';
+import { FOOTPRINT_SCREENS, runFootprintScreen, stockLike, type FootprintScreenKey } from '../../data/flowBook';
 import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
+import { dayAdv, dayPos, earnWords, oiSpanWords } from '../../components/trace/dayWords';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -67,7 +68,7 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
 /* wide enough for their heads */
 /** The previous session's columns — dropped when the book does not carry them */
 const PREV_DAY_KEYS = new Set(['builton', 'prevvol', 'prevprem', 'spark']);
-const WIDTHS: Record<string, number> = { ticker: 124, contract: 168, dte: 64, otm: 76, doi: 104, doipct: 86, builton: 104, prevavg: 88, prevprem: 92, streak: 72, spark: 96, earn: 92, lean: 96 };
+const WIDTHS: Record<string, number> = { ticker: 124, contract: 168, dte: 64, otm: 76, doi: 104, doipct: 86, builton: 104, prevavg: 88, prevprem: 92, streak: 72, spark: 96, earn: 128, lean: 96 };
 const PIN_LEFT = ['ticker', 'contract'];
 const PIN_RIGHT = ['doi'];
 const FOOT_CUTS = createViewStore('slayer_footprints_cuts_v1');
@@ -110,7 +111,7 @@ const phoneRow = (r: BookContract) => (
 const TOOLTIPS: Record<string, string> = {
   oi: 'Open interest as of the last close',
   prevoi: 'Open interest as of the close before',
-  doi: 'What changed overnight — positions built or unwound',
+  doi: 'What open interest did from the session before to this one — positions built or unwound',
   doipct: 'The change as a share of what stood before',
   builton: 'Which side did the building yesterday — at the ask, buyers; on the bid, sellers',
   prevavg: "The contract's close the session before",
@@ -158,7 +159,10 @@ const Footprints = () => {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const liveBook = useLiveBook(activeTicker).rows;
+  /* THE MARKET'S BOOK ONLY (audit round 5: the "market" book silently took in the shell's active ticker — the market's top
+     200 plus SPY's top 80 — so changing the ticker elsewhere moved the market's figures, and SPY 767P stood as the
+     biggest build though it is not among the market's 200). A name is read with the search. */
+  const liveBook = useLiveBook(null).rows;
   // The shared hold (see LiveHold): book and tick freeze together while paused.
   const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
   const { book: heldBook, tick } = hold.value;
@@ -186,20 +190,31 @@ const Footprints = () => {
   }, [book, screen, side, query]);
   const shown = rows;
 
-  const loudestBuild = useMemo(() => [...book.filter(r => r.deltaOI > 0)].sort((a, b) => b.deltaOI - a.deltaOI)[0] ?? null, [book]);
+  /* THE SENTENCE FOLLOWS THE FILTER (retail, 2026-10-23: filtered to NVDA it still said "Biggest build: SPY 767P") — the
+     side and the search cut the sentence's contracts; the screen is the grid's */
+  const filtered = useMemo(() => {
+    const sided = side === 'ALL' ? book : book.filter(r => r.right === side);
+    const nq = normSymbol(query);
+    return nq === '' ? sided : sided.filter(r => normSymbol(`${r.ticker}${r.strike}${r.right}`).includes(nq));
+  }, [book, side, query]);
+  const cutWord = useMemo(() => {
+    const bits = [query ? `matching "${query}"` : '', side === 'C' ? 'calls only' : side === 'P' ? 'puts only' : ''].filter(Boolean);
+    return bits.length ? bits.join(', ') : '';
+  }, [query, side]);
+  const loudestBuild = useMemo(() => [...filtered.filter(r => r.deltaOI > 0)].sort((a, b) => b.deltaOI - a.deltaOI)[0] ?? null, [filtered]);
 
   /* ReactNode: "The loudest:" is a door into the same card its table row
      opens — even when the current screen has it filtered out. */
   const read = useMemo<ReactNode>(() => {
-    const builds = book.filter(r => r.deltaOI > 0);
-    const unwinds = book.filter(r => r.deltaOI < 0);
+    const builds = filtered.filter(r => r.deltaOI > 0);
+    const unwinds = filtered.filter(r => r.deltaOI < 0);
     const added = builds.reduce((a, r) => a + r.deltaOI, 0);
     const removed = unwinds.reduce((a, r) => a + r.deltaOI, 0);
-    if (builds.length === 0 && unwinds.length === 0) return <RichRead text="Nothing changed hands overnight." />;
+    if (builds.length === 0 && unwinds.length === 0) return <RichRead text={`No open interest changed ${oiSpanWords()} on ${cutWord ? `the contracts ${cutWord}` : 'the book'}.`} />;
     /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
     /* WHAT IT COVERS (the audit, 2026-10-22: "Open interest grew by 297,774 overnight" summed only the book's contracts) */
-    const base = `Across the ${num(book.length)} standing contracts on the book (today's heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at today's bell left out` : ''}), open interest rose ${num(added)} overnight on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.`;
+    const base = `Across the ${num(filtered.length)} standing contracts ${cutWord ? `${cutWord} ` : ''}on the market's book (the vendor's 200 contracts with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}), open interest rose ${num(added)} ${oiSpanWords()} on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.`;
     if (!loudestBuild) return <RichRead text={base} />;
     return (
       <>
@@ -211,7 +226,7 @@ const Footprints = () => {
         <RichRead text={` [[+${num(loudestBuild.deltaOI)}]]${loudestBuild.prevVolume > 0 ? `, built ${loudestBuild.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}.`} />
       </>
     );
-  }, [book, loudestBuild, stand.expired]);
+  }, [filtered, cutWord, loudestBuild, stand.expired]);
 
   const activeScreen = FOOTPRINT_SCREENS.find(s => s.key === screen) ?? FOOTPRINT_SCREENS[0];
   const screenOptions = useMemo<DropdownOption<FootprintScreenKey>[]>(() => FOOTPRINT_SCREENS.filter(s => hasPrevSide || !['bought', 'sold', 'carryover'].includes(s.key)).map(s => ({ value: s.key, label: s.label, hint: s.hint })), [hasPrevSide]);
@@ -391,7 +406,7 @@ const Footprints = () => {
         align: 'right',
         sortValue: r => r.earnDays ?? 999,
         // A report inside the position's runway is a risk event — warn ink.
-        render: r => (r.earnDays == null ? <span className="text-textSecondary">—</span> : <span className={r.earnDays <= 5 ? 'text-warn' : 'text-textPrimary'}>{r.earnDays === 0 ? 'today' : `in ${r.earnDays}d`}</span>),
+        render: r => { const e = earnWords(r); return e ? <span className={r.earnDays! <= 5 ? 'text-warn' : 'text-textPrimary'} title={e.title}>{e.text}</span> : <span className="text-textSecondary">—</span>; },
       },
       ] as Column<BookContract>[]
     ).filter(c => prevKnown || !PREV_DAY_KEYS.has(c.key)),
@@ -425,7 +440,8 @@ const Footprints = () => {
     }
     return { added, shed, builds, unwinds };
   }, [book]);
-  const pill = (r: BookContract, v: string) => `${r.ticker} ${r.strike}${r.right} · ${v}`;
+  /* a deep-in-the-money, long-dated build trades like the stock — flagged, not read as a bet (retail, 2026-10-23) */
+  const pill = (r: BookContract, v: string) => `${r.ticker} ${r.strike}${r.right} · ${v}${stockLike(r) ? ' · stock-like' : ''}`;
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_footprints_cols');
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
 
@@ -433,13 +449,13 @@ const Footprints = () => {
     <>
       <TraceBox
         title="What the flow left standing"
-        sub={`${activeScreen.label} — ${activeScreen.hint} · open interest is what stayed overnight · a row opens the contract's card`}
+        sub={`${activeScreen.label} — ${activeScreen.hint} · open interest is what stayed ${oiSpanWords()} · the market's book, every name — search for one · a row opens the contract's card`}
         testId="footprints"
         data={{ screen, rows: rows.length, expiry: expiry ?? 'all' }}
         guide={{ title: 'How to read the footprints', door: 'What open interest, a build and a streak mean', body: <FootprintsGuide />, testId: 'footprints-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Overnight · on the book" testId="overnight" title={`Open interest added and shed since the last session, summed over the ${num(book.length)} contracts on the book — the vendor's contracts with the most premium today, plus the terminal's name — not the whole market`}>
+            <Fact label={`OI ${oiSpanWords()} · on the book`} testId="overnight" title={`Open interest added and shed ${oiSpanWords()}, summed over the ${num(book.length)} standing contracts on the market's book — the vendor's 200 contracts with the most premium ${dayAdv()}, every name; the terminal's ticker is not added — not the whole market`}>
               <span className="text-bull">+{num(facts.added)}</span> <span className="text-textSecondary">added ·</span> <span className="text-bear">−{num(facts.shed)}</span> <span className="text-textSecondary">shed</span>
             </Fact>
             <Fact label="Contracts" testId="contracts">

@@ -487,13 +487,13 @@ const Earnings = () => {
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Reports" testId="reports">
-              {pending || failed ? <span className="text-textMuted">—</span> : <>{weekEvents.length} <span className="text-textMuted">· {weekWords} ·</span> {weekKnown.length} <span className="text-textMuted">known names</span>{cover.missed ? <span className="text-warn" title={`${cover.missed} of the ${cover.slots} day lists did not answer`}> · short</span> : null}</>}
+              {failed ? <span className="text-textMuted">—</span> : pending ? <span className="text-textMuted">reading the lists…</span> : <>{weekEvents.length.toLocaleString('en-US')} <span className="text-textMuted">· {weekWords} ·</span> {weekKnown.length.toLocaleString('en-US')} <span className="text-textMuted">known names</span>{cover.missed ? <span className="text-warn" title={`${cover.missed} of the ${cover.slots} day lists did not answer`}> · short</span> : null}</>}
             </Fact>
             <Fact label="Priced" testId="priced">
               {failed ? (
                 <span className="text-textMuted">—</span>
-              ) : scored.length === 0 ? (
-                <span className="text-textMuted">reading the usual moves</span>
+              ) : pending || scored.length === 0 ? (
+                <span className="text-textMuted">{pending ? 'reading the lists…' : 'reading the usual moves'}</span>
               ) : (
                 <span title={`Known names still to report ${weekWords} with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${ahead.length}. A name with fewer, or none, is not called rich or cheap`}>
                   <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
@@ -523,9 +523,10 @@ const Earnings = () => {
                   {today.length > 3 && <span className="text-textMuted"> · +{today.length - 3} more</span>}
                 </>
               ) : (
-                <span className="text-textMuted">{failed ? '—' : todayMore > 0 ? 'no known name' : 'nothing reports'}</span>
+                /* NEVER A FALSE "NOTHING" WHILE THE LISTS LOAD (audit round 5: "Today: nothing reports" at 35s, Reports —) */
+                <span className="text-textMuted">{failed ? '—' : pending ? 'reading the day' : todayMore > 0 ? 'no known name' : 'nothing reports'}</span>
               )}
-              {todayMore > 0 && <span className="text-textMuted"> · {todayMore} more on the list</span>}
+              {!pending && todayMore > 0 && <span className="text-textMuted"> · {todayMore} more on the list</span>}
             </Fact>
           </dl>
         </div>

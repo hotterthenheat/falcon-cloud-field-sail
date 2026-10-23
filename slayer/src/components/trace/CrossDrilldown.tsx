@@ -20,6 +20,7 @@ import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 import { nyClock } from '../../core/nyTime';
 import { postureOf, quotePlace, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
+import { dayAdv } from './dayWords';
 import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
@@ -39,7 +40,7 @@ const INTENT_TAG: Record<DarkPoolIntent, string> = { ACCUMULATION: 'ACCUMULATION
 const IntentTag = ({ intent }: { intent: DarkPoolIntent }) => (
   <span className={`font-mono text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${INTENT_INK[intent]}`}>{INTENT_TAG[intent]}</span>
 );
-const noReadWord = (p: DarkPoolPrint) => (p.special ? 'no read · terms' : p.extended ? 'no read · after hours' : 'no read · small');
+const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · auction' : 'no read · terms') : p.extended ? 'no read · after hours' : 'no read · small');
 
 const shelfOf = (p: DarkPoolPrint, view: DarkPoolView | null) => {
   if (!view || !p.atLevel) return null;
@@ -412,21 +413,26 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                 label={`${print.ticker}, prints in hand`}
                 value={
                   view ? (
-                    postureOf(view.prints).read === 0 ? (
-                      <span className="text-textMuted" title="No sized regular-session cross at the quote — nothing to read">nothing to read</span>
-                    ) : (
-                      <span className={view.posture === 'ACCUMULATING' ? 'text-bull' : view.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'}>
-                        {POSTURE_WORD[view.posture]}
-                        {view.posture !== 'BALANCED' ? ` · ${gradeOfPosture(view.netPosturePct)}` : ''}
-                      </span>
-                    )
+                    (() => {
+                      /* the posture is computed here from the prints, by the SidesRule (postureOf) — never a view's stored
+                         field (audit round 5: USHY read Balanced beside 70/30) */
+                      const pv = postureOf(view.prints);
+                      return pv.read === 0 ? (
+                        <span className="text-textMuted" title="No sized regular-session cross at the quote — nothing to read">nothing to read</span>
+                      ) : (
+                        <span className={pv.posture === 'ACCUMULATING' ? 'text-bull' : pv.posture === 'DISTRIBUTING' ? 'text-bear' : 'text-textSecondary'} title={`Net ${pv.net > 0 ? '+' : pv.net < 0 ? '−' : ''}${Math.abs(pv.net)}% of the sized dollars over the mid less under it, across ${pv.read} sized cross${pv.read === 1 ? '' : 'es'} in hand. ${pv.note}`}>
+                          {POSTURE_WORD[pv.posture]}
+                          {pv.posture !== 'BALANCED' ? ` · ${gradeOfPosture(pv.net)}` : ''}
+                        </span>
+                      );
+                    })()
                   ) : '—'
                 }
               />
               {/* THE DAY IS THE NAME'S OWN DAY (the audit, 2026-10-22: "Dark dollars today" was the buffer's few prints) —
                   /darkpool/{t}/price-levels, every dark and lit share by price */}
-              <Fact label="Off-exchange today" value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
-              <Fact label="Dark dollars today" value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh${day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}` : day.waiting ? '…' : '—'} />
+              <Fact label={`Off-exchange ${dayAdv()}`} value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
+              <Fact label={`Dark dollars ${dayAdv()}`} value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh${day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}` : day.waiting ? '…' : '—'} />
               <Fact label="Crosses in hand" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
               <Fact label="This cross" value={print.sized ? 'Sized' : 'Ordinary'} valueCls={print.sized ? 'text-textPrimary' : 'text-textMuted'} />
             </div>

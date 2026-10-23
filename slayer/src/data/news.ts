@@ -15,7 +15,8 @@ import { now } from '../core/clock';
 import { UNIVERSE, lookup, type UniverseName } from './universe';
 import { storyBody } from './newsBody';
 
-export type NewsCategory = 'Earnings' | 'Guidance' | 'Analyst' | 'Macro' | 'M&A' | 'Product' | 'Regulatory';
+/** 'General' is a story of no beat the headline names — never filed as Product by default (audit round 5) */
+export type NewsCategory = 'Earnings' | 'Guidance' | 'Analyst' | 'Macro' | 'M&A' | 'Product' | 'Regulatory' | 'General';
 
 /* HOW SURE THE READ IS, SAID IN THE FOUR WORDS (Noah, 2026-09-19: "move the news page to the four words"). The figure
    (`confidencePct`, 42–94) stays inside the engine — it may SORT the wire ("Most sure"), it never reaches a digit. The cuts
@@ -218,6 +219,7 @@ const CATEGORY_KICK: Record<NewsCategory, number> = {
   Analyst: 1.4,
   Product: 1.2,
   Macro: 1.0,
+  General: 0.8,
 };
 
 const CATEGORY_BASE: Record<NewsCategory, { median: string; hit: number; n: number }> = {
@@ -228,6 +230,7 @@ const CATEGORY_BASE: Record<NewsCategory, { median: string; hit: number; n: numb
   Analyst: { median: '1.1%', hit: 60, n: 132 },
   Product: { median: '0.9%', hit: 57, n: 88 },
   Macro: { median: '0.8%', hit: 58, n: 210 },
+  General: { median: '0.7%', hit: 55, n: 60 },
 };
 
 function predict(category: NewsCategory, sentiment: number, magnitude: number, beta: number, seed: string): NewsPrediction {
@@ -304,6 +307,7 @@ const HALF_LIFE_SESSIONS: Record<NewsCategory, number> = {
   Macro: 2.3,
   Product: 1.8,
   Regulatory: 3.0,
+  General: 1.0,
 };
 
 const clampN = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));

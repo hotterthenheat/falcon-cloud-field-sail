@@ -92,6 +92,8 @@ export interface CongressFeed {
   windowDays: number;
   /** Rows whose type could not be read at all, counted rather than dropped silently */
   unreadTypes?: number;
+  /** Rows tagged house/senate whose person the politician list does not carry as a member — left out */
+  notMembers?: number;
 }
 
 /* ---- Insiders ------------------------------------------------------------------ */

@@ -786,6 +786,20 @@ const SvgNewsMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reac
   );
 };
 
-const NewsMap = (props: Props) => (props.figure ? <SvgNewsMap {...props} /> : <LiveMap {...props} sessions={openSessions(props.at)} />);
+/** WebGL in this browser — without it the live map cannot draw at all */
+const hasWebGL = (): boolean => {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+};
+/* THE MAP ALWAYS DRAWS (audit round 5, the retail phone test: the map panel was an empty dark rectangle): the live map
+   when WebGL can draw it, else — no WebGL, or a map whose land never landed — the flat SVG map, the same pins */
+const NewsMap = (props: Props) => {
+  const [live, setLive] = useState(() => (typeof document === 'undefined' ? false : hasWebGL()));
+  return props.figure || !live ? <SvgNewsMap {...props} /> : <LiveMap {...props} sessions={openSessions(props.at)} onFail={() => setLive(false)} />;
+};
 
 export default NewsMap;

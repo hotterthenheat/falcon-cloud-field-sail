@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
-import { bookToday, expiryFor, isoDate, nextSession } from '../core/calendar';
+import { bookToday, expiryFor, isoDate, isTradingDay, nextSession } from '../core/calendar';
 import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { pickLegWalls } from '../core/walls';
 import { registerChainDates } from './chainDates';
@@ -106,6 +106,11 @@ interface Entry {
   everFull?: boolean;
   /** Each expiry's own implied move (volatility/term-structure implied_move), dollars from the quote into that expiry */
   termMove?: Record<string, number>;
+  /** The vendor's own scaling of its implied move against the ATM vol, k in move = k·S·σ·√(dte/365) (≈ 0.68), fitted
+      off its own term-structure rows — the formula a date with no implied move of its own is read with */
+  termK?: number;
+  /** The calendar days to each expiry the vendor's implied moves are quoted over (its `dte`) */
+  termDte?: Record<string, number>;
   /** The whole book's gamma is the vendor's live open-interest book (spot-exposures/strike), not the morning snapshot */
   gammaLive?: boolean;
 }
@@ -399,7 +404,14 @@ function candlesFrom(bars: UwBar[]): { cash: Candle[]; tape: Candle[] } {
   const day = nyIsoDate(parsed[parsed.length - 1].time * 1000);
   const tape = parsed.filter(b => nyIsoDate(b.time * 1000) === day || nyMinutes(b.time * 1000) >= 20 * 60);
   const session = tape.filter(b => nyMinutes(b.time * 1000) >= OPEN_MIN && nyMinutes(b.time * 1000) < CLOSE_MIN);
-  const cash = session.length >= 2 ? session : tape.filter(b => nyIsoDate(b.time * 1000) === day);
+  /* BEFORE TODAY'S OPEN THE CASH BARS ARE THE LAST SESSION'S (the fifth audit, 2026-10-23): with pre-market prints on the
+     tape the newest day had no cash bars, and its pre-market stood in as "the session" — the last day that has cash
+     bars is the session on record (data/bookWindow.ts recordDay) */
+  const inCash = (b: Candle) => nyMinutes(b.time * 1000) >= OPEN_MIN && nyMinutes(b.time * 1000) < CLOSE_MIN;
+  const lastCash = [...parsed].reverse().find(inCash);
+  const lastDay = lastCash ? nyIsoDate(lastCash.time * 1000) : null;
+  const prior = lastDay && lastDay !== day ? parsed.filter(b => inCash(b) && nyIsoDate(b.time * 1000) === lastDay) : [];
+  const cash = session.length >= 2 ? session : prior.length >= 2 ? prior : tape.filter(b => nyIsoDate(b.time * 1000) === day);
   return { cash: cash.length >= 2 ? cash : parsed, tape: tape.length ? tape : parsed };
 }
 
@@ -967,6 +979,77 @@ function termMoveOf(rows: UwTerm[], spot: number): Record<string, number> | null
   return Object.keys(out).length ? out : null;
 }
 
+/** The vendor's k (see Entry.termK): the median of move ÷ (S·σ·√(dte/365)) over its rows — null when no row carries both */
+function termKOf(rows: UwTerm[], spot: number): number | null {
+  if (!Array.isArray(rows) || !(spot > 0)) return null;
+  const ks: number[] = [];
+  for (const r of rows) {
+    let v = num(r.volatility);
+    if (v > 3) v /= 100;
+    const m = num(r.implied_move);
+    const dte = num((r as Record<string, unknown>).dte);
+    if (v > 0 && v < 5 && m > 0 && dte > 0) ks.push(m / (spot * v * Math.sqrt(dte / 365)));
+  }
+  if (!ks.length) return null;
+  ks.sort((a, b) => a - b);
+  const k = ks[Math.floor(ks.length / 2)];
+  return k > 0.3 && k < 1.2 ? k : null;
+}
+function termDteOf(rows: UwTerm[]): Record<string, number> | null {
+  const out: Record<string, number> = {};
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const d = String(r.expiry ?? '');
+    const dte = num((r as Record<string, unknown>).dte);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && dte > 0) out[d] = dte;
+  }
+  return Object.keys(out).length ? out : null;
+}
+/** The k used when the vendor's rows give none — its typical value (straddle-to-σ√T with its day count) */
+const K_DEFAULT = 0.68;
+
+/*
+  THE SCOPE'S EXPECTED MOVE (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20, and the page read ATM IV × spot
+  × √(1/252) = $4.95 while the vendor's own implied move into Nov 20 is $14.98; where both exist that ATM formula runs
+  ≈ 1.76× the vendor's one-day figure). The move the reach odds and the "expected move" read is the vendor's implied move
+  into the scope's expiry wherever it has one — over the scope's whole horizon, so a multi-day scope's odds are "by Nov
+  20", and say so. A date with no implied move of its own is read with the vendor's own formula, k·S·σ·√(dte/365), k
+  fitted off its other rows; the 30-day IV only when the date has no ATM vol either. `source` says which was used.
+*/
+export interface ScopeMove {
+  /** Dollars, one standard move over the horizon */
+  move: number;
+  /** The expiry the move runs to */
+  until: string | null;
+  /** True when that expiry is past the coming session — the odds are "by <date>", not "by the close" */
+  multi: boolean;
+  source: 'vendor' | 'fitted' | 'iv30';
+  /** "the vendor's implied move into Nov 20" — which number was used, in words */
+  words: string;
+}
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const monDayOf = (iso: string): string => {
+  const [, m, d] = iso.split('-').map(Number);
+  return m && d ? `${MON3[m - 1]} ${d}` : iso;
+};
+export function peekScopeMove(ticker: string, date?: string | null): ScopeMove | null {
+  const e = peekEntry(ticker);
+  if (!e || e.status !== 'live' || !(e.spot > 0)) return null;
+  const floor = isoDate(bookToday());
+  const listed = e.expiries.map(x => x.date).filter(d => d >= floor).sort();
+  const d = date && date >= floor ? date : listed[0] ?? null;
+  const session = isoDate(nextSession(bookToday()));
+  const multi = !!d && d > session;
+  const k = e.termK ?? K_DEFAULT;
+  const name = d ? monDayOf(d) : null;
+  const vendor = d ? e.termMove?.[d] : undefined;
+  if (vendor && vendor > 0) return { move: vendor, until: d, multi, source: 'vendor', words: `the vendor's implied move into ${name}` };
+  const dte = (d && e.termDte?.[d]) || (d ? Math.max(1, Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${floor}T00:00:00Z`)) / 86_400_000) + 1) : 1);
+  const atm = d ? e.termIv?.[d] : undefined;
+  if (atm && atm > 0) return { move: k * e.spot * atm * Math.sqrt(dte / 365), until: d, multi, source: 'fitted', words: `${name}'s at-the-money vol on the vendor's own scale (no implied move printed for ${name})` };
+  if (e.iv > 0) return { move: k * e.spot * e.iv * Math.sqrt(dte / 365), until: d, multi, source: 'iv30', words: `the 30-day implied vol on the vendor's scale (no vol printed for ${name ?? 'the expiry'})` };
+  return null;
+}
+
 /*
   ONE SESSION'S EXPECTED MOVE, DOLLARS (the third audit, 2026-10-23: "EXPECTED MOVE ±$7.32", which drives every reach
   odd, was the 30-day IV off iv-rank — 15.2% — while the Oct 23 ATM vol is 17.4% and the vendor's own implied move into
@@ -983,9 +1066,12 @@ export function peekDaySigma(ticker: string, date?: string | null): number | nul
   const session = isoDate(nextSession(bookToday()));
   const move = d ? e.termMove?.[d] : undefined;
   if (d === session && move && move > 0) return move;
+  /* ONE SESSION ON THE VENDOR'S OWN SCALE (the fifth audit: ATM × S × √(1/252) ran ≈ 1.76× the vendor's one-day move):
+     k·S·σ·√(1/365), k fitted off its rows — on SPY 0.68 × 763.96 × 0.174 × √(1/365) = $4.73 against its $4.74 */
+  const k = e.termK ?? K_DEFAULT;
   const atm = d ? e.termIv?.[d] : undefined;
-  if (atm && atm > 0) return e.spot * atm * Math.sqrt(1 / 252);
-  return e.iv > 0 ? e.spot * e.iv * Math.sqrt(1 / 252) : null;
+  if (atm && atm > 0) return k * e.spot * atm * Math.sqrt(1 / 365);
+  return e.iv > 0 ? k * e.spot * e.iv * Math.sqrt(1 / 365) : null;
 }
 
 /** The 1-day tenor, as a fraction of spot. The vendor prints a fraction (0.004 = 0.4%). */
@@ -1267,6 +1353,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     impliedMove: impliedMoveOf(Array.isArray(termRows) ? termRows : [], nyIsoDate(), spot),
     termIv: termIvOf(Array.isArray(termRows) ? termRows : []) ?? prevEntry?.termIv,
     termMove: termMoveOf(Array.isArray(termRows) ? termRows : [], spot) ?? prevEntry?.termMove,
+    termK: termKOf(Array.isArray(termRows) ? termRows : [], spot) ?? prevEntry?.termK,
+    termDte: termDteOf(Array.isArray(termRows) ? termRows : []) ?? prevEntry?.termDte,
     dayMoveFrac: dayFracOf(Array.isArray(interpRows) ? interpRows : []),
     all: (() => {
       const base = chainFrom(strikes, spot, oiMap(Array.isArray(oiRows) ? oiRows : []), flowMap(Array.isArray(flowRows) ? flowRows : []));
@@ -1338,6 +1426,16 @@ function keepTotals(entry: Entry, rows: unknown): void {
 
 const FRONT_MS = 180_000;
 
+/* THE OWN-VOL HORIZON (the fifth audit, 2026-10-23): the live dates whose contracts' own implied vols the flip re-prices
+   with (data/flipLevel.ts) — every live date. A thirty-day horizon with the at-the-money vol past it was tried and is
+   not enough: AAPL's whole book is nearly flat across −8%…−5% (≈ $4M a dollar), and the December and January dates'
+   wings at the ATM vol against their own moved it by ~$80M — no crossing at all, against 325.99 with every contract's
+   own vol. The full book reads every date's contracts anyway; a Board-only name reading "All expiries" reads them too
+   (loadBoardDates), so both pages hold the same vols. */
+export const OWN_IV_DAYS = 3660;
+export const inOwnIvHorizon = (date: string, from: string = isoDate(bookToday())): boolean =>
+  date >= from && (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 <= OWN_IV_DAYS;
+
 /*
   A BOARD NAME'S FRONT DATE (the ship pass, 2026-10-22). A name read for the Board alone used to carry no per-expiry
   chain at all, so its "Today" levels silently fell back to the whole book (QQQ's net GEX on the Board was the whole
@@ -1403,7 +1501,9 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   }
   /* AFTER THE CLOSE, TODAY'S OWN CONTRACTS (names with a same-day expiry): the book the session ran on, for "Flip crossed
      today" — the vendor still serves this morning's rows for them (one call, once) */
-  const ny = nyIsoDate();
+  /* …and before today's open, the last session's own contracts (the session on record — data/bookWindow.ts recordDay):
+     "How the levels held" and "Flip crossed" grade that session against the book live in it (the fifth audit) */
+  const ny = recordIso();
   if (today > ny && listed.some(r => r.date === ny)) {
     const cur = cache.get(entry.ticker);
     if (cur && !cur.byDate[ny]?.length && !emptyDates.get(entry.ticker)?.has(ny)) {
@@ -1420,6 +1520,25 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   }
   /* "All expiries" on the Board: every live date's strikes, so the flip can re-price each date at its own clock */
   if (readLevelsScope() === 'ALL') await loadBoardDates(entry.ticker, token, listed);
+}
+
+/** The own-vol horizon's dates whose contracts are not read yet */
+function horizonFactsMissing(entry: Entry): string[] {
+  const facts = entry.factsDates ?? new Set<string>();
+  return Object.keys(entry.byDate).filter(d => inOwnIvHorizon(d) && entry.byDate[d]?.length && !facts.has(d));
+}
+
+/** The session on record's date (data/bookWindow.ts recordDay, kept here without the import cycle): today's from the
+    open on, else the last session that ran */
+function recordIso(): string {
+  const iso = nyIsoDate();
+  const [y, m, d] = iso.split('-').map(Number);
+  if (isTradingDay(new Date(y, m - 1, d)) && nyMinutes() >= OPEN_MIN) return iso;
+  for (let back = 1; back < 12; back++) {
+    const p = new Date(y, m - 1, d - back);
+    if (isTradingDay(p)) return isoDate(p);
+  }
+  return iso;
 }
 
 /** Every live listed date carries its own strikes */
@@ -1443,7 +1562,17 @@ async function loadBoardDates(ticker: string, token: number, listed?: { date: st
   const today = isoDate(bookToday());
   void today;
   const want = (listed ?? e.expiries).slice(0, 40).map(x => x.date).filter(d => !e.byDate[d]?.length && !emptyDates.get(ticker)?.has(d));
-  if (!want.length) return;
+  if (!want.length) {
+    if (horizonFactsMissing(e).length && !e.full) {
+      datesWait.add(ticker);
+      try {
+        await fillExpiryFacts(e, token, horizonFactsMissing(e));
+      } finally {
+        datesWait.delete(ticker);
+      }
+    }
+    return;
+  }
   datesWait.add(ticker);
   try {
     const fetched = await mapLimit(want, 3, async date => {
@@ -1468,6 +1597,10 @@ async function loadBoardDates(ticker: string, token: number, listed?: { date: st
     if (listed?.length) current.expiries = listed;
     cache.set(ticker, current);
     emit();
+    /* the own-vol horizon's contracts (the flip re-prices those dates with each contract's own vol — data/flipLevel.ts),
+       the ones not read yet; the front date's came with loadFront */
+    const need = horizonFactsMissing(current);
+    if (need.length && !current.full) await fillExpiryFacts(current, token, need);
   } finally {
     datesWait.delete(ticker);
   }
@@ -1477,7 +1610,7 @@ async function loadBoardDates(ticker: string, token: number, listed?: { date: st
     re-prices each at its own clock). A no-op for a full book or one already complete. */
 export function ensureScopeDates(ticker: string, scope: LevelsScope = readLevelsScope()): void {
   const e = peekEntry(ticker);
-  if (!e || e.status !== 'live' || e.full || scope !== 'ALL' || datesComplete(e)) return;
+  if (!e || e.status !== 'live' || e.full || scope !== 'ALL' || (datesComplete(e) && !horizonFactsMissing(e).length)) return;
   void loadBoardDates(e.ticker, gen.get(e.ticker) ?? 0);
 }
 
