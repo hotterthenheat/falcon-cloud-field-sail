@@ -92,8 +92,41 @@ async function uw<T>(path: string, priority = false): Promise<T> {
   return got.data as T;
 }
 
+/* ONE ASK PER ADDRESS (the fourth audit, 2026-10-23: the short file and the member page fired each of their reads twice —
+   the desk's ledger and the page's own read ask the same address). Two asks for the same path share one request while
+   it is in flight, and a slow-moving route's answer (one the proxy itself keeps five minutes) is reused for a minute.
+   The routes that move with the tape (the proxy's 3- and 15-second classes) are never reused, only shared while in flight. Each caller gets
+   its own copy of the body, so one caller's sort never reorders another's rows. */
+type UwAnswer = { status: number; data: unknown; error: string | null };
+/* the proxy's own short-lived classes (server/uwProxy.mjs ttlFor): the 3- and 15-second routes and one contract's
+   reads move with the tape and are polled — they are only ever shared in flight */
+const LIVE_PATH = /\/(option-trades|flow-alerts|market-tide|sector-tide|etf-tide|top-net-impact|net-flow|greek-flow|stock-state|quote|flow-per-strike-intraday|net-prem-ticks|nope|spot-exposures|greek-exposure|gex-levels|flow-per-|oi-|option-contracts|atm-chains|interpolated-iv|ohlc\/(?:1m|2m|3m|5m|15m|1h)|darkpool|lit-flow|options-volume|stock-price-levels|stock-volume-price-levels)(\/|$)|^\/option-contract\//;
+const REUSE_MS = 60_000;
+const shared = new Map<string, { at: number; done: boolean; p: Promise<UwAnswer> }>();
+const copyOf = (a: UwAnswer): UwAnswer => {
+  try {
+    return { ...a, data: a.data == null || typeof a.data !== 'object' ? a.data : structuredClone(a.data) };
+  } catch {
+    return a;
+  }
+};
+
 /** One GET, with the vendor's status and message. Does not invent a body. */
-export async function uwCall(path: string, priority = false): Promise<{ status: number; data: unknown; error: string | null }> {
+export async function uwCall(path: string, priority = false): Promise<UwAnswer> {
+  const now = Date.now();
+  const hit = shared.get(path);
+  if (hit && (!hit.done || (!LIVE_PATH.test(path.split('?')[0]) && now - hit.at < REUSE_MS))) return copyOf(await hit.p);
+  const entry = { at: now, done: false, p: uwFetch(path, priority) };
+  shared.set(path, entry);
+  const got = await entry.p;
+  entry.done = true;
+  entry.at = Date.now();
+  if (got.error) shared.delete(path);
+  if (shared.size > 400) for (const [k, v] of shared) if (v.done && Date.now() - v.at > REUSE_MS) shared.delete(k);
+  return copyOf(got);
+}
+
+async function uwFetch(path: string, priority: boolean): Promise<UwAnswer> {
   await takeSlot(priority);
   try {
     let res = await fetch(`/api/uw${path}`);

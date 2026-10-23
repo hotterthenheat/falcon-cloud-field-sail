@@ -131,6 +131,8 @@ export function deskAgenda(snapshot: MarketSnapshot, expiry: ExposureExpiry, clo
     const iv = peekIv(t) ?? 0;
     ensureOiChange(t);
     const profile = buildExposureProfile(snapshot, expiry, LEVELS_WINDOW);
+    /* nothing provisional (the fourth audit's M1): an agenda waits for its levels' contracts */
+    if (snapshot.liveBook && profile.levels.complete === false) return null;
     const bars = bookCandles(t) ?? [];
     const building = buildBuilding(snapshot, bookHistory(t) ?? [], bars, profile, clock, peekOiChange(t));
     return buildAgenda(snapshot, profile, building, surface, bars, clock, iv, order);

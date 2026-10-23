@@ -55,7 +55,7 @@ import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
-import { stateOf, type VolState } from '../../components/earnings/volState';
+import { richText, stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
 import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useNextReport, useNextReportPending, historyMissed } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
@@ -344,7 +344,7 @@ const PricedCell = ({ data }: ICellRendererParams<EarningsEvent>) => {
   const s = stateOf(data);
   return (
     <span className={`font-mono text-[11px] tnum ${PRICED_INK[s]}`}>
-      {data.richness.toFixed(2)}× <span className="text-[9px] uppercase tracking-widest">{PRICED_WORD[s]}</span>
+      {richText(data.richness)}× <span className="text-[9px] uppercase tracking-widest">{PRICED_WORD[s]}</span>
     </span>
   );
 };
@@ -502,10 +502,10 @@ const Earnings = () => {
                 </span>
               )}
             </Fact>
-            <Fact label="Biggest move" testId="biggest">
+            <Fact label="Biggest priced move" testId="biggest">
               {biggest ? (
                 <>
-                  {biggest.ticker} ±{biggest.impliedMovePct.toFixed(1)}% <span className="text-textMuted">· {biggest.dateLabel}</span>
+                  {biggest.ticker} ±{biggest.impliedMovePct.toFixed(1)}% <span className="text-textMuted">· {biggest.dateLabel} · known names, {weekWords}</span>
                 </>
               ) : (
                 <span className="text-textMuted">—</span>

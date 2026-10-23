@@ -64,6 +64,7 @@ import { SECTORS, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
 import { statHelp } from '../../components/record/statHelp';
 import { phonePin } from '../../components/record/pagedGrid';
+import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 
 type ScreenPick = 'all' | Grade;
 type SectorPick = 'all' | Sector;
@@ -75,6 +76,8 @@ type NamesPick = 'all' | 'board';
 const gradeOfPick = (p: StockPick): Grade => gradeOfComposite(p.composite);
 const SCREEN_DOT: Record<Grade, string> = { strong: 'bg-bull ring-2 ring-bull/30', good: 'bg-bull', caution: 'bg-warn', poor: 'bg-bear' };
 const GRADE_RANK: Grade[] = ['strong', 'good', 'caution', 'poor'];
+const GRADE_WORD_INK: Record<Grade, string> = { strong: 'text-bull', good: 'text-bull', caution: 'text-warn', poor: 'text-bear' };
+const SLEEVE_NAME: Record<keyof StockSleeves, string> = { momentum: 'The trend', quality: 'The numbers', flow: 'The money', news: 'The news' };
 
 const SCREEN_OPTIONS: DropdownOption<ScreenPick>[] = [
   { value: 'all', label: 'Every screen', short: 'All', hint: 'Strong, good, caution and poor' },
@@ -153,7 +156,15 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
 };
 const TrendCell = ({ data }: ICellRendererParams<StockPick>) => {
   if (!data || data.trend.length < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
-  return <Sparkline data={data.trend} up={data.trend[data.trend.length - 1] >= data.trend[0]} width={72} height={20} />;
+  const first = data.trend[0];
+  const last = data.trend[data.trend.length - 1];
+  const chg = first > 0 ? ((last - first) / first) * 100 : 0;
+  return (
+    <span className="flex items-center gap-1.5 cursor-help" title={`The closes a year ago, six, three and one month ago, a week ago and now: ${data.trend.map(v => v.toFixed(2)).join(' → ')} — ${signedPct(chg)} over the span`}>
+      <Sparkline data={data.trend} up={last >= first} width={56} height={20} />
+      <span className={`font-mono text-[9px] tnum ${dirInk(chg)}`}>{signedPct(chg, 0)}</span>
+    </span>
+  );
 };
 
 /** A sleeve as a bar against the 50 line. A quiet sleeve was not on the feed and stays out of the screen. */
@@ -163,11 +174,16 @@ const sleeveCell =
     if (!data) return null;
     if (data.quiet.includes(key)) return <span className="font-mono text-[10px] text-textMuted" title="Not on this feed — left out of the screen">—</span>;
     const v = data.sleeves[key];
+    const g = gradeOfComposite(v);
+    /* A BAR WITH ITS WORD AND ITS FIGURES (the fourth audit's retail test, 2026-10-23: the bars carried no value or label)
+       — the grade word beside it, the measures it is read from on hover */
+    const note = data.sleeveNotes?.[key];
     return (
-      <span className="flex items-center h-full w-full pr-2" title={v > 50 ? 'Above the 50 line — for the name' : 'Below the 50 line — against it'}>
+      <span className="flex items-center gap-1.5 h-full w-full pr-2 cursor-help" title={`${SLEEVE_NAME[key]} reads ${g} (${v > 50 ? 'above the 50 line — for the name' : 'below the 50 line — against it'})${note ? `. ${note}` : ''}`} data-sleeve={key} data-grade={g}>
         <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
           <span className={`absolute left-0 top-0 h-full rounded-full ${v > 50 ? 'bg-bull' : 'bg-bear/70'}`} style={{ width: `${v}%` }} />
         </span>
+        <span className={`shrink-0 font-mono text-[8px] uppercase tracking-widest ${GRADE_WORD_INK[g]}`}>{g}</span>
       </span>
     );
   };
@@ -186,6 +202,51 @@ const WhyCell = ({ data }: ICellRendererParams<StockPick>) =>
       {data.thesis}
     </span>
   ) : null;
+
+/* THE PHONE CARD — the name, the price and the day, the screen word and the three sleeves' words (PhoneCards.tsx) */
+const StockCard = (p: StockPick) => {
+  const g = gradeOfPick(p);
+  const sleeve = (k: keyof StockSleeves, label: string) =>
+    p.quiet.includes(k) ? null : (
+      <span key={k} title={p.sleeveNotes?.[k]}>
+        {label} <span className={GRADE_WORD_INK[gradeOfComposite(p.sleeves[k])]}>{gradeOfComposite(p.sleeves[k])}</span>
+      </span>
+    );
+  return (
+    <>
+      <CardLine
+        left={
+          <span className="inline-flex items-center gap-2 min-w-0">
+            <CompanyLogo ticker={p.ticker} size={16} />
+            <span className="font-mono font-bold">{p.ticker}</span>
+            <span className="text-[10.5px] text-textMuted truncate">{p.name}</span>
+          </span>
+        }
+        right={
+          <span className="inline-flex items-baseline gap-2">
+            <LastCell {...({ data: p } as ICellRendererParams<StockPick>)} />
+            <TodayCell {...({ data: p } as ICellRendererParams<StockPick>)} />
+          </span>
+        }
+      />
+      <CardLine
+        muted
+        left={
+          <span className="inline-flex flex-wrap gap-x-2 font-mono text-[9px] uppercase tracking-widest">
+            {[sleeve('momentum', 'trend'), sleeve('quality', 'numbers'), sleeve('flow', 'money')].filter(Boolean)}
+          </span>
+        }
+        right={
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-textPrimary">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SCREEN_DOT[g]}`} />
+            {g}
+          </span>
+        }
+      />
+      <CardLine muted left={<span className="text-[10.5px]">{p.sector} · {p.thesis}</span>} />
+    </>
+  );
+};
 
 /* ---- the rotation -------------------------------------------------------------- */
 
@@ -227,6 +288,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
 
 const Stocks = () => {
   const navigate = useNavigate();
+  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [screen, setScreen] = useState<ScreenPick>('all');
   const [sector, setSector] = useState<SectorPick>('all');
@@ -312,10 +374,10 @@ const Stocks = () => {
       { headerName: 'Sector', field: 'sector', width: 132, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
       { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (priceWords(peekQuote(p.data.ticker))?.lead || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The regular close outside the session (hover for the after-hours or pre-market print and its time, ET); the last price in it' },
       { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — today's close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
-      { headerName: 'Year', field: 'trend', width: 92, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
-      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 88, cellRenderer: sleeveCell('momentum'), headerTooltip: 'RSI — above the 50 line the trend is up, below it is not. A dash is left out of the screen.' },
-      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 88, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. Above the 50 line is growing. A dash means the feed has no growth figure.' },
-      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 88, cellRenderer: sleeveCell('flow'), headerTooltip: 'Call premium against put premium. Above the 50 line the money is buying. A dash means no premium on the feed.' },
+      { headerName: 'Year', field: 'trend', width: 104, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
+      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 112, cellRenderer: sleeveCell('momentum'), headerTooltip: "The trend: the price against its 20-day EMA, RSI, ADX with the week's direction, and the month — the screener's. The word is its grade; hover for the figures. A dash is left out of the screen." },
+      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 112, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. The word is its grade; hover for the figure. A dash means the feed has no growth figure.' },
+      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 112, cellRenderer: sleeveCell('flow'), headerTooltip: 'The money: relative volume, bullish against bearish premium, and call against put premium. The word is its grade; hover for the figures. A dash means no premium on the feed.' },
     ];
     if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 88, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
     cols.push(
@@ -435,6 +497,9 @@ const Stocks = () => {
       </div>
       {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-stocks-grid>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={p => p.ticker} card={StockCard} onOpen={p => navigate(`/dossier/stocks/${p.ticker}`)} empty={failed ? 'This read did not land' : waiting ? 'Reading the screens' : 'No name on this cut'} testId="stocks" resetKey={cutKey} />
+        ) : (
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<StockPick>
             {...phonePin}
@@ -454,6 +519,7 @@ const Stocks = () => {
             key={failed ? 'failed' : waiting ? 'waiting' : 'live'}
           />
         </AgGridProvider>
+        )}
       </div>
     </div>
   );

@@ -46,6 +46,9 @@ export interface StockPick {
   monthPct?: number;
   /** The 50-day simple average, from the screener; absent on the house screen */
   sma50?: number | null;
+  /** Each scored sleeve's measures in words, with their figures ("RSI, 14 sessions 39 · ADX … 18 · down on the week") —
+      the bar's hover, so a bar is never a shape alone */
+  sleeveNotes?: Partial<Record<keyof StockSleeves, string>>;
 }
 
 export interface SectorRow {
@@ -175,8 +178,15 @@ export function pickFromLive(input: {
     weekPct: input.weekPct ?? undefined,
     monthPct: input.monthPct ?? undefined,
     sma50: input.sma50 ?? null,
+    sleeveNotes: {
+      momentum: noteOf(at('trend')?.factors),
+      quality: noteOf(at('numbers')?.factors),
+      flow: noteOf(at('money')?.factors),
+    },
   };
 }
+const noteOf = (fs: readonly { label: string; value: string; context?: boolean }[] | undefined): string | undefined =>
+  fs && fs.length ? fs.filter(f => !f.context).map(f => `${f.label}: ${f.value}`).join(' · ') : undefined;
 
 /** Above its 50-day simple average — null when the screener has no average for the name */
 export const aboveFifty = (p: StockPick): boolean | null => (p.sma50 != null && p.sma50 > 0 && p.price > 0 ? p.price > p.sma50 : null);

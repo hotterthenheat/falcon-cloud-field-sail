@@ -31,7 +31,8 @@ import { FUND_TYPES, shortRowFromFile, useCompanyName, useEtfFile, useEtfWeights
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { useShortReads } from '../../data/shortFile';
 import { tickerName } from '../../data/tickers';
-import { AssetCell, assetKey, assetLine } from './Congress';
+import { AssetCell, CongressCard, assetKey, assetLine } from './Congress';
+import { PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { holdingAssetKey } from '../../data/fileBooks';
 import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
@@ -720,6 +721,7 @@ const typeOf = (t: CongressTrade): TypePick => (t.type === 'Purchase' ? 'Purchas
 
 export const MemberFile = () => {
   const { member: id = '' } = useParams();
+  const phone = usePhoneCards();
   useVendor('dossier', '', `/dossier/congress/${id}`);
   const record = useLiveRecord();
   const feed = useCongressFeed(365);
@@ -868,6 +870,9 @@ export const MemberFile = () => {
         )}
       </div>
       <div className="slayer-board border-t border-borderSubtle" data-member-trades>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={t => t.id} card={t => CongressCard(t, false)} empty={book.status === 'loading' ? 'Reading their reports' : 'No report on this book'} testId="member-trades" resetKey={rows} />
+        ) : (
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<CongressTrade>
             {...phonePin}
@@ -883,6 +888,7 @@ export const MemberFile = () => {
             animateRows={false}
           />
         </AgGridProvider>
+        )}
       </div>
       <Board
         title="Bought, no sale reported since"

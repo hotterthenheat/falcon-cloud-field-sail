@@ -702,7 +702,7 @@ const News = () => {
               ) : biggest ? (
                 <>
                   {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.pct)}</span>
-                  <span className="text-textMuted"> · of {setMoves.moves.size} names</span>
+                  <span className="text-textMuted"> · of {setMoves.moves.size} {setMoves.moves.size === 1 ? "name" : "names"}</span>
                 </>
               ) : (
                 <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no quote on these names' : `reading ${moveNames.length} names`) : 'no named stories yet'}</span>

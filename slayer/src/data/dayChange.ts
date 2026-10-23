@@ -65,12 +65,15 @@ export function regularCloses(rows: readonly UwDaily[]): { date: string; close: 
 export function dayChangeOf(state: StateLike, closes: readonly { date: string; close: number }[] | null): DayChange {
   const last = n(state.close);
   const prevClose = n(state.prev_close);
-  let phase = phaseOf(state.market_time);
+  const phase = phaseOf(state.market_time);
   /* AFTER MIDNIGHT, BEFORE THE OPEN (the third audit, 2026-10-23): the vendor's quote still says "postmarket" — the
      last bar is last evening's — but the New York day has turned. Read as post-market it measured yesterday's close
      against itself (0.00%). On a trading day before 9:30 the move is the pre-market one: the last print against the
      last regular close (the quote's prev_close, which after the bell IS that close). */
-  if (phase === 'post' && isTradingDay(nyToday()) && nySessionPhase() === 'before') phase = 'pre';
+  /* — but until a pre-market trade prints, the quote is still last evening's after-hours bar: calling its move
+     "pre-market" mislabelled the after-hours move (the fourth audit: "pre-market +0.00%" at 01:30). Overnight the read
+     stays the last session's change with its after-hours move; a real pre-market bar arrives as market_time "pre". */
+  const overnight = phase === 'post' && isTradingDay(nyToday()) && nySessionPhase() === 'before';
   if (phase === 'post' || phase === 'closed') {
     /* the last regular session (today after the bell; Friday on a weekend or a holiday) against the session before
        it — never the last session against itself, which read ≈0% all weekend */
@@ -79,7 +82,7 @@ export function dayChangeOf(state: StateLike, closes: readonly { date: string; c
     /* after today's bell before the vendor has written today's daily row, today's close is the quote's prev_close */
     /* — only on a trading day: on a weekend or holiday the quote still says "postmarket", and reading Friday's row as
        "missing today" measured Friday's close against itself (the fourth audit, 2026-10-22: AAPL +0.00% on Sat) */
-    const todayMissing = phase === 'post' && isTradingDay(nyToday()) && sessions[0]?.date !== today;
+    const todayMissing = phase === 'post' && !overnight && isTradingDay(nyToday()) && sessions[0]?.date !== today;
     const lastSession = todayMissing ? undefined : sessions[0];
     const before = todayMissing ? sessions[0] : sessions[1];
     const regClose = lastSession?.close ?? prevClose;

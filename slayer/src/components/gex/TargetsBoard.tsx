@@ -604,8 +604,9 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                 title="Click for its card"
               >
                 {wide && <div className="font-mono text-[10px] tnum text-textSecondary">#{t.rank}</div>}
-                <div className={`flex items-center gap-1.5 px-2 font-mono text-[11px] tnum whitespace-nowrap overflow-hidden ${kept ? 'text-silver font-bold shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)] h-full' : 'text-textPrimary'}`}>
-                  {fmtStrike(t.strike)}
+                {/* ON A PHONE THE TAGS WRAP UNDER THE STRIKE (the fourth audit: "SUPREME PUT" cut off at 390) */}
+                <div className={`flex items-center gap-1.5 px-2 font-mono text-[11px] tnum overflow-hidden ${wide ? 'whitespace-nowrap' : 'flex-wrap gap-y-0 leading-[12px] content-center'} ${kept ? 'text-silver font-bold shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)] h-full' : 'text-textPrimary'}`}>
+                  <span className={wide ? '' : 'w-full'}>{fmtStrike(t.strike)}</span>
                   <Tags t={t} yours={yours?.get(t.strike)} />
                 </div>
                 {wide && (

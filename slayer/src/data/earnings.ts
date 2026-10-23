@@ -178,7 +178,7 @@ export function decide(e: Omit<EarningsEvent, 'verdict' | 'strategy' | 'rational
   // States, not orders: the strings DESCRIBE the pricing and the sleeves —
   // they never name instruments or tell anyone what to do. The verdict enum
   // stays internal loop-scoring vocabulary.
-  if (rich >= 1.3) {
+  if (rich > 1.3) {
     if (Math.abs(dirScore) >= 3) {
       const up = dirScore > 0;
       return {
@@ -194,7 +194,7 @@ export function decide(e: Omit<EarningsEvent, 'verdict' | 'strategy' | 'rational
     };
   }
 
-  if (rich <= 0.85) {
+  if (rich < 0.85) {
     return {
       verdict: 'PLAY',
       strategy: `Implied ${im}% under-prices an ${hm}% average mover — volatility is on sale into this print.`,

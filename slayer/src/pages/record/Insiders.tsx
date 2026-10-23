@@ -44,7 +44,7 @@ import { InsidersGuide } from '../../components/record/InsidersGuide';
 import { When } from '../../components/record/when';
 import { dollars3 as fmtDollars } from './money';
 import { useBoardNames } from '../../data/boardNames';
-import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, personSlug, splitWords, type SalesSplit } from '../../data/insiders';
+import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, personSlug, bigWord, spanWords, splitWords, type SalesSplit } from '../../data/insiders';
 import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
@@ -55,6 +55,7 @@ const titleCase = (raw: string) => raw.trim().split(/\s+/).map(w => (w.length <=
 import type { InsiderFlow, InsiderRole, InsiderTrade } from '../../types/record';
 import { NAMES_TO_KNOW } from './recordSkeletons';
 import { InsiderSectorFlow } from '../../components/record/ExtraFaces';
+import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { statHelp } from '../../components/record/statHelp';
 
 type Window = 30 | 90 | 180;
@@ -209,6 +210,24 @@ const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   );
 };
 
+/* THE PHONE CARD — who, what, the value and whether they chose to, on three lines (components/record/PhoneCards.tsx) */
+const cellOf = <C,>(Cell: (p: ICellRendererParams<InsiderTrade>) => C, t: InsiderTrade) => Cell({ data: t } as ICellRendererParams<InsiderTrade>);
+const InsiderCard = (t: InsiderTrade) => (
+  <>
+    <CardLine
+      left={
+        <>
+          <span className="font-mono font-bold">{t.ticker}</span> <span className="font-semibold">{t.person}</span>
+          {t.owners && t.owners.length > 1 ? <span className="font-mono text-[9px] text-textMuted"> +{t.owners.length - 1} joint</span> : null}
+        </>
+      }
+      right={cellOf(ValueCell, t)}
+    />
+    <CardLine muted left={<>{t.role === 'Officer' && t.title ? t.title : t.role === 'Other' ? 'Role not stated' : t.role} · {cellOf(TradeCell, t)} · {fmtInt(t.shares)} sh @ {t.foreignPrice ? `${t.price.toFixed(2)} (not USD)` : `$${t.price.toFixed(2)}`}</>} right={cellOf(PlanCell, t)} />
+    <CardLine muted left={<When days={t.daysAgo} size={10} />} right={t.clusterCount >= 2 ? <span className="text-[10px]">{t.clusterCount} filers</span> : undefined} />
+  </>
+);
+
 const OthersCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!data) return null;
   if (data.clusterCount < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
@@ -320,6 +339,7 @@ const CoverageLine = ({ coverage, window }: { coverage: InsiderCoverage; window:
 
 const Insiders = () => {
   const navigate = useNavigate();
+  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [window, setWindow] = useState<Window>(90);
   const [show, setShow] = useState<Show>('market');
@@ -476,17 +496,17 @@ const Insiders = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={split ? `Dollars of shares insiders sold in the open market — planned or not. ${splitWords(split, window)}: the figure is the ${fmtDollars(split.big)}+ sales of the whole window; the smaller ones (${facts.smallCount.toLocaleString()} for ${fmtDollars(facts.smallSold)}) cover only those days and are kept out of it` : 'Dollars of shares insiders sold in the open market — planned or not'}>
-              {split ? `Sold · sales of ${fmtDollars(split.big)}+` : 'Sold in the market'}
+            <dt className="text-[10px] text-textMuted cursor-help" title={split ? `Dollars of shares insiders sold in the open market — planned or not. ${splitWords(split, window)}: the figure is the ${bigWord(split.big)}+ sales of the whole window; the smaller ones (${facts.smallCount.toLocaleString()} for ${fmtDollars(facts.smallSold)}) cover only those days and are kept out of it` : 'Dollars of shares insiders sold in the open market — planned or not'}>
+              {split ? `Sold · sales of ${bigWord(split.big)}+` : 'Sold in the market'}
             </dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
               {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
-              {split && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · {window} days{facts.smallCount ? ` · + ${fmtDollars(facts.smallSold)} smaller, ${shortDay(split.from)}${split.from !== split.to ? `–${shortDay(split.to)}` : ''}` : ''}</span> : null}
+              {split && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · {window} days{facts.smallCount ? ` · + ${fmtDollars(facts.smallSold)} smaller, ${spanWords(split.from, split.to)}` : ''}</span> : null}
               {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${fmtDollars(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${bigWord(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
               {facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}
             </dd>
@@ -531,6 +551,10 @@ const Insiders = () => {
       </div>
       {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
       <div className="slayer-board border-t border-borderSubtle" data-insiders-grid>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={t => t.id} card={InsiderCard} onOpen={t => navigate(`/dossier/insiders/${personSlug(t.person)}`)} empty={gridEmpty} testId="insiders" resetKey={rows} />
+        ) : (
+        <>
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<InsiderTrade>
             {...phonePin}
@@ -553,6 +577,8 @@ const Insiders = () => {
           />
         </AgGridProvider>
         {paged.bar(rows.length, 'insiders-grid')}
+        </>
+        )}
       </div>
       <InsiderSectorFlow trades={rows} windowDays={window} />
     </div>
@@ -561,6 +587,7 @@ const Insiders = () => {
 
 export const InsiderFile = () => {
   const { person = '' } = useParams();
+  const phone = usePhoneCards();
   const book = useInsiderBook(decodeURIComponent(person));
   const [show, setShow] = useState<'all' | 'market'>('all');
   const rows = useMemo(() => {
@@ -684,6 +711,9 @@ export const InsiderFile = () => {
           })()}
         </p>
         <div className="slayer-board border-t border-borderSubtle" data-insider-trades>
+          {phone ? (
+            <PhoneCards rows={rows} rowKey={t => t.id} card={InsiderCard} empty="No filing on this book" testId="insider-trades" resetKey={show} />
+          ) : (
           <AgGridProvider modules={GRID_MODULES}>
             <AgGridReact<InsiderTrade>
               {...phonePin}
@@ -698,6 +728,7 @@ export const InsiderFile = () => {
               animateRows={false}
             />
           </AgGridProvider>
+          )}
         </div>
       </div>
     </>

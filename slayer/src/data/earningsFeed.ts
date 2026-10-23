@@ -192,7 +192,7 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const week = mondayOf(iso);
   const weekIdx: 0 | 1 | null = week === thisMonday ? 0 : week === nextMonday ? 1 : null;
   if (weekIdx == null) return null;
-  const implied = Number(impliedPct(row.expected_move_perc).toFixed(2));
+  const implied = impliedPct(row.expected_move_perc);
   const price = Number(priceOf(row).toFixed(2));
   /* the move the stock made: the slot's `reaction`, else the report's own next-session move on the name's rows
      (post_earnings_move_1d) — PG reported before the open with both on file and its page said "the result lands once
@@ -271,8 +271,8 @@ function withHistory(event: EarningsEvent, rows: SlotRow[]): EarningsEvent {
     ...event,
     history: true,
     histCount: h.pastMoves.length,
-    histAvgMovePct: h.pastMoves.length ? Number(h.hist.toFixed(2)) : 0,
-    richness: priced ? Number((event.impliedMovePct / h.hist).toFixed(2)) : 0,
+    histAvgMovePct: h.pastMoves.length ? h.hist : 0,
+    richness: priced ? event.impliedMovePct / h.hist : 0,
     beatRate8q: h.epsCount ? Math.round((h.beatCount / h.epsCount) * 100) : 0,
     beatCount: h.beatCount,
     inlineCount: h.inlineCount,
@@ -295,7 +295,9 @@ function moveOf(raw: unknown): number | null {
   if (raw == null || raw === '') return null;
   const n = num(raw);
   if (!Number.isFinite(n)) return null;
-  return Number((n * 100).toFixed(1));
+  /* UNROUNDED (the fourth audit, 2026-10-23): rounding each move to 0.1% before it was compared flipped PG's odds to 88/12
+     and "covered 1 of 8" (raw 75/25, 2 of 8) — the moves are compared whole and rounded only where they are printed */
+  return n * 100;
 }
 
 function quartersFrom(rows: SlotRow[]): EarningsQuarter[] {
@@ -491,7 +493,7 @@ export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossie
       slot: slotOf(row.report_time),
       timeKnown: timeKnownOf(row.report_time),
       estimated: estimatedOf(row.source),
-      impliedMovePct: Number(impliedPct(row.expected_move_perc).toFixed(2)),
+      impliedMovePct: impliedPct(row.expected_move_perc),
       marketCap: num(row.marketcap) || null,
       histAvgMovePct: 0,
       histCount: 0,

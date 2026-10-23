@@ -715,15 +715,18 @@ export function BuildingArrived({ ticker }: { ticker: string }) {
   );
 }
 
-/** "Against each expiry's median · 8–35 samples since 09-03" — the span the vendor's medians really cover */
+/** "Against each expiry's own median — 8 to 35 daily readings per expiry, the oldest from Sep 3, 2026" — the span the vendor's medians really cover */
 function medianSpan(rows: Record<string, unknown>[]): string {
   const n = rows.map(r => Number(r.samples)).filter(x => Number.isFinite(x) && x > 0);
   const firsts = rows.map(r => String(r.first_date ?? '')).filter(d => /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
   if (!n.length) return "Against each expiry's own median";
   const lo = Math.min(...n);
   const hi = Math.max(...n);
-  const since = firsts[0] ? ` since ${firsts[0].slice(5, 10)}` : '';
-  return `Against each expiry's median · ${lo === hi ? lo : `${lo}–${hi}`} daily samples${since}`;
+  /* SAID IN FULL (the fourth audit, 2026-10-23): "1–251 daily samples since 10-23" dropped the year and did not say
+     what was counted — each expiry's median is over its own daily readings, a new expiry's few, an old one's a year */
+  const day = firsts[0] ? new Date(`${firsts[0].slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
+  const counts = lo === hi ? `${lo} daily ${lo === 1 ? 'reading' : 'readings'}` : `${lo} to ${hi} daily readings`;
+  return `Against each expiry's own median — ${counts} per expiry${day ? `, the oldest from ${day}` : ''}`;
 }
 
 /** Implied against what the name has done, and the term the print sits on. Nothing until a figure has arrived. */

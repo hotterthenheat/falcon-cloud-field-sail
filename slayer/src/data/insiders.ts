@@ -259,8 +259,16 @@ const dayWord = (iso: string): string => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
-export const splitWords = (split: SalesSplit, windowDays: number): string =>
-  `sales of ${fmtM(split.big)}+ over ${windowDays} days, smaller sales ${dayWord(split.from)}${split.from !== split.to ? `–${dayWord(split.to)}` : ''} only`;
+/** The cut as said: "$1M", never "$1.00M" */
+export const bigWord = (v: number): string => (v >= 1e6 && v % 1e6 === 0 ? `$${v / 1e6}M` : fmtM(v));
+/** "Oct 21–22", "Sep 30–Oct 2" */
+export const spanWords = (from: string, to: string): string => {
+  if (from === to) return dayWord(from);
+  const a = dayWord(from);
+  const b = dayWord(to);
+  return a.split(' ')[0] === b.split(' ')[0] ? `${a}–${b.split(' ')[1]}` : `${a}–${b}`;
+};
+export const splitWords = (split: SalesSplit, windowDays: number): string => `sales of ${bigWord(split.big)}+ over ${windowDays} days, smaller sales ${spanWords(split.from, split.to)} only`;
 
 /** What the window adds up to across the feed shown */
 export function insidersSentence(rows: InsiderTrade[], windowDays: number, split: SalesSplit | null = null): string {
@@ -286,9 +294,9 @@ export function insidersSentence(rows: InsiderTrade[], windowDays: number, split
   else parts.push('No insider chose to buy in this window.');
   if (sales.length) {
     const pct = Math.round((planned.length / sales.length) * 100);
-    parts.push(`${sales.length.toLocaleString('en-US')} ${split ? `sales of ${fmtM(split.big)} or more` : sales.length === 1 ? 'sale' : 'sales'} for ${fmtM(saleValue)}, ${pct}% of them on a 10b5-1 plan adopted months earlier — those carry no view on the day.`);
+    parts.push(`${sales.length.toLocaleString('en-US')} ${split ? `sales of ${bigWord(split.big)} or more` : sales.length === 1 ? 'sale' : 'sales'} for ${fmtM(saleValue)}, ${pct}% of them on a 10b5-1 plan adopted months earlier — those carry no view on the day.`);
   }
-  if (split && small.length) parts.push(`Smaller sales are read for ${dayWord(split.from)}${split.from !== split.to ? `–${dayWord(split.to)}` : ''} only: ${small.length.toLocaleString('en-US')} for ${fmtM(small.reduce((s, t) => s + t.value, 0))}, kept out of the figure above.`);
+  if (split && small.length) parts.push(`Smaller sales are read for ${spanWords(split.from, split.to)} only: ${small.length.toLocaleString('en-US')} for ${fmtM(small.reduce((s, t) => s + t.value, 0))}, kept out of the figure above.`);
   const plumbing = rows.length - market.length;
   if (plumbing) parts.push(`${plumbing.toLocaleString('en-US')} grants, conversions and withholdings shown — not trades.`);
   return parts.join(' ');

@@ -73,6 +73,10 @@ export interface Indicators {
 
 export interface StrikeNode {
   strike: number;
+  /** The price and the instant (epoch ms) the vendor priced this strike's live gamma at (spot-exposures `price`, `time`)
+      — the flip re-prices the strike's legs FROM that price, AT that instant (data/flipLevel.ts) */
+  gexPx?: number;
+  gexAt?: number;
   callOI: number;
   putOI: number;
   gamma: number;
