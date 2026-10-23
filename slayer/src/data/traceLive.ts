@@ -2216,8 +2216,10 @@ function pumpLegs() {
     }, wait);
     return;
   }
-  /* the page's asks, oldest asker first (the rows on screen ask before the largest-net sweep) */
+  /* the page's asks, oldest asker first (the rows on screen ask before the largest-net sweep); under a hold only the rows
+     on screen finish settling — the held moment's own structures, nothing new */
   for (const a of asks) {
+    if (holdsPaused > 0 && a.order >= 1_000_000) continue;
     const id = a.ids.find(legOpen);
     if (id) {
       legLast = Date.now();
