@@ -26,9 +26,9 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { SPREAD_KINDS, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
-import { useLiveBook, useOptionTape, useSpreads } from '../../data/traceLive';
-import { fmtUsd } from '../../data/gex';
+import { floorPackaged, notABet, notABetHint, spreadLegHint, SPREAD_KINDS, stockLike, STOCK_LIKE_HINT, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
+import { dayLean, lastRegularClose, nyDateOf, nyIsoToday, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
+import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
 import type { SleeveKey } from '../../types/compass';
 import type { BookContract } from '../../types/trace';
@@ -36,13 +36,19 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
 import ScopeChip from '../../components/ui/ScopeChip';
+import { daysFromToday, isLiveDay, nextCountDay, oiInWords, sameDayWords, shortDay } from '../../components/trace/dayWords';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import LeanCell from '../../components/trace/LeanCell';
 import { PointerFollowCard } from '../../components/ui/PointerCard';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
-import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS, paneTimes } from '../../components/trace/NetFlowPane';
+import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS } from '../../components/trace/NetFlowPane';
+
+/** Each name's last prints and structures the card reads */
+const TAPE_N = 300;
+const SPREADS_N = 80;
 import ReadDoor from '../../components/trace/ReadDoor';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact } from '../../components/trace/TraceBox';
 import { CompareGuide } from '../../components/trace/TraceGuide';
 import { CMP_COLUMNS, CMP_LIST_HEAD_H, CMP_LIST_ROW_H, CMP_LISTED, CMP_PANE_H, CMP_ROW_H, CMP_SECTION_H } from './traceSkeletons';
@@ -63,6 +69,8 @@ const Fig = ({ children, lit, ink }: { children: ReactNode; lit: boolean; ink?: 
 );
 const Sub = ({ children }: { children: ReactNode }) => <span className="text-[10.5px] text-textSecondary whitespace-nowrap">{children}</span>;
 const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textMuted');
+/** ONE COLOUR RULE: net puts BOUGHT lean bearish (red), net puts sold bullish (green) — the chart head's rule */
+const putDirInk = (v: number) => dirInk(-v);
 
 /*
   THE CARD IN THE RULER'S GRAMMAR (Noah, 2026-10-18, with Pinpoint's "two books on one ruler" beside this
@@ -117,6 +125,8 @@ interface Row {
   /** Which side leads on this fact — lit; null when the fact has no leader */
   lead: 'a' | 'b' | null;
   cell: (s: TraceSide, lit: boolean) => ReactNode;
+  /** The row's longer word, on hover of its fact */
+  hint?: string;
   /** The row's capsules a side — one, or a pair; a row without them prints its cell */
   bars?: (s: TraceSide) => Bar[];
 }
@@ -289,12 +299,14 @@ const Compare = () => {
     };
   }, [pinned, openKey]);
 
-  const liveBook = useLiveBook(activeTicker).rows;
-  const liveSpreads = useSpreads(80).rows;
-  const liveTape = useOptionTape(200).rows;
-  /* The shared hold (see LiveHold): the book, the structures, the tape and the panes' tick freeze together */
-  const hold = useHold(useMemo(() => ({ book: liveBook, spreads: liveSpreads, tape: liveTape, tick: marketData }), [liveBook, liveSpreads, liveTape, marketData]), activeTicker);
-  const { book, spreads, tape, tick } = hold.value;
+  const bookPack = useLiveBook(activeTicker);
+  const liveBook = bookPack.rows;
+  /* NOT YET / NOT AT ALL: with no book the card read "SPY leans bullish at +$0 … SPY $0" (the ship pass, 2026-10-22) */
+  const bookState: 'reading' | 'down' | 'in' = liveBook.length ? 'in' : bookPack.fault ? 'down' : 'reading';
+  /* The shared hold (see LiveHold): the book and the panes' tick freeze together; the two names' tapes and structures
+     freeze with them below */
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, liveBook.length > 0 || !!bookPack.fault);
+  const { book, tick } = hold.value;
 
   /* Only names on today's book can be compared — busiest first, so the defaults are the names that matter */
   const names = useMemo(() => {
@@ -308,11 +320,107 @@ const Compare = () => {
   const twin = TWINS[aTicker];
   const bTicker = onBook(bPick) && bPick !== aTicker ? bPick : onBook(twin) && twin !== aTicker ? twin : names.find(t => t !== aTicker) ?? (twin ?? (aTicker === 'QQQ' ? 'SPY' : 'QQQ'));
 
-  /* Both names read at the tape's last bar — the same instant, the leaders board's rule */
-  const sampleAt = useMemo(() => paneTimes('SPY').slice(-1), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sideA = useMemo(() => buildTraceSide(book, spreads, tape, aTicker, tenor, mny, sampleAt), [book, spreads, tape, aTicker, tenor, mny, sampleAt]);
-  const sideB = useMemo(() => buildTraceSide(book, spreads, tape, bTicker, tenor, mny, sampleAt), [book, spreads, tape, bTicker, tenor, mny, sampleAt]);
-  const cmp = useMemo(() => buildTraceCompare(sideA, sideB), [sideA, sideB]);
+
+  /* EACH NAME'S OWN TAPE AND STRUCTURES (2026-10-22): the market-wide windows are the market's latest prints — after the
+     close almost all index — and read "0 prints" for SPY beside a full book. Each name's own last prints instead, cut to
+     the window BOTH tapes cover: a capped tape only reaches back so far, and a longer reach is not a busier tape. */
+  const tapeA = useNameTape(aTicker, TAPE_N).rows;
+  const tapeB = useNameTape(bTicker, TAPE_N).rows;
+  const spreadsPackA = useNameSpreads(aTicker, SPREADS_N);
+  const spreadsPackB = useNameSpreads(bTicker, SPREADS_N);
+  const spreadsA = spreadsPackA.rows;
+  const spreadsB = spreadsPackB.rows;
+  const spreadsDone = spreadsPackA.complete && spreadsPackB.complete;
+  const liveNames = useMemo(() => {
+    /* TO THE MILLISECOND (audit round 8, major 3: the tapes were still cut by the whole second, so a print in the cut's own
+       second counted for one name and not the other's earlier half) — the spreads' round-7 rule, on the tape */
+    const msP = (p: { epoch?: number; epochMs?: number }) => p.epochMs ?? (p.epoch != null ? p.epoch * 1000 : Infinity);
+    const reach = (r: { epoch?: number; epochMs?: number }[], cap: number) => (r.length >= cap ? Math.min(...r.map(msP)) : -Infinity);
+    const sinceMsTape = Math.max(reach(tapeA, TAPE_N), reach(tapeB, TAPE_N));
+    const since = Number.isFinite(sinceMsTape) ? sinceMsTape / 1000 : sinceMsTape;
+    /* paged to the session's start (useNameSpreads): a name whose pages did not reach it is cut, with the other, to the
+       stretch both cover */
+    /* TO THE SECOND, NOT THE MINUTE (audit round 7: "since 16:09 ET" while QQQ's capped pages reached back only to 16:09:57
+       and SPY counted the whole minute) — both names are cut at the exact instant the shorter reach starts */
+    const msOf = (t: SpreadTrade) => t.epochMs ?? 0;
+    const reachMs = (r: SpreadTrade[], done: boolean) => (!done && r.length ? Math.min(...r.map(msOf)) : -Infinity);
+    const sinceMs = Math.max(reachMs(spreadsA, spreadsPackA.complete), reachMs(spreadsB, spreadsPackB.complete));
+    return {
+      tape: [...tapeA, ...tapeB].filter(p => (p.epochMs ?? (p.epoch ?? 0) * 1000) >= sinceMsTape),
+      spreads: [...spreadsA, ...spreadsB].filter(t => msOf(t) >= sinceMs),
+      since: Number.isFinite(since) ? since : null,
+      spreadSinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
+    };
+  }, [tapeA, tapeB, spreadsA, spreadsB, spreadsPackA.complete, spreadsPackB.complete]);
+  /* EACH NAME READS ITS OWN BOOK (2026-10-22): the page's book is the terminal name's — its top contracts plus the
+     market's — so the OTHER name stood on whatever of its rows the market page carried: SPY on side B read $509.7M across
+     16 contracts where its own book held $946.3M across 80. */
+  const bookA = useLiveBook(aTicker).rows;
+  const bookB = useLiveBook(bTicker).rows;
+  /* each name's day by expiry — the vendor's own net and volume (/stock/{t}/flow-per-expiry) */
+  const fpeA = useFlowPerExpiry(aTicker).rows;
+  const fpeB = useFlowPerExpiry(bTicker).rows;
+  const liveSides = useMemo(() => ({ ...liveNames, bookA: bookA.length ? bookA : book, bookB: bookB.length ? bookB : book, fpeA, fpeB }), [liveNames, bookA, bookB, book, fpeA, fpeB]);
+  const frozen = useRef(liveSides);
+  if (!hold.paused) frozen.current = liveSides;
+  const { tape, spreads, since: tapeSince } = frozen.current;
+  const sideBookA = frozen.current.bookA;
+  const sideBookB = frozen.current.bookB;
+  /* THE NET FLOW READS THE PANES' OWN SERIES (2026-10-22): each pane draws the name's vendor minutes
+     (/stock/{t}/net-prem-ticks, every expiry); the card summed off the book read SPY −$17.4M beside a pane at +$9.6M.
+     Uncut, the card takes the same running totals. The vendor's minutes cannot be cut by clock or moneyness, so a cut
+     card keeps the book's own figures and says so. */
+  const paneA = usePaneFlow({ ticker: aTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true });
+  const paneB = usePaneFlow({ ticker: bTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true });
+  const flowA = paneA.rows;
+  const flowB = paneB.rows;
+  /* ONE SOURCE FOR EVERY CLOCK (audit round 4, 2026-10-22: uncut, the card took /net-prem-ticks — QQQ net −$53.6M, puts
+     +$26.9M — and on Clock = Weekly /flow-per-expiry — QQQ +$51.3M, puts −$53.2M; "net puts" flipped sign between views).
+     The two vendor routes carry the SAME contracts by side (QQQ's call and put volume at the ask and on the bid match to
+     the contract) but not the same put money: the ticks' net_put_premium was +$27.4M where the per-expiry put premium at the
+     ask less on the bid summed to −$51.9M, and the day's own prints of $250K and up, by their side tags, net −$106M on
+     puts — the per-expiry route agrees with the tape's sides, the ticks do not (on small names the two agree to the
+     dollar). So every cut reads /stock/{t}/flow-per-expiry: every expiry summed, or the clock's expiries; the whole day.
+     The ticks stay on Net Flow's pane (it needs minutes); where the two disagree the page says so. */
+  const uncut = tenor === 'all';
+  const ticksOf = (rows: PaneFlowPoint[]) => {
+    const lastPt = rows.length ? rows[rows.length - 1] : null;
+    return lastPt ? { net: lastPt.callPrem - lastPt.putPrem, calls: lastPt.callPrem, puts: lastPt.putPrem } : null;
+  };
+  /* ONE SOURCE FOR THE HEADLINE NET (audit round 5, the decision): uncut, the card's net, calls and puts are the vendor's
+     minute ticks over the regular session — the same /stock/{t}/net-prem-ticks Net Flow's pane and Intervals read — so
+     Trace agrees with itself (round 5: QQQ +$24.1M here by expiry, −$53.6M on its own pane, −$54.9M on Net Flow). Only a
+     clock cut needs per-expiry money, and reads the expiry route, labelled so. */
+  /* NEVER ANOTHER SOURCE'S FIGURE UNDER THE TICKS' LABEL (audit round 6: for 36s and more "SPY net +$11.8M" — the flow
+     by expiry — stood under a header that said the minute ticks, which gave +$4.83M): until the ticks land the net reads
+     "…", and "—" if they never answer */
+  const withTicks = (side: TraceSide, rows: PaneFlowPoint[], waiting: boolean): TraceSide => {
+    if (!uncut) return side;
+    const t = ticksOf(rows);
+    return t ? { ...side, net: t.net, netCall: t.calls, netPut: t.puts, netSource: 'ticks' } : { ...side, net: 0, netCall: 0, netPut: 0, netSource: 'ticks', netPending: waiting ? 'loading' : 'none' };
+  };
+  const todayIso = tapeSessionIso();
+  const heldFpeA = frozen.current.fpeA;
+  const heldFpeB = frozen.current.fpeB;
+  const sideA = useMemo(() => withTicks(buildTraceSide(sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso), flowA, paneA.waiting), [sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso, flowA, paneA.waiting, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideB = useMemo(() => withTicks(buildTraceSide(sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso), flowB, paneB.waiting), [sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso, flowB, paneB.waiting, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* after the close a count of after-hours prints names no busier name (the retail pass, 2026-10-22: "SPY the busier tape
+     … 300 prints for $166.2K") — the tape clause and fact stand in the regular session, with their window named */
+  /* each print by its own time and flag (traceCompare buildTraceSide): a busier tape is called only when BOTH names have
+     regular-session prints in the stretch */
+  /* AFTER THE CLOSE NO BUSIER TAPE (audit round 4: "Busier tape SPY · 300 prints since 16:14" meant nothing once the session
+     had ended) — the two tapes' last stretches are not the day */
+  const afterClose = !!lastRegularClose();
+  const regular = !afterClose && sideA.tape.prints > 0 && sideB.tape.prints > 0;
+  const afterLeftOut = sideA.tape.after + sideB.tape.after;
+  /* the stretch's day named when it is not today's (audit round 6) */
+  const sinceDay = tapeSince && nyDateOf(tapeSince * 1000) !== nyIsoToday() ? `${shortDay(nyDateOf(tapeSince * 1000))} ` : '';
+  const tapeWords = tapeSince ? `since ${sinceDay}${nyClock(tapeSince * 1000)} ET` : 'over the same stretch';
+  /* the cut in words, for a side with nothing standing on it: "no 0DTE contracts standing" (audit round 7) */
+  const clockLabel = CLOCK_OPTIONS.find(o => o.value === tenor)?.label ?? tenor;
+  const moneyLabel = MONEY_OPTIONS.find(o => o.value === mny)?.label ?? mny;
+  const cutWords = tenor === 'all' && mny === 'all' ? 'on the book' : `on this cut (${[tenor !== 'all' ? clockLabel : '', mny !== 'all' ? moneyLabel : ''].filter(Boolean).join(' · ')})${tenor === 'odte' && !isLiveDay(todayIso) ? ` — ${shortDay(todayIso)}'s same-day contracts expired at its bell` : ''}`;
+  const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular, sameDayWords(todayIso), cutWords), [sideA, sideB, tapeWords, regular, todayIso, cutWords]);
   const { a, b } = cmp;
 
   /* The first chip follows the frame until it holds a name (the Pinpoint Compare's rule);
@@ -340,10 +448,24 @@ const Compare = () => {
     const lo = Math.min(pick(a), pick(b));
     return lo > 0 ? `${(hi / lo).toFixed(1)}×` : null;
   };
-  const leanWords = (s: TraceSide) => (Math.abs(s.book.askPct - 50) < 6 ? 'mid' : s.book.askPct >= 50 ? 'at the ask' : 'on the bid');
-  const reportWords = (s: TraceSide) => (s.earnDays == null ? 'not reporting' : s.earnDays === 0 ? 'reports today' : s.earnDays === 1 ? 'reports tomorrow' : `in ${s.earnDays} sessions`);
+  const leanWords = (s: TraceSide) => {
+    const l = dayLean({ askPct: s.book.askPct, volume: s.book.volume, sideVol: s.book.side });
+    return l.lean === 'ASK' ? 'at the ask' : l.lean === 'BID' ? 'on the bid' : l.lean === 'UNSIDED' ? 'mostly mid / no side' : 'even';
+  };
+  /* from the report's own date against New York's today (dayWords), never "today" for a past session's */
+  const reportWords = (s: TraceSide) => {
+    if (s.earnDays == null) return 'not reporting';
+    const iso = s.earnIso;
+    const d = iso ? daysFromToday(iso) : NaN;
+    if (d === 0) return 'reports today';
+    if (d === 1) return 'reports tomorrow';
+    return `in ${s.earnDays} trading day${s.earnDays === 1 ? '' : 's'}${iso ? ` (${shortDay(iso)})` : ''}`;
+  };
   /* Two bearish names have no bullish one — the leader is the less bearish */
   const leansWords = cmp.bullish.net >= 0 ? 'the more bullish' : 'the less bearish';
+  /* a net not in hand yet: "…" while the ticks load, "—" if they did not answer */
+  const netHeld = !a.netPending && !b.netPending;
+  const pend = (s: TraceSide) => (s.netPending === 'loading' ? '…' : '—');
   const nearer = (): 'a' | 'b' | null => {
     if (a.earnDays == null && b.earnDays == null) return null;
     if (a.earnDays == null) return 'b';
@@ -351,43 +473,64 @@ const Compare = () => {
     return a.earnDays < b.earnDays ? 'a' : b.earnDays < a.earnDays ? 'b' : null;
   };
 
+  const oiDayTitle = (() => {
+    const da = a.interest.day;
+    const db = b.interest.day;
+    const pend = a.interest.pending && b.interest.pending && isLiveDay(todayIso) ? ` (today's build is counted the morning of ${nextCountDay(todayIso)})` : '';
+    const lag = a.interest.lagging + b.interest.lagging;
+    const lagWords = lag ? ` · ${num(lag)} contract${lag === 1 ? '' : 's'} still on the count before left out` : '';
+    if (da && db && da !== db) return `${a.ticker} ${oiInWords(da)}, ${b.ticker} ${oiInWords(db)}${lagWords}`;
+    return `built or unwound ${oiInWords(da ?? db)}${pend}${lagWords}`;
+  })();
+  /* the other vendor route's put money, for the hover only */
+  const otherRouteOf = (sd: TraceSide): string => {
+    const t = uncut ? (sd.byExpiry ?? null) : ticksOf(sd === a ? flowA : flowB);
+    if (!t) return '';
+    return uncut ? `the vendor's expiry route, the whole day, reads puts ${signedUsd(t.puts)}` : `the minute ticks, 09:30 to the close, read puts ${signedUsd(t.puts)}`;
+  };
+  const otherRouteHint = `${uncut ? "Net puts here are the vendor's minute ticks (/stock/{t}/net-prem-ticks), 09:30 to the close — the figure Net Flow's pane and Intervals show." : "Net puts here are the vendor's flow by expiry (/stock/{t}/flow-per-expiry) on the clock's expiries, the whole day — the only route a clock can cut."} The other route: ${a.ticker} ${otherRouteOf(a) || '—'}; ${b.ticker} ${otherRouteOf(b) || '—'}. The two routes carry the same contracts by side, but on names heavy with spreads their put money can disagree, even in sign. Both are vendor totals that include spread legs and floor packages.`;
+
   const sections: { title: string; rows: Row[] }[] = [
     {
-      title: 'Net flow',
+      title: `${uncut ? `Net flow · every expiry, the regular session (09:30 to the close${isLiveDay(todayIso) ? '' : `, ${shortDay(todayIso)}`}) — the vendor's minute ticks, the figure Net Flow's pane and Intervals show` : `Net flow · the clock's expiries, ${isLiveDay(todayIso) ? 'the whole day' : `${shortDay(todayIso)}, the whole day`} — by expiry (the vendor's expiry route)`}, premium at the ask less on the bid${mny !== 'all' ? ' · every strike (the money cut is not on this figure)' : ''} · a vendor total: spread legs and floor packages are in it`,
       rows: [
         {
           key: 'net',
           label: 'Net premium',
-          note: a.net === b.net ? 'the same lean' : `${cmp.bullish.ticker} leans ${leansWords}`,
-          lead: higher(s => s.net),
-          bars: s => [{ v: s.net, text: signedUsd(s.net), ink: barInk(s.net) }],
-          cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.net)}>{signedUsd(s.net)}</Fig>,
+          note: !netHeld ? (a.netPending === 'loading' || b.netPending === 'loading' ? 'the minute ticks are loading…' : 'the minute ticks did not answer') : a.net === b.net ? 'the same lean' : `${cmp.bullish.ticker} leans ${leansWords}`,
+          lead: netHeld ? higher(s => s.net) : null,
+          bars: s => [{ v: s.netPending ? 0 : s.net, text: s.netPending ? pend(s) : signedUsd(s.net), ink: barInk(s.net) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.net)}>{signedUsd(s.net)}</Fig>),
         },
         {
           key: 'calls',
           label: 'Net calls',
-          note: the(louder(s => s.netCall), 'the louder on calls'),
-          lead: louder(s => s.netCall),
-          bars: s => [{ v: s.netCall, text: signedUsd(s.netCall), ink: barInk(s.netCall) }],
-          cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.netCall)}>{signedUsd(s.netCall)}</Fig>,
+          note: netHeld ? the(louder(s => s.netCall), 'the louder on calls') : '…',
+          lead: netHeld ? louder(s => s.netCall) : null,
+          bars: s => [{ v: s.netPending ? 0 : s.netCall, text: s.netPending ? pend(s) : signedUsd(s.netCall), ink: barInk(s.netCall) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.netCall)}>{signedUsd(s.netCall)}</Fig>),
         },
+        /* ONE FIGURE ON THE CARD (retail, round 7: "Net puts +$26.9M" beside "By expiry … puts −$51.9M — QQQ puts flip sign
+           by route" destroyed trust): the card shows the one source its cut reads — the minute ticks uncut, the expiry route
+           under a clock — and the other route's figure sits in this row's hover, with why the two can differ */
         {
           key: 'puts',
           label: 'Net puts',
-          note: the(louder(s => s.netPut), 'the louder on puts'),
-          lead: louder(s => s.netPut),
-          bars: s => [{ v: s.netPut, text: signedUsd(s.netPut), ink: putInk(s.netPut) }],
-          cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>,
+          note: netHeld ? the(louder(s => s.netPut), 'the louder on puts') : '…',
+          lead: netHeld ? louder(s => s.netPut) : null,
+          hint: otherRouteHint,
+          bars: s => [{ v: s.netPending ? 0 : s.netPut, text: s.netPending ? pend(s) : signedUsd(s.netPut), ink: putInk(s.netPut), desc: otherRouteOf(s) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={putDirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>),
         },
       ],
     },
     {
-      title: 'Same-day money',
+      title: `Same-day money · contracts ${sameDayWords(todayIso)}, every strike — by expiry (the vendor's expiry route)`,
       rows: [
         {
           key: 'odte',
           label: 'Same-day net',
-          note: a.odte.net === b.odte.net ? 'the same lean today' : `${(a.odte.net > b.odte.net ? a : b).ticker} ${Math.max(a.odte.net, b.odte.net) >= 0 ? 'the more bullish' : 'the less bearish'} today`,
+          note: a.odte.net === b.odte.net ? 'the same lean' : `${(a.odte.net > b.odte.net ? a : b).ticker} ${Math.max(a.odte.net, b.odte.net) >= 0 ? 'the more bullish' : 'the less bearish'}`,
           lead: higher(s => s.odte.net),
           bars: s => [{ v: s.odte.net, text: signedUsd(s.odte.net), ink: barInk(s.odte.net) }],
           cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.odte.net)}>{signedUsd(s.odte.net)}</Fig>,
@@ -395,41 +538,41 @@ const Compare = () => {
         {
           key: 'odteSides',
           label: 'Same-day calls · puts',
-          note: 'expiring today or tomorrow',
+          note: `net calls · net puts, ${sameDayWords(todayIso)}`,
           lead: null,
           bars: s => [
-            { v: s.odte.calls, text: signedUsd(s.odte.calls), ink: barInk(s.odte.calls), name: 'Same-day calls', desc: 'expiring today or tomorrow' },
-            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: putInk(s.odte.puts), name: 'Same-day puts', desc: 'expiring today or tomorrow' },
+            { v: s.odte.calls, text: signedUsd(s.odte.calls), ink: barInk(s.odte.calls), name: 'Same-day net calls', desc: `at the ask less on the bid, ${sameDayWords(todayIso)}` },
+            { v: s.odte.puts, text: signedUsd(s.odte.puts), ink: putInk(s.odte.puts), name: 'Same-day net puts', desc: `bought lean bearish — ${sameDayWords(todayIso)}` },
           ],
           cell: s => (
             <>
               <Fig lit={false} ink={dirInk(s.odte.calls)}>{signedUsd(s.odte.calls)}</Fig>
               <Sub>·</Sub>
-              <Fig lit={false} ink={dirInk(s.odte.puts)}>{signedUsd(s.odte.puts)}</Fig>
+              <Fig lit={false} ink={putDirInk(s.odte.puts)}>{signedUsd(s.odte.puts)}</Fig>
             </>
           ),
         },
         {
           key: 'odteVol',
           label: 'Same-day volume',
-          note: the(higher(s => s.odte.vol), 'the busier today'),
+          note: the(higher(s => s.odte.vol), 'the busier'),
           lead: higher(s => s.odte.vol),
-          bars: s => [{ v: s.odte.vol, text: num(s.odte.vol), ink: 'silver', after: `${s.odte.count} contracts` }],
+          bars: s => [{ v: s.odte.vol, text: num(s.odte.vol), ink: 'silver', after: `${num(s.odte.trades)} prints` }],
           cell: (s, lit) => (
             <>
               <Fig lit={lit}>{num(s.odte.vol)}</Fig>
-              <Sub>· {s.odte.count} contracts</Sub>
+              <Sub>· {num(s.odte.trades)} prints</Sub>
             </>
           ),
         },
       ],
     },
     {
-      title: 'The book',
+      title: `The book · each name's standing contracts with the most premium (up to 80) — floor packages, spread legs and crosses left out${a.book.apart.count || b.book.apart.count ? ` (${a.ticker} ${num(a.book.apart.count)} · ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} · ${fmtUsd(b.book.apart.premium)})` : ''}: legs of packages, not bets`,
       rows: [
         {
           key: 'count',
-          label: 'Contracts traded',
+          label: 'Contracts on the book',
           note: the(higher(s => s.book.count), 'spread over more contracts'),
           lead: higher(s => s.book.count),
           bars: s => [{ v: s.book.count, text: num(s.book.count), ink: 'silver' }],
@@ -450,7 +593,7 @@ const Compare = () => {
         {
           key: 'premium',
           label: 'Premium',
-          note: the(higher(s => s.book.premium), 'the heavier book'),
+          note: the(higher(s => s.book.premium), 'the heavier premium'),
           lead: higher(s => s.book.premium),
           bars: s => [{ v: s.book.premium, text: fmtUsd(s.book.premium), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{fmtUsd(s.book.premium)}</Fig>,
@@ -477,7 +620,7 @@ const Compare = () => {
           label: 'Lean',
           note: leanWords(a) === leanWords(b) ? `both ${leanWords(a)}` : `${a.ticker} ${leanWords(a)}, ${b.ticker} ${leanWords(b)}`,
           lead: null,
-          cell: s => <LeanCell askPct={s.book.askPct} />,
+          cell: s => <LeanCell askPct={s.book.askPct} split={s.book.side} />,
         },
         {
           key: 'swept',
@@ -489,7 +632,8 @@ const Compare = () => {
         },
         {
           key: 'iv',
-          label: 'Implied vol',
+          /* SAID AS IT IS (audit round 8: "past today" over a 0DTE cut whose every contract expires today) */
+          label: a.book.ivLater || b.book.ivLater ? `Implied vol · past ${isLiveDay(todayIso) ? 'today' : shortDay(todayIso)}` : `Implied vol · ${isLiveDay(todayIso) ? "today's" : `${shortDay(todayIso)}'s`} expiry`,
           note: the(higher(s => s.book.iv), 'the richer'),
           lead: higher(s => s.book.iv),
           bars: s => [{ v: s.book.iv, text: `${s.book.iv}%`, ink: 'silver' }],
@@ -497,26 +641,28 @@ const Compare = () => {
         },
         {
           key: 'built',
-          label: 'Built today',
-          note: a.book.builtToday === 0 && b.book.builtToday === 0 ? 'nothing built past its interest' : the(higher(s => s.book.builtToday), 'built the more'),
+          label: 'Vol ≥ 1.5× OI',
+          note: a.book.builtToday === 0 && b.book.builtToday === 0 ? 'none at 1.5× its interest' : the(higher(s => s.book.builtToday), 'the more'),
           lead: higher(s => s.book.builtToday),
-          bars: s => [{ v: s.book.builtToday, text: num(s.book.builtToday), ink: 'silver', after: 'past their interest' }],
+          bars: s => [{ v: s.book.builtToday, text: num(s.book.builtToday), ink: 'silver', after: 'contracts' }],
           cell: (s, lit) => (
             <>
               <Fig lit={lit}>{num(s.book.builtToday)}</Fig>
-              <Sub>past their interest</Sub>
+              <Sub>contracts</Sub>
             </>
           ),
         },
       ],
     },
     {
-      title: 'Footprints',
+      /* WHOSE TRADING (audit round 7): the change of the newest published count — "OI after Oct 22's trading" — both names
+         on the same day, or each says its own */
+      title: `Footprints · open interest on those contracts, ${oiDayTitle}${a.interest.apartCount || b.interest.apartCount ? ` — the book's bets only; floor packages, spread legs and crosses left out (${a.ticker} ${num(a.interest.apartCount)}, ${b.ticker} ${num(b.interest.apartCount)})` : ''}`,
       rows: [
         {
           key: 'added',
           label: 'Interest added',
-          note: the(higher(s => s.interest.added), 'added the more overnight'),
+          note: the(higher(s => s.interest.added), `added the more ${oiInWords(a.interest.day ?? b.interest.day)}`),
           lead: higher(s => s.interest.added),
           bars: s => [{ v: s.interest.added, text: s.interest.added > 0 ? `+${num(s.interest.added)}` : '0', ink: s.interest.added > 0 ? 'bull' : 'mute' }],
           cell: (s, lit) => (
@@ -540,7 +686,8 @@ const Compare = () => {
       ],
     },
     {
-      title: 'Structures',
+      /* THE WINDOW SAID (audit round 6: "Structures 80 · the same" was the fetch cap) */
+      title: `Structures · each name's on the ${shortDay(todayIso)} session${frozen.current.spreadSinceMs != null ? `, since ${nyClock(frozen.current.spreadSinceMs, { seconds: true })} ET — the stretch both names' last ${SPREADS_N * 3} cover, both cut at that second` : spreadsDone ? ', the whole session' : ''} · regular hours only, compression packages left out${mny !== 'all' ? ' · every strike (the money cut is not on this list)' : ''}`,
       rows: [
         {
           key: 'structures',
@@ -569,8 +716,8 @@ const Compare = () => {
         },
         {
           key: 'structDollars',
-          label: 'Structure dollars',
-          note: the(higher(s => s.structures.dollars), 'the bigger structures'),
+          label: 'Structure net $',
+          note: the(higher(s => s.structures.dollars), 'the more net premium in structures'),
           lead: higher(s => s.structures.dollars),
           bars: s => [{ v: s.structures.dollars, text: fmtUsd(s.structures.dollars), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{fmtUsd(s.structures.dollars)}</Fig>,
@@ -578,29 +725,31 @@ const Compare = () => {
       ],
     },
     {
-      title: 'The tape',
+      /* both names over the same reach of their own tapes — the title says from when */
+      title: `${tapeSince ? `The tape · each name's prints since ${sinceDay}${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `The tape · each name's last ${TAPE_N} prints`}${afterLeftOut > 0 ? ` · regular-session prints only, ${num(afterLeftOut)} after-hours ${afterLeftOut === 1 ? 'print' : 'prints'} left out` : ''}${regular ? '' : afterClose ? ' — the session has closed, so no busier tape is called' : ' — one name has no regular-session print in the stretch, so no busier tape is called'}`,
       rows: [
         {
           key: 'prints',
           label: 'Prints',
-          note: the(higher(s => s.tape.prints), 'the busier tape'),
-          lead: higher(s => s.tape.prints),
+          note: regular ? the(higher(s => s.tape.prints), 'the busier tape') : afterClose ? "not compared — the session has closed; each name's last prints are not its day" : 'not compared — no regular-session prints on both',
+          lead: regular ? higher(s => s.tape.prints) : null,
           bars: s => [{ v: s.tape.prints, text: num(s.tape.prints), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{num(s.tape.prints)}</Fig>,
         },
         {
           key: 'tapeDollars',
           label: 'Tape dollars',
-          note: the(higher(s => s.tape.dollars), 'the more money on the tape'),
-          lead: higher(s => s.tape.dollars),
-          bars: s => [{ v: s.tape.dollars, text: fmtUsd(s.tape.dollars), ink: 'silver' }],
-          cell: (s, lit) => <Fig lit={lit}>{fmtUsd(s.tape.dollars)}</Fig>,
+          note: regular ? the(higher(s => s.tape.dollars), 'the more money on the tape') : 'not compared',
+          lead: regular ? higher(s => s.tape.dollars) : null,
+          /* no print in the stretch is no figure, not "$0" */
+          bars: s => [{ v: s.tape.dollars, text: s.tape.prints ? fmtUsd(s.tape.dollars) : '—', ink: 'silver' }],
+          cell: (s, lit) => <Fig lit={lit}>{s.tape.prints ? fmtUsd(s.tape.dollars) : '—'}</Fig>,
         },
         {
           key: 'sweeps',
           label: 'Sweeps',
-          note: the(higher(s => s.tape.sweeps), 'the more sweeps'),
-          lead: higher(s => s.tape.sweeps),
+          note: regular ? the(higher(s => s.tape.sweeps), 'the more sweeps') : 'not compared',
+          lead: regular ? higher(s => s.tape.sweeps) : null,
           bars: s => [{ v: s.tape.sweeps, text: num(s.tape.sweeps), ink: 'silver' }],
           cell: (s, lit) => <Fig lit={lit}>{num(s.tape.sweeps)}</Fig>,
         },
@@ -649,7 +798,13 @@ const Compare = () => {
   const gutter = phone ? 'mx-3' : 'mx-5';
 
   /* ---- the lists under the rows ---------------------------------------------------- */
-  const listed = useMemo(() => [...a.rows.slice(0, CMP_LISTED), ...b.rows.slice(0, CMP_LISTED)], [a.rows, b.rows]);
+  /* FLOOR PACKAGES STAND APART (audit round 5: "QQQ's heaviest contracts" crowned QQQ 740P $49.0M, 99% floor-traded
+     packages): the bets ranked by dollars, then the packages among the heaviest, each labelled — not a bet */
+  const listOf = (rows: BookContract[]) => {
+    const top = rows.slice(0, CMP_LISTED + 3);
+    return [...rows.filter(r => !notABet(r)).slice(0, CMP_LISTED), ...top.filter(r => notABet(r)).slice(0, 2)];
+  };
+  const listed = useMemo(() => [...listOf(a.rows), ...listOf(b.rows)], [a.rows, b.rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const kindOf = (t: SpreadTrade) => SPREAD_KINDS.find(k => k.key === t.kind)?.label ?? t.kind;
 
   const Lists = ({ s, side }: { s: TraceSide; side: 'a' | 'b' }) => (
@@ -658,9 +813,9 @@ const Compare = () => {
       <div className="px-5 flex items-center gap-2 border-b border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
         <CompanyLogo ticker={s.ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s heaviest contracts</span>
-        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· by dollars · a row opens the card</span>
+        <span className="text-[10.5px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">· by dollars · packages &amp; spread legs apart · a row opens the card</span>
       </div>
-      {s.rows.slice(0, CMP_LISTED).map(r => (
+      {listOf(s.rows).map(r => (
         <button
           key={r.key}
           type="button"
@@ -670,14 +825,27 @@ const Compare = () => {
           style={{ height: CMP_LIST_ROW_H }}
           data-compare-contract={r.key}
         >
-          <span className="min-w-0 flex items-center">
+          <span className="min-w-0 flex items-center gap-1.5">
             <ContractCell strike={r.strike} right={r.right} expiry={r.expiry} />
+            {floorPackaged(r) ? (
+              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={`${Math.round(r.floorPct)}% of its day traded on the floor and ${Math.round(r.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down: not a bet, so not ranked`}>
+                floor pkg
+              </span>
+            ) : notABet(r) ? (
+              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={`${notABetHint(r)} — not ranked`}>
+                {r.multiPct >= 50 ? 'spread legs' : 'a cross'}
+              </span>
+            ) : stockLike(r) ? (
+              <span className="font-mono text-[9.5px] uppercase text-warn whitespace-nowrap" title={STOCK_LIKE_HINT}>
+                stock-like
+              </span>
+            ) : null}
           </span>
           <span className="font-mono text-[10px] tnum text-textMuted text-right max-sm:hidden">{r.dte}d</span>
           <span className="font-mono text-[12px] tnum font-semibold text-textPrimary text-right">{fmtUsd(r.premium)}</span>
           <span className="font-mono text-[10.5px] tnum text-textSecondary text-right whitespace-nowrap max-sm:hidden">{num(r.volume)} vol</span>
           <span className="flex justify-end">
-            <LeanCell askPct={r.askPct} />
+            <LeanCell askPct={r.askPct} split={r.sideVol} legsPct={r.multiPct} crossPct={r.crossPct} />
           </span>
         </button>
       ))}
@@ -690,31 +858,33 @@ const Compare = () => {
       <div className="px-5 flex items-center gap-2 border-y border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
         <CompanyLogo ticker={s.ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s structures</span>
-        <span className="text-[10.5px] text-textMuted whitespace-nowrap truncate">· the tape reconstructed · heaviest first</span>
+        <span className="text-[10.5px] text-textMuted break-words sm:whitespace-nowrap sm:truncate" title={mny !== 'all' ? "A structure's legs sit at several strikes, on both sides of the stock — the money cut is not applied to this list; the clock cut is, by the near leg" : undefined}>· the tape reconstructed · the most net premium first{mny !== 'all' ? ' · every strike — the money cut is not on this list' : ''}</span>
       </div>
       {s.structures.list.slice(0, CMP_LISTED).map(t => (
         <div
           key={t.id}
           /* On a phone: the kind, the strikes and the dollars; the expiry and the debit/credit go */
           className="px-5 grid grid-cols-[96px_minmax(0,1fr)_120px_96px_76px] max-sm:grid-cols-[96px_minmax(0,1fr)_76px] items-center gap-x-3 border-b border-borderSubtle/40 hover:bg-silver/[0.04] transition-colors"
-          style={{ height: CMP_LIST_ROW_H }}
+          style={{ minHeight: CMP_LIST_ROW_H }}
           data-compare-structure={t.id}
           title={SPREAD_KINDS.find(k => k.key === t.kind)?.read}
         >
           <span className="text-[11.5px] font-semibold text-textPrimary whitespace-nowrap">{kindOf(t)}</span>
-          <span className="font-mono text-[12px] tnum font-semibold text-textPrimary whitespace-nowrap truncate">{t.strikesLabel}</span>
-          <span className="font-mono text-[10px] tnum text-textMuted whitespace-nowrap max-sm:hidden">
-            {t.expiry} · {t.dte}d
+          <span className="font-mono text-[12px] tnum font-semibold text-textPrimary break-words sm:whitespace-nowrap sm:truncate">{t.strikesLabel}</span>
+          <span className="font-mono text-[10px] tnum text-textMuted whitespace-nowrap max-sm:hidden" title={t.farExpiry ? `Two expiries: the near leg ${t.expiry} (${t.dte}d), the far leg ${t.farExpiry} (${t.farDte}d)` : undefined}>
+            {t.farExpiry ? `${t.expiry.slice(0, 5)}–${t.farExpiry.slice(0, 5)} · ${t.dte}–${t.farDte}d` : `${t.expiry} · ${t.dte}d`}
           </span>
           <span className="font-mono text-[11px] tnum text-right whitespace-nowrap max-sm:hidden">
-            <span className="text-textPrimary">${Math.abs(t.net).toFixed(2)}</span> <span className={t.net >= 0 ? 'text-bull' : 'text-bear'}>{t.net >= 0 ? 'debit' : 'credit'}</span>
+            {/* paid or collected is a fact, not a lean — the Multi-Leg page's neutral ink; a structure the vendor priced no net
+                for says nothing rather than "$0.00 debit" */}
+            {t.net === 0 ? <span className="text-textMuted">{t.legsState === 'pending' && t.netKnown !== false ? '…' : '—'}</span> : <><span className="text-textPrimary">{t.units != null && t.units > 1 ? `${t.units}× ` : ''}${Math.abs(t.net).toFixed(2)}</span> <span className="text-textSecondary">{t.net > 0 ? 'debit' : 'credit'}</span></>}
           </span>
-          <span className="font-mono text-[12px] tnum font-semibold text-textPrimary text-right">{fmtUsd(t.premium)}</span>
+          <span className="font-mono text-[12px] tnum font-semibold text-textPrimary text-right" title={`${fmtUsd(t.premium)} across every leg`}>{t.netKnown === false ? '—' : fmtUsd(Math.abs(t.netPremium))}</span>
         </div>
       ))}
       {s.structures.list.length === 0 && (
         <div className="px-5 flex items-center font-mono text-[10px] uppercase tracking-widest text-textMuted" style={{ height: CMP_LIST_ROW_H }}>
-          No structures on this cut today
+          No structures on this cut {isLiveDay(todayIso) ? 'today' : `on ${shortDay(todayIso)}`}
         </div>
       )}
     </div>
@@ -723,42 +893,81 @@ const Compare = () => {
   return (
     <TraceBox
       title="Two names, side by side"
-      sub="Net flow, the same-day money, the book, the footprints, the structures and the tape — the first name against the second, on the same cut every other Trace page reads · pick either name, swap them, cut them to one clock"
+      sub="Net flow, the same-day money, the book, the footprints, the structures and the tape — the first name against the second · pick either name, swap them, cut them to one clock"
       testId="compare"
       data={{ a: aTicker, b: bTicker, clock: tenor, money: mny }}
       guide={{ title: 'How to read the card', door: 'What the rows, the panes and the lists mean', body: <CompareGuide />, testId: 'compare-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
+        bookState !== 'in' ? (
+          <>
+            <Fact label={`${aTicker} net`} testId="a-net">
+              <span className="text-textMuted">—</span>
+            </Fact>
+            <Fact label={`${bTicker} net`} testId="b-net">
+              <span className="text-textMuted">—</span>
+            </Fact>
+          </>
+        ) : (
         <>
-          <Fact label={`${a.ticker} net`} testId="a-net">
-            <span className={dirInk(a.net)}>{signedUsd(a.net)}</span>
+          <Fact label={`${a.ticker} net`} testId="a-net" title={a.netSource === 'ticks' ? "Net premium over the regular session — the vendor's minute ticks, the figure Net Flow's pane and Intervals show. A vendor total: spread legs and floor packages are in it" : "Net premium on the clock's expiries, the whole day — by expiry (the vendor's expiry route). A vendor total: spread legs and floor packages are in it"}>
+            {a.netPending ? <span className="text-textMuted">{pend(a)}</span> : <span className={dirInk(a.net)}>{signedUsd(a.net)}</span>}
           </Fact>
-          <Fact label={`${b.ticker} net`} testId="b-net">
-            <span className={dirInk(b.net)}>{signedUsd(b.net)}</span>
+          <Fact label={`${b.ticker} net`} testId="b-net" title={b.netSource === 'ticks' ? "Net premium over the regular session — the vendor's minute ticks, the figure Net Flow's pane and Intervals show. A vendor total: spread legs and floor packages are in it" : "Net premium on the clock's expiries, the whole day — by expiry (the vendor's expiry route). A vendor total: spread legs and floor packages are in it"}>
+            {b.netPending ? <span className="text-textMuted">{pend(b)}</span> : <span className={dirInk(b.net)}>{signedUsd(b.net)}</span>}
           </Fact>
-          <Fact label="Same-day money" testId="same-day">
-            <span className={dirInk(a.odte.net)}>{signedUsd(a.odte.net)}</span> <span className="text-textMuted">·</span> <span className={dirInk(b.odte.net)}>{signedUsd(b.odte.net)}</span>
+          <Fact label={`${isLiveDay(todayIso) ? 'Expiring today' : `Expired ${shortDay(todayIso)}`} · net`} testId="same-day" title={`Net call premium less net put premium on each name's contracts ${sameDayWords(todayIso)} — by expiry (the vendor's expiry route), the whole day`}>
+            <span className={dirInk(a.odte.net)}>{a.odte.has ? signedUsd(a.odte.net) : '—'}</span> <span className="text-textMuted">·</span> <span className={dirInk(b.odte.net)}>{b.odte.has ? signedUsd(b.odte.net) : '—'}</span>
           </Fact>
           <Champion label={`Leans ${leansWords}`} ink={cmp.bullish.net >= 0 ? 'bull' : 'bear'} onOpen={() => toNetFlow(cmp.bullish.ticker)} testId="bullish">
-            {cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}
+            {netHeld ? <>{cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}</> : <span className="text-textMuted">…</span>}
           </Champion>
-          <Champion label="Heavier book" ink="supreme" onOpen={() => toNetFlow(cmp.heavier.ticker)} testId="heavier">
-            {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
-          </Champion>
-          <Fact label="Busier tape" testId="busier">
-            {/* the tape window is the market's last 200 prints — neither name on it is "no print", not a winner */}
-            {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints</>}
-          </Fact>
+          {cmp.heavier ? (
+            <Champion label="Heavier premium" ink="supreme" title={`The name with more premium across its standing contracts with the most premium (up to 80), floor packages, spread legs and crosses left out (${a.ticker} ${num(a.book.apart.count)} for ${fmtUsd(a.book.apart.premium)}, ${b.ticker} ${num(b.book.apart.count)} for ${fmtUsd(b.book.apart.premium)}) — put it on Net Flow's pane`} onOpen={() => toNetFlow(cmp.heavier!.ticker)} testId="heavier">
+              {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
+            </Champion>
+          ) : (
+            <Fact label="Heavier premium" testId="heavier" title={`Neither name has a contract standing ${cutWords}`}>
+              <span className="text-textMuted">none standing</span>
+            </Fact>
+          )}
+          {regular && (
+            <Fact label="Busier tape" testId="busier" title={tapeSince ? `Regular-session prints (each by its own time and flag) since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `Each name's last ${TAPE_N} prints`}>
+              {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
+              {!cmp.busier ? (
+                a.tape.prints === 0 ? <span className="text-textMuted">—</span> : <span title="Both names printed the same number of regular-session prints over the same stretch">level <span className="text-textMuted">·</span> {num(a.tape.prints)} prints each{tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}</span>
+              ) : cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : (() => {
+                /* PLAIN WORDS (audit round 9: "300 prints since 13:10 · 120.6/s"): how many prints, over how long, and the
+                   other name's count beside it */
+                const other = cmp.busier === a ? b : a;
+                const sec = cmp.busier.tape.lastMs && tapeSince ? (Math.max(a.tape.lastMs ?? 0, b.tape.lastMs ?? 0) - tapeSince * 1000) / 1000 : 0;
+                const span = sec >= 1 ? (sec < 90 ? `the last ${Math.round(sec)} seconds` : `the last ${Math.round(sec / 60)} minutes`) : null;
+                return (
+                  <>
+                    {cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{span ? ` in ${span}` : tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}
+                    <span className="text-textMuted"> · {other.ticker} {num(other.tape.prints)}</span>
+                  </>
+                );
+              })()}
+            </Fact>
+          )}
         </>
+        )
       }
       controls={
         <>
-          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
-          {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13) */}
-          <span className="flex items-center gap-1.5 max-sm:col-span-2" data-compare-names>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">A</span>
+          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
+          {/* (round 7: the first chip's chevron wrapped onto a line of its own at 390 — the pre-market / after-hours move, the
+              chip's third figure, is left off on a phone; the hover still says it) */}
+          {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13); a chip wider than
+              the row (a name's last-session change and its pre-market move) wraps inside itself rather than run off the card */}
+          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&_[data-scope]]:shrink-0 max-sm:[&_[data-scope]]:shrink max-sm:[&_[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&_[data-scope]]:h-auto max-sm:[&_[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1 max-sm:[&_[data-scope-ext]]:hidden" data-compare-names>
+            {/* EACH LETTER STAYS WITH ITS CHIP (audit round 8, 390: "B" wrapped away from its name) */}
+            <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:flex-1" data-compare-pair="a">
+            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted shrink-0">A</span>
             {/* The two chips wear the same clothes (Noah, 2026-09-09): the first in the full following look
                 with its silver link, the second its own name with no link at all */}
-            <ScopeChip ticker={aTicker} linked={aFollows} full quote onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
+            <ScopeChip ticker={aTicker} linked={aFollows} full quote closeOutside onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
+            </span>
             <button
               type="button"
               onClick={onSwap}
@@ -769,21 +978,34 @@ const Compare = () => {
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
             </button>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">B</span>
-            <ScopeChip ticker={bTicker} quote onPick={next => setBPick(next)} title="The second name — pick another" />
+            <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:w-full max-sm:pr-9" data-compare-pair="b">
+            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted shrink-0">B</span>
+            <ScopeChip ticker={bTicker} quote closeOutside onPick={next => setBPick(next)} title="The second name — pick another" />
+            </span>
           </span>
           {/* The two cuts as labelled cards — ONE pair for both names */}
           <DropdownSelect label="Clock" value={tenor} options={CLOCK_OPTIONS} onChange={setTenor} title="How far out the contracts run — both names" testId="compare-clock" />
           <DropdownSelect label="Money" value={mny} options={MONEY_OPTIONS} onChange={setMny} title="Which strikes against the stock — both names" testId="compare-money" />
         </>
       }
-      sentence={sentence}
+      sentence={bookState === 'reading' ? "Reading the day's book." : bookState === 'down' ? 'This read did not land — the two names fill when the feed answers.' : (
+          <>
+            {sentence}
+            <TermLine keys={['standing', 'floor', 'spreadLegs', 'volOi', 'oiDay', 'stockLike']} testId="compare" />
+          </>
+        )}
     >
+      {bookState !== 'in' ? (
+        <div className="border-t border-borderSubtle h-40 flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted" data-compare-empty>
+          {bookState === 'reading' ? 'Reading the day’s book' : 'This read did not land'}
+        </div>
+      ) : (
+        <>
       {/* THE PANES — each name through the session, on the page's one cut */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 border-t border-borderSubtle p-2" data-compare-panes>
         {[a, b].map((s, i) => (
           <div key={`${i}-${s.ticker}`} style={{ height: CMP_PANE_H }} className="min-w-0" data-compare-pane={i === 0 ? 'a' : 'b'}>
-            <NetFlowPane book={book} seg="all" mny={mny} onSeg={() => {}} onMny={setMny} tick={tick} ticker={s.ticker} tenor={tenor} onTenor={setTenor} dteMax={Infinity} cutCards={false} />
+            <NetFlowPane book={book} seg="all" mny={mny} onSeg={() => {}} onMny={setMny} tick={tick} ticker={s.ticker} tenor={tenor} onTenor={setTenor} dteMax={Infinity} cutCards={false} uncutNote={tenor !== 'all' || mny !== 'all' ? `every expiry, every strike — the ${[tenor !== 'all' ? 'clock' : '', mny !== 'all' ? 'money' : ''].filter(Boolean).join(' and ')} cut does not reach the minute ticks` : undefined} />
           </div>
         ))}
       </div>
@@ -845,7 +1067,7 @@ const Compare = () => {
               >
                 {/* the fact, with the verdict under it — the middle column at a desk, the top line on a phone */}
                 {phone && (
-                  <span className="flex flex-col items-center leading-none pt-1.5 pb-1" data-compare-fact>
+                  <span className="flex flex-col items-center leading-none pt-1.5 pb-1" data-compare-fact title={r.hint}>
                     <span className="text-[11px] text-textSecondary whitespace-nowrap">{r.label}</span>
                     <span className="mt-[3px] text-[9.5px] text-textMuted whitespace-nowrap truncate max-w-full" data-compare-note>
                       {r.note}
@@ -859,7 +1081,7 @@ const Compare = () => {
                   {phone ? (
                     <span className="self-stretch bg-borderSubtle/60 rounded-full" aria-hidden />
                   ) : (
-                    <span className="min-w-0 self-stretch flex flex-col items-center justify-center leading-none paper-panel paper-edge-x">
+                    <span className="min-w-0 self-stretch flex flex-col items-center justify-center leading-none paper-panel paper-edge-x" title={r.hint}>
                       <span className="text-[11px] text-textSecondary group-hover:text-textPrimary transition-colors duration-150 whitespace-nowrap">{r.label}</span>
                       <span className="mt-[3px] text-[9.5px] text-textMuted group-hover:text-textSecondary transition-colors duration-150 whitespace-nowrap truncate max-w-full" data-compare-note>
                         {r.note}
@@ -883,8 +1105,10 @@ const Compare = () => {
         <Lists s={b} side="b" />
       </div>
       <p className="px-5 flex items-center border-t border-borderSubtle text-[11px] text-textMuted" style={{ height: 40 }} data-compare-foot>
-        Only names on today's book can be compared — a name off it falls back to the frame's, or to the busiest.
+        Only names on the session's book ({shortDay(todayIso)}) can be compared — a name off it falls back to the frame's, or to the busiest.
       </p>
+        </>
+      )}
       <BookDrill list={listed} openKey={openKey} onOpen={setOpenKey} tick={tick} />
     </TraceBox>
   );

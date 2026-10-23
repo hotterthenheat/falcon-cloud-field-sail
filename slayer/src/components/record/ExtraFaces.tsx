@@ -1,13 +1,16 @@
 import { useMemo } from 'react';
+import { ownerWord } from '../../data/whalesMap';
+import { CoSub } from './CoName';
 import { useNavigate } from 'react-router-dom';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME, noRows } from '../ui/houseGrid';
 import CompanyLogo from '../ui/CompanyLogo';
 import { tickerName } from '../../data/tickers';
-import { lookup } from '../../data/universe';
-import { buildHoldings, type HoldingRow, type SectorFlowRow } from '../../data/fileBooks';
-import { useLiveRecord } from '../../data/liveRecord';
+import { buildHoldings, type HoldingRow } from '../../data/fileBooks';
+import type { InsiderTrade, ReportOwner } from '../../types/record';
+import { useCongressBook } from '../../data/liveRecord';
+import { phonePin } from './pagedGrid';
 
 /*
   The second face under the grid Congress and Insiders already own.
@@ -25,29 +28,33 @@ const MemberCell = ({ data }: ICellRendererParams<HoldingRow>) =>
   ) : null;
 
 const HoldName = ({ data }: ICellRendererParams<HoldingRow>) =>
-  data ? (
+  data && !data.ticker ? (
+    <span className="flex items-center min-w-0 w-full h-full overflow-hidden" title={data.asset}>
+      <span className="text-[12px] text-textPrimary truncate">{data.asset}</span>
+    </span>
+  ) : data ? (
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{tickerName(data.ticker)}</span>
+        <CoSub ticker={data.ticker} vendor={false} />
       </span>
     </span>
   ) : null;
 
 const BracketCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.bracket}</span> : null);
-const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{data.owner}</span> : null);
+const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span className={`font-mono text-[8px] uppercase tracking-widest ${data.owner === 'Self' ? 'text-textPrimary' : 'text-textMuted'}`}>{ownerWord(data.owner as ReportOwner)}</span> : null);
 
-export const CongressHoldings = () => {
+export const CongressHoldings = ({ since }: { since?: string | null } = {}) => {
   const navigate = useNavigate();
-  const record = useLiveRecord();
+  const congress = useCongressBook();
   const rows = useMemo(() => {
-    if (record.congress.status !== 'live') return [];
-    return buildHoldings(record.congress.trades);
-  }, [record.congress]);
+    if (congress.status !== 'live') return [];
+    return buildHoldings(congress.trades);
+  }, [congress]);
   const columnDefs = useMemo<ColDef<HoldingRow>[]>(
     () => [
-      { headerName: 'Member', field: 'member', flex: 1.2, minWidth: 140, cellRenderer: MemberCell, headerTooltip: 'Who still holds it, from the filings in this window' },
+      { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.2, minWidth: 140, cellRenderer: MemberCell, headerTooltip: 'The member who reported the purchase — the reports read show no full sale of it since' },
       { headerName: 'Name', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: HoldName, headerTooltip: 'The holding' },
       { headerName: 'Bracket', field: 'bracket', flex: 1.2, minWidth: 180, cellRenderer: BracketCell, headerTooltip: 'The disclosed bracket — never a midpoint' },
       { headerName: 'Owner', field: 'owner', width: 100, cellRenderer: OwnerCell, headerTooltip: "Whose holding — the member's own, or a joint account" },
@@ -62,20 +69,22 @@ export const CongressHoldings = () => {
     <div data-congress-holdings>
       <div className="px-5 border-t border-borderSubtle/60">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
-          <span>What they still hold</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">open purchases, no later full sale · a row opens that member’s book</span>
+          <span>Bought, no sale reported since</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">{/* (round 9) which window it covers — every report read, not the window above */}over every report read{since ? `, trades since ${since.slice(5, 7)}/${since.slice(8, 10)}/${since.slice(2, 4)}` : ''} — not only the window above · purchases with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
         </div>
       </div>
       <div className="slayer-board border-t border-borderSubtle">
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<HoldingRow>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
-            overlayNoRowsTemplate={noRows('No holding on this cut')}
+            overlayNoRowsTemplate={noRows(congress.status === 'live' ? 'No holding on this cut' : congress.status === 'sim' ? 'This read did not land' : 'Reading the reports…')}
+            key={congress.status}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
-            getRowId={p => `${p.data.member}-${p.data.ticker}`}
+            getRowId={p => p.data.key}
             onRowClicked={open}
             rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
             suppressCellFocus
@@ -89,35 +98,64 @@ export const CongressHoldings = () => {
   );
 };
 
-const SectorCell = ({ data }: ICellRendererParams<SectorFlowRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary">{data.sector}</span> : null);
-const BuysCell = ({ data }: ICellRendererParams<SectorFlowRow>) => (data ? <span className="font-mono text-[11px] tnum text-bull">{data.buys}</span> : null);
-const SalesCell = ({ data }: ICellRendererParams<SectorFlowRow>) => (data ? <span className="font-mono text-[11px] tnum text-bear">{data.sales}</span> : null);
-const NetCell = ({ data }: ICellRendererParams<SectorFlowRow>) => (data ? <span className={`font-mono text-[11px] tnum ${data.netM > 0 ? 'text-bull' : data.netM < 0 ? 'text-bear' : 'text-textMuted'}`}>{data.netM > 0 ? '+' : ''}{data.netM.toFixed(1)}M</span> : null);
+interface SectorRow {
+  sector: string;
+  buys: number;
+  sales: number;
+  boughtM: number;
+  soldM: number;
+  netM: number;
+}
+const SectorCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary">{data.sector}</span> : null);
+const BuysCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="font-mono text-[11px] tnum text-bull">{data.buys.toLocaleString('en-US')} <span className="text-textMuted">· {fmtM(data.boughtM)}</span></span> : null);
+const SalesCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className="font-mono text-[11px] tnum text-bear">{data.sales.toLocaleString('en-US')} <span className="text-textMuted">· {fmtM(data.soldM)}</span></span> : null);
+const NetCell = ({ data }: ICellRendererParams<SectorRow>) => (data ? <span className={`font-mono text-[11px] tnum ${data.netM > 0 ? 'text-bull' : data.netM < 0 ? 'text-bear' : 'text-textMuted'}`}>{data.netM > 0 ? '+' : data.netM < 0 ? '−' : ''}{fmtM(Math.abs(data.netM))}</span> : null);
+const fmtM = (m: number) => (m >= 1000 ? `$${(m / 1000).toFixed(1)}B` : m >= 1 ? `$${m.toFixed(1)}M` : `$${Math.round(m * 1000)}K`);
 
-export const InsiderSectorFlow = () => {
-  const record = useLiveRecord();
+/** The vendor's sector words, said the house way; a filing without one is "Not stated", never folded into a catch-all */
+const SECTOR_WORD: Record<string, string> = {
+  healthcare: 'Health Care',
+  'financial services': 'Financials',
+  technology: 'Technology',
+  'real estate': 'Real Estate',
+  industrials: 'Industrials',
+  energy: 'Energy',
+  'consumer cyclical': 'Consumer Discretionary',
+  'basic materials': 'Materials',
+  'consumer defensive': 'Consumer Staples',
+  utilities: 'Utilities',
+  'communication services': 'Communication',
+};
+const sectorWord = (raw?: string) => (raw ? SECTOR_WORD[raw.trim().toLowerCase()] ?? raw.trim() : 'Not stated');
+
+/* BY SECTOR, ON THE PAGE'S OWN CUT (the data audit, 2026-10-22): the table summed the whole feed, every window and
+   cut ignored, under the house universe's sectors — 2,508 buys and 3,047 sales fell to "Other". It now adds up the
+   rows the grid above shows (window, role and names applied), by Unusual Whales' own sector field. */
+export const InsiderSectorFlow = ({ trades, windowDays, state = 'read' }: { trades: readonly InsiderTrade[]; windowDays: number; state?: 'reading' | 'failed' | 'read' }) => {
   const rows = useMemo(() => {
-    if (record.insiders.status !== 'live') return [];
-    const map = new Map<string, SectorFlowRow>();
-    for (const t of record.insiders.trades) {
+    const map = new Map<string, SectorRow>();
+    for (const t of trades) {
       if (t.code !== 'P' && t.code !== 'S') continue;
-      const sector = lookup(t.ticker)?.sector ?? 'Other';
-      const row = map.get(sector) ?? { sector, buys: 0, sales: 0, netM: 0 };
-      if (t.kind === 'BUY') row.buys += 1;
-      else row.sales += 1;
-      row.netM += (t.kind === 'BUY' ? t.value : -t.value) / 1e6;
+      const sector = sectorWord(t.sector);
+      const row = map.get(sector) ?? { sector, buys: 0, sales: 0, boughtM: 0, soldM: 0, netM: 0 };
+      if (t.kind === 'BUY') {
+        row.buys += 1;
+        row.boughtM += t.value / 1e6;
+      } else {
+        row.sales += 1;
+        row.soldM += t.value / 1e6;
+      }
+      row.netM = row.boughtM - row.soldM;
       map.set(sector, row);
     }
-    return [...map.values()]
-      .map(r => ({ ...r, netM: Number(r.netM.toFixed(1)) }))
-      .sort((a, b) => Math.abs(b.netM) - Math.abs(a.netM));
-  }, [record.insiders]);
-  const columnDefs = useMemo<ColDef<SectorFlowRow>[]>(
+    return [...map.values()].sort((a, b) => Math.abs(b.netM) - Math.abs(a.netM));
+  }, [trades]);
+  const columnDefs = useMemo<ColDef<SectorRow>[]>(
     () => [
-      { headerName: 'Sector', field: 'sector', flex: 1.4, minWidth: 160, cellRenderer: SectorCell, headerTooltip: 'The filings, added up by sector' },
-      { headerName: 'Buys', field: 'buys', width: 90, cellRenderer: BuysCell, type: 'rightAligned', headerTooltip: 'Open-market buys in the sector' },
-      { headerName: 'Sales', field: 'sales', width: 90, cellRenderer: SalesCell, type: 'rightAligned', headerTooltip: 'Open-market sales in the sector' },
-      { headerName: 'Net', field: 'netM', width: 100, cellRenderer: NetCell, type: 'rightAligned', headerTooltip: 'Buys against sales, in millions' },
+      { headerName: 'Sector', field: 'sector', flex: 1.4, minWidth: 160, cellRenderer: SectorCell, headerTooltip: "The company's sector as Unusual Whales files it" },
+      { headerName: 'Buys', field: 'boughtM', width: 150, cellRenderer: BuysCell, type: 'rightAligned', headerTooltip: 'Open-market purchases in the sector on this cut, and the dollars' },
+      { headerName: 'Sales', field: 'soldM', width: 150, cellRenderer: SalesCell, type: 'rightAligned', headerTooltip: 'Open-market sales in the sector on this cut, and the dollars' },
+      { headerName: 'Net', field: 'netM', width: 110, cellRenderer: NetCell, type: 'rightAligned', sort: 'desc', comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Dollars bought minus dollars sold — every dollar counts the same, chosen or planned. Largest either way first' },
     ],
     [],
   );
@@ -126,16 +164,27 @@ export const InsiderSectorFlow = () => {
       <div className="px-5 border-t border-borderSubtle/60">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>By sector</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the same filings, added up · a chosen buy still counts more than a scheduled sale, and the net says so</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">the open-market rows on this cut, last {windowDays} days, added up by sector · the net is dollars bought minus dollars sold, a planned sale counted like a chosen one</span>
         </div>
       </div>
+      {/* an empty cut says so in a sentence — never a grid of headers over nothing (the retail test, 2026-10-23: GME) */}
+      {rows.length === 0 ? (
+        <p className="px-5 py-3 border-t border-borderSubtle text-[12px] text-textSecondary" data-insider-sectors-empty>
+          {state === 'reading'
+            ? 'Reading the filings — the sectors add up once the open-market rows land.'
+            : state === 'failed'
+              ? 'This read did not land, so there is nothing to add up by sector yet.'
+              : `No open-market purchase or sale on this cut in the last ${windowDays} days, so there is nothing to add up by sector.`}
+        </p>
+      ) : (
       <div className="slayer-board border-t border-borderSubtle">
         <AgGridProvider modules={GRID_MODULES}>
-          <AgGridReact<SectorFlowRow>
+          <AgGridReact<SectorRow>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
-            overlayNoRowsTemplate={noRows('No sector on this cut')}
+            overlayNoRowsTemplate={noRows('No open-market trade on this cut')}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={p => p.data.sector}
@@ -146,6 +195,7 @@ export const InsiderSectorFlow = () => {
           />
         </AgGridProvider>
       </div>
+      )}
     </div>
   );
 };

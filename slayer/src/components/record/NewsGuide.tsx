@@ -15,8 +15,6 @@ import type { ReactNode } from 'react';
 import NewsMap, { type HeatPoint, type MapNote, type Reach } from './NewsMap';
 import type { CityPing } from '../../data/newsroom';
 
-const BULL = 'rgb(var(--bull))';
-const BEAR = 'rgb(var(--bear))';
 const SILVER = 'rgb(var(--silver))';
 const SUPREME = 'rgb(var(--supreme))';
 const MUTED = '#7c8290';
@@ -67,15 +65,15 @@ const still = { onPick: () => undefined, onHover: () => undefined, hoverCity: nu
 const LONDON_MORNING = new Date('2026-09-09T09:30:00Z');
 
 const PIN_FIGURE = {
-  pins: [ping('Santa Clara', 37.35, -121.95, 3, 'ALLY'), ping('Washington', 38.89, -77.04, 1, 'WATCH'), ping('Riyadh', 24.71, 46.68, 2, 'THREAT', 'fresh'), ping('Shanghai', 31.23, 121.47, 1, 'ALLY')],
+  pins: [ping('Santa Clara', 37.35, -121.95, 3, 'WATCH'), ping('Washington', 38.89, -77.04, 1, 'WATCH'), ping('Riyadh', 24.71, 46.68, 2, 'WATCH', 'fresh'), ping('Shanghai', 31.23, 121.47, 1, 'WATCH')],
   notes: [
-    { lat: 37.35, lng: -121.95, text: '3 stories · positive', dy: 52 },
-    { lat: 38.89, lng: -77.04, text: 'open · neutral', dy: 44 },
-    { lat: 24.71, lng: 46.68, text: 'fresh · negative', dy: 52 },
+    { lat: 37.35, lng: -121.95, text: '3 stories', dy: 52 },
+    { lat: 38.89, lng: -77.04, text: 'open', dy: 44 },
+    { lat: 24.71, lng: 46.68, text: 'fresh', dy: 52 },
   ] as MapNote[],
 };
 const PinsFigure = () => (
-  <MapFigure label="The map, still: a big green three at Santa Clara, a grey pin with the silver ring at Washington, a red two with a halo at Riyadh, a small green one at Shanghai">
+  <MapFigure label="The map, still: a big three at Santa Clara, a pin with the silver ring at Washington, a two with a halo at Riyadh, a small one at Shanghai">
     <NewsMap figure pins={PIN_FIGURE.pins} selectedCity="Washington" heat={[]} reach={null} at={new Date('2026-09-09T22:00:00Z')} notes={PIN_FIGURE.notes} {...still} />
   </MapFigure>
 );
@@ -93,23 +91,14 @@ const HEAT_FIGURE = {
     { lat: 51.51, lng: -0.13, w: 9 },
     { lat: 35.68, lng: 139.69, w: 7 },
   ] as HeatPoint[],
-  reach: {
-    lat: 37.35,
-    lng: -121.95,
-    city: 'Santa Clara',
-    zones: [
-      { lat: 25.03, lng: 121.56, label: 'Taipei · foundries', w: 6 },
-      { lat: 37.56, lng: 126.97, label: 'Seoul · memory complex', w: 4 },
-      { lat: 51.44, lng: 5.47, label: 'Eindhoven · lithography', w: 3 },
-    ],
-  } as Reach,
+  reach: { lat: 37.35, lng: -121.95, city: 'Santa Clara', zones: [] } as Reach,
   notes: [
     { lat: 36, lng: -98, text: 'hot · most news lands here', dy: 74 },
-    { lat: 25.03, lng: 121.56, text: 'where the open story reaches', dy: 50 },
+    
   ] as MapNote[],
 };
 const HeatFigure = () => (
-  <MapFigure label="The map, still: the United States warmed hottest, Asia and the Gulf warm, a silver wash over Europe reading London open, silver arcs from the open pin at Santa Clara to rings at Taipei, Seoul and Eindhoven">
+  <MapFigure label="The map, still: the United States warmed hottest, Asia and the Gulf warm, a silver wash over Europe reading London open, the open pin at Santa Clara">
     <NewsMap figure pins={HEAT_FIGURE.pins} selectedCity="Santa Clara" heat={HEAT_FIGURE.heat} reach={HEAT_FIGURE.reach} at={LONDON_MORNING} notes={HEAT_FIGURE.notes} {...still} />
   </MapFigure>
 );
@@ -134,43 +123,6 @@ const SquareFigure = () => (
     ))}
   </Figure>
 );
-
-/* The story's six figures and the odds bar */
-const NumbersFigure = () => {
-  const cells = [
-    { x: 12, y: 12, label: '1-day expected', value: '+2.1%', ink: BULL },
-    { x: 150, y: 12, label: '5-day expected', value: '+3.7%', ink: BULL },
-    { x: 288, y: 12, label: 'Confidence', value: 'strong', ink: BULL },
-    { x: 12, y: 44, label: 'Already priced in', value: '13%', ink: INK },
-    { x: 150, y: 44, label: 'Keeps working', value: '5.5 sessions', ink: INK },
-    { x: 288, y: 44, label: 'The options book', value: 'fades it', ink: BEAR },
-  ];
-  return (
-    <Figure label="Six figures in three columns — the expected moves, confidence, priced in, keeps working, the options book — and under them the odds bar, red down against green up" h={96}>
-      {cells.map(c => (
-        <g key={c.label}>
-          <text x={c.x} y={c.y} fontSize={6.5} fill={MUTED} fontFamily={SANS}>
-            {c.label}
-          </text>
-          <text x={c.x} y={c.y + 13} fontSize={9.5} fontWeight={700} fill={c.ink} fontFamily={MONO}>
-            {c.value}
-          </text>
-        </g>
-      ))}
-      <text x={12} y={80} fontSize={7} fill={BEAR} fontFamily={MONO}>
-        down 19%
-      </text>
-      <text x={210} y={80} textAnchor="middle" fontSize={5.5} letterSpacing={1} fill={MUTED} fontFamily={MONO}>
-        ODDS NEXT SESSION
-      </text>
-      <text x={408} y={80} textAnchor="end" fontSize={7} fontWeight={700} fill={BULL} fontFamily={MONO}>
-        up 81%
-      </text>
-      <rect x={12} y={86} width={396 * 0.19} height={5} rx={2.5} fill={BEAR} fillOpacity={0.8} />
-      <rect x={12 + 396 * 0.19} y={86} width={396 * 0.81} height={5} rx={2.5} fill={BULL} />
-    </Figure>
-  );
-};
 
 /* All news: the six tabs with their counts, the hairline under the one in hand, a followed name's chip with its bell */
 const TabsFigure = () => {
@@ -244,7 +196,7 @@ const MonthFigure = () => {
     </g>
   );
   return (
-    <Figure label="Three days of the month: the 15th with Retail sales in red and TSM after the close in silver, the 16th today with FOMC in red, UK CPI in orange and 2 more, the 18th with Monthly options expiration in magenta and TSLA" h={108}>
+    <Figure label="Three days of the month: the 15th with Retail sales in red and TSM after the close in silver, the 16th today with FOMC in red, jobless claims in orange and 2 more, the 18th with Monthly options expiration in magenta and TSLA" h={108}>
       {cell(6, '15', false, [
         ['Retail sales m/m', '08:30', IMPACT.high],
         ['TSM', 'AMC', SILVER],
@@ -252,8 +204,8 @@ const MonthFigure = () => {
       ])}
       {cell(145, '16', true, [
         ['FOMC rate decision', '14:00', IMPACT.high],
-        ['UK CPI y/y', '02:00', IMPACT.medium],
-        ['Housing starts', '08:30', IMPACT.low],
+        ['Weekly jobless claims', '08:30', IMPACT.medium],
+        ['Housing starts', '08:30', IMPACT.medium],
       ], 2)}
       {cell(284, '18', false, [
         ['Monthly options expiration', '16:00', SUPREME],
@@ -266,11 +218,11 @@ const MonthFigure = () => {
 export const NewsGuide = () => (
   <div data-news-guide>
     <Section title="The pins">
-      <p>One pin per city: its size the count, its ink the lean, a halo when a story there is fresh, the silver ring on the open one.</p>
+      <p>One pin per city: its size the count, a halo when a story there is fresh, the silver ring on the open one. Pins are grey because Unusual Whales sends no positive or negative read on its headlines — every one arrives marked neutral — so the page does not invent one.</p>
       <PinsFigure />
     </Section>
     <Section title="Heat, reach, sessions">
-      <p>The land warms where the news lands, the arcs are where the open story reaches, the wash is the market that is open now.</p>
+      <p>The land warms where the stories come from — each story's city, weighed by how hard it lands — and the wash is the market that is open now.</p>
       <HeatFigure />
     </Section>
     <Section title="The tape, the kinds, the glide">
@@ -280,16 +232,15 @@ export const NewsGuide = () => (
       <p>How hard a story lands, on the wire and on the calendar.</p>
       <SquareFigure />
     </Section>
-    <Section title="The story's numbers">
-      <p>What the model expects, how sure it is, how much the tape already has, how long it keeps working, and whether the options book agrees. How sure is said in a word: strong, good, caution or poor.</p>
-      <NumbersFigure />
+    <Section title="The flags and the numbers">
+      <p><b>MAJOR</b> marks a headline Unusual Whales flags as major that is about a named listed company or the economy — the vendor's flag on a call date, a routine dividend, a "to speak at" notice or a story naming no listed company is not shown as major. <b>BOARD</b> marks one that names a stock on your Board. The default sort, What matters, puts major stories on your Board first, then the rest of your Board, then the other major ones — newest first inside each — except that a routine notice the vendor flags (a dividend declared, a results date, a conference slot) is not lifted for its flag. <b>At publish</b> is how the named stock had moved on the session when the story crossed: a snapshot, not today's move now. <b>Biggest move today</b>, in the head, is the regular session's change for the names the stories carry. Stories from paid legal and advice placements, adverts and token-price bot posts are left off the wire. <b>Also</b> lists the other stocks a headline names. The square says how hard a story lands: major stories and big movers land harder.</p>
     </Section>
     <Section title="All news">
       <p>Every headline, newest first, a tab per kind with its count. Follow a name and its stories gather on Following; ring its bell and the alerts drawer tells you of each one. A click opens the story beside the map.</p>
       <TabsFigure />
     </Section>
     <Section title="The month">
-      <p>Every day with what prints on it: the data in its impact's ink, a name reporting in silver with its slot, the market's own dates in magenta. Open a day for its figures; the arrows walk the months and Today comes home.</p>
+      <p>Every day with what is on it, all from Unusual Whales: the week's economic releases in their impact's ink (the headline ones — CPI, jobs, the Fed, GDP, PCE, retail sales, ISM — in red), the earnings of the next two weeks in silver with their slot (the same dates the Earnings page shows), FDA dates, the public schedule and the posts, and monthly options expiration in magenta. A day the feed names nothing on stays empty — nothing is filled in by rule.</p>
       <MonthFigure />
     </Section>
   </div>

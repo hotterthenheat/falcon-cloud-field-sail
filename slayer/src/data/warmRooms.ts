@@ -53,7 +53,15 @@ export function warmRooms() {
   const run = () => {
     void warmPinpoint();
     void warmDossier();
-    warmFeeds();
+    /* NOT ON TRACE (audit round 6): the warm feed started the active name's full Pinpoint book — greek-exposure by strike
+       and expiry, spot exposures, the option contracts, 34 dates each — and the headlines' daily closes, all on the key's
+       three slots while a Trace page waited on its own tape. Trace reads none of them; Pinpoint and Dossier start their
+       own feeds the moment they open. The page code above still warms. */
+    /* NOT ON DOSSIER EITHER (Dossier audit round 6: 34 dates each of SPY's book, and the wire's closes, on every Dossier
+       page — the Congress page waited behind them). Each Dossier page reads only what it shows; a page that shows a
+       name's levels (a stock's page, a fund's) asks for that name's book itself, and the wire starts on the News page. */
+    const path = window.location.pathname;
+    if (!path.startsWith('/trace') && !path.startsWith('/dossier') && !path.startsWith('/record')) warmFeeds();
   };
   if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1800 });
   else window.setTimeout(run, 900);

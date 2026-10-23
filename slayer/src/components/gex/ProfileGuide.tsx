@@ -24,7 +24,7 @@
 ==================================================
 */
 
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { fmtFlow, type FlowLadder } from '../../data/hedgeFlow';
 import type { GexLevel } from '../../types/market';
 import type { PanelLevels } from './ProfilePanel';
@@ -36,9 +36,9 @@ const INK_3 = 'rgb(var(--text-muted))';
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const GRID = 'rgba(255,255,255,0.07)';
 /* The thermal ramp's stops, as the calendar and the panel paint them */
-const COOL_1 = '#ABD9E9';
-const COOL_2 = '#74ADD1';
-const COOL_3 = '#4575B4';
+const COOL_1 = '#A6D96A';
+const COOL_2 = '#66BD63';
+const COOL_3 = '#1A9850';
 const WARM_1 = '#FDAE61';
 const WARM_2 = '#F46D43';
 const WARM_3 = '#D73027';

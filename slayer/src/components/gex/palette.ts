@@ -18,8 +18,8 @@ export const CHART_MINT = '#CFFFB1';
 /* THE ACCENT (2026-10-13): the holo silver — the lime it was is gone from the desk (tokens.css --select) */
 export const LIME = '#C7D3E8';
 
-export const CALL_WALL = BULL; // green, not mint — reversed by Noah 2026-08-18
-export const PUT_WALL = '#FF3B30'; // bear (hot red)
+export const CALL_WALL = '#7ABDD7'; // glacier — the call side's ink; green and red are the sign (absorbs / amplifies), 2026-10-23
+export const PUT_WALL = '#F5C542'; // ember — the put side's ink, not the amplify red (2026-10-23)
 /* INDECISION GRAY (Noah, 2026-08-29): the flip is the price where the book
    is on the verge of two sides — neither's color belongs to it. Gray IS the
    read. (The old baby blue moved up: it is the supreme's now.) */

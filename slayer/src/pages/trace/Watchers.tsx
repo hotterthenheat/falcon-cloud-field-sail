@@ -39,16 +39,17 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { buildCatches, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
-import { useLiveBook } from '../../data/traceLive';
+import { buildCatches, floorPackaged, notABetHint, notABetLabel, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
+import { dayLean, indexRoot, INDEX_OTM_TITLE, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
+import { dayAdv, dayPos, earnWords, shyPct } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
-import { fmtUsd } from '../../data/gex';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import WatchStar from '../../components/trace/WatchStar';
 import { contractKey, watchContract } from '../../context/WatchContext';
+import LeanCell from '../../components/trace/LeanCell';
 import RichRead from '../../components/ui/RichRead';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
@@ -60,14 +61,24 @@ import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import ReasonDoor from '../../components/trace/ReasonDoor';
 import ReadDoor from '../../components/trace/ReadDoor';
-import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { WatchersGuide } from '../../components/trace/TraceGuide';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
 import { createViewStore } from '../../data/savedViews';
-import { pctSigned } from '../../core/format';
+import { expiryLabel, pctSigned } from '../../core/format';
 
+/** A day's lean with the figure it is called on (audit round 7: "bid", "ask", "even" with no share) — the one lean rule */
+const leanText = (r: BookContract): string => {
+  if (notABet(r)) return floorPackaged(r) ? 'floor package · no lean' : r.multiPct >= 50 ? `spread legs ${Math.round(r.multiPct)}% · no lean` : `a cross ${Math.round(r.crossPct ?? 0)}% · no lean`;
+  const l = dayLean(r);
+  if (l.lean === 'ASK') return `ask ${Math.round(l.askSided)}%`;
+  if (l.lean === 'BID') return `bid ${Math.round(l.bidSided)}%`;
+  if (l.lean === 'UNSIDED') return Number.isFinite(l.mid) ? `mid ${Math.round(l.mid)}%` : 'no side';
+  return `even · ${l.askSided >= 50 ? `ask ${shyPct(l.askSided)}%` : `bid ${shyPct(l.bidSided)}%`}`;
+};
 const num = (v: number) => v.toLocaleString('en-US');
 
 /* THE CARDS (the walk, 2026-09-09) */
@@ -77,17 +88,18 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
 /** the print reads "18,479 @ $1.12" — 118 cut it to "@ $..."; the reason wraps to two lines, so it gives the room */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 150, clipprem: 92, sideCol: 64, otm: 76, earn: 92 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 132, clipprem: 100, sideCol: 92, otm: 76, earn: 128 };
 const FLEXES: Record<string, number> = { reason: 3 };
 const PIN_LEFT = ['time', 'ticker', 'contract'];
 const PIN_RIGHT = ['clipprem'];
 const WATCHER_CUTS = createViewStore('slayer_watchers_cuts_v1');
 const TOOLTIPS: Record<string, string> = {
   reason: "Why the contract is in front of you — the desk's watchers, or one you wrote (the hollow ring)",
-  clip: 'The print that tripped the reason — its size and fill',
-  clipprem: "That print's money",
-  sideCol: 'At the ask, the contract being bought; on the bid, sold',
-  voloi: 'Volume over open interest — above 1.5 the positions were built today',
+  time: "When the contract last printed in the session, New York",
+  clip: "The contract's last fill in the session",
+  clipprem: "The contract's premium in the session — every print, not one",
+  sideCol: "Where its day's volume leaned — at the ask or on the bid (55% or more of the sided volume, with at least half the day on a side), even, or mostly mid / no side",
+  voloi: 'Volume over open interest — at 1.5 and above the positions were built in the session; "new" when there was no open interest to divide by',
 };
 
 /** Categorical reason dots — same idea as sector dots: a hue names the kind. The house's categorical tokens, cut deep on
@@ -118,12 +130,10 @@ const phoneRow = (a: Catch) => (
     aside={a.time}
     figures={[
       <span key="p" className="font-semibold text-textPrimary">
-        {fmtUsd(a.clipPremium)}
+        {fmtUsd(a.premium)} {dayAdv()}
       </span>,
-      <span key="s">
-        {a.side === 'ASK' ? 'ask' : 'bid'} ${a.clipFill.toFixed(2)}
-      </span>,
-      <span key="z">{num(a.clipSize)} contracts</span>,
+      <span key="s">last ${a.last.toFixed(2)} at {a.time}</span>,
+      <span key="z">{num(a.row.volume)} vol · {leanText(a.row)}</span>,
     ]}
   />
 );
@@ -148,16 +158,25 @@ const Watchers = () => {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const liveBook = useLiveBook(activeTicker).rows;
+  /* THE MARKET'S BOOK ONLY (audit round 5: the shell's active ticker was silently added — the market's top 200 plus its
+     top 80 — so changing the ticker elsewhere changed the "market" figures). A name is read with the search. */
+  const bookPack = useLiveBook(null);
+  const liveBook = bookPack.rows;
+  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "Contracts caught 0 … Nothing flagged today" while the book loaded) */
+  const reading = bookPack.waiting && liveBook.length === 0;
   // The shared hold (see LiveHold): book and tick freeze together while paused.
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !reading);
   const { book: heldBook, tick } = hold.value;
   /* THE EXPIRY CUT: the watchers run over the cut book */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
-  const book = useMemo(() => cutExpiry(heldBook), [heldBook, cutExpiry]);
+  /* THE CONTRACTS THAT STILL STAND (the re-audit, 2026-10-22: contracts that expired at today's bell were caught as if
+     they stood) — the expired ones are left out, and the sentence says how many */
+  const stand = useMemo(() => standing(cutExpiry(heldBook)), [heldBook, cutExpiry]);
+  const book = stand.rows;
   const keyOf = useCallback((a: { id: string }) => a.id, []);
   const openRow = useCallback((a: { row: { key: string } }) => setOpenKey(a.row.key), []);
   const catches = useMemo(() => buildCatches(book, myReasons), [book, myReasons]);
+  const bookSize = book.length;
 
   /* One lookup for both shelves — the column, the chips and the header hint
      all resolve a reason's words through this, so a row and its filter chip
@@ -182,7 +201,7 @@ const Watchers = () => {
 
   const rows = useMemo(() => {
     const nq = normSymbol(query);
-    return catches.filter(a => (rule === 'ALL' || a.rule === rule) && (side === 'ALL' || a.row.right === side) && (nq === '' || normSymbol(`${a.row.ticker}${a.row.strike}${a.row.right}`).includes(nq)));
+    return catches.filter(a => (rule === 'ALL' || a.rules.includes(rule)) && (side === 'ALL' || a.row.right === side) && (nq === '' || matchesContract(query, a.row)));
   }, [catches, rule, side, query]);
   const shown = rows;
 
@@ -198,22 +217,13 @@ const Watchers = () => {
      in magenta is this feed's own LARGEST PRINT, the tape chart's grammar. */
   const marks = useMemo(
     () => ({
-      prem: earnMarks(shown, a => a.clipPremium),
+      prem: earnMarks(shown, a => a.premium),
       vol: earnMarks(shown, a => a.row.volume),
       oi: earnMarks(shown, a => a.row.oi),
     }),
     [shown]
   );
 
-  // The drilldown anchors on the EXACT print the rule fired on.
-  const clipMap = useMemo(() => {
-    const m = new Map<string, { size: number; fill: number; side: 'ASK' | 'BID'; time: string }>();
-    for (const a of shown) {
-      if (!m.has(a.row.key)) m.set(a.row.key, { size: a.clipSize, fill: a.clipFill, side: a.side, time: a.time });
-    }
-    return m;
-  }, [shown]);
-  const clipFor = useMemo(() => (row: BookContract) => clipMap.get(row.key), [clipMap]);
   /* The read's "Latest:" door must open even when a filter has hidden that
      row — the drill list quietly carries it up front then. */
   const drillList = useMemo(() => {
@@ -224,9 +234,11 @@ const Watchers = () => {
 
   /* ReactNode, not a string: the newest contract is a DOOR, opening the same card (Noah, 2026-08-30). */
   const read = useMemo<ReactNode>(() => {
-    if (catches.length === 0) return <RichRead text="Nothing flagged yet today — the desk is watching." />;
+    if (reading) return <RichRead text="Reading the market's book…" />;
+    if (bookPack.fault && heldBook.length === 0) return <RichRead text="The book did not answer — the watchers run when it does." />;
+    if (catches.length === 0) return <RichRead text={`Nothing flagged ${dayAdv()} — the desk is watching.`} />;
     const byRule = new Map<string, number>();
-    for (const a of catches) byRule.set(a.rule, (byRule.get(a.rule) ?? 0) + 1);
+    for (const a of catches) for (const r of a.rules) byRule.set(r, (byRule.get(r) ?? 0) + 1);
     const loud = [...byRule.entries()].sort((a, b) => b[1] - a[1])[0];
     const loudName = reasonOf(loud[0])?.label ?? 'A reason';
     const mineCount = catches.reduce((n, a) => n + (a.mine ? 1 : 0), 0);
@@ -242,21 +254,21 @@ const Watchers = () => {
     const names = new Set(catches.map(a => a.row.ticker)).size;
     return (
       <>
-        <RichRead text={`${catches.length} caught today on ${names} names — [[${loud[1]}]] because ${why}.${yours} Newest: `} />
+        <RichRead text={`${catches.length} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the ${num(bookSize)} standing contracts on the market's book (the vendor's 200 with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}) — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
         <ReadDoor onOpen={() => setOpenKey(latest.row.key)}>
           {latest.row.ticker} {latest.row.strike}
           {latest.row.right}
         </ReadDoor>
-        <RichRead text={`, ${num(latest.clipSize)} on the ${latest.side === 'ASK' ? 'ask' : 'bid'} at $${latest.clipFill.toFixed(2)} (${latest.time}).`} />
+        <RichRead text={`, last at $${latest.last.toFixed(2)} (${latest.time} ET), ${fmtUsd(latest.premium)} ${dayAdv()}.`} />
       </>
     );
-  }, [catches, reasonOf]);
+  }, [catches, reasonOf, bookSize, stand.expired, reading, bookPack.fault, heldBook.length]);
 
   const activeRule = rule === 'ALL' ? null : reasonOf(rule);
   /* The Reason card: every reason, the desk's then yours */
   const reasonOptions = useMemo<DropdownOption<string>[]>(
     () => [
-      { value: 'ALL', label: 'Every reason', hint: "The desk's watchers and yours" },
+      { value: 'ALL', label: 'Every reason', short: 'All', hint: "The desk's watchers and yours" },
       ...WATCHERS.map(r => ({ value: r.key, label: r.label, hint: r.hint })),
       ...myReasons.map(r => ({ value: r.id, label: r.name, hint: reasonSentence(r) })),
     ],
@@ -310,48 +322,52 @@ const Watchers = () => {
            wears its categorical hue; one of yours wears a hollow ring and
            leads with the handle you gave it. Shape says whose, hue says which. */
         render: a => {
-          const meta = reasonOf(a.rule);
-          if (!meta) return <span className="text-textSecondary">—</span>;
+          /* EVERY REASON TOGETHER, each in the contract's own figure — one row a contract */
+          const said = a.rules
+            .map(k => {
+              const meta = reasonOf(k);
+              if (!meta) return null;
+              return { k, mine: meta.mine, label: meta.label, text: meta.mine ? `${meta.label}: ${meta.phrase}` : reasonPhrase(k as WatcherKey, a.row) };
+            })
+            .filter((x): x is { k: string; mine: boolean; label: string; text: string } => !!x);
+          if (!said.length) return <span className="text-textSecondary">—</span>;
           return (
             /* TWO LINES, NEVER CUT MID-WORD */
-            <span className="inline-flex items-center gap-1.5 text-[11px] leading-tight text-textPrimary whitespace-normal" title={a.mine ? `${meta.label} — ${meta.phrase}` : meta.phrase}>
-              {a.mine ? <span className="w-1.5 h-1.5 rounded-full shrink-0 border border-textSecondary" /> : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: RULE_DOT[a.rule as WatcherKey] }} />}
-              {a.mine ? (
-                <span className="line-clamp-2">
-                  <span className="font-semibold">{meta.label}</span> <span className="text-textSecondary">{meta.phrase}</span>
-                </span>
-              ) : (
-                <span className="line-clamp-2">{meta.phrase}</span>
-              )}
+            <span className="inline-flex items-center gap-1.5 text-[11px] leading-tight text-textPrimary whitespace-normal" title={said.map(x => x.text).join(' · ')}>
+              <span className="inline-flex gap-0.5 shrink-0">
+                {said.map(x => (x.mine ? <span key={x.k} className="w-1.5 h-1.5 rounded-full border border-textSecondary" /> : <span key={x.k} className="w-1.5 h-1.5 rounded-full" style={{ background: RULE_DOT[x.k as WatcherKey] }} />))}
+              </span>
+              <span className="line-clamp-2">{said.map(x => x.text).join(' · ')}</span>
             </span>
           );
         },
       },
       {
         key: 'clip',
-        header: 'The print',
+        header: 'Last fill',
         align: 'right',
-        sortValue: a => a.clipSize,
+        sortValue: a => a.last,
         render: a => (
-          <span className="text-textPrimary">
-            {num(a.clipSize)} <span className="text-[11px] text-textSecondary">@ ${a.clipFill.toFixed(2)}</span>
+          <span className="text-textPrimary" title="The contract's last fill, and its New York time">
+            ${a.last.toFixed(2)} <span className="text-[11px] text-textSecondary">{a.time}</span>
           </span>
         ),
       },
       {
         key: 'clipprem',
-        header: 'Print $',
+        header: 'Day $',
         align: 'right',
-        sortValue: a => a.clipPremium,
-        render: a => <span className={weightInk(a.clipPremium, marks.prem)}>{fmtUsd(a.clipPremium)}</span>,
+        sortValue: a => a.premium,
+        render: a => <span className={weightInk(a.premium, marks.prem)}>{fmtUsd(a.premium)}</span>,
       },
       {
         key: 'sideCol',
-        header: 'Side',
+        header: 'Day lean',
         align: 'right',
-        sortValue: a => a.side,
-        // The tape's rule: at the ask = the contract being bought — the side in one ink
-        render: a => <span className="text-[11px] text-textPrimary">{a.side === 'ASK' ? 'ask' : 'bid'}</span>,
+        sortValue: a => a.row.askPct,
+        // The tape's rule: the side in one ink
+        /* THE LEAN PRINTS ITS FIGURE (audit round 7: "bid", "ask", "even" with no share) — the house lean cell, the one rule */
+        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} legsPct={a.row.multiPct} crossPct={a.row.crossPct} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' || a.side === 'LEGS' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
       },
       {
         key: 'vol',
@@ -372,21 +388,21 @@ const Watchers = () => {
         header: 'Vol/OI',
         align: 'right',
         sortValue: a => a.row.volOverOI,
-        render: a => <span className={a.row.volOverOI >= 1.5 ? 'font-bold text-textPrimary' : 'text-textPrimary'}>{a.row.volOverOI.toFixed(2)}</span>,
+        render: a => <span className={a.row.oi > 0 && a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'} title={a.row.volOverOI > 0 || !(a.row.volume > 0) ? undefined : 'No open interest before the session — a new contract, nothing to divide by'}>{volOiText(a.row)}</span>,
       },
       {
         key: 'otm',
         header: 'OTM %',
         align: 'right',
         sortValue: a => a.row.otmPct,
-        render: a => <span className="text-textPrimary">{pctSigned(a.row.otmPct, 1)}</span>,
+        render: a => (Number.isFinite(a.row.otmPct) ? <span className="text-textPrimary" title={indexRoot(a.row.ticker) ? INDEX_OTM_TITLE : undefined}>{indexRoot(a.row.ticker) ? "≈" : ""}{pctSigned(a.row.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
       },
       {
         key: 'earn',
         header: 'Earnings',
         align: 'right',
         sortValue: a => a.row.earnDays ?? 999,
-        render: a => (a.row.earnDays == null ? <span className="text-textSecondary">—</span> : <span className={a.row.earnDays <= 5 ? 'text-warn' : 'text-textPrimary'}>{a.row.earnDays === 0 ? 'today' : `in ${a.row.earnDays}d`}</span>),
+        render: a => { const e = earnWords(a.row); return e ? <span className={a.row.earnDays! <= 5 ? 'text-warn' : 'text-textPrimary'} title={e.title}>{e.text}</span> : <span className="text-textSecondary">—</span>; },
       },
     ],
     // The Reason cell reads the shelf through reasonOf, the magnitude cells
@@ -398,20 +414,26 @@ const Watchers = () => {
      strip — facts left, champions as pills right — and the column chooser.
      The side champions wear the plain ink: a side is not a direction. */
   const champs = useMemo(() => {
-    const by = (pick: (a: Catch) => boolean) => shown.filter(pick).reduce<Catch | null>((a, x) => (a === null || x.clipPremium > a.clipPremium ? x : a), null);
-    return { ask: by(a => a.side === 'ASK'), bid: by(a => a.side === 'BID'), all: by(() => true) };
+    /* a day that was mostly floor-traded multi-leg packages (compression's shape) is not crowned "most money" — it is
+       named on its own (flowBook floorPackaged) */
+    /* …nor is a day of spread legs (audit round 8: "Most money · bid-leaning CCJ 65P" was 39,000 of 39,000 contracts in
+       multi-leg orders) — set apart with the packages, never given a lean */
+    const by = (pick: (a: Catch) => boolean) => shown.filter(a => !notABet(a.row) && pick(a)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
+    const packaged = shown.filter(a => notABet(a.row)).reduce<Catch | null>((a, x) => (a === null || x.premium > a.premium ? x : a), null);
+    return { ask: by(a => a.side === 'ASK'), bid: by(a => a.side === 'BID'), all: by(() => true), packaged };
   }, [shown]);
   const facts = useMemo(() => {
     const byRule = new Map<string, number>();
     let mine = 0;
     for (const a of catches) {
-      byRule.set(a.rule, (byRule.get(a.rule) ?? 0) + 1);
+      for (const r of a.rules) byRule.set(r, (byRule.get(r) ?? 0) + 1);
       if (a.mine) mine++;
     }
     const loud = [...byRule.entries()].sort((a, b) => b[1] - a[1])[0];
     return { total: catches.length, loudName: loud ? (reasonOf(loud[0])?.label ?? '') : '', loudCount: loud ? loud[1] : 0, mine };
   }, [catches, reasonOf]);
-  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} · ${fmtUsd(a.clipPremium)}`;
+  /* the expiry rides in the pill — two SPX 7000 calls on different dates are two contracts */
+  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} ${expiryLabel(a.row.expiry)} · ${fmtUsd(a.premium)} ${dayAdv()}${stockLike(a.row) ? ' · stock-like' : ''}`;
 
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_flowalerts_cols');
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
@@ -421,16 +443,16 @@ const Watchers = () => {
     <>
       <TraceBox
         title="The desk watching the tape"
-        sub={`${activeRule ? `${activeRule.label} — ${activeRule.phrase} · newest first` : "Every reason a contract is flagged — the desk's and yours, newest first"} · a row opens the contract's card`}
+        sub={`${activeRule ? `${activeRule.label} — ${activeRule.phrase}` : "Every contract on the book a reason flags — the desk's and yours"} · newest last print first · a row opens the contract's card`}
         testId="watchers"
         data={{ rule, rows: rows.length, expiry: expiry ?? 'all' }}
         guide={{ title: 'How to read the watchers', door: 'What a reason, the print and the side mean', body: <WatchersGuide />, testId: 'watchers-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
             {/* the most frequent reason, named, its count after — never a reason read as a noun */}
-            <Fact label="Caught today" testId="caught">
-              {num(facts.total)}
-              {facts.loudName && (
+            <Fact label="Contracts caught" testId="caught" title={`Contracts on the market's book (the ${num(bookSize)} standing ones among the vendor's 200 with the most premium ${dayAdv()}, every name — the terminal's ticker is not added) that meet a reason — each counted once, whatever number of reasons it meets`}>
+              {reading ? <span className="text-textMuted">—</span> : num(facts.total)}
+              {!reading && facts.loudName && (
                 <span className="text-textSecondary">
                   {' '}
                   · most often {facts.loudName} ({facts.loudCount})
@@ -438,28 +460,33 @@ const Watchers = () => {
               )}
             </Fact>
             <Fact label="From your reasons" testId="mine">
-              <span className={facts.mine > 0 ? 'text-textPrimary' : 'text-textSecondary'}>{facts.mine}</span>
+              {reading ? <span className="text-textMuted">—</span> : <span className={facts.mine > 0 ? 'text-textPrimary' : 'text-textSecondary'}>{facts.mine}</span>}
             </Fact>
             {champs.ask && champs.ask !== champs.all && (
-              <Champion label="Top at the ask" ink="plain" onOpen={() => setOpenKey(champs.ask!.row.key)} testId="top-ask">
+              <Champion label="Most money · ask-leaning" ink="plain" onOpen={() => setOpenKey(champs.ask!.row.key)} testId="top-ask">
                 {pill(champs.ask)}
               </Champion>
             )}
             {champs.bid && champs.bid !== champs.all && (
-              <Champion label="Top on the bid" ink="plain" onOpen={() => setOpenKey(champs.bid!.row.key)} testId="top-bid">
+              <Champion label="Most money · bid-leaning" ink="plain" onOpen={() => setOpenKey(champs.bid!.row.key)} testId="top-bid">
                 {pill(champs.bid)}
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Largest print" ink="supreme" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
+              <Champion label={`Most money ${dayAdv()}`} ink="supreme" title="The biggest single bet by premium — among contracts whose day was not mostly floor-traded packages or spread legs (half or more in multi-leg orders)" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
                 {pill(champs.all)}
+              </Champion>
+            )}
+            {champs.packaged && (!champs.all || champs.packaged.premium > champs.all.premium) && (
+              <Champion label={`${notABetLabel([champs.packaged.row])} · not a bet`} ink="plain" title={`More premium, but ${notABetHint(champs.packaged.row)}`} onOpen={() => setOpenKey(champs.packaged!.row.key)} testId="packaged">
+                {pill(champs.packaged)}
               </Champion>
             )}
           </>
         }
         controls={
           <>
-            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+            <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="contracts" span />
             <DropdownSelect label="Reason" value={rule} options={reasonOptions} onChange={setRule} title="Which watcher's catches" testId="watchers-reason" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="watchers-side" />
@@ -480,13 +507,14 @@ const Watchers = () => {
               </p>
             )}
             {read}
+            <TermLine keys={['standing', 'floor', 'spreadLegs', 'volOi', 'stockLike']} testId="watchers" />
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText="Nothing flagged yet — the desk is watching, and a clip that clears the bar lands here the moment it prints" testId="watchers" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
       </TraceBox>
 
-      <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} clipFor={clipFor} tick={tick} />
+      <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} tick={tick} />
     </>
   );
 };

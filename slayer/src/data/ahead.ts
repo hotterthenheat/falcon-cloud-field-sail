@@ -53,11 +53,14 @@
 */
 
 import { impliedDaySigma } from './atr';
+import { peekDaySigma, peekMoveToClose } from './uwBook';
+import { datesOf } from './flipLevel';
 import { lastSessionSupreme, moveIntoClose, ofLast, rangeFrom, recentSessions, sessionSoFar } from './aheadHistory';
 import { inCashSession, sessionBars } from './levelview';
 import { nyMinutes } from '../core/nyTime';
-import { buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildVannaCharm } from './vannacharm';
+import { peekBellShare } from './uwBook';
 import type { SessionClock } from './moc';
 import type { ExposureProfileData, IvShift, LevelShift } from '../types/gex';
 import type { MarketSnapshot } from '../types/market';
@@ -165,8 +168,12 @@ function pulledCentre(profile: ExposureProfileData, spot: number, sigma: number,
 
 export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfileData, iv: number, clock: AheadClock): Corridor {
   const spot = snapshot.spot;
-  const sigmaDay = impliedDaySigma(spot, iv) ?? spot * 0.01;
-  const sigma = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const one = snapshot.liveBook ? datesOf(snapshot, snapshot.chain) : null;
+  const oneDate = Array.isArray(one) && one.length === 1 ? one[0] : null;
+  const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, oneDate) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
+  /* the corridor is to the coming close — one session's move on the vendor's own scale (uwBook peekDaySigma), scaled to
+     the minutes left exactly once (uwBook peekMoveToClose: a same-day expiry's own move in its session is already that) */
+  const sigma = (snapshot.liveBook ? peekMoveToClose(snapshot.ticker, oneDate, clock.minutesLeft) : null) ?? sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   const { callWall, putWall, flip } = profile.levels;
   const gravityEnd = gravityFor(clock.minutesLeft);
   const start = clock.nowMin ?? OPEN_MIN;
@@ -181,10 +188,12 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const low: CorridorEdge = lowWall ? { price: Math.max(putWall, Math.min(centreEnd - sigma, spot)), why: 'the put wall' } : { price: centreEnd - sigma, why: 'the expected move' };
   const outer = { low: spot - 2 * sigma, high: spot + 2 * sigma };
 
-  /* The flip inside the corridor splits it: spot above the flip = dealers absorb
-     (moves slow), so the fast side is below it; and the other way round */
-  const flipInside = flip > outer.low && flip < outer.high ? flip : null;
-  const fastSide: Corridor['fastSide'] = flipInside == null ? null : spot >= flipInside ? 'below' : 'above';
+  /* The flip inside the corridor splits it. THE SIDE THAT IS FAST IS WHERE DEALERS ARE SHORT GAMMA, read off the net at
+     spot (data/flipLevel.ts), never off which side of the flip spot sits: long gamma here means the far side of the flip
+     is the fast one; short gamma here means this side is. No flip within ±10% splits nothing. */
+  const flipInside = profile.levels.flipFound !== false && flip > outer.low && flip < outer.high ? flip : null;
+  const longHere = profile.levels.net != null ? profile.levels.net < 0 : spot >= flip;
+  const fastSide: Corridor['fastSide'] = flipInside == null ? null : longHere === flipInside > spot ? 'above' : 'below';
 
   /* The cone, five minutes at a time, from now (or the open) to the close:
      the expected move for the minutes elapsed, around the centre the strikes
@@ -192,7 +201,8 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
      by the walls that bend the band */
   const cone: ConePoint[] = [];
   const at = (t: number): ConePoint => {
-    const s = sigmaDay * Math.sqrt(Math.max(0, t - start) / SESSION_MIN);
+    /* ends on the corridor's own move to the close (the same move, scaled once — the tenth audit's B2) */
+    const s = sigma * Math.sqrt(Math.max(0, t - start) / span);
     const g = gravityEnd * ((t - start) / span);
     const c = pulledCentre(profile, spot, s, g);
     const hi1 = highWall ? Math.min(c + s, callWall) : c + s;
@@ -530,12 +540,14 @@ export function buildSchedule(snapshot: MarketSnapshot, profile: ExposureProfile
   const remaining = blocks.filter(b => !b.past);
   const biggest = remaining.length ? remaining.reduce((a, b) => (Math.abs(b.flow) > Math.abs(a.flow) ? b : a)) : null;
 
-  let bellShare: number | null = null;
+  /* the Board's share (uwBook peekBellShare — the vendor's gamma per expiry); the surface's stands in until it lands */
+  const vendorBell = peekBellShare(snapshot.ticker);
+  let bellShare: number | null = vendorBell.share;
   let surface: ExposureSurface | null = null;
   try {
     surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-    const today = surface.expiries.findIndex(e => e.dte === 0);
-    if (today >= 0) {
+    const today = todayColumn(surface);
+    if (today >= 0 && vendorBell.share == null && vendorBell.why === 'wait') {
       let dies = 0;
       let total = 0;
       for (let e = 0; e < surface.expiries.length; e++)

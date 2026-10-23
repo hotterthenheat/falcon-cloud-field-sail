@@ -25,14 +25,20 @@ import TickerSearch from '../../components/ui/TickerSearch';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
 import { useGlideHold } from '../../components/ui/useGlideHold';
-import SessionBook from '../../components/ui/SessionBook';
+import { TraceSessionCard } from '../../components/trace/traceSession';
 import { TRACE_SUBPAGES } from './subnav';
 
 /* The Live Tape carries its own ticker/contract search, the flow-book pages
    sweep the whole universe, and the Tracker lists the reader's marks across
    every name with its own names-only search — a single-ticker picker would
    mislead on all of them. */
-const NO_PICKER = /^\/trace\/(live-tape|dark-pool|screener|net-flow|footprints|watchers|windows|odte|multi-leg|compare|tracker|futures)/;
+const NO_PICKER = /^\/trace\/(live-tape|dark-pool|screener|net-flow|footprints|watchers|windows|odte|multi-leg|compare|tracker)/;
+
+/* THE SESSION CARD STANDS WHERE IT IS READ (audit round 4, 2026-10-22: it sat on every Trace page while only the Live
+   Tape read it). The tape, the dark pool, the structures and Net Flow's market figure honour it; the Screener, Footprints,
+   Watchers, Intervals, 0DTE, Compare and the Tracker read the vendor's whole-day rows per contract (or the regular
+   session's minutes), which carry no session split — the card would change nothing there, so it is not shown. */
+const SESSION_PAGES = /^\/trace\/(live-tape|dark-pool|multi-leg|net-flow)/;
 
 const TraceLayout = () => {
   const { activeTicker, changeTicker } = useMarketData();
@@ -58,11 +64,11 @@ const TraceLayout = () => {
             </span>
             <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{active.label}</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{active.subtitle}</p>
+          <p className="mt-0.5 text-[11px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">{active.subtitle}</p>
         </div>
         <div className="flex items-center gap-2 max-sm:w-full sm:shrink-0" data-trace-picker>
           {picker && <TickerSearch value={activeTicker} onChange={changeTicker} />}
-          <SessionBook />
+          {SESSION_PAGES.test(location.pathname) && <TraceSessionCard />}
         </div>
       </header>
       {/* A CROSS-FADE, NO TRAVEL (Noah, 2026-08-30: "on open... things get

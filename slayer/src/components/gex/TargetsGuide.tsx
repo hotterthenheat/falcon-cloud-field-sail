@@ -9,10 +9,12 @@
 ==================================================
 */
 
+import { aheadWord } from '../../data/bookWindow';
+import { holdLabel } from '../../data/wall';
 import type { ReactNode } from 'react';
-import { PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
+import { LONG_GAMMA, PUT_WALL, SHORT_GAMMA, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
-import type { Agenda } from '../../data/agenda';
+import { targetName, type Agenda } from '../../data/agenda';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const MONO = 'ui-monospace, Menlo, monospace';
@@ -90,20 +92,20 @@ const OrderFigure = () => {
 
 /* The row, small: strike and tag, reached, the beam, the break, the build, the stake bar */
 const RowFigure = () => (
-  <Figure label="One row: the strike and its tag, the odds it is reached, the beam for holds, what a break runs to, what was built today, the bar for what is at stake" h={66}>
+  <Figure label="One row: the strike and its tag, the chance it is reached, its net gamma, what a break runs to, what was built today, the bar for what is at stake" h={66}>
     <g fontFamily={MONO} fontSize={6.5} fill="#7c8290" letterSpacing={0.6}>
       <text x={10} y={12}>#</text>
       <text x={30} y={12}>STRIKE</text>
       <text x={112} y={12} textAnchor="end">REACHED</text>
-      <text x={172} y={12} textAnchor="end">HOLDS</text>
+      <text x={172} y={12} textAnchor="end">NET GAMMA</text>
       <text x={186} y={12}>IF IT BREAKS</text>
       <text x={300} y={12}>BUILT TODAY</text>
       <text x={362} y={12}>AT STAKE</text>
     </g>
     <line x1={10} x2={410} y1={21} y2={21} stroke="#ffffff" strokeOpacity={0.08} />
     {[
-      { y: 36, n: 4, k: '534', tag: 'SHELF', ink: COOL, reach: '52%', hold: 0.76, wall: true, brk: 'to 533 · $345M selling', built: 'building +$43M', stake: 0.73, lit: true },
-      { y: 56, n: 5, k: '536', tag: 'TRAPDOOR', ink: WARM, reach: '84%', hold: 0, wall: false, brk: 'to 537 · $102M selling', built: 'steady', stake: 0.15, lit: false },
+      { y: 36, n: 4, k: '534', tag: 'SHELF', ink: COOL, reach: '52%', hold: 0.76, wall: true, brk: 'to 533 · $345M selling', built: 'building +$43M', stake: 0.73, lit: true, net: '+$62M' },
+      { y: 56, n: 5, k: '536', tag: 'TRAPDOOR', ink: WARM, reach: '84%', hold: 0, wall: false, brk: 'to 537 · $102M selling', built: 'steady', stake: 0.15, lit: false, net: '−$48M' },
     ].map(r => (
       <g key={r.k}>
         <text x={10} y={r.y + 3} fontSize={7} fill="#7c8290" fontFamily={MONO}>
@@ -118,8 +120,8 @@ const RowFigure = () => (
         <text x={112} y={r.y + 3} textAnchor="end" fontSize={8} fill="#ededed" fontFamily={MONO}>
           {r.reach}
         </text>
-        <text x={144} y={r.y + 3} textAnchor="end" fontSize={8} fontWeight={600} fill={r.wall ? SILVER : WARM} fontFamily={MONO}>
-          {r.wall ? pct(r.hold) : '—'}
+        <text x={144} y={r.y + 3} textAnchor="end" fontSize={8} fontWeight={600} fill={r.wall ? LONG_GAMMA : SHORT_GAMMA} fontFamily={MONO}>
+          {r.net}
         </text>
         <rect x={148} y={r.y - 1.5} width={26} height={3} rx={1.5} fill="#ffffff" fillOpacity={0.06} />
         {r.wall ? <rect x={148} y={r.y - 1.5} width={26 * r.hold} height={3} rx={1.5} fill={SILVER} fillOpacity={0.85} /> : <rect x={148} y={r.y - 1.5} width={26} height={3} rx={1.5} fill={WARM} fillOpacity={0.35} />}
@@ -192,13 +194,16 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
     <div data-targets-guide>
       <Section title="The order">
         <p>
-          Two questions, multiplied: how likely price gets there {clock.inSession ? 'by the close' : 'next session'}, and how much moves if it does — the hedging sitting at the strike plus what a move through it forces dealers to trade. A far wall ranks low however big; a thin strike at spot ranks low however near.
+          Two questions, multiplied: how likely price gets there {clock.inSession ? 'by the close' : aheadWord()}, and how much happens if it does — the hedging at the strike plus the stock a move through it forces dealers to trade. A far wall ranks low however big; a thin strike near price ranks low however close.
         </p>
         <OrderFigure />
       </Section>
       <Section title="The row">
         <p>
-          Each figure is another page's answer for that strike: <Num silver>holds</Num> and <span style={{ color: WARM }}>a break</span> from At the wall, built or drained from Building, "closes here" from Ahead. A <span style={{ color: WARM }}>trapdoor</span> pushes the move along instead of back; its bar is warm. A strike too thin to be a wall shows no odds at all.
+          One strike a row. <Num>Reached</Num> is the chance price touches it {clock.inSession ? 'by the close' : aheadWord()}. <Num silver>Net gamma</Num> is the hedging at the strike itself, on the contracts the Levels card reads — green and positive where dealers are long gamma and slow price, red and negative where they are short gamma and speed a move through; its bar is a wall's size next to the biggest wall on this ticker (100%). <span style={{ color: WARM }}>If it breaks</span> says where price runs next and how much stock dealers must trade on the way. <Num>Built today</Num> is hedging added or taken off since the open. <Num>At stake</Num> is the hedging parked there.
+        </p>
+        <p>
+          Size is not the chance price turns there. A <span style={{ color: WARM }}>trapdoor</span> (a strike with real negative net gamma) pushes a move along instead of slowing it; its bar is warm. A strike with almost no net gamma is neither, and carries no tag.
         </p>
         <RowFigure />
       </Section>
@@ -213,7 +218,7 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
             {lead.role ? `, the ${lead.role}` : ''}: reached <Num>{pct(lead.reach)}</Num> of the time,{' '}
             {lead.isWall ? (
               <>
-                holds <Num silver>{pct(lead.hold)}</Num>
+                is <Num silver>{holdLabel(lead.hold)}</Num>
               </>
             ) : (
               <span style={{ color: WARM }}>a trapdoor</span>
@@ -229,9 +234,17 @@ export const TargetsGuide = ({ agenda, clock }: { agenda: Agenda; clock: AheadCl
         ) : (
           <p>No strikes on the window.</p>
         )}
-        {agenda.weakestWall && agenda.closesNear && (
+        {agenda.nearestWall && (
           <p className="mt-1 text-textMuted">
-            The weakest wall in reach is <Num>{fmtStrike(agenda.weakestWall.strike)}</Num>, holding <Num silver>{pct(agenda.weakestWall.hold)}</Num>; the close leans to <Num>{fmtStrike(agenda.closesNear.strike)}</Num> at <Num>{agenda.closesNear.odds.toFixed(0)}%</Num>.
+            {agenda.wallsInReach === 1 ? 'The only wall in reach is ' : 'The nearest wall in reach is '}
+            <Num>{targetName(agenda.nearestWall)}</Num>;{' '}
+            {agenda.closesNear ? (
+              <>
+                the close leans to <Num>{fmtStrike(agenda.closesNear.strike)}</Num> at <Num>{agenda.closesNear.odds.toFixed(0)}%</Num>.
+              </>
+            ) : (
+              'the close has no clear lean.'
+            )}
           </p>
         )}
       </Section>

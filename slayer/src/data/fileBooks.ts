@@ -15,7 +15,7 @@ import { h01, hPick, hRange } from '../core/rng';
 import { dayKey } from '../core/rng';
 import type { DeskSession } from './deskSession';
 import { UNIVERSE } from './universe';
-import { bracketLabel, buildCongress } from './congress';
+import { bracketLabel, seatLabel } from './congress';
 import type { CongressTrade } from '../types/record';
 
 export const HOUSES = [
@@ -43,6 +43,10 @@ export interface InstitutionRow {
   id: string;
   name: string;
   ticker: string;
+  /** The holding's company name as the filing gives it, when the listing does not know the ticker */
+  company?: string;
+  /** True when the filing gives no listed symbol — `ticker` is then the vendor's own identifier (a CUSIP-like id) */
+  unlisted?: boolean;
   sector: string;
   sharesM: number;
   /** Shares on the prior 13F. Zero when the line is new. */
@@ -64,6 +68,8 @@ export interface InstitutionRow {
   firstBuy: string;
   sharesOutM: number;
   book: 'calls' | 'puts' | 'stock';
+  /** The filing's security type when it is not plain shares ("Pref", "Note") — one house can file two lines on a ticker */
+  security?: string;
   status: PositionStatus;
   /** The quarter the report covers */
   report: string;
@@ -182,6 +188,13 @@ export interface ShortRow {
   shortVolM: number | null;
   /** Short volume as a percent of that session's volume. Null when the feed does not carry it. */
   shortVolRatio: number | null;
+  /** The session the short volume is from, "YYYY-MM-DD" */
+  shortVolDate?: string;
+  /** Where the short volume was read: the vendor's short volume and ratio, or the by-market rows (FINRA CNMS) when that
+      read came back empty */
+  shortVolSource?: string;
+  /** The session the short volume by market is from (YYYY-MM-DD) — it can be a day behind the latest short volume */
+  exchangesDate?: string;
   /** Fails to deliver, in thousands of shares. Null when the feed does not carry it. */
   ftdK: number | null;
   /** Borrow fee, percent a year. Null when the feed did not price it. */
@@ -193,6 +206,10 @@ export interface ShortRow {
   history: ShortPrint[];
   exchanges: { exchange: string; shortM: number; totalM: number }[];
   ftdDays: { date: string; quantity: number; price: number }[];
+  /** The vendor's issue type is a fund (an ETF, ETN or closed-end fund) — short interest there is creation and hedging, not a squeeze */
+  fund?: boolean;
+  /** The settlement day the fee and the shares available were read on, when they are the screener's rather than today's */
+  borrowAsOf?: string;
 }
 
 function shortFrom(ticker: string, sector: string): ShortRow {
@@ -240,7 +257,8 @@ export function shortFile(ticker: string): ShortRow {
   return buildShorts().find(r => r.ticker === ticker) ?? shortFrom(ticker, sectorOf(ticker));
 }
 
-export type EtfKind = 'broad' | 'sector' | 'rates';
+/** Broad equity index, one sector, Treasuries, corporate credit, or a commodity trust */
+export type EtfKind = 'broad' | 'sector' | 'rates' | 'credit' | 'commodity';
 
 export interface EtfFlow {
   day: string;
@@ -268,6 +286,12 @@ export interface EtfRow {
   callVol: number | null;
   putVol: number | null;
   flows: EtfFlow[];
+  /** The window the five-day flow covers — the same dates for every fund (YYYY-MM-DD), and how many days */
+  flowFrom?: string | null;
+  flowTo?: string | null;
+  flowDays?: number;
+  /** The latest `updated` date on the fund's holdings — the weights are as of this day */
+  holdingsAsOf?: string | null;
 }
 
 const ETFS: { etf: string; name: string; kind: EtfKind }[] = [
@@ -317,11 +341,17 @@ export function etfFile(etf: string): EtfRow | null {
 }
 
 export interface EtfHolding {
+  /** The stock's symbol — a bond line has none, and wears a row key instead (see `bond`) */
   ticker: string;
+  /** A bond line (TLT, HYG): no symbol, `name` is the issue and `sharesM` is millions of face value */
+  bond?: boolean;
+  name?: string;
   weight: number;
   sharesM: number;
   sector: string;
   country: string;
+  /** The day the fund's weights were taken (the holdings row's `updated`), YYYY-MM-DD */
+  asOf?: string;
 }
 
 const COUNTRY: Record<string, string> = {
@@ -507,25 +537,68 @@ export interface HoldingRow {
   memberId: string;
   seat: string;
   ticker: string;
+  /** The asset as filed, for an untickered holding */
+  asset: string;
+  key: string;
   bracket: string;
   owner: string;
 }
 
-/** Open lines: a purchase with no later full sale. The members are the same roster as the tape. */
+/** One key per asset: a named stock by its symbol, an untickered asset by its own full name (a T-bill's maturity
+    included) — an empty ticker let unrelated T-bills and LLCs cancel each other (the re-audit, 2026-10-22) */
+export const holdingAssetKey = (t: CongressTrade): string => {
+  const sym = (t.ticker || '').trim().toUpperCase();
+  return sym ? `t:${sym}` : `a:${(t.assetDescription || '').trim().toLowerCase().replace(/\s+/g, ' ')}`;
+};
+
+/** Purchases with no sale of any kind of the same asset reported since — the vendor's bare "Sell" does not say full or
+    partial, so any sale takes the line off rather than claiming what remains. The same roster as the tape. */
 export function buildHoldings(source?: CongressTrade[]): HoldingRow[] {
-  const trades = [...(source ?? buildCongress(365).trades)].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
+  const trades = [...(source ?? [])].sort((a, b) => b.tradedDaysAgo - a.tradedDaysAgo);
   const open = new Map<string, (typeof trades)[number]>();
   for (const t of trades) {
-    const key = `${t.member.id}|${t.ticker}|${t.owner}`;
-    if (t.type === 'Purchase' || t.type === 'Exchange') open.set(key, t);
-    if (t.type === 'Sale (Full)') open.delete(key);
+    if (holdingAssetKey(t) === 'a:' || holdingAssetKey(t) === 'a:undisclosed') continue;
+    const key = `${t.member.id}|${holdingAssetKey(t)}|${t.owner}`;
+    if (t.type === 'Purchase') open.set(key, t);
+    else if (t.type !== 'Exchange') open.delete(key);
   }
   return [...open.values()].slice(0, 16).map(t => ({
     member: t.member.name,
     memberId: t.member.id,
-    seat: `${t.member.party}-${t.member.state}`,
+    seat: seatLabel(t.member),
     ticker: t.ticker,
+    asset: t.assetDescription,
+    key: `${t.member.id}|${holdingAssetKey(t)}|${t.owner}`,
     bracket: bracketLabel(t.bracket),
     owner: t.owner,
   }));
 }
+/* ONE SET OF SECTOR NAMES (the retail test, round 6: "Health Care / Consumer Discretionary" on one page, the vendor's
+   "Healthcare / Consumer Cyclical" on the ETF page). Every vendor spelling is said in the house's GICS-style words; a
+   word that is not a sector (a fund's "Cash", "Treasury") is left as it is. */
+const HOUSE_SECTOR: Record<string, string> = {
+  technology: 'Technology',
+  'information technology': 'Technology',
+  'communication services': 'Communication',
+  communication: 'Communication',
+  telecommunications: 'Communication',
+  'consumer cyclical': 'Consumer Discretionary',
+  'consumer discretionary': 'Consumer Discretionary',
+  'financial services': 'Financials',
+  financial: 'Financials',
+  financials: 'Financials',
+  energy: 'Energy',
+  healthcare: 'Health Care',
+  'health care': 'Health Care',
+  industrials: 'Industrials',
+  'consumer defensive': 'Consumer Staples',
+  'consumer staples': 'Consumer Staples',
+  utilities: 'Utilities',
+  'basic materials': 'Materials',
+  materials: 'Materials',
+  'real estate': 'Real Estate',
+};
+export const houseSector = (raw: string | null | undefined): string => {
+  const t = (raw ?? '').trim();
+  return t ? HOUSE_SECTOR[t.toLowerCase()] ?? t : t;
+};

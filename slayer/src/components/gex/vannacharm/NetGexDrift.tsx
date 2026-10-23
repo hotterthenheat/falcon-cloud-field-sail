@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { ComposedChart, CartesianGrid, Line, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { FLIP, LONG_GAMMA, SHORT_GAMMA, SPOT } from '../palette';
-import { fmtUsd } from '../../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../../data/gex';
 import { AXIS_TICK, AwaitingState, CURSOR_INK, GRID_INK, LegendKey, TipCard, TipRow, fiveTicks, timeTick } from '../driftKit';
 import type { NetGexSeries, NetGexPoint } from '../../../data/gexSeries';
 

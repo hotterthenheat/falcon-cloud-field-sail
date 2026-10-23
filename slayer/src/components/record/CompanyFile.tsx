@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { useStockCard } from '../../data/liveFiles';
 import { useStockFile } from '../../data/stockFile';
+import { nextReportRow, reportDayLabel, tradingDaysUntil, untilWords } from '../../data/earningsFeed';
 import { FILE_TTL_MS, FeedFallback, StaleMark, TickFigure, quietText } from '../ui/liveRead';
+import { statHelp } from './statHelp';
 
 /*
   The company, under a name. Only what the vendor file actually carries.
@@ -10,7 +12,7 @@ import { FILE_TTL_MS, FeedFallback, StaleMark, TickFigure, quietText } from '../
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="min-w-0">
-    <dt className="text-[10px] text-textMuted truncate">{label}</dt>
+    <dt className="text-[10px] text-textMuted truncate cursor-help" title={statHelp(label)}>{label}</dt>
     <dd className="mt-0.5 font-mono text-[12px] tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
   </div>
 );
@@ -44,7 +46,13 @@ const count = (v: number | null): string => {
 
 const CompanyFile = ({ ticker }: { ticker: string }) => {
   const card = useStockCard(ticker);
-  const file = useStockFile(ticker);
+  /* the head is all this card shows — the tapes are read by the page that draws them (audit round 10) */
+  const file = useStockFile(ticker, { tapes: false });
+  /* the one next-earnings rule (data/earningsFeed.ts) — the same date the stock page and the earnings file show */
+  const nextRow = nextReportRow(file.earnings, { skipOut: true });
+  const next = nextRow?.report_date
+    ? { dateLabel: reportDayLabel(nextRow.report_date), daysOut: tradingDaysUntil(nextRow.report_date), confirmed: String(nextRow.source ?? '').toLowerCase() === 'company' }
+    : null;
   const screen = file.screen;
   const yieldPct = asPct(screen ? num(screen.dividend_yield) : null);
   const growth = asPct(screen ? num(screen.eps_growth_4q) : null);
@@ -73,12 +81,12 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="Market cap"><TickFigure value={card.marketCap}>{money(card.marketCap)}</TickFigure></Fact>
             <Fact label="Shares out"><TickFigure value={card.outstanding}>{count(card.outstanding)}</TickFigure></Fact>
             <Fact label="Beta">{card.beta != null ? <TickFigure value={card.beta}>{card.beta.toFixed(2)}</TickFigure> : '—'}</Fact>
-            <Fact label="Average volume"><TickFigure value={card.avgVolume}>{count(card.avgVolume)}</TickFigure></Fact>
-            <Fact label="Next earnings">{card.nextEarnings ? quietText(card.nextEarnings) : '—'}</Fact>
+            <Fact label="Average volume · company file"><TickFigure value={card.avgVolume}>{count(card.avgVolume)}</TickFigure></Fact>
+            <Fact label="Next earnings">{next && next.daysOut >= 0 ? <span title={next.confirmed ? 'Date set by the company' : 'Not announced yet — Unusual Whales’ estimate'}>{next.dateLabel} · {untilWords(next.daysOut)}{next.confirmed ? '' : ' · est.'}</span> : '—'}</Fact>
             <Fact label="Dividend">{card.hasDividend == null ? '—' : card.hasDividend ? 'Pays one' : 'None'}</Fact>
             <Fact label="Dividend yield">{yieldPct != null ? <TickFigure value={yieldPct}>{`${yieldPct.toFixed(2)}%`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>
-            <Fact label="EPS growth · 4q">
-              {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : ''}{growth.toFixed(1)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}
+            <Fact label="EPS growth · YoY">
+              {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : growth < 0 ? '−' : ''}{Math.abs(growth).toFixed(2)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}
             </Fact>
           </dl>
           <p className="px-5 pb-4 text-[11px] text-textMuted">A street target, the forward estimates and the last call are not on this feed.</p>

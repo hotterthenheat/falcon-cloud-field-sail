@@ -18,9 +18,9 @@ const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const GRID = 'rgba(255,255,255,0.07)';
-const COOL_1 = '#ABD9E9';
-const COOL_2 = '#74ADD1';
-const COOL_3 = '#4575B4';
+const COOL_1 = '#A6D96A';
+const COOL_2 = '#66BD63';
+const COOL_3 = '#1A9850';
 const WARM_1 = '#FDAE61';
 const WARM_2 = '#F46D43';
 const WARM_3 = '#D73027';
@@ -115,7 +115,7 @@ const CompareGuide = ({ cmp }: { cmp: Compare }) => {
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">A name's read on each side of the ruler</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          {a.ticker}'s read stands at the ruler's left edge and {b.ticker}'s at its right, each the Map's read card in its order: the book (the net, the sentence, the four levels), the six heaviest strikes and what each did over a window, the strike (the one you keep, else the name's supreme: its legs and its other four greeks), today's contracts over each window, and the close. The comparison is made across the ruler between them, and the line under the ruler says it once: whose wall is nearer, whose move is wider. Each panel folds to a tab on its edge and remembers whether it stood open; the window buttons on a panel's heaviest line pick how far back its changes read; click a strike anywhere to keep it on the ruler.
+          {a.ticker}'s read stands at the ruler's left edge and {b.ticker}'s at its right, each the Map's read card in its order: the book (the net, the sentence, the four levels), the six heaviest strikes and what each did over a window, the strike (the one you keep, else the name's supreme: its legs and its other four greeks), today's contracts over each window, and the close. The net is net GEX: positive (green) means dealer hedging tends to absorb moves, negative (red) that it tends to amplify them. The net and the levels are read off the Expiry card on the ruler, which follows the Levels card at the top of the page until you pick another expiry — then a line under the ruler says so. The comparison is made across the ruler between them, and the line under the ruler says it once: whose wall is nearer, whose move is wider. Each panel folds to a tab on its edge and remembers whether it stood open; the window buttons on a panel's heaviest line pick how far back its changes read; click a strike anywhere to keep it on the ruler.
         </p>
       </div>
       <div>

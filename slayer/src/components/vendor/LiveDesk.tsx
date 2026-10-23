@@ -1,3 +1,4 @@
+import { GLOSSARY } from '../gex/glossary';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
@@ -7,6 +8,7 @@ import { besideDot } from '../gex/besideDot';
 import { hhmm } from '../../data/ahead';
 import { nyIsoDate, nyMinutes } from '../../core/nyTime';
 import { expirySpan } from '../../data/bookWindow';
+import { bookToday, isoDate } from '../../core/calendar';
 import { uwCall } from '../../data/whales';
 import { useResolvedTheme } from '../../theme/theme';
 import { useVendor, type VendorBook, type VendorRow } from '../../data/vendorFeed';
@@ -155,7 +157,10 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         return best;
       };
       opts.localization = { timeFormatter: fmt };
-      opts.timeScale = { ...opts.timeScale, tickMarkFormatter: fmt };
+      /* the chart spaces its ticks for its own short clock labels — a categorical label ("2021-06-15") is wider, so the
+         first ticks ran into each other ("2021-06-152021-10-29"); tell it how wide ours are */
+      const widest = Math.max(...[...labels.values()].map(v => v.length));
+      opts.timeScale = { ...opts.timeScale, tickMarkFormatter: fmt, tickMarkMaxCharacterLength: widest + 1 };
     }
     const chart: IChartApi = createChart(host, opts);
     const formatter = (p: number) => (format === 'pct' ? `${p.toFixed(1)}%` : format === 'num' ? (Math.abs(p) >= 100 ? p.toFixed(0) : p.toFixed(2)) : compact(p));
@@ -166,9 +171,12 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         color: resolveInk(l.ink, host),
         lineWidth: 2,
         priceLineVisible: false,
-        lastValueVisible: i === 0,
+        /* ONE LINE: its last value on the axis. SEVERAL: their names and last values in a legend over the chart (the
+           second re-audit, 2026-10-22: the axis tags stacked — "Vega" sat over the 0.000 tick, and "Puts" had a name and
+           no value) */
+        lastValueVisible: drawn.length === 1,
         crosshairMarkerRadius: 3,
-        title: drawn.length > 1 ? l.name : '',
+        title: '',
         priceFormat: { type: 'custom', formatter, minMove: 0.01 },
       });
       one.setData(l.pts.map(p => ({ time: p.t as UTCTimestamp, value: p.v })));
@@ -207,7 +215,34 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
 
   if (lines.every(l => l.pts.length < 2)) return null;
   const plotW = hostRef.current?.clientWidth ?? 0;
+  const legend = lines.filter(l => l.pts.length >= 2);
+  const fmtLast = (v: number) => (format === 'pct' ? `${v.toFixed(1)}%` : format === 'num' ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2)) : compact(v));
   return (
+    <>
+    {legend.length > 1 && (
+      <div className="px-5 pb-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] tnum" data-house-legend>
+        {legend.map(l => (
+          <span key={l.name} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <span aria-hidden className="inline-block w-2.5 h-[2px] rounded-full self-center" style={{ background: l.ink }} />
+            <span className="text-textMuted">{l.name}</span>
+            {/* a series by expiry is a set of dates, not a clock. A dollar or count series is summed across them; a rate (an
+                IV, a percent) is never summed (the third audit, 2026-10-23: "IV 446.8% total") — its front expiry is shown,
+                named by its date. A series in time: its last print. */}
+            {l.pts[0].label && format !== 'compact' ? (
+              <>
+                <span style={{ color: l.ink }}>{fmtLast(l.pts[0].v)}</span>
+                <span className="text-textMuted">front · {l.pts[0].label}</span>
+              </>
+            ) : (
+              <>
+                <span style={{ color: l.ink }}>{fmtLast(l.pts[0].label ? l.pts.reduce((a, p) => a + p.v, 0) : l.pts[l.pts.length - 1].v)}</span>
+                <span className="text-textMuted">{l.pts[0].label ? 'total' : 'last'}</span>
+              </>
+            )}
+          </span>
+        ))}
+      </div>
+    )}
     <div className="relative w-full" style={{ height }} data-house-chart>
       <div ref={hostRef} className="absolute inset-0" />
       {hover && (
@@ -228,6 +263,7 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -238,6 +274,10 @@ interface Field {
 }
 
 /** Rows into line specs. A real timestamp keeps the session clock; anything else is labelled on the axis. */
+/** "2026-10-22" → "Oct 22", the date form every other Pinpoint label wears */
+const shortDay = (iso: string): string =>
+  /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : iso || '—';
+
 function stamps(rows: Record<string, unknown>[], timeKey: string, fields: Field[]): LineSpec[] {
   const base = Math.floor(Date.UTC(2024, 0, 2) / 1000);
   const pts: { t: number; label?: string; vals: Record<string, number> }[] = [];
@@ -260,7 +300,9 @@ function stamps(rows: Record<string, unknown>[], timeKey: string, fields: Field[
       t = base + fake * 86400;
       fake += 1;
     } else if (timeKey !== 'timestamp') {
-      label = String(r[timeKey] ?? '').slice(0, 10);
+      const day = String(r[timeKey] ?? '').slice(0, 10);
+      /* an expiry is a near date — "Oct 22", the form every other label wears; long histories keep the year */
+      label = timeKey === 'expiry' ? shortDay(day) : day;
     }
     pts.push({ t, label, vals });
   }
@@ -323,7 +365,7 @@ function Rows({ cols, rows, max = 8 }: { cols: { key: string; label: string; rig
       <div className="min-w-[360px]">
         <div className="px-5 h-[20px] grid items-center gap-x-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" style={{ gridTemplateColumns: template }}>
           {cols.map(c => (
-            <span key={c.key} className={c.right ? 'text-right' : 'truncate'}>
+            <span key={c.key} className={c.right ? 'text-right truncate' : 'truncate'}>
               {c.label}
             </span>
           ))}
@@ -480,8 +522,12 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const pain = painRows[0];
   const painLine = stamps(painRows, 'expiry', [{ key: 'max_pain', name: 'Max pain', ink: SILVER_FILL }]);
   const bookFlow = series(taken(book, 'greek-flow'));
-  const nopeWaiting = windowed && (summed == null || bookFlow.length === 0);
-  const nopeSrc = nopeWaiting ? [] : windowed && summed ? nopeForWindow(series(taken(book, 'nope')), bookFlow, summed) : series(taken(book, 'nope'));
+  /* THE VENDOR'S NOPE, AS PRINTED (the retail test, 2026-10-22: the Map read "NOPE −2.81" against the vendor's last
+     −3.00 — it was scaled by the window's share of the volume, a figure the vendor never printed). NOPE is the whole
+     name's; the head says so rather than deriving a per-window one. */
+  void nopeForWindow;
+  const nopeWaiting = false;
+  const nopeSrc = series(taken(book, 'nope'));
   const nopeLine = stamps(thin(cutAt(nopeSrc, at)), 'timestamp', [{ key: 'nope', name: 'NOPE', ink: BULL }]);
   const nopePts = nopeLine[0]?.pts ?? [];
   const lastNope = nopePts.length ? nopePts[nopePts.length - 1].v : null;
@@ -507,22 +553,22 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
     <div className="min-w-0 border border-borderSubtle rounded-md bg-panel overflow-hidden" data-reading="session" data-scope-ticker={ticker} data-reading-window={span ?? 'all'}>
       <div className="px-4 min-h-9 py-1 flex items-center gap-x-4 gap-y-1 flex-wrap">
         <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">{ticker}</h3>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">Max pain</span>
+        {/* MAX PAIN IS ONE EXPIRY'S — named for the date it is (it read "Window Oct 22" as if it were the window's) */}
+        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`${pain ? `Max pain for the ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry — the nearest one in the window; each expiry has its own (the chart below). ` : ''}${GLOSSARY.maxPain}`}>
+          <span className="text-[11px] uppercase tracking-wider text-textMuted">Max pain{pain ? ` · ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry` : ''}</span>
           <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? String(pain.max_pain ?? '—') : waiting ? '…' : '—'}</span>
         </span>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">{windowed ? 'Window' : 'Front'}</span>
-          <span className="text-[12px] font-semibold tnum text-textPrimary">{pain ? String(pain.expiry ?? '').slice(0, 10) || '—' : '—'}</span>
-        </span>
-        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono">
-          <span className="text-[11px] uppercase tracking-wider text-textMuted">NOPE</span>
+        <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`The vendor's NOPE for the whole name (every expiry), as printed — not split by the window. ${GLOSSARY.nope}`}>
+          <span className="text-[11px] uppercase tracking-wider text-textMuted">NOPE · whole name</span>
           <span className="text-[12px] font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : nopeWaiting || waiting ? '…' : '—'}</span>
         </span>
       </div>
       {flowWaiting ? <Quiet>Reading this window.</Quiet> : chartable(flow) ? (
         <>
-          {windowed && <Head title="Delta and vega" rest={span ?? 'This window'} />}
+          {/* THE CLOCK IT STARTS AT, SAID (the second re-audit, 2026-10-22: the axis began at 08:02 with no word that the
+              first ninety minutes are pre-market) */}
+          {/* no window in hand yet is not "All expiries" (the ninth audit's m4: one frame of it under Today) */}
+          <Head title="Delta and vega" rest={`${span ?? (dates == null ? '…' : 'All expiries')} · ${flowSpanWords(flow)}`} />
           <HouseChart lines={flow} />
         </>
       ) : windowed ? <Quiet>No flow for this window.</Quiet> : waiting ? <Quiet>Reading the session.</Quiet> : null}
@@ -534,7 +580,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       ) : null}
       {chartable(nopeLine) ? (
         <>
-          <Head title="NOPE" rest={windowed ? (span ?? 'This window') : 'Net options pricing effect'} />
+          <Head title="NOPE" rest="Net options pricing effect · the vendor's, whole name" />
           <HouseChart lines={nopeLine} />
         </>
       ) : null}
@@ -553,6 +599,28 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
       ) : null}
     </div>
   );
+}
+
+/** "pre-market 08:02 → 16:00" / "09:30 → 15:12" — the span a minute series covers, with the hours outside the session named */
+function flowSpanWords(lines: LineSpec[]): string {
+  const pts = lines.find(l => l.pts.length >= 2)?.pts ?? [];
+  if (pts.length < 2) return 'the session';
+  const a = nyMinutes(pts[0].t * 1000);
+  const b = nyMinutes(pts[pts.length - 1].t * 1000);
+  const from = a < 9 * 60 + 30 ? `pre-market ${hhmm(a)}` : hhmm(a);
+  const to = b >= 16 * 60 ? `${hhmm(b)} after hours` : hhmm(b);
+  /* DATED WHEN IT IS NOT TODAY'S (the seventh audit's m6: "pre-market 07:30 → 16:14 after hours" read at 07:17 was
+     Thursday's series, said as if it were the day in progress) */
+  /* A SPAN THAT RUNS INTO THE SESSION SAYS SO (the ninth audit's m4: "pre-market 07:30 → 13:24" read as if 13:24 were
+     pre-market): the clocks, then which parts of the day they cover */
+  const parts = [a < 9 * 60 + 30 ? 'pre-market' : null, a < 16 * 60 && b >= 9 * 60 + 30 ? 'session' : null, b >= 16 * 60 ? 'after hours' : null].filter(Boolean) as string[];
+  const joined = parts.length > 1 ? `${hhmm(a)} → ${hhmm(b)}, ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : `${from} → ${to}`;
+  const day = nyIsoDate(pts[pts.length - 1].t * 1000);
+  if (day === nyIsoDate()) return joined;
+  const [y, m, d] = day.split('-').map(Number);
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+  return `${dow} ${mon} ${d} · ${joined}`;
 }
 
 function stillListed(rows: Record<string, unknown>[], today: string): Record<string, unknown>[] {
@@ -625,11 +693,18 @@ function ContractBoard({ title, rest, rows, testId, volume }: { title: string; r
 export function BuildingArrived({ ticker }: { ticker: string }) {
   const book = useVendor('pinpoint', ticker, '/pinpoint/agenda');
   if (!ticker) return null;
-  const oi = series(taken(book, 'oi-change'))
+  /* NOT THE CONTRACTS THAT HAVE EXPIRED, AND NOT "TODAY" (the second re-audit, 2026-10-22: "the contracts that changed
+     today" listed SPY 776 Call · 10/22 after it settled, and the change is the overnight count, 10/21 → 10/22) */
+  const floor = isoDate(bookToday());
+  const rawOi = series(taken(book, 'oi-change'));
+  const dates = rawOi.reduce<{ from: string; to: string }>((d, r) => ({ from: String(r.last_date ?? '') > d.from ? String(r.last_date) : d.from, to: String(r.curr_date ?? '') > d.to ? String(r.curr_date) : d.to }), { from: '', to: '' });
+  const oi = rawOi
     .map(r => {
       const diff = num(r.oi_diff_plain) ?? num(r.oi_change);
       const symbol = String(r.option_symbol ?? '');
       if (diff == null || diff === 0 || !symbol) return null;
+      const m = symbol.toUpperCase().match(OCC);
+      if (m && `20${m[2]}-${m[3]}-${m[4]}` < floor) return null;
       return { symbol, change: signed(diff), volume: r.volume, oi: r.curr_oi, _abs: Math.abs(diff) };
     })
     .filter((r): r is NonNullable<typeof r> => !!r)
@@ -647,10 +722,24 @@ export function BuildingArrived({ ticker }: { ticker: string }) {
   if (oi.length === 0 && flex.length === 0) return null;
   return (
     <div data-reading="arrived">
-      {oi.length > 0 ? <ContractBoard title="Open interest" rest={`${ticker} · the contracts that changed today`} rows={oi} testId="oi" volume /> : null}
+      {oi.length > 0 ? <ContractBoard title="Open interest" rest={`${ticker} · the overnight count${dates.from && dates.to ? `, ${dates.from.slice(5).replace('-', '/')} → ${dates.to.slice(5).replace('-', '/')}` : ''} · contracts still live`} rows={oi} testId="oi" volume /> : null}
       {flex.length > 0 ? <ContractBoard title="FLEX" rest="Open interest that moved against the prior print" rows={flex} testId="flex" /> : null}
     </div>
   );
+}
+
+/** "Against each expiry's own median — 8 to 35 daily readings per expiry, the oldest from Sep 3, 2026" — the span the vendor's medians really cover */
+function medianSpan(rows: Record<string, unknown>[]): string {
+  const n = rows.map(r => Number(r.samples)).filter(x => Number.isFinite(x) && x > 0);
+  const firsts = rows.map(r => String(r.first_date ?? '')).filter(d => /^\d{4}-\d{2}-\d{2}/.test(d)).sort();
+  if (!n.length) return "Against each expiry's own median";
+  const lo = Math.min(...n);
+  const hi = Math.max(...n);
+  /* SAID IN FULL (the fourth audit, 2026-10-23): "1–251 daily samples since 10-23" dropped the year and did not say
+     what was counted — each expiry's median is over its own daily readings, a new expiry's few, an old one's a year */
+  const day = firsts[0] ? new Date(`${firsts[0].slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
+  const counts = lo === hi ? `${lo} daily ${lo === 1 ? 'reading' : 'readings'}` : `${lo} to ${hi} daily readings`;
+  return `Against each expiry's own median — ${counts} per expiry${day ? `, the oldest from ${day}` : ''}`;
 }
 
 /** Implied against what the name has done, and the term the print sits on. Nothing until a figure has arrived. */
@@ -659,7 +748,6 @@ export function EarningsVol({ ticker }: { ticker: string }) {
   const stats = latest(taken(book, 'vstats'));
   const iv = num(stats?.iv);
   const rv = num(stats?.rv);
-  const rank = num(stats?.iv_rank);
   const ratio = iv != null && rv ? iv / rv : null;
   const termRows = series(taken(book, 'term-dist')).map(r => {
     const vol = asPct(num(r.volatility));
@@ -673,7 +761,7 @@ export function EarningsVol({ ticker }: { ticker: string }) {
   const chart = term.some(l => l.pts.length >= 2);
   const facts = [
     iv != null ? { label: 'Implied', value: pct(iv) } : null,
-    rank != null ? { label: 'IV rank', value: rank.toFixed(0) } : null,
+    /* no IV rank here: the page head already carries it, read once, so the two never disagree by a point */
     rv != null ? { label: 'Realized', value: pct(rv) } : null,
     ratio != null ? { label: 'IV / RV', value: ratio.toFixed(2) } : null,
   ].filter((f): f is { label: string; value: string } => !!f);
@@ -693,7 +781,9 @@ export function EarningsVol({ ticker }: { ticker: string }) {
       ) : null}
       {chart ? (
         <>
-          <Head title="Term structure" rest="Against the one-year median" />
+          {/* NOT A ONE-YEAR MEDIAN (the re-audit, 2026-10-22): each expiry's median is over the samples the vendor has for
+              it — 9 since 10-12 on one, 35 since 09-03 on another. The label says the real span */}
+          <Head title="Term structure" rest={medianSpan(termRows)} />
           <HouseChart lines={term} format="pct" />
         </>
       ) : null}
@@ -722,7 +812,7 @@ export function StockFacts({ ticker }: { ticker: string }) {
   if (!last) return null;
   const money = ['total_revenue', 'gross_profit', 'net_income']
     .filter(k => last[k] != null && last[k] !== '')
-    .map(k => ({ label: k === 'total_revenue' ? 'Revenue' : k === 'gross_profit' ? 'Gross profit' : 'Net income', value: num(last[k]) != null ? compact(num(last[k])!) : String(last[k]) }));
+    .map(k => ({ label: k === 'total_revenue' ? 'Revenue' : k === 'gross_profit' ? 'Gross profit' : 'Net income', value: num(last[k]) != null ? `${num(last[k])! < 0 ? '−' : ''}$${compact(Math.abs(num(last[k])!))}` : String(last[k]) }));
   if (money.length === 0) return null;
   return (
     <>
@@ -761,7 +851,8 @@ export function ShortHistory({ ticker }: { ticker: string }) {
       };
     })
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .reverse();
+    /* sorted, not reversed: the vendor's order is not fixed, and the head promises newest first */
+    .sort((a, b) => b.market_date.localeCompare(a.market_date));
   const [page, setPage] = useState(0);
   useEffect(() => setPage(0), [ticker]);
   const pages = Math.max(1, Math.ceil(reports.length / CONTRACT_PAGE));
@@ -783,10 +874,11 @@ export function ShortHistory({ ticker }: { ticker: string }) {
             max={body.length}
             rows={body}
             cols={[
-              { key: 'market_date', label: 'Report', w: 'minmax(0,1.2fr)' },
-              { key: 'si', label: '% of float', right: true },
-              { key: 'days', label: 'Days to cover', right: true, w: '96px' },
-              { key: 'shares', label: 'Shares', right: true },
+              /* the date keeps its width — on a phone the share columns took it and every row read "2026…" (the Dossier sweep, 2026-10-22) */
+              { key: 'market_date', label: 'Report', w: '86px' },
+              { key: 'si', label: '% of float', right: true, w: 'minmax(0,1fr)' },
+              { key: 'days', label: 'Days to cover', right: true, w: 'minmax(0,96px)' },
+              { key: 'shares', label: 'Shares', right: true, w: 'minmax(0,1fr)' },
             ]}
           />
           <PageBar page={at} pages={pages} onPage={setPage} testId="short-reports" />
@@ -820,7 +912,8 @@ export function HouseSectors() {
   const total = valued.reduce((a, r) => a + r.value, 0);
   const rows = valued.map(r => ({
     sector: r.sector,
-    value: compact(r.value),
+    /* dollars, said as dollars (round 9: "1.16T", "401.00B") */
+    value: `$${compact(r.value)}`,
     weight: total > 0 ? `${((r.value / total) * 100).toFixed(1)}%` : '',
     positions: r.positions != null ? Math.round(r.positions).toLocaleString('en-US') : '',
   }));

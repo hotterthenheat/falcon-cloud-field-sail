@@ -22,6 +22,17 @@ import { RecordPageSkeleton } from './recordSkeletons';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
 import { useGlideHold } from '../../components/ui/useGlideHold';
+import { statHelp } from '../../components/record/statHelp';
+
+/* THE PHONE'S FINGER (the retail pass, 2026-10-22): on a phone every Dossier control — the cards, the guide doors, the
+   tabs, the doors, the way back — is at least 40px each way. The map's pins and the calendar's pills are not targets of
+   their own (the pin's city and the day's cell are), so they keep their size; an element marked data-touch-skip too. */
+const DOSSIER_TOUCH = `@media (max-width: 640px) {
+  [data-dossier-touch] :is(button, a[href], [role="button"]):not([data-touch-skip]):not([data-touch-skip] *):not([data-news-pin]):not([data-cal-pill]):not(svg *):not(.ag-root-wrapper *) {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}`;
 
 const RecordLayout = () => {
   const location = useLocation();
@@ -43,12 +54,12 @@ const RecordLayout = () => {
             </span>
             <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{page.label}</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{page.subtitle}</p>
+          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate">{page.subtitle}</p>
         </div>
         <div className="flex items-center gap-x-4 gap-y-2 flex-wrap max-sm:w-full min-w-0 max-w-full">
           <dl className="flex flex-wrap gap-x-6 gap-y-2 min-w-0 max-w-full" data-shell-facts>
           <div className="min-w-0 max-w-full">
-            <dt className="text-[10px] text-textMuted whitespace-nowrap">Source</dt>
+            <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={statHelp("Source")}>Source</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary max-w-full whitespace-normal" data-record-source>
               {page.source}
             </dd>
@@ -67,7 +78,9 @@ const RecordLayout = () => {
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
           /* The same first screen Pinpoint keeps: the top bar, this head and the page's padding */
           className="flex flex-col gap-4 flex-grow min-h-[calc(100vh-174px)] min-w-0 max-w-full"
+          data-dossier-touch
         >
+          <style>{DOSSIER_TOUCH}</style>
           {/* A subpage opens at its head, not where the last one's scroll was (2026-09-11) */}
           <ScrollHome />
           <Suspense fallback={<RecordPageSkeleton pathname={location.pathname} />}>{outlet}</Suspense>

@@ -35,18 +35,24 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
-import { deskBars, useBookMinutes } from '../../data/uwBook';
-import { expirySpan } from '../../data/bookWindow';
+import { bookMinuteKind, deskBars, peekSettledNet, useBookMinutes, useBookRev } from '../../data/uwBook';
+import { roomLevels } from '../../data/roomLevels';
+import { nyIsoDate } from '../../core/nyTime';
+import { expirySpan, longDay } from '../../data/bookWindow';
+import { levelNetPath } from '../../data/flipLevel';
+import { nySessionPhase } from '../../core/nyTime';
+
+const inSessionNow = (): boolean => nySessionPhase() === 'open';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { hhmm } from '../../data/ahead';
 import { axisForSession } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
 import { nyMinutes } from '../../core/nyTime';
-/* THE BOOK IN THE THERMAL INKS (Noah, 2026-10-15: "the book colors should be matching the thermal colors we already have"):
-   amplifies in the field's warm, absorbs in its cool — the net line, its ground, the head's figure and the pointer's card
-   all read the same two inks as the thermal field on the tape above (the ember/glacier pair was the odd one out) */
-import { THERMAL_COOL, THERMAL_WARM, alpha, resolveInk } from './paletteInk';
+/* THE NET IN THE BOARD'S INKS (the ship pass, 2026-10-22 — it was the thermal pair, warm above zero, on the house's
+   inverted sign): retail sign, green above zero where hedging absorbs, red below where it amplifies — the net line, its
+   ground, the head's figure and the pointer's card */
+import { LONG_GAMMA, SHORT_GAMMA, alpha, resolveInk } from './paletteInk';
 import { readSessionClock } from '../../data/moc';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { setDayHover, clearDayHover, useDayHover } from '../../data/dayHover';
@@ -74,6 +80,8 @@ interface Props {
   at?: number | null;
   /** The expiries the net is sized to — the book's window. The minute path is the whole book; the last print is this window. */
   dates?: readonly string[] | null;
+  /** The contracts the net is read off, in words ("Today · Oct 22", "All expiries") — the Levels card's */
+  bookLabel?: string | null;
 }
 
 interface Minute {
@@ -90,7 +98,7 @@ interface Minute {
     -$417.9M"), the scale only counts. */
 const axisUsd = (v: number): string => {
   const a = Math.abs(v);
-  const sign = v < 0 && a >= 0.5 ? '-' : '';
+  const sign = v < 0 && a >= 0.5 ? '−' : '';
   if (a >= 1e9) return `${sign}${(a / 1e9).toFixed(1)}B`;
   if (a >= 1e7) return `${sign}${Math.round(a / 1e6)}M`;
   if (a >= 1e6) return `${sign}${(a / 1e6).toFixed(1)}M`;
@@ -124,7 +132,7 @@ const isRamp = (values: number[]): boolean => {
   return (sxy * sxy) / (sxx * syy) > 0.97;
 };
 
-const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dates }: Props) => {
+const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dates, bookLabel }: Props) => {
   const paper = useResolvedTheme() === 'light';
   const ticker = snapshot.ticker;
   const desk = useDeskSession();
@@ -145,6 +153,8 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     for (const s of snapshot.chain) n += s.netGex;
     return n;
   }, [snapshot]);
+  /* nothing provisional (the fourth audit's M1: "NET GEX −$17.7B" — the whole book, the settled day in it — for seconds) */
+  const netPending = !!snapshot.liveBook && roomLevels(snapshot, '0DTE')?.complete === false;
   const minutes = useMemo<Minute[]>(() => {
     const priceAt = new Map(bars.map(b => [Math.floor(b.time / 60) * 60, b.close] as const));
     const endMin = at == null ? Infinity : at;
@@ -159,16 +169,40 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
         if (m > hi) hi = m;
       }
     }
+    /* THE LEVELS' SCOPE, RE-PRICED AT EACH MINUTE'S PRICE (the fifth audit, 2026-10-23: the vendor's whole-book minute
+       series — the settled day in it — drew −13B…−18B under a Today headline of −$3.1B, and NVDA's line read green
+       0…700M under "−$73.9M amplifies"). The line is the headline's own contracts (data/flipLevel.ts levelNetPath),
+       the open interest as it stands priced at each minute's price — the vendor's method, on the scope — so it ends at
+       the headline's figure, in its sign and its inks. Outside the session it ends at the close the levels are priced at. */
+    if (snapshot.liveBook) {
+      if (netPending) return [];
+      const cut = bars.filter(b => nyMinutes(b.time * 1000) <= endMin);
+      const pts = cut.map(b => ({ time: Math.floor(b.time / 60) * 60, min: nyMinutes(b.time * 1000), price: b.close }));
+      const lastBar = cut[cut.length - 1];
+      if (at == null && lastBar && !inSessionNow() && Math.abs(lastBar.close - snapshot.spot) > 1e-9 && nyMinutes(lastBar.time * 1000) < 16 * 60) {
+        const t = Math.floor(lastBar.time / 60) * 60 + 60;
+        pts.push({ time: t, min: nyMinutes(t * 1000), price: snapshot.spot });
+      }
+      if (pts.length < 2) return [];
+      /* each minute at its own time to expiry (the tenth audit's retail finding) */
+      const read = levelNetPath(snapshot, snapshot.chain, pts.map(p => p.price), pts.map(p => p.time * 1000 + 60_000));
+      if (!read) return [];
+      /* a figure the chart cannot draw is not drawn (the library throws past ±9×10^13 and the page stops) */
+      return pts.map((p, i) => ({ time: p.time, min: p.min, net: read.path[i], spot: p.price })).filter(m => Number.isFinite(m.net) && Math.abs(m.net) < 1e13);
+    }
     const pool = vendor ?? [];
     let kept = pool.filter(m => m.min >= lo && m.min <= hi && m.min <= endMin);
     if (kept.length < 2) kept = pool.filter(m => m.min <= endMin);
     if (kept.length >= 2 && !isRamp(kept.map(m => m.net))) {
-      const raw = kept[kept.length - 1].net;
-      const scale = bookNet !== 0 && raw !== 0 ? bookNet / raw : 1;
-      return kept.map(m => ({ time: m.time, min: m.min, net: m.net * scale, spot: m.spot ?? priceAt.get(m.time) ?? null }));
+      /* THE VENDOR'S OWN SERIES, AS PRINTED (the Pinpoint audit, 2026-10-22): it was scaled by book net ÷ last minute so
+         its last print met the open-interest net — when the two differed in sign the scale went negative and the whole
+         day drew inverted (TSLA: the vendor read +$480M, long, then −$586M; the morning drew red). The line is the
+         vendor's volume-based dealer gamma per 1% (spot-exposures), in the retail sign — positive = dealers long gamma =
+         absorbs — and is labelled as that; the open-interest book's net is its own figure beside it. */
+      return kept.map(m => ({ time: m.time, min: m.min, net: -m.net, spot: m.spot ?? priceAt.get(m.time) ?? null }));
     }
     return [];
-  }, [bars, vendor, at, bookNet]);
+  }, [bars, vendor, at, bookNet, snapshot, netPending]);
 
   /* the tape's clock, off the same bars (data/dayAxis.ts): live, the session so far */
   const phase = readSessionClock().phase;
@@ -205,21 +239,25 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     if (!host) return;
     const s = daySurface(host, paper);
     const chart = createChart(host, dayChartOptions(s, { clock: true, logo: true }));
-    const amp = resolveInk(THERMAL_WARM, host);
-    const abs = resolveInk(THERMAL_COOL, host);
-    /* THE NET AS A BASELINE AT ZERO — the library's own two-sided line, Compare's gap band: ember and its ground above
-       (hedging amplifies), glacier and its ground below (it absorbs) — the capsules' own pair */
+    const amp = resolveInk(SHORT_GAMMA, host);
+    const abs = resolveInk(LONG_GAMMA, host);
+    /* THE NET AS A BASELINE AT ZERO — the library's own two-sided line, Compare's gap band, in the retail sign (the ship
+       pass, 2026-10-22): green and its ground above zero (dealers long gamma, hedging absorbs), red below (short gamma,
+       it amplifies) — the Board's net GEX inks */
     const net = chart.addSeries(BaselineSeries, {
       baseValue: { type: 'price', price: 0 },
-      topLineColor: amp,
-      topFillColor1: alpha(amp, paper ? 0.22 : 0.3),
-      topFillColor2: alpha(amp, 0.03),
-      bottomLineColor: abs,
-      bottomFillColor1: alpha(abs, 0.03),
-      bottomFillColor2: alpha(abs, paper ? 0.22 : 0.3),
+      topLineColor: abs,
+      topFillColor1: alpha(abs, paper ? 0.22 : 0.3),
+      topFillColor2: alpha(abs, 0.03),
+      bottomLineColor: amp,
+      bottomFillColor1: alpha(amp, 0.03),
+      bottomFillColor2: alpha(amp, paper ? 0.22 : 0.3),
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: true,
+      /* NO LAST-VALUE TAG (the fourth audit's m6: the axis read −17.6B — the session's whole book, the contracts that
+         settled at 4:00 included — beside "NET GEX −$3.1B"): the line is the session's path; the figure that names the book
+         is the headline's, and the line's own last print is under Details with the settled contracts taken off */
+      lastValueVisible: false,
       crosshairMarkerRadius: 3,
       /* the axis's figures without the idle decimal ("$800M", not "$800.0M"): the axis is as wide as its widest
          figure and the tape over it shares that width (2026-10-18) — a shorter figure brings both to the edge */
@@ -412,7 +450,33 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
     e.preventDefault();
   };
   const plotW = hostRef.current?.clientWidth ?? 0;
-  const bookWords = expirySpan(dates);
+  useBookRev();
+  /* WHICH SERIES THE LINE IS, SAID WHERE IT IS SHOWN (the second re-audit, 2026-10-22) */
+  const kind = vendor ? bookMinuteKind(ticker) : null;
+  /* THE LINE'S LAST PRINT IS THE VENDOR'S LAST PRINT, LESS WHAT HAS SETTLED (the third audit, 2026-10-23): the drawn line
+     stops with the session's bars (15:55), but the vendor prints on after the bell — TSLA's line read +$396.0M against
+     the vendor's last +$291.0M (= the net), NVDA +$47.1M against +$29.3M — and after the close the vendor's whole-book
+     total still counts the contracts that settled at 4:00 (SPY −$17.6B against the −$14.7B net: Oct 22's −$3.03B). The
+     figure is the last print the vendor sent (the replay's own minute in a replay), with the settled contracts' live
+     gamma taken off — so it IS the All-expiries net. */
+  const pool = vendor ?? [];
+  const lastPrint = at == null ? pool[pool.length - 1] ?? null : last ?? null;
+  const settled = at == null && kind === 'oi' ? peekSettledNet(ticker) : 0;
+  const lineNow = snapshot.liveBook ? last?.net ?? null : lastPrint ? (at == null ? -lastPrint.net : lastPrint.net) - (settled ?? 0) : null;
+  const lineDay = lastPrint ? nyIsoDate(lastPrint.time * 1000) : null;
+  const lineDayWords = lineDay && lineDay !== nyIsoDate() ? ` · ${expirySpan([lineDay])} session` : '';
+  const barDay = bars.length ? nyIsoDate(bars[bars.length - 1].time * 1000) : null;
+  const scoped = !!snapshot.liveBook;
+  const kindWord = scoped
+    ? `Net GEX through ${barDay && barDay !== nyIsoDate() ? longDay(barDay) : 'the day'} · ${bookLabel ?? 'these contracts'} at each minute's price`
+    : kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · the session's trades${lineDayWords}`;
+  const kindTitle = scoped
+    ? `The net GEX of the contracts the Levels card reads (${bookLabel ?? 'its scope'}) — their open interest as it stands now, re-priced at each minute's price${barDay && barDay !== nyIsoDate() ? ` through ${longDay(barDay)}'s session` : ''}. The vendor's own minute series does the same for the whole book; this is the same measure on the headline's contracts, so the line ends at the Net GEX beside it, in its sign: green above zero (dealers long gamma, their hedging absorbs), red below (it amplifies)`
+    : kind === 'oi'
+      ? "The vendor's open-interest dealer gamma per 1% move on every expiry, re-priced at each minute's price (spot-exposures) — the same measure as the levels' net GEX. Through the session it counts the contracts expiring that day; after the close those settle, and the figure under Details takes them off, so it equals the All-expiries net"
+      : "The vendor's dealer gamma per 1% move from the session's trades (volume-based, minute by minute) — a different measure from the open-interest book the levels are read from";
+  const [showDetails, setShowDetails] = useState(false);
+  const bookWords = bookLabel ?? expirySpan(dates);
 
   /* A CLEAR RULE OVER THE BOOK (Noah, 2026-10-14: "the book and the day should have clear cut horizontal line between them
      distinguishing them, the book is a separate thing"): the part opens with the box's own hairline at full strength */
@@ -428,8 +492,8 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {part ? (
               /* NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "'the book' … give me informative names as to what they do"):
                  the dealers' hedging through the day — amplifying or absorbing, as the figure beside it says */
-              <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-through-part-word>
-                Dealer hedging
+              <span className="text-[12px] font-semibold text-textPrimary sm:whitespace-nowrap min-w-0" data-through-part-word title={kindTitle}>
+                {kindWord}
               </span>
             ) : (
               <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">The book through the day</h3>
@@ -438,18 +502,50 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
           </div>
           {!part && <p className="mt-0.5 text-[11px] text-textMuted">The book’s net gamma through the session, spot faint beside it</p>}
         </div>
-            {part && last && (
+            {part && (
           <>
-            {bookWords && <PartFact label="Book">{bookWords}</PartFact>}
-            <PartFact label="Net now">
-              <span style={{ color: last.net >= 0 ? THERMAL_WARM : THERMAL_COOL }} data-through-net={Math.round(last.net)}>
-                {fmtUsd(last.net)} · {last.net >= 0 ? 'amplifies' : 'absorbs'}
+            {/* ONE HEADLINE, IN THE LEVELS CARD'S SCOPE (the retail test, 2026-10-23: "LINE NOW −$17.6B amplifies" beside
+                "NET GEX −$3.1B", NVDA "+$29.3M absorbs" beside "−$73.8M" and an AMPLIFY badge). The scope's net leads, with
+                its verb; the line's all-expiries figure sits under Details, labelled, with no verb of its own. */}
+            <PartFact label={`Net GEX${bookWords ? ` · ${bookWords}` : ''}`} title={`Net GEX on every strike of the contracts the Levels card reads (${bookWords ?? 'its scope'}, open interest, retail sign) — the Board's, the Agenda's and Compare's figure. Positive (green): dealers long gamma, their hedging absorbs moves; negative (red): it amplifies them`}>
+              {netPending ? (
+                <span className="text-textMuted" title="Still loading the Levels card's contracts">…</span>
+              ) : (
+                <span style={{ color: -bookNet >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-book={Math.round(-bookNet)}>
+                  {-bookNet > 0 ? '+' : ''}
+                  {fmtUsd(-bookNet)} · {-bookNet >= 0 ? 'absorbs' : 'amplifies'}
+                </span>
+              )}
+            </PartFact>
+            {last && <PartFact label="Line changed sign" title={`How many times through the session the line${scoped ? '' : ' (every expiry)'} flipped between absorbing and amplifying`}>{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>}
+            <button
+              type="button"
+              className="inline-flex items-baseline gap-1 font-mono text-[11px] uppercase tracking-wider text-textMuted hover:text-textPrimary underline-offset-2 hover:underline"
+              aria-expanded={showDetails}
+              onClick={() => setShowDetails(v => !v)}
+              data-through-details-toggle
+            >
+              Details {showDetails ? '▴' : '▾'}
+            </button>
+            {showDetails && (
+              <span className="inline-flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded border border-borderSubtle/70 px-2 py-0.5" data-through-details>
+                {lineNow != null && (
+                  <PartFact
+                    label={scoped ? `Line's last point${last ? ` · ${hhmm(last.min)}` : ''}` : `Line's last print · all expiries${lastPrint ? ` · ${hhmm(nyMinutes(lastPrint.time * 1000))}` : ''}`}
+                    title={scoped ? `${kindTitle}.` : `${kindTitle}.${settled ? ` The contracts that settled at 4:00 (${settled > 0 ? '+' : ''}${fmtUsd(settled)}) are taken off.` : ''}${kind === 'oi' ? ' It is the All-expiries net as of that minute: with Levels on All expiries the Net GEX above is the same measure, re-priced at the latest price, so after the bell the two differ only by the move since the vendor\'s last print.' : ''}`}
+                  >
+                    <span data-through-net={Math.round(lineNow)}>
+                      {lineNow > 0 ? '+' : ''}
+                      {fmtUsd(lineNow)}
+                      {!scoped && settled ? <span className="ml-1 font-normal text-textMuted">(settled contracts off)</span> : null}
+                    </span>
+                  </PartFact>
+                )}
+                <PartFact label="Books kept" title="How many minutes of the session have a reading of the book behind this line">
+                  {minutes.length} {minutes.length === 1 ? 'minute' : 'minutes'}
+                </PartFact>
               </span>
-            </PartFact>
-            <PartFact label="Changed sign">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>
-            <PartFact label="Books kept">
-              {minutes.length} {minutes.length === 1 ? 'minute' : 'minutes'}
-            </PartFact>
+            )}
           </>
         )}
         {part && !last && (
@@ -459,8 +555,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
           <dl className="grid grid-cols-3 gap-x-6">
             <div>
               <dt className="text-[11px] text-textMuted">Net now</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum whitespace-nowrap" style={{ color: last.net >= 0 ? THERMAL_WARM : THERMAL_COOL }} data-through-net={Math.round(last.net)}>
-                {fmtUsd(last.net)} · {last.net >= 0 ? 'amplifies' : 'absorbs'}
+              <dd className="mt-0.5 font-mono text-[14px] tnum whitespace-nowrap" style={{ color: last.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }} data-through-net={Math.round(last.net)}>
+                {last.net > 0 ? '+' : ''}
+                {fmtUsd(last.net)} · {last.net >= 0 ? 'absorbs' : 'amplifies'}
               </dd>
             </div>
             <div>
@@ -504,8 +601,9 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
               data-through-card={hhmm(hm.min)}
             >
               <span className="font-bold tnum text-textPrimary">{hhmm(hm.min)}</span>
-              <span className="ml-2 tnum" style={{ color: hm.net >= 0 ? THERMAL_WARM : THERMAL_COOL }}>
-                {fmtUsd(hm.net)} · {hm.net >= 0 ? 'amplifies' : 'absorbs'}
+              <span className="ml-2 tnum" style={{ color: hm.net >= 0 ? LONG_GAMMA : SHORT_GAMMA }}>
+                {hm.net > 0 ? '+' : ''}
+                {fmtUsd(hm.net)} · {hm.net >= 0 ? 'absorbs' : 'amplifies'}
               </span>
               {hm.spot != null && <span className="ml-2 tnum text-textMuted">spot {hm.spot.toFixed(2)}</span>}
             </div>

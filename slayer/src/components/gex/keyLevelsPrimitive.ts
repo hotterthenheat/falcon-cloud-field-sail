@@ -71,9 +71,9 @@ export interface KeyLevelsLadder {
 
 /** What the pointer card says of each level — the name in the head, a short role beside it, one line under the figures */
 export const KEY_LEVEL_WORDS: Record<KeyLevelKey, { name: string; aside: string; line: string }> = {
-  callWall: { name: 'Call wall', aside: 'the ceiling', line: 'The strike with the most call hedging above spot. A rise tends to slow into it.' },
-  putWall: { name: 'Put wall', aside: 'the floor', line: 'The strike with the most put hedging below spot. A fall tends to slow into it.' },
-  flip: { name: 'Flip', aside: 'the border', line: 'Above it, dealer hedging steadies price. Below it, the hedging adds to the move.' },
+  callWall: { name: 'Call wall', aside: 'the most call gamma', line: 'The strike with the most call hedging, either side of price. Above price a rise tends to slow into it; below, it can act as support.' },
+  putWall: { name: 'Put wall', aside: 'the most put gamma', line: 'The strike with the most put hedging, either side of price. Below price it is support while it holds; above, it is overhead put hedging, not a floor.' },
+  flip: { name: 'Flip', aside: 'the border', line: 'Where dealer hedging switches sides: on the side price is on it does what the book does now, on the other the opposite.' },
   supreme: { name: 'Supreme', aside: 'the biggest strike', line: 'The strike with the most hedging in the whole book. Price tends to be drawn to it as expiry nears.' },
 };
 
@@ -121,7 +121,12 @@ class LadderRenderer {
          above is taken, dropped when both are (the card carries the price) — the session tags' push, cut to two lanes */
       const taken: { top: number; bottom: number }[] = chips.map(c => ({ top: c.top * vr, bottom: c.bottom * vr }));
       const clear = (box: { top: number; bottom: number }) => !taken.some(t => box.top < t.bottom && box.bottom > t.top) && box.top >= 0 && box.bottom <= H;
-      placed.sort((a, b) => a.y - b.y);
+      /* FIGURES BY RANK, NEVER A PILE (the fourth audit: "770.27 / 770.00 / 769.00" stacked at the edge): the supreme's
+         figure first, then the walls', then the flip's; a figure whose rung sits within a figure's height of one already
+         printed is left to the pointer card */
+      placed.sort((a, b) => RANK[b.r.key] - RANK[a.r.key] || a.y - b.y);
+      const figRungs: number[] = [];
+      const FIG_GAP = 14 * vr;
       /* a playhead, when the host has one: the levels are the book at THAT minute, so the rungs stand on it and a
          faint trace covers only the tape already printed. Null keeps the rungs on the plot's right edge. */
       const edgeMedia = this.source.edge;
@@ -134,6 +139,8 @@ class LadderRenderer {
         const w = (RUNG_W + (RUNG_W_HOT - RUNG_W) * hot) * hr;
         pen.rule(end - w, y, end, r.ink, 0.82 + 0.18 * hot, { trace: edgeMedia != null, dash: r.dash ? [3, 3] : undefined, width: r.weight ?? 1 });
         if (chip) continue;
+        if (figRungs.some(fy => Math.abs(fy - y) < FIG_GAP)) continue;
+        figRungs.push(y);
         const text = r.price.toFixed(2);
         const figAt = edgeMedia != null ? end - w - 4 * hr : undefined;
         if (clear(pen.figureBox(y, true))) taken.push(pen.figure(text, y, r.ink, true, 0.92 + 0.08 * hot, figAt));

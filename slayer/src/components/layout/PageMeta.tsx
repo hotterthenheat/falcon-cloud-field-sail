@@ -167,7 +167,8 @@ export function metaFor(pathname: string, own: string | null = null): Meta {
   for (const sec of SECTIONS) {
     if (path !== sec.base && !path.startsWith(`${sec.base}/`)) continue;
     const exact = sec.pages.find(p => p.path === path);
-    if (exact) return page(exact.label, sentence(exact.subtitle), sec.name);
+    /* a page's own words lead the tab where it says them (the Agenda's Building face: "Building · Agenda · Pinpoint") */
+    if (exact) return page(own ?? exact.label, sentence(exact.subtitle), sec.name);
     /* a page under one of the section's pages: a NAME's own (/record/stocks/NVDA — the segment is the name), or a thing
        with an id (/practice/backtest/smuaf0fpb3x, /practice/journal/<account>/<trade>) that says its own words, or none */
     const parent = sec.pages.find(p => path.startsWith(`${p.path}/`));

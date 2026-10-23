@@ -86,6 +86,9 @@ export default {
         // Supreme = MAGENTA (Noah, 2026-08-29): the engine's-standout family —
         // TOP PICK, supreme, NET, the whale.
         supreme: token('supreme'),
+        /* the legs' and the walls' inks (call side glacier, put side ember) — never the sign's green and red (2026-10-23) */
+        glacier: token('glacier'),
+        ember: token('ember'),
         darkpool: token('darkpool'),
 
         // Legacy aliases (pre-redesign pages)

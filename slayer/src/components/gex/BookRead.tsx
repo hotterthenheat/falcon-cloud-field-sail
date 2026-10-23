@@ -30,14 +30,20 @@
 ==================================================
 */
 
+import { levelRoles, type LevelRole } from '../../core/walls';
+import { expirySpan, todayScopeLabel } from '../../data/bookWindow';
+import { useLevelsScope } from '../../data/levelsScope';
+import { useLevelsFor } from '../../data/levelsFor';
+import { peekDaySigma, peekEntry, peekMoveToClose, peekScopeMove } from '../../data/uwBook';
+import { shownGreek } from './retailSign';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
-import { GREEK_LABEL } from '../../data/compare';
+import { GREEK_EXPLAIN, GREEK_LABEL } from '../../data/compare';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
-import { GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
-import { fmtUsd, readHeatPattern } from '../../data/gex';
-import { YEAR_MINUTES } from '../../data/measure';
+import { todayColumn, GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
+import { readRegime } from '../../data/flipLevel';
 import { readSessionClock } from '../../data/moc';
 import { replayRange, snapshotAt } from '../../data/replay';
 import type { ExposureProfileData } from '../../types/gex';
@@ -88,8 +94,10 @@ interface BookReadProps {
   onClose: () => void;
 }
 
-const Head = ({ children }: { children: ReactNode }) => (
-  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-textMuted">{children}</div>
+const Head = ({ children, title }: { children: ReactNode; title?: string }) => (
+  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-textMuted" title={title}>
+    {children}
+  </div>
 );
 
 /** THE READ's door — beside the guide's on every book; lit while the card is up.
@@ -140,7 +148,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   /* THE EXPIRIES SHOWN — the ladder's own rule (today's column out after the bell) */
   const shownIdx = useMemo(() => {
     const all = surface.expiries.map((_, i) => i);
-    const todayIdx = surface.expiries.findIndex(e => e.dte === 0);
+    const todayIdx = todayColumn(surface);
     const live = afterBell && todayIdx >= 0 ? all.filter(i => i !== todayIdx) : all;
     const kept = live.filter(i => expiries.includes(i));
     return kept.length ? kept : live.slice(0, 1);
@@ -148,7 +156,14 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   const at = (g: Greek, s: number, side: 'put' | 'call' | 'net') => shownIdx.reduce((a, e) => a + (surface[side][g][e]?.[s] ?? 0), 0);
   const idxOf = (strike: number) => surface.strikes.indexOf(strike);
 
-  /* THE BOOK */
+  /* THE BOOK — THE LEVELS SCOPE'S FACTS, AS COMPARE PRINTS THEM (the fourth audit, 2026-10-23: "THE BOOK −$9.0B net GEX ·
+     the 61 strikes near spot" over the matrix's Oct 23 → Nov 3 rows beside the Levels card's −$3.1B). The net GEX and
+     each level's figure are the Levels card's contracts (data/levelsFor.ts — the one source); a figure summed over the
+     matrix's own rows says it is the matrix's */
+  const scope = useLevelsScope();
+  const lv = useLevelsFor(snapshot.ticker, scope);
+  const lvReady = !!lv && lv.complete;
+  const windowWords = `matrix rows ${expirySpan(shownIdx.map(i => surface.expiries[i]?.date).filter(Boolean) as string[]) ?? ''}`;
   const net = surface.strikes.reduce((a, _, s) => a + at(greek, s, 'net'), 0);
   /* THE NET'S INK IS THE RAMP — the ladder's own: a figure against the heaviest
      net among the strikes for its greek (the rows' scale), a total against
@@ -160,21 +175,26 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surface, shownIdx]);
   const rampInk = (g: Greek, v: number, max = scale[g]) => heatLaneColor(v, max, mode, 0.35);
+  /* the printed figures in the reader's sign (retailSign.ts); the inks read the kept value */
+  const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const { levels } = surface;
-  const verdict = readHeatPattern(levels);
+  const verdict = readRegime(levels, k => (lv ? lv.netAt(k) : null));
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
-  const roleOf = (strike: number): { word: string; ink: string } | null =>
-    strike === levels.supreme ? { word: 'supreme', ink: SUPREME }
-    : strike === levels.callWall ? { word: 'call wall', ink: CALL_WALL }
-    : strike === levels.putWall ? { word: 'put wall', ink: PUT_WALL }
-    : strike === levels.flip ? { word: 'flip', ink: FLIP }
-    : strike === pinStrike ? { word: 'pin', ink: MUTED }
-    : null;
+  /* EVERY ROLE, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" dropped its put wall):
+     "supreme · put wall", in the first role's ink */
+  const roleOf = (strike: number): { word: string; ink: string } | null => {
+    const roles = levelRoles(strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? null : levels.flip });
+    if (roles.length) return { word: roles.join(' · '), ink: ROLE_INKS[roles[0]] };
+    return strike === pinStrike ? { word: 'pin', ink: MUTED } : null;
+  };
+  const ROLE_INKS: Record<LevelRole, string> = { supreme: SUPREME, 'call wall': CALL_WALL, 'put wall': PUT_WALL, flip: FLIP };
+  /* the one order (core/walls.ts levelRoles): supreme · call wall · put wall, then the flip */
   const levelRows = [
-    { word: 'put wall', strike: levels.putWall, ink: PUT_WALL },
-    { word: 'call wall', strike: levels.callWall, ink: CALL_WALL },
-    { word: 'flip', strike: levels.flip, ink: FLIP },
     { word: 'supreme', strike: levels.supreme, ink: SUPREME },
+    { word: 'call wall', strike: levels.callWall, ink: CALL_WALL },
+    { word: 'put wall', strike: levels.putWall, ink: PUT_WALL },
+    /* no crossing within ±10% is no flip — no row at a placeholder */
+    ...(levels.flipFound === false ? [] : [{ word: 'flip', strike: levels.flip, ink: FLIP }]),
   ];
 
   /* TODAY'S CONTRACTS OVER EACH WINDOW — the minute grid, seven books back */
@@ -219,13 +239,22 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     return () => window.clearTimeout(id);
   }, [pointed]);
 
-  /* TO THE CLOSE — the expected move from here, on the front expiry's vol */
+  /* TO THE CLOSE — ONE EXPECTED MOVE ON EVERY PAGE (the fourth audit, 2026-10-23: this card said ±7.32 off the matrix's
+     front vol over a session while Compare and the reach odds said the vendor's ±$4.74): the vendor's own implied move
+     into the Levels scope's expiry (uwBook peekDaySigma), scaled to the minutes left while the session runs */
   const clock = readSessionClock();
   const minLeft = clock.secondsToClose / 60;
   const shut = minLeft <= 0;
-  const horizon = shut ? 390 : minLeft;
-  const iv = surface.expiries[0]?.iv ?? 0.2;
-  const w1 = surface.spot * iv * Math.sqrt(horizon / YEAR_MINUTES);
+  const sigmaDay = peekDaySigma(snapshot.ticker, lv?.date ?? null);
+  /* A LATER EXPIRY'S MOVE IS ITS OWN, OVER ITS WHOLE HORIZON (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20 —
+     the card read $4.95, the ATM vol over one session, against the vendor's $14.98 into Nov 20): uwBook peekScopeMove,
+     the same move the reach odds read (data/wall.ts scopeSigma), and the card says which number it is */
+  const scopeMove = peekScopeMove(snapshot.ticker, lv?.date ?? null);
+  const multi = !!scopeMove?.multi;
+  /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2) */
+  const w1 = multi ? scopeMove!.move : sigmaDay != null ? (shut ? sigmaDay : peekMoveToClose(snapshot.ticker, lv?.date ?? null, minLeft) ?? sigmaDay * Math.sqrt(Math.min(390, minLeft) / 390)) : null;
+  const moveDate = lv?.date ?? null;
+  const moveWords = scopeMove?.words ?? (moveDate ? `the vendor's implied move into ${expirySpan([moveDate])}` : "the vendor's implied move");
   const nearest = (price: number) => surface.strikes.reduce((b, s) => (Math.abs(s - price) < Math.abs(b - price) ? s : b), surface.strikes[0]);
 
   const go = (id: SectionId) => {
@@ -265,7 +294,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   return (
     <aside
       ref={asideRef}
-      className={`absolute inset-y-0 right-0 z-20 flex flex-col bg-card/85 backdrop-blur-md backdrop-saturate-150 animate-soft-in transition-opacity duration-200 motion-reduce:transition-none ${
+      className={`absolute inset-y-0 right-0 z-20 flex flex-col bg-card/[0.97] backdrop-blur-md backdrop-saturate-150 animate-soft-in transition-opacity duration-200 motion-reduce:transition-none ${
         /* 460, the guide cards' width: at 400 the rail's five names wrapped inside their buttons and the head cut its
            own words (the audit's H6, 2026-10-13) */
         whole ? 'w-full' : 'w-[460px] max-w-[62%] border-l border-borderMuted shadow-[-16px_0_48px_rgba(0,0,0,0.45)]'
@@ -275,9 +304,11 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
       data-read-fill={whole || undefined}
     >
       {/* THE HEAD — whose read, in which greek, over which window */}
-      <div className="shrink-0 flex items-center gap-2 px-3.5 h-10 border-b border-borderSubtle/70 min-w-0">
+      {/* THE HEAD WRAPS, NEVER CUTS (the seventh audit's retail finding: "SPY GEX · 8 EXPI…", the rows showing through the
+          glass under it): the window's words go to a second line when the buttons need the room, and the panel is opaque */}
+      <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 py-2 min-h-10 border-b border-borderSubtle/70 min-w-0 bg-card">
         <span className="font-mono text-[11px] font-bold text-textPrimary">{surface.ticker}</span>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted truncate">{label} · {shownIdx.length === 1 ? surface.expiries[shownIdx[0]]?.date : `${shownIdx.length} expiries`}</span>
+        <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted min-w-0" data-read-head-window>{label} · {shownIdx.length === 1 ? surface.expiries[shownIdx[0]]?.date : `${shownIdx.length} expiries`}</span>
         <span className="ml-auto shrink-0 inline-flex items-center gap-0.5" role="group" aria-label="Window" data-read-window>
           {WINDOWS.map(w => {
             const on = w.key === win;
@@ -320,18 +351,49 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
           <Head>The book · {label} · per {unit}</Head>
           <div className="flex items-baseline gap-2">
             {/* the net in the ladder's own ramp — the total against itself, the foot's rule */}
-            <span className="text-[17px] font-semibold" style={{ color: rampInk(greek, net, Math.max(1, Math.abs(net))) }}>{fmtUsd(net)}</span>
-            <span className="text-[11px] text-textMuted">net {label}</span>
+            {greek === 'gex' ? (
+              <>
+                <span className="text-[17px] font-semibold" style={{ color: lvReady ? rampInk(greek, -lv!.netGex, Math.max(1, Math.abs(lv!.netGex))) : MUTED }} title={lvReady ? undefined : 'Still loading the Levels card’s contracts'}>
+                  {lvReady ? fmtUsd(lv!.netGex) : '…'}
+                </span>
+                <span className="text-[11px] text-textMuted">net GEX · {lv?.scopeLabel ?? '…'} · every strike, as on the Levels card</span>
+              </>
+            ) : (
+              <>
+                <span className="text-[17px] font-semibold" style={{ color: rampInk(greek, net, Math.max(1, Math.abs(net))) }}>{fmtUsd(shownGreek(greek, net))}</span>
+                {/* the strikes near spot, not the whole book — say which this is (the ship pass, 2026-10-22) */}
+                <span className="text-[11px] text-textMuted">net {label} · {windowWords} · the {surface.strikes.length} strikes near spot</span>
+              </>
+            )}
           </div>
           <p className="font-sans text-[11px] leading-relaxed text-textSecondary">{verdict.read}</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
             {levelRows.map(l => {
               const i = idxOf(l.strike);
+              /* GEX: the level's own figure on the Levels card's contracts (Compare's); another greek: the matrix rows' */
+              /* A WALL BY ITS OWN LEG, LABELLED (the sixth audit's m7: CALL WALL 770 "$32.7M" — the strike's net — here,
+                 "CALLS +$222.7M" on Compare): the call wall prints its calls, the put wall its puts, the supreme its net */
+              const leg: 'call' | 'put' | 'net' = l.word === 'call wall' ? 'call' : l.word === 'put wall' ? 'put' : 'net';
+              const legs = greek === 'gex' ? (lvReady ? lv!.legsAt(l.strike) : undefined) : undefined;
+              const scoped = legs === undefined ? undefined : legs == null ? null : legs[leg];
+              if (greek === 'gex')
+                return (
+                  <button key={l.word} onClick={() => onKeep?.(l.strike)} className="flex items-baseline gap-1.5 text-left hover:opacity-80 transition-opacity" title={`Keep ${fmtStrike(l.strike)} — ${leg === 'net' ? 'net GEX' : `the ${leg} leg's GEX, the leg that makes it the ${l.word}`}${legs ? ` (net ${fmtUsd(legs.net)})` : ''} on ${lv?.scopeLabel ?? 'the Levels card'}`}>
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: l.ink }}>{l.word}</span>
+                    <span className="text-textPrimary font-semibold">{fmtStrike(l.strike)}</span>
+                    {l.word !== 'flip' && (
+                      <span style={{ color: scoped != null ? rampInk(greek, -scoped) : MUTED }}>
+                        <span className="text-[9px] uppercase tracking-wider text-textMuted mr-1">{leg === 'call' ? 'calls' : leg === 'put' ? 'puts' : 'net'}</span>
+                        {scoped === undefined ? '…' : scoped == null ? '—' : `${scoped > 0 ? '+' : ''}${fmtUsd(scoped)}`}
+                      </span>
+                    )}
+                  </button>
+                );
               return (
                 <button key={l.word} onClick={() => onKeep?.(l.strike)} className="flex items-baseline gap-1.5 text-left hover:opacity-80 transition-opacity" title={`Keep ${fmtStrike(l.strike)}`}>
                   <span className="text-[11px] uppercase tracking-wider" style={{ color: l.ink }}>{l.word}</span>
                   <span className="text-textPrimary font-semibold">{fmtStrike(l.strike)}</span>
-                  <span style={{ color: i >= 0 ? rampInk(greek, at(greek, i, 'net')) : MUTED }}>{i >= 0 ? fmtUsd(at(greek, i, 'net')) : '—'}</span>
+                  <span style={{ color: i >= 0 ? rampInk(greek, at(greek, i, 'net')) : MUTED }}>{i >= 0 ? fmtUsd(shownGreek(greek, at(greek, i, 'net'))) : '—'}</span>
                 </button>
               );
             })}
@@ -340,7 +402,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
 
         {/* HEAVIEST TODAY */}
         <section data-read-section="heaviest" className="flex flex-col gap-2">
-          <Head>Heaviest today · {label} · over {win === 'open' ? 'the session' : win}</Head>
+          <Head>Heaviest {todayScopeLabel() === 'Today' ? 'today' : '· next session'} · {label} · over {win === 'open' ? 'the session' : win}</Head>
           <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 gap-y-1 text-[11px] items-baseline">
             {heaviest.map((r, i) => {
               const role = roleOf(r.strike);
@@ -349,8 +411,8 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
                 <button key={r.strike} onClick={() => onKeep?.(r.strike)} className="contents text-left" title={`Keep ${fmtStrike(r.strike)}`}>
                   <span className="text-textPrimary font-semibold"><span className="text-textMuted font-normal mr-1.5">{i + 1}</span>{fmtStrike(r.strike)}</span>
                   <span className="text-[11px] uppercase tracking-wider truncate" style={{ color: role?.ink ?? MUTED }}>{role?.word ?? ''}</span>
-                  <span style={{ color: rampInk(greek, now, surface.front.maxAbs[greek]) }}>{fmtUsd(now)}</span>
-                  <span className="text-right"><Change now={now} then={thenAt(winIdx, r.strike)} /></span>
+                  <span style={{ color: rampInk(greek, now, surface.front.maxAbs[greek]) }}>{fmtUsd(shownGreek(greek, now))}</span>
+                  <span className="text-right"><Change now={shownGreek(greek, now)} then={shownThen(thenAt(winIdx, r.strike))} /></span>
                 </button>
               );
             })}
@@ -364,12 +426,21 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
             The strike · {fmtStrike(strike)}
             <span className="ml-1.5 normal-case tracking-normal">{pointed != null ? '· under the pointer' : selectedStrike != null ? '· kept' : '· the supreme'}</span>
           </Head>
+          {greek === 'gex' && (
+            <div className="flex items-baseline gap-2 text-[11px]">
+              <span className="text-[11px] uppercase tracking-wider text-textMuted">net GEX · {lv?.scopeLabel ?? '…'}</span>
+              {(() => {
+                const v = lvReady ? lv!.netAt(strike) : undefined;
+                return <span className="font-semibold" style={{ color: v != null ? rampInk(greek, -v) : MUTED }}>{v === undefined ? '…' : v == null ? '—' : fmtUsd(v)}</span>;
+              })()}
+            </div>
+          )}
           {legs ? (
-            <div className="flex items-baseline gap-3 text-[11px]">
-              <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
-              <span style={{ color: PUT_WALL }}>puts {fmtUsd(legs.put)}</span>
-              <span style={{ color: CALL_WALL }}>calls {fmtUsd(legs.call)}</span>
-              <span className="font-semibold" style={{ color: rampInk(greek, legs.net) }}>net {fmtUsd(legs.net)}</span>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px]">
+              <span className="text-[11px] uppercase tracking-wider text-textMuted" title="Summed over the dates the matrix draws, not the Levels card's contracts">{label} · {windowWords}</span>
+              <span style={{ color: PUT_WALL }}>puts {fmtUsd(shownGreek(greek, legs.put))}</span>
+              <span style={{ color: CALL_WALL }}>calls {fmtUsd(shownGreek(greek, legs.call))}</span>
+              <span className="font-semibold" style={{ color: rampInk(greek, legs.net) }}>net {fmtUsd(shownGreek(greek, legs.net))}</span>
             </div>
           ) : (
             <p className="text-[11px] text-textMuted">Off the book's window.</p>
@@ -378,19 +449,29 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
             <div className="grid grid-cols-5 gap-x-2 text-[11px]">
               {GREEKS.map(g => (
                 <span key={g} className="flex flex-col">
-                  <span className="text-[11px] uppercase tracking-wider text-textMuted">{GREEK_LABEL[g]}</span>
-                  <span className={g === greek ? 'font-semibold' : ''} style={{ color: rampInk(g, at(g, sIdx, 'net')) }}>{fmtUsd(at(g, sIdx, 'net'))}</span>
+                  <span className="text-[11px] uppercase tracking-wider text-textMuted cursor-help" title={GREEK_EXPLAIN[g]}>{GREEK_LABEL[g]}</span>
+                  {(() => {
+                    const v = at(g, sIdx, 'net');
+                    /* NEVER A FALSE $0 (the sixth audit's m9: "VEX $0" before vega lands): vega comes off the contract rows
+                       alone, so a zero while the drawn dates' rows are still out reads "…", and once they are in, "—" */
+                    if (g === 'vex' && v === 0) {
+                      const facts = peekEntry(snapshot.ticker)?.factsDates;
+                      const waiting = shownIdx.some(i => { const d = surface.expiries[i]?.date; return !!d && !facts?.has(d); });
+                      return <span style={{ color: MUTED }} title={waiting ? 'Vega is still loading — it is read off the contract rows' : 'No vega on these contracts at this strike'}>{waiting ? '…' : '—'}</span>;
+                    }
+                    return <span className={g === greek ? 'font-semibold' : ''} style={{ color: rampInk(g, v) }}>{fmtUsd(shownGreek(g, v))}</span>;
+                  })()}
                 </span>
               ))}
             </div>
           )}
           <div className="flex flex-col gap-1">
-            <Head>Today's contracts · {label} · over each window</Head>
+            <Head title="Open interest is set once overnight, so the contracts are the same all day; each window's figure is those contracts re-priced at that minute's price and clock (vol held)">{todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts"} · {label} · re-priced over each window{todayScopeLabel() === 'Today' ? '' : ' to the close'}</Head>
             <div className="grid grid-cols-7 gap-x-1 text-[11px]">
               {WINDOWS.map((w, i) => (
                 <span key={w.key} className="flex flex-col">
                   <span className="text-[11px] text-textMuted">{w.key}</span>
-                  <span>{front ? <Change now={front[greek].net} then={thenAt(i, strike)} /> : <span style={{ color: MUTED }}>—</span>}</span>
+                  <span>{front ? <Change now={shownGreek(greek, front[greek].net)} then={shownThen(thenAt(i, strike))} /> : <span style={{ color: MUTED }}>—</span>}</span>
                 </span>
               ))}
             </div>
@@ -399,16 +480,16 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
 
         {/* TO THE CLOSE */}
         <section data-read-section="close" className="flex flex-col gap-2">
-          <Head>{shut ? 'The next session' : 'To the close'} · expected move</Head>
+          <Head>{multi && moveDate ? `By ${expirySpan([moveDate])}` : shut ? (todayScopeLabel() === 'Today' ? "Today's session" : 'Next session') : 'To the close'} · expected move</Head>
           <div className="flex items-baseline gap-2">
-            <span className="text-[17px] font-semibold text-textPrimary">±{w1.toFixed(2)}</span>
-            <span className="text-[11px] text-textMuted">
-              one expected move · {shut ? 'a full session' : `${Math.round(minLeft)} min left`} · vol {(iv * 100).toFixed(1)}%
+            <span className="text-[17px] font-semibold text-textPrimary" data-read-move={w1 != null ? w1.toFixed(2) : undefined}>{w1 != null ? `±${w1.toFixed(2)}` : '…'}</span>
+            <span className="text-[11px] text-textMuted" data-read-move-source={scopeMove?.source}>
+              one expected move · {multi && moveDate ? `by ${expirySpan([moveDate])}, the expiry the levels read` : shut ? (todayScopeLabel() === 'Today' ? "today's session" : 'the next session') : `${Math.round(minLeft)} min left`} · {multi ? moveWords : scopeMove?.source === 'vendor' || !scopeMove ? moveWords : `one session of ${moveWords}`}
             </span>
           </div>
           {/* one column: "one move down · 512.34 · 512 put wall" wrapped to two lines in half the card (the audit's H6) */}
           <div className="grid grid-cols-1 gap-y-1 text-[11px]">
-            {[
+            {w1 != null && [
               { word: 'one move up', price: surface.spot + w1, ink: CALL_WALL },
               { word: 'one move down', price: surface.spot - w1, ink: PUT_WALL },
               { word: 'two moves up', price: surface.spot + 2 * w1, ink: CALL_WALL },

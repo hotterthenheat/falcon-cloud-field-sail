@@ -41,6 +41,7 @@
 ==================================================
 */
 
+import { displayName } from '../../data/tickers';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -56,11 +57,17 @@ import Sparkline from '../../components/compass/Sparkline';
 import { SectorMark } from '../../components/trace/SectorMark';
 import { StocksGuide } from '../../components/record/StocksGuide';
 import { useBoardNames } from '../../data/boardNames';
-import { buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
-import { useLiveStocks } from '../../data/liveFiles';
+import { aboveFifty, buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
+import { batchMisses, peekBatchQuote, useBatchQuote, useLiveStocks, useScreenerQuotes, type BatchQuote } from '../../data/liveFiles';
+import { extendedLine, priceWords, peekQuote, useLiveQuote } from '../../data/liveQuote';
+import { nyClock } from '../../core/nyTime';
+import { shortDay as shortDayWord } from '../../data/nyDate';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
-import { SECTORS, type Sector } from '../../data/universe';
+import { SECTORS, UNIVERSE, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
+import { statHelp } from '../../components/record/statHelp';
+import { phonePin } from '../../components/record/pagedGrid';
+import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 
 type ScreenPick = 'all' | Grade;
 type SectorPick = 'all' | Sector;
@@ -72,17 +79,19 @@ type NamesPick = 'all' | 'board';
 const gradeOfPick = (p: StockPick): Grade => gradeOfComposite(p.composite);
 const SCREEN_DOT: Record<Grade, string> = { strong: 'bg-bull ring-2 ring-bull/30', good: 'bg-bull', caution: 'bg-warn', poor: 'bg-bear' };
 const GRADE_RANK: Grade[] = ['strong', 'good', 'caution', 'poor'];
+const GRADE_WORD_INK: Record<Grade, string> = { strong: 'text-bull', good: 'text-bull', caution: 'text-warn', poor: 'text-bear' };
+const SLEEVE_NAME: Record<keyof StockSleeves, string> = { momentum: 'The trend', quality: 'The numbers', flow: 'The money', news: 'The news' };
 
 const SCREEN_OPTIONS: DropdownOption<ScreenPick>[] = [
-  { value: 'all', label: 'Every screen', hint: 'Strong, good, caution and poor' },
+  { value: 'all', label: 'Every screen', short: 'All', hint: 'Strong, good, caution and poor' },
   { value: 'strong', label: 'Strong', hint: 'Nearly everything lines up at once — rare on purpose' },
-  { value: 'good', label: 'Good', hint: 'All four sleeves point the same way' },
-  { value: 'caution', label: 'Caution', hint: 'The sleeves disagree — a catalyst decides' },
+  { value: 'good', label: 'Good', hint: 'The measures with a number point the same way' },
+  { value: 'caution', label: 'Caution', hint: 'The measures disagree — a catalyst decides' },
   { value: 'poor', label: 'Poor', hint: 'The data argues against the name' },
 ];
-const SECTOR_OPTIONS: DropdownOption<SectorPick>[] = [{ value: 'all', label: 'Every sector', hint: 'The ten sectors the universe files' }, ...SECTORS.map(s => ({ value: s, label: s }))];
+const SECTOR_OPTIONS: DropdownOption<SectorPick>[] = [{ value: 'all', label: 'Every sector', short: 'All', hint: 'The ten sectors the universe files' }, ...SECTORS.map(s => ({ value: s, label: s }))];
 const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
-  { value: 'all', label: 'Every name', hint: 'The whole universe' },
+  { value: 'all', label: 'Every name', short: 'All', hint: 'The whole universe' },
   { value: 'board', label: 'Your board', hint: 'The names on your Board' },
 ];
 
@@ -96,7 +105,7 @@ const PHASE_BAR: Record<SectorRow['phase'], string> = { LEADING: 'bg-bull', IMPR
 /** The two consumer sectors by their second word on a card 150px wide — the mark and the grid carry the whole name */
 const SHORT_SECTOR: Partial<Record<Sector, string>> = { 'Consumer Discretionary': 'Discretionary', 'Consumer Staples': 'Staples' };
 
-const signedPct = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}%`;
+const signedPct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 const dirInk = (v: number) => (v >= 0 ? 'text-bull' : 'text-bear');
 /** "A, B and C" — never "A and B and C" */
 const listPhrase = (items: string[]) => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
@@ -109,24 +118,73 @@ const NameCell = ({ data }: ICellRendererParams<StockPick>) =>
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{data.name}</span>
+        <span className="text-[10px] text-textMuted truncate">{displayName(data.name)}</span>
       </span>
     </span>
   ) : null;
 
 const SectorCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-textSecondary">
+    <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-textSecondary" title={data.sector}>
       <SectorMark sector={data.sector} />
-      {data.sector}
+      <span className="min-w-0 truncate">{data.sector}</span>
     </span>
   ) : null;
 
-const LastCell = ({ data }: ICellRendererParams<StockPick>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">${data.price.toFixed(2)}</span> : null);
-const TodayCell = ({ data }: ICellRendererParams<StockPick>) => (data ? <span className={`font-mono text-[11px] tnum ${dirInk(data.changePct)}`}>{signedPct(data.changePct, 2)}</span> : null);
+/* THE PRICE AND THE DAY FROM THE QUOTE (the ship pass, 2026-10-22): the screener's prev_close lags a session — NVDA read
+   +1.29% here (against 216.47) while the quote, the name's own page and Pinpoint's Board read −1.22% (against 221.97).
+   The quote is the one the rest of the terminal reads; the screener's figure stands only until it lands. */
+/* THE ROWS' PRICES IN BULK (round 9): the index asked every row's own quote every fifteen seconds (73–170 calls a
+   minute); the screener answers the whole list in three calls with the live close and its time, read every 45 seconds
+   in the session (liveFiles.useScreenerQuotes, on liveQuote's screenerRead rule). A name the screener has no row for
+   reads its own quote. */
+const batchWords = (b: BatchQuote): string => {
+  if (b.live) return `${b.price.toFixed(2)}${b.tapeAt ? ` · ${nyClock(b.tapeAt)} ET` : ''}`;
+  return b.ext != null ? `${b.price.toFixed(2)} close · ${b.ext.toFixed(2)} outside the session${b.tapeAt ? ` ${nyClock(b.tapeAt)} ET` : ''}` : `${b.price.toFixed(2)} close`;
+};
+const batchExt = (b: BatchQuote): string | null => (b.live || b.extPct == null ? null : `${sessionWord()} ${b.extPct >= 0 ? '+' : '−'}${Math.abs(b.extPct).toFixed(2)}%`);
+const sessionWord = () => {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+  return h < 12 ? 'pre-market' : 'after hours';
+};
+const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
+  const b = useBatchQuote(data?.ticker);
+  const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
+  if (!data) return null;
+  const words = b ? { lead: b.price, line: batchWords(b) } : priceWords(q);
+  /* until the read lands, the screener's REGULAR price from the list's own read — its after-hours print apart */
+  const px = words?.lead ?? data.price;
+  const fallbackTitle = data.extPrice != null ? `${data.price.toFixed(2)} close · ${data.extPrice.toFixed(2)} outside the session (the screener's)` : 'the screener’s price';
+  return <span className="font-mono text-[11px] tnum text-textPrimary" title={words?.line ?? fallbackTitle}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+};
+const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
+  const b = useBatchQuote(data?.ticker);
+  const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
+  if (!data) return null;
+  /* before the open the session has not moved: the last session's change, dated */
+  const pre = b ? !b.live : q?.phase === 'pre' && q.lastSessionPct != null;
+  const chg = b ? b.pct ?? data.changePct : pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
+  /* the extended move kept apart — every row the same convention (audit round 5: META) */
+  const ext = b ? batchExt(b) : q ? extendedLine(q) : data.extPct != null ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
+  const day = b && !b.live ? ` (${b.date})` : q?.regDate ? ` (${q.regDate})` : '';
+  return (
+    <span className="flex flex-col items-end justify-center h-full leading-tight" title={`${pre ? `The last session's change${day}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
+      <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>
+      {ext ? <span className="font-mono text-[8px] tnum text-textMuted whitespace-nowrap">{ext.replace('after hours', 'AH').replace('pre-market', 'pre')}</span> : null}
+    </span>
+  );
+};
 const TrendCell = ({ data }: ICellRendererParams<StockPick>) => {
   if (!data || data.trend.length < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
-  return <Sparkline data={data.trend} up={data.trend[data.trend.length - 1] >= data.trend[0]} width={72} height={20} />;
+  const first = data.trend[0];
+  const last = data.trend[data.trend.length - 1];
+  const chg = first > 0 ? ((last - first) / first) * 100 : 0;
+  return (
+    <span className="flex items-center gap-1.5 cursor-help" title={`The closes a year ago, six, three and one month ago, a week ago and now: ${data.trend.map(v => v.toFixed(2)).join(' → ')} — ${signedPct(chg)} over the span`}>
+      <Sparkline data={data.trend} up={last >= first} width={56} height={20} />
+      <span className={`font-mono text-[9px] tnum ${dirInk(chg)}`}>{signedPct(chg, 1)}</span>
+    </span>
+  );
 };
 
 /** A sleeve as a bar against the 50 line. A quiet sleeve was not on the feed and stays out of the screen. */
@@ -136,11 +194,16 @@ const sleeveCell =
     if (!data) return null;
     if (data.quiet.includes(key)) return <span className="font-mono text-[10px] text-textMuted" title="Not on this feed — left out of the screen">—</span>;
     const v = data.sleeves[key];
+    const g = gradeOfComposite(v);
+    /* A BAR WITH ITS WORD AND ITS FIGURES (the fourth audit's retail test, 2026-10-23: the bars carried no value or label)
+       — the grade word beside it, the measures it is read from on hover */
+    const note = data.sleeveNotes?.[key];
     return (
-      <span className="flex items-center h-full w-full pr-2" title={v > 50 ? 'Above the 50 line — for the name' : 'Below the 50 line — against it'}>
+      <span className="flex items-center gap-1.5 h-full w-full pr-2 cursor-help" title={`${SLEEVE_NAME[key]} reads ${g} (${v > 50 ? 'above the 50 line — for the name' : 'below the 50 line — against it'})${note ? `. ${note}` : ''}`} data-sleeve={key} data-grade={g}>
         <span className="relative flex-1 h-[4px] rounded-full bg-ink/[0.06] overflow-hidden">
           <span className={`absolute left-0 top-0 h-full rounded-full ${v > 50 ? 'bg-bull' : 'bg-bear/70'}`} style={{ width: `${v}%` }} />
         </span>
+        <span className={`shrink-0 font-mono text-[8px] uppercase tracking-widest ${GRADE_WORD_INK[g]}`}>{g}</span>
       </span>
     );
   };
@@ -155,10 +218,55 @@ const ScreenCell = ({ data }: ICellRendererParams<StockPick>) =>
 
 const WhyCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
-    <span className="block text-[11px] text-textSecondary truncate" title={data.thesis}>
+    <span className="block py-1.5 text-[11px] leading-snug text-textSecondary whitespace-normal break-words" title={data.thesis}>
       {data.thesis}
     </span>
   ) : null;
+
+/* THE PHONE CARD — the name, the price and the day, the screen word and the three sleeves' words (PhoneCards.tsx) */
+const StockCard = (p: StockPick) => {
+  const g = gradeOfPick(p);
+  const sleeve = (k: keyof StockSleeves, label: string) =>
+    p.quiet.includes(k) ? null : (
+      <span key={k} title={p.sleeveNotes?.[k]}>
+        {label} <span className={GRADE_WORD_INK[gradeOfComposite(p.sleeves[k])]}>{gradeOfComposite(p.sleeves[k])}</span>
+      </span>
+    );
+  return (
+    <>
+      <CardLine
+        left={
+          <span className="inline-flex items-center gap-2 min-w-0">
+            <CompanyLogo ticker={p.ticker} size={16} />
+            <span className="font-mono font-bold">{p.ticker}</span>
+            <span className="text-[10.5px] text-textMuted truncate">{displayName(p.name)}</span>
+          </span>
+        }
+        right={
+          <span className="inline-flex items-baseline gap-2">
+            <LastCell {...({ data: p } as ICellRendererParams<StockPick>)} />
+            <TodayCell {...({ data: p } as ICellRendererParams<StockPick>)} />
+          </span>
+        }
+      />
+      <CardLine
+        muted
+        left={
+          <span className="inline-flex flex-wrap gap-x-2 font-mono text-[9px] uppercase tracking-widest">
+            {[sleeve('momentum', 'trend'), sleeve('quality', 'numbers'), sleeve('flow', 'money')].filter(Boolean)}
+          </span>
+        }
+        right={
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-textPrimary">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SCREEN_DOT[g]}`} />
+            {g}
+          </span>
+        }
+      />
+      <CardLine muted left={<span className="text-[10.5px]">{p.sector} · {p.thesis}</span>} />
+    </>
+  );
+};
 
 /* ---- the rotation -------------------------------------------------------------- */
 
@@ -168,7 +276,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
     type="button"
     onClick={onToggle}
     aria-pressed={on}
-    title={`${s.note} ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
+    title={`${s.note} ${s.count} ${s.count === 1 ? 'name' : 'names'} on this board.${s.ret1w != null ? ` Their average return: ${signedPct(s.ret1w)} over a week, ${s.ret1m != null ? signedPct(s.ret1m) : '—'} over a month.` : ''} Against the average of every name here: ${signedPct(s.rs1w).replace('%', ' pts')} over a week, ${signedPct(s.rs1m).replace('%', ' pts')} over a month — the direction word reads those two. ${on ? 'Click to show every sector.' : `Click to keep the grid to ${s.sector}.`}`}
     className={`group text-left rounded-md border px-3 py-2.5 transition-colors min-w-0 ${on ? 'border-silver/60 bg-silver/[0.08]' : 'border-borderMuted bg-card hover:border-silver/40 hover:bg-silver/[0.05]'}`}
     data-stocks-sector={s.sector}
     data-on={on || undefined}
@@ -182,11 +290,16 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
       <span className={`block h-full rounded-full ${leader ? 'bg-supreme' : PHASE_BAR[s.phase]}`} style={{ width: `${Math.round((s.score / top) * 100)}%` }} />
     </span>
     <span className={`mt-1 block h-[12px] font-mono text-[8px] uppercase tracking-widest whitespace-nowrap ${leader ? 'text-supreme' : PHASE_INK[s.phase]}`}>{leader ? 'LEADING' : PHASE_WORD[s.phase]}</span>
-    <span className="mt-0.5 block h-[12px] font-mono text-[9px] tnum whitespace-nowrap">
+    {/* THE REAL RETURN, AND THE RELATIVE ONE SAID AS RELATIVE (the re-audit, 2026-10-22: "1w +3.4% · 1m +13.1%" was the
+        sector against the board's average, read as a return; Utilities is one name) */}
+    <span className="mt-0.5 block h-[12px] font-mono text-[9px] tnum whitespace-nowrap overflow-hidden">
       <span className="text-textMuted">1w </span>
-      <span className={dirInk(s.rs1w)}>{signedPct(s.rs1w)}</span>
+      <span className={s.ret1w != null ? dirInk(s.ret1w) : 'text-textMuted'}>{s.ret1w != null ? signedPct(s.ret1w) : '—'}</span>
       <span className="text-textMuted"> · 1m </span>
-      <span className={dirInk(s.rs1m)}>{signedPct(s.rs1m)}</span>
+      <span className={s.ret1m != null ? dirInk(s.ret1m) : 'text-textMuted'}>{s.ret1m != null ? signedPct(s.ret1m) : '—'}</span>
+    </span>
+    <span className="mt-0.5 block h-[12px] font-mono text-[8px] tnum whitespace-nowrap overflow-hidden text-textMuted">
+      <span className={dirInk(s.rs1m)}>{s.rs1m > 0 ? '+' : s.rs1m < 0 ? '−' : ''}{Math.abs(s.rs1m).toFixed(1)} pts</span> vs board, 1m · {s.count} {s.count === 1 ? 'name' : 'names'}
     </span>
   </button>
 );
@@ -195,6 +308,7 @@ const SectorCard = ({ s, rank, leader, top, on, onToggle }: { s: SectorRow; rank
 
 const Stocks = () => {
   const navigate = useNavigate();
+  const phone = usePhoneCards();
   const boardNames = useBoardNames();
   const [screen, setScreen] = useState<ScreenPick>('all');
   const [sector, setSector] = useState<SectorPick>('all');
@@ -242,8 +356,9 @@ const Stocks = () => {
     const strong = count('strong');
     const good = count('good');
     const weak = count('poor');
-    const scored = rows.filter(p => !p.quiet.includes('momentum'));
-    const breadth = scored.length ? Math.round((scored.filter(p => p.sleeves.momentum > 50).length / scored.length) * 100) : 0;
+    /* price above its 50-day average, not RSI over 50 (the re-audit, 2026-10-22) */
+    const placed = rows.map(aboveFifty).filter((v): v is boolean => v != null);
+    const breadth = placed.length ? Math.round((placed.filter(Boolean).length / placed.length) * 100) : 0;
     return { names: rows.length, strong, good, mixed: rows.length - strong - good - weak, weak, breadth };
   }, [rows]);
 
@@ -263,7 +378,7 @@ const Stocks = () => {
         ) : (
           ' — no sector is falling on both windows'
         )}
-        . <span className="text-textPrimary font-semibold">{facts.breadth}%</span> of the names here sit above their trend;{' '}
+        . <span className="text-textPrimary font-semibold">{facts.breadth}%</span> of the names here sit above their 50-day average;{' '}
         <span className="text-bull font-semibold">{facts.strong + facts.good}</span> read good or better, <span className="text-bear font-semibold">{facts.weak}</span> poor.
       </>
     ),
@@ -271,26 +386,34 @@ const Stocks = () => {
   );
 
   const newsQuiet = picks.length > 0 && picks.every(p => p.quiet.includes('news'));
+  /* THE DAY COLUMN NAMES ITS DAY (audit round 7: "Today" held Oct 22's change before the open) — in the session it is
+     today; outside it, the last session's date, off the market's own quote */
+  useScreenerQuotes(useMemo(() => picks.map(p => p.ticker), [picks]));
+  /* a house name the screener has no row for (BYDDY) is said, never silently dropped */
+  const unscreened = useMemo(() => (liveBoard.status === 'live' && picks.length ? UNIVERSE.filter(u => !picks.some(p => p.ticker === u.ticker)).map(u => u.ticker) : []), [liveBoard.status, picks]);
+  /* the day the rows' change belongs to, off the rows' own bulk read */
+  const headBatch = useBatchQuote(picks[0]?.ticker);
+  const dayHead = headBatch && !headBatch.live ? shortDayWord(headBatch.date) : 'Today';
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [
       /* the fixed widths add to ~1130px so the Why column lands inside a laptop's grid instead of past its right edge */
-      { headerName: 'Name', field: 'ticker', flex: 1.2, minWidth: 150, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
-      { headerName: 'Sector', field: 'sector', width: 150, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
-      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, type: 'rightAligned', headerTooltip: 'The last price' },
-      { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, type: 'rightAligned', headerTooltip: "Today's change" },
-      { headerName: 'Year', field: 'trend', width: 92, cellRenderer: TrendCell, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
-      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 88, cellRenderer: sleeveCell('momentum'), headerTooltip: 'RSI — above the 50 line the trend is up, below it is not. A dash is left out of the screen.' },
-      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 88, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. Above the 50 line is growing. A dash means the feed has no growth figure.' },
-      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 88, cellRenderer: sleeveCell('flow'), headerTooltip: 'Call premium against put premium. Above the 50 line the money is buying. A dash means no premium on the feed.' },
+      { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 140, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
+      { headerName: 'Sector', field: 'sector', width: 132, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
+      { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (peekBatchQuote(p.data.ticker)?.price || priceWords(peekQuote(p.data.ticker))?.lead || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The regular close outside the session (hover for the after-hours or pre-market print and its time, ET); the last price in it' },
+      { headerName: dayHead, field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekBatchQuote(p.data.ticker)?.pct ?? peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — in the session today's, outside it the last session's (the date in the head) — its close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
+      { headerName: 'Year', field: 'trend', width: 104, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
+      { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 112, cellRenderer: sleeveCell('momentum'), headerTooltip: "The trend: the price against its 20-day EMA, RSI, ADX with the week's direction, and the month — the screener's. The word is its grade; hover for the figures. A dash is left out of the screen." },
+      { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 112, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. The word is its grade; hover for the figure. A dash means the feed has no growth figure.' },
+      { headerName: 'Money', colId: 'flow', valueGetter: p => p.data?.sleeves.flow ?? 0, width: 112, cellRenderer: sleeveCell('flow'), headerTooltip: 'The money: relative volume, bullish against bearish premium, and call against put premium. The word is its grade; hover for the figures. A dash means no premium on the feed.' },
     ];
     if (!newsQuiet) cols.push({ headerName: 'News', colId: 'news', valueGetter: p => p.data?.sleeves.news ?? 0, width: 88, cellRenderer: sleeveCell('news'), headerTooltip: "The wire's lean on the name. A dash stays out of the screen." });
     cols.push(
-      { headerName: 'Screen', field: 'verdict', width: 100, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The sleeves that have a number, rolled into one word. What the data says, never an instruction.' },
-      { headerName: 'Why', field: 'thesis', flex: 2, minWidth: 150, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
+      { headerName: 'Screen', field: 'verdict', width: 100, cellRenderer: ScreenCell, comparator: (_a: StockVerdict, _b: StockVerdict, na, nb) => GRADE_RANK.indexOf(na.data ? gradeOfPick(na.data) : 'poor') - GRADE_RANK.indexOf(nb.data ? gradeOfPick(nb.data) : 'poor'), headerTooltip: 'The measures that have a number, rolled into one word. What the data says, never an instruction.' },
+      { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 220, autoHeight: true, wrapText: true, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
     );
     return cols;
-  }, [newsQuiet]);
+  }, [newsQuiet, dayHead]);
   const defaultColDef = useMemo<ColDef<StockPick>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
 
   /* THE CUT GLIDES IN (Noah, 2026-09-10: "clicking on any of the sectors should
@@ -325,27 +448,27 @@ const Stocks = () => {
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the sleeves, the screen and the rotation mean" testId="stocks-guide" />
+            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the measures, the screen and the rotation mean" testId="stocks-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            The trend, the numbers and the money, each from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list but the vendor's screener has no row for ${unscreened.length === 1 ? 'it' : 'them'}, so ${unscreened.length === 1 ? 'it is' : 'they are'} not screened here` : undefined}>
+            The {picks.length || 'house list’s'} names the terminal files{unscreened.length ? ` (${unscreened.join(', ')}: no row on the vendor's screener, so not screened)` : ''} — not the whole market — each read on the trend, the numbers and the money from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted">Names</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Names")}>Names</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-stocks-names>
               {quiet ? '—' : <>{facts.names} <span className="text-textMuted">·</span> <span className="text-bull font-semibold">{facts.strong} strong</span> <span className="text-textMuted">·</span> <span className="text-bull">{facts.good} good</span> <span className="text-textMuted">·</span> <span className="text-warn">{facts.mixed} caution</span> <span className="text-textMuted">·</span> <span className="text-bear">{facts.weak} poor</span></>}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Above their trend</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="The share of the names on the grid whose last price is above their 50-day simple average (the screener's)">Above their 50-day</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${quiet ? 'text-textMuted' : facts.breadth >= 55 ? 'text-bull' : facts.breadth <= 40 ? 'text-bear' : 'text-textPrimary'}`} data-stocks-breadth>
               {quiet ? '—' : `${facts.breadth}%`}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Leading sector</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Leading sector")}>Leading sector</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-leader>
               {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(top.sector)} title={`Keep the grid to ${top.sector}`} className="font-mono text-[12px] tnum text-supreme font-semibold hover:underline underline-offset-2">
                 {top.sector}
@@ -353,10 +476,13 @@ const Stocks = () => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Trailing sector</dt>
+            {/* RANKED LAST, WITH ITS DIRECTION (the retail pass, 2026-10-22): "Trailing sector: Consumer Discretionary" sat over
+                that sector's own card reading TURNING UP while Communication read FALLING — the rank is by its names'
+                screens, the direction by the two windows against the tape; the fact says both */}
+            <dt className="text-[10px] text-textMuted cursor-help" title="The sector whose names screen worst, by rank — its direction against the tape (the card's word) beside it. A sector can rank last and still be turning up">Ranked last</dt>
             <dd className="mt-0.5 whitespace-nowrap" data-stocks-trailer>
               {quiet ? <span className="font-mono text-[12px] text-textMuted">—</span> : <button type="button" onClick={() => toggleSector(bottom.sector)} title={`Keep the grid to ${bottom.sector}`} className="font-mono text-[12px] tnum text-bear hover:underline underline-offset-2">
-                {bottom.sector}
+                {bottom.sector} <span className="text-textMuted font-normal">· {PHASE_WORD[bottom.phase].toLowerCase()}</span>
               </button>}
             </dd>
           </div>
@@ -381,7 +507,7 @@ const Stocks = () => {
         {/* on a phone the head stacks: the label over its words (the device sweep, 2026-10-19: on one line they ran into each other) */}
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>The rotation</span>
-          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">every sector ranked by its names' screens, leader first · the two windows against the tape · click a sector to keep the grid to its names</span>
+          <span className="normal-case tracking-normal font-normal text-[10px] text-textSecondary">every sector ranked by its names' screens, leader first · its names' average return over a week and a month, and the month against the board's average · click a sector to keep the grid to its names</span>
         </div>
         {/* every sector across from 1280; six on a small laptop, four on a tablet, two on a phone (the device sweep,
             2026-10-18: eleven across at 360 left a card 30px wide and cut its two windows, and at 1024 still 70px) */}
@@ -399,8 +525,12 @@ const Stocks = () => {
       </div>
       {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
       <div ref={gridRef} className="slayer-board border-t border-borderSubtle" data-stocks-grid>
+        {phone ? (
+          <PhoneCards rows={rows} rowKey={p => p.ticker} card={StockCard} onOpen={p => navigate(`/dossier/stocks/${p.ticker}`)} empty={failed ? 'This read did not land' : waiting ? 'Reading the screens' : 'No name on this cut'} testId="stocks" resetKey={cutKey} />
+        ) : (
         <AgGridProvider modules={GRID_MODULES}>
           <AgGridReact<StockPick>
+            {...phonePin}
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
@@ -417,6 +547,7 @@ const Stocks = () => {
             key={failed ? 'failed' : waiting ? 'waiting' : 'live'}
           />
         </AgGridProvider>
+        )}
       </div>
     </div>
   );

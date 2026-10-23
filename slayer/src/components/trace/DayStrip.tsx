@@ -35,24 +35,22 @@
 ==================================================
 */
 
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { WINDOWS_PER_DAY, type IntervalWindow } from '../../data/flowBook';
 import { SESSION_LENGTH_MIN } from '../../core/nyTime';
 import { earnMarks } from './earnedInk';
 
-const SLOTS = WINDOWS_PER_DAY;
-const MIN_PER_SLOT = SESSION_LENGTH_MIN / SLOTS;
+const MIN_PER_SLOT = SESSION_LENGTH_MIN / WINDOWS_PER_DAY;
 const num = (v: number) => v.toLocaleString('en-US');
-/** A minute of the SESSION (0 = 09:30) at its x */
-const pct = (minute: number) => `${(minute / SESSION_LENGTH_MIN) * 100}%`;
 
-/* Hour marks at their true x, minutes since the open; the open and the close speak louder. */
-const TICKS: { min: number; label: string; edge?: boolean }[] = [
+/* Hour marks at their true x, minutes since the open; the open and the close speak louder — the close is 16:15 for the
+   index and ETF options that trade then (the strip takes the name's own slot count) */
+const ticksFor = (len: number): { min: number; label: string; edge?: boolean }[] => [
   { min: 0, label: '09:30', edge: true },
   { min: 90, label: '11:00' },
   { min: 210, label: '13:00' },
   { min: 330, label: '15:00' },
-  { min: 390, label: '16:00', edge: true },
+  { min: len, label: len === 405 ? '16:15' : '16:00', edge: true },
 ];
 
 /* THE BARS ARE CAPSULES, NOT BLOCKS (Noah, 2026-10-13: "they look way too blocky like barebone html"): each bar is a
@@ -74,12 +72,19 @@ const DayStrip = ({
   selectedIdx,
   onSelect,
   paused,
+  slots = WINDOWS_PER_DAY,
 }: {
   windows: IntervalWindow[];
   selectedIdx: number;
   onSelect: (idx: number) => void;
   paused: boolean;
+  /** The session's quarter hours — 26 to 16:00, 27 to 16:15 */
+  slots?: number;
 }) => {
+  const len = slots * MIN_PER_SLOT;
+  /** A minute of the SESSION (0 = 09:30) at its x */
+  const pct = (minute: number) => `${(minute / len) * 100}%`;
+  const TICKS = ticksFor(len);
   const [hover, setHover] = useState<number | null>(null);
   const marks = useMemo(() => earnMarks(windows, w => w.totalVol), [windows]);
   const max = Math.max(marks.top === Infinity ? 1 : marks.top, 1);
@@ -90,6 +95,19 @@ const DayStrip = ({
   const ceiling = Math.max(marks.bar === Infinity ? max : marks.bar, 1);
   const live = windows.find(w => w.live);
   const nowMin = live ? (live.idx + 1) * MIN_PER_SLOT : null;
+  /* THE AXIS MEASURES ITS OWN ROOM (audit round 8, 390: "09:30now" — the 45-minute berth is ~40px on a phone, less than
+     the two labels need): a fixed mark steps aside when "now" sits within ~52px of it, whatever the width */
+  const axisRef = useRef<HTMLDivElement | null>(null);
+  const [axisW, setAxisW] = useState(0);
+  useEffect(() => {
+    const el = axisRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setAxisW(el.clientWidth));
+    ro.observe(el);
+    setAxisW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const berth = axisW > 0 ? Math.max(45, (52 / axisW) * len) : 45;
   const shown = windows[hover ?? selectedIdx] ?? windows[selectedIdx];
 
   const readout = shown
@@ -162,7 +180,7 @@ const DayStrip = ({
           <span
             className={`max-sm:hidden pointer-events-none absolute top-0.5 z-10 px-1.5 py-0.5 rounded border border-borderSubtle bg-panel/70 backdrop-blur-sm font-mono text-[11px] tnum whitespace-nowrap text-textSecondary ${
               /* pinned at the end AWAY from the window it reads, so it never sits on that capsule's head */
-              shown && shown.idx >= SLOTS * 0.7 ? 'left-0' : 'right-0'
+              shown && shown.idx >= slots * 0.7 ? 'left-0' : 'right-0'
             }`}
             data-strip-readout={shown?.idx}
           >
@@ -172,10 +190,10 @@ const DayStrip = ({
       </div>
 
       {/* The axis: every mark at its own x, the open and close brighter, "now" in the status ink. */}
-      <div className="relative h-4 font-mono text-[11px] text-textMuted tnum">
+      <div ref={axisRef} className="relative h-4 font-mono text-[11px] text-textMuted tnum">
         {TICKS.map(t => {
           // "now" owns its neighbourhood: a fixed mark within a label's width of it steps aside.
-          const near = nowMin !== null && Math.abs(t.min - nowMin) < 45;
+          const near = nowMin !== null && Math.abs(t.min - nowMin) < berth;
           if (near) return null;
           return (
             <span

@@ -118,10 +118,15 @@ interface Props {
   flyTo?: FlyTo | null;
   sessions: LiveSession[];
   className?: string;
+  /** Called when the WebGL map cannot draw (no WebGL, a worker that never answers, a failed style) — the page swaps in
+      the flat SVG map rather than leave an empty dark box (audit round 5, the retail phone test) */
+  onFail?: () => void;
 }
 
 /** World width at zoom z is 512 * 2^z. Stay a hair inside that so the tiles cover the box. */
-const coverZoom = (w: number, h: number) => Math.log2(Math.max(w, h, 64) / 512) + 0.04;
+/* clamped into MapLibre's own range: a hidden or not-yet-laid-out host (0×0) gave log2(64/512) ≈ −2.96, and
+   setMinZoom threw "minZoom must be between -2 and the current maxZoom" (the ship pass, 2026-10-22) */
+const coverZoom = (w: number, h: number) => Math.min(7.5, Math.max(-2, Math.log2(Math.max(w, h, 64) / 512) + 0.04));
 
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
@@ -213,7 +218,9 @@ const ensureLayers = (map: maplibregl.Map) => {
   });
 };
 
-const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, flyTo = null, sessions, className = '' }: Props) => {
+const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, flyTo = null, sessions, className = '', onFail }: Props) => {
+  const onFailRef = useRef(onFail);
+  onFailRef.current = onFail;
   const theme = useResolvedTheme();
   const host = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -255,7 +262,9 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     if (!el) return;
     const z = coverZoom(el.clientWidth, el.clientHeight);
     coverRef.current = z;
-    const map = new maplibregl.Map({
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
       container: el,
       style: baseStyle(theme === 'light' ? 'light' : 'dark'),
       center: [8, 28],
@@ -268,6 +277,22 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       renderWorldCopies: true,
       maxPitch: 0,
       fadeDuration: 0,
+    });
+    } catch {
+      onFailRef.current?.();
+      return;
+    }
+    /* the land must draw within a few seconds, or the box is an empty dark rectangle — the flat map stands in */
+    let loaded = false;
+    const failTimer = window.setTimeout(() => {
+      if (!loaded) onFailRef.current?.();
+    }, 7000);
+    map.on('error', () => {
+      if (!loaded) onFailRef.current?.();
+    });
+    map.on('load', () => {
+      loaded = true;
+      window.clearTimeout(failTimer);
     });
     map.touchZoomRotate.disableRotation();
     map.scrollZoom.setWheelZoomRate(1 / 240);
@@ -325,6 +350,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     ro.observe(el);
     mapRef.current = map;
     return () => {
+      window.clearTimeout(failTimer);
       ro.disconnect();
       el.removeEventListener('wheel', onWheel);
       map.remove();
@@ -492,6 +518,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       }
     }
     const rolled = zoom < 3.9;
+    const ROLL_KM = 150;
     const claimed = new Set<string>();
     const buckets = new Map<string, { city: string; lat: number; lng: number; n: number; grade: NewsGrade; top: CityPing }>();
     if (rolled) {
@@ -505,7 +532,10 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
             host = c;
           }
         }
-        if (!host) continue;
+        /* A CITY'S COUNT IS ITS OWN METRO (audit round 7: at world zoom "Paris 32" and "Shanghai 23" took in London,
+           Berlin, Frankfurt, Beijing and Tokyo — every pin went to the nearest named city however far). A pin rolls
+           into a named city only within ROLL_KM of it; farther, it keeps its own dot, name and count. */
+        if (!host || best > ROLL_KM) continue;
         claimed.add(p.city);
         const had = buckets.get(host.n);
         if (!had) buckets.set(host.n, { city: host.n, lat: host.lat, lng: host.lng, n: p.n, grade: p.grade, top: p });

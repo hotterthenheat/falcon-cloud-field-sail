@@ -12,6 +12,7 @@
 import { dayKey, hGauss, hRange } from '../core/rng';
 import { tickerSentiment } from './news';
 import { SECTORS, UNIVERSE, type Sector } from './universe';
+import { readOfScreen, verdictSentence } from './stockOverview';
 
 export type StockVerdict = 'ACCUMULATE' | 'HOLD' | 'AVOID';
 export type SectorVerdict = 'OVERWEIGHT' | 'NEUTRAL' | 'UNDERWEIGHT';
@@ -31,6 +32,10 @@ export interface StockPick {
   sector: Sector;
   price: number;
   changePct: number;
+  /** The extended-hours print and its move off the regular close, outside the session — null in it (the price is the
+      regular one either way) */
+  extPrice?: number | null;
+  extPct?: number | null;
   sleeves: StockSleeves;
   /** Sleeves the feed did not score. They stay out of the screen and print as a dash. */
   quiet: (keyof StockSleeves)[];
@@ -43,6 +48,11 @@ export interface StockPick {
   /** Real one-week and one-month moves, percent. Absent on the house screen. */
   weekPct?: number;
   monthPct?: number;
+  /** The 50-day simple average, from the screener; absent on the house screen */
+  sma50?: number | null;
+  /** Each scored sleeve's measures in words, with their figures ("RSI, 14 sessions 39 · ADX … 18 · down on the week") —
+      the bar's hover, so a bar is never a shape alone */
+  sleeveNotes?: Partial<Record<keyof StockSleeves, string>>;
 }
 
 export interface SectorRow {
@@ -53,8 +63,13 @@ export interface SectorRow {
   rs1w: number;
   /** 1-month relative strength, signed % */
   rs1m: number;
-  /** % of members above their trend */
+  /** % of members above their 50-day average (those with one) */
   breadthPct: number;
+  /** Names the sector holds on this board */
+  count: number;
+  /** The members' average one-week and one-month return, signed % — a real return, not relative */
+  ret1w: number | null;
+  ret1m: number | null;
   phase: RotationPhase;
   verdict: SectorVerdict;
   note: string;
@@ -90,7 +105,7 @@ function composite(sl: StockSleeves, quiet: readonly (keyof StockSleeves)[] = []
     the numbers, the money, the news — what each says when it is for a name
     and when it is against it. The figures stay inside the engine. */
 const SLEEVE_WORDS: Record<keyof StockSleeves, { name: string; good: string; bad: string }> = {
-  momentum: { name: 'the trend', good: 'the trend is up', bad: 'the trend is broken' },
+  momentum: { name: 'the trend', good: 'the short-term trend (weeks, not the year) is up', bad: 'the short-term trend (weeks, not the year) has turned down' },
   quality: { name: 'the numbers', good: 'the numbers are clean', bad: 'the numbers are slipping' },
   flow: { name: 'the money', good: 'the money is buying', bad: 'the money is selling' },
   news: { name: 'the news', good: 'the news helps', bad: 'the news hurts' },
@@ -102,17 +117,11 @@ const SLEEVE_WORDS: Record<keyof StockSleeves, { name: string; good: string; bad
 function thesisFor(sl: StockSleeves, verdict: StockVerdict, quiet: readonly (keyof StockSleeves)[] = []): string {
   const ranked = (Object.keys(SLEEVE_WORDS) as (keyof StockSleeves)[])
     .filter(k => !quiet.includes(k))
-    .map(k => ({ v: sl[k], ...SLEEVE_WORDS[k] }))
-    .sort((a, b) => b.v - a.v);
-  const [best, second] = ranked;
-  const worst = ranked[ranked.length - 1];
-  const next = ranked[ranked.length - 2];
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  if (!best || !worst) return 'Not enough on the feed to screen this name.';
-  if (!second || best === worst) return cap(`${best.v >= 50 ? best.good : best.bad}.`);
-  if (verdict === 'ACCUMULATE') return cap(`${best.good}, ${second.good}; ${worst.v < 45 ? `${worst.name} is the one soft spot` : 'nothing against it'}.`);
-  if (verdict === 'AVOID') return cap(`${worst.bad}${next ? `, ${next.bad}` : ''}; ${best.v > 65 ? `${best.name} alone cannot carry it` : 'nothing in its favour'}.`);
-  return cap(`${best.good} but ${worst.bad} — a catalyst decides.`);
+    .map(k => ({ score: sl[k], ...SLEEVE_WORDS[k] }))
+    .sort((a, b) => b.score - a.score);
+  if (!ranked.length) return 'Not enough on the feed to screen this name.';
+  /* ONE SET OF CUTS (audit round 10: UNH Money POOR beside "nothing against it") — the page's own sentence */
+  return verdictSentence(ranked, verdict === 'ACCUMULATE' ? 'STRONG' : verdict === 'AVOID' ? 'WEAK' : 'MIXED');
 }
 
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -136,18 +145,21 @@ export function pickFromLive(input: {
   weekClose: number | null;
   bullish: number | null;
   bearish: number | null;
+  sma50?: number | null;
+  /** The vendor's screener row itself — the read is taken off it, by the same function the name's page uses */
+  row: Record<string, unknown>;
 }): StockPick {
+  /* ONE READ (the retail test, 2026-10-23: AAPL "GOOD" here and "strong" on its page) — stockOverview.readOfScreen on
+     the screener row, the page's own function on the page's own row */
+  const read = readOfScreen(input.row);
+  const at = (k: 'trend' | 'numbers' | 'money') => read.pillars.find(p => p.key === k);
   const quiet: (keyof StockSleeves)[] = ['news'];
-  const momentum = input.rsi != null ? Math.round(Math.max(0, Math.min(100, input.rsi))) : 50;
-  if (input.rsi == null) quiet.push('momentum');
-  const quality = input.epsGrowth != null ? Math.round(Math.max(0, Math.min(100, 50 + input.epsGrowth * 100))) : 50;
-  if (input.epsGrowth == null) quiet.push('quality');
-  const prem = (input.bullish ?? 0) + (input.bearish ?? 0);
-  const flow = prem > 0 ? Math.round((100 * (input.bullish ?? 0)) / prem) : 50;
-  if (!(prem > 0)) quiet.push('flow');
-  const sl: StockSleeves = { momentum, quality, flow, news: 50 };
-  const comp = composite(sl, quiet);
-  const verdict: StockVerdict = comp >= 68 ? 'ACCUMULATE' : comp <= 46 ? 'AVOID' : 'HOLD';
+  if (!at('trend')?.inRead) quiet.push('momentum');
+  if (!at('numbers')?.inRead) quiet.push('quality');
+  if (!at('money')?.inRead) quiet.push('flow');
+  const sl: StockSleeves = { momentum: at('trend')?.score ?? 50, quality: at('numbers')?.score ?? 50, flow: at('money')?.score ?? 50, news: 50 };
+  const comp = read.composite;
+  const verdict: StockVerdict = read.screen === 'STRONG' ? 'ACCUMULATE' : read.screen === 'WEAK' ? 'AVOID' : 'HOLD';
   const trend = [input.yearClose, input.sixClose, input.threeClose, input.monthClose, input.weekClose, input.price].filter((n): n is number => n != null && n > 0);
   return {
     ticker: input.ticker,
@@ -159,12 +171,23 @@ export function pickFromLive(input: {
     quiet,
     composite: comp,
     verdict,
-    thesis: thesisFor(sl, verdict, quiet),
+    thesis: read.thesis,
     trend,
     weekPct: input.weekPct ?? undefined,
     monthPct: input.monthPct ?? undefined,
+    sma50: input.sma50 ?? null,
+    sleeveNotes: {
+      momentum: noteOf(at('trend')?.factors),
+      quality: noteOf(at('numbers')?.factors),
+      flow: noteOf(at('money')?.factors),
+    },
   };
 }
+const noteOf = (fs: readonly { label: string; value: string; context?: boolean }[] | undefined): string | undefined =>
+  fs && fs.length ? fs.filter(f => !f.context).map(f => `${f.label}: ${f.value}`).join(' · ') : undefined;
+
+/** Above its 50-day simple average — null when the screener has no average for the name */
+export const aboveFifty = (p: StockPick): boolean | null => (p.sma50 != null && p.sma50 > 0 && p.price > 0 ? p.price > p.sma50 : null);
 
 // ---- public API ------------------------------------------------------------------
 
@@ -198,17 +221,20 @@ export function buildStockBoard(): StockPick[] {
 }
 
 export function buildSectorBoard(picks: StockPick[]): SectorRow[] {
-  const day = dayKey();
   const benchW = avg(picks.map(p => p.weekPct).filter((n): n is number => n != null));
   const benchM = avg(picks.map(p => p.monthPct).filter((n): n is number => n != null));
   const liveRs = picks.some(p => p.weekPct != null && p.monthPct != null);
   return SECTORS.map(sector => {
     const members = picks.filter(p => p.sector === sector);
     const score = Math.round(members.reduce((a, p) => a + p.composite, 0) / Math.max(members.length, 1));
-    const rs1w = liveRs ? avg(members.map(p => p.weekPct ?? 0)) - benchW : hGauss(`${sector}-${day}-rs1w`) * 1.2 + (score - 55) * 0.05;
-    const rs1m = liveRs ? avg(members.map(p => p.monthPct ?? 0)) - benchM : hGauss(`${sector}-${day}-rs1m`) * 2.2 + (score - 55) * 0.09;
-    const scored = members.filter(p => !p.quiet.includes('momentum'));
-    const breadthPct = Math.round((scored.filter(p => p.sleeves.momentum > 50).length / Math.max(scored.length, 1)) * 100);
+    /* no week or month returns on the feed: relative strength is unknown (0), never a seeded figure */
+    const rs1w = liveRs ? avg(members.map(p => p.weekPct ?? 0)) - benchW : 0;
+    const rs1m = liveRs ? avg(members.map(p => p.monthPct ?? 0)) - benchM : 0;
+    /* ABOVE THE 50-DAY, NOT RSI OVER 50 (the re-audit, 2026-10-22): the breadth is price against the 50-day average */
+    const placed = members.map(aboveFifty).filter((v): v is boolean => v != null);
+    const breadthPct = Math.round((placed.filter(Boolean).length / Math.max(placed.length, 1)) * 100);
+    const weeks = members.map(p => p.weekPct).filter((n): n is number => n != null);
+    const months = members.map(p => p.monthPct).filter((n): n is number => n != null);
     const phase: RotationPhase =
       rs1m >= 0 && rs1w >= 0 ? 'LEADING' : rs1m < 0 && rs1w >= 0 ? 'IMPROVING' : rs1m >= 0 && rs1w < 0 ? 'WEAKENING' : 'LAGGING';
     const verdict: SectorVerdict = score >= 64 && phase !== 'LAGGING' ? 'OVERWEIGHT' : score <= 48 || phase === 'LAGGING' ? 'UNDERWEIGHT' : 'NEUTRAL';
@@ -219,7 +245,7 @@ export function buildSectorBoard(picks: StockPick[]): SectorRow[] {
         : verdict === 'UNDERWEIGHT'
           ? `${phase === 'LAGGING' ? 'Lagging on both windows' : 'Rolling over'} — relative strength argues against fresh exposure.`
           : 'Middle of the pack — own the single names that screen well, not the group.';
-    return { sector, score, rs1w, rs1m, breadthPct, phase, verdict, note, leaders };
+    return { sector, score, rs1w, rs1m, breadthPct, count: members.length, ret1w: weeks.length ? avg(weeks) : null, ret1m: months.length ? avg(months) : null, phase, verdict, note, leaders };
   }).sort((a, b) => b.score - a.score || phaseRank(b.phase) - phaseRank(a.phase));
 }
 

@@ -43,14 +43,17 @@ const TRACE_PHONE_THEME = GRID_THEME.withParams({ rowHeight: 58, headerHeight: 0
 
 /** THE CONTROLS LINE'S GRAMMAR, shared: a wrapping row at a desk; on a phone a grid of two equal cells (the Trace box's
     own, below) — the Dossier pages draw their own lines and wear the same classes (2026-10-19) */
-export const CONTROLS_LINE = 'flex items-center gap-2 flex-wrap max-sm:grid max-sm:grid-cols-2 max-sm:[&>*]:min-w-0 max-sm:[&>*]:w-full max-sm:[&>[data-dropdown]]:justify-between max-sm:[&>[data-span]]:col-span-2 max-sm:[&>[data-span]]:order-first max-sm:[&>[data-cut-doors]]:col-span-2 max-sm:[&>[data-cut-doors]>*]:flex-1 max-sm:[&>[data-cut-doors]>*]:justify-center max-sm:[&>.ml-auto]:col-span-1 max-sm:[&>.ml-auto>*]:w-full max-sm:[&>.ml-auto>*>button]:w-full max-sm:[&>.ml-auto>*>button]:justify-between max-sm:[&>[data-live-hold]]:order-last max-sm:[&>[data-live-hold]>button]:w-full max-sm:[&>[data-live-hold]>button]:justify-center max-sm:[&>.ml-2]:col-span-2 max-sm:[&>.ml-2]:order-last';
+export const CONTROLS_LINE = 'flex items-center gap-2 flex-wrap max-sm:grid max-sm:grid-cols-2 max-sm:[&>*]:min-w-0 max-sm:[&>*]:w-full max-sm:[&>[data-dropdown]]:justify-between max-sm:[&>[data-span]]:col-span-2 max-sm:[&>[data-span]]:order-first max-sm:[&>[data-cut-doors]]:col-span-2 max-sm:[&>[data-cut-doors]>*]:flex-1 max-sm:[&>[data-cut-doors]>*]:justify-center max-sm:[&>.ml-auto]:col-span-1 max-sm:[&>.ml-auto>*]:w-full max-sm:[&>.ml-auto>*>button]:w-full max-sm:[&>.ml-auto>*>button]:justify-between max-sm:[&>[data-scope]]:col-span-2 max-sm:[&>[data-scope]]:h-auto max-sm:[&>[data-scope]]:min-h-6 max-sm:[&>[data-scope]_[data-scope-pick]]:flex-wrap max-sm:[&>[data-scope]_[data-scope-pick]]:py-1 max-sm:[&>[data-scope]_[data-scope-pick]]:gap-y-1 max-sm:[&>[data-live-hold]]:order-last max-sm:[&>[data-live-hold]]:col-span-2 max-sm:[&>[data-live-hold]>button]:flex-1 max-sm:[&>[data-live-hold]>button]:w-full max-sm:[&>[data-live-hold]>button]:justify-center max-sm:[&>.ml-2]:col-span-2 max-sm:[&>.ml-2]:order-last';
 
 /* ---- the head's facts ------------------------------------------------------------ */
 
-export const Fact = ({ label, children, testId, title }: { label: string; children: ReactNode; testId?: string; title?: string }) => (
-  <div className="min-w-0" title={title}>
-    <dt className="text-[11px] text-textMuted whitespace-nowrap">{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-trace-fact={testId}>
+export const Fact = ({ label, children, testId, title, wrap = false }: { label: string; children: ReactNode; testId?: string; title?: string; wrap?: boolean }) => (
+  /* `wrap`: a fact that is a sentence takes the line's width and wraps at every width (retail, round 10: the Live Tape's
+     "NVDA · biggest with a clear side today" ran past the card's right edge at 1440) */
+  <div className={wrap ? 'min-w-0 basis-full' : 'min-w-0'} title={title}>
+    <dt className="text-[11px] text-textMuted whitespace-nowrap max-sm:whitespace-normal">{label}</dt>
+    {/* ON A PHONE A FACT WRAPS, never clips (audit round 5: "close of 10…", "$101.5…") */}
+    <dd className={`mt-0.5 font-mono text-[12px] tnum text-textPrimary ${wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap max-sm:whitespace-normal max-sm:break-words'}`} data-trace-fact={testId}>
       {children}
     </dd>
   </div>
@@ -65,10 +68,10 @@ const INK: Record<Ink, string> = { supreme: 'text-supreme', bull: 'text-bull', b
 /** A champion: the label in its ink, the row's words as a door onto the row */
 export const Champion = ({ label, ink, onOpen, children, testId, title = "Open the contract's card" }: { label: string; ink: Ink; onOpen: () => void; children: ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0">
-    <dt className={`text-[11px] whitespace-nowrap ${INK[ink]}`}>{label}</dt>
-    <dd className="mt-0.5 whitespace-nowrap" data-trace-champion={testId}>
+    <dt className={`text-[11px] whitespace-nowrap max-sm:whitespace-normal ${INK[ink]}`}>{label}</dt>
+    <dd className="mt-0.5 whitespace-nowrap max-sm:whitespace-normal" data-trace-champion={testId}>
       {/* the door's own hover, silver (door.ts) — it underlined on hover before 2026-09-16 */}
-      <button type="button" onClick={onOpen} title={title} className="font-mono text-[12px] tnum font-semibold text-textPrimary hover:text-silver transition-colors">
+      <button type="button" onClick={onOpen} title={title} className="font-mono text-[12px] tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
         {children}
       </button>
     </dd>
@@ -92,10 +95,16 @@ interface TraceBoxProps {
   className?: string;
   /** Attributes for the probes */
   data?: Record<string, string | number | undefined>;
+  /** On a phone the cards line folds behind one Filters button (opt-in — the Live Tape and the Screener stood ~750px of
+      head and cards above their first row) */
+  foldOnPhone?: boolean;
 }
 
-export const TraceBox = ({ title, sub, facts, controls, sentence, guide, children, testId, className = '', data }: TraceBoxProps) => {
+export const TraceBox = ({ title, sub, facts, controls, sentence, guide, children, testId, className = '', data, foldOnPhone = false }: TraceBoxProps) => {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([k, v]) => [`data-${k}`, v]));
+  const phone = useIsPhone();
+  const [unfolded, setUnfolded] = useState(false);
+  const folded = foldOnPhone && phone && !unfolded;
   return (
     /* overflow-CLIP, not hidden: hidden makes the box a scroll container, and
        a rail that should stick to the page while the grid runs past a screen
@@ -114,7 +123,7 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">{title}</h3>
             {guide && <GuideDoor open={guide.open} onClick={() => guide.onOpen(!guide.open)} title={guide.door} testId={guide.testId} />}
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{sub}</p>
+          <p className="mt-0.5 text-[11px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">{sub}</p>
         </div>
         {/* THE FACTS WRAP (the phone pass, 2026-09-13 — Noah: "make sure every
             page and section ticks the box of mobile viewing"): a column-flow
@@ -135,7 +144,20 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
           row of its own, the cards in rows of two in the page's order, then the doors: Link and Save on one row, Columns
           and the live hold on the last. The cards had kept their own widths inside the cells, so a row read "Most active"
           beside "Both" and Columns stood alone at the right. */}
-      {controls != null && controls !== false && (
+      {controls != null && controls !== false && foldOnPhone && phone && (
+        <div className="px-5 pb-2">
+          <button
+            type="button"
+            onClick={() => setUnfolded(v => !v)}
+            aria-expanded={!folded}
+            className="w-full h-8 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] uppercase tracking-widest text-textSecondary hover:text-textPrimary"
+            data-trace-fold
+          >
+            {folded ? 'Filters & cards ▾' : 'Hide filters ▴'}
+          </button>
+        </div>
+      )}
+      {controls != null && controls !== false && !folded && (
         <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-trace-controls>
           {controls}
         </div>
@@ -159,7 +181,8 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
   <span className="flex flex-col gap-1 py-1.5 w-full leading-none">
     <span className="flex items-center gap-2 min-w-0">
       {lead}
-      <span className="min-w-0 flex items-center gap-1.5 font-mono text-[12px] text-textPrimary">{title}</span>
+      {/* the title gives way to the time at its right — it clips, never runs under it */}
+      <span className="min-w-0 flex-1 overflow-hidden flex items-center gap-1.5 font-mono text-[12px] text-textPrimary whitespace-nowrap">{title}</span>
       {aside && <span className="ml-auto shrink-0 font-mono text-[11px] tnum text-textSecondary">{aside}</span>}
     </span>
     <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap font-mono text-[11px] tnum text-textSecondary pl-5">
@@ -434,6 +457,26 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
   useEffect(() => {
     setShowTop((viewport()?.scrollTop ?? 0) > 600);
   }, [rows]);
+  /* THE EMPTY LINE FOLLOWS THE READ (audit round 8: "Reading…" changed to the cut's empty line, or back, while the grid
+     kept the overlay it first drew) — a shown no-rows overlay is redrawn with the new words */
+  const firstEmpty = useRef(true);
+  useEffect(() => {
+    if (firstEmpty.current) {
+      firstEmpty.current = false;
+      return;
+    }
+    const api = gridRef.current?.api;
+    /* rows already in hand but held back for the cut's glide (cutting) are not "nothing" (audit round 9: "Nothing has
+       traded on the book" flashed for a frame as the Screener's first book landed) */
+    if (!api || gridRows.length || rows.length) return;
+    api.hideOverlay();
+    api.showNoRowsOverlay();
+  }, [emptyText]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* an overlay shown by hand stays until it is hidden by hand — rows landing take it down */
+  const hasRows = gridRows.length > 0;
+  useEffect(() => {
+    if (hasRows) gridRef.current?.api?.hideOverlay();
+  }, [hasRows]);
   const scrollToTop = () => {
     const el = viewport();
     if (!el) return;

@@ -126,6 +126,8 @@ interface Props {
   compact?: boolean;
   /** The moment's own words, when the position is not session seconds (a chart replaying by bars) */
   words?: string;
+  /** The marks along the track, 0..1 — where an hour or a day turns; the session's hours unless a host hands its own */
+  marks?: { u: number; label: string }[];
   /** Sections of the day along the track, 0..1 — premarket, regular, after hours, overnight */
   sections?: { u0: number; u1: number; label: string }[];
   /** What a pace counts: 'seconds' (a session clock — session seconds a real second, the default) or 'bars' (a chart playing

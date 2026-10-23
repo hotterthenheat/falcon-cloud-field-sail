@@ -10,6 +10,8 @@
 ==================================================
 */
 
+import { aheadWord } from '../../data/bookWindow';
+import { oiWhen } from '../../data/building';
 import type { ReactNode } from 'react';
 import { BULL, CALL_WALL, FLIP, PUT_WALL, SUPREME, alpha } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
@@ -133,9 +135,10 @@ const LedgerFigure = () => {
         show
       </text>
       {/* the spot rule */}
-      <line x1={10} x2={338} y1={74} y2={74} stroke="#ededed" strokeOpacity={0.35} />
-      <text x={346} y={76.5} fontSize={6.5} fill="#a3a3a3" fontFamily={MONO} letterSpacing={0.6}>
-        SPY
+      <line x1={10} x2={318} y1={74} y2={74} stroke="#ededed" strokeOpacity={0.35} />
+      <text x={374} y={76.5} fontSize={6.5} textAnchor="end" fill="#a3a3a3" fontFamily={MONO} letterSpacing={0.6}>
+        {/* a made-up name and prices (the third audit, 2026-10-23: "SPY 486.40" read as a real, stale quote) */}
+        XYZ · example
       </text>
       <rect x={378} y={69} width={34} height={10} rx={2} fill="#ededed" />
       <text x={395} y={76.5} fontSize={7} fontWeight={700} textAnchor="middle" fill="#0a0a0a" fontFamily={MONO}>
@@ -343,7 +346,7 @@ export const HeadingGuide = ({ data, clock }: { data: Building; clock: AheadCloc
   <div data-heading-guide>
     <Section title="The four levels, moving">
       <p>
-        One row per level on the strike axis. A hollow dot is where it stood at the open, the filled dot is where it is now, the dashed ring is where {clock.inSession ? "today's pace" : "the last session's pace"} puts it {clock.inSession ? 'by the close' : 'next session'}. A wall that holds shows one dot. The diamond is the strike growing fastest on that side, tied to the wall by how far short it is.
+        One row per level on the strike axis. A hollow dot is where it stood at the open, the filled dot is where it is now, the dashed ring is where {clock.inSession ? "today's pace" : "the last session's pace"} puts it {clock.inSession ? 'by the close' : aheadWord()}. A wall that holds shows one dot. The diamond is the strike growing fastest on that side, tied to the wall by how far short it is.
       </p>
       <HeadingFigure />
     </Section>
@@ -367,7 +370,7 @@ export const BuildingGuide = ({ data, clock }: { data: Building; clock: AheadClo
       <LedgerFigure />
     </Section>
     <Section title="The bar">
-      <p>One bar, as long as the hedging sitting at the strike against the biggest wall shown. The quiet part was there at the open and still is. On a wall that was built today the green part arrived today. On one that drained, the red hatching past the end is what left. The figure is the wall now in dollars of dealer hedging — the stock dealers must trade for a 1% move because of the options open there — and "was" is what the same contracts were worth at the open.</p>
+      <p>One bar, as long as the hedging sitting at the strike against the biggest wall shown. The quiet part was there at the open and still is. On a wall that was built today the green part arrived today. On one that drained, the red hatching past the end is what left. The figure is the wall now in dollars of dealer hedging — the stock dealers must trade for a 1% move because of the options open there — and "was" is the same strike before the latest change in open interest, valued at today's price.</p>
       <BarFigure />
     </Section>
     <Section title="The day">
@@ -375,7 +378,7 @@ export const BuildingGuide = ({ data, clock }: { data: Building; clock: AheadClo
       <DayFigure />
     </Section>
     <Section title="Where the number comes from">
-      <p>Open interest is published overnight, so through the day it is our estimate from today's trades. A change counts as building or draining only past 5% of the biggest wall shown; under that it is steady.</p>
+      <p>Open interest is counted once a day, overnight. The change shown is the latest count against the one before it — the contracts opened or closed in <b>{oiWhen(data.oiDates).trade ?? 'the last session'}</b>{oiWhen(data.oiDates).pending ? ` (${oiWhen(data.oiDates).pending})` : ''}, not today's — contract by contract (each expiry, strike and side apart), and only the contracts the Levels card reads (today's expiry, or every live one). Each contract's change is valued at the same pricing as the wall now — the live book's own price and minute — so "was" and "now" are priced alike. Until that count has loaded the page estimates it from today's trades. A change counts as building or draining only past 5% of the biggest wall shown; under that it is steady.</p>
       <FloorFigure />
     </Section>
     <Section title="Today">

@@ -58,7 +58,7 @@ import { Info, X } from 'lucide-react';
 import { bookCandles, dayBars, snapshotOf, useBookRev } from '../../data/uwBook';
 import Term from '../ui/Term';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { sinceOpenRead } from '../../data/levelview';
 import { fmtFlow, type FlowLadder, type FlowRung } from '../../data/hedgeFlow';
 import { sessionVolumeProfile, type VolumeProfile } from '../../data/volumeProfile';

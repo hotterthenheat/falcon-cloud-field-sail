@@ -17,13 +17,15 @@ import { Skeleton } from '../ui/Skeleton';
 
 /* ---- geometry shared with TargetsBoard.tsx ---------------------------------------- */
 
-/** # · strike · from spot · reached · holds · if it breaks · today · at stake · why · actions */
+/** # · strike · from spot · reached · today · net gamma · if it breaks · built · at stake · why · actions */
 /* The words columns WRAP to two lines and share the room (the UI sweep, 2026-10-22): at 1200px the list ran past a
    laptop's card and "changed sides −$4M last session" sat cut in a 112px column — the narrow columns gave up what they
    did not use, and the floor now fits a 1440 screen beside the rail */
-export const AGENDA_COLUMNS = '32px 120px 64px 64px 84px minmax(140px,1fr) minmax(140px,1fr) 120px minmax(120px,1fr) 124px';
-/** The columns' floor plus nine 12px gaps */
-export const AGENDA_MIN_W = 1116;
+/* THE SESSION'S OWN TESTS IN A COLUMN OF THEIR OWN (the tenth audit's retail finding: the Reached column mixed "today"
+   with "<1%"): Reached is always a chance, Today what the session has already done at the strike */
+export const AGENDA_COLUMNS = '32px 140px 64px 84px 64px 96px minmax(112px,1fr) minmax(112px,1fr) 100px minmax(80px,1fr) 124px';
+/** The columns' floor plus ten 12px gaps */
+export const AGENDA_MIN_W = 1128;
 export const CARD_H = 158;
 export const ROW_H = 32;
 
@@ -119,15 +121,15 @@ export const TargetsInner = ({ rows = 38, bare = false }: { rows?: number; bare?
     {/* THE LIST */}
     <div className="px-5 pb-2 overflow-x-auto">
       <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: AGENDA_COLUMNS, minWidth: AGENDA_MIN_W }}>
-        {[10, 34, 54, 48, 34, 62, 36, 50, 24, 44].map((w, i) => (
-          <div key={`h-${i}`} className={`h-[14px] flex items-center ${i >= 2 && i <= 4 ? 'justify-end' : i === 9 ? 'justify-end' : ''}`}>
+        {[10, 34, 54, 48, 34, 34, 62, 36, 50, 24, 44].map((w, i) => (
+          <div key={`h-${i}`} className={`h-[14px] flex items-center ${(i >= 2 && i <= 3) || i === 5 ? 'justify-end' : i === 10 ? 'justify-end' : ''}`}>
             <Skeleton className="h-2" style={{ width: w }} line />
           </div>
         ))}
         {Array.from({ length: rows }, (_, r) => {
           const fade = 1 - Math.min(0.55, r * 0.02);
           return (
-            <div key={r} className="grid grid-cols-subgrid col-span-10 items-center border-t border-borderSubtle/40" style={{ height: ROW_H }}>
+            <div key={r} className="grid grid-cols-subgrid col-span-11 items-center border-t border-borderSubtle/40" style={{ height: ROW_H }}>
               <div className="flex items-center">
                 <Skeleton className="h-2.5 w-4" line style={{ opacity: fade }} />
               </div>
@@ -140,6 +142,9 @@ export const TargetsInner = ({ rows = 38, bare = false }: { rows?: number; bare?
               </div>
               <div className="flex items-center justify-end">
                 <Skeleton className="h-2.5 w-7" line style={{ opacity: fade }} />
+              </div>
+              <div className="flex items-center">
+                {r % 4 === 1 && <Skeleton className="h-2.5 w-12" line style={{ opacity: fade }} />}
               </div>
               <div className="flex items-center justify-end gap-2">
                 <Skeleton className="h-2.5 w-7" line style={{ opacity: fade }} />

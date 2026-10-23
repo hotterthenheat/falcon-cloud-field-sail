@@ -13,6 +13,7 @@ import { setLiveCatalysts, setLiveFda, setLivePosts, setLiveSchedule, type CalEv
 import { setFlexBook } from './oiHeat';
 import { thetaCall } from './theta';
 import { uwCall } from './whales';
+import { nyIsoDaysBack } from './nyDate';
 
 export type VendorState = 'loading' | 'live' | 'empty' | 'error';
 
@@ -84,16 +85,39 @@ function nearMoney(data: unknown[]): unknown[] {
   return keep.sort((a, b) => a.i - b.i).map(s => s.row);
 }
 
+/** A row's date or time, from the first field that carries one — to tell which end of a list is newest */
+const STAMP_KEYS = ['date', 'market_date', 'timestamp', 'executed_at', 'created_at', 'filing_date', 'transaction_date', 'time', 'start_time', 'report_date'];
+function stampOf(row: unknown): number | null {
+  if (!row || typeof row !== 'object') return null;
+  for (const k of STAMP_KEYS) {
+    const v = (row as Record<string, unknown>)[k];
+    if (typeof v === 'string' || typeof v === 'number') {
+      const t = typeof v === 'number' ? v : Date.parse(v);
+      if (Number.isFinite(t)) return t;
+    }
+  }
+  return null;
+}
+
+/** Keep the newest `cap` rows. Some vendor routes answer oldest-first, others newest-first (shorts data, FTDs,
+ *  short volume), so cutting from the tail kept the oldest rows on those. */
+function keepNewest<T>(rows: T[], cap: number): T[] {
+  if (rows.length <= cap) return rows;
+  const a = stampOf(rows[0]);
+  const b = stampOf(rows[rows.length - 1]);
+  return a != null && b != null && a > b ? rows.slice(0, cap) : rows.slice(rows.length - cap);
+}
+
 function clip(data: unknown, kind: Job['kind']): unknown {
   if (kind === 'theta' && Array.isArray(data) && data.some(r => !!r && typeof r === 'object' && 'contract' in (r as object))) {
     return nearMoney(data);
   }
   const cap = kind === 'theta' ? 400 : 600;
-  if (Array.isArray(data)) return data.length > cap ? data.slice(data.length - cap) : data;
+  if (Array.isArray(data)) return keepNewest(data, cap);
   if (data && typeof data === 'object') {
     const next: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      next[k] = Array.isArray(v) ? (v.length > 24 ? v.slice(v.length - 24) : v) : v;
+      next[k] = Array.isArray(v) ? keepNewest(v, 24) : v;
     }
     return next;
   }
@@ -377,18 +401,23 @@ function applyCatalysts(data: unknown) {
     if (o.type === 'earnings') {
       const ticker = String(o.ticker ?? '').toUpperCase();
       if (!ticker) continue;
-      const pre = String(meta.report_time ?? o.subtitle ?? '').toLowerCase().includes('pre') || String(o.subtitle ?? '').toLowerCase().includes('before');
+      /* THE CATALYST'S OWN TIME, OR NONE (audit round 10: "unknown" read as after the close, every row "confirmed") —
+         the row carries no source, so it never claims the company confirmed the date */
+      const when = `${String(meta.report_time ?? '')} ${String(o.subtitle ?? '')}`.toLowerCase();
+      const pre = /pre|before/.test(when);
+      const post = /post|after/.test(when);
       const move = num(meta.expected_move_perc);
       events.push({
         id: `er-live-${ticker}-${String(o.date ?? '').slice(0, 10)}-${events.length}`,
         kind: 'earnings',
         date,
-        time: pre ? 'before the open' : 'after the close',
+        time: pre ? 'before the open' : post ? 'after the close' : 'time not set',
         title: `${ticker} reports`,
         impact: move != null && Math.abs(move) * (Math.abs(move) <= 3 ? 100 : 1) >= 7 ? 'high' : 'medium',
         ticker,
         slot: pre ? 'BMO' : 'AMC',
-        confirmed: true,
+        timeKnown: pre || post,
+        catalystOnly: true,
         impliedMovePct: move == null ? undefined : Math.abs(move) <= 3 ? move * 100 : move,
       });
     } else if (o.type === 'econ') {
@@ -483,6 +512,7 @@ function stockJobs(t: string): Job[] {
   const month = new Date().getMonth() + 1;
   return [
     { id: 'info', label: 'Sector of the name', path: `/stock/${e}/info`, kind: 'uw' },
+    { id: 'oi-expiry', label: 'Open interest per expiry', path: `/stock/${e}/oi-per-expiry`, kind: 'uw' },
     { id: 'sector-names', label: 'Companies in the same sector', path: '', kind: 'uw' },
     { id: 'bs', label: 'Balance sheet', path: `/stock/${e}/balance-sheets`, kind: 'uw' },
     { id: 'cf', label: 'Cash flow', path: `/stock/${e}/cash-flows`, kind: 'uw' },
@@ -662,7 +692,9 @@ async function after(key: string, ticker: string, pathname: string, got: Map<str
     const who = politician(got.get('people'), member);
     const name = who?.name || decodeURIComponent(member).replace(/-/g, ' ');
     if (books.get(key)?.rows.some(r => r.id === 'member-reports')) {
-      await runJob(key, { id: 'member-reports', label: "This member's reports", path: `/congress/congress-trader?name=${enc(name)}&limit=40`, kind: 'uw' });
+      /* the trades made in the last year, the first page of the member page's own read (data/liveRecord.ts
+         memberReportsPath) — the same address, so the proxy answers both with one call */
+      await runJob(key, { id: 'member-reports', label: "This member's reports", path: `/congress/congress-trader?name=${enc(name)}&date_from=${nyIsoDaysBack(365)}&limit=200`, kind: 'uw' });
     }
   }
 }

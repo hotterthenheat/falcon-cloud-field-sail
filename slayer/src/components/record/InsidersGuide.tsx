@@ -170,12 +170,18 @@ export const InsidersGuide = () => (
       <RowFigure />
     </Section>
     <Section title="Chose to?">
-      <p>Most insider selling runs off a plan adopted months earlier; a chosen purchase is the loudest row here, because there are many reasons to sell and one reason to buy.</p>
+      <p>Most insider selling runs off a plan adopted months earlier; a chosen purchase is the loudest row here, because there are many reasons to sell and one reason to buy. A purchase (code P) can be on the open market or in a private placement. When the buyer is a company or a fund — Volkswagen taking a stake in Rivian, a bank buying into a broker — it is a strategic stake, marked "corporate" and counted apart under Company &amp; fund buys, never as chosen buying.</p>
       <FlagFigure />
     </Section>
-    <Section title="Of stake">
-      <p>The trade as a share of what the insider held, so a sale reads against what they kept.</p>
+    <Section title="Of holding">
+      <p>The trade as a share of what the insider held, so a sale reads against what they kept. A buy by someone who held none before reads "first purchase"; a sale that left nothing reads "sold all they held". A line held through a trust or a fund ("of account") counts that account alone — the filer's direct shares are another line.</p>
       <StakeFigure />
+    </Section>
+    <Section title="The window">
+      <p>Unusual Whales sends at most 500 filings a request, newest filed first. Two reads are paged back until the whole window is covered: every open-market purchase (the rows with one motive), and every open-market sale of $1M or more. Smaller sales, grants and the other filings are far more numerous — thousands a week — so the page reads the latest 1,000 of them, and the line under the controls says exactly which filing dates that covers. Only common stock is read: notes and debentures file a face amount where a share price should be.</p>
+    </Section>
+    <Section title="One trade, one row">
+      <p>A joint Form 4 lists the same trade once for each reporting owner — a fund and its general partner, two partners of one firm. Those are one trade: the row names the first owner and says how many more filed it ("+2 joint"), and the totals count it once. An amended filing (4/A) that restates a trade already filed replaces it rather than adding to it.</p>
     </Section>
     <Section title="Others">
       <p>How many filers did the same in one name inside thirty days — a cluster of buyers is a stronger read than one.</p>

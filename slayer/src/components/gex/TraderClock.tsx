@@ -53,15 +53,20 @@
 ==================================================
 */
 
+import { GLOSSARY } from './glossary';
+import { levelsFor } from '../../data/levelsFor';
+import { readLevelsScope } from '../../data/levelsScope';
+import { bellNone as bellNoneWords, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import FoldDoor from './FoldDoor';
 import { useBoxFold } from '../../data/boxFold';
-import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { roomLevels } from '../../data/roomLevels';
 import { buildVannaCharm } from '../../data/vannacharm';
 import { readSessionClock } from '../../data/moc';
 import { sessionMeta, sessionOfMinute, useDeskSession, minuteInSession, type DeskSession } from '../../data/deskSession';
-import { deskBars } from '../../data/uwBook';
+import { deskBars, peekBellShare } from '../../data/uwBook';
+import { bellDay } from '../../data/bookWindow';
 import { nyMinutes } from '../../core/nyTime';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import ClockGuide from './ClockGuide';
@@ -124,7 +129,7 @@ export const PHASES: Phase[] = [
     to: 11 * 60 + 30,
     name: 'The morning',
     weight: 0.5,
-    words: f => `the trend hour — ${f.flip != null ? `above ${fmtStrike(f.flip)} dips get bought, below it moves get chased` : 'the flip decides which way hedging leans'}`,
+    words: f => `the trend hour — ${f.flip != null ? `${fmtStrike(f.flip)} is the flip, where dealer hedging switches between absorbing and chasing moves` : 'no flip within reach, so the hedging leans one way all day'}`,
   },
   {
     key: 'lunch',
@@ -161,7 +166,7 @@ export const PHASES: Phase[] = [
     weight: 1,
     pressure: 'amplifies',
     /* "at the close", not "4:00": the box prints its hours as 09:30 … 16:00 (the audit's M6, 2026-10-13) */
-    words: f => `the closing auction — ${f.bellShare != null ? `${f.bellShare}% of today's gamma expires at the close` : 'today’s gamma expires at the close'}`,
+    words: f => `the closing auction — ${f.bellShare != null ? `${f.bellShare}% of the gamma expires at the close (${bellDay().date})` : 'the session’s gamma expires at the close'}`,
   },
 ];
 
@@ -253,8 +258,13 @@ const PRESSURE_WORDS = { absorbs: 'absorbs moves', amplifies: 'amplifies moves' 
 
 /* A FACT ON THE HEAD'S LINE — its name in tracked capitals, its figure beside it, a hairline before the next (the page
    head's grammar, PinpointLayout's Fact) */
-const ClockFact = ({ label, children }: { label: string; children: ReactNode }) => (
-  <span className="inline-flex items-baseline gap-2 whitespace-nowrap pr-3 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-borderSubtle [&:not(:first-child)]:pl-3">
+const CLOCK_TIPS: Record<string, string> = {
+  Now: "The time in New York and the part of the trading day it falls in",
+  Next: 'The next part of the day and how long until it starts',
+  'Expires at the close': "The share of all the name's hedging, every expiry counted, in contracts that expire at 4:00 today",
+};
+const ClockFact = ({ label, children, tip }: { label: string; children: ReactNode; tip?: string }) => (
+  <span className="inline-flex items-baseline gap-2 whitespace-nowrap pr-3 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-borderSubtle [&:not(:first-child)]:pl-3" title={tip ?? CLOCK_TIPS[label]}>
     <span className="text-[11px] uppercase tracking-wider text-textMuted">{label}</span>
     <span className="text-[13px] font-semibold text-textPrimary">{children}</span>
   </span>
@@ -268,7 +278,7 @@ type Pin = { kind: 'block'; i: number } | { kind: 'phase'; key: string } | null;
     Map's replay (2026-09-08) walks the strip to the minute it is rewound to.
     `onSeek`: while a replay is running, a click moves that replay to the minute
     instead of keeping a block. The playhead on the day charts is this same minute. */
-const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketSnapshot; scope?: ReactNode; at?: number | null; onSeek?: (min: number) => void; /** The expiry dates the book is showing. The share that dies at the close is of THIS window. */ dates?: readonly string[] | null }) => {
+const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketSnapshot; scope?: ReactNode; at?: number | null; onSeek?: (min: number) => void; /** The date the levels are read off (the Levels card). The share that dies at the close is of the whole book. */ dates?: readonly string[] | null }) => {
   const clock = readSessionClock();
   const [hover, setHover] = useState<number | null>(null);
   const [pin, setPin] = useState<Pin>(null);
@@ -370,9 +380,15 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       /* the same levels the tape and the report read — the book's window, not a tighter slice */
       const levels = roomLevels(snapshot, '0DTE');
       if (levels) {
-        pinStrike = levels.pin;
+        pinStrike = levels.pinFound === false ? null : levels.pin;
         supreme = levels.supreme;
-        flip = levels.flip;
+        flip = levels.flipFound === false ? null : levels.flip;
+      }
+      /* THE NAMED LEVELS ARE levelsFor's, in the Levels card's scope (the sixth audit's B1) — the pin stays today's */
+      const lv = snapshot.liveBook ? levelsFor(snapshot.ticker, readLevelsScope()) : null;
+      if (lv) {
+        supreme = lv.supreme;
+        flip = lv.flip;
       }
     } catch {
       /* no chain yet */
@@ -387,22 +403,14 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       /* no chain yet */
     }
     try {
-      const today = snapshot.uwExpiries?.find(e => e.dte === 0)?.date;
-      if (dates?.length && snapshot.uwByDate) {
-        let dies = 0;
-        let total = 0;
-        for (const date of dates) {
-          const chain = snapshot.uwByDate[date];
-          if (!chain) continue;
-          let g = 0;
-          for (const n of chain) g += Math.abs(n.netGex);
-          total += g;
-          if (date === today) dies += g;
-        }
-        bellShare = total > 0 ? Math.round((100 * dies) / total) : null;
+      /* THE BOARD'S SHARE (the ship pass, 2026-10-22): the vendor's gamma per expiry, today's date against every live
+         date — one figure on the Board, Compare and here. The older reads below stand in until that list is in. */
+      const vendor = peekBellShare(snapshot.ticker);
+      if (vendor.share != null || vendor.why === 'none') {
+        bellShare = vendor.share;
       } else {
         const surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
-        const todayCol = surface.expiries.findIndex(e => e.dte === 0);
+        const todayCol = todayColumn(surface);
         if (todayCol >= 0) {
           let dies = 0;
           let total = 0;
@@ -420,6 +428,10 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
     }
     return { pin: pinStrike, supreme, flip, charmStrike, charmMoves, bellShare };
   }, [snapshot, dates]);
+
+  /* no share because nothing on the name expires today — said on the figure's hover */
+  const bellPeek = peekBellShare(snapshot.ticker);
+  const bellNone = bellPeek.share == null && bellPeek.why === 'none';
 
   /* Where NOW sits — New York minutes; outside the session there is no lit block */
   const [h, m] = clock.etTime.split(':').map(Number);
@@ -511,7 +523,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                 <span data-clock-now>
                   {inSession && current ? (
                     <>
-                      <span className="tnum">{hhmm(nowMin)}</span> <span className="font-normal text-textSecondary">{(SHORT_NAME[current.key] ?? current.name).toLowerCase()}</span>
+                      <span className="tnum">{hhmm(nowMin)}</span> <span className="font-normal text-textSecondary" title={current.key === 'charm' ? GLOSSARY.charm : undefined}>{(SHORT_NAME[current.key] ?? current.name).toLowerCase()}</span>
                     </>
                   ) : (
                     <span className="font-normal text-textSecondary">{cash ? clock.label.toLowerCase() : 'outside this window'}</span>
@@ -521,7 +533,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               <ClockFact label="Next">
                 {nextPhase ? (
                   <>
-                    <span className="font-normal text-textSecondary">{(SHORT_NAME[nextPhase.key] ?? nextPhase.name).toLowerCase()}</span> <span className="tnum">{untilNext}m</span>
+                    <span className="font-normal text-textSecondary underline decoration-dotted decoration-textMuted/60 underline-offset-2 cursor-help" title={`${nextPhase.name} starts in ${untilNext} minutes${nextPhase.key === 'charm' ? `\n${GLOSSARY.charm}` : ''}`}>{(SHORT_NAME[nextPhase.key] ?? nextPhase.name).toLowerCase()}</span> <span className="tnum">{untilNext}m</span>
                   </>
                 ) : inSession ? (
                   <span className="font-normal text-textSecondary">{cash ? 'the close' : shown === 'pre' ? 'the open' : 'the end'}</span>
@@ -534,9 +546,15 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
             </>
           )}
           {/* in the page's ink, not magenta — magenta is the supreme's marker alone (2026-10-14) */}
-          <ClockFact label="Expires at the close">
-            <span className="tnum" data-clock-bell>
-              {facts.bellShare != null ? `${facts.bellShare}%` : '—'}
+          {/* AFTER THE CLOSE THE SHARE IS THE NEXT SESSION'S (the second re-audit, 2026-10-22: "EXPIRES AT THE CLOSE 16%" beside
+              "NOW after the close") — said with its day (data/bookWindow.ts bellDay) */}
+          <ClockFact label={bellDay().clock} tip={`${bellDay().tip(snapshot.ticker)} — every expiry counted`}>
+            <span
+              className="tnum"
+              data-clock-bell
+              title={facts.bellShare != null ? `${facts.bellShare}% — ${bellDay().tip(snapshot.ticker)}` : bellNone ? BELL_NONE_TITLE(snapshot.ticker) : 'Still reading the expiry list'}
+            >
+              {facts.bellShare != null ? `${facts.bellShare}%` : bellNone ? bellNoneWords() : '…'}
             </span>
             {facts.bellShare != null && <span className="ml-1.5 font-normal text-textSecondary">of gamma</span>}
           </ClockFact>
@@ -576,7 +594,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                   transform: turn ? 'translateX(calc(-100% - 6px))' : last ? 'translateX(2px)' : undefined,
                   ...(active ? { color: SILVER } : {}),
                 }}
-                title={`${hhmm(p.from)}–${hhmm(p.to)} — ${onSeek ? 'click to move the replay here' : 'click to keep this phase'}`}
+                title={`${hhmm(p.from)}–${hhmm(p.to)} — ${onSeek ? 'click to move the replay here' : 'click to keep this phase'}${p.key === 'charm' ? `\n${GLOSSARY.charm}` : ''}`}
               >
                 {SHORT_NAME[p.key] ?? hhmm(p.from)}
               </button>

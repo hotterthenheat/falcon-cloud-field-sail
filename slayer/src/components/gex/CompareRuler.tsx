@@ -41,6 +41,7 @@ import { GREEK_LABEL, GREEK_WORDS, distanceIn, sharedUnit, type Compare, type Co
 import { GREEKS } from '../../data/exposureSurface';
 import type { DistanceUnit } from '../../data/atr';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './palette';
+import { levelRoles, type LevelRole } from '../../core/walls';
 import { HEAT_MODE, heatCellStyle, type HeatMode } from './heatmap';
 import { AXIS_COL_W, AXIS_READ_H, AXIS_STRIKE_W } from './compareSkeletons';
 import { useResolvedTheme } from '../../theme/theme';
@@ -60,7 +61,7 @@ const INK_3 = '#7d7d7d';
    edge is what his "gray or black" background was doing for it. The heat ramp itself is untouched. */
 interface RulerInks { wash: string; col: string; colEdge: string; grid: string; ink: string; ink2: string; ink3: string; spotRule: string; onInk: string; chipGround: string; silver: string; edge: string | null; call: string; put: string; supreme: string; flip: string }
 const DARK_INKS: RulerInks = { wash: 'rgba(255,255,255,0.04)', col: 'rgba(255,255,255,0.025)', colEdge: 'rgba(255,255,255,0.08)', grid: 'rgba(255,255,255,0.05)', ink: INK, ink2: INK_2, ink3: INK_3, spotRule: 'rgba(237,237,237,0.3)', onInk: '#0a0a0a', chipGround: '#0a0a0a', silver: SILVER, edge: null, call: CALL_WALL, put: PUT_WALL, supreme: SUPREME, flip: FLIP };
-const PAPER_INKS: RulerInks = { wash: 'rgba(14,15,17,0.06)', col: 'rgba(14,15,17,0.04)', colEdge: 'rgba(14,15,17,0.16)', grid: 'rgba(14,15,17,0.09)', ink: '#0e0f11', ink2: '#26282d', ink3: '#40434a', spotRule: 'rgba(14,15,17,0.4)', onInk: '#ffffff', chipGround: '#ffffff', silver: '#3a4f7a', edge: 'rgba(14,15,17,0.3)', call: '#008c38', put: '#dc2020', supreme: '#a300b3', flip: '#5b6472' };
+const PAPER_INKS: RulerInks = { wash: 'rgba(14,15,17,0.06)', col: 'rgba(14,15,17,0.04)', colEdge: 'rgba(14,15,17,0.16)', grid: 'rgba(14,15,17,0.09)', ink: '#0e0f11', ink2: '#26282d', ink3: '#40434a', spotRule: 'rgba(14,15,17,0.4)', onInk: '#ffffff', chipGround: '#ffffff', silver: '#3a4f7a', edge: 'rgba(14,15,17,0.3)', call: 'rgb(3,105,161)', put: 'rgb(146,86,4)', supreme: '#a300b3', flip: '#5b6472' }; /* the light page's glacier and ember (theme/tokens.css), not the sign's green and red — the seventh audit's m3 */
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 export const PAD = 14;
@@ -326,7 +327,7 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
       if (!root || !canvas) return;
       const W = root.clientWidth;
       const H = root.clientHeight;
-      if (W < 120 || H < 80) return;
+      if (W < (compact ? 80 : 120) || H < 80) return;
       const hv = hoverRef.current;
       const cs = cardStateRef.current;
       const K = paperRef.current ? PAPER_INKS : DARK_INKS;
@@ -400,7 +401,10 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
       const laneW = laneA.from - laneA.to;
       /* …and a narrower lane keeps a narrower gutter rather than none (the UI sweep, 2026-10-22): the ruler in Compare's
          middle column gives each lane ~200px, under the old 420 floor, so the flip's chip lay across the capsules */
-      const GUTTER = compact ? 0 : laneW >= 420 ? 88 : laneW >= 170 ? 76 : 0;
+      /* …and a phone's ~140px lane keeps a 52px edge for a chip that says the strike alone (the phone sweep, 2026-10-22: at
+         0 the "flip 769.50" chip lay across the capsules) */
+      const narrowLane = laneW < 170;
+      const GUTTER = compact ? 0 : laneW >= 420 ? 88 : laneW >= 170 ? 76 : laneW >= 110 ? 28 : 0;
       const span = Math.max(1, laneW - 10 - GUTTER);
       const yOf = (d: number) => PAD + ((off + L.R - d) / (2 * L.R)) * (H - 2 * PAD);
       /* ONE CAPSULE HEIGHT FOR BOTH SIDES, the smaller, from the drawing's own height */
@@ -532,11 +536,19 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
         /* A name goes INSIDE a capsule that reaches the edge from 10px of row,
            one point smaller under 13 — never a chip over the figure (Noah, 2026-09-09) */
         const NAME_IN = barH >= 13 ? NAME : `500 8px ${SANS}`;
-        const levelOf = new Map<number, { words: string; c: string }>();
-        levelOf.set(s.levels.callWall, { words: 'Call wall', c: K.call });
-        levelOf.set(s.levels.putWall, { words: 'Put wall', c: K.put });
-        /* The supreme is the chosen greek's heaviest strike — the Map's rule */
-        if (!near(S.supreme, s.levels.callWall) && !near(S.supreme, s.levels.putWall)) levelOf.set(S.supreme, { words: 'Supreme', c: K.supreme });
+        /* EVERY LEVEL A STRIKE IS, IN THE ONE ORDER (the seventh audit's m3: the supreme's chip was skipped where it was
+           also a wall, and the put wall overwrote the call wall on a shared strike) — "Supreme · Put wall", inked by the
+           first (core/walls.ts LEVEL_ORDER: supreme, call wall, put wall) */
+        const levelOf = new Map<number, { words: string; short: string; c: string }>();
+        const inkOf = (r: LevelRole) => (r === 'supreme' ? K.supreme : r === 'call wall' ? K.call : K.put);
+        for (const k of [S.supreme, s.levels.callWall, s.levels.putWall]) {
+          if (!Number.isFinite(k) || [...levelOf.keys()].some(x => near(x, k))) continue;
+          const roles = levelRoles(k, { supreme: S.supreme, callWall: s.levels.callWall, putWall: s.levels.putWall });
+          if (!roles.length) continue;
+          /* the short form for a lane too narrow for the words (the eighth audit: "Supreme · put wal" cut on a phone) */
+          const SHORT: Record<string, string> = { supreme: 'Sup', 'call wall': 'call', 'put wall': 'put' };
+          levelOf.set(k, { words: roles.map((r, i) => (i ? r : r.charAt(0).toUpperCase() + r.slice(1))).join(' · '), short: roles.length > 1 ? roles.map(r => SHORT[r] ?? r).join(' · ') : roles[0], c: inkOf(roles[0]) });
+        }
         const levelAt = (kk: number) => {
           for (const [lk, v] of levelOf) if (near(lk, kk)) return v;
           return undefined;
@@ -545,7 +557,8 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
         /* THE FLIP'S CHIP IS PLACED FIRST, so a wall's chip can step aside for it: where the two would touch, the wall's name
            goes inside its capsule (the rule it already had for "no room beside"), and one that cannot is moved clear */
         const flipInView = S.flipD != null && s.flip != null && Math.abs(S.flipD - off) <= reach;
-        const flipWords = flipInView && !compact ? `flip ${fmtStrike(s.flip!)}` : null;
+        /* a narrow lane (a phone's) keeps the dashed line only — its strike is named in the axis head instead */
+        const flipWords = flipInView && !compact && !narrowLane ? `flip ${fmtStrike(s.flip!)}` : null;
         const flipW = flipWords ? chipOf(flipWords) : 0;
         const flipChip = flipWords ? { x: left ? 6 : W - 6 - flipW, y: yOf(S.flipD!), w: flipW } : null;
         const hitsFlip = (x0: number, w0: number, y0: number) => flipChip != null && Math.abs(y0 - flipChip.y) < 18 && x0 < flipChip.x + flipChip.w + 6 && x0 + w0 > flipChip.x - 6;
@@ -588,7 +601,13 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
                 ctx.fillText(fig, innerX, p.y + 0.5);
               }
             } else {
-              chipsLater.push({ words: lvl.words, c: lvl.c, x: clearOfFlip(left ? Math.max(6, x) : Math.min(W - 6 - chipW, x + len - chipW), chipW, p.y), y: p.y, w: chipW });
+              /* KEPT INSIDE ITS OWN LANE (the seventh audit's retail finding: on a phone the "Call wall" pill sat over the
+                 strike labels at 770/771 — a short capsule pushed its chip across the axis) */
+              const avail = left ? laneA.from - 6 : W - 6 - laneB.from;
+              const words = chipW > avail ? lvl.short : lvl.words;
+              const cw = chipW > avail ? chipOf(words) : chipW;
+              const inLane = left ? Math.min(Math.max(6, x), laneA.from - cw) : Math.max(laneB.from, Math.min(W - 6 - cw, x + len - cw));
+              chipsLater.push({ words, c: lvl.c, x: clearOfFlip(inLane, cw, p.y), y: p.y, w: cw });
             }
           } else {
             if (canPrint && textW(fig, FIG) + 12 <= len) {

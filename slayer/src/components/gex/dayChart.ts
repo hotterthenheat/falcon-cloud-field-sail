@@ -151,12 +151,34 @@ export function dayClock(dayStart: number, from: number, to: number): LineData<T
   return out;
 }
 
+/** Two points that print the same — same time, same fields */
+const samePoint = (a: object | undefined, b: object | undefined): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every(k => (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k]);
+};
+
 /** THE NEWEST MINUTE, NOT THE WHOLE DAY: a tick moves the last point, a new minute adds one — the rest of the series is
     never handed over again (the paying user's "make sure its all running fast"). Anything else — a replay scrubbed back,
     a new name — sets the whole series. */
 export function feedSeries<T extends { time: Time }>(series: ISeriesApi<SeriesType>, next: readonly T[], prev: { current: readonly T[] | null }): void {
   const p = prev.current;
-  if (p && p.length > 0 && next.length > 0 && p[0].time === next[0].time && (next.length === p.length || next.length === p.length + 1)) {
+  /* A TICK, NOT A NEW SERIES — the same first bar, one more bar at most, AND the bars already drawn unchanged (the ship
+     pass, 2026-10-22: a switch from SPY to NVDA handed a series with the same first minute and the same length, so only
+     the last bar was updated and the chart kept SPY's whole day at $765 beside NVDA's last print). The first point and
+     the last settled one are checked by value; anything else is drawn whole. */
+  const settled = next.length === (p?.length ?? -1) ? next.length - 2 : next.length - 3;
+  if (
+    p &&
+    p.length > 0 &&
+    next.length > 0 &&
+    p[0].time === next[0].time &&
+    (next.length === p.length || next.length === p.length + 1) &&
+    samePoint(p[0], next[0]) &&
+    (settled < 0 || samePoint(p[settled], next[settled]))
+  ) {
     if (next.length === p.length + 1) series.update(next[next.length - 2] as never);
     series.update(next[next.length - 1] as never);
   } else {

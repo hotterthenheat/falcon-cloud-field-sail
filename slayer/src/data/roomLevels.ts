@@ -2,6 +2,7 @@ import { buildExposureProfile, type StrikeWindow } from './exposure';
 import type { LevelsScope } from './levelsScope';
 import type { ExposureLevels } from '../types/gex';
 import type { MarketSnapshot } from '../types/market';
+import { bookRevision } from './uwBook';
 
 /*
 ==================================================
@@ -26,14 +27,19 @@ import type { MarketSnapshot } from '../types/market';
 /** The band's own window (ExposureField's WHOLE_BOOK) — every box reads the levels through it. */
 export const LEVELS_WINDOW: StrikeWindow = 30;
 
-const cache = new WeakMap<MarketSnapshot, Partial<Record<LevelsScope, ExposureLevels | null>>>();
+/* KEYED ON THE BOOK'S REVISION TOO (the third audit, 2026-10-23: CROX's Map flip 114.43 against 114.77 everywhere
+   else — computed once before the contract vols landed and never again). A snapshot handed on unchanged while its book
+   moves on is read again. */
+const cache = new WeakMap<MarketSnapshot, { rev: number; byScope: Partial<Record<LevelsScope, ExposureLevels | null>> }>();
 
 export function roomLevels(snapshot: MarketSnapshot, scope: LevelsScope): ExposureLevels | null {
-  let byScope = cache.get(snapshot);
-  if (!byScope) {
-    byScope = {};
-    cache.set(snapshot, byScope);
+  const rev = bookRevision();
+  let hit = cache.get(snapshot);
+  if (!hit || hit.rev !== rev) {
+    hit = { rev, byScope: {} };
+    cache.set(snapshot, hit);
   }
+  const byScope = hit.byScope;
   if (scope in byScope) return byScope[scope] ?? null;
   let out: ExposureLevels | null = null;
   try {

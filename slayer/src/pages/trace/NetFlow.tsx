@@ -33,12 +33,15 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useNetExpiry, useTide, useTopNet, useLiveBook, type TideKind } from '../../data/traceLive';
+import { nyDateOf, tapeSessionIso, tideBetween, useTopNet, useLiveBook, useTide } from '../../data/traceLive';
+import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
+import { dayAdv, dayPos, isLiveDay, shortDay } from '../../components/trace/dayWords';
+import { useTraceSession } from '../../components/trace/traceSession';
+import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { type MoneynessKey } from '../../data/flowBook';
-import { fmtUsd } from '../../data/gex';
+import { usd as fmtUsd } from '../../data/traceLive';
 import Lean from '../../components/trace/Lean';
 import type { SleeveKey } from '../../types/compass';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -50,9 +53,6 @@ import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
 import TraceBox, { Champion, Fact } from '../../components/trace/TraceBox';
 import { NetFlowGuide } from '../../components/trace/TraceGuide';
-import ExpiryCalendar, { expiryWords } from '../../components/ui/ExpiryCalendar';
-import { useExpiryCut } from '../../components/trace/bookExpiry';
-import { isoDate } from '../../core/calendar';
 
 const num = (v: number) => v.toLocaleString('en-US');
 // Signed on purpose — a champion's figure keeps its sign (2026-08-30).
@@ -79,17 +79,21 @@ const NetFlow = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   const top = useTopNet(40);
-  const [tideKind, setTideKind] = useState<TideKind>('market');
-  const tide = useTide(tideKind, tideKind === 'sector' ? 'technology' : tideKind === 'etf' ? picked || 'SPY' : '');
-  const expiryFlow = useNetExpiry(mny, tenor === 'odte' ? 'zero_dte' : 'weekly');
+  /* THE MARKET'S OWN NET (the audit, 2026-10-22): the board is the vendor's 20 most bullish and 20 most bearish names,
+     and their sum was headed "Net across the board" as if it were the market. The market's net is the vendor's market
+     tide — every name's net call premium less net put premium, running from the open. */
+  const tide = useTide('market', '');
   const liveBook = useLiveBook(picked || activeTicker).rows;
+  /* NOT YET IS NOT NOTHING (audit round 8, major 5: "The board $0 · Names 0 · No name has leaned yet today" while the
+     board loaded) — the board's facts read "—" and the pane waits for the board's first name rather than drawing SPY and
+     then the leader (two reads for one pane) */
+  const boardReading = top.waiting && top.rows.length === 0;
+  const boardFault = top.fault;
   // The shared hold (see LiveHold): the board's book and the pane's tick freeze together while paused
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !boardReading);
   const { book: heldBook, tick } = hold.value;
-  /* THE EXPIRY CUT — the dates on the book, as a calendar; the board and the pane both read the cut book, so they
-     cannot disagree */
-  const { expiry, setExpiry: setExpiryRaw, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldBook, r => r.expiry);
-  const book = useMemo(() => cutExpiry(heldBook), [heldBook, cutExpiry]);
+  /* the pane draws the picked name's own minutes (usePaneFlow); the book only feeds the search's suggestions */
+  const book = heldBook;
   /* Sampled at the chart tape's last bar — the pane draws to the SIM tape's now; the expiry names the cut the rows came
      through, so the same minute on another cut is another board */
   const leaders = useMemo(
@@ -108,20 +112,21 @@ const NetFlow = () => {
   );
   /* the names a search may put on the pane: the book's */
   const known = useMemo(() => new Set(leaders.map(r => r.ticker)), [leaders]);
+  /* ANY NAME GOES ON THE PANE (audit round 4: "No contracts for PLTR today" while a PLTR suggestion showed $76.9M — only
+     the board's 40 names were taken): a well-formed ticker is read from its own /stock/{t}/net-prem-ticks once the typing
+     settles; a board name at once */
+  const typeTimer = useRef(0);
   const onQuery = (v: string) => {
     setQuery(v);
+    window.clearTimeout(typeTimer.current);
     if (!v) setPicked(null);
     else if (known.has(v)) setPicked(v);
+    else if (/^[A-Z][A-Z0-9.]{0,5}$/.test(v)) typeTimer.current = window.setTimeout(() => setPicked(v), 450);
   };
-  const unknown = query !== '' && !known.has(query) && ![...known].some(t => t.startsWith(query));
+  useEffect(() => () => window.clearTimeout(typeTimer.current), []);
+  const unknown = query !== '' && !/^[A-Z][A-Z0-9.]{0,5}$/.test(query);
 
-  const sel = picked ?? leaders[0]?.ticker ?? 'SPY';
-  /* AN EXPIRY KEEPS THE NAME ON THE PANE: with no name picked the pane followed the board's leader, so a new expiry
-     swapped one name for another unasked — the name on the pane is held as the cut changes */
-  const setExpiry = (iso: string | null) => {
-    setPicked(p => p ?? sel);
-    setExpiryRaw(iso);
-  };
+  const sel = picked ?? leaders[0]?.ticker ?? (boardReading ? null : 'SPY');
   const maxAbs = useMemo(() => Math.max(...leaders.map(l => Math.abs(l.net)), 1), [leaders]);
   const netMarks = useMemo(() => earnMarks(leaders, l => l.net), [leaders]);
 
@@ -147,14 +152,52 @@ const NetFlow = () => {
   /* ReactNode: both named leaders are doors — clicking puts that name on the pane.
      THE PARTS ADD UP: "+$113.6M net … +$104.5M of it in calls and −$9.1M in puts" did not sum; the net is net calls LESS
      net puts, and the sentence says it that way, each figure in its meaning's ink */
+  /* THE SESSION'S OWN MARKET NET (audit round 4: "Market net · every name −$939.7M · 07:30–16:14 ET" under Session Regular
+     took in the pre-market — options do not trade at 07:30): Regular is 09:30–16:15, the tide's running figure at the last
+     regular minute less its figure before the bell; Extended hours is the whole tide, said so */
+  const session = useTraceSession();
+  const market = useMemo(() => {
+    if (session === 'regular') {
+      const w = tideBetween(tide.rows, 570, 975);
+      return w ? { net: w.net, calls: w.calls, puts: w.puts, at: nyClock(w.last * 1000), from: nyClock(w.first * 1000), none: false, span: `${nyClock(w.first * 1000)}–${nyClock(w.last * 1000)}`, day: nyDateOf(w.last * 1000) } : null;
+    }
+    /* EXTENDED MEANS OUTSIDE THE SESSION, AS ON EVERY OTHER TRACE PAGE (audit round 5: "Extended hours −$939.7M ·
+       07:30–16:14" was the pre-market plus the whole session, its hover saying "after the close included"): the tide's
+       minutes before 09:30 plus its minutes from the 16:15 close, nothing between */
+    const pre = tideBetween(tide.rows, 0, 570);
+    const post = tideBetween(tide.rows, 975, 24 * 60);
+    if (!pre && !post) return { net: 0, calls: 0, puts: 0, at: '', from: null, none: true, span: '', day: null as string | null };
+    const calls = (pre?.calls ?? 0) + (post?.calls ?? 0);
+    const puts = (pre?.puts ?? 0) + (post?.puts ?? 0);
+    const span = [pre ? `${nyClock(pre.first * 1000)}–${nyClock(pre.last * 1000)}` : null, post ? `${nyClock(post.first * 1000)}–${nyClock(post.last * 1000)}` : null].filter(Boolean).join(' + ');
+    return { net: calls - puts, calls, puts, at: (post ?? pre)!.last ? nyClock((post ?? pre)!.last * 1000) : '', from: pre ? nyClock(pre.first * 1000) : post ? nyClock(post.first * 1000) : null, none: false, span, day: nyDateOf((post ?? pre)!.last * 1000) as string | null };
+  }, [tide.rows, session]);
   const read = useMemo<ReactNode>(() => {
-    if (!facts.top || !facts.bottom) return <RichRead text="The book is still waking up." />;
-    const { top, bottom, total, topIsChamp } = facts;
+    if (boardReading) return <RichRead text="Reading the vendor's board and the market tide…" />;
+    if (!facts.top || !facts.bottom) return <RichRead text={boardFault ? 'The board did not answer — it fills when the feed does.' : 'The book is still waking up.'} />;
+    const { top, bottom, topIsChamp } = facts;
     const crown = (v: number, champ: boolean) => (champ ? <span className="font-semibold tnum text-supreme">{signed(v)}</span> : <Lean v={v} />);
     return (
       <>
-        <RichRead text={`${chosen ? `On ${expiryWords(chosen)}, the` : 'The'} board's money leans ${total >= 0 ? 'bullish' : 'bearish'} — `} />
-        <Lean v={total} /> net across {leaders.length} names: bullish names <Lean v={facts.calls} /> against bearish names <Lean v={facts.puts} put />.{' '}
+        {market && market.none && <RichRead text={`The vendor's market tide holds no minutes outside the regular session${isLiveDay(tapeSessionIso()) ? '' : ` on ${shortDay(tapeSessionIso())}`} — nothing before 09:30 or after the 16:15 close to add up. `} />}
+        {/* EVERY WINDOW DATED, EXTENDED MONEY UNREAD (audit round 7: "Outside the regular session, the whole market's money
+            leans bearish — −$1.5M net over 07:30–09:24 ET" in bearish ink was Oct 22's pre-open, read at 07:25 on Oct 23 as
+            today's). Regular reads its lean with its day; outside the session the figure stands in plain ink, no lean
+            (SidesRule: extended prints set against thin quotes are never read). */}
+        {market && !market.none && session === 'regular' && (
+          <>
+            <RichRead text={`The whole market's money ${market.day && !isLiveDay(market.day) ? `on ${shortDay(market.day)} ` : 'today '}leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
+            <Lean v={market.net} /> net from {market.from} to {market.at} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
+          </>
+        )}
+        {market && !market.none && session !== 'regular' && (
+          <>
+            {`Outside the regular session${market.day ? ` (${isLiveDay(market.day) ? 'today' : shortDay(market.day)}, ${market.span} ET)` : ''}, the whole market netted `}
+            <span className="font-semibold tnum text-textPrimary">{signed(market.net)}</span> (net calls <span className="tnum text-textPrimary">{signed(market.calls)}</span> less net puts <span className="tnum text-textPrimary">{signed(market.puts)}</span>) — extended-hours money trades against thin quotes and is shown, not read.{' '}
+          </>
+        )}
+        <RichRead text={`On the board — the vendor's ${facts.bullish} most bullish and ${facts.bearish} most bearish names ${dayAdv()}, vendor totals with spread legs and floor packages in them — `} />
+        the bullish names sum to <Lean v={facts.calls} /> and the bearish to <Lean v={facts.puts} />.{' '}
         <ReadDoor onOpen={() => onQuery(top.ticker)} title={`Put ${top.ticker} on the pane`}>
           {top.ticker}
         </ReadDoor>
@@ -168,7 +211,7 @@ const NetFlow = () => {
       </>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facts, leaders.length, chosen]);
+  }, [facts, leaders.length, market, boardReading, boardFault]);
 
   /* The search PICKS a name (it is a board, not a filter); the board scrolls the picked row into view */
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -182,21 +225,31 @@ const NetFlow = () => {
   return (
     <TraceBox
       title="Which way the money leans"
-      sub="Every name ranked most bullish to most bearish by net premium — net calls less net puts · click a name and its session goes on the pane"
+      sub={`The vendor's most bullish and most bearish names, ranked by ${dayPos()} net premium — net calls less net puts, a vendor total with spread legs and floor packages in it · click a name and its session goes on the pane`}
       testId="net-flow"
       className="md:flex-1 md:min-h-0"
-      data={{ picked: sel, names: leaders.length, expiry: expiry ?? 'all' }}
+      data={{ picked: sel, names: leaders.length }}
       guide={{ title: 'How to read the board', door: 'What the board, the lines and the floor mean', body: <NetFlowGuide />, testId: 'net-flow-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
         <>
-          <Fact label="Net across the board" testId="net">
-            <Lean v={facts.total} />
+          <Fact label="Market net · every name" testId="net" title={session === 'regular' ? "The vendor's market tide: every name's net call premium less its net put premium over the regular session, 09:30–16:15 ET (the tide's running figure at the close less its figure before the bell). A vendor total: it includes spread legs and floor packages" : "The vendor's market tide, outside the regular session only (Extended hours on the Session card): every name's net call premium less its net put premium over the tide's minutes before 09:30 plus its minutes from the 16:15 close — the session itself is not in it. A vendor total: it includes spread legs and floor packages"}>
+            {market && market.none ? (
+              <span className="text-textMuted">none outside the session</span>
+            ) : market ? (
+              <>
+                {session === 'regular' ? <Lean v={market.net} /> : <span className="tnum text-textPrimary">{signed(market.net)}</span>} <span className="text-textSecondary">· {market.day && !isLiveDay(market.day) ? `${shortDay(market.day)} ` : ''}{market.span} ET</span>
+              </>
+            ) : (
+              <span className="text-textMuted">{tide.waiting ? '…' : '—'}</span>
+            )}
           </Fact>
-          <Fact label="Bullish names · bearish names" testId="sides" title="The bullish names' net premium against the bearish names' — each name's figure is its own net, call premium minus put premium">
-            <Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} put className="font-normal" />
+          <Fact label="The board · bullish · bearish · whole day" testId="sides" title={`The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market. ${VENDOR_TOTAL_NOTE}`}>
+            {/* the bearish names' sum is a sum of names' NET premium, below zero — bearish, red (audit round 5: it wore the
+                put-premium ink and read bullish green) */}
+            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <><Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" /></>}
           </Fact>
           <Fact label="Names" testId="names">
-            {leaders.length} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span>
+            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <>{leaders.length} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span></>}
           </Fact>
           {facts.hasVol && (
             <Fact label="Contracts traded" testId="volume" title="Volume across the board, and how many contracts carried it">
@@ -208,44 +261,32 @@ const NetFlow = () => {
               {facts.busiest.ticker} · {num(facts.busiest.volume)} vol
             </Champion>
           )}
-          {facts.top && facts.bottom && !facts.topIsChamp && (
-            <Champion label="Most bullish" ink="bull" title="Put this name on the pane" onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
-              {facts.top.ticker} · {signed(facts.top.net)}
+          {/* the two ends of the board, each named for what it is; the larger of the two wears the magenta */}
+          {facts.top && facts.top.net > 0 && (
+            <Champion label="Most bullish" ink={champ === facts.top ? 'supreme' : 'bull'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
+              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : shortDay(tapeSessionIso())}, whole day, pre-market in</span>
             </Champion>
           )}
-          {facts.top && facts.bottom && facts.topIsChamp && (
-            <Champion label="Most bearish" ink="bear" title="Put this name on the pane" onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
-              {facts.bottom.ticker} · {signed(facts.bottom.net)}
-            </Champion>
-          )}
-          {champ && (
-            <Champion label="Largest lean" ink="supreme" title="Put this name on the pane" onOpen={() => onQuery(champ.ticker)} testId="largest">
-              {champ.ticker} · {signed(champ.net)}
+          {facts.bottom && facts.bottom.net < 0 && (
+            <Champion label="Most bearish" ink={champ === facts.bottom ? 'supreme' : 'bear'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
+              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : shortDay(tapeSessionIso())}, whole day, pre-market in</span>
             </Champion>
           )}
         </>
       }
       controls={
         <>
-          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
-          <StaleMark at={top.at} ttlMs={FLOW_TTL_MS} fault={top.fault} />
-          <span className="inline-flex rounded-xs border border-borderSubtle overflow-hidden" data-tide-kind>
-            {(['market', 'sector', 'etf'] as const).map(k => (
-              <button key={k} type="button" aria-pressed={tideKind === k} onClick={() => setTideKind(k)} className={`relative px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${tideKind === k ? 'bg-chip text-textPrimary' : 'text-textSecondary'}`}>
-                {tideKind === k && <span aria-hidden className="absolute inset-x-0 top-0 h-px bg-silver/70" />}
-                {k}
-              </button>
-            ))}
-          </span>
+          <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
+          {/* the board is a per-minute series read every 15s; paused is held, not stale */}
+          {!hold.paused && <StaleMark at={top.at} ttlMs={45_000} fault={top.fault} />}
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
             {unknown && (
               <span role="status" className="text-[11px] text-textSecondary" data-net-unknown>
-                No contracts for {query} today — the pane keeps {sel}
+                "{query}" is not a ticker — the pane keeps {sel}
               </span>
             )}
           </span>
-          <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="Only contracts on one expiry — or every expiry" testId="net-flow-expiry" />
         </>
       }
       sentence={read}
@@ -255,9 +296,17 @@ const NetFlow = () => {
       <div className="flex max-md:flex-col md:flex-1 md:min-h-0 border-t border-borderSubtle">
         {/* THE BOARD — most bullish at the top, most bearish at the floor */}
         <div ref={boardRef} className="md:w-[304px] shrink-0 md:border-r max-md:border-b max-md:max-h-[306px] border-borderSubtle overflow-y-auto" data-net-board>
+          {/* THE COLUMNS SAY THEMSELVES (the retail pass: "2%", "1%" with no word) */}
+          {leaders.length > 0 && (
+            <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
+              <span className="w-5">#</span>
+              <span className="flex-1">Name · share of the board's lean</span>
+              <span title={`The vendor's own ranking (top net impact) — each name's whole day, pre-market included; the pane beside it, Compare's net and Intervals read the regular session only (09:30 on), so a name's figure there can differ. ${VENDOR_TOTAL_NOTE}`}>Day net · pre-mkt in</span>
+            </div>
+          )}
           {leaders.length === 0 && (
             <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-board-empty>
-              {top.fault ? 'This read did not land' : 'No name has leaned yet today'}
+              {boardReading ? 'Reading the board…' : top.fault ? 'This read did not land' : `No name has leaned yet ${dayAdv()}`}
             </p>
           )}
           {leaders.map((l, i) => {
@@ -276,7 +325,7 @@ const NetFlow = () => {
                   <CompanyLogo ticker={l.ticker} size={15} />
                   <span className="font-mono text-[11px] font-bold text-textPrimary">{l.ticker}</span>
                   {/* the name's share of the board's gross lean */}
-                  <span className="font-mono text-[11px] tnum text-textSecondary" title="This name's share of the board's whole lean">
+                  <span className="font-mono text-[11px] tnum text-textSecondary cursor-help" title={`${l.ticker}'s share of the board's gross lean: its net premium (${signed(l.net)}) against the sum of every board name's net, signs dropped (${fmtUsd(facts.gross)})`}>
                     {Math.round((Math.abs(l.net) / facts.gross) * 100)}%
                   </span>
                   <span className={`ml-auto font-mono text-[11px] tabular-nums ${directionInk(l.net, netMarks)}`}><TickFigure value={l.net}>{fmtUsd(l.net)}</TickFigure></span>
@@ -286,7 +335,7 @@ const NetFlow = () => {
                     <span className={`absolute left-0 top-0 h-full ${l.net >= 0 ? 'bg-bull/60' : 'bg-bear/60'}`} style={{ width: `${Math.round((Math.abs(l.net) / maxAbs) * 100)}%` }} />
                   </span>
                   {facts.hasVol ? (
-                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${l.count} contracts traded on ${l.ticker} today`}>
+                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${l.count} contracts traded on ${l.ticker} ${dayAdv()}`}>
                       C {fmtUsd(l.netCall)} · P {fmtUsd(l.netPut)} · {num(l.volume)} vol · {l.count} cons
                     </span>
                   ) : (
@@ -299,6 +348,11 @@ const NetFlow = () => {
         </div>
         {/* THE PANE — the picked name's session */}
         <div className="flex-1 min-w-0 p-2 max-md:h-[460px] max-md:flex-none">
+          {sel == null ? (
+            <p className="px-4 py-6 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-net-pane-waiting>
+              Reading the board — the pane opens on its first name
+            </p>
+          ) : (
           <NetFlowPane
             book={book}
             seg="all"
@@ -310,8 +364,8 @@ const NetFlow = () => {
             tenor={tenor}
             onTenor={setTenor}
             dteMax={Infinity}
-            live={(expiryFlow.rows.length ? expiryFlow.rows : tide.rows).map(p => ({ time: p.time, callPrem: p.callPrem, putPrem: p.putPrem, vol: p.volume, price: p.price }))}
           />
+          )}
           {top.fault && leaders.length === 0 ? <FeedFallback fault={top.fault} /> : null}
         </div>
       </div>

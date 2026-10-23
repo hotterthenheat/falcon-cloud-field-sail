@@ -29,6 +29,7 @@
 ==================================================
 */
 
+import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -45,7 +46,7 @@ import { nextGreekPick, pickGreeks } from '../../components/gex/exposureView';
 import CompareTapes from '../../components/gex/CompareTapes';
 import ComparePair from '../../components/gex/ComparePair';
 import CompareGuide from '../../components/gex/CompareGuide';
-import { CompareAxisInner, ComparePageSkeleton, ComparePairInner, CompareTapesInner } from '../../components/gex/compareSkeletons';
+import { CompareAxisInner, ComparePageSkeleton, ComparePairInner, CompareSideInner, CompareTapesInner } from '../../components/gex/compareSkeletons';
 import { BookOrSkeleton } from './BookDown';
 import { aheadClock } from '../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, type Greek, type Reach } from '../../data/compare';
@@ -53,6 +54,8 @@ import { useDistanceUnit } from '../../data/distanceUnits';
 import { readSessionClock } from '../../data/moc';
 import type { MarketSnapshot } from '../../types/market';
 import type { ExposureExpiry } from '../../types/gex';
+import { LEVELS_OPTIONS, useLevelsScope } from '../../data/levelsScope';
+import { todayScopeLabel } from '../../data/bookWindow';
 import { BOOK_TTL_MS, StaleMark } from '../../components/ui/liveRead';
 
 /** The reads sweep on their own cadence — a comparison must not vibrate with every tick */
@@ -61,7 +64,8 @@ const SCAN_INTERVAL_MS = 10_000;
 const A_INK = 'rgb(var(--text-primary))';
 const B_INK = '#5B9CF6';
 
-const hhmmss = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
 /* WHICH SIDES STAND OPEN beside the ruler (the partner's cut, 2026-10-18): both by rest; remembered, carried */
 const SIDES_KEY = 'slayer_compare_sides';
@@ -126,7 +130,8 @@ const Compare = () => {
        the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
        at once */
     const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
-    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData);
+    /* a book whose dates or contract facts landed (a new uwByDate — uwBook never edits a chain in place) is taken at once */
+    const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData) || scanRef.current.uwByDate !== marketData.uwByDate;
     if (due) {
       scanRef.current = marketData;
       scanAtRef.current = now;
@@ -149,16 +154,25 @@ const Compare = () => {
     }
   };
   /* Which contracts both books weigh — the Map's Expiry card, on the ruler's
-     head (Noah, 2026-09-10: "missing some top buttons") */
-  const [expiry, setExpiry] = useState<ExposureExpiry>('0DTE');
-  const sideA = useMemo(() => {
-    const s = snapOf(aTicker);
-    return s ? buildCompareSide(s, clock, expiry) : null;
-  }, [aTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sideB = useMemo(() => {
-    const s = snapOf(bTicker);
-    return s ? buildCompareSide(s, clock, expiry) : null;
-  }, [bTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
+     head (Noah, 2026-09-10: "missing some top buttons"). IT FOLLOWS THE LEVELS CARD (the ship pass, 2026-10-22: the
+     card said "Today" or "All expiries" while this page sat on its own pick, so QQQ's net GEX here was not the Board's)
+     until the reader picks another expiry here; a change of the Levels card brings it back. Off the card, the page
+     says so under the ruler. */
+  const levelsScope = useLevelsScope();
+  const [expiryPick, setExpiryPick] = useState<ExposureExpiry | null>(null);
+  useEffect(() => setExpiryPick(null), [levelsScope]);
+  const expiry: ExposureExpiry = expiryPick ?? levelsScope;
+  const setExpiry = (e: ExposureExpiry) => setExpiryPick(e === levelsScope ? null : e);
+  /* NOTHING PROVISIONAL (the fourth audit's M1: QQQ read "−$12.1B · put wall 700 · call wall 740 · flip none nearby ·
+     ±$11.25" under "Next session · Oct 23" for 8–15 seconds — the whole book standing in for the front date). A side whose
+     levels are not final is not built: the page keeps its loading state until both are */
+  const finalSide = (s: MarketSnapshot | null) => {
+    if (!s) return null;
+    const side = buildCompareSide(s, clock, expiry);
+    return side && side.levels.complete === false ? null : side;
+  };
+  const sideA = useMemo(() => finalSide(snapOf(aTicker)), [aTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideB = useMemo(() => finalSide(snapOf(bTicker)), [bTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const cmp = useMemo(() => (sideA && sideB ? buildCompare(sideA, sideB, clock) : null), [sideA, sideB, clock]);
 
   const [guideOpen, setGuideOpen] = useState(false);
@@ -188,7 +202,11 @@ const Compare = () => {
      want to compare and not handicap them to 1 or 4") — the lanes drawn are
      the greeks ticked; the reach sums and the Supreme row follow the first */
   const [greekPick, setGreekPick] = useState<string[]>(['gex']);
-  const greeks = useMemo(() => pickGreeks(greekPick), [greekPick]);
+  /* the vendor's books carry no vega — never a $0 VEX lane */
+  const greeks = useMemo(() => {
+    const g = pickGreeks(greekPick).filter(x => x !== 'vex');
+    return g.length ? g : pickGreeks(['gex']);
+  }, [greekPick]);
   const greek: Greek = greeks[0] ?? 'gex';
   /* THE RULER FULLSCREEN (Noah, 2026-09-09): the same box moved to the whole
      viewport, the Map's way — one body, one drawing, nothing remounts. Esc
@@ -216,6 +234,7 @@ const Compare = () => {
      link at all — it cannot follow the frame, that would make it the first. */
   const chipA = (
     <ScopeChip
+      closeOutside
       ticker={aTicker}
       linked={aScope === undefined}
       full
@@ -224,7 +243,7 @@ const Compare = () => {
       onPick={next => (aScope === undefined ? changeTicker(next) : setAScope(next))}
     />
   );
-  const chipB = <ScopeChip ticker={bTicker} quote onPick={next => setB(next)} title="The second name — pick another" />;
+  const chipB = <ScopeChip ticker={bTicker} quote closeOutside onPick={next => setB(next)} title="The second name — pick another" />;
   const onSwap = () => {
     const a = aTicker;
     const b = bTicker;
@@ -233,6 +252,52 @@ const Compare = () => {
     setB(a);
   };
 
+  /* EACH SIDE STANDS ON ITS OWN (the tenth audit's B3: Compare All expiries stayed a whole-page skeleton for 90s while QQQ
+     was ready, waiting on SPY): a side whose levels are final is drawn as soon as they are; the other side, and the ruler
+     that needs both, stand in their skeletons and say whose levels are still being read */
+  const solo = scan && !cmp ? (sideA ? { side: 'a' as const, s: sideA, waiting: bTicker } : sideB ? { side: 'b' as const, s: sideB, waiting: aTicker } : null) : null;
+  if (scan && solo && peekEntry(solo.waiting)?.status !== 'error') {
+    const self = buildCompare(solo.s, solo.s, clock);
+    const panel = (stacked: boolean) => (
+      <CompareSidePanel stacked={stacked} side={solo.side} s={solo.s} cmp={self} unit={unit} greek={greek} greeks={greeks} chip={solo.side === 'a' ? chipA : chipB} focus={solo.side === 'a' ? focusA : focusB} onPick={onPick} open={stacked ? true : sides[solo.side]} onToggle={stacked ? () => undefined : () => toggleSide(solo.side)} />
+    );
+    const waitSide = solo.side === 'a' ? 'b' : 'a';
+    return (
+      <>
+        <div className="relative border border-borderSubtle rounded-md bg-panel" data-compare-ruler data-compare-solo={solo.s.ticker}>
+          <div className="flex items-stretch min-w-0" data-compare-shell data-a={aTicker} data-b={bTicker}>
+            {!belowLg && (solo.side === 'a' ? panel(false) : <CompareSideInner side="a" />)}
+            <div className="flex-1 min-w-0" data-compare-middle>
+              <CompareAxisInner />
+            </div>
+            {!belowLg && (solo.side === 'b' ? panel(false) : <CompareSideInner side="b" />)}
+          </div>
+          <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
+            <p className="min-w-[min(18rem,100%)] flex-1 text-[12px] leading-relaxed text-textSecondary" data-compare-waiting={solo.waiting}>
+              Still reading {solo.waiting}'s levels — {solo.s.ticker}'s are in; the ruler draws both once {solo.waiting}'s contracts have landed.
+            </p>
+          </div>
+          {belowLg && (
+            <div className="grid grid-cols-1 gap-2 p-2 border-t border-borderSubtle/60" data-compare-stacked>
+              {solo.side === 'a' ? panel(true) : null}
+              <CompareSideInner side={waitSide} />
+              {solo.side === 'b' ? panel(true) : null}
+            </div>
+          )}
+        </div>
+        <div className="border border-borderSubtle rounded-md bg-panel" data-compare-tapes>
+          <Deferred index={1} fallback={<CompareTapesInner />} className="animate-fade-in">
+            <CompareTapes a={aTicker} b={bTicker} aInk={A_INK} bInk={B_INK} revision={revision} />
+          </Deferred>
+        </div>
+        <div className="border border-borderSubtle rounded-md bg-panel" data-compare-pair-box>
+          <Deferred index={2} fallback={<ComparePairInner />} className="animate-fade-in">
+            <ComparePair a={aTicker} b={bTicker} aInk={A_INK} bInk={B_INK} nonce={nonce} guideOpen={guideOpen} onGuide={() => setGuideOpen(v => !v)} />
+          </Deferred>
+        </div>
+      </>
+    );
+  }
   if (!scan || !cmp) return <BookOrSkeleton tickers={[aTicker, bTicker]}><ComparePageSkeleton /></BookOrSkeleton>;
 
   const aBook = peekEntry(aTicker);
@@ -262,9 +327,20 @@ const Compare = () => {
           </div>
           {!belowLg && <CompareSidePanel side="b" s={cmp.b} cmp={cmp} unit={unit} greek={greek} greeks={greeks} chip={chipB} focus={focusB} onPick={onPick} open={sides.b} onToggle={() => toggleSide('b')} full={rulerFull} />}
         </div>
+        {expiry !== levelsScope && (
+          <div className="shrink-0 px-5 py-2 border-t border-borderSubtle/60 flex items-center gap-3 flex-wrap text-[11px] text-textSecondary" data-compare-off-scope>
+            <span>
+              This page is reading a different expiry from the Levels card ({levelsScope === '0DTE' ? todayScopeLabel() : LEVELS_OPTIONS.find(o => o.value === levelsScope)?.label}), so its walls, flip, supreme and net GEX can differ from the Board and the Map.
+            </span>
+            <button type="button" onClick={() => setExpiryPick(null)} className="min-h-10 px-2 font-mono text-[10px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors">
+              Back to the Levels card
+            </button>
+          </div>
+        )}
         {/* THE SENTENCE — what the two say against each other, once, under the ruler (the old table's verdicts) */}
         <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
-          <p className="min-w-0 flex-1 text-[12px] leading-relaxed text-textSecondary">{cmp.sentence}</p>
+          {/* a floor, so on a phone the doors wrap under the sentence instead of squeezing it to two words a line */}
+          <p className="min-w-[min(18rem,100%)] flex-1 text-[12px] leading-relaxed text-textSecondary">{cmp.sentence}</p>
           <span className="shrink-0 flex items-center gap-3">
             <button type="button" onClick={onSwap} className="font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors" title="Swap the two names" data-compare-swap>
               swap
