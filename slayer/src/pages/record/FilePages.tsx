@@ -240,9 +240,10 @@ export const Institutions = () => {
         field: 'filedDaysAgo',
         width: 126,
         cellRenderer: InstFiled,
-        sort: 'asc',
-        /* newest filing first, the bigger line first within a filing — one sort, so the head carries no "1" and "2" */
-        comparator: (a: number, b: number, na: IRowNode<InstitutionRow>, nb: IRowNode<InstitutionRow>) => a - b || (nb.data?.valueB ?? 0) - (na.data?.valueB ?? 0),
+        sort: 'desc',
+        /* newest filing first, the bigger line first within a filing — one sort, so the head carries no "1" and "2"; by
+           recency descending, so the arrow reads ↓ for newest first (the retail test, round 7) */
+        comparator: (a: number, b: number, na: IRowNode<InstitutionRow>, nb: IRowNode<InstitutionRow>) => b - a || (na.data?.valueB ?? 0) - (nb.data?.valueB ?? 0),
         headerTooltip: 'The day the 13F was filed, and how far back that is',
       },
       { headerName: 'House', field: 'name', flex: 1.2, minWidth: 140, cellRenderer: InstHouse, headerTooltip: 'The filer' },

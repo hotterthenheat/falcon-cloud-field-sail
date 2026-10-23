@@ -228,8 +228,9 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
           trendWord = 'steady';
           trend = `about where it was before ${oiWords?.trade ?? 'the overnight count'}`;
         } else {
-          trendFig = `${size > 0 ? '+' : '−'}${fmtUsdShort(Math.abs(size))}`;
-          trendWord = size > 0 ? `added${oiWords?.day ? ` ${oiWords.day}` : ' overnight'}` : `taken off${oiWords?.day ? ` ${oiWords.day}` : ' overnight'}`;
+          /* the wall's size in words, no sign beside a signed net (the seventh audit: "−$171M" read as the net falling) */
+          trendFig = `${size > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(size))}`;
+          trendWord = oiWords?.day ? oiWords.day : 'overnight';
           trend = `${trendFig} ${trendWord}`;
         }
       }

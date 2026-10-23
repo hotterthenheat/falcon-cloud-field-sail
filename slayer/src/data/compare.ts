@@ -24,10 +24,10 @@
 import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot } from './uwBook';
 import { scopeSigma } from './wall';
 import { UNIVERSE } from './universe';
-import { SESSION_MIN, buildCloseOdds, type AheadClock } from './ahead';
+import { SESSION_MIN, type AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
 import { impliedDaySigma, sessionAtr, type DistanceScales, type DistanceUnit } from './atr';
-import { netGexOf, retailNet, watchOf, type BoardRow } from './board';
+import { deskAgenda, netGexOf, retailNet, watchSurface, type BoardRow } from './board';
 import { buildExposureProfile } from './exposure';
 import { buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from './exposureSurface';
 import { buildFlipGauge, type GammaRegime } from './flipGauge';
@@ -126,7 +126,10 @@ export interface CompareSide {
   bellWhy: 'none' | 'wait' | null;
   watch: BoardRow['watch'];
   /** The most likely close, and its odds in percent */
+  /** The close's lean — the desk agenda's (data/agenda.ts closesNear: only past LEAN_MIN) */
   closes: { strike: number; odds: number } | null;
+  /** The best single strike's odds even when it is no lean */
+  closeTop: { strike: number; odds: number } | null;
   /* THE BOOK'S READ FOR TWO NAMES (2026-10-17 — Head to head is the read card laid out for two): what the card prints */
   /** The snapshot the side was built from — the windows' history is read off it (data/replay.ts) */
   snapshot: MarketSnapshot;
@@ -250,9 +253,12 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     /* no surface for this name yet */
   }
   const bars = sessionBars(ticker) ?? [];
-  const watch = watchOf(snapshot, expiry, clock);
-  const close = buildCloseOdds(profile, spot, sigmaLeft, clock);
-  const top = close.top[0];
+  /* THE LIKELIEST CLOSE IS THE DESK AGENDA'S (the seventh audit's m4: Compare said "764 · 9% of the time" while the Agenda
+     said "no clear lean" and listed 765 at 8%) — the same build, the same expected move, and the same LEAN_MIN before a
+     strike is called the close's lean */
+  const agenda = deskAgenda(snapshot, expiry, clock, 'matters', watchSurface(snapshot));
+  const lead = agenda?.first[0];
+  const watch: BoardRow['watch'] = lead ? { strike: lead.strike, role: lead.role, roles: lead.roles, isShelf: lead.isShelf, isWall: lead.isWall, reach: lead.reach, hold: lead.hold, stake: lead.stake, horizon: lead.horizon } : null;
 
   return {
     ticker,
@@ -277,7 +283,8 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     bellShare: bell.share,
     bellWhy: bell.share == null ? bell.why : null,
     watch,
-    closes: top ? { strike: top.strike, odds: top.odds } : null,
+    closes: agenda?.closesNear ?? null,
+    closeTop: agenda?.closeTop ?? null,
     snapshot,
     strikes: profile.strikes,
     maxAbs: profile.maxAbs,

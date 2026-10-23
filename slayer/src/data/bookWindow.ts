@@ -123,8 +123,11 @@ export function levelsBook(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): Mar
   if (!snapshot.liveBook || !ch) return snapshot;
   const pick = scope === 'ALL' ? ch.ALL : ch['0DTE']?.length ? ch['0DTE'] : ch.ALL;
   if (!pick?.length) return snapshot;
-  if (snapshot.chain === pick && ch['0DTE'] === pick) return snapshot;
-  return { ...snapshot, chain: pick, uwChains: { ...ch, '0DTE': pick } };
+  /* "Today" before its own chain is in: the whole book stands in, and says it is a stand-in — nothing is drawn off it
+     (the seventh audit's retail blocker: the Map marked SPY's All-expiries 765 / 760 and its move under "Today") */
+  const pending = scope === '0DTE' && !ch['0DTE']?.length;
+  if (snapshot.chain === pick && ch['0DTE'] === pick && !!snapshot.levelsPending === pending) return snapshot;
+  return { ...snapshot, chain: pick, uwChains: { ...ch, '0DTE': pick }, levelsPending: pending || undefined };
 }
 
 /** The date the "Today" scope reads (null for the whole book, or before the dates are in) */
@@ -200,7 +203,7 @@ export function levelsWords(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE', tod
   if (scope === 'ALL') return 'All expiries';
   const d = levelsDate(snapshot, scope);
   /* today's own chain is not in yet: the levels are the whole book's until it lands — say so */
-  if (!d) return 'All expiries · today loading';
+  if (!d) return `${todayScopeLabel()} · loading`;
   const span = expirySpan([d]) ?? d;
   const word = dayWordOf(d);
   void today;

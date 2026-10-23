@@ -36,7 +36,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import RichRead from '../../components/ui/RichRead';
 import ScopeChip from '../../components/ui/ScopeChip';
-import { daysFromToday, isLiveDay, oiInWords, sameDayWords, shortDay } from '../../components/trace/dayWords';
+import { daysFromToday, isLiveDay, nextCountDay, oiInWords, sameDayWords, shortDay } from '../../components/trace/dayWords';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import LeanCell from '../../components/trace/LeanCell';
@@ -471,7 +471,7 @@ const Compare = () => {
   const oiDayTitle = (() => {
     const da = a.interest.day;
     const db = b.interest.day;
-    const pend = a.interest.pending && b.interest.pending && isLiveDay(todayIso) ? " (today's build is counted tomorrow morning)" : '';
+    const pend = a.interest.pending && b.interest.pending && isLiveDay(todayIso) ? ` (today's build is counted the morning of ${nextCountDay(todayIso)})` : '';
     const lag = a.interest.lagging + b.interest.lagging;
     const lagWords = lag ? ` · ${num(lag)} contract${lag === 1 ? '' : 's'} still on the count before left out` : '';
     if (da && db && da !== db) return `${a.ticker} ${oiInWords(da)}, ${b.ticker} ${oiInWords(db)}${lagWords}`;
@@ -931,9 +931,11 @@ const Compare = () => {
       controls={
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
+          {/* (round 7: the first chip's chevron wrapped onto a line of its own at 390 — the pre-market / after-hours move, the
+              chip's third figure, is left off on a phone; the hover still says it) */}
           {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13); a chip wider than
               the row (a name's last-session change and its pre-market move) wraps inside itself rather than run off the card */}
-          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&>[data-scope]]:shrink-0 max-sm:[&>[data-scope]]:shrink max-sm:[&>[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&>[data-scope]]:h-auto max-sm:[&>[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1" data-compare-names>
+          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&>[data-scope]]:shrink-0 max-sm:[&>[data-scope]]:shrink max-sm:[&>[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&>[data-scope]]:h-auto max-sm:[&>[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1 max-sm:[&_[data-scope-ext]]:hidden" data-compare-names>
             <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">A</span>
             {/* The two chips wear the same clothes (Noah, 2026-09-09): the first in the full following look
                 with its silver link, the second its own name with no link at all */}

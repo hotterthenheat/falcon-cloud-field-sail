@@ -35,7 +35,7 @@ import { DayHeadSlot } from './DayBox';
 import { AreaSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type IPriceLine, type ISeriesApi, type LineData, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
 import { Bell, BellRing, ChevronDown } from 'lucide-react';
 import { roomLevels } from '../../data/roomLevels';
-import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
+import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, peekScopeMove, useBookRev } from '../../data/uwBook';
 import { scopeDateOf } from '../../data/wall';
 import { pickFlip } from '../../core/walls';
 import { readSessionClock } from '../../data/moc';
@@ -154,7 +154,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the tags here are the
          band's tags (the re-audit's H6) */
       const l = roomLevels(snapshot, levelsScope);
-      if (!l) return [];
+      /* NOTHING DRAWN OFF A PROVISIONAL BOOK (the seventh audit's retail blocker: SPY's Map marked the All-expiries 765
+         and 760 under "Today" while Today's chain loaded): no line, no chip, until the scope's levels are final */
+      if (!l || (snapshot.liveBook && (l.complete === false || snapshot.levelsPending))) return [];
       const all: Level[] = [
         { key: 'callWall', word: 'Call wall', ink: CALL_WALL, price: l.callWall },
         /* no crossing within ±10% is no flip — no line is drawn at a placeholder */
@@ -234,13 +236,16 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
      peekDaySigma — Compare's and the reach odds'), over the minutes left; the name's vol only when the vendor has none */
   const iv = peekIv(snapshot.ticker) ?? 0.2;
   const minLeft = Math.max(0, CLOSE_MIN - nowMin);
-  const daySigma = snapshot.liveBook ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
+  /* …and no expected move off it either (the same blocker: "ONE MOVE today ±4.12" read off the 30-day vol, later ±4.74 —
+     the vendor's own implied move): "…" until the levels' scope is final and the vendor's term structure is in */
+  const movePending = !!snapshot.liveBook && (!!snapshot.levelsPending || roomLevels(snapshot, '0DTE')?.complete === false || peekScopeMove(snapshot.ticker, scopeDateOf(snapshot))?.source === 'iv30');
+  const daySigma = snapshot.liveBook && !movePending ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
   const w1 = daySigma != null ? daySigma * Math.sqrt(Math.min(minLeft, SESSION_MIN) / SESSION_MIN) : spot * iv * Math.sqrt(minLeft / YEAR_MINUTES);
   /* ONE PHASE VOCABULARY (the sixth audit's m8: "closed" here, "The next session" on the Read, "Today" on the Levels
      card, all before Friday's open): outside the session the move is the coming session's — "today" before a trading
      day's open, "next session" after its close (bookWindow todayScopeLabel, the Levels card's own word) */
   const aheadWord = todayScopeLabel() === 'Today' ? 'today' : 'next session';
-  const shutMove = daySigma != null ? `${aheadWord} ±${daySigma.toFixed(2)}` : aheadWord;
+  const shutMove = movePending ? `${aheadWord} …` : daySigma != null ? `${aheadWord} ±${daySigma.toFixed(2)}` : aheadWord;
   const dayStart = bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
   /* THE THERMAL FIELD (thermalFieldPrimitive.ts): where price is likelier to be from now to the close, by the Ahead
      model's corridor (data/ahead.ts) — the odds curve's centre pulled by the strikes, one and two expected moves round
@@ -255,7 +260,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   }, [snapshot]);
   const fieldEnd = Math.min(CLOSE_MIN, TO);
   const fieldPoints = useMemo<FieldPoint[]>(() => {
-    if (!profile || minLeft <= 0 || !bars.length || fieldEnd <= nowMin) return [];
+    if (!profile || movePending || minLeft <= 0 || !bars.length || fieldEnd <= nowMin) return [];
     const clock: AheadClock = { ...aheadClock(readSessionClock()), nowMin, inSession: true, minutesLeft: Math.max(1, CLOSE_MIN - nowMin) };
     /* the corridor runs from the tape's own last close, the figure the line ends on */
     const cone = buildCorridor({ ...snapshot, spot }, profile, iv, clock).cone;
@@ -350,7 +355,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       bottomColor: alpha(s.ink, 0.01),
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: true,
+      /* ONE PRICE (the retail test, 2026-10-23: the scale's tag read 763.97 — the last cash bar's close — beside "Last
+         763.96", the regular close): the scale's tag is the price the box prints, drawn below as its own line */
+      lastValueVisible: false,
       crosshairMarkerRadius: 3,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
       autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
@@ -516,8 +523,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     const pin = levels.find(l => l.key === 'pin');
     if (pin && Number.isFinite(pin.price)) linesRef.current.push(series.createPriceLine({ price: pin.price, color: alpha(resolveInk(pin.ink, host), 0.7), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'Pin' }));
     if (focus != null) linesRef.current.push(series.createPriceLine({ price: focus, color: resolveInk(SILVER, host), lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: 'Kept' }));
+    if (Number.isFinite(last) && last > 0) linesRef.current.push(series.createPriceLine({ price: last, color: resolveInk(INK_3, host), lineWidth: 1, lineStyle: LineStyle.Solid, lineVisible: false, axisLabelVisible: true, title: '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupsKey, focus, paper, part, open]);
+  }, [groupsKey, focus, paper, part, open, last]);
 
   /* THE KEPT STRIKE OFF THE SCALE (the owner, 2026-10-14, after a walk as a user: 463 kept, seven points up, and the tape
      showed nothing — no line, no chip, no word, under a note that had promised "every box"): the scale holds a kept strike
@@ -626,7 +634,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             {session.lo.toFixed(2)} – {session.hi.toFixed(2)}
           </PartFact>
           <PartFact label="One move" title="One expected move from here to the close, on the name's vol — the thermal field's width; outside the session, the coming session's whole move">
-            <span data-tape-move={w1.toFixed(2)}>{minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} min left` : shutMove}</span>
+            <span data-tape-move={movePending ? undefined : w1.toFixed(2)}>{movePending ? '…' : minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} min left` : shutMove}</span>
           </PartFact>
         </>
       )}
@@ -678,8 +686,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             </div>
             <div>
               <dt className="text-[11px] text-textMuted">One move to the close</dt>
-              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-move={w1.toFixed(2)}>
-                {minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} ${minLeft === 1 ? 'minute' : 'minutes'} left` : shutMove}
+              <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-move={movePending ? undefined : w1.toFixed(2)}>
+                {movePending ? '…' : minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} ${minLeft === 1 ? 'minute' : 'minutes'} left` : shutMove}
               </dd>
             </div>
           </dl>
@@ -700,6 +708,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
               if (levelHot && !overCard.current) onPick(levelHot.price);
             }}
             data-tape-plot
+            data-tape-levels={groupsKey || undefined}
           >
             <div ref={hostRef} className="absolute inset-0" data-tape-chart />
             {/* the pointer's minute — Compare's glass, beside the point it reads */}

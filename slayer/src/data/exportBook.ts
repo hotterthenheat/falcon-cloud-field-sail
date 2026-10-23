@@ -52,7 +52,8 @@ export function levelsJson(surface: ExposureSurface, scope: LevelsScope, source:
       readAtEt: nyStamp(Date.now(), { seconds: true, zone: true }),
       source,
       levelsReadOff: scope === 'ALL' ? 'all listed expiries' : "today's contracts (0DTE)",
-      levels: { callWall: num(l.callWall), putWall: num(l.putWall), flip: num(l.flip), pin: num(l.pin), supreme: num(l.supreme) },
+      /* the one order (core/walls.ts LEVEL_ORDER): supreme, call wall, put wall, flip — then the pin */
+      levels: { supreme: num(l.supreme), callWall: num(l.callWall), putWall: num(l.putWall), flip: num(l.flip), pin: num(l.pin) },
       supremeByGreek: Object.fromEntries(Object.entries(surface.supreme).map(([g, s]) => [g, { strike: s.strike, total: Math.round(g === 'gex' ? -s.total : s.total), heaviestDate: surface.expiries[s.e]?.date ?? null }])),
       expiries: surface.expiries.map(e => ({ date: e.date, dte: e.dte, atmIv: e.iv })),
     },

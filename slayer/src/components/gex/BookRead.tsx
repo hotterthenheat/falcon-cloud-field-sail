@@ -293,7 +293,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   return (
     <aside
       ref={asideRef}
-      className={`absolute inset-y-0 right-0 z-20 flex flex-col bg-card/85 backdrop-blur-md backdrop-saturate-150 animate-soft-in transition-opacity duration-200 motion-reduce:transition-none ${
+      className={`absolute inset-y-0 right-0 z-20 flex flex-col bg-card/[0.97] backdrop-blur-md backdrop-saturate-150 animate-soft-in transition-opacity duration-200 motion-reduce:transition-none ${
         /* 460, the guide cards' width: at 400 the rail's five names wrapped inside their buttons and the head cut its
            own words (the audit's H6, 2026-10-13) */
         whole ? 'w-full' : 'w-[460px] max-w-[62%] border-l border-borderMuted shadow-[-16px_0_48px_rgba(0,0,0,0.45)]'
@@ -303,9 +303,11 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
       data-read-fill={whole || undefined}
     >
       {/* THE HEAD — whose read, in which greek, over which window */}
-      <div className="shrink-0 flex items-center gap-2 px-3.5 h-10 border-b border-borderSubtle/70 min-w-0">
+      {/* THE HEAD WRAPS, NEVER CUTS (the seventh audit's retail finding: "SPY GEX · 8 EXPI…", the rows showing through the
+          glass under it): the window's words go to a second line when the buttons need the room, and the panel is opaque */}
+      <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 py-2 min-h-10 border-b border-borderSubtle/70 min-w-0 bg-card">
         <span className="font-mono text-[11px] font-bold text-textPrimary">{surface.ticker}</span>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted truncate">{label} · {shownIdx.length === 1 ? surface.expiries[shownIdx[0]]?.date : `${shownIdx.length} expiries`}</span>
+        <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted min-w-0" data-read-head-window>{label} · {shownIdx.length === 1 ? surface.expiries[shownIdx[0]]?.date : `${shownIdx.length} expiries`}</span>
         <span className="ml-auto shrink-0 inline-flex items-center gap-0.5" role="group" aria-label="Window" data-read-window>
           {WINDOWS.map(w => {
             const on = w.key === win;

@@ -29,9 +29,9 @@ import { buildExposureProfile } from './exposure';
 import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface } from './exposureSurface';
 import { buildFlipGauge, sessionFlipCrossings } from './flipGauge';
 import { getBoardNames } from './boardNames';
-import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, ensureScopeDates, scopeDatesPending } from './uwBook';
+import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
 import { readLevelsScope } from './levelsScope';
-import { levelsBook } from './bookWindow';
+import { levelsBook, recordDay } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
 import { levelsFor } from './levelsFor';
 import { readSessionClock } from './moc';
@@ -53,6 +53,8 @@ export interface BoardRow {
   crossLabel: string;
   /** The flip today's session ran against (may differ from `flip` after the close, which is the next session's) */
   crossFlip: number | null;
+  /** The count's book is still loading — the cell says "…", not "not available" (the seventh audit's m1) */
+  crossPending: boolean;
   regime: 'LONG' | 'SHORT' | null;
   flip: number | null;
   /** Signed distance from spot to the flip, percent (+ = the flip is overhead) */
@@ -222,6 +224,9 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
      morning list across every name (2026-09-08). ~2ms a name. */
   const watch = watchOf(snapshot, readLevelsScope(), aheadClock(readSessionClock()));
   const cross = sessionFlipCrossings(snapshot, readLevelsScope());
+  /* "not available" only once the session's own book has been asked for and is not there; until then, and while the
+     count's flip is still provisional, the cell waits */
+  const crossPending = (!!cross.why && !peekRecordAsked(ticker, recordDay().date)) || (!cross.why && !cross.complete);
 
   /* PENDING UNTIL THE SCOPE'S CONTRACTS ARE IN: "Today" needs the front date's strikes and its contract rows (the flip
      re-prices each with its own vol); "All expiries" needs every live date's strikes */
@@ -244,8 +249,9 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
     regime: pending ? null : lv ? lv.regime : gauge.regime,
     flip: pending ? null : flip,
     flipDistPct: pending || flip == null || !(spot > 0) ? null : ((flip - spot) / spot) * 100,
-    crossings: pending ? null : cross.crossings,
-    crossWhy: cross.why,
+    crossings: pending || crossPending ? null : cross.crossings,
+    crossWhy: crossPending ? null : cross.why,
+    crossPending,
     crossLabel: cross.label,
     crossFlip: cross.flip,
     callWall,

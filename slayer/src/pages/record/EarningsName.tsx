@@ -51,7 +51,7 @@ import { dollars3 as fmtDollars } from './money';
 import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
-import { MIN_PRICED_PRINTS, reportedNow, useLiveDossier } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, reportedNow, useLiveDossier, useWireCheck } from '../../data/earningsFeed';
 import { useStockCard } from '../../data/liveFiles';
 import { FUND_TYPES } from '../../data/liveFiles';
 import { type ActiveContract, type EarningsDossier } from '../../data/earnings';
@@ -294,9 +294,9 @@ const ActiveRow = ({ c, maxVol, onOpen, onWarm }: { c: ActiveContract; maxVol: n
       </span>
     </div>
     <span className="font-mono text-[10px] text-textMuted tnum">
-      {c.fromSpotPct === 0 ? 'at the money' : `${c.fromSpotPct > 0 ? '+' : c.fromSpotPct < 0 ? '−' : ''}${Math.abs(c.fromSpotPct)}% from spot`} ·{' '}
+      {c.fromSpotPct === 0 ? 'at the money' : `${c.fromSpotPct > 0 ? '+' : c.fromSpotPct < 0 ? '−' : ''}${Math.abs(c.fromSpotPct)}% from ${c.spotWord ?? 'spot'}`} ·{' '}
       {/* already through its breakeven at today's price (the $385 put on a $373.63 TSLA) — not "breaks even −0%" */}
-      {c.breakevenPct > 0 ? `breaks even ${c.right === 'CALL' ? '+' : '−'}${c.breakevenPct}% by expiry` : 'past its breakeven at today\'s price'}
+      {c.breakevenPct > 0 ? `breaks even ${c.right === 'CALL' ? '+' : '−'}${c.breakevenPct}% by expiry` : `past its breakeven at ${c.spotWord ?? "today's price"}`}
     </span>
   </button>
 );
@@ -311,6 +311,7 @@ const EarningsName = () => {
   const fromDesk = (location.state as { from?: string } | null)?.from === 'desk';
   const T = ticker.toUpperCase();
   const liveFile = useLiveDossier(T);
+  useWireCheck(T, liveFile.dossier?.event.iso, liveFile.dossier?.event.slot);
   const dossier = liveFile.status === 'live' ? liveFile.dossier : null;
   /* A busiest row → the Weigher with THE contract picked, this page as the way back */
   const weigh = (c: ActiveContract) =>

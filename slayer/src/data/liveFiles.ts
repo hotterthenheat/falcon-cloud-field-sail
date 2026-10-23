@@ -104,6 +104,8 @@ interface Snap {
   holdingsCover: Record<string, { lines: number; weight: number; fundCount: number | null }>;
   /** Each house's whole 13F value as Unusual Whales totals it, dollars — the grid shows the top lines only */
   houseTotals: Record<string, number>;
+  /** Each house's whole-13F call and put values, dollars, as Unusual Whales totals them (call_value, put_value) */
+  houseOptions: Record<string, { calls: number; puts: number }>;
   stockStatus: FileStatus;
   stocks: StockPick[];
   tide: TidePrint | null;
@@ -121,6 +123,7 @@ const empty: Snap = {
   holdings: {},
   holdingsCover: {},
   houseTotals: {},
+  houseOptions: {},
   stockStatus: 'loading',
   stocks: [],
   tide: null,
@@ -237,6 +240,19 @@ function rowFromHolding(house: string, filed: string, h: UwHolding): Institution
   const book = bookOf(h);
   const sec = typeof h.security_type === 'string' ? h.security_type.trim() : '';
   const security = sec && !/^share/i.test(sec) ? sec : undefined;
+  /* A FIRST BUY THE FILING ITSELF CONTRADICTS IS NOT SHOWN (audit round 7: BlackRock's NVDA read "First buy 2026-06-30 ·
+     First price $15.14 · Avg price $15.14" — the house's change of CIK reset the vendor's history, while the same row's
+     eight quarters of units show it held NVDA all along, and NVDA's price on 06/30 was $200.09, the filing's own value
+     over units). A share line whose first buy is the filing's own quarter must have its first and average price at the
+     filing's price; when it does not, or when earlier quarters hold units, the first buy, its price and the average are
+     the vendor's artifact and read "—". */
+  const filingPrice = book === 'stock' && units > 0 ? num(h.value) / units : 0;
+  const counts = Array.isArray(h.historical_units) ? (h.historical_units as unknown[]).map(numOr).filter((n): n is number => n != null) : [];
+  const heldBefore = counts.slice(1).some(n => n > 0);
+  const firstIsThisQuarter = !!h.first_buy && !!h.date && quarterOf(h.first_buy) === quarterOf(h.date);
+  const near = (p: number) => filingPrice > 0 && p > 0 && Math.abs(p - filingPrice) / filingPrice <= 0.25;
+  const firstUntrusted = book === 'stock' && firstIsThisQuarter && (heldBefore || !near(num(h.price_first_buy)));
+  const avgUntrusted = firstUntrusted && !near(num(h.avg_price));
   return {
     /* the security type is part of the key: CAPITAL WORLD filed GOOGL as shares AND as "Pref" — two lines, one id */
     id: `${house}-${ticker}-${book}${security ? `-${security}` : ''}`,
@@ -250,11 +266,11 @@ function rowFromHolding(house: string, filed: string, h: UwHolding): Institution
     changePct,
     pctOfBook: asPct(h.perc_of_share_value),
     pctOfShares: asPct(h.perc_of_total),
-    avgPrice: num(h.avg_price),
+    avgPrice: avgUntrusted ? 0 : num(h.avg_price),
     close: num(h.close),
-    firstPrice: num(h.price_first_buy),
+    firstPrice: firstUntrusted ? 0 : num(h.price_first_buy),
     unitsChangeM: change / 1e6,
-    firstBuy: h.first_buy || '—',
+    firstBuy: firstUntrusted ? '—' : h.first_buy || '—',
     sharesOutM: num(h.shares_outstanding) / 1e6,
     book,
     status: statusOf(units, change),
@@ -277,21 +293,69 @@ async function inBatches<T>(items: readonly T[], size: number, job: (item: T) =>
 /** The lines read per house — the largest by value; the house's whole book is far longer */
 export const HOUSE_LINES = 80;
 
+/** The houses' own totals off the list rows: the whole 13F, and its calls and puts */
+function houseFacts(list: readonly UwInstitution[]): Pick<Snap, 'houseTotals' | 'houseOptions'> {
+  const totals: Record<string, number> = { ...snap.houseTotals };
+  const options: Record<string, { calls: number; puts: number }> = { ...snap.houseOptions };
+  for (const h of list) {
+    const name = (h.name || h.short_name || '').trim();
+    if (!name) continue;
+    const v = num(h.total_value);
+    if (v > 0) totals[name] = v;
+    const raw = h as unknown as { call_value?: unknown; put_value?: unknown };
+    options[name] = { calls: num(raw.call_value), puts: num(raw.put_value) };
+  }
+  return { houseTotals: totals, houseOptions: options };
+}
+
+/* ONE HOUSE'S PAGE READS ONE HOUSE (audit round 7: opening BlackRock read all 40 houses' holdings, 46 calls). The house
+   list (one call — it maps the page's address to the house and its CIK, and carries its totals) and that house's own
+   lines; the whole book is read only by the Institutions page. */
+const houseList: { p: Promise<UwInstitution[]> | null } = { p: null };
+const houseRead = new Map<string, { status: FileStatus; rows: InstitutionRow[]; name: string | null }>();
+function listHouses(): Promise<UwInstitution[]> {
+  houseList.p ??= whalesInstitutions(40)
+    .then(rows => (Array.isArray(rows) ? (rows as UwInstitution[]) : []))
+    .catch(() => {
+      houseList.p = null;
+      return [] as UwInstitution[];
+    });
+  return houseList.p;
+}
+function ensureHouse(slug: string): void {
+  if (houseRead.has(slug) || typeof window === 'undefined') return;
+  houseRead.set(slug, { status: 'loading', rows: [], name: null });
+  void (async () => {
+    const list = await listHouses();
+    emit(houseFacts(list));
+    const house = list.find(h => houseSlug((h.name || h.short_name || '').trim()) === slug);
+    if (!house) {
+      houseRead.set(slug, { status: list.length ? 'live' : 'error', rows: [], name: null });
+      emit({});
+      return;
+    }
+    const name = (house.name || house.short_name || '').trim();
+    const filed = house.filing_date || house.date || '';
+    const got = await whalesHoldings(house.cik?.trim() || name, HOUSE_LINES).catch(() => null);
+    const rows: InstitutionRow[] = [];
+    for (const h of Array.isArray(got) ? got : []) {
+      const row = rowFromHolding(name, filed, h);
+      if (row) rows.push(row);
+    }
+    houseRead.set(slug, { status: got ? 'live' : 'error', rows: rows.sort((a, b) => b.valueB - a.valueB), name });
+    emit({});
+  })();
+}
+
 async function pullInstitutions() {
   try {
-    const houses = await whalesInstitutions(40);
+    const houses = await listHouses();
     if (!Array.isArray(houses) || houses.length === 0) throw new Error('shape');
     const rows: InstitutionRow[] = [];
     /* ten houses at a time, the book published once whole — one by one, the head counted "6 houses · 0 calls" for the
        half-minute the rest took (the ship pass, 2026-10-22) */
     const list = houses as UwInstitution[];
-    const totals: Record<string, number> = {};
-    for (const h of list) {
-      const name = (h.name || h.short_name || '').trim();
-      const v = num(h.total_value);
-      if (name && v > 0) totals[name] = v;
-    }
-    emit({ houseTotals: totals });
+    emit(houseFacts(list));
     let done = 0;
     await inBatches(list, 10, async house => {
       done += 1;
@@ -504,7 +568,16 @@ async function pullShorts() {
       2,
       async part => {
         const got = await whalesScreener(part).catch(() => null);
-        for (const r of Array.isArray(got) ? got : []) facts.set(String(r.ticker || '').toUpperCase(), r);
+        /* the same rows carry each name's full_name — kept, so the name cells do not ask the screener for the same
+           ~190 names again in chunks of fifty (audit round 7: the Shorts page read the screener twice) */
+        for (const r of Array.isArray(got) ? got : []) {
+          const sym = String(r.ticker || '').toUpperCase();
+          facts.set(sym, r);
+          if (!sym) continue;
+          nameAsked.add(sym);
+          rememberCompanyName(sym, String(r.full_name || ''));
+        }
+        if (Array.isArray(got)) namesRev += 1;
       },
     );
     out = out.map(r => {
@@ -764,7 +837,8 @@ export function ensureStockCard(ticker: string): void {
             ticker: t,
             name: String(row.full_name || row.short_name || t),
             sector: houseSector(String(row.sector || '')) || '—',
-            description: String(row.short_description || ''),
+            /* the vendor's copy, its one recurring slip mended ("Apple is the worlds largest…", the retail test round 7) */
+            description: String(row.short_description || '').replace(/\bworlds\b(?=\s+(?:largest|biggest|leading|first|most|top|second|third|largest|premier|only|best))/gi, m => `${m.slice(0, -1)}'s`),
             marketCap: numOr(row.marketcap),
             beta: numOr(row.beta),
             avgVolume: numOr(row.avg30_volume),
@@ -829,13 +903,20 @@ export function houseNameFromSlug(slug: string): string | null {
   return null;
 }
 
-export function useHouseBook(slug: string): { status: FileStatus; name: string | null; rows: InstitutionRow[]; totalB: number | null; linesRead: number } {
-  const s = useFiles('inst');
-  const name = houseNameFromSlug(slug);
+export function useHouseBook(slug: string): { status: FileStatus; name: string | null; rows: InstitutionRow[]; totalB: number | null; linesRead: number; optionsB: { calls: number; puts: number } | null } {
+  /* the whole book when the Institutions page has read it; this one house otherwise */
+  const s = useFiles();
+  const bookName = houseNameFromSlug(slug);
+  useEffect(() => {
+    if (!bookName) ensureHouse(slug);
+  }, [slug, bookName]);
+  const own = houseRead.get(slug);
+  const name = bookName ?? own?.name ?? null;
+  const rows = bookName ? s.institutions.filter(r => r.name === bookName) : (own?.rows ?? []);
   const total = name ? s.houseTotals[name] : undefined;
-  /* still landing while houses are being read — a house not read yet is not "missing" */
-  const status: FileStatus = !name && s.instProgress ? 'loading' : s.instStatus;
-  return { status, name, rows: name ? s.institutions.filter(r => r.name === name) : [], totalB: total ? total / 1e9 : null, linesRead: HOUSE_LINES };
+  const opts = name ? s.houseOptions[name] : undefined;
+  const status: FileStatus = bookName ? s.instStatus : (own?.status ?? 'loading');
+  return { status, name, rows, totalB: total ? total / 1e9 : null, linesRead: HOUSE_LINES, optionsB: opts ? { calls: opts.calls / 1e9, puts: opts.puts / 1e9 } : null };
 }
 
 export function useShorts(): { status: FileStatus; rows: ShortRow[] } {

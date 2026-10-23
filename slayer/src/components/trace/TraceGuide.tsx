@@ -321,6 +321,9 @@ export const FootprintsGuide = () => (
     <SidesRule />
     <Section title="What stayed">
       <p>Volume is loud and gone by the close; open interest is what stayed overnight, and this page ranks what was built and unwound.</p>
+      <p className="mt-2">
+        <b className="text-textPrimary">Whose trading.</b> A count of open interest is set the morning after a session trades, so each change is named by the session that made it — "in Oct 22's trading" — and pairs with that session's volume. Once the vendor publishes the count after the book's session, every row takes it; until then a row stays on the count before and says so (marked with its day, and left out of the sums). While a session runs its own build is not counted yet: the page shows the session before's, named.
+      </p>
       <OiChangeFigure />
     </Section>
     <Section title="A contract">

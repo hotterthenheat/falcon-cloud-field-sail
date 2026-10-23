@@ -9,7 +9,7 @@ import CompanyLogo from '../ui/CompanyLogo';
 import { tickerName } from '../../data/tickers';
 import { buildHoldings, type HoldingRow } from '../../data/fileBooks';
 import type { InsiderTrade, ReportOwner } from '../../types/record';
-import { useLiveRecord } from '../../data/liveRecord';
+import { useCongressBook } from '../../data/liveRecord';
 import { phonePin } from './pagedGrid';
 
 /*
@@ -47,11 +47,11 @@ const OwnerCell = ({ data }: ICellRendererParams<HoldingRow>) => (data ? <span c
 
 export const CongressHoldings = () => {
   const navigate = useNavigate();
-  const record = useLiveRecord();
+  const congress = useCongressBook();
   const rows = useMemo(() => {
-    if (record.congress.status !== 'live') return [];
-    return buildHoldings(record.congress.trades);
-  }, [record.congress]);
+    if (congress.status !== 'live') return [];
+    return buildHoldings(congress.trades);
+  }, [congress]);
   const columnDefs = useMemo<ColDef<HoldingRow>[]>(
     () => [
       { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.2, minWidth: 140, cellRenderer: MemberCell, headerTooltip: 'The member who reported the purchase — the reports read show no full sale of it since' },
@@ -130,7 +130,7 @@ const sectorWord = (raw?: string) => (raw ? SECTOR_WORD[raw.trim().toLowerCase()
 /* BY SECTOR, ON THE PAGE'S OWN CUT (the data audit, 2026-10-22): the table summed the whole feed, every window and
    cut ignored, under the house universe's sectors — 2,508 buys and 3,047 sales fell to "Other". It now adds up the
    rows the grid above shows (window, role and names applied), by Unusual Whales' own sector field. */
-export const InsiderSectorFlow = ({ trades, windowDays }: { trades: readonly InsiderTrade[]; windowDays: number }) => {
+export const InsiderSectorFlow = ({ trades, windowDays, state = 'read' }: { trades: readonly InsiderTrade[]; windowDays: number; state?: 'reading' | 'failed' | 'read' }) => {
   const rows = useMemo(() => {
     const map = new Map<string, SectorRow>();
     for (const t of trades) {
@@ -169,7 +169,11 @@ export const InsiderSectorFlow = ({ trades, windowDays }: { trades: readonly Ins
       {/* an empty cut says so in a sentence — never a grid of headers over nothing (the retail test, 2026-10-23: GME) */}
       {rows.length === 0 ? (
         <p className="px-5 py-3 border-t border-borderSubtle text-[12px] text-textSecondary" data-insider-sectors-empty>
-          No open-market purchase or sale on this cut in the last {windowDays} days, so there is nothing to add up by sector.
+          {state === 'reading'
+            ? 'Reading the filings — the sectors add up once the open-market rows land.'
+            : state === 'failed'
+              ? 'This read did not land, so there is nothing to add up by sector yet.'
+              : `No open-market purchase or sale on this cut in the last ${windowDays} days, so there is nothing to add up by sector.`}
         </p>
       ) : (
       <div className="slayer-board border-t border-borderSubtle">

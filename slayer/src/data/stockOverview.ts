@@ -863,7 +863,7 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
   const reaction = movedRows.length ? { pct: movedRows.reduce((a, r) => a + Math.abs((nOr(r.post_earnings_move_1d) ?? 0) * 100), 0) / movedRows.length, reports: movedRows.length } : null;
   const last = reports[0];
   const lastReport = last ? { label: last.label, epsActual: last.epsActual, epsEst: last.epsEst, beat: last.beat, result: last.result, movePct: last.movePct } : null;
-  const upcoming = nextReportRow(file.earnings);
+  const upcoming = nextReportRow(file.earnings, { skipOut: true });
   const nextEarnings = upcoming?.report_date
     ? {
         label: reportDayLabel(upcoming.report_date),
@@ -1342,8 +1342,23 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     /* the tapes' own read, not the file's head (the retail test, round 6: "The flow book LIVE · no alerts on this name"
        beside "READING THE FLOW ALERTS…") — nothing is "none" until the tapes are in */
     { key: 'flow', label: 'The flow book', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'alert' : 'alerts'}` : file.tapes === 'live' ? 'no alerts on this name' : 'the read did not land' },
-    { key: 'tape', label: 'The tape', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.flow.length ? `${file.flow.length} ${file.flow.length === 1 ? 'print' : 'prints'}` : file.tapes === 'live' ? 'no prints in the recent alerts' : 'the read did not land' },
-    { key: 'dark', label: 'Dark pool', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.dark.length ? `${file.dark.length} ${file.dark.length === 1 ? 'print' : 'prints'}` : file.tapes === 'live' ? 'nothing recent' : 'the read did not land' },
+    /* COUNTS THAT SAY WHAT THEY COUNT (audit round 7: "The tape 990 prints" was the 990 flow alerts, and "Dark pool 699
+       prints" sat beside the card's 648 — the 51 own-terms prints are left out of the card). The biggest buys and sells
+       are read off the flow alerts, so the tape says alerts; the dark pool says how many the card reads and why the rest
+       are out. */
+    { key: 'tape', label: 'The tape', status: file.tapes === 'live' ? 'live' : 'thin', stamp: file.tapes === 'loading' ? 'reading…' : file.flow.length ? `the biggest buys and sells, off the ${file.flow.length} flow ${file.flow.length === 1 ? 'alert' : 'alerts'}` : file.tapes === 'live' ? 'no alerts to read buys and sells off' : 'the read did not land' },
+    {
+      key: 'dark',
+      label: 'Dark pool',
+      status: file.tapes === 'live' ? 'live' : 'thin',
+      stamp: (() => {
+        if (file.tapes === 'loading') return 'reading…';
+        if (!file.dark.length) return file.tapes === 'live' ? 'nothing recent' : 'the read did not land';
+        const own = file.dark.filter(p => p.special).length;
+        const kept = file.dark.length - own;
+        return own ? `${kept} ${kept === 1 ? 'print' : 'prints'} on the card · ${own} own-terms of the ${file.dark.length} read left out` : `${kept} ${kept === 1 ? 'print' : 'prints'}`;
+      })(),
+    },
     { key: 'news', label: 'The wire', status: wireLive(ticker) ? 'live' : 'thin', stamp: news.read.stories.length ? `the newest story ${news.read.stories[0].item.time}` : 'nothing on this name yet' },
     { key: 'sessions', label: 'Sessions', status: sessions >= 20 ? 'live' : 'thin', stamp: `${sessions} on hand` },
     { key: 'fundamentals', label: 'Fundamentals', status: numbers.read.sample ? 'thin' : 'live', stamp: numbers.read.sample ? 'the feed has no print for this name yet' : 'the last print and earnings growth' },

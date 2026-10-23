@@ -106,10 +106,10 @@ const noReadWord = (p: DarkPoolPrint) => (p.special ? (p.auction ? 'no read · a
 /** venue is a code ("L", "D") — at 108 the row ran past a laptop's box and "Says" stood half under its edge */
 /* "What it says" holds a sentence: a width of its own (a set width is a floor and a share — TraceBox columnsToColDefs), so it
    is never the 90px sliver it was at 1440 beside the fixed columns (audit round 4) */
-const WIDTHS: Record<string, number> = { mark: 40, name: 104, time: 84, price: 84, vs: 76, shares: 92, dollars: 84, exec: 60, shelf: 80, read: 132, says: 320 };
+const WIDTHS: Record<string, number> = { mark: 40, name: 104, time: 84, price: 84, vs: 76, shares: 92, dollars: 84, exec: 92, shelf: 80, read: 132, says: 288 };
 const TOOLTIPS: Record<string, string> = {
   vs: 'Cents through the quote at the print. A percent only when the fill left the spread.',
-  exec: 'Where the print sat in the NBBO — at or above the ask, at or below the bid',
+  exec: 'Where the print sat in the NBBO — at or above the ask, at or below the bid; inside the spread, at the mid (within ¼¢, the read\'s own band) or under or over it — the same place the read is called on',
   shelf: 'Whether the cross landed on one of the session’s shelves',
   read: 'A sized cross over the mid reads accumulation (bought up), under it distribution (sold down); small, after-hours and own-terms prints carry no read',
   conviction: 'How sure the read is',

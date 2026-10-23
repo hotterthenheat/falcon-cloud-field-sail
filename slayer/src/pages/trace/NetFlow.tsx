@@ -181,7 +181,7 @@ const NetFlow = () => {
         {market && !market.none && session === 'regular' && (
           <>
             <RichRead text={`The whole market's money ${market.day && !isLiveDay(market.day) ? `on ${shortDay(market.day)} ` : 'today '}leans ${market.net >= 0 ? 'bullish' : 'bearish'} — `} />
-            <Lean v={market.net} /> net from {market.from} to {market.at} ET{market.day && !isLiveDay(market.day) ? `, ${shortDay(market.day)}` : ''} (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
+            <Lean v={market.net} /> net from {market.from} to {market.at} ET (net calls <Lean v={market.calls} /> less net puts <Lean v={market.puts} put />).{' '}
           </>
         )}
         {market && !market.none && session !== 'regular' && (

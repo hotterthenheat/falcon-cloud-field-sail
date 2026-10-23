@@ -45,7 +45,7 @@ import { LEDGER_COLUMNS, LEDGER_COMPACT_COLUMNS, LEDGER_FOLD_H, LEDGER_ROW_H } f
 import { BULL, CALL_WALL, PUT_WALL, SUPREME, alpha } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import { shownGamma } from './retailSign';
-import { changeWhen, sideWords, type BuildRow, type Building } from '../../data/building';
+import { changeWhen, sideWords, sizeWords, type BuildRow, type Building } from '../../data/building';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -87,12 +87,17 @@ const TONE: Record<Tone, string> = {
 const whenShort = (w: BuildRow['when']) => (w === 'early' ? 'mostly early' : w === 'middle' ? 'mostly midday' : w === 'late' ? 'mostly late' : '');
 const verdictOf = (r: BuildRow, compact = false): { chip: string; tone: Tone; words: string } => {
   const dominant = Math.abs(r.callAdded) >= Math.abs(r.putAdded) ? 'calls' : 'puts';
+  /* WHAT MOVED THE WALL, NOT JUST WHICH LEG (the seventh audit's retail finding: "774 … +1,509 calls, +4,911 puts …
+     DRAINING puts" read as puts leaving): the leg that moved it most, and whether its contracts were added or closed —
+     new puts on a call-heavy strike shrink it, and say so */
+  const d = dominant === 'calls' ? r.dCall : r.dPut;
+  const how = d > 0 ? (r.verdict === 'draining' ? `new ${dominant} offset it` : `${dominant} added`) : d < 0 ? `${dominant} closed` : dominant;
   const when = whenShort(r.when);
   switch (r.verdict) {
     case 'building':
-      return { chip: 'Building', tone: 'good', words: [dominant, when].filter(Boolean).join(' · ') };
+      return { chip: 'Building', tone: 'good', words: [how, when].filter(Boolean).join(' · ') };
     case 'draining':
-      return { chip: 'Draining', tone: 'bad', words: [dominant, when].filter(Boolean).join(' · ') };
+      return { chip: 'Draining', tone: 'bad', words: [how, when].filter(Boolean).join(' · ') };
     case 'switched':
       return { chip: compact ? 'Switched' : 'Changed sides', tone: 'silver', words: `now ${r.now < 0 ? 'calls' : 'puts'}` };
     case 'new':
@@ -382,13 +387,13 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
               <div>
                 <dt className="text-[10px] text-textMuted whitespace-nowrap" title="The strike whose wall grew the most — its size change, |now| − |was|, the CHANGE column's figure">{changeWhen(data).grew}</dt>
                 <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: SILVER }} data-build-up>
-                  {data.loading ? '…' : data.fastestUp ? `${fmtStrike(data.fastestUp.strike)} · ${signed(data.fastestUp.sizeChange)}` : '—'}
+                  {data.loading ? '…' : data.fastestUp ? `${fmtStrike(data.fastestUp.strike)} · ${sizeWords(data.fastestUp.sizeChange)}` : '—'}
                 </dd>
               </div>
               <div>
                 <dt className="text-[10px] text-textMuted whitespace-nowrap" title="The strike whose wall shrank the most — its size change, |now| − |was|, the CHANGE column's figure">{changeWhen(data).shrank}</dt>
                 <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-build-down>
-                  {data.loading ? '…' : data.fastestDown ? `${fmtStrike(data.fastestDown.strike)} · ${signed(data.fastestDown.sizeChange)}` : '—'}
+                  {data.loading ? '…' : data.fastestDown ? `${fmtStrike(data.fastestDown.strike)} · ${sizeWords(data.fastestDown.sizeChange)}` : '—'}
                 </dd>
               </div>
             </>
@@ -412,7 +417,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
       {/* THE GRID */}
       <div className={`${pad} pt-2 pb-2 overflow-x-auto`} data-build-rows={items.filter(i => i.kind === 'row').length} onPointerLeave={() => setHover(null)}>
         {/* The column template is the skeleton's own (buildingSkeletons.tsx), so the two cannot drift */}
-        <div key={cut} className={`grid items-center animate-fade-in ${compact ? 'min-w-[340px] gap-x-[10px]' : 'min-w-[1060px] gap-x-[14px]'}`} style={{ gridTemplateColumns: compact ? LEDGER_COMPACT_COLUMNS : LEDGER_COLUMNS }}>
+        <div key={cut} className={`grid items-center animate-fade-in ${compact ? 'min-w-[340px] gap-x-[10px]' : 'min-w-[1080px] gap-x-[14px]'}`} style={{ gridTemplateColumns: compact ? LEDGER_COMPACT_COLUMNS : LEDGER_COLUMNS }}>
           <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The strike price, its role (call wall, put wall, supreme) and how far it is from the current price">Strike</div>
           {/* the head names the measure — net gamma, in dollars (Noah, 2026-09-13: "what does that number even mean?… can we get
               the 'net gamma' in there somewhere so it doesn't have to be a mystery") — and the full definition on hover */}
@@ -420,7 +425,7 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
             <Term k="The wall now">The wall now</Term>
             {!compact && <span className="normal-case tracking-normal text-textMuted/70">· net gamma at the strike, in dollars</span>}
           </div>
-          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="How much the wall at the strike changed in the latest open-interest count: its size now less its size before, |now| − |was|, in dollars — + it grew, − it shrank. The same figure as the head's grew / shrank most, the Agenda and the Map's report">Change</div>
+          <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="How much the wall at the strike grew or shrank in the latest open-interest count: the size of its net gamma now against before, |now| − |was|, in dollars. A put-heavy wall whose net went from −$766M to −$595M SHRANK $171M — building and draining are the wall's size, not the contracts counted. The same figure as the head's grew / shrank most, the Agenda and the Map's report">Wall size</div>
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from call contracts">Calls</div>}
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted text-right" title="The part of the change from put contracts">Puts</div>}
           {!compact && <div className="h-[20px] px-2 font-mono text-[9px] uppercase tracking-widest text-textMuted" title="The wall's size through the session — the overnight count is one step, so it has none">The day</div>}
@@ -504,8 +509,8 @@ const BuildingLedger = ({ data, ticker, clock, order, window, show, distanceOf, 
                     {data.loading ? '…' : r.verdict === 'switched' ? (compact ? `now ${r.now < 0 ? 'call' : 'put'}-heavy` : `${r.now < 0 ? 'call-heavy' : 'put-heavy'} now · was ${r.open < 0 ? 'call-heavy' : 'put-heavy'} ${data.overnight ? 'before the change' : 'at the open'}`) : compact ? (r.now < 0 ? 'call-heavy' : 'put-heavy') : sideWords(r.now).replace(', so ', ' · ')}
                   </div>
                 </div>
-                <div className={`px-2 text-right font-mono text-[12px] tnum ${r.verdict === 'steady' ? 'text-textMuted' : 'text-textPrimary font-semibold'}`} data-build-change>
-                  {data.loading ? '…' : signed(r.sizeChange)}
+                <div className={`px-2 text-right font-mono text-[12px] tnum whitespace-nowrap ${r.verdict === 'steady' ? 'text-textMuted' : 'text-textPrimary font-semibold'}`} data-build-change>
+                  {data.loading ? '…' : compact ? <span title={`The wall ${sizeWords(r.sizeChange)}`}>{Math.abs(r.sizeChange) < 0.5 ? '—' : `${r.sizeChange > 0 ? '↑' : '↓'} ${fmtDollars(Math.abs(r.sizeChange))}`}</span> : sizeWords(r.sizeChange)}
                 </div>
                 {!compact && <div className="px-2 text-right font-mono text-[10px] tnum text-textSecondary">{data.loading ? '…' : contracts(r.dCall)}</div>}
                 {!compact && <div className="px-2 text-right font-mono text-[10px] tnum text-textSecondary">{data.loading ? '…' : contracts(r.dPut)}</div>}

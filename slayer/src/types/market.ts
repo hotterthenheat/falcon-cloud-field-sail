@@ -165,6 +165,9 @@ export interface MarketSnapshot {
   /** A finished session's clock for the flip alone (epoch ms) — its close — so the flip and every count against it stop
       moving after the bell, without the asOf's contract-vol switch (data/bookWindow.ts sessionBook, data/flipLevel.ts) */
   flipAt?: number;
+  /** The Levels card's scope is not in yet and the whole book stands in for it (data/bookWindow.ts levelsBook) — every
+      level read off this snapshot is provisional, and no page draws it (the seventh audit's retail blocker) */
+  levelsPending?: boolean;
 }
 
 export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS';

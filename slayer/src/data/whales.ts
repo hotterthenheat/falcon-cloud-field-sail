@@ -66,7 +66,12 @@ export interface UwInsider {
 
 let inflight = 0;
 const waiters: (() => void)[] = [];
-const MAX_INFLIGHT = 3;
+/* FIVE IN FLIGHT FROM THE BROWSER, THREE AT THE VENDOR (the seventh audit's m11, 2026-10-23: the Board on All expiries
+   took 59–71s to fill). The key's cap of three concurrent calls is kept by the proxy (server/uwProxy.mjs upstreamSlot),
+   which queues the rest; with only three asks in flight here, each upstream slot sat idle for the browser's own round
+   trip between one answer and the next ask. Two more in flight keep the proxy's three slots busy; the vendor still
+   never sees more than three. */
+const MAX_INFLIGHT = 5;
 
 /* THE BACKGROUND LANE (the sixth audit's M3, 2026-10-23): reads no row waits on (a Board name's open-interest change,
    ~170 pages across twenty names) took the key's three slots in turn with the levels' own reads. A low ask runs only
@@ -319,7 +324,29 @@ export const whalesFlowTicker = (ticker: string) =>
    is read calls and puts apart (option_type) — each side one page on every name the desk carries (a side past 500
    strikes still pages). Every row is kept once, by its contract. A walk that reaches `maxPages` is not the whole
    list and comes back null — never a truncated list taken for the whole. */
-export async function whalesOptionContractsPaged(ticker: string, expiry?: string, priority = false, maxPages = 60): Promise<UwContract[] | null> {
+/* ONE WALK A DATE AT A TIME (audit round 7: a stock page read each of AAPL's sixteen near dates twice within forty
+   seconds — two loads of the same book asked the same dates). A walk in flight, or one finished in the last
+   PAGED_REUSE_MS, is shared; each caller gets its own copy of the rows. A failed walk is never kept. */
+const PAGED_REUSE_MS = 20_000;
+const pagedAsked = new Map<string, { at: number; p: Promise<UwContract[] | null> }>();
+export function whalesOptionContractsPaged(ticker: string, expiry?: string, priority = false, maxPages = 60): Promise<UwContract[] | null> {
+  const key = `${ticker.toUpperCase()}|${expiry ?? ''}|${maxPages}`;
+  const hit = pagedAsked.get(key);
+  const entry = hit && Date.now() - hit.at < PAGED_REUSE_MS ? hit : { at: Date.now(), p: optionContractsWalk(ticker, expiry, priority, maxPages) };
+  if (entry !== hit) {
+    pagedAsked.set(key, entry);
+    entry.p.then(
+      rows => {
+        if (rows == null) pagedAsked.delete(key);
+        else entry.at = Date.now();
+      },
+      () => pagedAsked.delete(key),
+    );
+    if (pagedAsked.size > 300) for (const [k, v] of pagedAsked) if (Date.now() - v.at > PAGED_REUSE_MS) pagedAsked.delete(k);
+  }
+  return entry.p.then(rows => (Array.isArray(rows) ? rows.map(r => ({ ...r })) : rows));
+}
+async function optionContractsWalk(ticker: string, expiry?: string, priority = false, maxPages = 60): Promise<UwContract[] | null> {
   const base = `/stock/${enc(ticker)}/option-contracts?limit=500${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}`;
   /** One walk of `path`: every page until a short one — null on a failed page or when `maxPages` is reached */
   const walk = async (path: string, from: UwContract[] = []): Promise<{ rows: UwContract[] } | null> => {
@@ -358,8 +385,24 @@ export async function whalesOptionContractsPaged(ticker: string, expiry?: string
   return calls && puts ? byContract([calls, puts]) : null;
 }
 /** One expiry's listed contracts, or the chain's busiest when no expiry is given (one page, as before — see the paged walk above). */
-export const whalesOptionContracts = (ticker: string, expiry?: string, priority = false) =>
-  uw<UwContract[]>(`/stock/${enc(ticker)}/option-contracts?limit=1000${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}`, priority);
+/* audit round 7: `limit=1000` is past the spec's 500 (docs/DATA_SOURCES.md), and the earnings page and the stock file
+   each asked it for the same name seconds apart — one ask in flight or in the last CONTRACTS_REUSE_MS is shared, each
+   caller with its own copy of the rows */
+const CONTRACTS_REUSE_MS = 30_000;
+const contractsAsked = new Map<string, { at: number; p: Promise<UwContract[]> }>();
+export const whalesOptionContracts = (ticker: string, expiry?: string, priority = false): Promise<UwContract[]> => {
+  const path = `/stock/${enc(ticker)}/option-contracts?limit=500${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}`;
+  const hit = contractsAsked.get(path);
+  const entry = hit && Date.now() - hit.at < CONTRACTS_REUSE_MS ? hit : { at: Date.now(), p: uw<UwContract[]>(path, priority) };
+  if (entry !== hit) {
+    contractsAsked.set(path, entry);
+    entry.p.then(
+      () => (entry.at = Date.now()),
+      () => contractsAsked.delete(path),
+    );
+  }
+  return entry.p.then(rows => (Array.isArray(rows) ? rows.map(r => ({ ...r })) : rows));
+};
 
 export interface UwInstitution {
   /** SEC filer id — the holdings door takes it where some long names 404 (UBS AM, …) */

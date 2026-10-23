@@ -143,6 +143,8 @@ export interface SessionCrossings {
   flip: number | null;
   label: string;
   why: string | null;
+  /** False while the count's flip is provisional (its contracts' own vols not all in) — the count is then not shown */
+  complete: boolean;
 }
 
 /* A FINISHED SESSION'S COUNT IS FROZEN (the third audit, 2026-10-23: QQQ's "Flip crossed today" read 13× and then 9×
@@ -166,16 +168,16 @@ export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0
     const hit = frozenCross.get(key);
     if (hit) return hit;
   }
-  if (!sb.book) return { crossings: null, flip: null, label: sb.label, why: sb.why };
+  if (!sb.book) return { crossings: null, flip: null, label: sb.label, why: sb.why, complete: true };
   /* after the bell the session book is already priced at the session's own close (data/bookWindow.ts frozenAtClose) */
   const closed = sb.after && !!last;
   const book = sb.book;
   const read = levelFlip(book, book.chain);
   let out: SessionCrossings;
-  if (read.flip === null) out = { crossings: candles.length >= GAUGE_MIN_BARS ? 0 : null, flip: null, label: sb.label, why: null };
-  else if (candles.length < GAUGE_MIN_BARS) out = { crossings: null, flip: read.flip, label: sb.label, why: null };
+  if (read.flip === null) out = { crossings: candles.length >= GAUGE_MIN_BARS ? 0 : null, flip: null, label: sb.label, why: null, complete: read.complete };
+  else if (candles.length < GAUGE_MIN_BARS) out = { crossings: null, flip: read.flip, label: sb.label, why: null, complete: read.complete };
   /* the side rule the Map's report uses (WallReportCard: flip ≥ spot is tested from below) */
-  else out = { crossings: levelTicks(candles, read.flip, read.flip >= book.spot ? 'call' : 'put').length, flip: read.flip, label: sb.label, why: null };
+  else out = { crossings: levelTicks(candles, read.flip, read.flip >= book.spot ? 'call' : 'put').length, flip: read.flip, label: sb.label, why: null, complete: read.complete };
   /* kept once the whole session is in (its last bar at 15:55 or later) and the book's dates have all landed */
   if (closed && read.complete && nyMinutes(last.time * 1000) >= 15 * 60 + 55) {
     if (frozenCross.size > 200) frozenCross.clear();

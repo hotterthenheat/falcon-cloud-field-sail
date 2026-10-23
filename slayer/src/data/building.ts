@@ -47,9 +47,10 @@ import { levelRoles, pickLegWalls, type LevelRole } from '../core/walls';
 import { DEFAULT_R } from '../core/carry';
 import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
+import { nyIsoDate, nySessionPhase } from '../core/nyTime';
 import { recordDay } from './bookWindow';
 import { datesOf, yearsTo } from './flipLevel';
-import { peekEntry, type OiChange } from './uwBook';
+import { ownIvDates, peekEntry, type OiChange } from './uwBook';
 import { shownGamma } from '../components/gex/retailSign';
 import { CLOSE_MIN, OPEN_MIN, SESSION_MIN, fmtDollars, fmtStrike, hhmm, type AheadClock } from './ahead';
 import type { ExposureProfileData } from '../types/gex';
@@ -173,7 +174,15 @@ export function oiWhen(dates: { from: string; to: string } | null | undefined): 
   /* the latest session that has finished: today's after its close, else the one before the session on record */
   const rec = recordDay();
   const finished = rec.done ? rec.date : lastSessionBefore(rec.date);
-  const pending = dates.from < finished ? `${monDay(finished)}'s count is not out yet — the vendor publishes it before the next open` : null;
+  /* WHEN THE NEXT ONE IS DUE, AND THAT IT IS WATCHED FOR (the seventh audit's retail finding): uwBook asks the vendor
+     every five minutes while the count is behind, and reads it the moment it lands */
+  const opened = nySessionPhase() !== 'before' && rec.date === nyIsoDate();
+  const pending =
+    dates.from < finished
+      ? opened
+        ? `${monDay(finished)}'s count is late today — the vendor usually has it out before the 9:30 open; checked every 5 minutes, used the moment it lands`
+        : `${monDay(finished)}'s count is not out yet — the vendor publishes it before the 9:30 open; checked every 5 minutes, used the moment it lands`
+      : null;
   return { trade, short: `in ${trade}`, long: `${trade} (open interest ${dates.from.slice(5)} → ${dates.to.slice(5)})`, day: monDay(dates.from), pending };
 }
 function lastSessionBefore(iso: string): string {
@@ -290,6 +299,8 @@ const SHAPE_POINTS = 40;
 
 const fmtContracts = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US')}`;
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
+/** A wall's size change in words — "grew $171M" / "shrank $171M" — never a sign beside a signed net (the seventh audit) */
+export const sizeWords = (v: number): string => (Math.abs(v) < 0.5 ? 'held its size' : `${v > 0 ? 'grew' : 'shrank'} ${fmtDollars(Math.abs(v))}`);
 
 export const sideWords = (v: number) => (v < 0 ? 'call-heavy, so dealers push back on moves here' : 'put-heavy, so dealers push moves along here');
 
@@ -328,10 +339,19 @@ export function buildBuilding(
   const entry = snapshot.liveBook ? peekEntry(snapshot.ticker) : undefined;
   const scopeDates = snapshot.liveBook ? datesOf(snapshot, chain as MarketSnapshot['chain']) : null;
   const floor = isoDate(bookToday());
+  /* ON WHAT IS ACTUALLY IN, NOT ON THE KIND OF BOOK (the seventh audit's M3, 2026-10-23: the Agenda's Building head
+     read +$138M / −$584M at 15.9s and +$141M / −$549M at 16.5s — the gate only held on a book marked full). Every live
+     date in scope that the count touches must have its chain and its contract rows read; a Board-only name reads the
+     contracts of the dates its flip re-prices with their own vols (uwBook ownIvDates), and is held to those. */
+  const by = snapshot.uwByDate ?? {};
+  const liveDates = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort();
+  const own = ownIvDates(by, liveDates, liveDates[0]);
+  const listed = new Set((entry?.expiries ?? []).map(e => e.date).filter(d => d >= floor));
+  const touched = new Set(oiChange?.rows.filter(r => r.expiry >= floor && (scopeDates === 'ALL' || (Array.isArray(scopeDates) && scopeDates.includes(r.expiry)))).map(r => r.expiry) ?? []);
   const factsMissing =
     real &&
-    !!entry?.wantFull &&
-    oiChange!.rows.some(r => r.expiry >= floor && (scopeDates === 'ALL' || (Array.isArray(scopeDates) && scopeDates.includes(r.expiry))) && !!snapshot.uwByDate?.[r.expiry]?.length && !entry.factsDates?.has(r.expiry));
+    !!entry &&
+    [...touched].some(d => (by[d]?.length ? !entry.factsDates?.has(d) && (entry.wantFull || own.has(d)) : listed.has(d) && scopeDates !== 'ALL'));
   /* NO WHOLE-BOOK STAND-IN (the fifth audit, 2026-10-23: TSLA 420 read "+$25M" — final +$3M — and 400 "+$73.8M", the
      All figure, under "Today · Oct 23" while its chain loaded): until the scope's own chain is in, and its levels are
      final, nothing is printed but "…" */
@@ -454,7 +474,20 @@ export function buildBuilding(
        +$175M, while the head said "Shrank most 769 · −$175M" and the Map "−$175M taken off"): the change a strike shows
        is its wall's SIZE change, |now| − |was| — + grew, − shrank — the figure the CHANGE column, the head's grew/shrank
        most, the Agenda and the Map's report all print */
-    const change = `${signed(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`;
+    /* THE CHANGE IN WORDS, NO SIGN TO MISREAD (the seventh audit's retail finding: "769 … −$595M net gamma · was −$766M
+       … −$171M … DRAINING" — the net ROSE by $171M and the change read −$171M): the wall grew or shrank by so much.
+       Building and draining are the wall's SIZE, never the contract counts — so where contracts were added and the wall
+       still shrank, the words say why: calls and puts hedge in opposite directions, and the side that leans against the
+       wall shrinks it */
+    const callHeavy = r.now < 0 || (r.now === 0 && r.open < 0);
+    const against = callHeavy ? { word: 'puts', n: r.dPut } : { word: 'calls', n: r.dCall };
+    const why =
+      r.verdict === 'draining' && against.n > 0
+        ? `, though contracts were added: the ${fmtContracts(against.n).slice(1)} new ${against.word} hedge the opposite way to this ${callHeavy ? 'call' : 'put'}-heavy strike, so they offset it`
+        : r.verdict === 'building' && (callHeavy ? r.dCall : r.dPut) < 0
+          ? `, though contracts were closed: the ${callHeavy ? 'puts' : 'calls'} that left had been offsetting it`
+          : '';
+    const change = `The wall ${sizeWords(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)${why}`;
     const when = r.when ? `, ${whenWords(r.when)}` : '';
     const pace = clock.inSession && !real && r.verdict !== 'steady' ? ` At today's pace ${signed(r.byClose)} ${r.byClose >= 0 ? 'more' : 'further'} by the close.` : '';
     switch (r.verdict) {
@@ -569,17 +602,17 @@ export function buildBuilding(
     if (real) {
       /* THE OVERNIGHT COUNT, SAID AS ONE (the Pinpoint audit, 2026-10-22: "new hedging today" over a change that was set
          overnight from yesterday's trading) */
-      if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} grew most: ${signed(fastestUp.sizeChange)} of hedging added ${day}${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
-      if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} shrank most, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
+      if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} grew most: its wall ${sizeWords(fastestUp.sizeChange)} ${day}${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
+      if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} shrank most: its wall ${sizeWords(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
       if (!parts.length) parts.push(`Nothing was built or drained ${day}.`);
       if (when.pending) parts.push(`${when.pending}.`);
     } else if (clock.inSession) {
       if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} is being built: ${fmtDollars(fastestUp.sizeChange)} of new hedging today${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
-      if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} is draining, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
+      if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} is draining: its wall ${sizeWords(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
       if (!parts.length) parts.push('Nothing has been built or drained today.');
     } else {
       if (fastestUp) parts.push(`${fmtStrike(fastestUp.strike)} was built in the last session: ${fmtDollars(fastestUp.sizeChange)} of new hedging${fastestUp.role ? `, and it is the ${fastestUp.role}` : ''}.`);
-      if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} drained, ${signed(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
+      if (fastestDown) parts.push(`${fmtStrike(fastestDown.strike)} drained: its wall ${sizeWords(fastestDown.sizeChange)}${fastestDown.role ? `, the ${fastestDown.role}` : ''}.`);
       if (!parts.length) parts.push('Nothing was built or drained in the last session.');
     }
     const ch = real ? '' : callCh?.by ? `At today's pace ${fmtStrike(callCh.strike)} overtakes ${fmtStrike(wNow.callWall!)} as the call wall by ${callCh.by}.` : putCh?.by ? `At today's pace ${fmtStrike(putCh.strike)} overtakes ${fmtStrike(wNow.putWall!)} as the put wall by ${putCh.by}.` : wNow.callWall != null && wClose.callWall === wNow.callWall && wNow.putWall != null && wClose.putWall === wNow.putWall ? `Both walls hold ${horizon}.` : '';

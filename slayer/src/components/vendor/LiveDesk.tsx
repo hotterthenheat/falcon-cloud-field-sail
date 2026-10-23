@@ -607,7 +607,14 @@ function flowSpanWords(lines: LineSpec[]): string {
   const b = nyMinutes(pts[pts.length - 1].t * 1000);
   const from = a < 9 * 60 + 30 ? `pre-market ${hhmm(a)}` : hhmm(a);
   const to = b >= 16 * 60 ? `${hhmm(b)} after hours` : hhmm(b);
-  return `${from} → ${to}`;
+  /* DATED WHEN IT IS NOT TODAY'S (the seventh audit's m6: "pre-market 07:30 → 16:14 after hours" read at 07:17 was
+     Thursday's series, said as if it were the day in progress) */
+  const day = nyIsoDate(pts[pts.length - 1].t * 1000);
+  if (day === nyIsoDate()) return `${from} → ${to}`;
+  const [y, m, d] = day.split('-').map(Number);
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+  return `${dow} ${mon} ${d} · ${from} → ${to}`;
 }
 
 function stillListed(rows: Record<string, unknown>[], today: string): Record<string, unknown>[] {

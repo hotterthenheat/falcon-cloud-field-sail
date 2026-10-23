@@ -63,11 +63,11 @@ import TickerSearch from '../ui/TickerSearch';
 import { useFadeClose } from '../ui/useFadeClose';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
-import { useLevelsScope } from '../../data/levelsScope';
+import { readLevelsScope, useLevelsScope, type LevelsScope } from '../../data/levelsScope';
 import ColumnFacts from './ColumnFacts';
 import { roomLevels } from '../../data/roomLevels';
 import { levelsFor } from '../../data/levelsFor';
-import { expirySpan, levelsBook, levelsDate, levelsWords, todayScopeLabel } from '../../data/bookWindow';
+import { bookForDates, expirySpan, levelsBook, levelsDate, levelsWords, todayScopeLabel } from '../../data/bookWindow';
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
@@ -366,7 +366,13 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const ceiling = EXPIRY_CEILING[Math.min(5, Math.max(1, greeks.length))] ?? 7;
   /* three expiries by rest in Terrain's panel — today, tomorrow and the week's ("Today → Oct 19", Noah's default view,
      2026-10-15); the Map opens on eight */
-  const [range, setRange] = useState<{ from: number; through: number }>({ from: 0, through: Math.min(toolbar === 'panel' ? 2 : 7, ceiling - 1) });
+  /* THE MAP'S MATRIX OPENS ON THE LEVELS CARD'S CONTRACTS (the seventh audit's retail finding, 2026-10-23: "GEX · 1% move ·
+     Oct 23 → Nov 3" over rows coloured by "levels: today · Oct 23" — the blue 770 call-wall row netted −$658.2K, the
+     magenta 769 put wall's puts −$814.4M beside 765's −$1.3B). Levels on Today: the window is Today's expiry alone; on
+     All expiries: the nearest dates the ceiling allows. A window the reader picks stays theirs until the Levels card
+     changes. */
+  const rangeForScope = (sc: LevelsScope) => ({ from: 0, through: toolbar === 'panel' ? Math.min(2, ceiling - 1) : sc === '0DTE' ? 0 : Math.min(7, ceiling - 1) });
+  const [range, setRange] = useState<{ from: number; through: number }>(() => rangeForScope(readLevelsScope()));
   useEffect(() => {
     setRange(r => (r.through - r.from + 1 > ceiling ? { from: r.from, through: r.from + ceiling - 1 } : r));
   }, [ceiling]);
@@ -441,6 +447,14 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      supreme of eight dates beside the Board's supreme of today). The Expiries card picks the matrix's columns; the named
      levels (supreme, walls, flip) are the Levels card's, the same on every Pinpoint page. */
   const levelsScope = useLevelsScope();
+  const scopeSeen = useRef(levelsScope);
+  useEffect(() => {
+    if (scopeSeen.current === levelsScope) return;
+    scopeSeen.current = levelsScope;
+    setOwnDates({});
+    setRange(rangeForScope(levelsScope));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [levelsScope]);
   const listedDates = useMemo(() => {
     return (snapshot?.uwExpiries ?? [])
       .filter(e => snapshot?.uwByDate?.[e.date]?.length)
@@ -1331,7 +1345,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      name, view, greek, expiries, strikes, show, colours) on the first, the doors (names, replay, the supreme, the
      read, how to read, fullscreen) on the second, the fullscreen door last on either. See BAND_*_ROW_PX. */
   const bandRows: 'one' | 'two' = bandMode === 'two' || bandOver ? 'two' : 'one';
-  /* THE PHONE'S ROWS SAY THEY GO ON: a fade at the edge with more behind it, none at the end (data-scroll-more, index.css) */
+  /* THE PHONE'S ROWS WRAP (the seventh audit's m8, 2026-10-23: scrolled sideways, "GREEK GEX" and "THE RE…" sat cut at
+     the edge and Legs, Expiries, Strikes and Show were off the screen with nothing saying so) — every control is on the
+     screen, row under row. The scroll fade below stays for a row that is still wider than the screen. */
   useEffect(() => {
     if (!bandScroll) return;
     const el = bandEl.current;
@@ -1449,12 +1465,12 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       /* on a phone each row is 44px tall (py-2 round 28px controls): a scrolling row clips what hangs outside it, so the
          thumb's box (.hit, index.css) needs the row itself to be the box */
       <div ref={bandRef} className={`shrink-0 flex flex-col px-3 border-b border-borderSubtle/60 bg-panel ${bandScroll ? 'gap-y-0 py-0' : 'gap-y-1.5 py-1.5'}`} data-ledger-toolbar data-ledger-toolbar-rows="two" data-ledger-toolbar-mode={bandMode} data-ledger-toolbar-scroll={bandScroll ? '' : undefined}>
-        <div className={`flex items-center gap-x-2 gap-y-1.5 ${bandScroll ? 'flex-nowrap overflow-x-auto scroll-row [&>*]:shrink-0 py-2' : 'flex-wrap'}`} data-ledger-toolbar-row="picks">
+        <div className={`flex items-center gap-x-2 gap-y-1.5 ${bandScroll ? 'flex-wrap [&>*]:shrink-0 py-2' : 'flex-wrap'}`} data-ledger-toolbar-row="picks">
           {backButton}
           {leadFold}
           {strips}
         </div>
-        <div className={`flex items-center gap-x-2 gap-y-1.5 ${bandScroll ? 'flex-nowrap overflow-x-auto scroll-row [&>*]:shrink-0 py-2' : 'flex-wrap'}`} data-ledger-toolbar-row="doors">
+        <div className={`flex items-center gap-x-2 gap-y-1.5 ${bandScroll ? 'flex-wrap [&>*]:shrink-0 py-2' : 'flex-wrap'}`} data-ledger-toolbar-row="doors">
           {doors}
         </div>
         {bandScroll && !many && (
@@ -1765,6 +1781,12 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           const namePick = (ownDates[c.ticker]?.length ? ownDates[c.ticker] : chosenDates).filter(d => !!book.snapshot.uwByDate?.[d]?.length);
           const dates = namePick.length ? namePick : chosenDates;
           const surfDrawn = scoped(book.surface, book.snapshot, dates);
+          /* THE COLOURED ROWS ARE THE WALLS OF THE NUMBERS SHOWN (the seventh audit's retail finding): where the matrix's
+             window is not the Levels card's contracts, its rows are coloured by the window's own call wall, put wall
+             and supreme — read off the same dates it adds up — and its head says which window that is */
+          const differs = dates.length > 0 && (levelsScope === 'ALL' ? dates.length < allListed : !(dates.length === 1 && dates[0] === lvDate));
+          const winLevels = differs && book.snapshot.liveBook ? roomLevels(bookForDates(book.snapshot, dates), '0DTE') : null;
+          const surfMatrix = winLevels ? { ...surfDrawn, levels: { ...surfDrawn.levels, supreme: winLevels.supreme, callWall: winLevels.callWall, putWall: winLevels.putWall, flip: winLevels.flip, flipFound: winLevels.flipFound, pin: winLevels.pin, pinFound: winLevels.pinFound } } : surfDrawn;
           const colWindow = same(`e:${c.ticker}:${dates.join(',')}`, indicesFor(book.surface, book.snapshot, dates, colGreeks.length));
           const colShown = same(`s:${c.ticker}:${dates.join(',')}:${fitDepth}`, colWindow.slice(0, Math.max(1, fitDepth)));
           const followed = c.ticker in ownFocus ? ownFocus[c.ticker] : focusOn;
@@ -1793,16 +1815,23 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     onClick={() => keep?.(sup.strike)}
                     title={`${c.ticker}'s heaviest strike on the expiries in hand, by ${GREEK_LABEL[colGreeks[0] ?? 'gex']} — most of it on ${supEx?.date ?? ''} · click to keep the strike`}
                     className="shrink-0 inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono transition-colors"
-                    data-column-supreme={sup.strike}
+                    data-column-supreme={book.snapshot.liveBook && surfDrawn.levels?.complete === false ? undefined : sup.strike}
                   >
                     <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
                     <span className="text-[11px] text-textMuted">Supreme <span className="text-warn/90">· {levelsScope === 'ALL' ? 'All exp.' : todayScopeLabel()}</span></span>
                     <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
-                      {fmtStrike(sup.strike)}
-                      {!tight && (
+                      {/* nothing provisional (the seventh audit's retail blocker): "…" until the Levels card's scope is final */}
+                      {book.snapshot.liveBook && (colGreeks[0] ?? 'gex') === 'gex' && surfDrawn.levels?.complete === false ? (
+                        '…'
+                      ) : (
                         <>
-                          {' '}
-                          <span className="text-textMuted font-normal">·</span> {fmtUsd(shownGreek(colGreeks[0] ?? 'gex', sup.total))}
+                          {fmtStrike(sup.strike)}
+                          {!tight && (
+                            <>
+                              {' '}
+                              <span className="text-textMuted font-normal">·</span> {fmtUsd(shownGreek(colGreeks[0] ?? 'gex', sup.total))}
+                            </>
+                          )}
                         </>
                       )}
                     </span>
@@ -1876,7 +1905,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                   {d.view === 'profile' ? (
                     <ExposureProfileView surface={surfDrawn} expiries={colShown} liveSpot={book.snapshot.spot} live={!fresh} selectedStrike={kept} onSelectStrike={keep} paper={paper} />
                   ) : d.view === 'matrix' ? (
-                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={scopeDiffers ? spanWords : null} levelLegsAt={scopeDiffers ? levelLegsOf(book.snapshot) : null} levelsWords={levelsLabel} />
+                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfMatrix} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={differs ? (!book.snapshot.liveBook || bookDatesIn(c.ticker) ? `${expirySpan(dates)} (${dates.length} ${dates.length === 1 ? 'expiry' : 'expiries'})` : '…') : null} levelLegsAt={differs && !winLevels ? levelLegsOf(book.snapshot) : null} levelsWords={levelsLabel} windowLevels={!!winLevels} />
                   ) : (
                     <ExposureLedger wantCols={colGreeks.length * colWindow.length} onNatural={packs ? naturalFor(c.ticker, 'calendar') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} open={view === 'calendar' && !fresh ? openSurfaceOf(book.ticker) : null} focusOn={colFocus} greeks={colGreeks} expiries={colWindow} rings={d.rings} leg={d.legs === 'both' || d.legs === 'all' ? 'net' : d.legs} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} afterBell={d.afterBell} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} onExpiry={(many || onExpiries) ? i => { const date = listedIso(book.snapshot)[i]; if (many && date) { setOwnDates(prev => ({ ...prev, [c.ticker]: [date] })); return; } setOwnDates({}); setRange({ from: i, through: i }); } : undefined} fitKey={c.ticker} onFit={reportFit} paper={paper} />
                   )}
@@ -1945,7 +1974,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
               supreme and the walls marked on them are the Levels card's — the Board's — so the two can differ */}
           {chosenDates.length > 0 && (
             <span className={`inline-flex items-center gap-1.5 ${scopeDiffers ? 'text-textSecondary font-semibold' : 'text-textMuted/80'}`} title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show." data-legend-scope>
-              figures: {spanWords} · levels: {levelsLabel}
+              {scopeDiffers && view !== 'calendar' ? <>figures and coloured rows: {spanWords} · the Levels card: {levelsLabel}</> : <>figures: {spanWords} · levels: {levelsLabel}</>}
             </span>
           )}
           {/* the calendar's pills, named (2026-10-14 — a bare "−96%" on a cell said neither what fell nor since when) */}

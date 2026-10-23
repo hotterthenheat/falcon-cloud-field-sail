@@ -614,6 +614,20 @@ export function useEconCalendar(): EconEvent[] {
   return useMemo(() => (econ.status === 'live' ? econ.events : []), [econ]);
 }
 
+/** The congress book as read — starts the congress read alone (audit round 7: the holdings grid took useLiveRecord,
+ *  whose subscribe starts every feed — news, the calendar and twelve pages of insider filings on the Congress page) */
+export function useCongressBook(): LiveSnapshot['congress'] {
+  return useSyncExternalStore(
+    fn => {
+      const off = listen(fn);
+      ensureCongress();
+      return off;
+    },
+    () => snap.congress,
+    () => snap.congress,
+  );
+}
+
 export function useCongressFeed(windowDays: number): CongressFeed {
   const congress = useSyncExternalStore(
     fn => {
@@ -749,16 +763,29 @@ function ensurePerson(slug: string, cik: string | undefined, name: string | unde
     const path = cik
       ? `/insider/transactions?reporter_cik=${encodeURIComponent(cik)}&start_date=${since}&limit=500`
       : `/insider/transactions?owner_name=${encodeURIComponent(owner)}&start_date=${since}&limit=500`;
-    const res = await uwCall(path, true);
-    const rows = Array.isArray(res.data) ? (res.data as (UwInsider & { reporter_cik?: string })[]) : [];
+    let res = await uwCall(path, true);
+    let rows = Array.isArray(res.data) ? (res.data as (UwInsider & { reporter_cik?: string })[]) : [];
     /* by name, keep only the rows whose name reads the same as the slug (the vendor's match is a substring) */
-    const own = cik ? rows : rows.filter(r => personSlug(r.owner_name || '') === slug);
+    let own = cik ? rows : rows.filter(r => personSlug(r.owner_name || '') === slug);
+    /* ONE SEC ID ON THE NAME'S ROWS: read by it (audit round 7 — the page used to load the whole market feed, twelve-plus
+       pages, only to learn this id) */
+    const ids = cik ? [] : [...new Set(own.map(r => (r.reporter_cik || '').trim()).filter(Boolean))];
+    if (ids.length === 1) {
+      const byId = await uwCall(`/insider/transactions?reporter_cik=${encodeURIComponent(ids[0])}&start_date=${since}&limit=500`, true);
+      if (!byId.error && Array.isArray(byId.data) && byId.data.length) {
+        res = byId;
+        rows = byId.data as (UwInsider & { reporter_cik?: string })[];
+        own = rows;
+        const box = persons.get(key);
+        if (box) box.by = 'cik';
+      }
+    }
     await probeIssuers(own);
     const trades = insidersFromWhales(own).filter(t => t.daysAgo <= PERSON_DAYS);
     persons.set(key, {
       status: res.error ? 'sim' : 'live',
       trades,
-      by: cik ? 'cik' : 'name',
+      by: cik || persons.get(key)?.by === 'cik' ? 'cik' : 'name',
       filers: new Set(own.map(r => r.reporter_cik).filter(Boolean)).size,
       capped: rows.length >= 500,
     });
@@ -780,10 +807,11 @@ export interface InsiderPersonBook {
 
 /** undefined while the person's filings are being read; null when none is on file in the year. */
 export function useInsiderBook(slug: string): InsiderPersonBook | null | undefined {
-  const insiders = useInsidersSnap();
-  /* the market feed names the person and their SEC id; the page then reads their own filings */
+  /* the market feed, when it is already read, names the person and their SEC id; the page does not start it (audit
+     round 7: 17 calls for one person) — without it the person's own rows, read by name, carry the id */
+  const insiders = useSyncExternalStore(listen, () => snap.insiders, () => snap.insiders);
   const seen = useMemo(() => (insiders.status === 'live' ? insiders.trades.find(t => personSlug(t.person) === slug) ?? null : null), [insiders, slug]);
-  const feedSettled = insiders.status !== 'loading';
+  const feedSettled = true;
   const key = feedSettled ? (seen?.cik ? `cik:${seen.cik}` : `name:${slug}`) : null;
   const box = useSyncExternalStore(
     fn => {

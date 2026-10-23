@@ -32,7 +32,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { now } from '../../core/clock';
 import { buildMonthCalendar, dayKeyOf, fdaStamp, setLiveEarnings, subscribeFda, type CalDay, type CalEvent } from '../../data/monthCalendar';
-import { useEveryReport } from '../../data/earningsFeed';
+import { useEarningsPending, useEveryReport } from '../../data/earningsFeed';
 import CardTabs from '../ui/CardTabs';
 import CompanyLogo from '../ui/CompanyLogo';
 import { SUPREME, alpha } from '../gex/paletteInk';
@@ -116,6 +116,8 @@ const NewsCalendar = () => {
   const fdaRev = useSyncExternalStore(subscribeFda, fdaStamp, fdaStamp);
   /* the earnings are the Earnings page's own fortnight — one date per name across the Dossier */
   const reports = useEveryReport();
+  /* the day's empty line waits for the fortnight's reports to land (audit round 7: "nothing" before the read was in) */
+  const reportsPending = useEarningsPending();
   useEffect(() => {
     setLiveEarnings(
       reports
@@ -244,7 +246,7 @@ const NewsCalendar = () => {
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto max-h-[560px]">
           {dayEvents.length === 0 ? (
-            <div className="px-4 py-8 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">Nothing on the record for this day</div>
+            <div className="px-4 py-8 text-center font-mono text-[10px] uppercase tracking-widest text-textMuted">{reportsPending ? 'Reading the calendar' : 'Nothing on the record for this day'}</div>
           ) : (
             dayEvents.map(e => (
               <div key={e.id} className="px-4 py-2 border-b border-borderSubtle/40" data-cal-event={e.id} data-kind={e.kind}>

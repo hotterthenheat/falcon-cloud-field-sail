@@ -31,7 +31,7 @@ import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { FOOTPRINT_SCREENS, runFootprintScreen, stockLike, type FootprintScreenKey } from '../../data/flowBook';
 import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
-import { dayAdv, dayLabel, dayPos, earnWords, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, oiRowTitle, prevSessionIso, shortDay, type OiCover } from '../../components/trace/dayWords';
+import { dayAdv, dayLabel, dayPos, earnWords, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, nextCountDay, oiRowTitle, prevSessionIso, shortDay, type OiCover } from '../../components/trace/dayWords';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -223,7 +223,7 @@ const Footprints = () => {
     const added = builds.reduce((a, r) => a + r.deltaOI, 0);
     const removed = unwinds.reduce((a, r) => a + r.deltaOI, 0);
     const lag = filtered.length - counted.length;
-    const tail = `${lag ? ` ${num(lag)} contract${lag === 1 ? ' is' : 's are'} still on the count before (the vendor has not re-counted ${lag === 1 ? 'it' : 'them'}) — marked, and left out.` : ''}${cover.allPending && cover.volDay && cover.volDay !== cover.day ? ` ${dayPos(cover.volDay).replace(/^./, c => c.toUpperCase())} volume builds the next count, set ${dayAdv(cover.volDay) === 'today' ? 'tomorrow morning' : 'the morning after'}.` : ''}`;
+    const tail = `${lag ? ` ${num(lag)} contract${lag === 1 ? ' is' : 's are'} still on the count before (the vendor has not re-counted ${lag === 1 ? 'it' : 'them'}) — marked, and left out.` : ''}${cover.allPending && cover.volDay && cover.volDay !== cover.day ? ` ${dayPos(cover.volDay).replace(/^./, c => c.toUpperCase())} volume builds the next count, set the morning of ${nextCountDay(cover.volDay)}.` : ''}`;
     if (builds.length === 0 && unwinds.length === 0) return <RichRead text={`No open interest changed ${oiInWords(cover.day)} on ${cutWord ? `the contracts ${cutWord}` : 'the book'}.${tail}`} />;
     /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
@@ -361,8 +361,7 @@ const Footprints = () => {
           if (r.deltaOI === 0) return <span className="text-textSecondary">—</span>;
           return (
             <span className={dirInk(r.deltaOI > 0 ? Math.abs(r.deltaOIPct) : -Math.abs(r.deltaOIPct), marks.doiPct)}>
-              {r.deltaOIPct > 0 ? '+' : '−'}
-              {num(Math.abs(Math.round(r.deltaOIPct)))}%
+              {r.prevOI < 100 ? 'new' : <>{r.deltaOIPct > 0 ? '+' : '−'}{num(Math.abs(Math.round(r.deltaOIPct)))}%</>}
             </span>
           );
         },

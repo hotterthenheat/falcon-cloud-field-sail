@@ -231,7 +231,7 @@ export function buildExposureProfile(
   }
 
   /* "Today" without its own date's strikes is the whole book standing in — never final (the fourth audit's M1) */
-  const complete = flipRead.complete && !(snapshot.liveBook && expiry === '0DTE' && !(liveChain && liveChain.length));
+  const complete = flipRead.complete && !snapshot.levelsPending && !(snapshot.liveBook && expiry === '0DTE' && !(liveChain && liveChain.length));
   const levels: ExposureLevels = { spot, callWall, putWall, pin: pinStrike, pinFound, flip, flipFound: flipRead.flip != null, net: flipRead.netAtSpot, supreme, complete };
 
   // Zone bands (strikes descending: from ≥ to). One row of breathing room per wall.

@@ -3,13 +3,15 @@
   stays empty — never a sample of invented names.
 */
 
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Sector } from './universe';
 import { lookup } from './universe';
 import { decide, isKnownName, type ActiveContract, type EarningsDossier, type EarningsEvent, type EarningsQuarter, type NextReport, type ReportSlot } from './earnings';
 import { tickerName } from './tickers';
 import { MARKET_HOLIDAYS } from '../core/calendar';
-import { boardMondayIso } from './nyDate';
+import { boardMondayIso, shortDay } from './nyDate';
+import { phaseOf } from './dayChange';
+import { nyIsoDate } from '../core/nyTime';
 import { uwCall, whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
 
 interface SlotRow {
@@ -173,12 +175,86 @@ export const epsResultOf = (actual: number, est: number): 'beat' | 'inline' | 'm
     and priced it "±6.5% · 0.87× fair" while its page said "Reported"). On New York's clock: a date before today is out;
     today's before-the-open report is out from 09:30, today's after-the-close one (or one with no time set) from 16:00;
     a report the vendor already gives a move for is out. */
-export function reportedNow(e: { iso?: string; slot: ReportSlot; timeKnown?: boolean; actualMovePct?: number | null }, today: string = nyToday(), minutes: number = nyMinutesNow()): boolean {
+export function reportedNow(e: { ticker?: string; iso?: string; slot: ReportSlot; timeKnown?: boolean; actualMovePct?: number | null }, today: string = nyToday(), minutes: number = nyMinutesNow()): boolean {
   const iso = (e.iso ?? '').slice(0, 10);
   if (!iso) return false;
   if (iso < today || e.actualMovePct != null) return true;
   if (iso > today) return false;
+  /* the company's own results on the wire today (audit round 7: AXP and SLB counted "still to report" at 07:20 — both
+     prints crossed at 07:04 and 06:53, the vendor's actual_eps still empty) */
+  if (e.ticker && wireOut.has(`${e.ticker.toUpperCase()}|${iso}`)) return true;
   return minutes >= (e.slot === 'BMO' && e.timeKnown !== false ? 9 * 60 + 30 : 16 * 60);
+}
+
+/* THE RESULTS ON THE WIRE (audit round 7). Between the early morning and the open the slot rule cannot tell a print that
+   is out from one still to come, and the vendor's actual_eps lags the wire. For today's before-the-open names the board
+   or a name's page shows, the name's own latest headlines (/news/headlines?ticker=, one small read a name, on the
+   background lane, again every five minutes until it is out) are read for the company's results crossed today. */
+const wireOut = new Set<string>();
+const wireAt = new Map<string, number>();
+const RESULTS = /\b(q[1-4]|quarter(ly)?|results|earnings|eps)\b/i;
+const WIRE_EVERY = 5 * 60_000;
+export function checkWire(tickers: readonly string[], iso: string): Promise<boolean> {
+  const today = nyToday();
+  const minutes = nyMinutesNow();
+  /* only on the day, before the open, from 04:00 — outside that window the slot rule and the dates answer */
+  if (iso !== today || minutes < 4 * 60 || minutes >= 9 * 60 + 30) return Promise.resolve(false);
+  const want = tickers.map(t => t.toUpperCase()).filter(t => !wireOut.has(`${t}|${iso}`) && Date.now() - (wireAt.get(t) ?? 0) > WIRE_EVERY);
+  if (!want.length) return Promise.resolve(false);
+  const midnight = Date.parse(`${iso}T04:00:00Z`);
+  return Promise.all(
+    want.map(t => {
+      wireAt.set(t, Date.now());
+      return uwCall(`/news/headlines?ticker=${encodeURIComponent(t)}&limit=10`, false, true).then(res => {
+        const rows = Array.isArray(res.data) ? (res.data as { created_at?: string; headline?: string; tickers?: string[] }[]) : [];
+        const hit = rows.some(r => {
+          const at = Date.parse(String(r.created_at ?? ''));
+          return Number.isFinite(at) && at >= midnight && (r.tickers ?? []).map(x => x.toUpperCase()).includes(t) && RESULTS.test(String(r.headline ?? ''));
+        });
+        if (hit) wireOut.add(`${t}|${iso}`);
+        return hit;
+      });
+    }),
+  ).then(found => found.some(Boolean));
+}
+/** Re-reads which of the feed's prints are out, and tells the listeners when any changed */
+function rereadOut(): void {
+  let changed = false;
+  for (const e of feed.events) {
+    const out = reportedNow(e);
+    if (out !== !!e.reported) {
+      e.reported = out;
+      changed = true;
+    }
+  }
+  if (changed) emit();
+}
+function checkTodaysWire(): void {
+  if (feed.status !== 'live') return;
+  const today = nyToday();
+  const names = feed.events.filter(e => e.iso === today && e.slot === 'BMO' && e.known && !e.reported).map(e => e.ticker);
+  if (names.length) void checkWire(names, today).then(found => found && rereadOut());
+}
+/** A name's page: is today's print on the wire yet (re-reads every five minutes before the open) */
+export function useWireCheck(ticker: string, iso: string | undefined, slot: ReportSlot | undefined): void {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    if (!ticker || !iso || slot !== 'BMO') return;
+    let dead = false;
+    const run = () =>
+      void checkWire([ticker], iso).then(found => {
+        if (found && !dead) {
+          rereadOut();
+          bump(n => n + 1);
+        }
+      });
+    run();
+    const id = window.setInterval(run, WIRE_EVERY);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [ticker, iso, slot]);
 }
 
 function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
@@ -201,7 +277,7 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const postMove = row.post_earnings_move_1d == null || row.post_earnings_move_1d === '' ? null : Number(row.post_earnings_move_1d);
   const reaction = reactionRaw != null && Number.isFinite(reactionRaw) ? reactionRaw : postMove != null && Number.isFinite(postMove) ? postMove : null;
   /* OUT ONCE IT IS OUT — ONE RULE, reportedNow, for the board and the name's page */
-  const reported = reportedNow({ iso, slot: slotOf(row.report_time), timeKnown: timeKnownOf(row.report_time), actualMovePct: reaction }, today);
+  const reported = reportedNow({ ticker, iso, slot: slotOf(row.report_time), timeKnown: timeKnownOf(row.report_time), actualMovePct: reaction }, today);
   const known = isKnownName(ticker, { sp500: !!row.is_s_p_500, marketCap: num(row.marketcap) || null });
   const partial = {
     ticker,
@@ -373,7 +449,7 @@ function occOf(symbol: string): { expiry: string; right: 'CALL' | 'PUT'; strike:
   return { expiry: `20${m[1]}-${m[2]}-${m[3]}`, right: m[4] === 'C' ? 'CALL' : 'PUT', strike };
 }
 
-function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: number): { calls: ActiveContract[]; puts: ActiveContract[] } {
+function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: number, spotWord?: string): { calls: ActiveContract[]; puts: ActiveContract[] } {
   const calls: ActiveContract[] = [];
   const puts: ActiveContract[] = [];
   const today = nyToday();
@@ -407,6 +483,7 @@ function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: nu
       volOverOi: oi > 0 ? Number((volume / oi).toFixed(2)) : 0,
       ivPct: Math.round((iv > 3 ? iv : iv * 100)),
       fromSpotPct: Number(fromSpot.toFixed(1)),
+      spotWord,
       breakevenPct: Number(Math.max(0, need).toFixed(1)),
       expiry: parsed.expiry,
     };
@@ -431,11 +508,11 @@ async function pullIv(ticker: string, priority = false): Promise<void> {
   }
 }
 
-async function pullContracts(ticker: string, spot: number, priority = false): Promise<void> {
+async function pullContracts(ticker: string, spot: number, priority = false, spotWord?: string): Promise<void> {
   if (contracts.has(ticker)) return;
   try {
     const rows = await whalesOptionContracts(ticker, undefined, priority);
-    contracts.set(ticker, contractsFrom(ticker, Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [], spot));
+    contracts.set(ticker, contractsFrom(ticker, Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [], spot, spotWord));
   } catch {
     contracts.set(ticker, { calls: [], puts: [] });
   }
@@ -444,11 +521,19 @@ async function pullContracts(ticker: string, spot: number, priority = false): Pr
 /** THE ONE NEXT-EARNINGS RULE for the Dossier: the ticker's own Unusual Whales earnings rows (/earnings/{t}), the
     first report dated today or later on New York's calendar. The stock page, the earnings file, the calendar and the
     company card all read this, so a name carries one date everywhere. */
-export function nextReportRow<R extends { report_date?: string | null }>(rows: readonly R[]): R | null {
+export function nextReportRow<R extends { report_date?: string | null }>(rows: readonly R[], opts: { skipOut?: boolean } = {}): R | null {
   const today = nyToday();
+  /* with skipOut (the stock page's "reports …" line): today's report that is already out — its slot has passed, its
+     results are on the wire or its EPS is in — is not the next one (audit round 7: AXP read "reports today" after its
+     07:04 print). The earnings page keeps today's print, reported, as its own. */
+  const outToday = (r: R): boolean => {
+    const x = r as unknown as { symbol?: string; report_time?: string | null; actual_eps?: unknown; post_earnings_move_1d?: unknown };
+    const actual = x.actual_eps != null && x.actual_eps !== '' ? 0 : x.post_earnings_move_1d != null && x.post_earnings_move_1d !== '' ? 0 : null;
+    return reportedNow({ ticker: x.symbol, iso: today, slot: slotOf(x.report_time ?? undefined), timeKnown: timeKnownOf(x.report_time), actualMovePct: actual });
+  };
   return (
     rows
-      .filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.report_date || '') && (r.report_date || '').slice(0, 10) >= today)
+      .filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.report_date || '') && ((r.report_date || '').slice(0, 10) > today || ((r.report_date || '').slice(0, 10) === today && !(opts.skipOut && outToday(r)))))
       .sort((a, b) => (a.report_date || '').localeCompare(b.report_date || ''))[0] ?? null
   );
 }
@@ -633,7 +718,7 @@ async function enrich(events: EarningsEvent[]) {
   const urgency = (e: EarningsEvent) => (e.daysOut >= 0 ? e.daysOut : 100 - e.daysOut);
   const want = events.filter(e => e.known && e.history === false).sort((a, b) => urgency(a) - urgency(b)).map(e => e.ticker);
   const unique = [...new Set(want)];
-  void pullIvBatch(events.filter(e => e.known).map(e => e.ticker)).then(() => {
+  void pullIvBatch(unique).then(() => {
     feed = {
       status: 'live',
       events: feed.events.map(e => {
@@ -646,7 +731,10 @@ async function enrich(events: EarningsEvent[]) {
   await Promise.all(
     unique.map(async ticker => {
       const rows = await pullHistory(ticker);
-      if (!rows) return;
+      if (!rows) {
+        emit();
+        return;
+      }
       const rank = ivRankOf(ticker);
       feed = {
         status: 'live',
@@ -661,23 +749,31 @@ async function enrich(events: EarningsEvent[]) {
   );
 }
 
-/* THE HISTORIES ONLY WHERE THEY ARE SHOWN (the re-audit, 2026-10-22): every page that showed a report date — the News
-   calendar, a name's page — read the whole fortnight's histories too, hundreds of calls. The board asks for them;
-   the rest read the fortnight's dates alone. */
-let historiesWanted = false;
-let enriching = false;
+/* THE HISTORIES ONLY WHERE THEY ARE SHOWN (the re-audit, 2026-10-22; audit round 7: the board still read every known
+   name's past reports across the fortnight — 393 /earnings/{T} calls, about 42 seconds on the key's three slots). The
+   board now names the histories it shows: the known names still to report in the weeks on view (the rich / fair /
+   cheap counts and the Priced filter are over them), the names on the grid's page in view, and today's card. A name
+   is read once; another week or page asks only for what it adds. */
+const wanted = new Set<string>();
+const asked = new Set<string>();
 function startEnrich() {
-  if (enriching || feed.status !== 'live') return;
-  enriching = true;
-  void enrich(feed.events);
+  if (feed.status !== 'live') return;
+  const todo = feed.events.filter(e => e.known && e.history === false && wanted.has(e.ticker) && !asked.has(e.ticker));
+  if (!todo.length) return;
+  for (const e of todo) asked.add(e.ticker);
+  void enrich(todo);
 }
-/** The earnings board's own call: read the past reports of the fortnight's known names */
-export function useEarningsHistories(): void {
+/** The earnings board's own call: read the past reports of the names it shows */
+export function useEarningsHistories(tickers: readonly string[]): void {
+  const key = [...new Set(tickers.map(t => t.toUpperCase()))].sort().join(',');
   useEffect(() => {
-    historiesWanted = true;
+    if (!key) return;
+    for (const t of key.split(',')) wanted.add(t);
     startEnrich();
-  }, []);
+  }, [key]);
 }
+/** True when this name's past reports are not asked for on the board (read on its own page) */
+export const historyUnasked = (ticker: string): boolean => !asked.has(ticker.toUpperCase()) && !history.has(ticker.toUpperCase());
 
 export function ensureEarnings(): void {
   if (started || typeof window === 'undefined') return;
@@ -741,18 +837,12 @@ export function ensureEarnings(): void {
       events.sort((a, b) => a.daysOut - b.daysOut || Number(b.known) - Number(a.known) || b.impliedMovePct - a.impliedMovePct);
       feed = { status: 'live', events };
       emit();
-      if (historiesWanted) startEnrich();
+      startEnrich();
       /* the clock moves the rule: a minute's tick re-reads which prints are out (09:30, 16:00) */
+      checkTodaysWire();
       window.setInterval(() => {
-        let changed = false;
-        for (const e of feed.events) {
-          const out = reportedNow(e);
-          if (out !== !!e.reported) {
-            e.reported = out;
-            changed = true;
-          }
-        }
-        if (changed) emit();
+        rereadOut();
+        checkTodaysWire();
       }, 60_000);
     } catch {
       if (feed.status !== 'live') {
@@ -778,7 +868,7 @@ export function useEarningsFailed(): boolean {
 export function useEarningsCoverage(): { slots: number; missed: number; historiesPending: number } {
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);
   return useMemo(
-    () => ({ slots: SLOTS_ASKED(), missed: missedSlots, historiesPending: feed.events.filter(e => e.known && e.history === false && history.get(e.ticker) !== 'miss').length }),
+    () => ({ slots: SLOTS_ASKED(), missed: missedSlots, historiesPending: feed.events.filter(e => e.known && e.history === false && asked.has(e.ticker) && history.get(e.ticker) !== 'miss').length }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [version],
   );
@@ -853,14 +943,30 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
       emit();
       const upcoming = (rows ? nextReportRow(rows) : null) ?? rows?.slice().sort((a, b) => (b.report_date || '').localeCompare(a.report_date || ''))[0];
       /* the contracts' "from spot" and breakevens read the stock's LAST price — the calendar row's price is the one
-         the print was priced against, stale once it is out (TSLA's cards measured from $386.55 after a $373.63 close) */
+         the print was priced against, stale once it is out (TSLA's cards measured from $386.55 after a $373.63 close).
+         THE REFERENCE BY PHASE (audit round 7: PG's $160 call read "−2.4% from spot" off the 163.87 pre-market print;
+         from the 165.59 regular close it is −3.4%): in the session, the last price; outside it — before the open, after
+         the bell, a weekend, or a regular bar from an earlier New York day — the last regular close (the quote's
+         prev_close), which is what the contracts' marks were struck against. The card says which it is. */
       return uwCall(`/stock/${encodeURIComponent(sym)}/stock-state`, true)
         .then(res => {
-          const last = Number((res.data as { close?: string } | null)?.close);
-          return last > 0 ? last : upcoming ? priceOf(upcoming) : 0;
+          const st = (res.data ?? null) as { close?: string; prev_close?: string; market_time?: string; tape_time?: string } | null;
+          const last = Number(st?.close);
+          const prev = Number(st?.prev_close);
+          const tapeMs = Date.parse(String(st?.tape_time ?? ''));
+          const inSession = phaseOf(st?.market_time) === 'regular' && (!Number.isFinite(tapeMs) || nyIsoDate(tapeMs) === nyIsoDate());
+          if (inSession && last > 0) return { spot: last, word: 'the last price' };
+          if (prev > 0) {
+            const today = nyToday();
+            const session = (iso: string) => weekdayOf(iso) !== 0 && weekdayOf(iso) !== 6 && !MARKET_HOLIDAYS.has(iso);
+            let day = phaseOf(st?.market_time) === 'post' && session(today) && Number.isFinite(tapeMs) && nyIsoDate(tapeMs) === nyIsoDate() ? today : addDays(today, -1);
+            for (let i = 0; i < 7 && !session(day); i++) day = addDays(day, -1);
+            return { spot: prev, word: `the ${shortDay(day)} close` };
+          }
+          return { spot: last > 0 ? last : upcoming ? priceOf(upcoming) : 0, word: 'the last price' };
         })
-        .catch(() => (upcoming ? priceOf(upcoming) : 0))
-        .then(spot => pullContracts(sym, spot, true)).then(() => {
+        .catch(() => ({ spot: upcoming ? priceOf(upcoming) : 0, word: 'the calendar price' }))
+        .then(ref => pullContracts(sym, ref.spot, true, ref.word)).then(() => {
         if (!dead) emit();
       });
     });

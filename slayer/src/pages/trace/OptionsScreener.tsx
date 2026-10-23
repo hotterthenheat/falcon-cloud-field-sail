@@ -139,7 +139,7 @@ const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ?
    and Sweep sat under the pinned Prem — fourteen columns summed 1,468px in a 1,149px box). Every visible column has its
    floor here, the set at rest sums under the box, and the DTE (the contract cell carries the date) and the OI (the card,
    Vol/OI and ΔOI carry it) open folded — one click away in Columns. */
-const WIDTHS: Record<string, number> = { time: 76, ticker: 84, contract: 150, dte: 56, otm: 68, last: 150, vol: 84, oi: 80, doi: 112, prem: 84, iv: 104, voloi: 72, sweep: 64, floor: 64, multi: 64, sector: 176, lean: 92 };
+const WIDTHS: Record<string, number> = { time: 76, ticker: 84, contract: 150, dte: 56, otm: 76, last: 150, vol: 84, oi: 80, doi: 136, prem: 84, iv: 104, voloi: 72, sweep: 64, floor: 64, multi: 64, sector: 176, lean: 92 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
@@ -359,7 +359,8 @@ const OptionsScreener = () => {
               {lag}
               {r.deltaOI > 0 ? '+' : '−'}
               {num(Math.abs(r.deltaOI))} {/* a tier down, never opacity */}
-              <span className="text-[11px]">{pctSigned(r.deltaOIPct, 0)}</span>
+              {/* a percentage of next to nothing is no figure ("+4564800%" on an open interest of 1) */}
+              <span className="text-[11px]">{r.prevOI >= 100 ? pctSigned(r.deltaOIPct, 0) : 'new'}</span>
             </span>
           );
         },

@@ -59,6 +59,7 @@ import { useBoardNames } from '../../data/boardNames';
 import { aboveFifty, buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
 import { useLiveStocks } from '../../data/liveFiles';
 import { extendedLine, priceWords, peekQuote, useLiveQuote } from '../../data/liveQuote';
+import { shortDay as shortDayWord } from '../../data/nyDate';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
 import { SECTORS, type Sector } from '../../data/universe';
 import { ROTATION_SECTORS } from './recordSkeletons';
@@ -369,6 +370,10 @@ const Stocks = () => {
   );
 
   const newsQuiet = picks.length > 0 && picks.every(p => p.quiet.includes('news'));
+  /* THE DAY COLUMN NAMES ITS DAY (audit round 7: "Today" held Oct 22's change before the open) — in the session it is
+     today; outside it, the last session's date, off the market's own quote */
+  const spyQuote = useLiveQuote('SPY');
+  const dayHead = spyQuote && spyQuote.phase !== 'regular' && spyQuote.regDate ? shortDayWord(spyQuote.regDate) : 'Today';
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [
@@ -376,7 +381,7 @@ const Stocks = () => {
       { headerName: 'Name', field: 'ticker', flex: 1, minWidth: 140, cellRenderer: NameCell, headerTooltip: 'The company — click the row to open the name’s file' },
       { headerName: 'Sector', field: 'sector', width: 132, cellRenderer: SectorCell, headerTooltip: 'The sector the name files under' },
       { headerName: 'Last', field: 'price', width: 88, cellRenderer: LastCell, valueGetter: p => (p.data ? (priceWords(peekQuote(p.data.ticker))?.lead || p.data.price) : 0), type: 'rightAligned', headerTooltip: 'The regular close outside the session (hover for the after-hours or pre-market print and its time, ET); the last price in it' },
-      { headerName: 'Today', field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — today's close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
+      { headerName: dayHead, field: 'changePct', width: 80, cellRenderer: TodayCell, valueGetter: p => (p.data ? (peekQuote(p.data.ticker)?.changePct ?? p.data.changePct) : 0), type: 'rightAligned', headerTooltip: "The regular session's change — in the session today's, outside it the last session's (the date in the head) — its close against the close before it. The after-hours or pre-market move sits under it, kept apart" },
       { headerName: 'Year', field: 'trend', width: 104, cellRenderer: TrendCell, cellDataType: false, sortable: false, headerTooltip: 'The close a year ago, then six months, three months, a month, a week, and now. Not a daily path.' },
       { headerName: 'Trend', colId: 'momentum', valueGetter: p => p.data?.sleeves.momentum ?? 0, width: 112, cellRenderer: sleeveCell('momentum'), headerTooltip: "The trend: the price against its 20-day EMA, RSI, ADX with the week's direction, and the month — the screener's. The word is its grade; hover for the figures. A dash is left out of the screen." },
       { headerName: 'Numbers', colId: 'quality', valueGetter: p => p.data?.sleeves.quality ?? 0, width: 112, cellRenderer: sleeveCell('quality'), headerTooltip: 'Earnings growth over the last four quarters. The word is its grade; hover for the figure. A dash means the feed has no growth figure.' },
@@ -388,7 +393,7 @@ const Stocks = () => {
       { headerName: 'Why', field: 'thesis', flex: 2.4, minWidth: 220, autoHeight: true, wrapText: true, cellRenderer: WhyCell, sortable: false, headerTooltip: 'What is for the name, what is against it — hover for the whole line' },
     );
     return cols;
-  }, [newsQuiet]);
+  }, [newsQuiet, dayHead]);
   const defaultColDef = useMemo<ColDef<StockPick>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
 
   /* THE CUT GLIDES IN (Noah, 2026-09-10: "clicking on any of the sectors should

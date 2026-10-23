@@ -29,7 +29,7 @@ import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/Pho
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
+import { type ColDef, type ICellRendererParams, type IRowNode, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
@@ -43,7 +43,7 @@ import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, c
 import { useCongressCoverage, useCongressFeed, useCongressStatus, wantCongressWindow, type CongressCoverage } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { FeedFallback } from '../../components/ui/liveRead';
-import { companyName, tickerName } from '../../data/tickers';
+import { companyName, isListed, tickerName } from '../../data/tickers';
 import { useCompanyName } from '../../data/liveFiles';
 import type { Chamber, CongressTrade, ReportOwner } from '../../types/record';
 import { REPORTS_TO_KNOW } from './recordSkeletons';
@@ -118,7 +118,10 @@ export const assetLine = (t: CongressTrade) => {
   const described = readable(rawDesc || fallback);
   /* an option on a named stock says so on the row (audit round 6: Pelosi's AAPL [OP] read as a share purchase) */
   if (named) {
-    const base = described || (t.assetKind === 'Stock' || t.assetKind === 'Stock Option' ? companyName(sym) : t.assetKind);
+    /* A LISTED STOCK GOES BY ITS LISTED NAME (the retail test, round 7: a filer's "ExxonMobil Holdings Corporation Common
+       Stock (XOM)" was shown as XOM's name) — the filer's own words only when the symbol is not a listed one */
+    const listedName = (t.assetKind === 'Stock' || t.assetKind === 'Stock Option') && isListed(sym) ? companyName(sym) : '';
+    const base = (listedName && listedName !== sym ? listedName : '') || described || (t.assetKind === 'Stock' || t.assetKind === 'Stock Option' ? companyName(sym) : t.assetKind);
     return { sym, title: sym, sub: t.assetKind === 'Stock Option' ? `${base} · option` : base };
   }
   const title = described || (t.assetKind === 'Stock' || t.assetKind === 'Other' ? 'Not named on the filing' : t.assetKind);
@@ -440,7 +443,18 @@ const Congress = () => {
 
   const columnDefs = useMemo<ColDef<CongressTrade>[]>(
     () => [
-      { headerName: 'Filed', field: 'filedDaysAgo', width: 146, cellRenderer: FiledCell, sort: 'asc', headerTooltip: 'The day the report was filed, and how far back that is — newest first' },
+      /* THE ARROW SAYS NEWEST FIRST (the retail test, round 7: "Filed ↑" on a newest-first grid, and rows of one filing day
+         in feed order as pages landed): the column sorts by recency, descending — newest filing first, and within a day
+         the newest trade first */
+      {
+        headerName: 'Filed',
+        field: 'filedDaysAgo',
+        width: 146,
+        cellRenderer: FiledCell,
+        sort: 'desc',
+        comparator: (a: number, b: number, na: IRowNode<CongressTrade>, nb: IRowNode<CongressTrade>) => b - a || (nb.data?.tradedDaysAgo ?? 0) - (na.data?.tradedDaysAgo ?? 0) || String(nb.data?.id ?? '').localeCompare(String(na.data?.id ?? '')),
+        headerTooltip: 'The day the report was filed, and how far back that is — newest first',
+      },
       { headerName: 'Member', field: 'member', cellDataType: false, flex: 1.7, minWidth: 220, cellRenderer: MemberCell, comparator: (a: CongressTrade['member'], b: CongressTrade['member']) => a.name.localeCompare(b.name), headerTooltip: 'A row opens this member’s book' },
       { headerName: 'Asset', field: 'ticker', flex: 1.3, minWidth: 170, cellRenderer: AssetCell, headerTooltip: 'The stock the report names' },
       { headerName: 'Type', field: 'type', flex: 0.8, minWidth: 110, cellRenderer: TypeCell, headerTooltip: 'Purchase, sale (full or partial), or an exchange' },
@@ -477,7 +491,8 @@ const Congress = () => {
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">What Congress reported</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every report of a trade made in the window, newest filing first · a row opens that member’s book</p>
+          {/* on a phone the line wraps rather than cutting off mid-word (the retail test, round 7) */}
+          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate">Every report of a trade made in the window, newest filing first · a row opens that member’s book</p>
           {!failed && <CongressProgress coverage={coverage} window={window} waiting={waiting} />}
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">

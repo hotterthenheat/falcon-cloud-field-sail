@@ -2301,9 +2301,20 @@ function useSettled(pack: LivePack<SpreadTrade[]>): LivePack<SpreadTrade[]> {
   const rev = useLegRev();
   useEffect(() => {
     wantLegs(pack.rows.map(t => t.id));
+    /* THE NEWEST FIRST (retail, round 7: the first rows read "…" for size, net and risk) — a poll's new structures land at
+       the top of the page but went to the back of the queue behind the older 200; the first screenful jumps the queue */
+    wantLegs(pack.rows.slice(0, LEGS_FIRST).map(t => t.id), true);
   }, [pack.rows]);
   const rows = useMemo(() => pack.rows.map(settleSpread), [pack.rows, rev]); // eslint-disable-line react-hooks/exhaustive-deps
   return { ...pack, rows };
+}
+const LEGS_FIRST = 24;
+/** Put these structures' legs at the front of the queue — the rows a page shows first under its own cut and order */
+export function useLegsFirst(ids: string[]): void {
+  const key = ids.slice(0, LEGS_FIRST).join(',');
+  useEffect(() => {
+    if (key) wantLegs(key.split(','), true);
+  }, [key]);
 }
 
 /* ONE STRUCTURE ONCE (audit round 4: "SPX short call butterfly 7690/7720/7750 16:59:23" and "put double calendar 7630/7640
@@ -2648,6 +2659,8 @@ export interface StockMinute {
   /** New York minute of the day */
   minute: number;
   extended: boolean;
+  /** The minute's shares, every venue */
+  volume?: number;
 }
 /** The name's one-minute bars for one New York day — `dateIso`, the cross's own date (audit round 6: an Oct 22 cross read
     "No session bars for USHY yet" at 04:15 on Oct 23 — the hook kept only the clock's session, and once Oct 23's
@@ -2663,7 +2676,7 @@ export function useStockMinutes(ticker: string | null, dateIso: string | null = 
         .map(r => {
           const c = clock(r.start_time || r.time || r.date);
           const nyDay = c.ms > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(c.ms)) : '';
-          return { time: c.epoch, close: num(r.close), minute: c.minute, extended: c.minute < SESSION_OPEN || c.minute >= 960, day: nyDay };
+          return { time: c.epoch, close: num(r.close), minute: c.minute, extended: c.minute < SESSION_OPEN || c.minute >= 960, volume: num(r.volume), day: nyDay };
         })
         .filter(r => r.time > 0 && r.close > 0 && r.day === day)
         .sort((a, b) => a.time - b.time)

@@ -62,7 +62,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The flip's rule in a reader's words — the one statement of it on the pages (keep it the code's: see the head) */
 export const FLIP_RULE =
-  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero (the nearest crossing within ±10%). Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold; the smaller expiries take their at-the-money vol off the term structure.";
+  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero (the nearest crossing within ±10%). Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold; the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
 
@@ -206,7 +206,11 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   const ownDates = ownIvDates(by, want, front);
   /* FINAL ONLY WITH THOSE DATES' OWN VOLS (the fourth audit's M1: SPY's Map read 771.25 off the at-the-money vol for
      seconds, then 772.17): until their contracts are read the flip is provisional, and the pages print "…" */
-  const factsIn = pinned != null || [...ownDates].every(d => !!entry.factsDates?.has(d));
+  /* …ON A PINNED CLOCK TOO (the seventh audit's M2, 2026-10-23): a finished session's book, priced at its close, was
+     taken as final before its own contract vols were in — "How the levels held" graded AAPL against 344.01 (then
+     326.75), and the Board froze "Flip crossed · 10/22" at META 6× (0×), GOOGL 18× (0×). Pinned or live, a flip is
+     final only once the dates it re-prices with their own vols have their contracts read. */
+  const factsIn = [...ownDates].every(d => !!entry.factsDates?.has(d));
   const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}`;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
@@ -336,7 +340,8 @@ export interface RegimeRead {
 export function readRegime(levels: { spot: number; flip: number; flipFound?: boolean; callWall: number; putWall: number; net?: number }): RegimeRead {
   const { spot, callWall, putWall } = levels;
   const flip = levels.flipFound === false ? null : levels.flip;
-  const px = (v: number) => v.toFixed(2);
+  /* one strike format on every page (the seventh audit's m2: "769.00" here, "769" everywhere else) */
+  const px = fmtK;
   const long = levels.net != null ? levels.net < 0 : flip != null && spot >= flip;
   /* THE WALLS ARE THE MOST CALL AND THE MOST PUT GAMMA, EITHER SIDE OF PRICE (core/walls.ts pickLegWalls, the second
      re-audit 2026-10-22) — so each is placed in words by where it actually is */
@@ -358,13 +363,14 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   if (flip != null && (Math.abs(spot - flip) / Math.max(spot, 1)) * 100 < 0.05)
     return { key: 'ON THE FLIP', read: `Sitting on the ${px(flip)} flip — net gamma is near zero, so the hedging can tip either way; ${cw} and ${pw} are the levels that decide it.` };
   if (long && between && cwPct <= 1.2 && pwPct <= 1.2)
-    return { key: 'PINNED', read: `Dealers are long gamma, so their hedging absorbs moves between the ${px(putWall)} put wall and the ${px(callWall)} call wall — dips get bought, rallies get sold, drift beats trend until one side gives.${flipClause}` };
+    return { key: 'PINNED', read: `Dealers are long gamma, so their hedging absorbs moves between the ${px(callWall)} call wall and the ${px(putWall)} put wall — dips get bought, rallies get sold, drift beats trend until one side gives.${flipClause}` };
   if (long)
     return { key: 'ABSORBING', read: `Dealers are long gamma, so their hedging absorbs moves. ${cap(cw)}: ${callWallWords(callWall, spot)}; ${pw}: ${putWallWords(putWall, spot)}.${flipClause}` };
   if (putWall < spot && pwPct >= 2.6)
     return { key: 'WHIPSAW', read: `Dealers are short gamma, so their hedging speeds a move up whichever way it goes, and the put wall is all the way down at ${px(putWall)}.${flipClause}` };
   return {
     key: 'AMPLIFYING',
-    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(pw)}: ${putWallWords(putWall, spot)}; ${cw}: ${callWallWords(callWall, spot)}.${flipClause}`,
+    /* the one order (core/walls.ts LEVEL_ORDER): the call wall, then the put wall (the seventh audit's m2) */
+    read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(cw)}: ${callWallWords(callWall, spot)}; ${pw}: ${putWallWords(putWall, spot)}.${flipClause}`,
   };
 }

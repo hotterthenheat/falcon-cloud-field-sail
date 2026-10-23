@@ -673,24 +673,25 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
           stood in for it — the only way between pages on a phone was to know the palette and type a page's name. The house
           mark opens it: the same groups, products and pages as the rail, as a sheet (MobileMenu.tsx). */}
       <div className="md:hidden fixed inset-x-0 top-0 z-40 h-12 flex items-center gap-2.5 px-2.5 bg-canvas/80 backdrop-blur-md border-b border-borderSubtle">
-        <button type="button" onClick={() => setMenuOpen(true)} aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} className="inline-flex items-center justify-center w-9 h-9 rounded-md border border-borderSubtle text-textSecondary" data-mobile-menu-door>
+        <button type="button" onClick={() => setMenuOpen(true)} aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-md border border-borderSubtle text-textSecondary" data-mobile-menu-door>
           <Menu className="w-4 h-4" />
         </button>
-        <button onClick={onOpenPalette} className="inline-flex items-center gap-2 rounded-md border border-borderMuted bg-chip px-2.5 py-1">
+        {/* the name's chip gives way, never the search door (the seventh audit's m8: the door's right edge at 396px of 390) */}
+        <button onClick={onOpenPalette} className="inline-flex items-center gap-2 rounded-md border border-borderMuted bg-chip px-2.5 py-1 min-w-0 overflow-hidden">
           <CompanyLogo ticker={activeTicker} size={16} />
           <span className="text-[12px] font-semibold text-textPrimary">{activeTicker}</span>
           {spot != null ? <span className="font-mono text-[11px] tnum text-textPrimary">${spot.toFixed(2)}</span> : <span className="font-mono text-[11px] tnum text-textMuted">—</span>}
           {/* THE DAY'S MOVE ON THE PHONE TOO (the retail test, 2026-10-23: the strip showed the price and no change) — the
               same words as the rail's: the session's change, "pre-market +x%" before the open */}
           {changeText && change != null && (
-            <span className="font-mono text-[10px] tnum whitespace-nowrap" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
+            <span className="font-mono text-[10px] tnum whitespace-nowrap truncate min-w-0" style={{ color: changeInk(change) }} title={moveWords?.title} data-phone-change>
               {changeText}
               {moveWords?.when && <span className="text-textMuted"> {moveWords.when}</span>}
               {moveWords?.ext && <span className="text-textMuted"> · {moveWords.ext.replace('after hours', 'AH')}</span>}
             </span>
           )}
         </button>
-        <button onClick={onOpenPalette} aria-label="Search or jump to…" className="ml-auto p-1.5 rounded-md border border-borderSubtle text-textMuted">
+        <button onClick={onOpenPalette} aria-label="Search or jump to…" className="ml-auto shrink-0 p-1.5 rounded-md border border-borderSubtle text-textMuted">
           <Search className="w-3.5 h-3.5" />
         </button>
       </div>

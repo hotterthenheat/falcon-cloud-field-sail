@@ -325,6 +325,20 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
   /* the cross's own session's figures, named by its date (audit round 6) */
   const crossIso = print ? crossIsoOf(print) : null;
   const day = useDarkDay(print?.ticker ?? null, crossIso);
+  /* THE DAY'S VWAP PRICES THE DARK SHARES (audit round 7: "≈$488.9M" was USHY's 13,968,395 dark shares all at its $35
+     bucket, the stock at $35.58): the vendor sends shares by coarse price bucket and no average price, so the dollars take
+     the stock's own regular-session VWAP from its minute bars; the buckets only when the bars are not in */
+  const dayBars = useStockMinutes(print?.ticker ?? null, crossIso).rows;
+  const vwap = useMemo(() => {
+    let pv = 0;
+    let v = 0;
+    for (const b of dayBars) {
+      if (b.extended || !(b.volume && b.volume > 0)) continue;
+      pv += b.close * b.volume;
+      v += b.volume;
+    }
+    return v > 0 ? pv / v : NaN;
+  }, [dayBars]);
   const frac = print ? fillFrac(print) : null;
   const jump = (fn: () => void) => {
     onClose();
@@ -441,9 +455,15 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               <Fact label={`Dark dollars ${dayAdv(crossIso ?? undefined)}`} value={day.rows ? (
                 /* THE METHOD SAID (audit round 7: "≈$488.9M" priced every share at its $35 bucket): the vendor sends dark
                    shares by price bucket, no VWAP — each bucket's shares at the bucket's price */
-                <span title={`Each of the vendor's price buckets' dark shares at the bucket's own price (/darkpool/{t}/price-levels groups shares into coarse price buckets — often whole dollars — and sends no average price), so the dollars are approximate`}>
-                  ≈{fmtUsd(day.rows.darkDollars)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at bucket prices</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
-                </span>
+                Number.isFinite(vwap) ? (
+                  <span title={`${num(day.rows.darkShares)} dark shares at ${print?.ticker}'s regular-session VWAP, $${vwap.toFixed(2)} (from its one-minute bars, close × volume) — the vendor sends dark shares by coarse price bucket and no average price, so the dollars are approximate; at the buckets' own prices they read ≈${fmtUsd(day.rows.darkDollars)}`}>
+                    ≈{fmtUsd(day.rows.darkShares * vwap)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at the day's VWAP ${vwap.toFixed(2)}</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
+                  </span>
+                ) : (
+                  <span title={`Each of the vendor's price buckets' dark shares at the bucket's own price (/darkpool/{t}/price-levels groups shares into coarse price buckets — often whole dollars — and sends no average price), so the dollars are approximate`}>
+                    ≈{fmtUsd(day.rows.darkDollars)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at bucket prices</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
+                  </span>
+                )
               ) : day.waiting ? '…' : '—'} />
               <Fact label="Crosses in hand" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
               <Fact label="This cross" value={print.sized ? 'Sized' : 'Ordinary'} valueCls={print.sized ? 'text-textPrimary' : 'text-textMuted'} />

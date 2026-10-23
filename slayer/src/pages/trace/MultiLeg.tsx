@@ -27,7 +27,7 @@ import { useTraceSession } from '../../components/trace/traceSession';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { indexRoot, lastRegularClose, plural, usd as fmtUsd, useSpreads, useSpreadTrade } from '../../data/traceLive';
+import { indexRoot, lastRegularClose, plural, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
 import BookDrill from '../../components/trace/BookDrill';
@@ -60,14 +60,17 @@ const num = (v: number) => v.toLocaleString('en-US');
 const SPREADS_N = 200;
 
 /* THE CARDS (the walk, 2026-09-09) */
-const SHAPE_OPTIONS: DropdownOption<SpreadKind | 'ALL'>[] = [{ value: 'ALL', label: 'Every shape', hint: 'Every structure on the tape' }, ...SPREAD_KINDS.map(k => ({ value: k.key, label: k.label, hint: k.read }))];
+/* a short word on the card itself, so a phone's half-width card never cuts it ("Every sha…", round 7) */
+const SHAPE_OPTIONS: DropdownOption<SpreadKind | 'ALL'>[] = [{ value: 'ALL', label: 'Every shape', short: 'All', hint: 'Every structure on the tape' }, ...SPREAD_KINDS.map(k => ({ value: k.key, label: k.label, hint: k.read }))];
 const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
-  { value: 'ALL', label: 'Paid and collected', hint: 'Debit and credit structures' },
+  { value: 'ALL', label: 'Paid and collected', short: 'Both', hint: 'Debit and credit structures' },
   { value: 'DEBIT', label: 'Paid', hint: 'Structures that cost money to put on' },
   { value: 'CREDIT', label: 'Collected', hint: 'Structures that paid the trader to put on' },
 ];
 /* the set at rest sums under a 1440 box (audit round 4: the Net $ column stood half under the pinned risk columns) */
-const WIDTHS: Record<string, number> = { time: 112, ticker: 88, strikes: 168, exp: 96, size: 60, net: 168, prem: 132, legs: 56, kind: 176, maxloss: 92, maxprofit: 92 };
+/* round 7 (retail: "paid $12" — the Premium column clipped under the pinned risk at 1440): the set at rest fits the 1440
+   box with room; the leg count opens folded (one click away in Columns) */
+const WIDTHS: Record<string, number> = { time: 112, ticker: 88, strikes: 150, exp: 96, size: 60, net: 136, prem: 140, legs: 56, kind: 160, maxloss: 92, maxprofit: 92 };
 /* the structure's who on the left; its risk at the right, always on screen (Max loss and Max profit stood off a 1280
    screen) */
 const PIN_LEFT = ['time', 'ticker'];
@@ -284,6 +287,8 @@ const netWords = (t: SpreadTrade) =>
       : t.netAbs != null && t.units
         ? `net $${(t.netAbs / (t.units * 100)).toFixed(2)} a unit, direction not reported`
         : 'net not reported';
+/** A structure's instant, for the order — its epoch, else its minute and clock */
+const timeOf = (t: SpreadTrade) => t.epochMs ?? t.minute * 60_000;
 const sizeWords = (t: SpreadTrade) => (t.units != null ? `${num(t.units)}×` : t.legsState === 'pending' ? '…' : '—');
 
 /** A structure on a phone — the strikes on the figures line, so they never run into the time (the retail pass,
@@ -374,14 +379,20 @@ const MultiLeg = () => {
 
   const rows = useMemo(() => {
     const nq = normSymbol(cutQuery);
-    return trades.filter(
-      t =>
-        (kind === 'ALL' || t.kind === kind) &&
-        (money === 'ALL' || (t.netKnown !== false && (money === 'DEBIT' ? t.netPremium > 0 : t.netPremium < 0))) &&
-        // A structure matches on its ticker or ANY of its legs' contracts.
-        (nq === '' || normSymbol(t.ticker).includes(nq) || t.legs.some(l => normSymbol(`${t.ticker}${l.strike}${l.right}`).includes(nq)))
-    );
+    return trades
+      .filter(
+        t =>
+          (kind === 'ALL' || t.kind === kind) &&
+          (money === 'ALL' || (t.netKnown !== false && (money === 'DEBIT' ? t.netPremium > 0 : t.netPremium < 0))) &&
+          // A structure matches on its ticker or ANY of its legs' contracts.
+          (nq === '' || normSymbol(t.ticker).includes(nq) || t.legs.some(l => normSymbol(`${t.ticker}${l.strike}${l.right}`).includes(nq)))
+      )
+      /* NEWEST FIRST, BY THE INSTANT (retail, round 7: 16:14:48 then 16:14:59 under "newest first" — the vendor's order is
+         not strictly by time); ties keep a stable order by id */
+      .sort((a, b) => timeOf(b) - timeOf(a) || a.id.localeCompare(b.id));
   }, [trades, kind, money, cutQuery]);
+  /* the first screenful's legs are read first */
+  useLegsFirst(useMemo(() => rows.filter(t => t.legsState === 'pending').map(t => t.id), [rows]));
   /* every row — the grid draws only what is on screen */
   const shown = rows;
   const legRows = useMemo(() => (legTrade ? legTrade.legs.map((_, i) => spreadLegRow(legTrade, i)) : []), [legTrade]);
@@ -399,6 +410,7 @@ const MultiLeg = () => {
     [shown]
   );
 
+  const activeKind = kind === 'ALL' ? null : KIND_META[kind];
   /* ReactNode: the largest structure is a door into its own card, whether
      or not the current cut shows it. */
   /* THE SCREENER'S GRAMMAR (Noah, 2026-08-30: "i dont like confusing
@@ -410,6 +422,12 @@ const MultiLeg = () => {
     if (tapeState === 'reading') return <RichRead text="Reading the tape's structures." />;
     if (tapeState === 'down') return <RichRead text="This read did not land — the structures fill when the feed answers." />;
     if (trades.length === 0) return <RichRead text="No multi-leg trades on the tape in this window." />;
+    /* THE SENTENCE FOLLOWS THE FILTER (audit round 7: under Screen = Vertical the head read "Largest QQQ bull put spread
+       $24.5K" while the sentence still said "Biggest: SPX short strangle … $91.3K" with the whole tape's counts) */
+    const cutBits = [activeKind ? `${activeKind.label.toLowerCase()}s` : '', money === 'DEBIT' ? 'paid' : money === 'CREDIT' ? 'collected' : '', cutQuery ? `matching "${cutQuery}"` : '', expiry ? `on the ${expiryLabel(expiry)} expiry` : ''].filter(Boolean);
+    const cutOn = cutBits.length > 0;
+    const pool = rows;
+    if (cutOn && pool.length === 0) return <RichRead text={`None of the ${trades.length} multi-leg trades in hand (${windowSpan} ET) is on this cut (${cutBits.join(', ')}).`} />;
     const byKind = new Map<SpreadKind, number>();
     const names = new Set<string>();
     let prem = 0;
@@ -417,10 +435,10 @@ const MultiLeg = () => {
     let paid = 0;
     let collected = 0;
     /* COMPRESSION IS SET APART (audit round 5): counted and labelled, out of the money, the counts and the biggest */
-    const packs = trades.filter(t => t.compression);
+    const packs = pool.filter(t => t.compression);
     const packMoney = packs.reduce((a, t) => a + Math.abs(t.netPremium), 0);
-    const bets = trades.filter(t => !t.compression);
-    if (bets.length === 0) return <RichRead text={`The ${trades.length} multi-leg trades in hand (${windowSpan} ET) are all compression packages — ${fmtUsd(packMoney)} in their nets, not bets.`} />;
+    const bets = pool.filter(t => !t.compression);
+    if (bets.length === 0) return <RichRead text={`The ${pool.length} multi-leg trades ${cutOn ? `on this cut (${cutBits.join(', ')}) ` : ''}in hand (${windowSpan} ET) are all compression packages — ${fmtUsd(packMoney)} in their nets, not bets.`} />;
     for (const t of bets) {
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
       names.add(t.ticker);
@@ -436,24 +454,27 @@ const MultiLeg = () => {
     const big = [...bets].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
     return (
       <>
-        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest: `} />
-        <ReadDoor onOpen={() => setDrill(big)}>
-          {big.ticker} {big.shape === 'unnamed' ? KIND_META[big.kind].label.toLowerCase() : big.shape}
-          {big.extended ? ' (after hours, not read)' : ''}
-        </ReadDoor>
-        <RichRead text={`, ${big.units != null ? `${plural(big.units, 'unit')} ` : ''}for [[${fmtUsd(Math.abs(big.netPremium))}]] net${big.netPremium > 0 ? ' paid' : big.netPremium < 0 ? ' collected' : ''} (${fmtUsd(big.premium)} across every leg).`} />
+        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest: `} />
+        {/* the door and its comma never part across a line (phone, round 7: an orphan ", 17 units") */}
+        <span className="whitespace-nowrap">
+          <ReadDoor onOpen={() => setDrill(big)}>
+            {big.ticker} {big.shape === 'unnamed' ? KIND_META[big.kind].label.toLowerCase() : big.shape}
+            {big.extended ? ' (after hours, not read)' : ''}
+          </ReadDoor>
+          ,
+        </span>
+        <RichRead text={` ${big.units != null ? `${plural(big.units, 'unit').replace(' ', '\u00a0')} ` : ''}for [[${fmtUsd(Math.abs(big.netPremium))}]] net${big.netPremium > 0 ? ' paid' : big.netPremium < 0 ? ' collected' : ''} (${fmtUsd(big.premium)} across every leg).`} />
       </>
     );
-  }, [trades, tapeState, windowSpan, session, closed]);
+  }, [trades, rows, tapeState, windowSpan, session, closed, activeKind, money, cutQuery, expiry]);
 
-  const activeKind = kind === 'ALL' ? null : KIND_META[kind];
 
   const columns = useMemo<Column<SpreadTrade>[]>(
     () => [
       {
         key: 'time',
         header: 'Time',
-        sortValue: t => t.minute,
+        sortValue: t => timeOf(t),
         // The star leads the row, the tape's own placement (see WatchStar).
         render: t => (
           <span className="inline-flex items-center gap-1.5">
@@ -480,9 +501,9 @@ const MultiLeg = () => {
         header: 'Strategy',
         sortValue: t => t.kind,
         render: t => (
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap" title={t.read ?? KIND_META[t.kind].read}>
+          <span className="inline-flex max-w-full items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap overflow-hidden" title={`${shapeWord(t)} — ${t.read ?? KIND_META[t.kind].read}`}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
-            {shapeWord(t)}
+            <span className="truncate">{shapeWord(t)}</span>
             {t.compression ? (
               <span className="text-[10px] uppercase text-warn" title={COMPRESSION_HINT}>
                 compression · not a bet
@@ -541,7 +562,7 @@ const MultiLeg = () => {
               </>
             ) : t.netAbs != null && t.units ? (
               <span title="The vendor printed no net and the legs cannot settle which way it went — this is the net's size, paid if bought, collected if sold">
-                net ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">either way</span>
+                ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">either way</span>
               </span>
             ) : t.legsState === 'pending' && t.netKnown !== false ? (
               <span className="text-textMuted">…</span>
@@ -633,7 +654,7 @@ const MultiLeg = () => {
   }, [trades]);
   const pill = (t: SpreadTrade) => `${t.ticker} ${t.shape === 'unnamed' ? KIND_META[t.kind].label.toLowerCase() : t.shape}${t.extended ? ' (AH, not read)' : ''} · ${fmtUsd(Math.abs(t.netPremium))} net`;
   /* the IV and the stock open folded — one click away in Columns (sixteen columns did not fit at 1440) */
-  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_multileg_cols_v2', ['iv', 'stock']);
+  const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_multileg_cols_v3', ['iv', 'stock', 'legs']);
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
 
   return (
@@ -702,7 +723,7 @@ const MultiLeg = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
         {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}
         {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
