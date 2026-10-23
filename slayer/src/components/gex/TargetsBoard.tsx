@@ -63,12 +63,15 @@ import JingleBell from '../ui/JingleBell';
 import { heatLaneColor } from './heatmap';
 import { ALERT, CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import { AGENDA_COLUMNS, AGENDA_MIN_W, CARD_H, ROW_H } from './targetsSkeletons';
-import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, closeLeanWords, nearestWallLabel, targetName, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
+import { AGENDA_ORDERS, DRIVER_WORDS, buildWords, closeLeanWords, targetName, type Agenda, type AgendaOrder, type Target } from '../../data/agenda';
 import { LONG_GAMMA, SHORT_GAMMA } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import { chanceLabel, holdLabel, holdShort, pathFlowWords, pathLean } from '../../data/wall';
 import { GLOSSARY, kindTip } from './glossary';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
+import { useDistanceUnit } from '../../data/distanceUnits';
+import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
+import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 /* An armed alert wore lime here until 2026-09-10; it is a watch, not a live
@@ -117,6 +120,9 @@ const HoldBeam = ({ t, w = 52, h = 6 }: { t: Target; w?: number | string; h?: nu
    strikes that carry weight — the first three in the order, the three heaviest, the named levels — and is quiet
    elsewhere. The board says which are loud (LoudStrikes). */
 const LoudStrikes = createContext<ReadonlySet<number> | null>(null);
+/* FROM SPOT IN THE SHELL'S RULER (the fifth audit, 2026-10-23: the Agenda printed percent whatever the Ruler said) — the
+   board hands the formatter down, the rows and both cards read it */
+const FromSpot = createContext<(t: Target) => string>(t => `${t.distancePct < 0 ? '−' : '+'}${Math.abs(t.distancePct).toFixed(2)}%`);
 const Tags = ({ t, yours }: { t: Target; yours?: string }) => {
   const loudSet = useContext(LoudStrikes);
   const loud = t.roles.length > 0 || t.rank <= 3 || !!loudSet?.has(t.strike);
@@ -182,6 +188,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
   }, [at]);
   const kind = kindOf(t);
   const dir = t.distancePct >= 0 ? 'above' : 'below';
+  const fromSpot = useContext(FromSpot);
   return createPortal(
     <div
       ref={ref}
@@ -201,8 +208,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
         <span className="font-mono text-[12px] font-bold tnum text-textPrimary">{fmtStrike(t.strike)}</span>
         <Tags t={t} />
         <span className={`ml-auto font-mono text-[10px] tnum ${t.distancePct >= 0 ? 'text-bull' : 'text-bear'}`}>
-          {t.distancePct >= 0 ? '+' : ''}
-          {t.distancePct.toFixed(2)}%
+{fromSpot(t)}
         </span>
         <span className="text-[10px] text-textMuted">{dir} spot</span>
         <button type="button" onClick={onClose} className="inline-flex items-center justify-center w-5 h-5 -mr-1 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" title="Close (Esc)" data-card-close>
@@ -210,8 +216,9 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
         </button>
       </div>
       <dl className="mt-1.5 grid gap-x-3" style={{ gridTemplateColumns: '84px minmax(0, 1fr)' }}>
-        <CardLine label={inSession ? 'Reached' : 'Reached next'}>
+        <CardLine label={t.horizon ? 'Reached' : inSession ? 'Reached' : 'Reached next'}>
           {pct(t.reach)}
+          {t.horizon && <span className="text-textMuted"> {t.horizon}</span>}
           {t.closes > 0 && (
             <span className="text-textMuted">
               {' '}
@@ -242,7 +249,7 @@ const RowCard = ({ t, at, inSession, onClose }: { t: Target; at: CardAt; inSessi
         <CardLine label="Open interest">
           {fmtContracts(t.oi.calls)} <span className="text-textMuted">calls</span> · {fmtContracts(t.oi.puts)} <span className="text-textMuted">puts</span>
         </CardLine>
-        <CardLine label={t.buildOvernight ? 'Built overnight' : inSession ? 'Built today' : 'Built last'}>
+        <CardLine label={t.buildOvernight ? 'Built' : inSession ? 'Built today' : 'Built last'}>
           <span className={t.verdict === 'steady' ? 'text-textMuted' : ''}>{buildWords(t, inSession)}</span>
         </CardLine>
         {t.beside && <CardLine label="Beside it">{t.beside}</CardLine>}
@@ -328,6 +335,7 @@ interface CardProps {
 
 const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick, onChart, onAlert, brief = false }: CardProps) => {
   const material = t.verdict !== 'steady';
+  const fromSpot = useContext(FromSpot);
   return (
     <div
       className={`relative rounded-md border p-3 flex flex-col cursor-pointer transition-colors ${kept ? 'border-silver/60 bg-silver/[0.04]' : pick ? 'border-supreme/40 bg-panel hover:border-supreme/60' : 'border-borderSubtle bg-panel hover:border-borderMuted'}`}
@@ -342,8 +350,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
         <span className={`font-mono text-[16px] leading-none font-bold tnum ${kept ? 'text-silver' : 'text-textPrimary'}`}>{fmtStrike(t.strike)}</span>
         <Tags t={t} yours={yours} />
         <span className="ml-auto font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">
-          {t.distancePct >= 0 ? '+' : ''}
-          {t.distancePct.toFixed(2)}%
+{fromSpot(t)}
         </span>
       </div>
       <div className="mt-2 flex items-center justify-between h-[14px] font-mono text-[9px] uppercase tracking-widest text-textMuted">
@@ -499,7 +506,15 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   /* the strikes whose kind is said loud: the three heaviest by net gamma (the first three in the order are loud anyway) */
   const loudSet = useMemo(() => new Set([...agenda.targets].sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight)).slice(0, 3).map(t => t.strike)), [agenda.targets]);
   const lead = agenda.first[0];
-  const reachedWord = clock.inSession ? 'reached by the close' : 'reached next session';
+  /* the shell's ruler (data/distanceUnits.ts) — the Building ledger's and the Board's own */
+  const unit = useDistanceUnit();
+  const rev = useBookRev();
+  const fromSpot = useMemo(() => {
+    const scales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: peekDaySigma(ticker) ?? impliedDaySigma(agenda.spot, peekIv(ticker) ?? 0) };
+    return (t: Target) => fmtDistance(t.strike - agenda.spot, agenda.spot, unit, scales);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, agenda.spot, unit, rev]);
+  const reachedWord = agenda.horizon ? `reached ${agenda.horizon}` : clock.inSession ? 'reached by the close' : 'reached next session';
   const cols = COLS[density];
   const full = density === 'full';
   const wide = density !== 'tight';
@@ -515,6 +530,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
     /* FIVE ROWS OF THE HOST'S SUBGRID — the head, the sentence, the podium, the list, the foot — so panes side by side
        share every row's height (RankedTargets; the row's card is a portal and takes no row) */
     <LoudStrikes.Provider value={loudSet}>
+    <FromSpot.Provider value={fromSpot}>
     <section className="relative grid grid-rows-subgrid row-span-5 min-w-0" data-targets-board data-targets-density={density}>
       {/* THE PANE'S HEAD — its line (the chip, the expiry, the watch), and the four facts */}
       <div className={`${pad} pt-3 pb-2 flex items-start gap-x-6 gap-y-2 flex-wrap`}>
@@ -528,13 +544,30 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The strike price is most likely to touch, and the chance">Most likely reached</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : 'next session')}, and the chance — strikes price is already on are left out`}>Most likely reached</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
+          {/* THE NEAREST WALL ON EACH SIDE (the fifth audit, 2026-10-23: "Nearest wall in reach 769 · supreme · put wall"
+              hid the call wall at 770 beside it — both sides are named) */}
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="The nearest wall price is likely to reach (a 15% chance or more) — a named call or put wall or a shelf, either side of price — with every level it is. The table below tags the same strikes">{nearestWallLabel(agenda)}</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap" style={{ color: agenda.nearestWall?.roles[0] ? ROLE_INK[agenda.nearestWall.roles[0]] : SILVER }} data-nearest-wall>
-              {agenda.nearestWall ? targetName(agenda.nearestWall) : 'none in reach'}
+            <dt className="text-[10px] text-textMuted cursor-help" title="The nearest wall price is likely to reach (a 15% chance or more) on each side of price — a named call or put wall or a shelf — with every level it is. The table below tags the same strikes">{agenda.wallsInReach ? 'Nearest walls in reach' : 'Walls in reach'}</dt>
+            <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap flex items-baseline gap-2" data-nearest-wall>
+              {agenda.wallAbove || agenda.wallBelow ? (
+                <>
+                  {agenda.wallAbove && (
+                    <span style={{ color: agenda.wallAbove.roles[0] ? ROLE_INK[agenda.wallAbove.roles[0]] : SILVER }} data-wall-above>
+                      ↑ {targetName(agenda.wallAbove)}
+                    </span>
+                  )}
+                  {agenda.wallBelow && (
+                    <span style={{ color: agenda.wallBelow.roles[0] ? ROLE_INK[agenda.wallBelow.roles[0]] : SILVER }} data-wall-below>
+                      ↓ {targetName(agenda.wallBelow)}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span style={{ color: SILVER }}>none in reach</span>
+              )}
             </dd>
           </div>
           <div>
@@ -581,11 +614,11 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
         <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: cols.template, minWidth: cols.min }}>
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
           {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
-          {wide && headCell('From spot', true, '', 'How far the strike is from the current price')}
-          {headCell(clock.inSession ? 'Reached' : 'Reached next', true, 'whitespace-nowrap', clock.inSession ? 'The chance price touches this strike before the close' : 'The chance price touches this strike next session')}
+          {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
+          {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the vendor's implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : 'The chance price touches this strike next session')}
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
-          {full && headCell(agenda.targets[0]?.buildOvernight ? 'Built overnight' : clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', agenda.targets[0]?.buildOvernight ? "Hedging added (building) or taken off (draining) at this strike in yesterday's trading — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma" : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
+          {full && headCell(agenda.targets[0]?.buildOvernight ? `Built ${agenda.targets[0].buildWhen.replace(/^in /, '').replace(/'s trading$/, '')}` : clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
           {wide && headCell('At stake', false, '', stakeTip(1, 0))}
           {full && headCell('Why it ranks', false, 'whitespace-nowrap truncate', 'Why it ranks here: the two numbers behind its place — the chance it is reached times what is at stake')}
           {headCell(wide ? 'Actions' : '', true, '', 'Open the strike on the Map, or set a price alert on it')}
@@ -611,8 +644,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                 </div>
                 {wide && (
                   <div className="text-right font-mono text-[11px] tnum text-textPrimary">
-                    {t.distancePct >= 0 ? '+' : ''}
-                    {t.distancePct.toFixed(2)}%
+{fromSpot(t)}
                   </div>
                 )}
                 <div className="text-right font-mono text-[11px] tnum text-textPrimary">{pct(t.reach)}</div>
@@ -649,6 +681,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
         {agenda.closesNear ? `The close leans to ${fmtStrike(agenda.closesNear.strike)} at ${agenda.closesNear.odds.toFixed(0)}%.` : agenda.closeTop ? 'The close has no clear lean — no single strike is likely enough.' : ''}
       </p>
     </section>
+    </FromSpot.Provider>
     </LoudStrikes.Provider>
   );
 };

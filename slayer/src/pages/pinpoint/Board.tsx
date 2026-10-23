@@ -40,14 +40,14 @@ import { useIsPhone } from '../../components/ui/useMediaQuery';
 import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast } from '../../data/uwBook';
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { fmtDistance, impliedDaySigma } from '../../data/atr';
-import { bellDay, todayScopeLabel } from '../../data/bookWindow';
+import { bellDay, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
 import { tickerName } from '../../data/tickers';
 import TickerLookup from '../../components/ui/TickerLookup';
 import useFocusTrap from '../../components/ui/useFocusTrap';
 import { useAnchoredMenu } from '../../components/ui/useAnchoredMenu';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { REGIME_WORDS } from '../../data/flipGauge';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CALL_WALL, FLIP, LONG_GAMMA, PUT_WALL, SHORT_GAMMA, SUPREME, THERMAL_WARM } from '../../components/gex/paletteInk';
@@ -316,7 +316,7 @@ const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
   ) : data ? (
     <span
       className="font-mono text-[11px] tnum tabular-nums text-textSecondary"
-      title={data.crossWhy ?? `Today's session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
+      title={data.crossWhy ?? `${recordPossessive().replace(/^t/, 'T')} session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
     >
       {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? '—' : `${data.crossings}×`}
     </span>
@@ -414,16 +414,20 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
           </div>
           <div className="flex flex-col min-w-0">
             {label('Nearest wall', 'The nearer of the call wall (most call gamma) and the put wall (most put gamma)')}
-            <span className="truncate">
-              <span className="text-[9px] font-bold uppercase tracking-wider">
+            {/* TWO LINES, NOTHING CUT (the fifth audit: "supreme · put wall 769 +0…" ran off a 390px card): the strike and
+                how far first, every level it is under it, wrapping */}
+            <span className="flex flex-col min-w-0" data-board-card-wall>
+              <span>
+                <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary"><Dist ticker={row.ticker} spot={row.spot} pct={row.nearest.distPct} /></span>
+              </span>
+              <span className="text-[9px] font-bold uppercase tracking-wider leading-tight flex flex-wrap gap-x-1">
                 {levelRoles(row.nearest.strike, { supreme: row.supreme, callWall: row.callWall, putWall: row.putWall }).map((r, i) => (
                   <span key={r} style={{ color: r === 'supreme' ? SUPREME : r === 'call wall' ? CALL_WALL : PUT_WALL }}>
-                    {i > 0 && <span className="text-textMuted"> · </span>}
+                    {i > 0 && <span className="text-textMuted">· </span>}
                     {r}
                   </span>
                 ))}
-              </span>{' '}
-              <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary"><Dist ticker={row.ticker} spot={row.spot} pct={row.nearest.distPct} /></span>
+              </span>
             </span>
           </div>
           <div className="flex flex-col min-w-0">
@@ -591,8 +595,9 @@ const Board = () => {
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
       { headerName: bellDay().head, field: 'bellShare', flex: 1.2, minWidth: 140, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
-      { headerName: 'Flip crossed today', field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: "How many times price crossed the flip in today's session — the flip of the contracts that were live in it (after the close, today's own book, not the next session's). The more crossings, the less either side of it means" },
-      { headerName: 'Today so far', field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: 'The price path since the open' },
+      /* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23): before today's open these are the last session's */
+      { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${recordDay().date.slice(5).replace('-', '/')}`, field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session — the flip of the contracts that were live in it (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
+      { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
       {
         headerName: 'Your positions',
         field: 'yours',

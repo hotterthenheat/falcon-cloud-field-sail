@@ -915,17 +915,27 @@ export function dayMoveWords(m: Pick<DayMove, 'dayPct' | 'extPct' | 'phase'> | n
   if (!m) return null;
   const ext = m.extPct != null && Number.isFinite(m.extPct) ? `${m.phase === 'pre' ? 'pre-market' : 'after hours'} ${fmtPct(m.extPct, digits)}` : null;
   if (m.phase === 'pre') {
-    return { main: ext ?? '—', ext: null, title: 'Before the open: the pre-market move against yesterday’s regular close. The session has not started.' };
+    return { main: ext ?? '—', ext: null, title: `Before the open: the pre-market move against ${longDayOf(recordIso())}’s regular close. The session has not started.` };
   }
   if (m.dayPct == null) return { main: '…', ext, title: 'The day’s change is loading (the regular closes are read once a day)' };
+  /* the session named by its date when it is not New York's today (the fifth audit: "Today's regular-session change" at
+     01:00 Friday over Thursday's) */
+  const rec = recordIso();
+  const word = rec === nyIsoDate() ? 'Today’s' : `${longDayOf(rec)}’s`;
   return {
     main: fmtPct(m.dayPct, digits),
     ext,
     title: ext
-      ? `Today’s regular-session change (4:00 close against the close before), ${fmtPct(m.dayPct, digits)}; ${ext} is the move since the 4:00 close`
-      : 'Today’s change against yesterday’s regular close',
+      ? `${word} regular-session change (4:00 close against the close before), ${fmtPct(m.dayPct, digits)}; ${ext} is the move since the 4:00 close`
+      : `${word} change against the regular close before it`,
   };
 }
+const DOW3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** "Thu Oct 22" (data/bookWindow.ts longDay, kept here without the import cycle) */
+const longDayOf = (iso: string): string => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return y && m && d ? `${DOW3[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${monDayOf(iso)}` : iso;
+};
 
 /** The ink of a change: green up, red down, neutral at zero */
 export const changeInk = (v: number | null | undefined): string => (v == null || Math.abs(v) < 0.005 ? 'rgb(var(--text-secondary))' : v > 0 ? 'rgb(var(--bull))' : 'rgb(var(--bear))');

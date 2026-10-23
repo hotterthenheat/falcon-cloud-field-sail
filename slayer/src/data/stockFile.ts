@@ -38,6 +38,9 @@ export interface StockFile {
   contracts: Record<string, unknown>[];
   /** The New York session the flow alerts and the dark prints are filtered to ("2026-10-22" before the open on the 23rd) */
   session: string;
+  /** The session's tapes (flow alerts, dark prints) — read after the head of the file, so the page opens on the name,
+      its price and its read first (audit round 5, phone: all skeletons after 35s); 'loading' until they land */
+  tapes: 'loading' | 'live';
   /** Epoch ms of the last print that landed. */
   at?: number;
 }
@@ -50,8 +53,8 @@ const EMPTY_CONTRACTS: Record<string, unknown>[] = [];
 const NO_WINDOW: TapeWindow = { complete: false, from: '', to: '', rows: 0, pages: 0 };
 /** One object per status. A fresh object on every read makes useSyncExternalStore
     treat the file as changed and warn that getSnapshot is not cached. */
-const LOADING: StockFile = { status: 'loading', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
-const FAILED: StockFile = { status: 'error', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
+const LOADING: StockFile = { status: 'loading', tapes: 'loading', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
+const FAILED: StockFile = { status: 'error', tapes: 'live', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
 
 const blank = (status: StockFile['status']): StockFile => (status === 'error' ? FAILED : LOADING);
 
@@ -182,7 +185,8 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
   return rows
     .filter(r => r.canceled !== true && r.canceled !== 'true')
     .map((row, i) => {
-      const p = darkPrint(row, i, spot);
+      /* the page's clock is the minute (HH:MM — its chart buckets prints per minute; Trace's is HH:MM:SS) */
+      const p = { ...darkPrint(row, i, spot), time: clock(String(row.executed_at || '')) };
       const minute = nyMinutes(String(row.executed_at || ''));
       const outside = minute != null && (minute < 9 * 60 + 30 || minute >= 16 * 60);
       if (!outside || p.extended) return p;
@@ -229,7 +233,8 @@ async function pageBack(base: string, stamp: string, limit: number, startMs: num
   let pages = 0;
   let error: string | null = null;
   while (pages < maxPages) {
-    const res = await uwCall(`${base}${older != null ? `&older_than=${older}` : ''}`, true);
+    /* not ahead of the queue: the head of every page (the screener row, the quote) goes first */
+    const res = await uwCall(`${base}${older != null ? `&older_than=${older}` : ''}`);
     pages += 1;
     if (res.error) {
       error = res.error;
@@ -331,32 +336,51 @@ export const darkReadable = (p: DarkPoolPrint): boolean => p.intent !== 'ROTATIO
 
 async function load(ticker: string): Promise<void> {
   const session = lastSessionIso();
-  const [screenR, earnR, dayR, flowR, darkR, contractR] = await Promise.all([
-    whalesScreener([ticker]).catch(() => [] as Record<string, unknown>[]),
+  /* THE HEAD FIRST (audit round 5, phone: the AAPL page was all skeletons after 35s — it waited on up to 26 paged tape
+     calls through the key's 3 shared slots). The screener row, the reports, the sessions and the chain are asked ahead of
+     the queue and the page opens on them; the session's flow alerts and dark prints follow and land on their own. */
+  const headP = Promise.all([
+    whalesScreener([ticker], true).catch(() => [] as Record<string, unknown>[]),
     whalesEarnings(ticker, true).catch(() => [] as EarnRow[]),
     whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
-    /* the session's alerts, paged back to its start (bounded); filtered to that session in flowsFrom */
-    flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
-    darkTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
     /* the same call the earnings page makes, so the two pages' busiest contracts agree */
     whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
   ]);
+  /* asked after the head, so the head's calls are in the queue first */
+  const tapesP = Promise.all([
+    flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
+    darkTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
+  ]);
+  const [screenR, earnR, dayR, contractR] = await headP;
   const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? screenR[0] ?? null) : null;
   const days = daysFrom(Array.isArray(dayR) ? dayR : []);
   const spot = num(screen && typeof screen === 'object' ? (screen as Record<string, unknown>).close : 0) || days[days.length - 1]?.close || 0;
   const got = (Array.isArray(screenR) && screenR.length > 0) || days.length > 0 || (Array.isArray(earnR) && earnR.length > 0);
-  files.set(ticker, {
+  const head: StockFile = {
     status: got ? 'live' : 'error',
+    tapes: 'loading',
     session,
     screen: screen && typeof screen === 'object' ? (screen as Record<string, unknown>) : null,
     earnings: Array.isArray(earnR) ? earnR : [],
     days,
+    flow: EMPTY_FLOW,
+    flowWindow: NO_WINDOW,
+    dark: EMPTY_DARK,
+    darkWindow: NO_WINDOW,
+    contracts: Array.isArray(contractR) ? (contractR as Record<string, unknown>[]) : [],
+    at: got ? Date.now() : undefined,
+  };
+  files.set(ticker, head);
+  emit();
+  const [flowR, darkR] = await tapesP;
+  files.set(ticker, {
+    ...head,
+    tapes: 'live',
     flow: flowsFrom(flowR.rows, spot, session),
     flowWindow: flowR.window,
     dark: darksFrom(darkR.rows, spot),
     darkWindow: darkR.window,
-    contracts: Array.isArray(contractR) ? (contractR as Record<string, unknown>[]) : [],
-    at: got ? Date.now() : undefined,
+    at: got ? Date.now() : head.at,
   });
   emit();
 }

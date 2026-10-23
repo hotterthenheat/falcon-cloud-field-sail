@@ -165,7 +165,7 @@ export interface FootprintScreen {
 }
 
 export const FOOTPRINT_SCREENS: FootprintScreen[] = [
-  { key: 'builds', label: 'Biggest builds', hint: 'The most new interest standing since yesterday' },
+  { key: 'builds', label: 'Biggest builds', hint: 'The most new interest standing since the session before' },
   { key: 'fresh', label: 'Fresh positions', hint: 'Built on near-empty contracts — the loudest percentage jumps' },
   { key: 'bought', label: 'Bought to open', hint: 'Builds that lifted the ask — buyers opened these' },
   { key: 'sold', label: 'Sold to open', hint: 'Builds that hit the bid — these were written, not bought' },

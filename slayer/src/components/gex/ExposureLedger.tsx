@@ -50,7 +50,7 @@ import HeatPill from './HeatPill';
 import { HEAT_MODE, heatLaneColor, type HeatMode } from './heatmap';
 import RoomSpotRule from './RoomSpotRule';
 import { useRoomSpotRead } from '../../pages/pinpoint/useRoomSpot';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { shownGreek } from './retailSign';
 import { todayColumn, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { LONG_GAMMA, SHORT_GAMMA, SUPREME } from './paletteInk';

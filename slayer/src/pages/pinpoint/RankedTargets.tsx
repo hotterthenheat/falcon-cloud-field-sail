@@ -140,7 +140,7 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
     navigate('/pinpoint/map');
   };
   const levels = useMemo(() => buildExposureProfile(snap, pane.expiry, 20).levels, [snap, pane.expiry]);
-  const chip = <ScopeChip ticker={ticker} linked={index === 0 ? linked : undefined} quote={density === 'full'} onToggleLink={index === 0 ? onToggleLink : undefined} onPick={onPickName} />;
+  const chip = <ScopeChip closeOutside ticker={ticker} linked={index === 0 ? linked : undefined} quote={density === 'full'} onToggleLink={index === 0 ? onToggleLink : undefined} onPick={onPickName} />;
   const expiry = (
     <>
       <DropdownSelect label="Expiry" value={pane.expiry} options={expiryOptions} onChange={onExpiry} title="Which expiry's hedging this pane ranks — it follows the Levels card at the top until you pick another" testId={`targets-expiry-${index}`} size="sm" />

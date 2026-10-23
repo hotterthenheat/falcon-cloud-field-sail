@@ -52,7 +52,7 @@ const GOV_RE =
    Ukraine stories, "US Dollar Recovery… FX", Italy's bill auction, a bid-to-cover, UK natural gas and India's PMI all
    fell through to PRODUCT, the old fallback. Geopolitics, currencies, rates and auctions, and economic data are Macro
    (no single company as the subject); a launch, a release, a rollout is Product; anything else is General. */
-const GEO_RE = /\b(?:israel(?:i|is)?|gaza|hamas|hezbollah|west bank|ukrain(?:e|ian|ians)|kyiv|kremlin|russia(?:n|ns)?|moscow|putin|zelensk(?:y|iy)|iran(?:ian)?|tehran|syria|yemen|houthis?|red sea|north korea|pyongyang|taiwan strait|missiles?|drone strikes?|airstrikes?|troops|military|invasion|ceasefire|truce|peace (?:talks|deal|plan)|nato|sanctions?|geopolitic\w*)\b/i;
+const GEO_RE = /\b(?:israel(?:i|is)?|gaza|hamas|hezbollah|west bank|ukrain(?:e|ian|ians)|kyiv|kremlin|russia(?:n|ns)?|moscow|putin|zelensk(?:y|iy)|iran(?:ian)?|tehran|syria|yemen|houthis?|red sea|north korea|pyongyang|taiwan strait|missiles?|drone strikes?|airstrikes?|troops|military|invasion|ceasefire|truce|peace (?:talks|deal|plan)|nato|sanctions?|geopolitic\w*|trade (?:officials|talks|ministers?|negotiat\w+|truce|deal)|bank of (?:korea|japan|england|canada|israel|mexico|thailand)|reserve bank|central bank|finance ministry|bls|bureau of labor)\b/i;
 const FX_RE = /\b(?:fx|forex|currenc(?:y|ies)|(?:us )?dollar(?: index)?|dxy|greenback|euro(?:zone)?|sterling|yen|yuan|renminbi|rupee|swiss franc|loonie|aussie dollar|kiwi dollar|peso|lira)\b(?![- ]denominated (?:bond|debt))/i;
 const RATES_RE = /\b(?:(?:t-|treasury |government |sovereign |\d+-(?:month|week|year) )bills?|government bonds?|sovereign bonds?|bunds?|gilts?|btps?|oats|jgbs?|treasur(?:y|ies)|yields?|bid[- ]to[- ]cover|(?:bill|bond|debt|treasury) auctions?|swap rates?|repo|interest rates?|rate (?:cut|hike|decision|path|outlook)s?|policy rate|basis points|bps)\b|\b(?:italy|italian|spain|spanish|germany|german|france|french|uk|britain|japan|eurozone|greece|portugal|ireland|belgium|austria|netherlands|dutch|finland|us|u\.s\.)\b[^.;]{0,40}\bbills?\b/i;
 const DATA_RE = /\b(?:pmi|purchasing managers|gdp|cpi|ppi|pce|inflation|deflation|payrolls?|unemployment|jobless|claims|retail sales|industrial (?:output|production)|factory (?:orders|output)|durable goods|trade (?:balance|deficit|surplus)|current account|housing starts|building permits|home sales|consumer (?:confidence|sentiment|prices)|business (?:confidence|climate|sentiment)|ifo|zew|tankan|inventor(?:y|ies)|stockpiles?|natural gas|nat gas|crude|brent|wti|gasoline|survey|index (?:rose|fell|rises|falls|climbs|slips|jumps|drops)|economic data)\b/i;
@@ -387,6 +387,11 @@ const OWNER_WORD = /^(joint|spouse|self|undisclosed|not-disclosed|n\/a)$/i;
 const maturity = (raw: string): string => {
   const s = raw.replace(/^[\s,;]+/, '').trim();
   if (!/\bMATURES?P?\b|MATURESP/i.test(s)) return '';
+  /* A MATURITY IS NOT A BILL (audit round 5): "DELL INTL LLC/EMC CORP · Rate/Coupon 5.3% · Matures 2028-…" — a corporate
+     note — read "Treasury Bill". Only a line that names the Treasury, a bill, or the government-securities tag is one;
+     an issuer named before the maturity is someone else's paper */
+  const lead = s.split(/\bMATURES?P?\b|MATURESP|Rate\/Coupon/i)[0].replace(/[\s,;:()\-]+/g, ' ').trim();
+  if (!/treasury|t-?bills?|\bbills?\b|\[GS\]|\bUS(?:T|\s?GOVT)\b/i.test(s) && lead.length > 0) return '';
   const term = s.match(/(\d+)-(WEEK|MONTH|YEAR)/i);
   const dates = [...s.matchAll(/(\d{1,2}\/\d{1,2}\/\d{2,4})/g)].map(m => m[1]);
   const end = dates[dates.length - 1];
@@ -403,6 +408,8 @@ const cleanNotes = (notes?: string): string => {
   const bill = maturity(notes);
   if (bill) return bill;
   let s = notes.split(/FILING STATUS:|SUBHOLDING OF:|DESCRIPTION:/i)[0].replace(/\s+/g, ' ').replace(/^[\s,;]+/, '').trim();
+  /* a note's coupon and maturity lines are its terms, not its name */
+  s = s.replace(/\s*Rate\/Coupon:.*$/i, '').replace(/\s*Matures:.*$/i, '').trim();
   if (KIND_ONLY.test(s)) {
     const kind = s.split(/\s+/)[0].replace(/-/g, ' ');
     s = kind.toLowerCase() === 'stock' ? '' : kind[0].toUpperCase() + kind.slice(1).toLowerCase();
@@ -428,9 +435,9 @@ const namedAsset = (issuer?: string, ticker?: string, notes?: string): string =>
 
 const assetKindOf = (notes?: string, issuer?: string): AssetKind => {
   const s = `${notes || ''} ${issuer || ''}`;
-  if (/\btreasury\b|MATURESP|\bMATURES\b/i.test(s)) return 'Other';
+  if (/\btreasury\b|\bt-?bills?\b|\[GS\]/i.test(s)) return 'Other';
   if (/\b(call|put)\b|\boptions?\b/i.test(s) && !/common stock/i.test(s)) return 'Stock Option';
-  if (/corporate bond|\bnote due\b|\bbond\b/i.test(s)) return 'Corporate Bond';
+  if (/corporate bond|\bnote due\b|\bbond\b|Rate\/Coupon|\bMatures:/i.test(s)) return 'Corporate Bond';
   if (/municipal/i.test(s)) return 'Municipal Security';
   if (/\betf\b|\bmutual fund\b/i.test(s)) return 'Fund';
   if (/crypto|bitcoin|ethereum/i.test(s)) return 'Crypto';

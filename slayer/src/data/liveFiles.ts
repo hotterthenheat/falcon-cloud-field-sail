@@ -10,7 +10,7 @@ import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
 import { companyName, hasVendorName, isListed, rememberCompanyName } from './tickers';
-import { screenerDayMove } from './liveQuote';
+import { screenerDayMove, screenerPrices } from './liveQuote';
 import {
   whalesEtfFlow,
   whalesEtfHoldings,
@@ -661,10 +661,11 @@ async function pullStocks() {
     for (const row of rows) {
       const ticker = String(row.ticker || '').toUpperCase();
       const u = UNIVERSE.find(x => x.ticker === ticker);
-      const price = numOr(row.close);
+      const prices = screenerPrices(row as Record<string, unknown>);
+      /* the REGULAR price — the after-hours print kept apart, as every row and the quote read it */
+      const price = prices?.regular ?? null;
       if (!ticker || price == null || !(price > 0)) continue;
-      picks.push(
-        pickFromLive({
+      const pick = pickFromLive({
           ticker,
           name: u?.name || String(row.full_name || ticker),
           sector: asSector(ticker, typeof row.sector === 'string' ? row.sector : undefined),
@@ -684,8 +685,8 @@ async function pullStocks() {
           bearish: numOr(row.bearish_premium),
           sma50: numOr(row.sma_50),
           row: row as Record<string, unknown>,
-        }),
-      );
+        });
+      picks.push({ ...pick, extPrice: prices?.ext ?? null, extPct: prices?.extPct ?? null });
     }
     picks.sort((a, b) => b.composite - a.composite);
     emit({ stockStatus: picks.length ? 'live' : 'error', stocks: picks });

@@ -41,7 +41,7 @@ import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { GREEK_EXPLAIN, GREEK_LABEL } from '../../data/compare';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { todayColumn, GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { readRegime } from '../../data/flipLevel';
 import { readSessionClock } from '../../data/moc';
 import { replayRange, snapshotAt } from '../../data/replay';

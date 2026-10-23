@@ -66,7 +66,8 @@ import { expiryLabel, pctSigned } from '../../core/format';
 import { LiveTapeGuide } from '../../components/trace/TraceGuide';
 import type { FlowPrint, PrintSentiment, TapeSummary } from '../../types/trace';
 import { floorPackaged, FRESH_VOL_OI, stockLike, STOCK_LIKE_HINT, VENDOR_TOTAL_NOTE, volOiText } from '../../data/flowBook';
-import { dayAdv, dayPos, expiryWords, isLiveDay, sameDayWords, shortDay } from '../../components/trace/dayWords';
+import { shyPct } from '../../components/trace/dayWords';
+import { dayAdv, shortDay } from '../../components/trace/dayWords';
 
 const MAX_ROWS = 120;
 /* The shared chooser stores the HIDDEN set (see ColumnChooser); the old
@@ -263,7 +264,7 @@ function tapeRead(rows: FlowPrint[], summary: TapeSummary, noun: 'prints' | 'ale
 const SIDE_WORD: Record<FlowPrint['side'], string> = { ASK: 'ask', BID: 'bid', MID: 'mid' };
 /** A day's lean in words, with the share it is decided on even when it falls short of a call ("even · ask 52%") */
 const leanWords = (l: ReturnType<typeof dayLean>) =>
-  l.lean === 'ASK' ? `ask ${Math.round(l.askSided)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bidSided)}%` : l.lean === 'UNSIDED' ? 'mostly mid / no side' : `even · ${l.askSided >= 50 ? `ask ${Math.round(l.askSided)}%` : `bid ${Math.round(l.bidSided)}%`}`;
+  l.lean === 'ASK' ? `ask ${Math.round(l.askSided)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bidSided)}%` : l.lean === 'UNSIDED' ? 'mostly mid / no side' : `even · ${l.askSided >= 50 ? `ask ${shyPct(l.askSided)}%` : `bid ${shyPct(l.bidSided)}%`}`;
 /** Why a floor package is set apart, in its own figures */
 const FLOOR_HINT = (c: { floorPct: number; multiPct: number }) => `${Math.round(c.floorPct)}% of its day traded on the floor and ${Math.round(c.multiPct)}% in multi-leg packages — the shape of compression, which nets open interest down, not a directional bet`;
 /* A FILL OUTSIDE ITS QUOTE SAYS SO (the retail pass, 2026-10-22: an NVDA fill of $7.86 read "BID" over a bid of 7.90 —

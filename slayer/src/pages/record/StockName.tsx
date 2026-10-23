@@ -853,10 +853,10 @@ const StockName = () => {
                 <span className="text-textMuted">—</span>
               )}
             </Fact>
-            <Fact label={money.darkWindow.complete ? `Dark · ${sessionWord}` : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out`}>
+            <Fact label={file.tapes === 'loading' || money.darkWindow.complete ? `Dark · ${sessionWord}` : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out`}>
               {money.dark.prints.length ? (
                 <>
-                  {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length}</span>
+                  {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length.toLocaleString('en-US')}</span>
                 </>
               ) : (
                 <span className="text-textMuted">—</span>
@@ -869,7 +869,7 @@ const StockName = () => {
           <div className="px-5 pb-2 flex flex-col gap-2" data-stock-gex-scopes>
             <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope={money.levelsToday ? (money.levelsToday.date == null ? 'today-pending' : 'today') : 'today-none'} title="Pinpoint's nearest-expiry scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">{money.levelsToday?.date ? `${money.levelsToday.scopeLabel.replace(/\s·\s(.+)$/, ' ($1)')} · nearest expiry` : 'Nearest expiry'}</span>
+                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">{money.levelsToday?.date ? `${view.marketWord === 'market open' || view.marketWord === 'the closing auction' ? 'Today' : 'Next session'} (${shortDay(money.levelsToday.date)}) · nearest expiry` : 'Nearest expiry'}</span>
                 {money.levelsToday?.date ? (
                   <span className="font-mono text-[11px] tnum" data-stock-gex-next>
                     net GEX <Money v={money.levelsToday.netGex} /> {money.levelsToday.regime ? <span className="text-textMuted">· {money.levelsToday.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span> : null}
@@ -929,11 +929,14 @@ const StockName = () => {
                 </div>
               </>
             )}
-            {money.askSharePct != null && money.sweepSharePct != null && (
+            {file.tapes === 'loading' && (
+              <p className="mt-1.5 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-alerts="reading">reading the flow alerts of {sessionWord}…</p>
+            )}
+            {file.tapes === 'live' && money.askSharePct != null && money.sweepSharePct != null && (
               <p className="mt-1.5 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-alerts>
                 {money.flowWindow.complete
-                  ? `${money.flowWindow.alerts} flow alerts on ${sessionWord}`
-                  : `the latest ${money.flowWindow.alerts} flow alerts on ${sessionWord}, ${money.flowWindow.from}–${money.flowWindow.to} ET`}{' '}
+                  ? `${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}`
+                  : `the latest ${money.flowWindow.alerts.toLocaleString('en-US')} flow alerts on ${sessionWord}, ${money.flowWindow.from}–${money.flowWindow.to} ET`}{' '}
                 · {money.askSharePct.toFixed(1)}% of their premium filled on the ask · {money.sweepSharePct.toFixed(0)}% swept
               </p>
             )}
@@ -941,13 +944,16 @@ const StockName = () => {
           ) : (
             <div className="px-5 pb-2 font-mono text-[10px] uppercase tracking-widest text-textMuted">No option premium on the screener yet</div>
           )}
+          {file.tapes === 'loading' && (
+            <div className="px-5 pb-3 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-stock-dark="reading">Reading the dark-pool prints of {sessionWord}, paged back to the open…</div>
+          )}
           {money.dark.prints.length > 0 && (
           <div className="px-5 pb-3" data-stock-dark={money.darkWindow.read ? money.dark.posture : 'none'} title="Each print set against the NBBO mid at its own print time: paid over the mid is buyer-initiated (buying), sold under it seller-initiated (selling). Average-price, prior-reference, contingent and derivative-priced prints and every print outside 09:30–16:00 ET are shown on the tape but not read">
             <div className="flex items-center justify-between font-mono text-[10px] tnum">
               <span className={money.dark.netPosturePct < 0 ? 'text-bear font-semibold' : 'text-textSecondary'}>selling</span>
               <span className="text-[9px] uppercase tracking-widest text-textMuted">
                 {money.darkWindow.read
-                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.complete ? (money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : '') : `, from ${money.darkWindow.cover ?? money.darkWindow.from} ET to the close only — the tape in hand stops there`}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
+                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read.toLocaleString('en-US')} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.complete ? (money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : '') : `, from ${money.darkWindow.cover ?? money.darkWindow.from} ET to the close only — the tape in hand stops there`}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
                   : `dark pool · no read · none of the ${money.darkWindow.inHand} prints in hand is a sized regular-session print priced at the quote`}
               </span>
               <span className={money.dark.netPosturePct > 0 ? 'text-bull font-semibold' : 'text-textSecondary'}>buying</span>
@@ -1152,8 +1158,8 @@ const StockName = () => {
             </Fact>
             )}
             {numbers.epsGrowthPct != null && (
-            <Fact label="EPS growth · 4 quarters" testId="growth">
-              <span className={numbers.epsGrowthPct >= 0 ? 'text-bull' : 'text-bear'}>{pct(numbers.epsGrowthPct)}</span>
+            <Fact label="EPS growth · year over year" testId="growth" tip="The latest quarter's earnings per share against the same quarter a year before (the screener's eps_growth_4q), to two decimals">
+              <span className={numbers.epsGrowthPct >= 0 ? 'text-bull' : 'text-bear'}>{pct(numbers.epsGrowthPct, 2)}</span>
               {trajectory ? <span className="text-textMuted"> · {trajectory}</span> : null}
             </Fact>
             )}
@@ -1397,7 +1403,7 @@ const StockName = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Biggest buys" sub={`The richest flow alerts on the name on ${sessionWord}, paid on the ask · click one to weigh it`} testId="buys">
           <div className="pb-2 mt-auto">
-            {view.prints.buys.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No rich alerts paid up on {T} on {sessionWord}</div>}
+            {view.prints.buys.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{file.tapes === 'loading' ? 'Reading the flow alerts…' : <>No rich alerts paid up on {T} on {sessionWord}</>}</div>}
             {view.prints.buys.map(p => (
               <PrintRow key={p.id} p={p} maxPrem={maxPrem} onWarm={warm} onOpen={() => weigh(p)} />
             ))}
@@ -1405,7 +1411,7 @@ const StockName = () => {
         </Box>
         <Box title="Biggest sells" sub={`The richest flow alerts on the name on ${sessionWord}, hit on the bid · click one to weigh it`} testId="sells">
           <div className="pb-2 mt-auto">
-            {view.prints.sells.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No rich alerts hit the bid on {T} on {sessionWord}</div>}
+            {view.prints.sells.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{file.tapes === 'loading' ? 'Reading the flow alerts…' : <>No rich alerts hit the bid on {T} on {sessionWord}</>}</div>}
             {view.prints.sells.map(p => (
               <PrintRow key={p.id} p={p} maxPrem={maxPrem} onWarm={warm} onOpen={() => weigh(p)} />
             ))}

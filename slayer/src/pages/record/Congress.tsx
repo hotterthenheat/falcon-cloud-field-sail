@@ -490,7 +490,7 @@ const Congress = () => {
             {/* a trade made under 45 days ago cannot be late yet — on the 30-day window the count is structurally nil, and says so */}
             <dt className="text-[10px] text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among trades made in the last ${window} days`}>Past the deadline</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${stats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
-              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS ? <span className="text-textMuted">none can be yet</span> : stats.lateFilings}
+              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS ? <span className="text-textMuted">none can be yet</span> : stats.lateFilings.toLocaleString('en-US')}
             </dd>
           </div>
         </dl>

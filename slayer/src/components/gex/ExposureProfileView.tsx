@@ -33,7 +33,7 @@ import { shownGamma } from './retailSign';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { BaselineSeries, createOptionsChart, LineSeries, LineStyle, type IChartApiBase, type ISeriesApi, type LineData } from 'lightweight-charts';
 import { buildExposureCurve } from '../../data/exposureCurve';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { daySurface } from './dayChart';

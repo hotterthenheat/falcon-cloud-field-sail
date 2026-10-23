@@ -48,7 +48,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
-import { extendedLine, priceWords, useLiveQuote } from '../../data/liveQuote';
+import { extendedLine, priceWords, useLiveQuote, type LiveQuote } from '../../data/liveQuote';
+import { DayRef } from '../../data/bookWindow';
+
+/** "Today's" in the session; outside it the last regular session named by its date ("Thu Oct 22's") */
+const sessionWord = (q: LiveQuote | null | undefined): string => {
+  const d = q && q.phase !== 'regular' ? q.regDate : null;
+  const w = d ? DayRef(d) : 'Today';
+  return `${w}'s`;
+};
 import CompanyLogo from './CompanyLogo';
 import TickerLookup from './TickerLookup';
 import useFocusTrap from './useFocusTrap';
@@ -189,12 +197,18 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
             <span className="text-[11px] tnum text-textPrimary leading-none" data-scope-price>
               ${price.toFixed(2)}
             </span>
-            {/* the regular session's change; the move outside the session rides beside it, and zero is neutral */}
-            <span className={`text-[10px] tnum leading-none ${Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={extendedLine(live) ? `Today's regular-session change · ${extendedLine(live)}` : "Today's change"}>
+            {/* the regular session's change; the move outside the session rides beside it, and zero is neutral — the
+                session named by its own date outside the session (the fifth audit: "Today's regular-session change" at
+                01:00 Friday over Thursday's close) */}
+            <span className={`text-[10px] tnum leading-none ${Math.abs(change) < 0.005 ? 'text-textSecondary' : change > 0 ? 'text-bull' : 'text-bear'}`} title={`${sessionWord(live)} regular-session change (its 4:00 close against the close before)${closeOutside && live?.phase !== 'regular' && live?.regClose != null ? ` · the price is that ${live.regClose.toFixed(2)} close` : ''}${extendedLine(live) ? ` · ${extendedLine(live)}${live?.extPrice != null ? ` at ${live.extPrice.toFixed(2)}` : ''}, kept apart` : ''}`}>
               {change > 0 ? '+' : change < 0 ? '−' : ''}
               {Math.abs(change).toFixed(2)}%
             </span>
-            {extendedLine(live) && <span className="text-[10px] tnum leading-none text-textMuted whitespace-nowrap">· {extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'pre')}</span>}
+            {extendedLine(live) && (
+              <span className="text-[10px] tnum leading-none text-textMuted whitespace-nowrap" data-scope-ext>
+                · {closeOutside && live?.extPrice != null ? `${live.phase === 'pre' ? 'pre' : 'AH'} ${live.extPrice.toFixed(2)}` : extendedLine(live)!.replace('after hours', 'AH').replace('pre-market', 'pre')}
+              </span>
+            )}
           </>
         )}
         {/* THE NAME IS STILL ARRIVING (ui/Working.tsx): the panel keeps its shape and its last numbers, and the chip that names

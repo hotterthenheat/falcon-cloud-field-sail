@@ -32,6 +32,10 @@ export interface StockPick {
   sector: Sector;
   price: number;
   changePct: number;
+  /** The extended-hours print and its move off the regular close, outside the session — null in it (the price is the
+      regular one either way) */
+  extPrice?: number | null;
+  extPct?: number | null;
   sleeves: StockSleeves;
   /** Sleeves the feed did not score. They stay out of the screen and print as a dash. */
   quiet: (keyof StockSleeves)[];

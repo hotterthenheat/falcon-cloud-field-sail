@@ -44,7 +44,7 @@ import { useRoomSpotRead } from '../../pages/pinpoint/useRoomSpot';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
 
 const letGo = letGoWords();
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { shownGreek } from './retailSign';
 import { GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { ABSORB, AMPLIFY, CALL_WALL, EMBER, FLIP, GLACIER, PUT_WALL, SUPREME } from './paletteInk';
@@ -79,6 +79,13 @@ interface ExposureMatrixProps {
   /** The expiry window the rows add up ("Oct 23 → Nov 3") — said on each greek's head, so a row is never read as the
       levels' figure (the second re-audit, 2026-10-22: row 769 −$768.7M beside "SUPREME 769 · −$701.9M") */
   windowLabel?: string | null;
+  /** A LEVEL'S ROW READS THE LEVEL'S OWN CONTRACTS (the fifth audit's retail test, 2026-10-23: "SUPREME 769 · −$595.1M"
+      over a matrix row of −$657.5M — the window's sum — was easy to misread): when the window differs from the Levels
+      card's contracts, the supreme's and the walls' GEX cells print the Levels card's figures (house sign, by leg),
+      marked, with the window's figure on hover. Null where the strike is not on the levels' contracts. */
+  levelLegsAt?: ((strike: number) => { put: number; call: number; net: number } | null) | null;
+  /** The Levels card's contracts in words ("Today · Oct 23") — for the marked cells' hover */
+  levelsWords?: string | null;
   onNatural?: (px: number) => void;
 }
 
@@ -131,18 +138,18 @@ interface Row {
 const groupSkin = (gi: number, first: boolean, last: boolean, paper: boolean) =>
   `${first ? `border-l ${paper ? 'border-borderSubtle' : 'border-borderMuted'} pl-3` : ''} ${last ? 'pr-3' : ''} ${gi % 2 === 1 ? (paper ? 'bg-ink/[0.02]' : 'bg-ink/[0.045]') : ''}`;
 
-const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW_H, heavy = true }: { value: number; /** the figure printed — the kept value in the reader's sign (retailSign.ts); the ink reads the kept value */ shown: number; leg: Leg; cap: number; mode: HeatMode; paper: boolean; gi: number; first: boolean; last: boolean; /** the row's height — the figure and its track centred in it */ rowH?: number; /** one of the column's three heaviest bars: full ink; the rest a step quieter, so the walls pop */ heavy?: boolean }) => {
+const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW_H, heavy = true, level = null }: { value: number; /** the figure printed — the kept value in the reader's sign (retailSign.ts); the ink reads the kept value */ shown: number; leg: Leg; cap: number; mode: HeatMode; paper: boolean; gi: number; first: boolean; last: boolean; /** the row's height — the figure and its track centred in it */ rowH?: number; /** one of the column's three heaviest bars: full ink; the rest a step quieter, so the walls pop */ heavy?: boolean; /** the cell prints the Levels card's figure, not the window's — the ink it is marked in and the hover */ level?: { ink: string; title: string } | null }) => {
   const pct = Math.min(100, (Math.abs(value) / Math.max(1, cap)) * 100);
   const ink = value === 0 ? 'transparent' : heatLadderColor(value, cap, mode, paper);
   return (
-    <td className={`px-2.5 py-0 align-middle ${groupSkin(gi, first, last, paper)}`} data-matrix-leg={leg}>
+    <td className={`px-2.5 py-0 align-middle ${groupSkin(gi, first, last, paper)}`} data-matrix-leg={leg} data-matrix-level-cell={level ? '' : undefined} title={level?.title}>
       <div className="flex flex-col justify-center" style={{ height: Math.max(ROW_MIN, rowH) - 1 }}>
         <div className="flex items-baseline justify-between gap-2 min-w-0">
           {/* NO LEVEL WORDS IN THE CELLS (Noah, 2026-10-15, on the matrix in Terrain's panel: "the walls and supreme should
               just be the color of the strike and show on the hover card but not on the actual matrix view") — the words
               that stood here since 2026-10-14 are the strike's ink and the card's; the spacer keeps the figure at the right */}
           <span aria-hidden />
-          <span className={`font-mono text-[12px] tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'}`}>{fmtUsd(shown)}</span>
+          <span className={`font-mono text-[12px] tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{fmtUsd(shown)}</span>
         </div>
         {/* the track under every figure, the bar on it — the width with the data, the ink with the Colours switch */}
         <span className={`relative block w-full h-[3px] mt-[5px] rounded-full ${paper ? 'bg-ink/[0.1]' : 'bg-ink/[0.08]'}`} data-matrix-track>
@@ -153,7 +160,7 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
   );
 };
 
-const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural, windowLabel = null }: ExposureMatrixProps) => {
+const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural, windowLabel = null, levelLegsAt = null, levelsWords = null }: ExposureMatrixProps) => {
   const mode: HeatMode = palette === 'thermal' ? 'thermal-yellow' : HEAT_MODE;
   const paper = useResolvedTheme() === 'light';
   const shownGreeks = useMemo(() => GREEKS.filter(g => greeks.includes(g)), [greeks]);
@@ -451,12 +458,15 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   const centredFor = useRef<string | null>(null);
   useLayoutEffect(() => {
     /* re-centred once the rows take their height too — centred at the first height, the rows then shrank under it */
-    const key = `${surface.ticker}|${rowH}`;
-    if (centredFor.current === key) return;
-    centredFor.current = key;
+    /* A NEW NAME RE-CENTRES ON ITS OWN PRICE (the fifth audit's retail test, 2026-10-23: a ticker switch left the matrix
+       scrolled mid-ladder) — the key holds the name, its rows and the price row, and is only spent once the price row is
+       on the page, so a switch that lands its rows a frame later still centres */
     const row = spotRef.current;
     const box = row?.closest('[data-matrix-scroll]') as HTMLElement | null;
-    if (!row || !box) return;
+    if (!row || !box || !rows.length) return;
+    const key = `${surface.ticker}|${rowH}|${rows.length}|${rows[0]?.strike}`;
+    if (centredFor.current === key) return;
+    centredFor.current = key;
     let top = Math.max(0, row.offsetTop - box.clientHeight / 2);
     /* NO ROW HALF UNDER THE HEAD (the fourth audit: SPY's supreme row, 769, sat clipped under the sticky head at load) — the
        first row under the head starts whole */
@@ -470,7 +480,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       }
     }
     box.scrollTop = top;
-  }, [surface.ticker, rows.length, rowH]);
+  }, [surface.ticker, rows, rowH]);
   /* the pixels the even share leaves over, one each to as many rows, spread down the table — the last row ends on the
      box's foot */
   const [rowExtra, setRowExtra] = useState(0);
@@ -556,9 +566,27 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
           </span>
         </td>
         {shownGreeks.map((g, gi) =>
-          LEGS.map((leg, li) => (
-            <Cell key={`${g}-${leg}`} value={r.legs[g][leg]} shown={shownGreek(g, r.legs[g][leg])} leg={leg} cap={caps[g][leg]} mode={mode} paper={paper} gi={gi} first={li === 0} last={li === LEGS.length - 1} rowH={rowH + plus} heavy={heavyBy[`${g}|${leg}`]?.has(r.strike) ?? true} />
-          ))
+          LEGS.map((leg, li) => {
+            const lvl = g === 'gex' && windowLabel && role.ink && (r.strike === levels.supreme || r.strike === levels.callWall || r.strike === levels.putWall) ? levelLegsAt?.(r.strike) ?? null : null;
+            const v = lvl ? lvl[leg] : r.legs[g][leg];
+            return (
+              <Cell
+                key={`${g}-${leg}`}
+                value={v}
+                shown={shownGreek(g, v)}
+                leg={leg}
+                cap={caps[g][leg]}
+                mode={mode}
+                paper={paper}
+                gi={gi}
+                first={li === 0}
+                last={li === LEGS.length - 1}
+                rowH={rowH + plus}
+                heavy={heavyBy[`${g}|${leg}`]?.has(r.strike) ?? true}
+                level={lvl ? { ink: role.ink!, title: `${fmtStrike(r.strike)} ${leg} · ${fmtUsd(shownGreek(g, v))} on the Levels card's contracts (${levelsWords ?? 'its scope'}) — the figure the level is named by · this row's window, ${windowLabel}, adds up to ${fmtUsd(shownGreek(g, r.legs[g][leg]))}` } : null}
+              />
+            );
+          })
         )}
       </tr>
     );

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { attributionWords, buildStrikeAttribution } from '../../data/attribution';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { CALL_SIDE, PUT_SIDE } from './paletteInk';
 import Term from '../ui/Term';
 import type { FlowPrint } from '../../types/trace';

@@ -41,7 +41,7 @@ import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { buildCatches, floorPackaged, FRESH_VOL_OI, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
 import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
-import { dayAdv, dayPos, earnWords, oiSpanWords } from '../../components/trace/dayWords';
+import { dayAdv, dayPos, earnWords } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';

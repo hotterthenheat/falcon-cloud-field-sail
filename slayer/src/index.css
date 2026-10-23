@@ -1046,6 +1046,13 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
   content-visibility: auto;
   contain-intrinsic-size: auto 39px;
 }
+/* A DOSSIER FILE'S SHORT BOARDS ARE ALWAYS DRAWN (audit round 5, 2026-10-23: GME's "Fails to deliver" read as headers
+   and no rows — its twenty rows sat below the fold, skipped by the rule above, so the page's text, a full-page capture
+   and a reader's find-in-page saw an empty board). A book's boards hold tens of rows, not hundreds: no skip. */
+[data-book-grid] .ag-layout-auto-height .ag-row,
+[data-book-grid] .ag-row {
+  content-visibility: visible;
+}
 /* The Board's head tooltips (Board.tsx headerTooltip, 2026-09-09) — the grid's
    own tooltip in the house clothes: the translucent card ground, one sentence */
 .ag-tooltip,

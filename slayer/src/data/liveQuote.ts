@@ -246,6 +246,20 @@ export function screenerDayMove(row: Record<string, unknown>): SetMove | null {
   const reg = inSession || !Number.isFinite(ext) ? close : close / (1 + ext);
   return { pct: ((reg - prev) / prev) * 100, date };
 }
+/** The screener row's REGULAR price and its extended-hours print kept apart — the quote's convention (regularPrice /
+    extPrice) for a row whose quote has not landed: outside the session `close` is the last (post-market) print and
+    `intraday_change` its move off the regular close (audit round 5: META's row read the after-hours $645.89 as its price
+    with no AH tag, where every other row read the close and "AH") */
+export function screenerPrices(row: Record<string, unknown>): { regular: number; ext: number | null; extPct: number | null } | null {
+  const close = numOf(row.close);
+  if (!(close > 0)) return null;
+  const date = String(row.date ?? '').slice(0, 10);
+  const inSession = isTradingDay(nyTodayDate()) && nySessionPhase() === 'open' && date === nyIsoDate();
+  const ext = numOf(row.intraday_change);
+  if (inSession || !Number.isFinite(ext) || ext === 0) return { regular: close, ext: null, extPct: null };
+  const regular = Number((close / (1 + ext)).toFixed(4));
+  return Math.abs(close - regular) >= 0.005 ? { regular, ext: close, extPct: ext * 100 } : { regular, ext: null, extPct: null };
+}
 function chunksOf(names: string[]): string[][] {
   const out: string[][] = [];
   let cur: string[] = [];

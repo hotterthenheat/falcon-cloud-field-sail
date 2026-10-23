@@ -17,7 +17,7 @@
 import { shownGamma, shownGreek } from './retailSign';
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { attachScrollMore } from '../ui/scrollMore';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import type { ExposureSurface, Greek } from '../../data/exposureSurface';
 import { todayColumn } from '../../data/exposureSurface';
 import { heatCellStyle, type HeatMode } from './heatmap';

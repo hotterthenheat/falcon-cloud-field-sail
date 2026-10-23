@@ -23,6 +23,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
 import { deskBars } from '../../data/uwBook';
+import { DayRef } from '../../data/bookWindow';
+import { nyIsoDate } from '../../core/nyTime';
 import { useDeskSession } from '../../data/deskSession';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
 import { readToken, useResolvedTheme } from '../../theme/theme';
@@ -96,6 +98,10 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
   const [hover, setHover] = useState<{ point: Point; left: number; top: number } | null>(null);
   const desk = useDeskSession();
   const today = useMemo(() => buildToday(a, b, desk !== 'rth'), [a, b, revision, desk]);
+  /* THE BARS' OWN DAY (the fifth audit, 2026-10-23: "Since the open … Today" over Thursday's session at 01:00 Friday) */
+  const lastT = today.points[today.points.length - 1]?.time;
+  const barDay = lastT != null ? nyIsoDate(lastT * 1000) : null;
+  const dayW = barDay ? DayRef(barDay) : 'Today';
   const pointsRef = useRef(today.points);
   pointsRef.current = today.points;
 
@@ -231,11 +237,11 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3 flex-wrap">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Since the open</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Since the open{dayW === 'Today' ? '' : ` · ${dayW}`}</h3>
           </div>
           {/* truncate: unclipped, the line ran under the facts beside it ("…in the leader's ink" over "SPY +0.47%") */}
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            Today, both as percent from their own open · <span style={{ color: aInk }}>{a}</span> and <span style={{ color: bInk }}>{b}</span>, the same line each · the band beneath is the gap, in the leader's ink
+            {dayW}, both as percent from their own open · <span style={{ color: aInk }}>{a}</span> and <span style={{ color: bInk }}>{b}</span>, the same line each · the band beneath is the gap, in the leader's ink
           </p>
         </div>
         <dl className="grid grid-cols-3 gap-x-6">
@@ -252,13 +258,13 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">Ahead now</dt>
+            <dt className="text-[10px] text-textMuted">{dayW === 'Today' ? 'Ahead now' : 'Ahead at the close'}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-tapes-ahead>
               {today.lastA == null || today.lastB == null ? '—' : Math.abs(today.lastA - today.lastB) < 0.005 ? 'level' : `${today.lastA > today.lastB ? a : b} by ${Math.abs(today.lastA - today.lastB).toFixed(2)}%`}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted">The gap today</dt>
+            <dt className="text-[10px] text-textMuted">{dayW === 'Today' ? 'The gap today' : `The gap · ${barDay!.slice(5).replace('-', '/')}`}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-tapes-gap>
               {today.gap ? `${signedPct(today.gap.min)} to ${signedPct(today.gap.max)}` : '—'}
             </dd>

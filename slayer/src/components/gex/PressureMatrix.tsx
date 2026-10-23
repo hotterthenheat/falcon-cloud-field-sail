@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import SpotRule from '../ui/SpotRule';
 import { heatRgb } from './heatmap';
 import type { PressureRow, PressureSide } from '../../types/gex';

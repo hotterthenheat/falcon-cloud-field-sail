@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { HEDGING_ASSUMPTION, buildSpotScenario, flowWords } from '../../data/spotScenario';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { FLIP, LONG_GAMMA, SHORT_GAMMA, SPOT } from './paletteInk';
 import Term from '../ui/Term';
 import type { MarketSnapshot } from '../../types/market';

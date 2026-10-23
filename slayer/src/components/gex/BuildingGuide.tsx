@@ -10,6 +10,7 @@
 ==================================================
 */
 
+import { oiWhen } from '../../data/building';
 import type { ReactNode } from 'react';
 import { BULL, CALL_WALL, FLIP, PUT_WALL, SUPREME, alpha } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
@@ -376,7 +377,7 @@ export const BuildingGuide = ({ data, clock }: { data: Building; clock: AheadClo
       <DayFigure />
     </Section>
     <Section title="Where the number comes from">
-      <p>Open interest is counted once a day, overnight. The change shown is this morning's count against the session before's — the contracts opened or closed in <b>yesterday's</b> trading, not today's — contract by contract (each expiry, strike and side apart), and only the contracts the Levels card reads (today's expiry, or every live one). Each contract's change is valued at its own gamma at today's price. Until that count has loaded the page estimates it from today's trades. A change counts as building or draining only past 5% of the biggest wall shown; under that it is steady.</p>
+      <p>Open interest is counted once a day, overnight. The change shown is the latest count against the one before it — the contracts opened or closed in <b>{oiWhen(data.oiDates).trade ?? 'the last session'}</b>{oiWhen(data.oiDates).pending ? ` (${oiWhen(data.oiDates).pending})` : ''}, not today's — contract by contract (each expiry, strike and side apart), and only the contracts the Levels card reads (today's expiry, or every live one). Each contract's change is valued at its own gamma at today's price. Until that count has loaded the page estimates it from today's trades. A change counts as building or draining only past 5% of the biggest wall shown; under that it is steady.</p>
       <FloorFigure />
     </Section>
     <Section title="Today">

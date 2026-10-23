@@ -907,7 +907,7 @@ const Compare = () => {
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} />
           {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13) */}
-          <span className="flex items-center gap-1.5 max-sm:col-span-2" data-compare-names>
+          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&>[data-scope]]:shrink-0" data-compare-names>
             <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">A</span>
             {/* The two chips wear the same clothes (Noah, 2026-09-09): the first in the full following look
                 with its silver link, the second its own name with no link at all */}
