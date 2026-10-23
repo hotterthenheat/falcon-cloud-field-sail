@@ -7,7 +7,7 @@
 */
 
 import { isoDate, isTradingDay } from '../../core/calendar';
-import { LEAN_EDGE, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
+import { LEAN_EDGE, nyDateOf, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const parse = (iso: string) => {
@@ -76,3 +76,26 @@ export function earnWords(r: { earnDays: number | null; earnIso?: string | null 
 }
 /** An even day's share, never rounded up onto the edge it fell short of ("54.6", not "55") */
 export const shyPct = (v: number) => (Math.round(v) >= LEAN_EDGE ? (Math.floor(v * 10) / 10).toFixed(1) : String(Math.round(v)));
+/** A window of prints in words, its day named when it is not New York's today (audit round 6: an after-hours window read
+    "16:38:05–17:11:50 ET" at 04:15 the next morning): "Oct 22 16:38:05–17:11:50", "Oct 21 15:59:58–Oct 22 09:31:02",
+    or "09:30:01–09:41:15" on today's session. Null when no row carries a time. */
+export function spanWords(xs: readonly { time: string; epochMs?: number }[]): string | null {
+  const timed = xs.filter(r => r.time && r.time !== '—');
+  if (!timed.length) return null;
+  const withMs = timed.filter(r => (r.epochMs ?? 0) > 0);
+  if (withMs.length !== timed.length) {
+    const times = timed.map(r => r.time).sort();
+    return `${times[0]}–${times[times.length - 1]}`;
+  }
+  let first = withMs[0];
+  let last = withMs[0];
+  for (const r of withMs) {
+    if ((r.epochMs ?? 0) < (first.epochMs ?? 0)) first = r;
+    if ((r.epochMs ?? 0) > (last.epochMs ?? 0)) last = r;
+  }
+  const d0 = nyDateOf(first.epochMs!);
+  const d1 = nyDateOf(last.epochMs!);
+  const today = nyIsoToday();
+  if (d0 === d1) return d0 === today ? `${first.time}–${last.time}` : `${shortDay(d0)} ${first.time}–${last.time}`;
+  return `${shortDay(d0)} ${first.time}–${shortDay(d1)} ${last.time}`;
+}

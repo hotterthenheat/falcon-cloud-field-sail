@@ -556,6 +556,23 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   };
 }
 
+/** A FLOOR PACKAGE FILED AS ALERTS (audit round 6: "Largest flow alerts on Oct 22" led with SPX 7000C / 8000C / 8000P,
+    4,500 lots each, no side, all filed in one millisecond — the legs of one floor package, and the card called one "a
+    block", "whale-sized"). The alert route carries no floor flag, so the package is known by its shape: an alert with no
+    side whose fills started in the same millisecond as a no-side alert on another contract of the same root. */
+export function markAlertPackages(rows: FlowPrint[]): FlowPrint[] {
+  const rootOf = (p: FlowPrint) => (indexRoot(p.ticker) ?? p.ticker).toUpperCase();
+  const by = new Map<string, Set<string>>();
+  for (const p of rows) {
+    if (p.side !== 'MID' || !p.epochMs) continue;
+    const k = `${rootOf(p)}|${p.epochMs}`;
+    const set = by.get(k) ?? new Set<string>();
+    set.add(`${p.strike}${p.right}${p.expiry}`);
+    by.set(k, set);
+  }
+  return rows.map(p => (p.side === 'MID' && p.epochMs && (by.get(`${rootOf(p)}|${p.epochMs}`)?.size ?? 0) > 1 ? { ...p, floorPackage: true } : p));
+}
+
 /** Rows mapped once the index levels they need are in hand (an index print carries no underlying price) */
 async function mapWithIndex<T>(rows: Record<string, unknown>[], fn: (r: Record<string, unknown>, i: number) => T): Promise<T[]> {
   await ensureIndexLevels(rows.map(tickerOfRow));
@@ -574,9 +591,51 @@ export function useNameTape(ticker: string | null, limit = 200): LivePack<FlowPr
   return useLive(name ? `tape:${name}:${limit}` : 'tape:name:off', async () => mapWithIndex(liveTrades(await getRows(`/option-trades?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)), tradeToPrint), [], !!name);
 }
 
-export function useNameSpreads(ticker: string | null, limit = 80): LivePack<SpreadTrade[]> {
+/** ONE NAME'S STRUCTURES ON THE SESSION (audit round 6: Compare's "Structures 80 · the same" was the fetch cap over a
+    window the page never stated, with no session cut): the vendor's newest `limit` per page, paged back with older_than
+    to the tape's session's start — at most `pages` pages — and only the session's own. `complete` says the pages reached
+    the session's first structure; else `from` is the earliest one in hand. Legs are asked for only for the heaviest
+    `legsFor` by net (the ones a page lists), never for every structure. */
+export interface NameSpreads extends LivePack<SpreadTrade[]> {
+  session: string;
+  complete: boolean;
+  from: string | null;
+}
+export function useNameSpreads(ticker: string | null, limit = 80, pages = 3, legsFor = 12): NameSpreads {
   const name = (ticker || '').trim().toUpperCase();
-  return useSettled(useLive(name ? `spreads:${name}:${limit}` : 'spreads:name:off', async () => dedupeSpreads(await getRows(`/option-trades/multi-leg?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)).map(r => spreadOf(r)), [], !!name));
+  const session = tapeSessionIso();
+  const pack = useLive(
+    name ? `spreads:${name}:${limit}:${pages}:${session}` : 'spreads:name:off',
+    async () => {
+      const all: Record<string, unknown>[] = [];
+      let older = '';
+      let complete = false;
+      for (let i = 0; i < pages; i++) {
+        const page = await getRows(`/option-trades/multi-leg?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}${older ? `&older_than=${encodeURIComponent(older)}` : ''}`);
+        all.push(...page);
+        const oldest = page.reduce<string>((m, r) => (typeof r.executed_at === 'string' && (!m || r.executed_at < m) ? r.executed_at : m), '');
+        if (page.length < limit || !oldest || nyDateOf(Date.parse(oldest)) < session) {
+          complete = true;
+          break;
+        }
+        older = oldest;
+      }
+      const rows = dedupeSpreads(all)
+        .map(r => ({ ...spreadOf(r), repeats: num(r.__repeats) || undefined }))
+        .filter(t => t.day === session);
+      return { rows, complete };
+    },
+    { rows: [] as SpreadTrade[], complete: false },
+    !!name
+  );
+  const rev = useLegRev();
+  const raw = pack.rows.rows;
+  useEffect(() => {
+    wantLegs([...raw].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).slice(0, legsFor).map(t => t.id));
+  }, [raw, legsFor]);
+  const rows = useMemo(() => raw.map(settleSpread), [raw, rev]); // eslint-disable-line react-hooks/exhaustive-deps
+  const from = raw.length ? raw.reduce((m, t) => ((t.epochMs ?? Infinity) < (m.epochMs ?? Infinity) ? t : m), raw[0]).time : null;
+  return { rows, at: pack.at, fault: pack.fault, waiting: pack.waiting, session, complete: pack.rows.complete, from };
 }
 
 /** One contract's real last trade — /option-contract/{occ}/flow (the vendor's "last trades"). The contract card anchors
@@ -1309,6 +1368,8 @@ export function useLitRegularDay(close: { iso: string; closeMs: number } | null,
     dollars are the buckets' shares × their price (≈, to the bucket); the share is dark shares over the day's whole
     volume (/stock/{t}/quote) — the route's own "regular_volume" covers only part of the lit tape (GEV: 0.4M beside 2.2M). */
 export interface DarkDay {
+  /** The session the figures are for, YYYY-MM-DD, when asked by date */
+  iso?: string;
   /** Dark shares at prices the lit tape also traded */
   darkShares: number;
   litShares: number;
@@ -1369,11 +1430,22 @@ export function useStockLast(ticker: string | null): LivePack<StockLast | null> 
     return q.price > 0 ? q : null;
   }, null, !!name);
 }
-export function useDarkDay(ticker: string | null): LivePack<DarkDay | null> {
+/** A name's dark day — with `dateIso`, that session's own (the cross's date: audit round 6, an Oct 22 cross read "Dark
+    dollars today" off whatever day the route held at 04:15 on Oct 23), its whole volume off that day's one-minute bars */
+export function useDarkDay(ticker: string | null, dateIso: string | null = null): LivePack<DarkDay | null> {
   const name = (ticker || '').trim().toUpperCase();
   return useLive(
-    name ? `dark-day:${name}` : 'dark-day:off',
+    name ? `dark-day:${name}:${dateIso ?? 'latest'}` : 'dark-day:off',
     async () => {
+      if (dateIso) {
+        const [levels, bars] = await Promise.all([
+          getRows(`/darkpool/${encodeURIComponent(name)}/price-levels?date=${dateIso}`),
+          getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?date=${dateIso}&limit=1000`).catch(() => [] as Record<string, unknown>[]),
+        ]);
+        const vol = bars.reduce((m, b) => Math.max(m, num(b.total_volume)), 0);
+        const d = darkDayOf(levels, vol);
+        return d ? { ...d, iso: dateIso } : null;
+      }
       const [levels, vol] = await Promise.all([getRows(`/darkpool/${encodeURIComponent(name)}/price-levels`), dayVolumeOf(name)]);
       return darkDayOf(levels, vol);
     },
@@ -1553,7 +1625,7 @@ export function useFlowAlerts(limit = 50, opts?: { untilMs?: number | null; sess
   const until = opts?.untilMs ?? null;
   const session = opts?.session ?? null;
   return useLive(`alerts:${limit}:${until ?? 'live'}:${session ?? 'any'}`, async () => {
-    const rows = await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}${until ? `&older_than=${new Date(until).toISOString()}` : ''}`), alertToPrint);
+    const rows = markAlertPackages(await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}${until ? `&older_than=${new Date(until).toISOString()}` : ''}`), alertToPrint));
     return session ? rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)) : rows;
   }, []);
 }
@@ -2037,6 +2109,8 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     code: code || undefined,
     compression: COMPRESSION_CODES.has(code) || undefined,
     minute: when.minute,
+    day: tradeDay || undefined,
+    epochMs: when.ms || undefined,
     extended: when.minute > 0 && (when.minute < SESSION_OPEN || when.minute >= sessionEndMin(ticker)) ? true : undefined,
     time: when.time,
     ticker,
@@ -2154,6 +2228,8 @@ export function useTide(kind: TideKind, name: string, enabled = true): LivePack<
 /** One expiry of a name's day — /stock/{t}/flow-per-expiry: premium and contracts by side */
 export interface ExpiryFlow {
   expiry: string;
+  /** The session the vendor's row is for, YYYY-MM-DD (its `date`) */
+  date?: string;
   dte: number;
   /** Net call premium: at the ask less on the bid */
   callNet: number;
@@ -2171,6 +2247,7 @@ export function useFlowPerExpiry(ticker: string | null): LivePack<ExpiryFlow[]> 
         const expiry = String(r.expiry || '').slice(0, 10);
         return {
           expiry,
+          date: typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r.date) ? r.date.slice(0, 10) : undefined,
           dte: dteFrom(expiry, typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r.date) ? r.date.slice(0, 10) : tapeSessionIso()),
           callNet: num(r.call_premium_ask_side) - num(r.call_premium_bid_side),
           putNet: num(r.put_premium_ask_side) - num(r.put_premium_bid_side),
@@ -2278,35 +2355,38 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
   const { ticker, seg, mny, zeroDte, enabled } = opts;
   const name = (ticker || '').trim().toUpperCase();
   const key = name ? `pane:${name}` : `pane:${seg}:${mny}:${zeroDte ? '0' : 'w'}`;
-  return useLive(
-    key,
+  /* THE TICKS NEVER WAIT ON THE BARS (audit round 6: in one Promise.all the minute ticks sat behind /ohlc/1m for 36s and
+     more while the key's three slots were busy, and Compare stood a by-expiry figure under the ticks' label): the ticks
+     and the one-minute closes are fetched on their own, and the line draws from the ticks the moment they land — priced
+     by the closes once those are in */
+  const ticks = useLive(name ? `pane-ticks:${name}` : 'pane-ticks:off', async () => getRows(`/stock/${encodeURIComponent(name)}/net-prem-ticks`), [] as Record<string, unknown>[], enabled && !!name);
+  const bars = useLive(name ? `pane-bars:${name}` : 'pane-bars:off', async () => getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]), [] as Record<string, unknown>[], enabled && !!name);
+  const named = useMemo<PaneFlowPoint[]>(() => {
+    if (!name) return [];
+    const close = new Map<number, number>();
+    for (const b of bars.rows) close.set(minuteOf(b.start_time), num(b.close));
+    let c = 0;
+    let p = 0;
+    let last = 0;
+    const out: PaneFlowPoint[] = [];
+    for (const r of [...ticks.rows].sort((a, b) => minuteOf(a.tape_time) - minuteOf(b.tape_time))) {
+      const t = minuteOf(r.tape_time);
+      if (!t) continue;
+      /* THE REGULAR SESSION, 09:30–16:00 New York (the audit, 2026-10-22: a name's pane opened at 07:30 under a
+         "Regular" desk) — the running line starts at the bell; to 16:15 for the index and ETF options that trade then
+         (the re-audit: SPY's line stopped at 16:00, +$6.90M of net puts against a day of +$17.27M) */
+      const m = clock(r.tape_time).minute;
+      if (m < SESSION_OPEN || m >= sessionEndMin(name)) continue;
+      c += num(r.net_call_premium);
+      p += num(r.net_put_premium);
+      last = close.get(t) ?? last;
+      out.push({ time: t, callPrem: c, putPrem: p, vol: num(r.call_volume) + num(r.put_volume), price: last });
+    }
+    return out;
+  }, [name, ticks.rows, bars.rows]);
+  const cut = useLive(
+    name ? 'pane:cut:off' : key,
     async () => {
-      if (name) {
-        const [ticks, bars] = await Promise.all([
-          getRows(`/stock/${encodeURIComponent(name)}/net-prem-ticks`),
-          getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]),
-        ]);
-        const close = new Map<number, number>();
-        for (const b of bars) close.set(minuteOf(b.start_time), num(b.close));
-        let c = 0;
-        let p = 0;
-        let last = 0;
-        const out: PaneFlowPoint[] = [];
-        for (const r of [...ticks].sort((a, b) => minuteOf(a.tape_time) - minuteOf(b.tape_time))) {
-          const t = minuteOf(r.tape_time);
-          if (!t) continue;
-          /* THE REGULAR SESSION, 09:30–16:00 New York (the audit, 2026-10-22: a name's pane opened at 07:30 under a
-             "Regular" desk) — the running line starts at the bell; to 16:15 for the index and ETF options that trade then
-             (the re-audit: SPY's line stopped at 16:00, +$6.90M of net puts against a day of +$17.27M) */
-          const m = clock(r.tape_time).minute;
-          if (m < SESSION_OPEN || m >= sessionEndMin(name)) continue;
-          c += num(r.net_call_premium);
-          p += num(r.net_put_premium);
-          last = close.get(t) ?? last;
-          out.push({ time: t, callPrem: c, putPrem: p, vol: num(r.call_volume) + num(r.put_volume), price: last });
-        }
-        return out;
-      }
       if (seg.startsWith('sector:')) {
         const sector = seg.slice('sector:'.length);
         const rows = (await getRows(`/market/${encodeURIComponent(sector)}/sector-tide?interval_5m=false`)).filter(r => r.net_call_premium != null && r.net_put_premium != null);
@@ -2339,9 +2419,10 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
         })
         .filter(pt => pt.time > 0);
     },
-    [],
-    enabled
+    [] as PaneFlowPoint[],
+    enabled && !name
   );
+  return name ? { rows: named, at: ticks.at, fault: ticks.fault, waiting: ticks.waiting } : cut;
 }
 
 
@@ -2374,7 +2455,7 @@ export function useDayTopContracts(limit = 5, enabled = true): LivePack<BookCont
 export function useDayBigAlerts(sinceMs: number, untilMs: number | null, session: 'regular' | 'extended', minPremium = 5_000_000, limit = 200, enabled = true): LivePack<FlowPrint[]> {
   return useLive(`day-alerts:${sinceMs}:${untilMs ?? 'live'}:${session}:${minPremium}`, async () => {
     /* the route reaches back days: the day's own, from its 04:00 */
-    const rows = await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}&min_premium=${minPremium}&newer_than=${new Date(sinceMs).toISOString()}${untilMs ? `&older_than=${new Date(untilMs).toISOString()}` : ''}`), alertToPrint);
+    const rows = markAlertPackages(await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}&min_premium=${minPremium}&newer_than=${new Date(sinceMs).toISOString()}${untilMs ? `&older_than=${new Date(untilMs).toISOString()}` : ''}`), alertToPrint));
     return rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)).sort((a, b) => b.premium - a.premium);
   }, [], enabled);
 }
@@ -2409,13 +2490,16 @@ export interface StockMinute {
   minute: number;
   extended: boolean;
 }
-export function useStockMinutes(ticker: string | null): LivePack<StockMinute[]> {
+/** The name's one-minute bars for one New York day — `dateIso`, the cross's own date (audit round 6: an Oct 22 cross read
+    "No session bars for USHY yet" at 04:15 on Oct 23 — the hook kept only the clock's session, and once Oct 23's
+    pre-market bars came they would have stood in); the tape's session when none is given */
+export function useStockMinutes(ticker: string | null, dateIso: string | null = null): LivePack<StockMinute[]> {
   const name = (ticker || '').trim().toUpperCase();
+  const day = dateIso ?? tapeSessionIso();
   return useLive(
-    name ? `stock-minutes:${name}` : 'stock-minutes:off',
+    name ? `stock-minutes:${name}:${day}` : 'stock-minutes:off',
     async () => {
-      const day = tapeSessionIso();
-      const rows = await getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`);
+      const rows = await getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?date=${day}&limit=1000`);
       return rows
         .map(r => {
           const c = clock(r.start_time || r.time || r.date);

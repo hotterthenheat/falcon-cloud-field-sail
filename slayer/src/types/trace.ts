@@ -74,6 +74,10 @@ export interface FlowPrint {
   /** A compression package (OPRA cbmo / mctp, or the vendor's `arbitrage` tag) — not a bet; kept out of every
       directional total (data/traceLive printCondition) */
   compression?: boolean;
+  /** A flow alert that is a floor package, not a bet (audit round 6): one leg of a no-side package filed in the same
+      millisecond as alerts on the root's other contracts, or a contract whose day was mostly floor-traded multi-leg
+      packages (flowBook floorPackaged) — set apart wherever alerts are ranked, never called a block */
+  floorPackage?: boolean;
   /** The card stands for the contract's DAY (a day-book row opened), its premium, size and side the day's — `last` is the
       latest regular-session print it is anchored on, with the day's running volume at that print */
   dayCard?: { last: { fill: number; size: number; time: string; side: 'ASK' | 'BID' | 'MID'; volume: number } | null; session: string };

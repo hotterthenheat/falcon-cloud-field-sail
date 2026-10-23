@@ -248,12 +248,12 @@ const NetFlow = () => {
           {/* the two ends of the board, each named for what it is; the larger of the two wears the magenta */}
           {facts.top && facts.top.net > 0 && (
             <Champion label="Most bullish" ink={champ === facts.top ? 'supreme' : 'bull'} title="Put this name on the pane" onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
-              {facts.top.ticker} · {signed(facts.top.net)}
+              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· whole day</span>
             </Champion>
           )}
           {facts.bottom && facts.bottom.net < 0 && (
             <Champion label="Most bearish" ink={champ === facts.bottom ? 'supreme' : 'bear'} title="Put this name on the pane" onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
-              {facts.bottom.ticker} · {signed(facts.bottom.net)}
+              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· whole day</span>
             </Champion>
           )}
         </>
@@ -284,7 +284,7 @@ const NetFlow = () => {
             <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of the board's lean</span>
-              <span title={`The vendor's own ranking (top net impact) — each name's whole day by its minute ticks; Compare's net and Intervals read the same ticks over the regular session. ${VENDOR_TOTAL_NOTE}`}>Net {dayAdv()}</span>
+              <span title={`The vendor's own ranking (top net impact) — each name's whole day by its minute ticks; Compare's net and Intervals read the same ticks over the regular session. ${VENDOR_TOTAL_NOTE}`}>Net {dayAdv()} · whole day</span>
             </div>
           )}
           {leaders.length === 0 && (

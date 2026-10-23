@@ -45,7 +45,8 @@ import {
 } from 'lightweight-charts';
 import { bookCandles, dayBars, ensureBook, useBookRev } from '../../data/uwBook';
 import { bookSession, VENDOR_TOTAL_NOTE } from '../../data/flowBook';
-import { indexRoot, usePaneFlow } from '../../data/traceLive';
+import { indexRoot, sessionEndLabel, tapeSessionIso, usePaneFlow } from '../../data/traceLive';
+import { isLiveDay, shortDay } from './dayWords';
 import { nyClock, nyParts, nyTickMarks, nyTimeFormatter, SESSION_OPEN_MIN } from '../../core/nyTime';
 import { getResolvedTheme, readToken, useColourVision, useResolvedTheme } from '../../theme/theme';
 import { earnMarks, weightInk, type InkMarks } from './earnedInk';
@@ -782,6 +783,9 @@ const NetFlowPane = ({
             <span title="Net calls less net puts, 09:30 to the close — the vendor's minute ticks; the same figure as Compare's net and Intervals' lean">
               <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net</span>
               <span className={ncp - npp >= 0 ? 'text-bull' : 'text-bear'}>{ncp - npp < 0 ? '−' : '+'}{fmtUsd(Math.abs(ncp - npp))}</span>
+              {/* THE WINDOW UNDER THE FIGURE (audit round 6: BAC +$19.8M here beside +$19.7M on the board, the windows said only
+                  on a hover) */}
+              <span className="text-textSecondary text-[11px] ml-1" data-pane-window>· 09:30–{sessionEndLabel(ticker)} ET{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
             </span>
           )}
           {headVol != null && tail && <span className="text-textSecondary">{headVol.toLocaleString('en-US')} vol</span>}

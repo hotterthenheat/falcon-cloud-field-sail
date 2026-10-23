@@ -32,7 +32,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { darkView, lastStockClose, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, usd as fmtUsd } from '../../data/traceLive';
-import { dayAdv, shortDay } from '../../components/trace/dayWords';
+import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { gradeOfPosture, POSTURE_WORD, type DarkTapeView } from '../../data/darkpool';
@@ -285,8 +285,9 @@ const DarkPool = () => {
      buffer) — every figure on the market's tape covers the prints in hand, first to last */
   const tapeWindow = useMemo(() => {
     const ps = view ? view.prints : tape ? tape.prints : [];
-    const ts = ps.map(p => p.time).filter(t => t && t !== '—').sort();
-    return ts.length ? `${ts[0]}–${ts[ts.length - 1]} ET` : null;
+    /* the window's day named when it is not today's (audit round 6) */
+    const w = spanWords(ps);
+    return w ? `${w} ET` : null;
   }, [view, tape]);
   /* THE CROSS'S CARD (the Live Tape's print card, for a cross) */
   const [openCross, setOpenCross] = useState<DarkPoolPrint | null>(null);
@@ -297,8 +298,8 @@ const DarkPool = () => {
   }, [openCross, view, tape]);
   const shownCross = useMemo(() => (openCross ? openView?.prints.find(p => p.id === openCross.id) ?? openCross : null), [openCross, openView]);
   const leaderWindow = useMemo(() => {
-    const ts = dark.rows.filter(p => !p.special).map(p => p.time).filter(t => t && t !== '—').sort();
-    return ts.length ? `${ts[0]}–${ts[ts.length - 1]} ET` : null;
+    const w = spanWords(dark.rows.filter(p => !p.special));
+    return w ? `${w} ET` : null;
   }, [dark.rows]);
   const leaders = useMemo<DarkLeadersView>(() => {
     const byName = new Map<string, DarkLeaderRow>();

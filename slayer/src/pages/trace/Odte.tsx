@@ -180,8 +180,10 @@ const Odte = () => {
   const signed = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
   /* ONE COLOUR RULE: net puts bought lean bearish — said in words and inked as the direction they lean, never a green "+" */
   const putWords = (v: number) => (v >= 0 ? `bearish net puts bought ${fmtUsd(v)}` : `bullish net puts sold ${fmtUsd(Math.abs(v))}`);
+  /* calls and puts leaning the same way are joined by "and", opposed by "against" (audit round 6: "net calls −$13.0M
+     against bearish net puts bought $3.4M" — both bearish) */
   const read = awake
-    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} against ${putWords(npp)} on every contract ${sameDayWords()}, from the bell to ${asOf} ET.${isLiveDay() ? '' : ` That is the ${shortDay(tapeSessionIso())} session's same-day book — it expired at that bell.`}`
+    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} ${(ncp >= 0) === (npp < 0) ? 'and' : 'against'} ${putWords(npp)} on every contract ${sameDayWords()}, from the bell to ${asOf} ET.${isLiveDay() ? '' : ` That is the ${shortDay(tapeSessionIso())} session's same-day book — it expired at that bell.`}`
     : flow.fault
       ? 'This read did not land — the same-day minutes fill when the feed answers.'
       : 'The same-day money is still waking up.';

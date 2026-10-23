@@ -37,6 +37,9 @@ export interface TraceSide {
       the whole day) when a clock cuts it (audit round 5: the headline read QQQ +$24.1M by expiry beside −$53.6M on its own
       pane and −$54.9M on Net Flow) */
   netSource?: 'ticks' | 'expiry';
+  /** The ticks' net is not in hand: 'loading' while they load, 'none' when they did not answer — the net shows "…" or
+      "—", never another source's figure under the ticks' label (audit round 6) */
+  netPending?: 'loading' | 'none';
   /** The by-expiry figures, always — shown beside the ticks when the card is uncut */
   byExpiry?: { net: number; calls: number; puts: number };
   /** The same-day money: every contract on the name expiring TODAY (the vendor's flow for today's expiry), whatever the
@@ -99,11 +102,17 @@ export function buildTraceSide(
   const onTenor = expiries.filter(e => onClock(e.dte, tenor));
   const netCall = onTenor.reduce((a, e) => a + e.callNet, 0);
   const netPut = onTenor.reduce((a, e) => a + e.putNet, 0);
-  const today = expiries.find(e => e.expiry === todayIso) ?? null;
+  /* THE SESSION'S OWN EXPIRY (audit round 6: at 04:15 on Oct 23 "Expiring today" read the Oct 23 expiry — SPY +$728.1K,
+     QQQ +$55.5M — while the data was Oct 22's, whose 0DTE was SPY +$8.91M, QQQ −$12.82M): the expiry that is the vendor
+     rows' own session date, else the tape's session */
+  const rowsDay = expiries.find(e => e.date)?.date ?? todayIso;
+  const today = expiries.find(e => e.expiry === rowsDay) ?? null;
   const volume = rows.reduce((a, r) => a + r.volume, 0);
   const premium = rows.reduce((a, r) => a + r.premium, 0);
   const callPrem = rows.reduce((a, r) => a + (r.right === 'C' ? r.premium : 0), 0);
-  const list = spreads.filter(t => t.ticker === ticker && onClock(t.dte, tenor)).sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium));
+  /* compression packages and after-hours structures are no bet and no read — left out of the structure totals (audit
+     round 6) */
+  const list = spreads.filter(t => t.ticker === ticker && !t.compression && !t.extended && onClock(t.dte, tenor)).sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium));
   const mine = tape.filter(p => p.ticker === ticker && onClock(p.dte, tenor) && moneynessFilter(p, mny));
   /* PER PRINT, NOT BY THE WALL CLOCK (the third audit, 2026-10-22: after 16:00 the page called SPY's and QQQ's prints at
      16:14:5x after-hours ones — index and ETF options close at 16:15 — and still named a winner) */
@@ -188,7 +197,7 @@ export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over
   const heavier = a.book.premium >= b.book.premium ? a : b;
   const busier = a.tape.prints >= b.tape.prints ? a : b;
   /* the net says its source and window — the ticks' regular session, or the clock's expiries for the whole day */
-  const lean = (s: TraceSide) => ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${signedUsd(s.net)}${s === b ? (s.netSource === 'ticks' ? " (net premium over the regular session, the vendor's minute ticks — the figure on Net Flow and Intervals)" : " (the clock's expiries, the vendor's expiry route)") : ''}`;
+  const lean = (s: TraceSide) => s.netPending ? (s.netPending === 'loading' ? ' — its net is loading (the vendor\'s minute ticks…)' : ' — the vendor\'s minute ticks did not answer, so its net is not stated') : ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${signedUsd(s.net)}${s === b ? (s.netSource === 'ticks' ? " (net premium over the regular session, the vendor's minute ticks — the figure on Net Flow and Intervals)" : " (the clock's expiries, the vendor's expiry route)") : ''}`;
   const showTape = busier.tape.prints > 0 && regular;
   const parts: SentencePart[] = [
     { name: a.ticker },

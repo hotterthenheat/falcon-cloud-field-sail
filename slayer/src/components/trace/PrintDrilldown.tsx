@@ -17,8 +17,8 @@
 ==================================================
 */
 
-import { expiryWords, isLiveDay, shortDay } from './dayWords';
-import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
+import { expiryWords, isLiveDay, isoOf, shortDay } from './dayWords';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Compass, Copy, Crosshair, Scale } from 'lucide-react';
 import Modal from '../ui/Modal';
@@ -31,7 +31,7 @@ import Chip from '../ui/Chip';
 import { isSpreadLeg, sentimentOf } from '../../data/tape';
 import { SESSION_MIN } from '../../data/contractflow';
 import { isoToDate, sessionIsoBack, sessionOnOrBefore, useContractTape, type CardDay, type ContractTape } from '../../data/contractflow';
-import { indexRoot, sessionEndLabel, sideShares, tapeSessionIso, useAlertTrades, usd as fmtUsd } from '../../data/traceLive';
+import { dteFrom, indexRoot, nyDateOf, sessionEndLabel, sessionIsoAt, sideShares, tapeSessionIso, useAlertTrades, usd as fmtUsd } from '../../data/traceLive';
 import { printKind } from '../../data/tape';
 import { isTradingDay, isoDate } from '../../core/calendar';
 import type { NetMetric } from './ContractFlowChart';
@@ -66,15 +66,23 @@ function spreadAndTheta(p: FlowPrint): { spreadPct: number | null; thetaPct: num
    of the model's value at that instant — and in an option's last day the slope runs far past what is left, because the
    value goes to zero by the bell. A share's day of decay is the smaller of the rate and the price; when the rate is the
    larger, the card says so in words. */
-function thetaWords(p: FlowPrint, thetaPct: number | null): { text: string; warn: boolean; title?: string } {
+function thetaWords(p: FlowPrint, thetaPct: number | null, printIso: string = tapeSessionIso()): { text: string; warn: boolean; title?: string } {
   if (thetaPct == null || p.theta == null) return { text: '—', warn: false };
   const rate = Math.abs(p.theta);
   const dp = (v: number) => (v < 0.1 ? 3 : 2);
   if (rate < p.fill) return { text: `${thetaPct.toFixed(1)}% of the fill · $${rate.toFixed(dp(rate))} a share`, warn: false };
   /* from New York's calendar day, not the tape's session (audit round 5: at 01:00 on Oct 23 an Oct 23 contract read
      "expires tomorrow" and an Oct 22 one "expires today") */
-  const when = expiryWords(p.expiry) || (p.dte <= 0 ? 'expires at its session\'s bell' : `expires in ${p.dte} days`);
-  return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share decays by then`, title: `The vendor's theta is a rate — $${rate.toFixed(dp(rate))} a share a day at this instant — and in an option's last days it runs past the price, because the value goes to zero at expiry. A day cannot take more than the $${p.fill.toFixed(2)} it is worth.`, warn: true };
+  /* AT THE PRINT, NOT THE CLOCK (audit round 6: an Oct 22 0DTE print read "expired yesterday (Oct 22) — what is left …
+     decays by then" at 04:15 on Oct 23): on a past session the words are the print's own day's */
+  const live = isLiveDay(printIso);
+  const n = dteFrom(isoOf(p.expiry), printIso);
+  const when = live
+    ? expiryWords(p.expiry) || (p.dte <= 0 ? 'expires at its session\'s bell' : `expires in ${p.dte} days`)
+    : n <= 0
+      ? `expired at the ${shortDay(printIso)} bell, the day of the print`
+      : `${n} day${n === 1 ? '' : 's'} from expiry (${shortDay(p.expiry)}) at the ${shortDay(printIso)} print`;
+  return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share ${live ? 'decays' : 'decayed'} by then`, title: `The vendor's theta is a rate — $${rate.toFixed(dp(rate))} a share a day at this instant — and in an option's last days it runs past the price, because the value goes to zero at expiry. A day cannot take more than the $${p.fill.toFixed(2)} it is worth.`, warn: true };
 }
 
 const TABLE_TABS = [
@@ -140,7 +148,8 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
     return `The ${p.right === 'C' ? 'call' : 'put'}'s day: ${usd(p.premium)} across ${p.size.toLocaleString('en-US')} contracts (the screener's count), and it ${lean}.${p.dayCard.last ? ` Its last ${p.dayCard.session} print was ${p.dayCard.last.size.toLocaleString('en-US')} at $${fixed(p.dayCard.last.fill)}, ${p.dayCard.last.time} ET.` : ''}${oi > 0 ? ` The day's volume is ${fixed(ratio, ratio >= 1.5 ? 1 : 2)}× the open interest${ratio >= 1.5 ? ', so at least some of it is new positioning' : ' — it could be opening or closing'}.` : ''}`;
   }
   const who = p.side === 'ASK' ? 'paid the offer' : p.side === 'BID' ? 'hit the bid' : 'traded at the mid';
-  const size = p.premium >= 1_000_000 ? 'a whale-sized' : p.premium >= 250_000 ? 'a sizeable' : 'a modest';
+  /* a floor package's leg is not sized as a bet (audit round 6: "a whale-sized" no-side SPX package leg) */
+  const size = p.floorPackage ? 'a floor-package' : p.premium >= 1_000_000 ? 'a whale-sized' : p.premium >= 250_000 ? 'a sizeable' : 'a modest';
   const kind = printKind(p);
   const right = p.right === 'C' ? 'call' : 'put';
   const shape =
@@ -150,16 +159,21 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
   /* THE DAY'S VOLUME FOR A DAY CLAIM (the re-audit, 2026-10-22: an alert's card said "the day's volume is 0.22× the open
      interest" from the volume at the alert's moment — 107 — while the day closed at 452, 0.95×): the contract's own
      session row when the card has it */
-  const vol = day && day.vol > 0 ? day.vol : p.volume;
+  const ofDay = !!(day && day.vol > 0);
+  const vol = ofDay ? day!.vol : p.volume;
   const oi = day && day.oi > 0 ? day.oi : p.oi;
   const ratio = oi > 0 ? vol / oi : 0;
+  /* without the session row the volume is the running figure AT the print or alert, and says so (audit round 6) */
+  const volWho = ofDay ? "The day's volume" : `The volume at the ${p.trades && p.trades > 1 ? 'alert' : 'print'}`;
   const oiNote =
     oi > 0 && ratio >= 1.5
-      ? ` The day's volume is ${fixed(ratio, 1)}× the open interest, so at least some of it is new positioning.`
+      ? ` ${volWho} is ${fixed(ratio, 1)}× the open interest, so at least some of it is new positioning.`
       : oi > 0
-        ? ` The day's volume is ${fixed(ratio, 2)}× the open interest — it could be opening or closing.`
+        ? ` ${volWho} is ${fixed(ratio, 2)}× the open interest — it could be opening or closing.`
         : '';
-  const read = p.compression
+  const read = p.floorPackage
+    ? ' It is one leg of a floor package — no side, filed in the same millisecond as alerts on the root’s other contracts, or on a contract whose day was mostly floor-traded multi-leg packages — so it is not a bet, not a block, and is not read bullish or bearish.'
+    : p.compression
     ? ' It is a compression print (OPRA cbmo / mctp, or the vendor’s arbitrage tag) — a package that nets open interest down between members, a call against a put at one strike — so it is not a bet and is not read bullish or bearish.'
     : p.extended
     ? ' It printed after hours, against a thin post-market quote, so it is not read bullish or bearish.'
@@ -298,6 +312,15 @@ const SequenceStrip = ({
   );
 };
 
+/** The session a print belongs to: its New York trade date (an after-hours fill keeps its own day), the tape's session
+    for a day-book row with no fill instant */
+function printSessionIso(p: FlowPrint | null): string {
+  if (!p || !(p.epochMs && p.epochMs > 0) || p.dayCard) return tapeSessionIso();
+  const day = nyDateOf(p.epochMs);
+  const d = new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
+  return isTradingDay(d) ? day : sessionIsoAt(p.epochMs);
+}
+
 const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPrev, hasNext, tapeRows, tapeNoun = 'prints', onOpenPrint }: PrintDrilldownProps) => {
   const navigate = useNavigate();
   const { changeTicker } = useMarketData();
@@ -308,9 +331,18 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
     [print, tapeRows]
   );
 
-  /* THE SESSION THE CARD SHOWS — a New York trading day, the tape's own at open */
+  /* THE SESSION THE CARD SHOWS — the print's own session: its New York trade date, never the clock's (audit round 6: at
+     04:15 on Oct 23 every card asked for ?date=2026-10-23, an empty day, and read "Today · $0 traded · NO MINUTES"). A
+     day-book row carries no fill instant — the tape's session. `tapeIso` caps the next-session arrow. */
   const tapeIso = tapeSessionIso();
-  const [dateIso, setDateIso] = useState<string>(tapeIso);
+  const printIso = printSessionIso(print);
+  const [dateIso, setDateIso] = useState<string>(printIso);
+  const printKey = print ? `${print.id}|${print.occ ?? ''}|${printIso}` : '';
+  useEffect(() => {
+    if (printKey) setDateIso(printIso);
+    // the print's identity is the key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printKey]);
   const [intervalMin, setIntervalMin] = useState(1);
   const [showAvg, setShowAvg] = useState(true);
   const [showIv, setShowIv] = useState(false);
@@ -336,11 +368,11 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
   /* The print's minute since the bell — the marker through both strips, only on the print's own session, and inside the
      strip's own window (an after-hours print widens that window — the card's tape covers every hour the contract traded) */
   const printMin = useMemo(() => {
-    if (!print || dateIso !== tapeIso || !/^\d{2}:\d{2}/.test(print.time)) return null;
+    if (!print || dateIso !== printIso || !/^\d{2}:\d{2}/.test(print.time)) return null;
     const m = Number(print.time.slice(0, 2)) * 60 + Number(print.time.slice(3, 5)) - (9 * 60 + 30);
     const w = load.tape?.window;
     return w ? (m >= w.from && m <= w.to ? m : null) : m >= 0 && m <= SESSION_MIN ? m : null;
-  }, [print, dateIso, tapeIso, load.tape]);
+  }, [print, dateIso, printIso, load.tape]);
 
   // Is this session unusual FOR THIS CONTRACT? Judged against its own history.
   const verdict = useMemo(() => (cf ? tapeVerdict(cf.history, dateIso) : null), [cf, dateIso]);
@@ -393,9 +425,10 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
 
   /* the print's own cost to cross — its quote and the vendor's theta, never a model */
   const cost = print ? spreadAndTheta(print) : { spreadPct: null, thetaPct: null };
-  const theta = print ? thetaWords(print, cost.thetaPct) : { text: '—', warn: false };
-  /* the day's own volume and open interest — the contract's session row — for every claim about the day */
-  const day = cf?.day && dateIso === tapeIso ? { vol: cf.day.vol, oi: cf.day.oi } : null;
+  const theta = print ? thetaWords(print, cost.thetaPct, printIso) : { text: '—', warn: false };
+  /* the day's own volume and open interest — the contract's session row on the print's own session — for every claim
+     about the day */
+  const day = cf?.day && dateIso === printIso ? { vol: cf.day.vol, oi: cf.day.oi } : null;
   const dayVol = day && day.vol > 0 ? day.vol : print?.volume ?? 0;
   const dayOi = day && day.oi > 0 ? day.oi : print?.oi ?? 0;
 
@@ -547,7 +580,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               {print.dayCard
                 ? `The day · ${print.dayCard.last ? `last ${print.dayCard.session} print ${print.dayCard.last.time}` : 'no print in hand'}`
                 : print.trades && print.trades > 1
-                ? `Alert · ${print.trades} prints${alertFacts ? ` · largest ${alertFacts.largest.size.toLocaleString('en-US')} × $${alertFacts.largest.fill.toFixed(2)}${printKind({ ...print, largestTrade: { size: alertFacts.largest.size, premium: alertFacts.largest.premium } }) === 'BLOCK' ? ' — a block' : ''}` : ''}`
+                ? `Alert · ${print.trades} prints${print.floorPackage ? ' · floor package · not a bet' : ''}${alertFacts ? ` · largest ${alertFacts.largest.size.toLocaleString('en-US')} × $${alertFacts.largest.fill.toFixed(2)}${printKind({ ...print, largestTrade: { size: alertFacts.largest.size, premium: alertFacts.largest.premium } }) === 'BLOCK' ? ' — a block' : ''}` : ''}`
                 : { SWEEP: 'Sweep', MULTI: 'Multi-leg', BLOCK: 'Block', SINGLE: 'Single print', COMPRESSION: 'Compression', BURST: 'Alert' }[printKind(print)]}
             </span>
             {print.spot > 0 && (
@@ -627,9 +660,9 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               {/* ONE FIGURE, ITS SOURCE SAID (audit round 4: 146,691 on the Screener, 146,779 on the card, 146,713 elsewhere — three
                   "today's volume"): the card's is the contract's session row (after-hours prints included); the Screener's is
                   the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
-              <Fact label={dateIso === tapeIso && day ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row, after hours in` : 'Volume'} value={num(dayVol)} />
+              <Fact label={day && day.vol > 0 ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row, after hours in` : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
-              <Fact label="Vol ÷ OI" value={`${fixed(dayOi > 0 ? dayVol / dayOi : print.volOverOI)}x`} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
+              <Fact label={day && day.vol > 0 ? 'Vol ÷ OI' : print.dayCard ? 'Vol ÷ OI' : `Vol ÷ OI · at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={`${fixed(dayOi > 0 ? dayVol / dayOi : print.volOverOI)}x`} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
               {/* the cost to cross, off the print's OWN quote; a day of time off the vendor's own theta — no model */}
               <Fact
                 label="Spread at the print"

@@ -250,7 +250,7 @@ const OptionsScreener = () => {
   const sentence = useMemo(() => {
     if (rows.length === 0) return 'Nothing on this cut.';
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-    return `${fmtUsd(facts.prem)} across ${plural(rows.length, 'contract', 'contracts')} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest today.`;
+    return `${fmtUsd(facts.prem)} across ${plural(rows.length, 'contract', 'contracts')} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
   }, [rows.length, facts]);
   /* AN EMPTY CUT NAMES THE CARDS THAT EMPTIED IT */
   const emptyText = useMemo(() => {
