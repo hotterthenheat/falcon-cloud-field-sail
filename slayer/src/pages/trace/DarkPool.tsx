@@ -63,6 +63,8 @@ const placeInk = (p: DarkPoolPrint, cents: number) => (p.extended ? 'text-textSe
 /* the place wears the read's ink: over the mid (at the ask included) bought up, under it sold down, at the mid plain */
 const execInk = (p: DarkPoolPrint) => {
   const w = execWord(p);
+  /* inside the spread the place is the read's own words — inked only where the print carries a read (sized, at the quote) */
+  if ((w === 'OVER MID' || w === 'UNDER MID') && !(p.sized && !p.special)) return 'text-textMuted';
   return p.extended || !w || w === 'MID' ? 'text-textMuted' : w === 'ASK' || w === 'OVER MID' ? 'text-bull' : 'text-bear';
 };
 

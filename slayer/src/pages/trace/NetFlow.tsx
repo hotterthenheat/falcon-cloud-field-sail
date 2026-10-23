@@ -258,12 +258,12 @@ const NetFlow = () => {
           {/* the two ends of the board, each named for what it is; the larger of the two wears the magenta */}
           {facts.top && facts.top.net > 0 && (
             <Champion label="Most bullish" ink={champ === facts.top ? 'supreme' : 'bull'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
-              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· {isLiveDay() ? 'whole day' : `${shortDay(tapeSessionIso())}, whole day`}</span>
+              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : `${shortDay(tapeSessionIso())}, whole day`}</span>
             </Champion>
           )}
           {facts.bottom && facts.bottom.net < 0 && (
             <Champion label="Most bearish" ink={champ === facts.bottom ? 'supreme' : 'bear'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
-              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· {isLiveDay() ? 'whole day' : `${shortDay(tapeSessionIso())}, whole day`}</span>
+              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : `${shortDay(tapeSessionIso())}, whole day`}</span>
             </Champion>
           )}
         </>

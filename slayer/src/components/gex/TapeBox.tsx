@@ -360,9 +360,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       lastValueVisible: false,
       crosshairMarkerRadius: 3,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
+      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
         const r = original();
-        if (!r) return r;
+        /* a view holding no bars has no range (the seventh audit's phone pass: "reading 'minValue'" of null) */
+        if (!r || !r.priceRange) return r;
         let lo = r.priceRange.minValue;
         let hi = r.priceRange.maxValue;
         const { levels: lv, cone, spot: sp } = reachRef.current;
