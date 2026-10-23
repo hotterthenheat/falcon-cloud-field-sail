@@ -186,7 +186,8 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
       if (pts.length < 2) return [];
       const read = levelNetPath(snapshot, snapshot.chain, pts.map(p => p.price));
       if (!read) return [];
-      return pts.map((p, i) => ({ time: p.time, min: p.min, net: read.path[i], spot: p.price }));
+      /* a figure the chart cannot draw is not drawn (the library throws past ±9×10^13 and the page stops) */
+      return pts.map((p, i) => ({ time: p.time, min: p.min, net: read.path[i], spot: p.price })).filter(m => Number.isFinite(m.net) && Math.abs(m.net) < 1e13);
     }
     const pool = vendor ?? [];
     let kept = pool.filter(m => m.min >= lo && m.min <= hi && m.min <= endMin);

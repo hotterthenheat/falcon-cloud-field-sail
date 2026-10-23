@@ -106,6 +106,14 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
     /* re-priced off the leg's own gamma at S₀: the ratio of S·φ(d₁), in logs so a far wing cannot underflow */
     const base = l.s0 && l.s0 > 0 ? l.s0 : S0;
     const a = d1Of(base, l.strike, l.t, l.iv, r);
+    /* A LEG WHOSE GAMMA AT SPOT IS BELOW THE PRINT'S RESOLUTION (the tenth pass, 2026-10-23 15:54 ET): six deviations
+       from its strike a contract holds under e^-18 of its peak gamma, so the vendor's cent-rounded figure there is noise,
+       and re-pricing it toward the strike multiplied that noise by e^30 (minutes before the bell, SPY's same-day book
+       drew at −3×10^17 and the Map stopped). Such a leg is carried flat, as a rounding leg already is. */
+    if (Math.abs(a) > 6) {
+      sum += l.g0;
+      continue;
+    }
     const b = d1Of(S, l.strike, l.t, l.iv, r);
     const ln = Math.log(S / base) - (b * b) / 2 + (a * a) / 2;
     /* NO 25× CAP (the second re-audit, 2026-10-22): a wing's gamma legitimately grows a few hundred times as price walks
@@ -117,7 +125,11 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
        K·e^(−rT)/(√(2π)·σ·√T); a leg's open interest can hold no more than that many times it. Only on a leg whose vol
        stands in (the smile's or the ATM's): a contract with its own printed vol is priced outright, and capping it
        against a vol the vendor's gamma was not computed at would bend a real curve (AAPL's whole book: 326.0 → 317.7) */
-    if (!l.ownIv && l.oi && l.oi > 0) {
+    /* — and on any leg in its last day (the tenth pass, 2026-10-23 15:54 ET: a same-day leg minutes from its bell,
+       priced off a spot a few dollars from its strike, grew by e^30+ and drew SPY's book at −$3×10^17, which the chart
+       library refuses and the Map stopped). Inside a day the ceiling binds whatever vol the leg carries: no contract
+       can hold more gamma than that, own vol or not. */
+    if (l.oi && l.oi > 0 && (!l.ownIv || l.t < 1 / 365)) {
       const cap = Math.max(Math.abs(l.g0), (l.oi * l.strike * Math.exp(-r * l.t)) / (SQRT2PI * l.iv * Math.sqrt(l.t)));
       if (Math.abs(g) > cap) g = Math.sign(g) * cap;
     }
