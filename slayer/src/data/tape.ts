@@ -231,8 +231,10 @@ export function rankNotable(prints: FlowPrint[]): FlowPrint[] {
 export type PrintKind = 'SWEEP' | 'BLOCK' | 'MULTI' | 'SINGLE' | 'COMPRESSION' | 'BURST';
 export const BLOCK_MIN_SIZE = 100;
 export const BLOCK_MIN_PREMIUM = 250_000;
-export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size' | 'premium'> & Partial<Pick<FlowPrint, 'compression' | 'trades' | 'largestTrade'>>): PrintKind {
+export function printKind(p: Pick<FlowPrint, 'sweep' | 'legs' | 'strat' | 'size' | 'premium'> & Partial<Pick<FlowPrint, 'compression' | 'trades' | 'largestTrade' | 'floorPackage'>>): PrintKind {
   if (p.compression) return 'COMPRESSION';
+  /* a floor package's leg is a leg of a multi-leg package, never a block (audit round 6) */
+  if (p.floorPackage) return 'MULTI';
   if (p.sweep) return 'SWEEP';
   if (p.legs > 1 || p.strat !== '—') return 'MULTI';
   if (p.trades != null && p.trades > 1) {
@@ -283,7 +285,7 @@ export function summarizeTape(prints: FlowPrint[]): TapeSummary {
       legPremium += p.premium;
       continue;
     }
-    if (!largest || p.premium > largest.premium) largest = p;
+    if (!p.floorPackage && (!largest || p.premium > largest.premium)) largest = p;
     const s = sentimentOf(p);
     if (s === 'BULLISH') bull += p.premium;
     else if (s === 'BEARISH') bear += p.premium;

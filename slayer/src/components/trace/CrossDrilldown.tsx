@@ -19,7 +19,7 @@ import GradeMeter from '../ui/GradeMeter';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 import { nyClock } from '../../core/nyTime';
-import { postureOf, quotePlace, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
+import { nyDateOf, postureOf, quotePlace, tapeSessionIso, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
 import { dayAdv } from './dayWords';
 import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
@@ -76,13 +76,16 @@ const cardSurface = (host: HTMLElement, paper: boolean): DaySurface => {
   return { bg, text, line: readToken('--border-subtle', undefined, host), crosshair: readToken('--text-primary', 0.35, host), label: readToken('--chip', undefined, host), ink, zero: readToken('--border-muted', undefined, host) };
 };
 
+/** The New York day a cross printed on — its own date, never the clock's */
+const crossIsoOf = (p: DarkPoolPrint): string => p.dateIso || (p.epochMs && p.epochMs > 0 ? nyDateOf(p.epochMs) : tapeSessionIso());
+
 const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView | null }) => {
   const priceRef = useRef<HTMLDivElement | null>(null);
   const darkRef = useRef<HTMLDivElement | null>(null);
   const paper = useResolvedTheme() === 'light';
   /* THE STOCK'S WHOLE DAY, EXTENDED HOURS IN (the re-audit, 2026-10-22: the stock line ended at the 16:00 close while
      the cross was at 17:04): the name's own one-minute bars for the session's date, pre-market to after hours */
-  const bars = useStockMinutes(print.ticker).rows;
+  const bars = useStockMinutes(print.ticker, crossIsoOf(print)).rows;
   const crosses = useMemo(() => (view?.prints?.length ? view.prints : [print]), [view, print]);
   /* THE STOCK'S OWN LAST TRADE (audit round 4: "THE STOCK · QQQ $725.39" was a stale contingent cross; QQQ was $703.29) */
   const last = useStockLast(print.ticker).rows;
@@ -318,7 +321,9 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
   const marked = !!print && isWatched(key);
   const shelf = useMemo(() => (print ? shelfOf(print, view) : null), [print, view]);
   const sequence = useMemo(() => (view ? [...view.prints].sort((a, b) => (a.time === b.time ? b.notional - a.notional : a.time < b.time ? 1 : -1)) : []), [view]);
-  const day = useDarkDay(print?.ticker ?? null);
+  /* the cross's own session's figures, named by its date (audit round 6) */
+  const crossIso = print ? crossIsoOf(print) : null;
+  const day = useDarkDay(print?.ticker ?? null, crossIso);
   const frac = print ? fillFrac(print) : null;
   const jump = (fn: () => void) => {
     onClose();
@@ -431,8 +436,8 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               />
               {/* THE DAY IS THE NAME'S OWN DAY (the audit, 2026-10-22: "Dark dollars today" was the buffer's few prints) —
                   /darkpool/{t}/price-levels, every dark and lit share by price */}
-              <Fact label={`Off-exchange ${dayAdv()}`} value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
-              <Fact label={`Dark dollars ${dayAdv()}`} value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh${day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}` : day.waiting ? '…' : '—'} />
+              <Fact label={`Off-exchange ${dayAdv(crossIso ?? undefined)}`} value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
+              <Fact label={`Dark dollars ${dayAdv(crossIso ?? undefined)}`} value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh${day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}` : day.waiting ? '…' : '—'} />
               <Fact label="Crosses in hand" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
               <Fact label="This cross" value={print.sized ? 'Sized' : 'Ordinary'} valueCls={print.sized ? 'text-textPrimary' : 'text-textMuted'} />
             </div>

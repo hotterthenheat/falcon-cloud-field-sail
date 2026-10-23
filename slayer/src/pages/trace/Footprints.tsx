@@ -31,7 +31,7 @@ import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { FOOTPRINT_SCREENS, runFootprintScreen, stockLike, type FootprintScreenKey } from '../../data/flowBook';
 import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
-import { dayAdv, dayPos, earnWords, oiSpanWords } from '../../components/trace/dayWords';
+import { dayAdv, dayLabel, dayPos, earnWords, oiSpanWords, prevSessionIso, shortDay } from '../../components/trace/dayWords';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -367,14 +367,17 @@ const Footprints = () => {
       },
       {
         key: 'vol',
-        header: 'Vol today',
+        /* the session's own day named (audit round 6: "Vol today" at 04:15 on Oct 23 was Oct 22's) */
+        header: `Vol ${dayLabel()}`,
         align: 'right',
         sortValue: r => r.volume,
         render: r => <span className={weightInk(r.volume, marks.vol)}>{num(r.volume)}</span>,
       },
       {
         key: 'prevavg',
-        header: 'Prev close',
+        /* chain_prev_close is the close of the session BEFORE the book's (audit round 6: ORCL 140C "Prev close $29.58" was
+           Oct 21's, beside an Oct 22 close of 26.95) — named by its date */
+        header: `${shortDay(prevSessionIso())} close`,
         align: 'right',
         sortValue: r => r.prevAvgFill,
         render: r => <span className={weightInk(r.prevAvgFill, marks.prevAvg)}>${r.prevAvgFill.toFixed(2)}</span>,

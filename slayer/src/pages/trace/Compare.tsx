@@ -27,7 +27,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { floorPackaged, SPREAD_KINDS, stockLike, STOCK_LIKE_HINT, type MoneynessKey, type SpreadTrade } from '../../data/flowBook';
-import { dayLean, lastRegularClose, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
+import { dayLean, lastRegularClose, nyDateOf, nyIsoToday, tapeSessionIso, useFlowPerExpiry, useLiveBook, useNameSpreads, useNameTape, usePaneFlow, usd as fmtUsd, type PaneFlowPoint } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import { buildTraceCompare, buildTraceSide, signedUsd, type TraceSide } from '../../data/traceCompare';
 import type { SleeveKey } from '../../types/compass';
@@ -325,19 +325,25 @@ const Compare = () => {
      the window BOTH tapes cover: a capped tape only reaches back so far, and a longer reach is not a busier tape. */
   const tapeA = useNameTape(aTicker, TAPE_N).rows;
   const tapeB = useNameTape(bTicker, TAPE_N).rows;
-  const spreadsA = useNameSpreads(aTicker, SPREADS_N).rows;
-  const spreadsB = useNameSpreads(bTicker, SPREADS_N).rows;
+  const spreadsPackA = useNameSpreads(aTicker, SPREADS_N);
+  const spreadsPackB = useNameSpreads(bTicker, SPREADS_N);
+  const spreadsA = spreadsPackA.rows;
+  const spreadsB = spreadsPackB.rows;
+  const spreadsDone = spreadsPackA.complete && spreadsPackB.complete;
   const liveNames = useMemo(() => {
     const reach = (r: { epoch?: number }[], cap: number) => (r.length >= cap ? Math.min(...r.map(p => p.epoch ?? Infinity)) : -Infinity);
     const since = Math.max(reach(tapeA, TAPE_N), reach(tapeB, TAPE_N));
-    const minuteReach = (r: SpreadTrade[]) => (r.length >= SPREADS_N ? Math.min(...r.map(t => t.minute)) : -Infinity);
-    const sinceMin = Math.max(minuteReach(spreadsA), minuteReach(spreadsB));
+    /* paged to the session's start (useNameSpreads): a name whose pages did not reach it is cut, with the other, to the
+       stretch both cover */
+    const minuteReach = (r: SpreadTrade[], done: boolean) => (!done && r.length ? Math.min(...r.map(t => t.minute)) : -Infinity);
+    const sinceMin = Math.max(minuteReach(spreadsA, spreadsPackA.complete), minuteReach(spreadsB, spreadsPackB.complete));
     return {
       tape: [...tapeA, ...tapeB].filter(p => (p.epoch ?? 0) >= since),
       spreads: [...spreadsA, ...spreadsB].filter(t => t.minute >= sinceMin),
       since: Number.isFinite(since) ? since : null,
+      spreadSinceMin: Number.isFinite(sinceMin) ? sinceMin : null,
     };
-  }, [tapeA, tapeB, spreadsA, spreadsB]);
+  }, [tapeA, tapeB, spreadsA, spreadsB, spreadsPackA.complete, spreadsPackB.complete]);
   /* EACH NAME READS ITS OWN BOOK (2026-10-22): the page's book is the terminal name's — its top contracts plus the
      market's — so the OTHER name stood on whatever of its rows the market page carried: SPY on side B read $509.7M across
      16 contracts where its own book held $946.3M across 80. */
@@ -356,8 +362,10 @@ const Compare = () => {
      (/stock/{t}/net-prem-ticks, every expiry); the card summed off the book read SPY −$17.4M beside a pane at +$9.6M.
      Uncut, the card takes the same running totals. The vendor's minutes cannot be cut by clock or moneyness, so a cut
      card keeps the book's own figures and says so. */
-  const flowA = usePaneFlow({ ticker: aTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
-  const flowB = usePaneFlow({ ticker: bTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true }).rows;
+  const paneA = usePaneFlow({ ticker: aTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true });
+  const paneB = usePaneFlow({ ticker: bTicker, seg: 'all', mny: 'all', zeroDte: false, enabled: true });
+  const flowA = paneA.rows;
+  const flowB = paneB.rows;
   /* ONE SOURCE FOR EVERY CLOCK (audit round 4, 2026-10-22: uncut, the card took /net-prem-ticks — QQQ net −$53.6M, puts
      +$26.9M — and on Clock = Weekly /flow-per-expiry — QQQ +$51.3M, puts −$53.2M; "net puts" flipped sign between views).
      The two vendor routes carry the SAME contracts by side (QQQ's call and put volume at the ask and on the bid match to
@@ -375,16 +383,19 @@ const Compare = () => {
      minute ticks over the regular session — the same /stock/{t}/net-prem-ticks Net Flow's pane and Intervals read — so
      Trace agrees with itself (round 5: QQQ +$24.1M here by expiry, −$53.6M on its own pane, −$54.9M on Net Flow). Only a
      clock cut needs per-expiry money, and reads the expiry route, labelled so. */
-  const withTicks = (side: TraceSide, rows: PaneFlowPoint[]): TraceSide => {
+  /* NEVER ANOTHER SOURCE'S FIGURE UNDER THE TICKS' LABEL (audit round 6: for 36s and more "SPY net +$11.8M" — the flow
+     by expiry — stood under a header that said the minute ticks, which gave +$4.83M): until the ticks land the net reads
+     "…", and "—" if they never answer */
+  const withTicks = (side: TraceSide, rows: PaneFlowPoint[], waiting: boolean): TraceSide => {
     if (!uncut) return side;
     const t = ticksOf(rows);
-    return t ? { ...side, net: t.net, netCall: t.calls, netPut: t.puts, netSource: 'ticks' } : side;
+    return t ? { ...side, net: t.net, netCall: t.calls, netPut: t.puts, netSource: 'ticks' } : { ...side, net: 0, netCall: 0, netPut: 0, netSource: 'ticks', netPending: waiting ? 'loading' : 'none' };
   };
   const todayIso = tapeSessionIso();
   const heldFpeA = frozen.current.fpeA;
   const heldFpeB = frozen.current.fpeB;
-  const sideA = useMemo(() => withTicks(buildTraceSide(sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso), flowA), [sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso, flowA, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sideB = useMemo(() => withTicks(buildTraceSide(sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso), flowB), [sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso, flowB, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideA = useMemo(() => withTicks(buildTraceSide(sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso), flowA, paneA.waiting), [sideBookA, spreads, tape, aTicker, tenor, mny, heldFpeA, todayIso, flowA, paneA.waiting, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideB = useMemo(() => withTicks(buildTraceSide(sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso), flowB, paneB.waiting), [sideBookB, spreads, tape, bTicker, tenor, mny, heldFpeB, todayIso, flowB, paneB.waiting, uncut]); // eslint-disable-line react-hooks/exhaustive-deps
   /* after the close a count of after-hours prints names no busier name (the retail pass, 2026-10-22: "SPY the busier tape
      … 300 prints for $166.2K") — the tape clause and fact stand in the regular session, with their window named */
   /* each print by its own time and flag (traceCompare buildTraceSide): a busier tape is called only when BOTH names have
@@ -394,7 +405,9 @@ const Compare = () => {
   const afterClose = !!lastRegularClose();
   const regular = !afterClose && sideA.tape.prints > 0 && sideB.tape.prints > 0;
   const afterLeftOut = sideA.tape.after + sideB.tape.after;
-  const tapeWords = tapeSince ? `since ${nyClock(tapeSince * 1000)} ET` : 'over the same stretch';
+  /* the stretch's day named when it is not today's (audit round 6) */
+  const sinceDay = tapeSince && nyDateOf(tapeSince * 1000) !== nyIsoToday() ? `${shortDay(nyDateOf(tapeSince * 1000))} ` : '';
+  const tapeWords = tapeSince ? `since ${sinceDay}${nyClock(tapeSince * 1000)} ET` : 'over the same stretch';
   const cmp = useMemo(() => buildTraceCompare(sideA, sideB, tapeWords, regular, sameDayWords(todayIso)), [sideA, sideB, tapeWords, regular, todayIso]);
   const { a, b } = cmp;
 
@@ -438,6 +451,9 @@ const Compare = () => {
   };
   /* Two bearish names have no bullish one — the leader is the less bearish */
   const leansWords = cmp.bullish.net >= 0 ? 'the more bullish' : 'the less bearish';
+  /* a net not in hand yet: "…" while the ticks load, "—" if they did not answer */
+  const netHeld = !a.netPending && !b.netPending;
+  const pend = (s: TraceSide) => (s.netPending === 'loading' ? '…' : '—');
   const nearer = (): 'a' | 'b' | null => {
     if (a.earnDays == null && b.earnDays == null) return null;
     if (a.earnDays == null) return 'b';
@@ -452,26 +468,26 @@ const Compare = () => {
         {
           key: 'net',
           label: 'Net premium',
-          note: a.net === b.net ? 'the same lean' : `${cmp.bullish.ticker} leans ${leansWords}`,
-          lead: higher(s => s.net),
-          bars: s => [{ v: s.net, text: signedUsd(s.net), ink: barInk(s.net) }],
-          cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.net)}>{signedUsd(s.net)}</Fig>,
+          note: !netHeld ? (a.netPending === 'loading' || b.netPending === 'loading' ? 'the minute ticks are loading…' : 'the minute ticks did not answer') : a.net === b.net ? 'the same lean' : `${cmp.bullish.ticker} leans ${leansWords}`,
+          lead: netHeld ? higher(s => s.net) : null,
+          bars: s => [{ v: s.netPending ? 0 : s.net, text: s.netPending ? pend(s) : signedUsd(s.net), ink: barInk(s.net) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.net)}>{signedUsd(s.net)}</Fig>),
         },
         {
           key: 'calls',
           label: 'Net calls',
-          note: the(louder(s => s.netCall), 'the louder on calls'),
-          lead: louder(s => s.netCall),
-          bars: s => [{ v: s.netCall, text: signedUsd(s.netCall), ink: barInk(s.netCall) }],
-          cell: (s, lit) => <Fig lit={lit} ink={dirInk(s.netCall)}>{signedUsd(s.netCall)}</Fig>,
+          note: netHeld ? the(louder(s => s.netCall), 'the louder on calls') : '…',
+          lead: netHeld ? louder(s => s.netCall) : null,
+          bars: s => [{ v: s.netPending ? 0 : s.netCall, text: s.netPending ? pend(s) : signedUsd(s.netCall), ink: barInk(s.netCall) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={dirInk(s.netCall)}>{signedUsd(s.netCall)}</Fig>),
         },
         {
           key: 'puts',
           label: 'Net puts',
-          note: the(louder(s => s.netPut), 'the louder on puts'),
-          lead: louder(s => s.netPut),
-          bars: s => [{ v: s.netPut, text: signedUsd(s.netPut), ink: putInk(s.netPut) }],
-          cell: (s, lit) => <Fig lit={lit} ink={putDirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>,
+          note: netHeld ? the(louder(s => s.netPut), 'the louder on puts') : '…',
+          lead: netHeld ? louder(s => s.netPut) : null,
+          bars: s => [{ v: s.netPending ? 0 : s.netPut, text: s.netPending ? pend(s) : signedUsd(s.netPut), ink: putInk(s.netPut) }],
+          cell: (s, lit) => (s.netPending ? <Sub>{pend(s)}</Sub> : <Fig lit={lit} ink={putDirInk(s.netPut)}>{signedUsd(s.netPut)}</Fig>),
         },
         /* THE OTHER ROUTE, SAID (audit round 4: Net Flow said QQQ −$54.9M where this card said −$53.6M, and the two vendor
            routes disagree on put money): what Net Flow's pane reads — the minute ticks, 09:30 to the close — beside it */
@@ -633,7 +649,7 @@ const Compare = () => {
       ],
     },
     {
-      title: 'Footprints · open interest on those contracts since the last session',
+      title: `Footprints · open interest on those contracts, ${oiSpanWords(todayIso)}`,
       rows: [
         {
           key: 'added',
@@ -662,7 +678,8 @@ const Compare = () => {
       ],
     },
     {
-      title: 'Structures',
+      /* THE WINDOW SAID (audit round 6: "Structures 80 · the same" was the fetch cap) */
+      title: `Structures · each name's on the ${shortDay(todayIso)} session${frozen.current.spreadSinceMin != null ? `, since ${String(Math.floor(frozen.current.spreadSinceMin / 60)).padStart(2, '0')}:${String(frozen.current.spreadSinceMin % 60).padStart(2, '0')} ET — the stretch both names' last ${SPREADS_N * 3} cover` : spreadsDone ? ', the whole session' : ''} · regular hours only, compression packages left out`,
       rows: [
         {
           key: 'structures',
@@ -701,7 +718,7 @@ const Compare = () => {
     },
     {
       /* both names over the same reach of their own tapes — the title says from when */
-      title: `${tapeSince ? `The tape · each name's prints since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both tapes cover` : `The tape · each name's last ${TAPE_N} prints`}${afterLeftOut > 0 ? ` · regular-session prints only, ${num(afterLeftOut)} after-hours ${afterLeftOut === 1 ? 'print' : 'prints'} left out` : ''}${regular ? '' : afterClose ? ' — the session has closed, so no busier tape is called' : ' — one name has no regular-session print in the stretch, so no busier tape is called'}`,
+      title: `${tapeSince ? `The tape · each name's prints since ${sinceDay}${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `The tape · each name's last ${TAPE_N} prints`}${afterLeftOut > 0 ? ` · regular-session prints only, ${num(afterLeftOut)} after-hours ${afterLeftOut === 1 ? 'print' : 'prints'} left out` : ''}${regular ? '' : afterClose ? ' — the session has closed, so no busier tape is called' : ' — one name has no regular-session print in the stretch, so no busier tape is called'}`,
       rows: [
         {
           key: 'prints',
@@ -880,16 +897,16 @@ const Compare = () => {
         ) : (
         <>
           <Fact label={`${a.ticker} net`} testId="a-net" title={a.netSource === 'ticks' ? "Net premium over the regular session — the vendor's minute ticks, the figure Net Flow's pane and Intervals show. A vendor total: spread legs and floor packages are in it" : "Net premium on the clock's expiries, the whole day — by expiry (the vendor's expiry route). A vendor total: spread legs and floor packages are in it"}>
-            <span className={dirInk(a.net)}>{signedUsd(a.net)}</span>
+            {a.netPending ? <span className="text-textMuted">{pend(a)}</span> : <span className={dirInk(a.net)}>{signedUsd(a.net)}</span>}
           </Fact>
           <Fact label={`${b.ticker} net`} testId="b-net" title={b.netSource === 'ticks' ? "Net premium over the regular session — the vendor's minute ticks, the figure Net Flow's pane and Intervals show. A vendor total: spread legs and floor packages are in it" : "Net premium on the clock's expiries, the whole day — by expiry (the vendor's expiry route). A vendor total: spread legs and floor packages are in it"}>
-            <span className={dirInk(b.net)}>{signedUsd(b.net)}</span>
+            {b.netPending ? <span className="text-textMuted">{pend(b)}</span> : <span className={dirInk(b.net)}>{signedUsd(b.net)}</span>}
           </Fact>
           <Fact label={`${isLiveDay(todayIso) ? 'Expiring today' : `Expired ${shortDay(todayIso)}`} · net`} testId="same-day" title={`Net call premium less net put premium on each name's contracts ${sameDayWords(todayIso)} — by expiry (the vendor's expiry route), the whole day`}>
             <span className={dirInk(a.odte.net)}>{a.odte.has ? signedUsd(a.odte.net) : '—'}</span> <span className="text-textMuted">·</span> <span className={dirInk(b.odte.net)}>{b.odte.has ? signedUsd(b.odte.net) : '—'}</span>
           </Fact>
           <Champion label={`Leans ${leansWords}`} ink={cmp.bullish.net >= 0 ? 'bull' : 'bear'} onOpen={() => toNetFlow(cmp.bullish.ticker)} testId="bullish">
-            {cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}
+            {netHeld ? <>{cmp.bullish.ticker} · {signedUsd(cmp.bullish.net)}</> : <span className="text-textMuted">…</span>}
           </Champion>
           <Champion label="Heavier premium" ink="supreme" title="The name with more premium across its standing contracts with the most premium (up to 80) — put it on Net Flow's pane" onOpen={() => toNetFlow(cmp.heavier.ticker)} testId="heavier">
             {cmp.heavier.ticker} · {fmtUsd(cmp.heavier.book.premium)}
@@ -897,7 +914,7 @@ const Compare = () => {
           {regular && (
             <Fact label="Busier tape" testId="busier" title={tapeSince ? `Regular-session prints (each by its own time and flag) since ${nyClock(tapeSince * 1000, { seconds: true })} ET — the stretch both names' last ${TAPE_N} prints cover` : `Each name's last ${TAPE_N} prints`}>
               {/* each name's own last prints over the window both cover — neither with a print is "no print", not a winner */}
-              {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{tapeSince ? ` since ${nyClock(tapeSince * 1000)}` : ''}</>}
+              {cmp.busier.tape.prints === 0 ? <span className="text-textMuted">—</span> : <>{cmp.busier.ticker} <span className="text-textMuted">·</span> {num(cmp.busier.tape.prints)} prints{tapeSince ? ` since ${sinceDay}${nyClock(tapeSince * 1000)}` : ''}</>}
             </Fact>
           )}
         </>

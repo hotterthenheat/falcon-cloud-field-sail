@@ -552,6 +552,9 @@ export interface SpreadTrade {
       never read bullish or bearish, never a champion */
   compression?: boolean;
   minute: number;
+  /** The trade's New York day, YYYY-MM-DD, and its instant */
+  day?: string;
+  epochMs?: number;
   /** Filled outside the name's regular session (before 09:30, or from its 16:00 / 16:15 close) */
   extended?: boolean;
   /** Repeats of this structure the vendor sent under other ids — the same legs, size, money and second — folded in */

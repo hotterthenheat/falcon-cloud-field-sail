@@ -53,6 +53,7 @@ import { createViewStore } from '../../data/savedViews';
 import { StructureGuide } from '../../components/trace/TraceGuide';
 import Modal from '../../components/ui/Modal';
 import { expiryLabel } from '../../core/format';
+import { dayAdv } from '../../components/trace/dayWords';
 
 const num = (v: number) => v.toLocaleString('en-US');
 /** The structures the page holds — the vendor's newest */
@@ -701,7 +702,7 @@ const MultiLeg = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : 'No structures on this cut — nothing printed as a spread, a fly or a condor under these cards today'} testId="multi-leg" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
         {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}
         {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
