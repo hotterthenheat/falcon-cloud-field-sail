@@ -568,7 +568,7 @@ const MultiLeg = () => {
               <>
                 <span className="text-[11px] text-textSecondary">{t.net > 0 ? 'paid' : 'collected'}</span> ${Math.abs(t.net).toFixed(2)}
               </>
-            ) : t.netAbs != null && t.units ? (
+            ) : t.netAbs != null && t.netAbs > 0 && t.units ? (
               <span title="The vendor printed no net and the legs cannot settle which way it went — this is the net's size, paid if bought, collected if sold">
                 ${(t.netAbs / (t.units * 100)).toFixed(2)} <span className="text-[11px] text-textMuted">either way</span>
               </span>
@@ -588,7 +588,7 @@ const MultiLeg = () => {
         render: t => (
           <span className={weightInk(Math.abs(t.netPremium), marks.prem)} title={`${fmtUsd(t.premium)} across every leg`}>
             {t.netKnown === false ? (
-              t.netAbs != null ? <span className="text-textSecondary" title="Paid if it was bought, collected if it was sold — the direction is not reported">net {fmtUsd(t.netAbs)}</span> : <span className="text-textMuted" title="The vendor printed no net and the legs carry no settled direction">not reported</span>
+              t.netAbs != null && t.netAbs > 0 ? <span className="text-textSecondary" title="Paid if it was bought, collected if it was sold — the direction is not reported">net {fmtUsd(t.netAbs)}</span> : <span className="text-textMuted" title="The vendor printed no net and the legs carry no settled direction">not reported</span>
             ) : t.netPremium === 0 ? (
               <span className="text-textMuted">—</span>
             ) : (
