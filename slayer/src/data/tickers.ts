@@ -143,8 +143,54 @@ const titled = (s: string): string =>
         .replace(/\bCo\b\.?(?=\s|$)/g, 'Co.')
     : s;
 
+/* ---- ONE DISPLAY NAME (audit round 10) ------------------------------------------------------------------------------
+   "ELI Lilly", "Spdr(r) S&p(r) Oil & Gas…", "Ishares Core S&P 500 ETF", "Gamestop Corporation" beside "GameStop", "Apple
+   Inc." beside "Apple", "Datadog, Inc. - Class A Common Stock". Every name the Dossier prints goes through displayName:
+   the marks stripped ("(r)", "®", "™"), the share-class line dropped, the house's casing applied to any word (capitals
+   or not), and — in the short form, the one on cards, grids and heads — the legal suffix dropped. The legal form keeps
+   the suffix, for a line that quotes a filing. */
+const MIXED_FIX: Record<string, string> = { eli: 'Eli', spdr: 'SPDR', 's&p': 'S&P', msci: 'MSCI', ftse: 'FTSE', etf: 'ETF', etfs: 'ETFs', etn: 'ETN', reit: 'REIT', adr: 'ADR', nyse: 'NYSE' };
+const NOT_INITIALISM = new Set(['ELI']);
+const MARKS_RE = /\s*(?:\((?:r|R|tm|TM)\)|®|™)/g;
+const CLASS_LINE_RE = /\s*[-–—]?\s*(?:\b(?:Class|Series) [A-Z]\b\s*)?(?:Common Stock|Ordinary Shares?|Common Shares?|Subordinate Voting Shares|American Depositary Shares?(?:\s.*)?|Sponsored ADRs?|ADRs?|Depositary Shares?(?:\s.*)?)\s*$/i;
+const CLASS_TAIL_RE = /\s*[-–—,]?\s*\b(?:Class|Series|Cl) [A-Z]\b\.?\s*$/i;
+const LEGAL_TAIL_RE = /(?:\s*,)?\s+(?:(?:&|and)\s+Co(?:mpany)?\.?|Inc\.?|Incorporated|Corp\.?|Corporation|Company|Co\.?|Ltd\.?|Limited|plc|P\.?L\.?C\.?|N\.\s?V\.?|NV|S\.\s?A\.?|SA|AG|SE|LLC|L\.?P\.?|A\/S|ASA|S\.?p\.?A\.?|Holdings? (?:Inc\.?|Corp\.?|Ltd\.?))\s*$/i;
+const FUNDISH = /\b(?:ETF|ETN|Trust|Fund|Portfolio|Index|Shares)\b/i;
+const caseWord = (w: string): string => {
+  if (!w || /^\s+$/.test(w)) return w;
+  const lower = w.toLowerCase();
+  const bare = lower.replace(/[,.;:]+$/, '');
+  const tail = lower.slice(bare.length);
+  if (BRAND_CASE[bare]) return BRAND_CASE[bare] + tail;
+  if (MIXED_FIX[bare]) return MIXED_FIX[bare] + tail;
+  if (NOT_INITIALISM.has(w.toUpperCase().replace(/[,.;:]+$/, ''))) return bare.charAt(0).toUpperCase() + bare.slice(1) + tail;
+  return w;
+};
+/** The one name the Dossier prints for a company. `legal` keeps "Inc." and the like (a quoted filing); the default short
+    form is the brand ("Apple", "GameStop", "Datadog", "Eli Lilly", "SPDR S&P Oil & Gas Exploration & Production ETF") */
+export function displayName(raw: string | null | undefined, form: 'short' | 'legal' = 'short'): string {
+  let n = plain(String(raw ?? '')).replace(MARKS_RE, '').replace(/\s+/g, ' ').trim();
+  if (!n) return '';
+  n = titled(n);
+  n = n.split(/(\s+|\/)/).map(caseWord).join('');
+  for (let i = 0; i < 3; i++) {
+    const was = n;
+    n = n.replace(CLASS_LINE_RE, '').replace(CLASS_TAIL_RE, '').trim();
+    if (n === was) break;
+  }
+  if (form === 'short' && !FUNDISH.test(n)) {
+    for (let i = 0; i < 3; i++) {
+      const was = n;
+      n = n.replace(LEGAL_TAIL_RE, '').replace(/[\s,]+$/, '').trim();
+      if (n === was || !n) break;
+    }
+    n = n.replace(/^The (?=\S+\s+\S)/, '');
+  }
+  return n || plain(String(raw ?? '')).trim();
+}
+
 /** A vendor name in capitals, cased the house's way (brands and initialisms kept) */
-export const titleCompany = (s: string): string => titled(s);
+export const titleCompany = (s: string): string => displayName(s);
 
 /** Remember the vendor's own name for a symbol (the stock's info) */
 export function rememberCompanyName(symbol: string, name: string | null | undefined): void {
@@ -185,7 +231,15 @@ const recaseStored = () => {
 export function companyName(symbol: string): string {
   recaseStored();
   const sym = symbol.toUpperCase();
-  return uwNames.get(sym) ?? tickerName(sym);
+  const n = uwNames.get(sym) ?? tickerName(sym);
+  return n.toUpperCase() === sym ? n : displayName(n);
+}
+/** The legal form of the company's name — for a line that quotes the filing */
+export function companyLegalName(symbol: string): string {
+  recaseStored();
+  const sym = symbol.toUpperCase();
+  const n = uwNames.get(sym) ?? tickerName(sym);
+  return n.toUpperCase() === sym ? n : displayName(n, 'legal');
 }
 
 /** True when the symbol is on the bundled listing — a name off it (an OTC symbol on a filing) is not asked of the vendor */

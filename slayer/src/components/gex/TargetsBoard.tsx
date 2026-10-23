@@ -312,6 +312,14 @@ const breakWords = (t: Target): ReactNode =>
     </>
   );
 
+/** The Built column's head, short: "Built Oct 22", "Built overnight", "Built today" — the long words go in its tip */
+const builtHead = (agenda: Agenda, inSession: boolean): string => {
+  const t = agenda.targets[0];
+  if (!t?.buildOvernight) return inSession ? 'Built today' : 'Built last session';
+  const day = t.buildWhen.replace(/^in /, '').replace(/'s trading$/, '');
+  return day.length <= 12 ? `Built ${day}` : 'Built overnight';
+};
+
 /* ---- the three ---------------------------------------------------------------- */
 
 /** "At stake" and its "×", in words (the fourth audit: "0.2×" beside "at stake" was never explained) */
@@ -358,7 +366,7 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
       </div>
       <div className="mt-2 flex items-center justify-between h-[14px] font-mono text-[9px] uppercase tracking-widest text-textMuted">
         <span>
-          Reached <span className="normal-case tracking-normal text-[11px] text-textPrimary tnum" title={t.today ? `The session has already traded through ${fmtStrike(t.strike)}${t.today.tests != null ? ` — tested ${t.today.tests}×, held ${t.today.held}, broke ${t.today.broke} (the Map's "How the levels held")` : ''}; ${pct(t.reach)} to touch it again` : undefined}>{t.atPrice ? 'at price' : t.today ? todayWords(t.today).replace(/^reached /, '') : pct(t.reach)}</span>
+          Reached <span className="normal-case tracking-normal text-[11px] text-textPrimary tnum" title={t.today ? `The session has already traded through ${fmtStrike(t.strike)}${t.today.tests != null ? ` — tested ${t.today.tests}×, held ${t.today.held}, broke ${t.today.broke} (the Map's "How the levels held")` : ''}; ${pct(t.reach)} to touch it again` : undefined}>{t.atPrice ? 'at price' : t.today ? 'today' : pct(t.reach)}</span>
         </span>
         <span>
           {kindOf(t) === 'named' || kindOf(t) === 'shelf' ? (
@@ -382,6 +390,8 @@ const Card = ({ t, n, pick, kept, yours, armed, inSession, marketPer1Pct, onPick
       {/* wraps rather than cuts: three facts on one 15px line ran out of card ("$176K at stake · (") */}
       <p className="mt-1 font-mono text-[10px] leading-[15px] tnum flex flex-wrap items-center gap-x-3">
         <span className={material ? 'text-textPrimary' : 'text-textMuted'}>{buildWords(t, inSession)}</span>
+        {/* the session's tests on their own line-piece (the tenth audit: "held 10, broke 4" wrapped under the wall words) */}
+        {t.today?.tests ? <span className="text-textSecondary whitespace-nowrap">held {t.today.held}, broke {t.today.broke} today</span> : null}
         {t.closes > 0 && <span className="text-textSecondary">closes here {t.closes.toFixed(0)}%</span>}
         <span className="text-textSecondary cursor-help" title={stakeTip(t.stake, marketPer1Pct)}>
           {fmtDollars(t.stake)} at stake{t.stake / Math.max(1, marketPer1Pct) >= 0.05 ? ` · ${(t.stake / Math.max(1, marketPer1Pct)).toFixed(1)}× the 1% move` : ''}
@@ -431,8 +441,8 @@ export const densityFor = (panes: number): TargetsDensity => (panes <= 1 ? 'full
 
 /** The list's columns a density: the template, its floor, the cells a row spans */
 const COLS: Record<TargetsDensity, { template: string; min: number; span: string }> = {
-  /* # · strike · from spot · reached · holds · if it breaks · built · at stake · why · actions */
-  full: { template: AGENDA_COLUMNS, min: AGENDA_MIN_W, span: 'col-span-10' },
+  /* # · strike · from spot · reached · today · net gamma · if it breaks · built · at stake · why · actions */
+  full: { template: AGENDA_COLUMNS, min: AGENDA_MIN_W, span: 'col-span-11' },
   /* # · strike · from spot · reached · holds · at stake · actions */
   compact: { template: '32px 160px 64px 64px 104px 120px 120px', min: 740, span: 'col-span-7' },
   /* strike · reached · holds · actions */
@@ -576,7 +586,8 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike the close is most likely to land on, and the chance — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* "the close leans to no clear lean" read as broken grammar (the retail test) — the label says what the figure is */}Likeliest close</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike the close is most likely to land on, and the chance — named only when one strike reaches 15%; under that the close is spread too thin to lean anywhere${agenda.closeTop ? ` (the likeliest, ${fmtStrike(agenda.closeTop.strike)}, is ${agenda.closeTop.odds.toFixed(0)}%)` : ''}`}>{/* "the close leans to no clear lean" read as broken grammar (the retail test) — the label says what the figure is;
+                after the bell the odds are the NEXT session's close, never the one that just happened (the tenth audit's M3) */}{clock.inSession || agenda.horizon ? 'Likeliest close' : aheadWord() === 'today' ? 'Likeliest close today' : 'Likeliest next close'}</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${agenda.closesNear ? 'text-textPrimary' : 'text-textMuted'}`} data-close-lean>{closeLeanWords(agenda)}</dd>
           </div>
         </dl>
@@ -621,9 +632,11 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
           {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the vendor's implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
+          {full && headCell('Today', false, 'whitespace-nowrap', recordDay().isToday ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : 'The session has not opened yet — nothing has been reached today')}
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
-          {full && headCell(agenda.targets[0]?.buildOvernight ? `Built ${agenda.targets[0].buildWhen.replace(/^in /, '').replace(/'s trading$/, '')}` : clock.inSession ? 'Built today' : 'Built last session', false, 'whitespace-nowrap', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
+          {/* ONE SHORT HEAD (the tenth audit's retail finding: "Built the overnight open-interest count" ran into "At stake") */}
+          {full && headCell(builtHead(agenda, clock.inSession), false, 'whitespace-nowrap truncate', agenda.targets[0]?.buildOvernight ? `How much the wall at this strike grew (+) or shrank (−) ${agenda.targets[0].buildWhen} — the overnight open-interest count, the contracts the Levels card reads, each valued at its own gamma. The same figure as Building's CHANGE column` : 'Hedging added (building) or taken off (draining) at this strike, estimated from the day’s trades until the overnight count loads')}
           {wide && headCell('At stake', false, '', stakeTip(1, 0))}
           {full && headCell('Why it ranks', false, 'whitespace-nowrap truncate', 'Why it ranks here: the two numbers behind its place — the chance it is reached times what is at stake')}
           {headCell(wide ? 'Actions' : '', true, '', 'Open the strike on the Map, or set a price alert on it')}
@@ -652,7 +665,12 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
 {fromSpot(t)}
                   </div>
                 )}
-                <div className="text-right font-mono text-[11px] tnum text-textPrimary" title={t.atPrice ? `Price is on ${fmtStrike(t.strike)} already — ${pct(t.reach)} by the odds, left out of "Most likely reached"` : t.today ? `Today's session has already traded through ${fmtStrike(t.strike)}${t.today.tests != null ? ` — ${todayWords(t.today)}, the Map's "How the levels held" count` : ''}; ${pct(t.reach)} to touch it again by the close. Left out of "Most likely reached"` : undefined}>{t.atPrice ? 'at price' : t.today ? 'today' : pct(t.reach)}</div>
+                <div className="text-right font-mono text-[11px] tnum text-textPrimary" title={t.atPrice ? `Price is on ${fmtStrike(t.strike)} already — ${pct(t.reach)} by the odds, left out of "Most likely reached"` : t.today ? `Today's session has already traded through ${fmtStrike(t.strike)}${t.today.tests != null ? ` — ${todayWords(t.today)}, the Map's "How the levels held" count` : ''}; ${pct(t.reach)} to touch it again by the close. Left out of "Most likely reached"` : undefined}>{t.atPrice ? 'at price' : full || !t.today ? pct(t.reach) : 'today'}</div>
+                {full && (
+                  <div className="font-mono text-[10px] leading-[13px] tnum line-clamp-2 text-textSecondary" data-target-today>
+                    {t.today ? (t.today.tests ? `held ${t.today.held} · broke ${t.today.broke}` : 'traded through') : <span className="text-textMuted">—</span>}
+                  </div>
+                )}
                 {/* THE COLUMN SAYS SOMETHING ON EVERY ROW (the retail test, 2026-10-23: "—" on every row but 770): the strike's
                     own net gamma, signed and in the one gamma ink, the wall's share of the top wall as its bar */}
                 <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono text-[11px] tnum font-semibold" style={{ color: kindOf(t) === 'thin' ? 'rgb(var(--text-muted))' : t.net > 0 ? LONG_GAMMA : SHORT_GAMMA }} title={t.isShelf ? `${holdShort(t.hold)} of the top wall` : undefined} data-target-net={Math.round(t.net)}>

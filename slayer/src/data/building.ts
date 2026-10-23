@@ -49,7 +49,7 @@ import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { nyIsoDate, nySessionPhase } from '../core/nyTime';
 import { recordDay } from './bookWindow';
-import { datesOf, yearsTo } from './flipLevel';
+import { datesOf, smileOf, yearsTo } from './flipLevel';
 import { ownIvDates, peekEntry, type OiChange } from './uwBook';
 import { shownGamma } from '../components/gex/retailSign';
 import { CLOSE_MIN, OPEN_MIN, SESSION_MIN, fmtDollars, fmtStrike, hhmm, type AheadClock } from './ahead';
@@ -238,6 +238,10 @@ interface Valued {
   dPut: number;
   /** House-signed dollars the change added: calls negative, puts positive */
   call: number;
+  /** The same change valued at the vendor row's own per-contract gamma — on a same-day contract the main figure is
+      valued at a steady gamma instead, and a direction the two disagree on is noise (the tenth audit's M5) */
+  callAlt?: number;
+  putAlt?: number;
   put: number;
 }
 
@@ -266,6 +270,15 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
     return m.get(k);
   };
   const per1 = spot * spot * 0.01 * 100;
+  const smiles = new Map<string, (k: number) => number>();
+  const smileAt = (d: string, k: number, px: number) => {
+    let f = smiles.get(d);
+    if (!f) {
+      f = smileOf(by[d] ?? [], px);
+      smiles.set(d, f);
+    }
+    return f(k);
+  };
   for (const r of change.rows) {
     if (!inScope(r.expiry)) continue;
     const n = node(r.expiry, r.strike);
@@ -289,13 +302,29 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
       const iv = (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || entry?.iv || 0;
       dg = dollarGammaPerContract(spot, r.strike, yearsTo(r.expiry), iv, DEFAULT_R);
     }
-    const cell = out.get(r.strike) ?? { dCall: 0, dPut: 0, call: 0, put: 0 };
+    /* A SAME-DAY CONTRACT IS VALUED AT A STEADY GAMMA (the tenth audit's M5, 2026-10-23: PLTR 200 Today read "shrank
+       $458K · draining · new puts offset it" for +1,513 calls / +919 puts — the in-the-money 200P's row gamma rests on a
+       runaway vol near its bell and jumps between reads, the same instability that hopped the flip). In its last day a
+       contract is valued by Black-Scholes at the row's price and minute, at the vol the smile quotes at its strike (the
+       out-of-the-money side's); the row's own figure is kept beside it (`callAlt`/`putAlt`), and Building prints no
+       direction the two disagree on */
+    const px = n?.gexPx && n.gexPx > 0 ? n.gexPx : spot;
+    const tLeft = yearsTo(r.expiry, n?.gexAt ?? undefined);
+    let dgMain = dg;
+    if (tLeft < 1 / 365) {
+      const vol = smileAt(r.expiry, r.strike, px) || (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || 0;
+      const steady = vol > 0 ? dollarGammaPerContract(px, r.strike, tLeft, vol, DEFAULT_R) : 0;
+      if (steady > 0 || dg === 0) dgMain = steady;
+    }
+    const cell = out.get(r.strike) ?? { dCall: 0, dPut: 0, call: 0, put: 0, callAlt: 0, putAlt: 0 };
     if (call) {
       cell.dCall += r.diff;
-      cell.call += -r.diff * dg;
+      cell.call += -r.diff * dgMain;
+      cell.callAlt = (cell.callAlt ?? 0) + -r.diff * dg;
     } else {
       cell.dPut += r.diff;
-      cell.put += r.diff * dg;
+      cell.put += r.diff * dgMain;
+      cell.putAlt = (cell.putAlt ?? 0) + r.diff * dg;
     }
     out.set(r.strike, cell);
   }
@@ -479,7 +508,20 @@ export function buildBuilding(
        reached). A strike moved when its size changed by a tenth of what it holds (open or now, the larger), and by more
        than rounding: half a percent of the biggest wall in the window. */
     const own = Math.max(Math.abs(legNow), Math.abs(legOpen));
-    const material = Math.abs(sizeChange) >= MATERIAL * own && Math.abs(sizeChange) >= FLOOR_SHARE * maxAbsBook;
+    /* A DIRECTION ONLY WHERE THE TWO VALUATIONS AGREE (the tenth audit's M5): the same change valued at the vendor rows'
+       own per-contract gamma — when that reads the other way (grew against shrank), the change is within the noise of the
+       per-contract gamma and the strike reads steady */
+    let alt = sizeChange;
+    if (real && oc && (oc.callAlt != null || oc.putAlt != null)) {
+      const cA = oc.callAlt ?? oc.call;
+      const pA = oc.putAlt ?? oc.put;
+      const openA = now - (cA + pA);
+      const cS = Math.abs(nowC) - Math.abs(nowC - cA);
+      const pS = Math.abs(nowP) - Math.abs(nowP - pA);
+      alt = basis === 'net' ? Math.abs(now) - Math.abs(openA) : basis === 'both' ? cS + pS : basis === 'calls' ? cS : pS;
+    }
+    const agrees = Math.sign(alt) === Math.sign(sizeChange);
+    const material = agrees && Math.abs(sizeChange) >= MATERIAL * own && Math.abs(sizeChange) >= FLOOR_SHARE * maxAbsBook;
     /* a wall's own leg cannot change sides — only a strike read by its net can */
     const switched = basis === 'net' && hasOi && Math.sign(now) !== Math.sign(open) && Math.abs(now) >= FLOOR_SHARE * maxAbsBook && Math.abs(open) >= FLOOR_SHARE * maxAbsBook;
     const verdict: BuildVerdict = !hasOi ? 'steady' : isNew && material ? 'new' : switched ? 'switched' : material ? (sizeChange > 0 ? 'building' : 'draining') : 'steady';

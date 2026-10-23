@@ -58,6 +58,8 @@ import { dayAdv, spanWords } from '../../components/trace/dayWords';
 const num = (v: number) => v.toLocaleString('en-US');
 /** The structures the page holds — the vendor's newest */
 const SPREADS_N = 200;
+/** The rows a screen shows — their legs are read (Size, Net, Max loss); the rest show the vendor's figures */
+const FIRST_SCREEN = 20;
 
 /* THE CARDS (the walk, 2026-09-09) */
 /* a short word on the card itself, so a phone's half-width card never cuts it ("Every sha…", round 7) */
@@ -392,8 +394,9 @@ const MultiLeg = () => {
          not strictly by time); ties keep a stable order by id */
       .sort((a, b) => timeOf(b) - timeOf(a) || a.id.localeCompare(b.id));
   }, [trades, kind, money, cutQuery]);
-  /* the first screenful's legs are read first */
-  useLegsFirst(useMemo(() => rows.filter(t => t.legsState === 'pending').map(t => t.id), [rows]));
+  /* THE FIRST SCREENFUL'S LEGS, AND ONLY THOSE (audit round 10, major 4): the first rows of the cut in its order, read or
+     not — a settled row is skipped by the reader, and the rows below never let themselves in as the top ones settle */
+  useLegsFirst(useMemo(() => rows.slice(0, FIRST_SCREEN).map(t => t.id), [rows]));
   /* every row — the grid draws only what is on screen */
   const shown = rows;
   const legRows = useMemo(() => (legTrade ? legTrade.legs.map((_, i) => spreadLegRow(legTrade, i)) : []), [legTrade]);
@@ -457,7 +460,7 @@ const MultiLeg = () => {
     if (!big) return <RichRead text={`In the ${trades.length} multi-leg trades in hand (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets — reading their legs before naming the biggest…`} />;
     return (
       <>
-        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest: `} />
+        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest${bets.filter(t => t.legsState === 'in').length < bets.length ? ` among the ${num(bets.filter(t => t.legsState === 'in').length)} of ${num(bets.length)} whose legs are read` : ''}: `} />
         {/* the door and its comma never part across a line (phone, round 7: an orphan ", 17 units") */}
         <span className="whitespace-nowrap">
           <ReadDoor onOpen={() => setDrill(big)}>
@@ -647,8 +650,13 @@ const MultiLeg = () => {
     /* …and no structure whose legs are not read (audit round 8: the "Largest" changed as the legs came in, and named
        shapes the vendor got wrong) — a champion stands on its own legs */
     const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(t => !t.compression && t.legsState === 'in' && pick(t)).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
-    return { paid: by(t => t.netKnown !== false && t.netPremium > 0), collected: by(t => t.netKnown !== false && t.netPremium < 0), all: by(() => true) };
+    /* WHICH ONES THE CROWN WAS PICKED FROM (audit round 10, minor 2: "Largest paid · QQQ call diagonal $449" beside an
+       ORCL row paid $23.3K whose legs were not read yet) — said on the pill: among the N of M structures whose legs are in */
+    const bets = shown.filter(t => !t.compression);
+    return { paid: by(t => t.netKnown !== false && t.netPremium > 0), collected: by(t => t.netKnown !== false && t.netPremium < 0), all: by(() => true), read: bets.filter(t => t.legsState === 'in').length, of: bets.length };
   }, [shown]);
+  const amongWords = champs.read < champs.of ? ` · among ${num(champs.read)} of ${num(champs.of)} read` : '';
+  const amongTitle = `The largest by net among the structures whose legs are read${champs.read < champs.of ? ` — ${num(champs.read)} of the ${num(champs.of)} on this cut so far; the legs of the rest are read as they come on screen (the first screenful) or rank among the largest nets, so a bigger one may not be named yet` : ' — every structure on this cut'}; compression packages are never crowned`;
   const facts = useMemo(() => {
     let paid = 0;
     let collected = 0;
@@ -690,17 +698,17 @@ const MultiLeg = () => {
               {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{facts.paid} <span className="text-textSecondary">·</span> {facts.collected}</>}
             </Fact>
             {champs.paid && champs.paid !== champs.all && (
-              <Champion label="Largest paid" ink="plain" onOpen={() => setDrill(champs.paid!)} testId="paid">
+              <Champion label={`Largest paid${amongWords}`} title={amongTitle} ink="plain" onOpen={() => setDrill(champs.paid!)} testId="paid">
                 {pill(champs.paid)}
               </Champion>
             )}
             {champs.collected && champs.collected !== champs.all && (
-              <Champion label="Largest collected" ink="plain" onOpen={() => setDrill(champs.collected!)} testId="collected">
+              <Champion label={`Largest collected${amongWords}`} title={amongTitle} ink="plain" onOpen={() => setDrill(champs.collected!)} testId="collected">
                 {pill(champs.collected)}
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Largest" ink="supreme" onOpen={() => setDrill(champs.all!)} testId="largest">
+              <Champion label={`Largest${amongWords}`} title={amongTitle} ink="supreme" onOpen={() => setDrill(champs.all!)} testId="largest">
                 {pill(champs.all)}
               </Champion>
             )}

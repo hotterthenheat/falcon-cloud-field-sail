@@ -184,7 +184,8 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
         pts.push({ time: t, min: nyMinutes(t * 1000), price: snapshot.spot });
       }
       if (pts.length < 2) return [];
-      const read = levelNetPath(snapshot, snapshot.chain, pts.map(p => p.price));
+      /* each minute at its own time to expiry (the tenth audit's retail finding) */
+      const read = levelNetPath(snapshot, snapshot.chain, pts.map(p => p.price), pts.map(p => p.time * 1000 + 60_000));
       if (!read) return [];
       /* a figure the chart cannot draw is not drawn (the library throws past ±9×10^13 and the page stops) */
       return pts.map((p, i) => ({ time: p.time, min: p.min, net: read.path[i], spot: p.price })).filter(m => Number.isFinite(m.net) && Math.abs(m.net) < 1e13);

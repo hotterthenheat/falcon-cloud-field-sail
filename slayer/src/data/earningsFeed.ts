@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Sector } from './universe';
 import { lookup } from './universe';
 import { decide, isKnownName, type ActiveContract, type EarningsDossier, type EarningsEvent, type EarningsQuarter, type NextReport, type ReportSlot } from './earnings';
-import { rememberCompanyNames, tickerName, titleCompany } from './tickers';
+import { companyName, rememberCompanyNames, tickerName, titleCompany } from './tickers';
 import { MARKET_HOLIDAYS } from '../core/calendar';
 import { boardMondayIso, shortDay } from './nyDate';
 import { loadRegularCloses, peekRegularCloses, phaseOf } from './dayChange';
@@ -121,7 +121,7 @@ const SECTOR: Record<string, Sector> = {
 const sectorOf = (raw: string | undefined, ticker: string): Sector =>
   (raw && SECTOR[raw]) || lookup(ticker)?.sector || 'Industrials';
 
-const titleName = (s: string): string => titleCompany(s.toUpperCase());
+const titleName = (s: string): string => titleCompany(s);
 
 /* THE EXPECTED MOVE'S UNIT (the data audit, 2026-10-22): the spec types `expected_move_perc` as a fraction of the price
    ("0.08" is 8%), every row. The old "1.5 and over is already a percent" guess printed FSP's 4.08 (a 408% straddle on a
@@ -361,7 +361,7 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   const known = isKnownName(ticker, { sp500: !!row.is_s_p_500, marketCap: num(row.marketcap) || null });
   const partial = {
     ticker,
-    name: row.full_name ? titleName(row.full_name) : tickerName(ticker),
+    name: row.full_name ? titleName(row.full_name) : companyName(ticker),
     sector: sectorOf(row.sector, ticker),
     price,
     daysOut: tradingBetween(today, iso),
@@ -677,7 +677,7 @@ export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossie
   const event = withHistory(
     bare ?? {
       ticker: sym,
-      name: tickerName(sym),
+      name: companyName(sym),
       sector: sectorOf(row.sector, sym),
       price: Number(priceOf(row).toFixed(2)),
       daysOut: tradingBetween(today, (row.report_date || today).slice(0, 10)),
@@ -889,6 +889,9 @@ export function useEarningsHistories(tickers: readonly string[]): void {
 /** True when this name's past reports are not asked for on the board (read on its own page) */
 export const historyUnasked = (ticker: string): boolean => !asked.has(ticker.toUpperCase()) && !history.has(ticker.toUpperCase());
 
+/* ONE CALL A DAY'S SLOT (audit round 10: the index read 23 calendar pages at 100 rows — a heavy day's slot took two). The
+   route answers up to 500 rows a page (10/29 premarket: 155 in one) */
+const SLOT_PAGE = 500;
 export function ensureEarnings(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
@@ -904,17 +907,17 @@ export function ensureEarnings(): void {
                slots that still did not answer are counted and said on the page — never a quiet hole in the total */
             const read = async (page: number): Promise<SlotRow[]> => {
               try {
-                const got = await whalesEarningsSlot(slot, date, page);
+                const got = await whalesEarningsSlot(slot, date, page, SLOT_PAGE);
                 return Array.isArray(got) ? (got as SlotRow[]) : [];
               } catch {
                 await new Promise(r => setTimeout(r, 1200));
-                const got = await whalesEarningsSlot(slot, date, page);
+                const got = await whalesEarningsSlot(slot, date, page, SLOT_PAGE);
                 return Array.isArray(got) ? (got as SlotRow[]) : [];
               }
             };
             try {
               let all = await read(0);
-              for (let page = 1; page < 5 && all.length === page * 100; page++) all = all.concat(await read(page));
+              for (let page = 1; page < 5 && all.length === page * SLOT_PAGE; page++) all = all.concat(await read(page));
               return all;
             } catch {
               missedSlots += 1;

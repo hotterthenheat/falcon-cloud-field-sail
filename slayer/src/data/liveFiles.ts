@@ -9,7 +9,7 @@ import { houseSector, houseSlug, type EtfHolding, type EtfKind, type EtfRow, typ
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
-import { companyName, hasVendorName, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames } from './tickers';
+import { companyName, displayName, hasVendorName, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames } from './tickers';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { loadRegularCloses } from './dayChange';
 import {
@@ -432,12 +432,8 @@ const UW_SECTOR: Record<string, Sector> = {
 };
 const uwSector = (raw: string): Sector | null => UW_SECTOR[raw.trim().toLowerCase()] ?? null;
 /** "SOUNDHOUND AI" → "Soundhound AI": the file shouts; the page does not */
-const titleName = (raw: string): string =>
-  raw
-    .trim()
-    .split(/\s+/)
-    .map(w => (w.length <= 3 && /^[A-Z&.]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()))
-    .join(' ');
+/* the one display name (tickers.ts displayName, audit round 10: "ELI Lilly", "Spdr(r) S&p(r)…") */
+const titleName = (raw: string): string => displayName(raw);
 
 function shortFrom(r: UwShort): ShortRow | null {
   const ticker = (r.symbol || '').toUpperCase();
@@ -869,7 +865,7 @@ async function pullStocks() {
       const off = (ref: number | null) => (ref != null && ref > 0 ? ((price - ref) / ref) * 100 : null);
       const pick = pickFromLive({
           ticker,
-          name: u?.name || String(row.full_name || ticker),
+          name: displayName(u?.name || String(row.full_name || '')) || ticker,
           sector: asSector(ticker, typeof row.sector === 'string' ? row.sector : undefined),
           price,
           /* the regular session's change, off the daily rows (0 only when no prior close is in hand) */
@@ -933,7 +929,7 @@ export function ensureStockCard(ticker: string): void {
           ...snap.cards,
           [t]: {
             ticker: t,
-            name: String(row.full_name || row.short_name || t),
+            name: displayName(String(row.full_name || row.short_name || '')) || t,
             sector: houseSector(String(row.sector || '')) || '—',
             /* the vendor's copy, its one recurring slip mended ("Apple is the worlds largest…", the retail test round 7) */
             description: String(row.short_description || '').replace(/\bworlds\b(?=\s+(?:largest|biggest|leading|first|most|top|second|third|largest|premier|only|best))/gi, m => `${m.slice(0, -1)}'s`),

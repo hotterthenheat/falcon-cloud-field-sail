@@ -9,7 +9,7 @@ import type { EconEvent } from './newsroom';
 import type { UwCongress, UwEcon, UwNews, UwPolitician } from './whales';
 import { TX_CODES } from './insiders';
 import { UNIVERSE } from './universe';
-import { companiesInHeadline, tickerName } from './tickers';
+import { companiesInHeadline, displayName, tickerName } from './tickers';
 import { daysBetween, nyDayOf, nyDaysAgo } from './nyDate';
 import { econImpact } from './econImpact';
 
@@ -174,7 +174,23 @@ const SHORT_NAMES: [string, string][] = [
   ['Lam Research', 'LRCX'], ['General Motors', 'GM'], ['Ford Motor', 'F'], ['American Express', 'AXP'], ['Mastercard', 'MA'],
   ['Thermo Fisher', 'TMO'], ['Medtronic', 'MDT'], ['Honeywell', 'HON'], ['3M', 'MMM'], ['UPS', 'UPS'], ['FedEx', 'FDX'],
   ['BP', 'BP'], ['Shell', 'SHEL'], ['TotalEnergies', 'TTE'], ['Toyota', 'TM'], ['Nike', 'NKE'], ['Visa', 'V'], ['Uber', 'UBER'],
+  /* audit round 10: "Novo's Awiqli® receives FDA approval" read NO NAME */
+  ['Novo Nordisk', 'NVO'], ['Novo', 'NVO'],
 ];
+/* A COMPANY NAMED BY A PLAIN WORD NEEDS COMPANY CONTEXT (audit round 10: Senator Collins' Canada-tariff line, "BLUEBERRY,
+   POTATO, APPLE, AND SEAWEED PRODUCERS", read "mentions AAPL"). An untagged headline names these companies only with
+   something that makes the word the company — its possessive, a corporate suffix, a product, its chief — never a bare
+   word in a list of produce, visas or price targets. A vendor tag (borneOut) is context enough on its own. */
+const PLAIN_WORD_CONTEXT: Record<string, RegExp> = {
+  AAPL: /\bApple(?:'s|’s)|\bAPPLE(?:'S|’S)|\bApple\s+(?:Inc|Watch|TV|Music|Pay|Intelligence|Vision|stock|shares|CEO)\b|\bAPPLE\s+(?:INC|WATCH|STOCK|SHARES|CEO)\b|\biPhones?\b|\biPad\b|\bMacBook\b|\bApp Store\b|\bTim Cook\b|\bCupertino\b/i,
+  SHEL: /\bShell(?:'s|’s)|\bShell\s+(?:plc|PLC|stock|shares|CEO)\b/i,
+  V: /\bVisa(?:'s|’s)|\bVisa\s+(?:Inc|stock|shares|CEO)\b|\bVisa (?:and|&) Mastercard\b|\bMastercard (?:and|&) Visa\b/i,
+  TGT: /\bTarget(?:'s|’s)|\bTarget\s+(?:Corp|Inc|stock|shares|CEO|stores?)\b/i,
+};
+const hasCompanyContext = (ticker: string, headline: string): boolean => {
+  const re = PLAIN_WORD_CONTEXT[ticker];
+  return !re || re.test(headline);
+};
 const SHORT_NAME_RE = SHORT_NAMES.map(([name, ticker]) => ({ ticker, re: new RegExp(`(?<![\\w&-])(?:${esc(name)}|${esc(name.toUpperCase())})(?:'s|’s)?(?![\\w&-])`) }));
 
 /* A WIRE TAG MUST BE BORNE OUT BY ITS HEADLINE: the vendor tags by bare word — "AI", "Gold" (Barrick), "Bond",
@@ -257,10 +273,10 @@ function storyTickers(headline: string, tags: readonly string[] | undefined): { 
   if (broker) headline = headline.slice(broker[0].length).replace(/^\s+/, '');
   const tagged = [...new Set((tags ?? []).map(t => t.trim().toUpperCase()).filter(t => /^[A-Z][A-Z0-9.]{0,5}$/.test(t)))].filter(t => borneOut(t, headline));
   if (tagged.length) return { tickers: tagged, mentions: [] };
-  const named = [...COMPANY_RE, ...SHORT_NAME_RE].filter(c => c.re.test(headline)).filter((c, i, all) => all.findIndex(x => x.ticker === c.ticker) === i);
+  const named = [...COMPANY_RE, ...SHORT_NAME_RE].filter(c => c.re.test(headline) && hasCompanyContext(c.ticker, headline)).filter((c, i, all) => all.findIndex(x => x.ticker === c.ticker) === i);
   /* an untagged company story names its company by the listing's own name (data/tickers.ts companiesInHeadline) —
      "COCA-COLA SAYS…" is KO, "Medpace Slumps…" MEDP (the re-audit, 2026-10-22: dozens of NO TICKER rows) */
-  const listed = companiesInHeadline(headline).filter(t => !named.some(n => n.ticker === t));
+  const listed = companiesInHeadline(headline).filter(t => !named.some(n => n.ticker === t) && hasCompanyContext(t, headline));
   const subject: string[] = [];
   const mentions: string[] = [];
   for (const n of named) (leadsWithName(headline, n.re) ? subject : mentions).push(n.ticker);
@@ -295,7 +311,15 @@ export const isNewsSpam = (headline: string): boolean => SPAM_RE.test(headline) 
    "to speak at" notices, routine dividends and press releases on private companies). A story is major when the vendor
    says so AND it is about a named listed company or the economy, AND it is not house-keeping. */
 const ROUTINE_RE =
-  /\bconference call\b|\b(?:earnings|results) (?:release|date|call)\b|\b(?:to|will) (?:host|hold|report|announce|release)\b[^.]{0,60}\b(?:results|earnings)\b|\bannounces? (?:the )?(?:date|timing)\b|\btiming of\b[^.]{0,40}\bresults\b|\bto (?:speak|present|participate) at\b|\binvestor (?:conference|day)\b|\b(?:declares?|announces?)\b[^.]{0,30}\b(?:quarterly|regular|monthly|cash) (?:cash )?dividend\b|\bdividend payout\b|\bnames?\b[^.]{0,40}\b(?:vice president|vp|manager|director)\b/i;
+  /\bconference call\b|\b(?:earnings|results) (?:release|date|call)\b|\b(?:to|will) (?:host|hold|report|announce|release)\b[^.]{0,60}\b(?:results|earnings)\b|\bannounces? (?:the )?(?:date|timing)\b|\btiming of\b[^.]{0,40}\bresults\b|\bto (?:speak|present|participate) at\b|\binvestor (?:conference|day)\b|(?<!\b(?:results|earnings)\b.*)\bdeclares?\b[^.]{0,40}\bdividends?\b(?!.*\b(?:results|earnings)\b)|\b(?:declares?|announces?)\b[^.]{0,30}\b(?:quarterly|regular|monthly|cash) (?:cash )?dividend\b|\bdividend payout\b|\bnames?\b[^.]{0,40}\b(?:vice president|vp|manager|director)\b/i;
+
+/* NOT NEWS ABOUT THE COMPANY'S BUSINESS (audit round 10: Levi & Korsinsky "Securities Investigation Notice" ads on FMC and
+   FOXF, "Polaris Expands Call of Duty Collaboration", "Palo Alto Networks Fuels Resilience…" read Major) — a law firm's
+   solicitation of shareholders, and a marketing tie-in or brand line, are never major */
+const LAW_AD_RE =
+  /\b(?:securities (?:fraud |class action )?(?:investigation|lawsuit|litigation)|class action (?:lawsuit|filed|alert)|(?:investor|shareholder|stockholder) alert|investigation notice|notice of (?:investigation|class action)|levi & korsinsky|rosen law|pomerantz|bronstein,? gewirtz|faruqi|glancy prongay|bragar eagel|kessler topaz|schall law|gross law|portnoy law|halper sadeh|kirby mcinerney|johnson fistel|robbins geller|block & leviton|bernstein liebhard|kaskela|ademi)\b/i;
+const PROMO_RE =
+  /\b(?:expands?|extends?|renews?|announces?|launches?|unveils?|debuts?)\b(?![^.]{0,50}\b(?:strategic|research|licens\w*|clinical|development)\b)[^.]{0,50}\b(?:collaboration|campaign|sponsorship|brand ambassador|co-?branded|limited[- ]edition)\b|\bfuels? (?:resilience|growth|innovation|success|transformation|creativity)\b/i;
 
 /** The regular close before a date, from the name's regular closes when they are in hand — or null */
 export type PriorClose = (ticker: string, before: string) => number | null;
@@ -309,7 +333,7 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
     const { tickers, mentions } = storyTickers(headline, r.tickers);
     const ticker = tickers[0] ?? null;
     const category = categoryOf(headline, r.tags, !!ticker);
-    const major = !!r.is_major && (!!ticker || (category === 'Macro' && macroMoves(headline))) && !ROUTINE_RE.test(headline) && !INDEX_MOVE_RE.test(headline);
+    const major = !!r.is_major && (!!ticker || (category === 'Macro' && macroMoves(headline))) && !ROUTINE_RE.test(headline) && !LAW_AD_RE.test(headline) && !PROMO_RE.test(headline) && !INDEX_MOVE_RE.test(headline);
     const pm = publishMove(r.meta, ticker, priorClose, r.created_at);
     const moved = pm.day;
     const move = moved ?? 0;
@@ -968,7 +992,7 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
       heldAfter: held,
       stakePct,
       sincePct: price > 0 && spot > 0 && !foreign ? Number((((spot - price) / price) * 100).toFixed(1)) : 0,
-      company: r.full_name?.trim() || undefined,
+      company: displayName(r.full_name) || undefined,
       sector: r.sector?.trim() || undefined,
       marketCap: cap > 0 ? cap : null,
       cik: r.reporter_cik?.trim() || undefined,

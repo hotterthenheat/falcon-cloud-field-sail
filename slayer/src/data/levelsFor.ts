@@ -66,6 +66,8 @@ export interface LevelMove {
   a level on a new strike is kept as a move (the flip's own moves come from flipLevel's hysteresis). Kept for the New York
   day, in this page.
 */
+/** Two flip prices within this print alike (the pages print the flip to the cent) */
+const FLIP_SAME = 0.006;
 const lastSeen = new Map<string, { callWall: number | null; putWall: number | null; supreme: number; flip: number | null; moves: LevelMove[] }>();
 function trackMoves(key: string, lv: { callWall: number | null; putWall: number | null; supreme: number; flip: number | null; complete: boolean }, flipMoved: { from: number; at: number } | null | undefined): LevelMove[] {
   const prev = lastSeen.get(key);
@@ -81,8 +83,18 @@ function trackMoves(key: string, lv: { callWall: number | null; putWall: number 
     note('put wall', prev.putWall, lv.putWall);
     note('supreme', prev.supreme, lv.supreme);
   }
-  if (flipMoved && lv.flip != null && !moves.some(m => m.level === 'flip' && Math.abs(m.to - lv.flip!) < 1e-6 && Math.abs(m.from - flipMoved.from) < 1e-6))
-    moves.push({ level: 'flip', from: flipMoved.from, to: lv.flip, at: flipMoved.at });
+  /* ONE NOTE PER FLIP MOVE (the tenth audit's M2: the re-priced flip drifts ~2e-4 a read, so the same move was logged twice
+     — QQQ, AMZN, META, AMD, NFLX — and RegimeLine printed both): a move is the hold's own event (its `from` and the minute
+     it was seen); a later read of the same event updates where it went, and two notes that would print the same at the
+     page's precision are one */
+  if (flipMoved && lv.flip != null) {
+    const same = moves.findIndex(m => m.level === 'flip' && m.at === flipMoved.at && Math.abs(m.from - flipMoved.from) < FLIP_SAME);
+    const twin = moves.some(m => m.level === 'flip' && Math.abs(m.from - flipMoved.from) < FLIP_SAME && Math.abs(m.to - lv.flip!) < FLIP_SAME);
+    if (same >= 0) moves[same] = { ...moves[same], to: lv.flip };
+    else if (!twin) moves.push({ level: 'flip', from: flipMoved.from, to: lv.flip, at: flipMoved.at });
+  }
+  /* …and a note whose two ends print alike says nothing */
+  for (let i = moves.length - 1; i >= 0; i--) if (moves[i].level === 'flip' && Math.abs(moves[i].from - moves[i].to) < FLIP_SAME) moves.splice(i, 1);
   const kept = moves.slice(-8);
   lastSeen.set(key, { callWall: lv.callWall, putWall: lv.putWall, supreme: lv.supreme, flip: lv.flip, moves: kept });
   return kept;

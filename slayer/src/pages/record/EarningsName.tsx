@@ -315,7 +315,9 @@ const EarningsName = () => {
   useWireCheck(T, liveFile.dossier?.event.iso, liveFile.dossier?.event.slot);
   const dossier = liveFile.status === 'live' ? liveFile.dossier : null;
   /* the reacting session's move so far, off the live price — the board's own read (round 9: WDC) */
-  useLiveReactions(useMemo(() => (dossier ? [{ ...dossier.event, reported: reportedNow(dossier.event) }] : []), [dossier]));
+  /* the name on its own page is always read, known name or not (audit round 10: WDC's page sat on "reading its move" after
+     the bell — the after-bell read takes the known names only, and the name's own rows carry no cap to know it by) */
+  useLiveReactions(useMemo(() => (dossier ? [{ ...dossier.event, known: true, reported: reportedNow(dossier.event) }] : []), [dossier]));
   /* A busiest row → the Weigher with THE contract picked, this page as the way back */
   const weigh = (c: ActiveContract) =>
     navigate('/weigher', { state: { weigh: { ticker: T, strike: c.strike, right: c.right === 'CALL' ? 'C' : 'P', expiry: c.expiry }, wayBack: location.pathname } });

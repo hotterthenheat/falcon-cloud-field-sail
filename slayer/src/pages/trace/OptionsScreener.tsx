@@ -32,7 +32,7 @@ import { useSearchParams } from 'react-router-dom';
 import { filtersToParams, paramsToFilters, screenerCuts } from '../../data/screenerViews';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { useMarketData } from '../../context/MarketDataContext';
-import { dayLean, useContracts, usd as fmtUsd } from '../../data/traceLive';
+import { dayLean, indexRoot, INDEX_OTM_TITLE, useContracts, usd as fmtUsd } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { applyFilters, crossDay, crossHint, doiTail, floorPackaged, SPREAD_LEG_PCT, FRESH_VOL_OI, notABet, spreadLegDay, spreadLegHint, stockLike, volOiText, FLOW_SCREENS, runScreen, type BookFilters, type ScreenKey } from '../../data/flowBook';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
@@ -348,7 +348,7 @@ const OptionsScreener = () => {
         /* NO BLANK CELL (the third audit: XSP's OTM % was empty): a dash, and why */
         render: r =>
           Number.isFinite(r.otmPct) ? (
-            <span className="text-textPrimary">{pctSigned(r.otmPct, 1)}</span>
+            <span className="text-textPrimary" title={indexRoot(r.ticker) ? INDEX_OTM_TITLE : undefined}>{indexRoot(r.ticker) ? "≈" : ""}{pctSigned(r.otmPct, 1)}</span>
           ) : (
             <span className="text-textMuted" title={r.spot > 0 ? "The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)" : 'No underlying price on this row'}>—</span>
           ),

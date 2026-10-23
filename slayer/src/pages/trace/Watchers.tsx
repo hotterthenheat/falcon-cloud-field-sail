@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { buildCatches, floorPackaged, notABetHint, notABetLabel, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
-import { dayLean, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
+import { dayLean, indexRoot, INDEX_OTM_TITLE, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, dayPos, earnWords, shyPct } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
@@ -395,7 +395,7 @@ const Watchers = () => {
         header: 'OTM %',
         align: 'right',
         sortValue: a => a.row.otmPct,
-        render: a => (Number.isFinite(a.row.otmPct) ? <span className="text-textPrimary">{pctSigned(a.row.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
+        render: a => (Number.isFinite(a.row.otmPct) ? <span className="text-textPrimary" title={indexRoot(a.row.ticker) ? INDEX_OTM_TITLE : undefined}>{indexRoot(a.row.ticker) ? "≈" : ""}{pctSigned(a.row.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
       },
       {
         key: 'earn',

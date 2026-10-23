@@ -62,6 +62,9 @@ export interface GammaLeg {
   oi?: number;
   /** True when `iv` is the contract's own printed vol (not the smile's or the at-the-money stand-in) */
   ownIv?: boolean;
+  /** The time to expiry g0 was priced at, years, when the leg is re-priced at another moment (`t` is then that moment's —
+      an earlier minute of the day, data/flipLevel.ts levelNetPath) */
+  t0?: number;
 }
 
 export interface FlipRead {
@@ -105,7 +108,8 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
     }
     /* re-priced off the leg's own gamma at S₀: the ratio of S·φ(d₁), in logs so a far wing cannot underflow */
     const base = l.s0 && l.s0 > 0 ? l.s0 : S0;
-    const a = d1Of(base, l.strike, l.t, l.iv, r);
+    const tBase = l.t0 && l.t0 > 0 ? l.t0 : l.t;
+    const a = d1Of(base, l.strike, tBase, l.iv, r);
     /* A LEG WHOSE GAMMA AT SPOT IS BELOW THE PRINT'S RESOLUTION (the tenth pass, 2026-10-23 15:54 ET): six deviations
        from its strike a contract holds under e^-18 of its peak gamma, so the vendor's cent-rounded figure there is noise,
        and re-pricing it toward the strike multiplied that noise by e^30 (minutes before the bell, SPY's same-day book
@@ -115,7 +119,8 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
       continue;
     }
     const b = d1Of(S, l.strike, l.t, l.iv, r);
-    const ln = Math.log(S / base) - (b * b) / 2 + (a * a) / 2;
+    /* Γ·S² ∝ S·φ(d₁)/(σ√T): at another moment the √T term no longer cancels */
+    const ln = Math.log(S / base) - (b * b) / 2 + (a * a) / 2 + (tBase !== l.t ? 0.5 * Math.log(tBase / l.t) : 0);
     /* NO 25× CAP (the second re-audit, 2026-10-22): a wing's gamma legitimately grows a few hundred times as price walks
        to its strike (NVDA's 230 call, 1 day out: $7M at 212, ~$2B at 230), and the cap froze those legs at their spot
        value, which left jitter crossings on SPY's whole book and moved QQQ's by 1%. G₀ is the vendor's live gamma, so the

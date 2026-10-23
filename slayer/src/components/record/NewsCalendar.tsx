@@ -304,7 +304,7 @@ const NewsCalendar = () => {
                 <div className="mt-1 pl-[72px] flex items-center gap-x-4 font-mono text-[10px] tnum text-textPrimary">
                   {e.kind === 'earnings' ? (
                     <>
-                      {e.reported && e.movePct != null ? <span className={e.movePct >= 0 ? 'text-bull' : 'text-bear'}>{moveWords(e)}</span> : e.reported ? <span className="text-textMuted">{e.reactionIso === nyIsoDate() ? 'out — reading the move' : 'out'}</span> : null}
+                      {e.reported && e.movePct != null ? <span className={e.movePct >= 0 ? 'text-bull' : 'text-bear'}>{moveWords(e)}</span> : e.reported ? <span className="text-textMuted">{e.reactionIso === nyIsoDate() ? 'out — reading the move' : e.reactionIso && e.reactionIso > nyIsoDate() ? `out — the move is the ${new Date(`${e.reactionIso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })} session's` : 'out'}</span> : null}
                       {e.impliedMovePct != null && <span className={e.reported ? 'text-textMuted' : ''}>±{e.impliedMovePct.toFixed(1)}% priced{e.reported ? '' : ' for the print'}</span>}
                       {!e.reported && <span className="text-textMuted">{e.catalystOnly ? 'on the daily catalysts · not on the earnings lists' : e.confirmed ? 'date confirmed by the company' : 'date estimated — not yet confirmed'}</span>}
                     </>

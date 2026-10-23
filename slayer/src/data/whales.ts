@@ -202,8 +202,8 @@ export const whalesScreener = (tickers: string[], priority = false) =>
 export const whalesFlow = () => uw<Record<string, unknown>[]>('/option-trades/flow-alerts');
 export const whalesDarkPool = () => uw<Record<string, unknown>[]>('/darkpool/recent');
 export const whalesEarnings = (ticker: string, priority = false) => uw<Record<string, unknown>[]>(`/earnings/${encodeURIComponent(ticker)}`, priority);
-export const whalesEarningsSlot = (slot: 'premarket' | 'afterhours', date: string, page = 0) =>
-  uw<Record<string, unknown>[]>(`/earnings/${slot}?date=${encodeURIComponent(date)}&limit=100&page=${page}`);
+export const whalesEarningsSlot = (slot: 'premarket' | 'afterhours', date: string, page = 0, limit = 100) =>
+  uw<Record<string, unknown>[]>(`/earnings/${slot}?date=${encodeURIComponent(date)}&limit=${limit}&page=${page}`);
 export const whalesStock = (ticker: string) => uw<Record<string, unknown>>(`/stock/${encodeURIComponent(ticker)}/info`);
 
 export interface UwState {
@@ -317,7 +317,9 @@ export interface UwDaily {
   market_time?: string;
 }
 
-export const whalesDaily = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(ticker)}/ohlc/1d?limit=260`, true);
+/* ONE DAILY READ A NAME (Dossier audit round 10: a stock page asked ohlc/1d twice, limit=260 here and the 2Y limit=900
+   below) — the newest 260 rows of the long read, which the in-flight share and the minute's reuse make one request */
+export const whalesDaily = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(ticker)}/ohlc/1d?limit=900&timeframe=2Y`, true).then(rows => (Array.isArray(rows) ? rows.slice(0, 260) : rows));
 /* THE DOSSIER'S DAILY SESSIONS (the data audit, 2026-10-22): a daily row comes three times a day — pre-market, regular
    and post (market_time pr · r · po) — so limit=260 was 87 sessions and the trend card could never draw its 200-day
    average. Two years of rows (timeframe=2Y; the route caps the default at one) at 900 rows is about 300 sessions. */

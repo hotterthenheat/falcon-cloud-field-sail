@@ -642,18 +642,16 @@ const News = () => {
     return [...set].sort();
   }, [events, coverage.reading]);
   const setMoves = useSetMoves(moveNames);
-  /* THE LEADER SO FAR (round 9: "reading 59 names" stood 25 seconds while the wire's pages landed): the names of the
-     stories already read — frozen once, so the set is read once — give a leader labelled "so far" until the whole set is in */
-  const earlyRef = useRef<string[] | null>(null);
-  if (coverage.reading && !earlyRef.current && events.length >= 20) {
+  /* NO PROVISIONAL LEADER (audit round 10: "CBOE +3.8% · so far, of 10 names" stood ~20s, then "CNDT +17.8% · of 50
+     names") — the chip names a leader only once the day's whole set is read, and counts the read until then */
+  const namesSoFar = useMemo(() => {
     const set = new Set<string>();
     for (const e of events) {
       if (e.item.ticker) set.add(e.item.ticker);
       for (const t of e.item.tickers ?? []) set.add(t);
     }
-    earlyRef.current = [...set].sort();
-  }
-  const earlyMoves = useSetMoves(setMoves.complete ? [] : earlyRef.current ?? []);
+    return set.size;
+  }, [events]);
   const leaderOf = (m: typeof setMoves) => {
     let top: { ticker: string; pct: number; date: string } | null = null;
     for (const [t, q] of m.moves) {
@@ -662,7 +660,6 @@ const News = () => {
     return top;
   };
   const biggest = useMemo(() => (setMoves.complete ? leaderOf(setMoves) : null), [setMoves]); // eslint-disable-line react-hooks/exhaustive-deps
-  const earlyBiggest = useMemo(() => (!setMoves.complete && earlyMoves.complete ? leaderOf(earlyMoves) : null), [setMoves, earlyMoves]); // eslint-disable-line react-hooks/exhaustive-deps
   const moveDayIsToday = biggest ? biggest.date === nyTodayIso() : true;
   const selectedQuote = useLiveQuote(selected?.item.ticker ?? null);
   const nextPrint = calendar.find(c => c.impact === 'high' && c.inMinutes >= 0) ?? calendar.find(c => c.inMinutes >= 0) ?? null;
@@ -750,20 +747,15 @@ const News = () => {
               </Fact>
             )}
             <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : 'Biggest move today'} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name today's stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
-              {!biggest && earlyBiggest ? (
-                <span title={`So far: the leader among the ${earlyMoves.screened} names in the stories read first — the whole day's set is still being read`}>
-                  {earlyBiggest.ticker} <span className={earlyBiggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(earlyBiggest.pct)}</span>
-                  <span className="text-warn"> · so far, of {earlyMoves.screened} names</span>
-                </span>
-              ) : coverage.reading ? (
-                <span className="text-textMuted">reading today's stories</span>
+              {coverage.reading ? (
+                <span className="text-textMuted">reading today's stories{namesSoFar ? ` · ${namesSoFar} names so far` : ''}</span>
               ) : biggest ? (
                 <>
                   {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.pct)}</span>
                   <span className="text-textMuted"> · of {setMoves.screened} {setMoves.screened === 1 ? "name" : "names"}</span>
                 </>
               ) : (
-                <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no regular close on these names' : `reading ${moveNames.length} names`) : 'no named stories yet'}</span>
+                <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no regular close on these names' : `reading ${Math.min(setMoves.screened, moveNames.length)} of ${moveNames.length} names`) : 'no named stories yet'}</span>
               )}
             </Fact>
             <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">

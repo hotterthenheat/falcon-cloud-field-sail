@@ -668,7 +668,10 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
 
 /** Open interest and vega the greek-by-expiry rows do not carry. One request a date. */
 async function fillExpiryFacts(entry: Entry, token: number, only?: readonly string[]): Promise<void> {
-  const still = () => gen.get(entry.ticker) === token;
+  /* laid onto the book's current copy — a refresh while the contracts were read (the full book re-reads every 45s) must
+     not throw them away (the tenth audit's B3) */
+  void token;
+  const still = () => cache.get(entry.ticker)?.status === 'live';
   const dates = only ? only.filter(d => d in entry.byDate) : Object.keys(entry.byDate);
   if (!dates.length) return;
   /* ONE EXPIRY AT A TIME, NEVER THE WHOLE NAME IN ONE WALK (the seventh audit's M1, 2026-10-23): the whole-name walk of
@@ -2098,16 +2101,39 @@ export function peekBellShare(ticker: string): { share: number } | { share: null
   return total > 0 ? { share: Math.round((100 * dies) / total) } : { share: null, why: 'wait' };
 }
 
+/*
+  ONE FULL WALK A NAME AT A TIME, NEVER ABANDONED BY A REFRESH (the tenth audit's B3, 2026-10-23: SPY's All-expiries levels
+  never finished on the Map, the Board or Compare in 2–3.5 minutes). The full book is re-read every FULL_MS (45s), and
+  each re-read started the forty-date walk again and dropped the one in flight (its writes were tied to the read that
+  started it) — SPY's walk takes longer than 45s on the key's three slots, so it never reached its end and the book was
+  never `full`. The walk now runs once per name, lays what it reads onto whatever copy of the book is current, and a
+  re-read while it runs leaves it be. A date whose read failed is asked once more at the end, and a date the vendor
+  answers empty is taken as empty (not waited on for good).
+*/
+const expWalking = new Set<string>();
 async function loadExpiries(entry: Entry, token: number): Promise<void> {
-  const still = () => gen.get(entry.ticker) === token;
+  console.debug('[fix10dbg] loadExpiries', entry.ticker, expWalking.has(entry.ticker));
+  if (expWalking.has(entry.ticker)) return;
+  expWalking.add(entry.ticker);
+  try {
+    await loadExpiriesNow(entry, token);
+  } finally {
+    expWalking.delete(entry.ticker);
+  }
+}
+async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
+  void token;
+  /* the walk lays onto the book's current copy (a refresh replaces the object, never the walk) */
+  const still = () => cache.get(entry.ticker)?.status === 'live';
+  const liveToken = () => gen.get(entry.ticker) ?? token;
   if (entry.expiriesAt && Date.now() - entry.expiriesAt < 180_000 && Object.keys(entry.byDate).length > 0) {
     entry.full = true;
     entry.everFull = true;
     vexOntoAll(entry);
     /* an own-vol date whose contracts failed to read is asked again here, not left provisional until the next listing */
     const missing = horizonFactsMissing(entry);
-    if (missing.length) void fillExpiryFacts(entry, token, missing);
-    void refreshDatesGamma(entry, token);
+    if (missing.length) void fillExpiryFacts(entry, liveToken(), missing);
+    void refreshDatesGamma(entry, liveToken());
     return;
   }
   let listed: { date: string; dte: number }[] = [];
@@ -2123,20 +2149,26 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
      open interest onto each of them, so a November column wore October's contracts. */
   const dates = listed.map(r => r.date).slice(0, 40);
   const near = dates.slice(0, 6);
+  /* null: the read failed (asked again); []: the vendor has no strikes on that date */
   const pull = (list: string[], first = list === near) =>
     mapLimit(list, 3, async date => {
       try {
-        return [date, (await dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && first)) ?? []] as const;
+        return [date, await dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && first)] as const;
       } catch {
-        return [date, [] as StrikeNode[]] as const;
+        return [date, null] as const;
       }
     });
-  const apply = (fetched: readonly (readonly [string, StrikeNode[]])[], done: boolean) => {
+  const apply = (fetched: readonly (readonly [string, StrikeNode[] | null])[], done: boolean) => {
     if (!still()) return;
     const current = cache.get(entry.ticker);
     if (!current) return;
     const byDate = { ...current.byDate };
-    for (const [date, chain] of fetched) if (chain.length) byDate[date] = carryFacts(chain, byDate[date]);
+    const empty = emptyDates.get(entry.ticker) ?? new Set<string>();
+    for (const [date, chain] of fetched) {
+      if (chain?.length) byDate[date] = carryFacts(chain, byDate[date]);
+      else if (chain && !byDate[date]?.length) empty.add(date);
+    }
+    emptyDates.set(entry.ticker, empty);
     current.byDate = byDate;
     current.expiries = listed;
     if (done) {
@@ -2164,20 +2196,39 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
   if (!still()) return;
   apply(frontGot, false);
   const atFront = cache.get(entry.ticker);
-  if (atFront) void fillExpiryFacts(atFront, token, front);
+  /* the front date's contracts before the rest: "Today" is final with them */
+  const frontFacts = atFront ? fillExpiryFacts(atFront, liveToken(), front) : null;
   const walk = dates.length > 6 ? liveGammaAll(entry.ticker, isHot(entry.ticker)).catch(() => null) : null;
-  apply(await pull(near.slice(1), true), dates.length <= 6);
+  const nearGot = await pull(near.slice(1), true);
+  console.debug('[fix10dbg] near got', entry.ticker, nearGot.map(([d, c]) => `${d}:${c?.length ?? 'null'}`).join(' '), still());
   if (!still()) return;
-  const first = cache.get(entry.ticker);
-  if (first) void fillExpiryFacts(first, token, near.slice(1));
-  if (dates.length > 6) {
-    await walk;
+  const retryNear = dates.length <= 6 ? nearGot.filter(([, c]) => c == null).map(([d]) => d) : [];
+  apply(nearGot, dates.length <= 6 && !retryNear.length);
+  if (retryNear.length) {
+    apply(await pull(retryNear, true), true);
     if (!still()) return;
-    apply(await pull(dates.slice(6)), true);
-    if (!still()) return;
-    const current = cache.get(entry.ticker);
-    if (current) void fillExpiryFacts(current, token, dates.slice(6));
   }
+  const first = cache.get(entry.ticker);
+  if (first) void fillExpiryFacts(first, liveToken(), near.slice(1));
+  if (dates.length > 6) {
+    console.debug('[fix10dbg] before walk', entry.ticker);
+    await walk;
+    console.debug('[fix10dbg] after walk', entry.ticker, still());
+    if (!still()) return;
+    const farGot = await pull(dates.slice(6));
+    console.debug('[fix10dbg] far got', entry.ticker, farGot.length);
+    if (!still()) return;
+    /* a far date whose read failed is asked once more before the walk calls the book whole */
+    const retry = [...nearGot, ...farGot].filter(([, c]) => c == null).map(([d]) => d);
+    apply(farGot, !retry.length);
+    if (retry.length) {
+      apply(await pull(retry), true);
+      if (!still()) return;
+    }
+    const current = cache.get(entry.ticker);
+    if (current) void fillExpiryFacts(current, liveToken(), dates.slice(6));
+  }
+  await frontFacts;
 }
 
 function load(ticker: string, mode: BookMode) {

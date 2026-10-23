@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useCompanyName } from '../../data/liveFiles';
+import { displayName } from '../../data/tickers';
 
 /* ONE OBSERVER FOR EVERY NAME CELL (round 8): a cell asks the vendor for its company's name once it is on screen — a
    200-row grid asks for the rows a reader can see, not all 200 at once */
@@ -49,11 +50,12 @@ export const CoSub = ({ ticker, fallback, className = 'text-[10px] text-textMute
   /* a vendor feed's own name for the row (an insider filing's, a 13F line's) needs no ask of its own */
   const own = fallback && fallback.toUpperCase() !== ticker.toUpperCase() ? fallback : '';
   const n = useCompanyName(ticker, vendor, seen && !own);
-  const v = n && n.toUpperCase() !== ticker.toUpperCase() ? n : fallback && fallback.toUpperCase() !== ticker.toUpperCase() ? fallback : '';
+  const v = n && n.toUpperCase() !== ticker.toUpperCase() ? n : own;
   return (
     <span ref={ref} className={className} title={v || undefined}>
-      {/* never a blank line while the name is asked (round 9): the ticker stands until it lands */}
-      {v || <span className="opacity-60">{ticker.toUpperCase()}</span>}
+      {/* THE TICKER ONCE (audit round 10: "RAPP RAPP RAPP", "AMD AMD" — the ticker stood in the name line while the name
+          was asked, beside the ticker itself): "…" while it is asked, "—" when the vendor has none */}
+      {v ? displayName(v) : <span className="opacity-60">{n === '' ? '…' : '—'}</span>}
     </span>
   );
 };

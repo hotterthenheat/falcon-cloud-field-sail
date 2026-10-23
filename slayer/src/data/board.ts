@@ -260,10 +260,11 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
      re-prices each with its own vol); "All expiries" needs every live date's strikes */
   const scope = readLevelsScope();
   if (scope === 'ALL') ensureScopeDates(ticker);
-  const entry = peekEntry(ticker);
-  const pending =
-    !!snapshot.liveBook &&
-    (!lv || !lv.complete || (scope === '0DTE' ? !snapshot.uwChains?.['0DTE']?.length || (!entry?.full && !entry?.frontFacts) : scopeDatesPending(ticker)));
+  /* ONE READINESS SIGNAL (the tenth audit's B3: SPY's row sat on "…" for 38 minutes while levelsFor said complete — the
+     active name is read in full, so it never carried the Board's `frontFacts` flag): a row is final exactly when
+     levelsFor says its levels are — the front date's chain and its own contracts' vols for "Today", every live date for
+     "All expiries" (data/levelsFor.ts complete) */
+  const pending = !!snapshot.liveBook && (!lv || !lv.complete);
   const flip = lv ? lv.flip : gauge.flip;
 
   return {

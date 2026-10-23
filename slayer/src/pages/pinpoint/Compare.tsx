@@ -46,7 +46,7 @@ import { nextGreekPick, pickGreeks } from '../../components/gex/exposureView';
 import CompareTapes from '../../components/gex/CompareTapes';
 import ComparePair from '../../components/gex/ComparePair';
 import CompareGuide from '../../components/gex/CompareGuide';
-import { CompareAxisInner, ComparePageSkeleton, ComparePairInner, CompareTapesInner } from '../../components/gex/compareSkeletons';
+import { CompareAxisInner, ComparePageSkeleton, ComparePairInner, CompareSideInner, CompareTapesInner } from '../../components/gex/compareSkeletons';
 import { BookOrSkeleton } from './BookDown';
 import { aheadClock } from '../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, type Greek, type Reach } from '../../data/compare';
@@ -252,6 +252,52 @@ const Compare = () => {
     setB(a);
   };
 
+  /* EACH SIDE STANDS ON ITS OWN (the tenth audit's B3: Compare All expiries stayed a whole-page skeleton for 90s while QQQ
+     was ready, waiting on SPY): a side whose levels are final is drawn as soon as they are; the other side, and the ruler
+     that needs both, stand in their skeletons and say whose levels are still being read */
+  const solo = scan && !cmp ? (sideA ? { side: 'a' as const, s: sideA, waiting: bTicker } : sideB ? { side: 'b' as const, s: sideB, waiting: aTicker } : null) : null;
+  if (scan && solo && peekEntry(solo.waiting)?.status !== 'error') {
+    const self = buildCompare(solo.s, solo.s, clock);
+    const panel = (stacked: boolean) => (
+      <CompareSidePanel stacked={stacked} side={solo.side} s={solo.s} cmp={self} unit={unit} greek={greek} greeks={greeks} chip={solo.side === 'a' ? chipA : chipB} focus={solo.side === 'a' ? focusA : focusB} onPick={onPick} open={stacked ? true : sides[solo.side]} onToggle={stacked ? () => undefined : () => toggleSide(solo.side)} />
+    );
+    const waitSide = solo.side === 'a' ? 'b' : 'a';
+    return (
+      <>
+        <div className="relative border border-borderSubtle rounded-md bg-panel" data-compare-ruler data-compare-solo={solo.s.ticker}>
+          <div className="flex items-stretch min-w-0" data-compare-shell data-a={aTicker} data-b={bTicker}>
+            {!belowLg && (solo.side === 'a' ? panel(false) : <CompareSideInner side="a" />)}
+            <div className="flex-1 min-w-0" data-compare-middle>
+              <CompareAxisInner />
+            </div>
+            {!belowLg && (solo.side === 'b' ? panel(false) : <CompareSideInner side="b" />)}
+          </div>
+          <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
+            <p className="min-w-[min(18rem,100%)] flex-1 text-[12px] leading-relaxed text-textSecondary" data-compare-waiting={solo.waiting}>
+              Still reading {solo.waiting}'s levels — {solo.s.ticker}'s are in; the ruler draws both once {solo.waiting}'s contracts have landed.
+            </p>
+          </div>
+          {belowLg && (
+            <div className="grid grid-cols-1 gap-2 p-2 border-t border-borderSubtle/60" data-compare-stacked>
+              {solo.side === 'a' ? panel(true) : null}
+              <CompareSideInner side={waitSide} />
+              {solo.side === 'b' ? panel(true) : null}
+            </div>
+          )}
+        </div>
+        <div className="border border-borderSubtle rounded-md bg-panel" data-compare-tapes>
+          <Deferred index={1} fallback={<CompareTapesInner />} className="animate-fade-in">
+            <CompareTapes a={aTicker} b={bTicker} aInk={A_INK} bInk={B_INK} revision={revision} />
+          </Deferred>
+        </div>
+        <div className="border border-borderSubtle rounded-md bg-panel" data-compare-pair-box>
+          <Deferred index={2} fallback={<ComparePairInner />} className="animate-fade-in">
+            <ComparePair a={aTicker} b={bTicker} aInk={A_INK} bInk={B_INK} nonce={nonce} guideOpen={guideOpen} onGuide={() => setGuideOpen(v => !v)} />
+          </Deferred>
+        </div>
+      </>
+    );
+  }
   if (!scan || !cmp) return <BookOrSkeleton tickers={[aTicker, bTicker]}><ComparePageSkeleton /></BookOrSkeleton>;
 
   const aBook = peekEntry(aTicker);

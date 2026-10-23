@@ -46,6 +46,8 @@ export interface StockFile {
       it): the tape the dark prints are drawn on. The page reads the light book (round 8: the full book's ~60 per-expiry
       calls were for levels the page defers), whose bars are five-minute ones. Empty until they land. */
   minutes?: Candle[];
+  /** In the session: the New York clock today's range is read to (from the minutes) — "15:08" */
+  rangeAsOf?: string;
   /** Epoch ms of the last print that landed. */
   at?: number;
 }
@@ -339,7 +341,12 @@ async function flowTape(ticker: string, session: string): Promise<{ rows: Record
 /** The prints the dark-pool read is built on: sized, in the regular session, priced at the quote */
 export const darkReadable = (p: DarkPoolPrint): boolean => p.intent !== 'ROTATION';
 
-async function load(ticker: string): Promise<void> {
+/* THE TAPES ONLY WHERE THEY ARE SHOWN (audit round 10: the earnings name page, which shows the company card — the file's
+   head — paged six flow-alert reads and three dark-pool reads it never drew). A head-only reader leaves the tapes unread;
+   the first reader that shows them asks for them. */
+const heads = new Map<string, Promise<StockFile | null>>();
+const tapesAsked = new Set<string>();
+async function load(ticker: string): Promise<StockFile | null> {
   const session = lastSessionIso();
   /* THE HEAD FIRST (audit round 5, phone: the AAPL page was all skeletons after 35s — it waited on up to 26 paged tape
      calls through the key's 3 shared slots). The screener row, the reports, the sessions and the chain are asked ahead of
@@ -351,16 +358,9 @@ async function load(ticker: string): Promise<void> {
     /* the same call the earnings page makes, so the two pages' busiest contracts agree */
     whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
   ]);
-  /* asked after the head, so the head's calls are in the queue first */
-  const tapesP = Promise.all([
-    flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
-    darkTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
-    whalesBars(ticker, '1m', 1000).catch(() => []),
-  ]);
   const [screenR, earnR, dayR, contractR] = await headP;
   const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? screenR[0] ?? null) : null;
   const days = daysFrom(Array.isArray(dayR) ? dayR : []);
-  const spot = num(screen && typeof screen === 'object' ? (screen as Record<string, unknown>).close : 0) || days[days.length - 1]?.close || 0;
   const got = (Array.isArray(screenR) && screenR.length > 0) || days.length > 0 || (Array.isArray(earnR) && earnR.length > 0);
   const head: StockFile = {
     status: got ? 'live' : 'error',
@@ -378,7 +378,22 @@ async function load(ticker: string): Promise<void> {
   };
   files.set(ticker, head);
   emit();
+  return head;
+}
+
+async function loadTapes(ticker: string, headP: Promise<StockFile | null>): Promise<void> {
+  /* asked right behind the head (the head's calls are in the queue first), assembled once the head is in */
+  const session = lastSessionIso();
+  const tapesP = Promise.all([
+    flowTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
+    darkTape(ticker, session).catch(() => ({ rows: [] as Record<string, unknown>[], window: NO_WINDOW })),
+    whalesBars(ticker, '1m', 1000).catch(() => []),
+  ]);
+  const head = await headP;
   const [flowR, darkR, barR] = await tapesP;
+  if (!head) return;
+  const spot = num(head.screen?.close) || head.days[head.days.length - 1]?.close || 0;
+  const got = head.status === 'live';
   const minutes: Candle[] = [];
   for (const b of Array.isArray(barR) ? barR : []) {
     const time = Math.floor(Date.parse(String(b.start_time || b.end_time || '')) / 1000);
@@ -390,8 +405,25 @@ async function load(ticker: string): Promise<void> {
     minutes.push({ time, open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
   }
   minutes.sort((a, b) => a.time - b.time);
+  /* TODAY'S RANGE FROM TODAY'S MINUTES (audit round 10: SPY "Range · Oct 23" at 15:08 read 2.64 — the vendor's daily bar,
+     frozen at 10:35 — against a true 4.79). The session's candle takes its high and low (and, in the session, its last
+     close) from the one-minute cash bars the page already reads; the daily bar is kept where the minutes are thin. */
+  let days2 = head.days;
+  let rangeAsOf: string | undefined;
+  const lastDay = head.days[head.days.length - 1];
+  if (minutes.length >= 30 && lastDay && nyIsoDate(lastDay.time * 1000) === session) {
+    const hi = Math.max(...minutes.map(c => c.high));
+    const lo = Math.min(...minutes.map(c => c.low));
+    const lastMin = minutes[minutes.length - 1];
+    const open = nyIsoDate() === session && nyMinuteOf(Date.now()) < SESSION_CLOSE_MIN;
+    days2 = [...head.days.slice(0, -1), { ...lastDay, high: hi, low: lo, close: open ? lastMin.close : lastDay.close, open: minutes[0].open || lastDay.open }];
+    if (open) rangeAsOf = clock(new Date((lastMin.time + 60) * 1000).toISOString());
+  }
+  const now0 = files.get(ticker) ?? head;
   files.set(ticker, {
-    ...head,
+    ...now0,
+    days: days2,
+    rangeAsOf,
     tapes: 'live',
     minutes,
     flow: flowsFrom(flowR.rows, spot, session),
@@ -407,23 +439,36 @@ export function peekStockFile(ticker: string): StockFile {
   return files.get(ticker.toUpperCase()) ?? blank('loading');
 }
 
-export function ensureStockFile(ticker: string): void {
+export function ensureStockFile(ticker: string, tapes = true): void {
   const t = ticker.toUpperCase();
-  if (!t || started.has(t)) return;
-  started.add(t);
-  files.set(t, blank('loading'));
-  emit();
-  void load(t).catch(() => {
-    if (files.get(t)?.status === 'loading') files.set(t, blank('error'));
+  if (!t) return;
+  if (!started.has(t)) {
+    started.add(t);
+    files.set(t, blank('loading'));
     emit();
-  });
+    heads.set(
+      t,
+      load(t).catch(() => {
+        if (files.get(t)?.status === 'loading') files.set(t, blank('error'));
+        emit();
+        return null;
+      }),
+    );
+  }
+  if (tapes && !tapesAsked.has(t)) {
+    tapesAsked.add(t);
+    const headP = heads.get(t);
+    if (headP) void loadTapes(t, headP);
+  }
 }
 
-export function useStockFile(ticker: string): StockFile {
+/** The name's file; `tapes: false` reads only its head (the screener row, the reports, the sessions, the chain) */
+export function useStockFile(ticker: string, opts: { tapes?: boolean } = {}): StockFile {
   const t = ticker.toUpperCase();
+  const tapes = opts.tapes !== false;
   useEffect(() => {
-    ensureStockFile(t);
-  }, [t]);
+    ensureStockFile(t, tapes);
+  }, [t, tapes]);
   return useSyncExternalStore(
     fn => {
       listeners.add(fn);
