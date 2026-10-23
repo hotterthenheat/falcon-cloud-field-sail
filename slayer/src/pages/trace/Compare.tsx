@@ -741,8 +741,9 @@ const Compare = () => {
           label: 'Tape dollars',
           note: regular ? the(higher(s => s.tape.dollars), 'the more money on the tape') : 'not compared',
           lead: regular ? higher(s => s.tape.dollars) : null,
-          bars: s => [{ v: s.tape.dollars, text: fmtUsd(s.tape.dollars), ink: 'silver' }],
-          cell: (s, lit) => <Fig lit={lit}>{fmtUsd(s.tape.dollars)}</Fig>,
+          /* no print in the stretch is no figure, not "$0" */
+          bars: s => [{ v: s.tape.dollars, text: s.tape.prints ? fmtUsd(s.tape.dollars) : '—', ink: 'silver' }],
+          cell: (s, lit) => <Fig lit={lit}>{s.tape.prints ? fmtUsd(s.tape.dollars) : '—'}</Fig>,
         },
         {
           key: 'sweeps',
