@@ -47,7 +47,7 @@ import { DEFAULT_R } from '../core/carry';
 import { cumulativeFlip, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
-import { peekEntry, peekGammaPriced } from './uwBook';
+import { inOwnIvHorizon, peekEntry, peekGammaPriced } from './uwBook';
 import { registeredDates } from './chainDates';
 import { callWallWords, putWallWords, wallPlace } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
@@ -75,18 +75,56 @@ export function yearsTo(expiry: string, now: number = Date.now()): number {
   return Math.max(5, mins) / YEAR_MIN;
 }
 
-/** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date) — else the date's ATM
-    vol. `s0`: the price the date's gamma was priced at, when it is not the search's spot. */
-const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number, perRow = false): GammaLeg[] => {
+/*
+  THE VOL A LEG WITHOUT ITS OWN IS RE-PRICED WITH (the fifth audit, 2026-10-23: TSLA's 252.5P/257.5P, CROX's wings —
+  contracts the vendor prints gamma for but no implied vol — took the at-the-money vol, and a deep wing priced at the
+  ATM vol "grows" by millions as price walks toward it: ≈ −$7e12 at 0.95× spot, which moved TSLA's Today flip from
+  365.1 to 366.7 and CROX's from 113.8 to 115.6). The smile of the same expiry stands in: at each strike the
+  out-of-the-money side's own vol (the in-the-money one where that is all there is), linear between strikes that
+  have one, flat past the last — the vol the market is actually quoting near that strike. ATM only with no smile.
+*/
+export function smileOf(chain: readonly StrikeNode[], spot: number): (k: number) => number {
+  const pts: [number, number][] = [];
+  for (const n of chain) {
+    const otm = n.strike >= spot ? n.callIv : n.putIv;
+    const itm = n.strike >= spot ? n.putIv : n.callIv;
+    const iv = otm && otm > 0 ? otm : itm && itm > 0 ? itm : 0;
+    if (iv > 0) pts.push([n.strike, iv]);
+  }
+  pts.sort((a, b) => a[0] - b[0]);
+  return (k: number) => {
+    if (!pts.length) return 0;
+    if (k <= pts[0][0]) return pts[0][1];
+    const last = pts[pts.length - 1];
+    if (k >= last[0]) return last[1];
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i][0] < k) continue;
+      const [k0, v0] = pts[i - 1];
+      const [k1, v1] = pts[i];
+      return k1 > k0 ? v0 + ((v1 - v0) * (k - k0)) / (k1 - k0) : v1;
+    }
+    return last[1];
+  };
+}
+
+/** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date), the same expiry's
+    smile at that strike where it is not — else the date's ATM vol. `s0`: the price the date's gamma was priced at, when
+    it is not the search's spot. `spot`: the price the smile's out-of-the-money side is read from. */
+const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, now: number, own: boolean, s0?: number, perRow = false, spot = 0): GammaLeg[] => {
   const t0 = yearsTo(date, now);
   const out: GammaLeg[] = [];
+  const smile = own ? smileOf(chain, s0 && s0 > 0 ? s0 : spot) : null;
   for (const n of chain) {
     /* EACH ROW AT ITS OWN PRICE AND MINUTE when the vendor's rows carry them (after its overnight roll every strike of a
        date has its own) — the date's latest otherwise */
     const own0 = perRow && n.gexPx && n.gexPx > 0 ? n.gexPx : s0;
     const t = perRow && n.gexAt ? yearsTo(date, n.gexAt) : t0;
-    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: own && n.callIv && n.callIv > 0 ? n.callIv : atmIv, t, s0: own0 });
-    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: own && n.putIv && n.putIv > 0 ? n.putIv : atmIv, t, s0: own0 });
+    const wing = smile ? smile(n.strike) : 0;
+    const volOf = (mine: number | undefined) => (own && mine && mine > 0 ? mine : wing > 0 ? wing : atmIv);
+    /* THE CONTRACTS' OWN CEILING: a leg's dollar gamma can never pass what its open interest holds at the strike,
+       OI × K·e^(−rT) / (√(2π)·σ·√T) — whatever vol it is re-priced with (core/gammaFlip.ts) */
+    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: volOf(n.callIv), t, s0: own0, oi: own && n.callOI > 0 ? n.callOI : undefined, ownIv: own && !!n.callIv && n.callIv > 0 });
+    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: volOf(n.putIv), t, s0: own0, oi: own && n.putOI > 0 ? n.putOI : undefined, ownIv: own && !!n.putIv && n.putIv > 0 });
   }
   return out;
 };
@@ -145,10 +183,15 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   const sig = pinned != null ? `p${Math.floor(pinned / 60_000)}` : priced.map(p => (p ? `${p.at}@${p.price}` : '-')).join(',') + (priced.every(Boolean) ? '' : `|${Math.floor(pricingClock(undefined, wall) / 60_000)}`);
   /* the front date: the first live listing that holds strikes — the one date every page loads contracts for */
   const front = Object.keys(by).filter(d => d >= floor && by[d]?.length).sort()[0];
-  /* FINAL ONLY WITH THE FRONT DATE'S OWN VOLS (the fourth audit's M1: SPY's Map read 771.25 off the at-the-money vol for
-     seconds, then 772.17): until its contracts are read the flip is provisional, and the pages print "…" */
-  const factsIn = pinned != null || !want.includes(front) || !!entry.factsDates?.has(front);
-  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}`;
+  /* WHICH DATES RE-PRICE WITH THEIR OWN CONTRACTS' VOLS (the fifth audit, 2026-10-23): the front date, and every live
+     date inside the own-vol horizon (uwBook OWN_IV_DAYS — every live date): with only the front date's own vols AAPL's
+     whole book read 336.7 (its later dates' wings at the ATM vol), against 326.0 with every contract's own. The Map and a
+     Board-only name load the same dates' contracts (uwBook), so both pages re-price with the same vols. */
+  const ownDates = new Set(want.filter(d => d === front || inOwnIvHorizon(d)));
+  /* FINAL ONLY WITH THOSE DATES' OWN VOLS (the fourth audit's M1: SPY's Map read 771.25 off the at-the-money vol for
+     seconds, then 772.17): until their contracts are read the flip is provisional, and the pages print "…" */
+  const factsIn = pinned != null || [...ownDates].every(d => !!entry.factsDates?.has(d));
+  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const term = entry.termIv ?? {};
@@ -159,7 +202,7 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
     const atm = term[d] ?? (entry.iv > 0 ? entry.iv : 0);
     const p = pinned == null ? priced[i] : null;
     const now = pinned ?? pricingClock(p?.at, wall);
-    const ls = legsOfDate(by[d], d, atm, now, d === front || snapshot.asOf != null, p && p.price > 0 && p.price !== spot ? p.price : undefined, pinned == null);
+    const ls = legsOfDate(by[d], d, atm, now, ownDates.has(d) || snapshot.asOf != null, p && p.price > 0 && p.price !== spot ? p.price : undefined, pinned == null, spot);
     for (const l of ls) if (l.iv > 0) withVol++;
     legs.push(...ls);
   }

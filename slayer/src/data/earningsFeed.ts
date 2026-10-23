@@ -254,7 +254,12 @@ function historyOf(rows: SlotRow[], before: string) {
   const pastMoves = moved.map(r => ({ label: qLabel((r.ending_fiscal_quarter || r.report_date || '').slice(0, 10)), movePct: moveOf(r.post_earnings_move_1d) ?? 0 }));
   const eps = dated.filter(r => r.actual_eps != null && r.actual_eps !== '' && r.street_mean_est != null && r.street_mean_est !== '').slice(0, 8);
   const results = eps.map(r => epsResultOf(num(r.actual_eps), num(r.street_mean_est)));
+  /* THE UPCOMING REPORT'S STREET ESTIMATE, when the vendor's row for it carries one (audit round 5: "Estimates —" sat beside
+     an 8-for-8 beat history) — the row on the report's own date, not yet reported */
+  const upcoming = rows.find(r => (r.report_date || '') === before && (r.actual_eps == null || r.actual_eps === '') && r.street_mean_est != null && r.street_mean_est !== '');
+  const nextEst = upcoming ? num(upcoming.street_mean_est) : null;
   return {
+    nextEst: nextEst != null && Number.isFinite(nextEst) ? nextEst : null,
     pastMoves,
     hist: pastMoves.length ? pastMoves.reduce((a, m) => a + Math.abs(m.movePct), 0) / pastMoves.length : 0,
     beatCount: results.filter(x => x === 'beat').length,
@@ -272,12 +277,15 @@ function withHistory(event: EarningsEvent, rows: SlotRow[]): EarningsEvent {
     history: true,
     histCount: h.pastMoves.length,
     histAvgMovePct: h.pastMoves.length ? h.hist : 0,
-    richness: priced ? event.impliedMovePct / h.hist : 0,
+    /* THE RATIO OF THE FIGURES SHOWN (audit round 5: "1.63× rich" beside ±4.0% and ±2.5%, which make 1.60 — the ratio was of
+       the unrounded 4.04 / 2.48): the options' move over the usual move, each at the one decimal the page prints */
+    richness: priced && Number(h.hist.toFixed(1)) > 0 ? Number(event.impliedMovePct.toFixed(1)) / Number(h.hist.toFixed(1)) : 0,
     beatRate8q: h.epsCount ? Math.round((h.beatCount / h.epsCount) * 100) : 0,
     beatCount: h.beatCount,
     inlineCount: h.inlineCount,
     missCount: h.missCount,
     pastMoves: h.pastMoves,
+    nextEpsEst: h.nextEst,
   };
   if (!priced) {
     const n = h.pastMoves.length;

@@ -13,6 +13,11 @@ export type DarkPoolIntent = 'ACCUMULATION' | 'DISTRIBUTION' | 'HEDGE FLOW' | 'R
 export interface DarkPoolPrint {
   id: number;
   time: string;
+  /** The print's instant (epoch ms) and its New York calendar day — what a session filter and a sort read */
+  epochMs?: number;
+  dateIso?: string;
+  /** An auction print (opening or closing cross, official open or close) — `special` names it; never read */
+  auction?: boolean;
   ticker: string;
   price: number;
   size: number;

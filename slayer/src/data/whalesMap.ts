@@ -11,6 +11,7 @@ import { TX_CODES } from './insiders';
 import { UNIVERSE } from './universe';
 import { companiesInHeadline, tickerName } from './tickers';
 import { daysBetween, nyDayOf, nyDaysAgo } from './nyDate';
+import { econImpact } from './econImpact';
 
 /* a bare vendor date is a New York calendar day; the distance is counted in calendar days (data/nyDate.ts) */
 const daysAgo = (iso?: string): number => nyDaysAgo(iso, 0);
@@ -47,6 +48,16 @@ const MACRO_RE =
 const GOV_RE =
   /\b(?:government|congress|senate|house (?:passes|votes|republicans|democrats)|white house|president|trump|biden|administration|election|parliament|prime minister|minister|ministry|cabinet|lawmakers?|legislation|bill (?:passes|signed)|sanctions?|embargo|war\b|ceasefire|nato|united nations|\bun\b|imf|world bank|g7|g20|budget|tax (?:cut|hike|bill|plan)|debt ceiling|stimulus|regulators?|commodit(?:y|ies)|gold (?:prices?|futures|rises|falls|climbs|slips)|silver prices?|copper prices?|natural gas|bitcoin|crypto(?:currency|currencies)? market|futures (?:rise|fall|edge|point)|stock futures|equit(?:y|ies) markets?|markets? (?:open|close|rally|slump|wrap)|asian (?:stocks|markets)|european (?:stocks|markets)|ftse|dax|nikkei (?:225|average|index|stock average|(?:rises|falls|gains|drops|climbs|slips|ends|closes))|hang seng|kospi|sensex|yuan|yen|euro\b|sterling|forex)\b/i;
 
+/* THE WORLD BEYOND THE FIVE BEATS IS MACRO, AND A STORY OF NO BEAT IS GENERAL (audit round 5, 2026-10-23). Israel and
+   Ukraine stories, "US Dollar Recovery… FX", Italy's bill auction, a bid-to-cover, UK natural gas and India's PMI all
+   fell through to PRODUCT, the old fallback. Geopolitics, currencies, rates and auctions, and economic data are Macro
+   (no single company as the subject); a launch, a release, a rollout is Product; anything else is General. */
+const GEO_RE = /\b(?:israel(?:i|is)?|gaza|hamas|hezbollah|west bank|ukrain(?:e|ian|ians)|kyiv|kremlin|russia(?:n|ns)?|moscow|putin|zelensk(?:y|iy)|iran(?:ian)?|tehran|syria|yemen|houthis?|red sea|north korea|pyongyang|taiwan strait|missiles?|drone strikes?|airstrikes?|troops|military|invasion|ceasefire|truce|peace (?:talks|deal|plan)|nato|sanctions?|geopolitic\w*)\b/i;
+const FX_RE = /\b(?:fx|forex|currenc(?:y|ies)|(?:us )?dollar(?: index)?|dxy|greenback|euro(?:zone)?|sterling|yen|yuan|renminbi|rupee|swiss franc|loonie|aussie dollar|kiwi dollar|peso|lira)\b(?![- ]denominated (?:bond|debt))/i;
+const RATES_RE = /\b(?:(?:t-|treasury |government |sovereign |\d+-(?:month|week|year) )bills?|government bonds?|sovereign bonds?|bunds?|gilts?|btps?|oats|jgbs?|treasur(?:y|ies)|yields?|bid[- ]to[- ]cover|(?:bill|bond|debt|treasury) auctions?|swap rates?|repo|interest rates?|rate (?:cut|hike|decision|path|outlook)s?|policy rate|basis points|bps)\b|\b(?:italy|italian|spain|spanish|germany|german|france|french|uk|britain|japan|eurozone|greece|portugal|ireland|belgium|austria|netherlands|dutch|finland|us|u\.s\.)\b[^.;]{0,40}\bbills?\b/i;
+const DATA_RE = /\b(?:pmi|purchasing managers|gdp|cpi|ppi|pce|inflation|deflation|payrolls?|unemployment|jobless|claims|retail sales|industrial (?:output|production)|factory (?:orders|output)|durable goods|trade (?:balance|deficit|surplus)|current account|housing starts|building permits|home sales|consumer (?:confidence|sentiment|prices)|business (?:confidence|climate|sentiment)|ifo|zew|tankan|inventor(?:y|ies)|stockpiles?|natural gas|nat gas|crude|brent|wti|gasoline|survey|index (?:rose|fell|rises|falls|climbs|slips|jumps|drops)|economic data)\b/i;
+const PRODUCT_RE = /\b(?:launch(?:es|ed|ing)?|unveil(?:s|ed|ing)?|introduc(?:es|ed|ing)|releases?d?|rolls? out|rolled out|rollout|debut(?:s|ed)?|new (?:product|model|version|service|feature|chip|phone|platform|app)|ships?|shipping|recalls?|recalled|availability|now available|partners? with|partnership|collaborat\w+|deploy(?:s|ed|ment)?|pilot|beta|preview|upgrade[sd]? (?:its|the) (?:app|platform|service)|update[sd]? (?:its|the) (?:app|platform|service)|approval for|wins? (?:contract|order|deal)|contract|orders?)\b/i;
+
 const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boolean): NewsCategory => {
   const s = `${headline} ${(tags ?? []).join(' ')}`;
   if (/\$MACRO\b/i.test(s)) return 'Macro';
@@ -64,8 +75,9 @@ const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boo
      Introduces Cloud Sync", Chery's crash tests and a Warhound launch were filed MACRO and featured as the lead. A story
      with no listed name is macro only when it is about the economy, a central bank, rates, prices, markets, or government
      and policy; a press release from a company the page does not list is a company story — the Product beat. */
-  if (!hasTicker && GOV_RE.test(s)) return 'Macro';
-  return 'Product';
+  if (!hasTicker && (GOV_RE.test(s) || GEO_RE.test(s) || FX_RE.test(s) || RATES_RE.test(s) || DATA_RE.test(s))) return 'Macro';
+  if (PRODUCT_RE.test(s)) return 'Product';
+  return 'General';
 };
 
 /* THE MOVE AT PUBLISH, ON THE dayChange.ts CONVENTION (the third audit, 2026-10-23). The wire's meta is the name's last
@@ -161,8 +173,18 @@ const firstWordOf = (t: string): RegExp | null => {
   const core = (name?.split(/[\s,]+/)[0] ?? '').replace(/[^A-Za-z0-9.&-]/g, '');
   return core.length >= 2 ? new RegExp(`^${esc(core)}\\b`, 'i') : null;
 };
+/* A SPONSOR OR A BROKER IS NOT THE SUBJECT (audit round 5, 2026-10-23): "HSBC India Manufacturing PMI…" was filed as HSBC
+   company news and drove "Biggest move · HSBC −2.1%"; "Jefferies Raises OMV Target Price" was filed under JEF. A
+   purchasing-managers' survey (HSBC, S&P Global, Caixin, au Jibun Bank…) is economic data with a sponsor's name on it — no
+   company is its subject; a broker's note leads with the broker — the subject is the name after the verb, so the
+   broker's name is read out of the headline before any tag is checked against it. */
+const SPONSORED_DATA_RE = /\b(?:pmi|purchasing managers'?(?: index)?)\b/i;
+const BROKER_LEAD_RE = /^\s*(?:[A-Z][\w&.'-]*\s+){1,4}?(?:raises|lifts|boosts|cuts|lowers|trims|reduces|reiterates|maintains|keeps|initiates|starts|resumes|upgrades|downgrades|assumes|sets|hikes|ups)\b(?=[^.;]{0,60}\b(?:target|rating|coverage|price objective|pt|to (?:buy|sell|hold|neutral|outperform|underperform|overweight|underweight|equal[- ]weight|market perform))\b)/i;
 function storyTickers(headline: string, tags: readonly string[] | undefined): { tickers: string[]; mentions: string[] } {
   if (/\$MACRO\b/i.test(headline)) return { tickers: [], mentions: [] };
+  if (SPONSORED_DATA_RE.test(headline)) return { tickers: [], mentions: [] };
+  const broker = BROKER_LEAD_RE.exec(headline);
+  if (broker) headline = headline.slice(broker[0].length).replace(/^\s+/, '');
   const tagged = [...new Set((tags ?? []).map(t => t.trim().toUpperCase()).filter(t => /^[A-Z][A-Z0-9.]{0,5}$/.test(t)))].filter(t => borneOut(t, headline));
   if (tagged.length) return { tickers: tagged, mentions: [] };
   const named = COMPANY_RE.filter(c => c.re.test(headline));
@@ -245,8 +267,8 @@ const REGIONS: { re: RegExp; region: EconEvent['region'] }[] = [
   { re: /\bcny\b|\bchina\b|\bpboc\b/i, region: 'CNY' },
 ];
 
-const impactOf = (title: string): EconEvent['impact'] =>
-  /cpi|nfp|nonfarm|payroll|fomc|\bfed\b|\bgdp\b|\bpce\b|interest rate/i.test(title) ? 'high' : /pmi|claims|sentiment|confidence|survey|retail sales|housing/i.test(title) ? 'medium' : 'low';
+/* one impact rule with the month calendar (data/econImpact.ts) */
+const impactOf = (title: string): EconEvent['impact'] => econImpact(title);
 
 export function econFromWhales(rows: UwEcon[]): EconEvent[] {
   const nowMs = Date.now();
@@ -415,6 +437,21 @@ const assetKindOf = (notes?: string, issuer?: string): AssetKind => {
   return 'Stock';
 };
 
+/** Every field of a vendor row, keys sorted — two rows are one report only when this matches */
+const rowKey = (r: Record<string, unknown>): string =>
+  Object.keys(r)
+    .sort()
+    .map(k => `${k}=${typeof r[k] === 'object' && r[k] != null ? JSON.stringify(r[k]) : String(r[k] ?? '')}`)
+    .join('\u0001');
+const hashKey = (s: string): string => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+};
+
 export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = [], windowDays = 10000): CongressFeed {
   const roster = new Map(people.map(p => [p.politician_id, p]));
   const trades: CongressTrade[] = [];
@@ -422,6 +459,7 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
      matches one already read, filing day included, is the same report and is read once */
   const seen = new Set<string>();
   let unread = 0;
+  let notMembers = 0;
   for (const r of rows) {
     /* the vendor's congress feed also carries executive-branch filers (the President's OGE reports, most of them
        filed past 45 days) — this is the Congress page, so only House and Senate members are read */
@@ -433,7 +471,16 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
     const filedDay = nyDayOf(r.filed_at_date);
     const lag = tradedDay && filedDay ? daysBetween(tradedDay, filedDay) : filed - traded;
     const who = r.politician_id ? roster.get(r.politician_id) : undefined;
-    const chamber = chamberOf(who?.chamber || r.member_type);
+    /* A MEMBER IS ON THE ROSTER AS ONE (audit round 5, 2026-10-23): a row the vendor tags house or senate whose person the
+       politician list files in the executive branch, or with neither a chamber nor a Congress directory (bioguide) id, is
+       not a member's report and is left out, counted. A member the roster carries without a chamber yet (a new
+       appointee: Alan Armstrong, bioguide A000383, first report 2026-03-24, after Sen. Mullin moved to the executive list)
+       keeps the chamber the report itself names. */
+    if (roster.size && who && (/executive/i.test(who.chamber || '') || (!/house|senate/i.test(who.chamber || '') && !who.bioguide_id))) {
+      notMembers += 1;
+      continue;
+    }
+    const chamber = chamberOf(/house|senate/i.test(who?.chamber || '') ? who?.chamber : r.member_type);
     const place = placeOf(who?.district, chamber);
     const member: Member = {
       id: r.politician_id || r.name || 'member',
@@ -449,9 +496,14 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
       unread += 1;
       continue;
     }
-    const id = `${member.id}-${r.ticker}-${r.transaction_date}-${r.txn_type}-${r.amounts ?? ''}-${r.filed_at_date ?? ''}-${(r.notes ?? '').slice(0, 40)}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
+    /* ONE REPORT IS EVERY FIELD OF IT (audit round 5, 2026-10-23): the id cut the notes to 40 characters and left out the
+       owner (`issuer`: self, spouse, joint…), so a spouse's trade merged into the member's and a call option into the
+       stock bought beside it — Whitehouse read 30 of 37, Pelosi 26 / 18 of 28 / 20, the 90-day book 673 of 699. Only a
+       true repeat — every field the vendor sent identical (the paging re-reads the cursor's day) — is read once. */
+    const whole = rowKey(r as unknown as Record<string, unknown>);
+    if (seen.has(whole)) continue;
+    seen.add(whole);
+    const id = `${member.id}-${r.transaction_date ?? ''}-${hashKey(whole)}`;
     trades.push({
       /* the notes join the id: two unnamed treasury bills bought the same day were one row id (duplicate grid rows) */
       id,
@@ -472,7 +524,7 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
       filedOn: filedDay ?? undefined,
     });
   }
-  return { ...rollCongress(trades, windowDays), unreadTypes: unread };
+  return { ...rollCongress(trades, windowDays), unreadTypes: unread, notMembers };
 }
 
 export function rollCongress(trades: CongressTrade[], windowDays: number): CongressFeed {

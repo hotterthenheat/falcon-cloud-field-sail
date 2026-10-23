@@ -56,6 +56,7 @@ const BEAT_HINT: Record<NewsCategory, string> = {
   'M&A': 'Deals',
   Product: 'Launches',
   Regulatory: 'Rulings and probes',
+  General: 'Stories of no named beat',
 };
 export const newsControls = (): TileControl[] => [{ id: 'beat', label: 'Beat', title: 'Which beat of the wire', options: [{ value: 'all', label: 'Every beat', hint: 'The whole wire' }, ...BEATS.map(b => ({ value: b, label: b, hint: BEAT_HINT[b] }))] }];
 

@@ -100,7 +100,7 @@ export const FLOW_SCREENS: FlowScreen[] = [
   { key: 'active', label: 'Most active', hint: 'Heaviest volume first' },
   { key: 'bullish', label: 'Unusually bullish', hint: 'Calls being bought and puts being sold, ranked by premium', tone: 'bull' },
   { key: 'bearish', label: 'Unusually bearish', hint: 'Puts being bought and calls being sold, ranked by premium', tone: 'bear' },
-  { key: 'fresh', label: 'New positioning', hint: 'Volume running past open interest — positions built today' },
+  { key: 'fresh', label: 'New positioning', hint: 'Volume running past open interest — positions built in the session' },
   { key: 'conviction-calls', label: 'Conviction calls', hint: 'Out-of-the-money calls with heavy sweep share', tone: 'bull' },
   { key: 'conviction-puts', label: 'Conviction puts', hint: 'Out-of-the-money puts with heavy sweep share', tone: 'bear' },
   { key: 'cheap', label: 'Cheap calls', hint: 'Low-priced out-of-the-money calls the crowd is trading', tone: 'bull' },
@@ -128,7 +128,7 @@ export function runScreen(rows: BookContract[], key: ScreenKey): BookContract[] 
     case 'bearish':
       return rows.filter(r => leansBear(r) && r.volOverOI >= 0.8).sort((a, b) => b.premium - a.premium);
     case 'fresh':
-      return rows.filter(r => r.volOverOI >= 1.5).sort((a, b) => b.volOverOI - a.volOverOI);
+      return rows.filter(r => r.volOverOI >= FRESH_VOL_OI).sort((a, b) => b.volOverOI - a.volOverOI);
     case 'conviction-calls':
       return rows
         .filter(r => r.right === 'C' && r.sweepPct >= 25 && r.otmPct >= 0)
@@ -170,7 +170,7 @@ export const FOOTPRINT_SCREENS: FootprintScreen[] = [
   { key: 'bought', label: 'Bought to open', hint: 'Builds that lifted the ask — buyers opened these' },
   { key: 'sold', label: 'Sold to open', hint: 'Builds that hit the bid — these were written, not bought' },
   { key: 'carryover', label: 'Carryover', hint: "Yesterday's heaviest volume that became standing interest" },
-  { key: 'unwinds', label: 'Unwinds', hint: 'Interest that left — positions closed out overnight' },
+  { key: 'unwinds', label: 'Unwinds', hint: 'Interest that left — positions closed out since the session before' },
   { key: 'streaks', label: 'Building streaks', hint: 'Interest climbing three sessions or more in a row' },
 ];
 
@@ -231,7 +231,7 @@ export const WATCHERS: WatcherRule[] = [
     /* the rule is the contract's DAY premium — it never looked at one print. RELATIVE, so it stays rare (the third audit,
        2026-10-22: "$25M and up" fired on 146 of the book's 174 — the book IS the day's heaviest contracts): the top tenth
        of the book's own premium today, and $25M at the least */
-    reason: "In the top tenth of the book's premium today ($25M at the least)",
+    reason: "In the top tenth of the book's premium in the session ($25M at the least)",
     hint: "A contract whose day's premium is in the top 10% of the book's — and at least $25M",
   },
   {
@@ -255,8 +255,8 @@ export const WATCHERS: WatcherRule[] = [
   {
     key: 'fresh-size',
     label: 'Fresh size',
-    reason: 'Volume 1.8× its open interest or more, on $300K or more',
-    hint: 'Trading many times its open interest — positions built today',
+    reason: 'Volume 1.5× its open interest or more, on $300K or more',
+    hint: 'Trading many times its open interest — positions built in the session',
   },
   {
     key: 'hammering',
@@ -295,7 +295,7 @@ export interface Catch {
 export function reasonPhrase(key: WatcherKey, r: BookContract): string {
   switch (key) {
     case 'big-money':
-      return `Carried ${usd(r.premium)} of premium today — the top tenth of the book${floorPackaged(r) ? `; ${Math.round(r.floorPct)}% of it floor-traded multi-leg packages, the shape of compression, not a bet` : ''}`;
+      return `Carried ${usd(r.premium)} of premium in the session — the top tenth of the book${floorPackaged(r) ? `; ${Math.round(r.floorPct)}% of it floor-traded multi-leg packages, the shape of compression, not a bet` : ''}`;
     case 'into-earnings':
       return `Reports in ${r.earnDays === 0 ? 'this session' : `${r.earnDays} session${r.earnDays === 1 ? '' : 's'}`}, open interest +${r.deltaOI.toLocaleString('en-US')} on ${r.volume.toLocaleString('en-US')} contracts`;
     case 'climbing':
@@ -317,6 +317,22 @@ export function floorPackaged(r: Pick<BookContract, 'floorPct' | 'multiPct'>): b
   return r.floorPct >= 50 && r.multiPct >= 50;
 }
 
+/** ONE FLOOR FOR "FRESH" VOLUME ACROSS TRACE (audit round 5: Watchers' fresh size used 1.8× open interest, the Screener and
+    Compare 1.5×): volume at least this many times the open interest reads as positions built in the session */
+export const FRESH_VOL_OI = 1.5;
+/** Vol/OI as a cell — "new" when the contract had no open interest (nothing to divide by), never 0.00 (audit round 5) */
+export function volOiText(r: Pick<BookContract, 'oi' | 'volume' | 'volOverOI'>): string {
+  if (r.oi > 0) return r.volOverOI.toFixed(2);
+  return r.volume > 0 ? 'new' : '—';
+}
+/** A DEEP-IN-THE-MONEY, LONG-DATED CONTRACT IS LIKELY NOT A BET (retail, 2026-10-23: NVDA's top "bet" on the Live Tape was a
+    2028 put 88.5% in the money, ΔOI +57): 25% or more in the money with six months or more to run trades like the
+    stock — a stock replacement, a roll or a financing leg — not a directional view. Flagged wherever bets are crowned. */
+export function stockLike(r: { otmPct: number; dte: number }): boolean {
+  return Number.isFinite(r.otmPct) && r.otmPct <= -25 && r.dte >= 180;
+}
+export const STOCK_LIKE_HINT = 'Deep in the money and long-dated — it trades like the stock: likely a stock replacement, a roll or a financing leg, not a directional bet';
+
 /** The book's big-money line: its 90th-percentile premium, $25M at the least */
 export function bigMoneyLine(rows: BookContract[]): number {
   if (!rows.length) return 25_000_000;
@@ -333,7 +349,7 @@ function rulesFor(r: BookContract, bigLine = 25_000_000): WatcherKey[] {
   const lean = dayLean(r).lean;
   if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct >= 8 && lean === 'ASK') out.push('climbing');
   else if (r.volume >= 6000 && r.sweepPct >= 25 && r.chgPct <= -8 && lean === 'BID') out.push('falling');
-  if (r.volOverOI >= 1.8 && r.premium >= 300_000) out.push('fresh-size');
+  if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI && r.premium >= 300_000) out.push('fresh-size');
   if (r.volume >= 12000 && r.sweepPct >= 30) out.push('hammering');
   return out;
 }
@@ -530,6 +546,11 @@ export interface SpreadLeg {
 
 export interface SpreadTrade {
   id: string;
+  /** OPRA's condition code on the structure (mlet, mlat, mesl, cbmo…) */
+  code?: string;
+  /** A compression package (cbmo / mctp) — a floor package that nets open interest down between members: labelled,
+      never read bullish or bearish, never a champion */
+  compression?: boolean;
   minute: number;
   /** Filled outside the name's regular session (before 09:30, or from its 16:00 / 16:15 close) */
   extended?: boolean;
@@ -667,3 +688,6 @@ export function applyFilters(rows: BookContract[], f: BookFilters): BookContract
     return true;
   });
 }
+
+/** Said on every figure the vendor sums for us (audit round 5, SidesRule): its totals carry spread legs and floor packages */
+export const VENDOR_TOTAL_NOTE = 'A vendor total — it includes spread legs and floor packages (the vendor sums every print; the legs cannot be taken back out without every print across the market). Only the totals Trace builds from prints — the Live Tape, the Dark Pool, Multi-Leg — leave them out';

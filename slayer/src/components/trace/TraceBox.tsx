@@ -50,7 +50,8 @@ export const CONTROLS_LINE = 'flex items-center gap-2 flex-wrap max-sm:grid max-
 export const Fact = ({ label, children, testId, title }: { label: string; children: ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0" title={title}>
     <dt className="text-[11px] text-textMuted whitespace-nowrap">{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-trace-fact={testId}>
+    {/* ON A PHONE A FACT WRAPS, never clips (audit round 5: "close of 10…", "$101.5…") */}
+    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap max-sm:whitespace-normal max-sm:break-words" data-trace-fact={testId}>
       {children}
     </dd>
   </div>
@@ -66,9 +67,9 @@ const INK: Record<Ink, string> = { supreme: 'text-supreme', bull: 'text-bull', b
 export const Champion = ({ label, ink, onOpen, children, testId, title = "Open the contract's card" }: { label: string; ink: Ink; onOpen: () => void; children: ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0">
     <dt className={`text-[11px] whitespace-nowrap ${INK[ink]}`}>{label}</dt>
-    <dd className="mt-0.5 whitespace-nowrap" data-trace-champion={testId}>
+    <dd className="mt-0.5 whitespace-nowrap max-sm:whitespace-normal" data-trace-champion={testId}>
       {/* the door's own hover, silver (door.ts) — it underlined on hover before 2026-09-16 */}
-      <button type="button" onClick={onOpen} title={title} className="font-mono text-[12px] tnum font-semibold text-textPrimary hover:text-silver transition-colors">
+      <button type="button" onClick={onOpen} title={title} className="font-mono text-[12px] tnum font-semibold text-textPrimary hover:text-silver transition-colors text-left max-sm:break-words">
         {children}
       </button>
     </dd>

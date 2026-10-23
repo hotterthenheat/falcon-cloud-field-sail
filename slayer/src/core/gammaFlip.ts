@@ -57,6 +57,11 @@ export interface GammaLeg {
   /** The price g0 was priced at, when it is not the search's spot (the vendor's row price — after the close the 4:00
       regular close, not the after-hours last). The leg is re-priced FROM here. */
   s0?: number;
+  /** The leg's open interest, when known — its re-priced dollar gamma can never pass what that many contracts hold at
+      their peak, OI·K·e^(−rT)/(√(2π)·σ·√T) (the most Γ·S² a contract reaches, near its strike) */
+  oi?: number;
+  /** True when `iv` is the contract's own printed vol (not the smile's or the at-the-money stand-in) */
+  ownIv?: boolean;
 }
 
 export interface FlipRead {
@@ -104,7 +109,16 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
        to its strike (NVDA's 230 call, 1 day out: $7M at 212, ~$2B at 230), and the cap froze those legs at their spot
        value, which left jitter crossings on SPY's whole book and moved QQQ's by 1%. G₀ is the vendor's live gamma, so the
        ratio is the contract priced outright. Only rounding noise is guarded (repricedFlip carries it flat). */
-    sum += l.g0 * Math.exp(Math.min(ln, 60));
+    let g = l.g0 * Math.exp(Math.min(ln, 60));
+    /* THE PHYSICAL CEILING (the fifth audit, 2026-10-23): Γ·S² of one contract peaks near its strike at
+       K·e^(−rT)/(√(2π)·σ·√T); a leg's open interest can hold no more than that many times it. Only on a leg whose vol
+       stands in (the smile's or the ATM's): a contract with its own printed vol is priced outright, and capping it
+       against a vol the vendor's gamma was not computed at would bend a real curve (AAPL's whole book: 326.0 → 317.7) */
+    if (!l.ownIv && l.oi && l.oi > 0) {
+      const cap = Math.max(Math.abs(l.g0), (l.oi * l.strike * Math.exp(-r * l.t)) / (SQRT2PI * l.iv * Math.sqrt(l.t)));
+      if (Math.abs(g) > cap) g = Math.sign(g) * cap;
+    }
+    sum += g;
   }
   return sum;
 }
@@ -115,7 +129,10 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: numbe
   /* the vendor prints gamma to the cent: a leg within a ten-millionth of the book is rounding, and multiplied by a
      wing's growth it would be noise the size of a strike — such legs are carried flat */
   const gross = legsIn.reduce((a, l) => a + Math.abs(l.g0), 0);
-  const legs = legsIn.map(l => (Math.abs(l.g0) < gross * 1e-7 ? { ...l, iv: 0 } : l));
+  /* A NEGLIGIBLE LEG CANNOT MOVE THE CROSSING (the fifth audit): one with no vol of its own (the smile's or the ATM
+     stand-in) that is under a hundred-thousandth of the book at spot is carried flat too — its growth would rest on a
+     vol nobody quoted */
+  const legs = legsIn.map(l => (Math.abs(l.g0) < gross * 1e-7 || (!l.ownIv && Math.abs(l.g0) < gross * 1e-5) ? { ...l, iv: 0 } : l));
   if (!(spot > 0) || !legs.length) return { flip: null, netAtSpot: net0, beyond: null, range, method: 'repriced' };
   const lo = spot * (1 - range);
   const hi = spot * (1 + range);

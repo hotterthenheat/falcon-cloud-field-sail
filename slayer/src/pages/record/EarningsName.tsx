@@ -36,6 +36,7 @@
 */
 
 import { useLiveQuote } from '../../data/liveQuote';
+import { lastSessionIso } from '../../data/nyDate';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, LayoutGrid } from 'lucide-react';
@@ -207,8 +208,14 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
             <Fact label="Up against down" testId="updown">
               <span className={d.probUpPct >= 56 ? 'text-bull' : d.probUpPct <= 44 ? 'text-bear' : 'text-textPrimary'}>{d.probUpPct}% up</span> <span className="text-textMuted">· {100 - d.probUpPct}% down</span>
             </Fact>
-            <Fact label="Estimates">
-              {d.live ? <span className="text-textMuted">—</span> : (
+            <Fact label={d.live ? 'EPS estimate' : 'Estimates'}>
+              {d.live ? (
+                e.nextEpsEst != null ? (
+                  <span className="text-textPrimary" title="The street's mean EPS estimate for this report, as Unusual Whales carries it">${e.nextEpsEst.toFixed(2)}</span>
+                ) : (
+                  <span className="text-textMuted" title="Unusual Whales carries no street estimate on this report's row yet, and this key has no forward-estimate feed — the beat history counts past reports' own estimates">not on file</span>
+                )
+              ) : (
                 <span className={e.revisionTrend > 0.15 ? 'text-bull' : e.revisionTrend < -0.15 ? 'text-bear' : 'text-textSecondary'}>{e.revisionTrend > 0.15 ? 'rising' : e.revisionTrend < -0.15 ? 'falling' : 'flat'}</span>
               )}
             </Fact>
@@ -380,19 +387,24 @@ const EarningsName = () => {
     changeTicker(e.ticker);
     navigate('/pinpoint/map');
   };
+  /* the session the chain's volume is from, by its date — overnight "today" was the session before (audit round 5) */
+  const chainDay = (() => {
+    const iso = lastSessionIso();
+    return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  })();
   const callSub = !dossier.live
     ? 'The three busiest by volume into the print · refreshes every ten seconds · click one to weigh it'
     : dossier.activeCalls.length
-      ? 'The three busiest by volume today · click one to weigh it'
+      ? `The three busiest by volume on ${chainDay} · click one to weigh it`
       : dossier.contractsReady
-        ? 'No volume on the chain today'
+        ? `No volume on the chain on ${chainDay}`
         : 'Reading the chain';
   const putSub = !dossier.live
     ? 'The three busiest by volume into the print · refreshes every ten seconds · click one to weigh it'
     : dossier.activePuts.length
-      ? 'The three busiest by volume today · click one to weigh it'
+      ? `The three busiest by volume on ${chainDay} · click one to weigh it`
       : dossier.contractsReady
-        ? 'No volume on the chain today'
+        ? `No volume on the chain on ${chainDay}`
         : 'Reading the chain';
 
   /* newest trade first (the third audit, 2026-10-23: PG read 10/05, 08/20, 08/24, 08/21 — filing order) */
@@ -449,10 +461,10 @@ const EarningsName = () => {
             <Fact label="Usually moves" testId="usual">
               {usualText(e)}
             </Fact>
-            <Fact label="Priced" testId="priced">
+            <Fact label="Priced · options ÷ usual" testId="priced">
               {!pricedOk || !isPriced ? <span className="text-textMuted" title={reported ? 'Reported — the move is in' : `Rich or cheap needs ${MIN_PRICED_PRINTS} past moves on file`}>—</span> : (
-              <span className={PRICED_INK[priced]}>
-                {richText(e.richness)}× {PRICED_WORD[priced]}
+              <span className={PRICED_INK[priced]} title={`The options' ±${e.impliedMovePct.toFixed(1)}% over the usual ±${e.histAvgMovePct.toFixed(1)}% — rich above 1.3×, cheap below 0.85×`}>
+                {richText(e.richness)}× {PRICED_WORD[priced]} <span className="text-textMuted text-[10px]">(±{e.impliedMovePct.toFixed(1)} ÷ ±{e.histAvgMovePct.toFixed(1)})</span>
               </span>
               )}
             </Fact>
@@ -587,7 +599,7 @@ const EarningsName = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Busiest calls" sub={callSub} testId="calls">
           <div className="pb-2">
-            {dossier.activeCalls.length === 0 ? <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? 'No volume on the chain today' : 'Reading the chain') : 'Nothing trading'}</p> : null}
+            {dossier.activeCalls.length === 0 ? <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? `No volume on the chain on ${chainDay}` : 'Reading the chain') : 'Nothing trading'}</p> : null}
             {dossier.activeCalls.map(c => (
               <ActiveRow key={c.id} c={c} maxVol={maxActiveVol} onOpen={() => weigh(c)} />
             ))}
@@ -595,7 +607,7 @@ const EarningsName = () => {
         </Box>
         <Box title="Busiest puts" sub={putSub} testId="puts">
           <div className="pb-2">
-            {dossier.activePuts.length === 0 ? <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? 'No volume on the chain today' : 'Reading the chain') : 'Nothing trading'}</p> : null}
+            {dossier.activePuts.length === 0 ? <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-widest text-textMuted">{dossier.live ? (dossier.contractsReady ? `No volume on the chain on ${chainDay}` : 'Reading the chain') : 'Nothing trading'}</p> : null}
             {dossier.activePuts.map(c => (
               <ActiveRow key={c.id} c={c} maxVol={maxActiveVol} onOpen={() => weigh(c)} />
             ))}

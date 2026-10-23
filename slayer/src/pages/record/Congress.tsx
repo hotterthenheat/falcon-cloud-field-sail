@@ -39,7 +39,7 @@ import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
-import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, congressSentence, seatLabel, summariseCongress } from '../../data/congress';
+import { AMOUNT_BRACKETS, STOCK_ACT_DEADLINE_DAYS, bracketLabel, bracketShort, congressSentence, isTreasuryBill, seatLabel, summariseCongress } from '../../data/congress';
 import { useCongressCoverage, useCongressFeed, useCongressStatus, wantCongressWindow, type CongressCoverage } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { FeedFallback } from '../../components/ui/liveRead';
@@ -262,9 +262,10 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
       );
     })()}
     {/* the bracket as its words — the ladder lives in the grid; at six across it pushed the label off the card */}
-    <span className="mt-1.5 flex items-center gap-2 font-mono tnum">
+    {/* the amount never cuts (audit round 5, phone: "Purchase $500K – $…") — at two across it wraps under the side */}
+    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono tnum">
       <span className={`text-[11px] ${typeInk(t)}`}>{typeWord(t)}</span>
-      <span className="text-[11px] font-bold text-textPrimary truncate" title={t.amountOver != null ? `Over $${t.amountOver.toLocaleString('en-US')}, as filed` : bracketLabel(t.bracket)}>{t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketShort(t.bracket)}</span>
+      <span className="text-[11px] font-bold text-textPrimary whitespace-nowrap" title={t.amountOver != null ? `Over $${t.amountOver.toLocaleString('en-US')}, as filed` : bracketLabel(t.bracket)}>{t.amountOver != null ? `Over $${t.amountOver >= 1e6 ? `${t.amountOver / 1e6}M` : `${Math.round(t.amountOver / 1e3)}K`}` : bracketShort(t.bracket)}</span>
       {t.late && <span className="ml-auto text-[8px] uppercase tracking-widest text-bear">late</span>}
     </span>
     <span className="mt-1 block font-mono text-[8px] uppercase tracking-widest text-textSecondary truncate">
@@ -285,18 +286,56 @@ const CongressCoverageLine = ({ coverage, window, unread }: { coverage: Congress
   const start = nyIsoDaysBack(window);
   const covered = !!coverage.since && coverage.since <= start;
   const partial = coverage.partialDays.filter(d => d >= start);
+  const done = covered && !coverage.reading;
   return (
     <p className="px-5 pb-2 text-[11px] leading-relaxed text-textMuted" data-congress-coverage title="Unusual Whales sends at most 200 reports a request, newest trade first; the page asks again from the oldest trade day it reached">
       {covered
-        ? `Every report of a trade made since ${shortDay(start)}`
+        ? `${done ? 'Complete · ' : ''}Every report of a trade made since ${shortDay(start)}`
         : coverage.since
           ? `Reports of trades made since ${shortDay(coverage.since)}${coverage.reading ? ' — reading further back' : coverage.capped ? ` — the read stops there, short of ${window} days` : ''}`
           : 'Reading'}
-      {partial.length ? ` · ${partial.length} ${partial.length === 1 ? 'day' : 'days'} with more than 200 reports (${partial.map(shortDay).join(', ')}) may be incomplete` : ''}
+      {partial.length ? ` · ${partial.length} ${partial.length === 1 ? 'day' : 'days'} with more than 200 reports, members' among them (${partial.map(shortDay).join(', ')}), may be incomplete` : ''}
       {unread ? ` · ${unread} ${unread === 1 ? 'report' : 'reports'} with an unreadable type left out` : ''}
     </p>
   );
 };
+
+/** THE READ'S PROGRESS, UP FRONT (audit round 5: "since Aug 29 — reading further back" sat in a footnote): how many of
+    the window's days the reports reach while the read pages back, and a plain "complete" once it has */
+export const CongressProgress = ({ coverage, window, waiting }: { coverage: CongressCoverage; window: number; waiting: boolean }) => {
+  const start = nyIsoDaysBack(window);
+  const covered = !!coverage.since && coverage.since <= start;
+  const reach = coverage.since ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${coverage.since}T12:00:00Z`)) / 86_400_000))) : 0;
+  const text = waiting || (!coverage.since && coverage.reading)
+    ? `Reading the reports · 0 of ${window} days so far`
+    : covered
+      ? coverage.reading
+        ? `All ${window} days read · finishing`
+        : `Complete · all ${window} days read`
+      : coverage.reading
+        ? `Reading · ${reach} of ${window} days so far — the counts grow as older reports land`
+        : `Partial · ${reach} of ${window} days — the read stopped there`;
+  const tone = covered && !coverage.reading ? 'text-textSecondary' : 'text-warn';
+  return (
+    <p className={`mt-1 font-mono text-[10px] uppercase tracking-widest ${tone}`} data-congress-progress={covered && !coverage.reading ? 'complete' : coverage.reading || waiting ? 'reading' : 'partial'}>
+      {text}
+    </p>
+  );
+};
+
+/** The Treasury-bill switch: on by default, and it says how many reports it is hiding */
+export const BillsSwitch = ({ hide, onToggle, hidden, testId }: { hide: boolean; onToggle: () => void; hidden: number; testId: string }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    aria-pressed={hide}
+    data-testid={testId}
+    title={hide ? `${hidden.toLocaleString('en-US')} Treasury-bill ${hidden === 1 ? 'report is' : 'reports are'} hidden — parked cash, not an equity trade. Click to show them` : 'Treasury bills are shown. Click to hide them'}
+    className={`h-7 px-2.5 rounded border font-mono text-[10px] uppercase tracking-widest whitespace-nowrap transition-colors ${hide ? 'border-silver/50 bg-silver/[0.08] text-textPrimary' : 'border-borderMuted text-textSecondary hover:border-silver/40'}`}
+  >
+    {hide ? `T-bills hidden · ${hidden.toLocaleString('en-US')}` : 'T-bills shown'}
+  </button>
+);
 
 /* ---- the page ------------------------------------------------------------------ */
 
@@ -307,6 +346,9 @@ const Congress = () => {
   const [chamber, setChamber] = useState<ChamberPick>('both');
   const [owner, setOwner] = useState<OwnerPick>('any');
   const [show, setShow] = useState<Show>('all');
+  /* TREASURY BILLS HIDDEN BY DEFAULT (audit round 5): parked cash in 4- to 52-week bills filled the book and every
+     member's page, burying the equity trades — one switch shows them, and the head says how many it hid */
+  const [hideBills, setHideBills] = useState(true);
   const [guideOpen, setGuideOpen] = useState(false);
 
   /* The feed is the live record when it answers; the reports are paged back by trade day until the window is covered */
@@ -319,9 +361,11 @@ const Congress = () => {
   const waiting = status === 'loading';
   const quiet = failed || waiting;
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut';
+  const billsHidden = useMemo(() => (hideBills ? feed.trades.filter(isTreasuryBill).length : 0), [feed, hideBills]);
   const cut = useMemo(
     () =>
       feed.trades.filter(t => {
+        if (hideBills && isTreasuryBill(t)) return false;
         if (chamber !== 'both' && t.member.chamber !== chamber) return false;
         if (owner !== 'any' && t.owner !== owner) return false;
         if (show === 'late' && !t.late) return false;
@@ -329,7 +373,7 @@ const Congress = () => {
         if (show === 'sales' && (t.type === 'Purchase' || t.type === 'Exchange')) return false;
         return true;
       }),
-    [feed, chamber, owner, show]
+    [feed, chamber, owner, show, hideBills]
   );
 
   /* THE FILTER reads the names and members on the cut; any pick matching keeps the row */
@@ -419,12 +463,21 @@ const Congress = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">Every report of a trade made in the window, newest filing first · a row opens that member’s book</p>
+          {!failed && <CongressProgress coverage={coverage} window={window} waiting={waiting} />}
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title="STOCK Act reports on the grid right now, after the cards">Reports</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title="STOCK Act reports on the grid right now, after the cards — bought, sold (full or partial) and exchanged add up to the whole">Reports</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-count>
-              {quiet ? '—' : <>{stats.trades.length} <span className="text-textMuted">· {stats.purchases} bought · {stats.sales} sold</span></>}
+              {quiet ? '—' : (
+                <>
+                  {stats.trades.length.toLocaleString('en-US')}{' '}
+                  <span className="text-textMuted">
+                    · {stats.purchases.toLocaleString('en-US')} bought · {stats.sales.toLocaleString('en-US')} sold
+                    {stats.trades.length - stats.purchases - stats.sales > 0 ? ` · ${(stats.trades.length - stats.purchases - stats.sales).toLocaleString('en-US')} exchanged` : ''}
+                  </span>
+                </>
+              )}
             </dd>
           </div>
           <div>
@@ -449,13 +502,14 @@ const Congress = () => {
         <DropdownSelect label="Owner" value={owner} options={OWNER_OPTIONS} onChange={setOwner} title="Whose holding" testId="congress-owner" />
         <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
+        <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="congress-bills" />
       </div>
       {!failed && !waiting && <CongressCoverageLine coverage={coverage} window={window} unread={feed.unreadTypes ?? 0} />}
       {failed ? (
         <FeedFallback />
       ) : (
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
-          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among trades made in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : congressSentence(stats)}
+          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among trades made in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
         </p>
       )}
       {/* THE REPORTS TO KNOW */}

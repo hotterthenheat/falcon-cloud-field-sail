@@ -8,6 +8,8 @@ import type { Candle } from '../types/market';
 import { daysBetween, lastSessionIso, nyDayOf, nyTodayIso } from './nyDate';
 import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
+import { darkPrint } from './traceLive';
+import { alertSides, darkPrintKey } from './sidesRule';
 import { uwCall, whalesDailyLong, whalesEarnings, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
 
 export interface EarnRow {
@@ -76,10 +78,10 @@ const mmddyyyy = (iso: string): string => {
 };
 
 /* calendar days from New York's today to the expiry — never UTC midnight against the clock (data/nyDate.ts) */
-const dteOf = (iso: string): number => {
+const dteOf = (iso: string, from: string = nyTodayIso()): number => {
   const day = iso.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return 0;
-  return Math.max(0, daysBetween(nyTodayIso(), day));
+  return Math.max(0, daysBetween(from, day));
 };
 
 function daysFrom(rows: UwDaily[]): Candle[] {
@@ -107,25 +109,24 @@ function daysFrom(rows: UwDaily[]): Candle[] {
     .filter(c => c.time > 0);
 }
 
-/** New York's calendar day — a contract expiring before it is dead and is never listed as busy */
-const nyToday = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
-
 function flowsFrom(rows: Record<string, unknown>[], spot: number, session: string): FlowPrint[] {
-  const today = nyToday();
   /* THE SESSION'S ALERTS ONLY (the third audit, 2026-10-23): the vendor's alerts reach back over days — 5 of WOLF's 11
      "today" were from 10/16–10/21 — so the premium-today split and the tape's richest prints read only alerts created on
-     the session the page names; an alert on a contract that has since expired is not "busy" any more either */
+     the session the page names. An alert on a contract that expired BEFORE that session is dropped; the session's own
+     0DTE alerts are its own (audit round 5: after midnight the filter compared expiries with New York's today and threw
+     out 1,028 of SPY's 1,589 alerts on 10/22 — the 10/22 expiries) */
   const live = rows.filter(row => {
     if (nyDayOf(String(row.created_at || '')) !== session) return false;
     const exp = String(row.expiry || '').slice(0, 10);
-    return !/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp >= today;
+    return !/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp >= session;
   });
   /* every alert of the session is kept: the ask and sweep shares are sums over all of them (the tape shows the top few) */
   return live.map((row, i) => {
     const prem = num(row.total_premium);
-    const ask = num(row.total_ask_side_prem);
-    const bid = num(row.total_bid_side_prem);
-    const side: FlowPrint['side'] = ask > bid * 1.15 ? 'ASK' : bid > ask * 1.15 ? 'BID' : 'MID';
+    /* SIDESRULE (audit round 5): the side that carried 60% or more of the alert's whole premium, else mid — Trace's
+       rule (data/sidesRule.ts), not "ask over 1.15× the bid" ($30,010 with $1,260 on the ask read ASK) */
+    const sides = alertSides(row);
+    const { ask, bid, side } = sides;
     const right: FlowPrint['right'] = String(row.type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
     const strike = num(row.strike);
     const expiry = String(row.expiry || '');
@@ -139,15 +140,16 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
       right,
       otmPct: under > 0 ? ((strike - under) / under) * 100 : 0,
       expiry: expiry.includes('-') ? mmddyyyy(expiry) : expiry,
-      dte: dteOf(expiry),
+      dte: dteOf(expiry, session),
       fill: num(row.price),
       bid: num(row.bid),
       ask: num(row.ask),
       fillPos: side === 'ASK' ? 1 : side === 'BID' ? 0 : 0.5,
       side,
       flowScore: side === 'ASK' ? 60 : side === 'BID' ? -60 : 0,
-      ratioLabel: side,
-      ratioBidPct: prem > 0 ? (100 * bid) / prem : 0,
+      ratioLabel: sides.whole > 0 ? (ask >= bid ? `ASK ${Math.round((ask / sides.whole) * 100)}%` : `BID ${Math.round((bid / sides.whole) * 100)}%`) : '—',
+      ratioBidPct: sides.whole > 0 ? (100 * bid) / sides.whole : 0,
+      alertSides: { ask, bid, other: sides.other },
       size: num(row.total_size),
       premium: prem,
       volume: num(row.volume),
@@ -162,23 +164,11 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
   });
 }
 
-/* THE DARK POOL READ, ON THE TRACE CONVENTION (the re-audit, 2026-10-22). AAPL read "distributing · strong · the
-   largest $991M at 348.22" off 80 prints that were all after 16:00 — the largest a prior-reference-price print, others
-   average-price trades — and every print was set against today's spot, not its own quote. Now, as Trace reads them: a
-   print is set against the NBBO midpoint at its own print time (the print's nbbo_bid / nbbo_ask); paid over the mid is
-   buyer-initiated (ACCUMULATION), sold under it seller-initiated (DISTRIBUTION), at the mid (within half a cent) neither.
-   Only a sized print (10,000 shares or $500K) in the regular session, priced at the quote, carries a read: average-price,
-   prior-reference, contingent, qualified-contingent, derivative-priced and stopped-stock prints, and every
-   extended-hours print, are kept on the tape and never read. */
-const SPECIAL_WORD: Record<string, string> = {
-  average_price_trade: 'average-price trade',
-  prior_reference_price: 'prior-reference-price trade',
-  contingent_trade: 'contingent trade',
-  qualified_contingent_trade: 'qualified contingent trade',
-  derivative_priced: 'derivative-priced trade',
-  derivatively_priced: 'derivative-priced trade',
-  stopped_stock: 'stopped-stock trade',
-};
+/* THE DARK POOL READ IS TRACE'S OWN (audit round 5, 2026-10-23): each print is mapped by traceLive.ts darkPrint — the
+   SidesRule in one place: set against the NBBO mid at its own print time, paid over it buyer-initiated (ACCUMULATION),
+   sold under it seller-initiated (DISTRIBUTION), at the mid (a quarter cent) neither; only a sized print (10,000 shares
+   or $500K) carries a read; a print priced by its own terms or in an auction, and every after-hours print, is kept and
+   never read. A print stamped outside 09:30–16:00 ET is after hours by its own time as well as its flag. */
 const nyMinutes = (iso: string): number | null => {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
@@ -190,49 +180,13 @@ const nyMinutes = (iso: string): number | null => {
 
 function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint[] {
   return rows
-    .filter(r => !r.canceled)
+    .filter(r => r.canceled !== true && r.canceled !== 'true')
     .map((row, i) => {
-      const price = num(row.price);
-      const size = num(row.size);
-      const notional = num(row.premium) || price * size;
-      const bid = num(row.nbbo_bid);
-      const ask = num(row.nbbo_ask);
-      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : 0;
-      const codes = [row.sale_cond_codes, row.trade_code].flatMap(c => (Array.isArray(c) ? c : [c])).filter(c => c != null && c !== '').map(String);
-      const own = codes.filter(c => c in SPECIAL_WORD);
-      const special = own.length ? [...new Set(own.map(c => SPECIAL_WORD[c]))].join(', ') : null;
+      const p = darkPrint(row, i, spot);
       const minute = nyMinutes(String(row.executed_at || ''));
       const outside = minute != null && (minute < 9 * 60 + 30 || minute >= 16 * 60);
-      const extended = (row.ext_hour_sold_codes != null && row.ext_hour_sold_codes !== '') || outside;
-      const sized = size >= 10_000 || notional >= 500_000;
-      const cents = mid > 0 ? (price - mid) * 100 : 0;
-      const place = mid <= 0 ? 'no quote' : Math.abs(cents) < 0.5 ? 'at the mid' : cents > 0 ? 'over the mid' : 'under the mid';
-      const readable = sized && !special && !extended && mid > 0;
-      const intent: DarkPoolPrint['intent'] = !readable ? 'ROTATION' : Math.abs(cents) < 0.5 ? 'HEDGE FLOW' : cents > 0 ? 'ACCUMULATION' : 'DISTRIBUTION';
-      return {
-        id: i + 1,
-        time: clock(String(row.executed_at || '')),
-        ticker: String(row.ticker || '').toUpperCase(),
-        price,
-        size,
-        notional,
-        venue: String(row.market_center || 'off-exchange'),
-        vsSpotPct: mid > 0 ? ((price - mid) / mid) * 100 : spot > 0 ? ((price - spot) / spot) * 100 : 0,
-        atLevel: false,
-        sized: sized && !special,
-        intent,
-        conviction: 40,
-        read: special
-          ? `${size.toLocaleString('en-US')} shares at ${price.toFixed(2)} — ${/^[aeiou]/i.test(special) ? 'an' : 'a'} ${special}, priced by its terms; no read`
-          : extended
-            ? `${size.toLocaleString('en-US')} shares at ${price.toFixed(2)} — outside the regular session; no read`
-            : `${size.toLocaleString('en-US')} shares at ${price.toFixed(2)}, ${place}`,
-        exec: special || mid <= 0 ? null : Math.abs(cents) < 0.5 ? 'MID' : cents > 0 ? 'ASK' : 'BID',
-        bid: bid > 0 ? bid : null,
-        ask: ask > 0 ? ask : null,
-        special,
-        extended: extended || undefined,
-      } satisfies DarkPoolPrint;
+      if (!outside || p.extended) return p;
+      return { ...p, extended: true, intent: 'ROTATION', read: p.special ? p.read : 'After hours by its own time — no read.' } satisfies DarkPoolPrint;
     });
 }
 
@@ -240,7 +194,7 @@ function darksFrom(rows: Record<string, unknown>[], spot: number): DarkPoolPrint
    session: the prints are asked for on the session the page names, up to its 16:00 New York close once that has passed.
    SIZED IS 10,000 SHARES OR $500K (Trace's SidesRule; the third audit, 2026-10-23: asked for $500K+ alone, GME lost 16
    of its 25 sized prints) — so the tape is two asks, the $500K+ prints and the 10,000-share+ prints, merged on the
-   vendor's tracking id. The window they span is printed with the read. */
+   print's identity (data/sidesRule.ts darkPrintKey — the tracking id is reused by the vendor). The window they span is printed with the read. */
 export const DARK_MIN_PREMIUM = 500_000;
 export const DARK_MIN_SIZE = 10_000;
 
@@ -267,7 +221,7 @@ const nyInstant = (session: string, hh: number, mm = 0): number => {
    while the label said 09:32–15:59 (the start came from the 42-row 10,000-share read). Each stream now pages back
    with older_than — the oldest print in hand — until it reaches the session's start or the vendor runs dry, at most
    `maxPages` calls in a row (the key has 3 upstream slots for everyone, so the paging is sequential and capped). */
-async function pageBack(base: string, stamp: string, limit: number, startMs: number, endMs: number | null, maxPages: number): Promise<{ rows: Record<string, unknown>[]; complete: boolean; oldestMs: number | null; pages: number; error: string | null }> {
+async function pageBack(base: string, stamp: string, limit: number, startMs: number, endMs: number | null, maxPages: number, keyOf: (row: Record<string, unknown>) => string): Promise<{ rows: Record<string, unknown>[]; complete: boolean; oldestMs: number | null; pages: number; error: string | null }> {
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   let older = endMs != null ? Math.floor(endMs / 1000) : null;
@@ -284,7 +238,7 @@ async function pageBack(base: string, stamp: string, limit: number, startMs: num
     const page = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
     let fresh = 0;
     for (const row of page) {
-      const key = String(row.tracking_id ?? row.id ?? `${row[stamp]}|${row.price}|${row.size}|${row.option_chain ?? ''}`);
+      const key = keyOf(row);
       if (seen.has(key)) continue;
       seen.add(key);
       fresh += 1;
@@ -295,7 +249,7 @@ async function pageBack(base: string, stamp: string, limit: number, startMs: num
     if (page.length < limit) return { rows, complete: true, oldestMs, pages, error };
     if (oldestMs != null && oldestMs <= startMs) return { rows, complete: true, oldestMs, pages, error };
     /* older_than is strict: the next page starts at the oldest second in hand, plus one so a second split across two
-       pages is read whole (the tracking id dedupes it); a page with nothing new steps a second further back */
+       pages is read whole (the print key dedupes it); a page with nothing new steps a second further back */
     const next = oldestMs != null ? Math.floor(oldestMs / 1000) + (fresh > 0 ? 1 : 0) : null;
     if (next == null || (older != null && next >= older)) older = older != null ? older - 1 : null;
     else older = next;
@@ -308,7 +262,7 @@ async function pageBack(base: string, stamp: string, limit: number, startMs: num
    session: the prints are asked for on the session the page names, up to its 16:00 New York close once that has passed.
    SIZED IS 10,000 SHARES OR $500K (Trace's SidesRule; the third audit, 2026-10-23: asked for $500K+ alone, GME lost 16
    of its 25 sized prints) — so the tape is two asks, the $500K+ prints and the 10,000-share+ prints, merged on the
-   vendor's tracking id. When either ask could not be paged back to the open, both are cut to the window the shorter
+   print's identity (sidesRule.ts darkPrintKey). When either ask could not be paged back to the open, both are cut to the window the shorter
    one covers, so every print in the read is from one stated window — and that window is printed with the read. */
 const DARK_LIMIT = 500;
 async function darkTape(ticker: string, session: string): Promise<{ rows: Record<string, unknown>[]; window: TapeWindow }> {
@@ -317,8 +271,8 @@ async function darkTape(ticker: string, session: string): Promise<{ rows: Record
   const endMs = Date.now() >= closeMs ? closeMs : null;
   const base = `/darkpool/${encodeURIComponent(ticker)}?date=${session}&limit=${DARK_LIMIT}`;
   const [byPrem, bySize] = await Promise.all([
-    pageBack(`${base}&min_premium=${DARK_MIN_PREMIUM}`, 'executed_at', DARK_LIMIT, openMs, endMs, 12),
-    pageBack(`${base}&min_size=${DARK_MIN_SIZE}`, 'executed_at', DARK_LIMIT, openMs, endMs, 6),
+    pageBack(`${base}&min_premium=${DARK_MIN_PREMIUM}`, 'executed_at', DARK_LIMIT, openMs, endMs, 12, darkPrintKey),
+    pageBack(`${base}&min_size=${DARK_MIN_SIZE}`, 'executed_at', DARK_LIMIT, openMs, endMs, 6, darkPrintKey),
   ]);
   if (byPrem.error && bySize.error && !byPrem.rows.length && !bySize.rows.length) throw new Error(byPrem.error);
   /* the window both streams cover: from the later of the two oldest prints when either stopped short of the open */
@@ -328,7 +282,7 @@ async function darkTape(ticker: string, session: string): Promise<{ rows: Record
   const out: Record<string, unknown>[] = [];
   for (const res of [byPrem, bySize]) {
     for (const row of res.rows) {
-      const key = String(row.tracking_id ?? `${row.executed_at}|${row.price}|${row.size}`);
+      const key = darkPrintKey(row);
       /* the vendor's date filter still hands back the evening before; the read is the named session's alone */
       if (nyDayOf(String(row.executed_at || '')) !== session || seen.has(key)) continue;
       if (fromMs != null && Date.parse(String(row.executed_at || '')) < fromMs) continue;
@@ -357,7 +311,7 @@ async function flowTape(ticker: string, session: string): Promise<{ rows: Record
   const dayEnd = nyInstant(session, 23, 59);
   const endMs = Date.now() > dayEnd ? dayEnd : null;
   const base = `/option-trades/flow-alerts?ticker_symbol=${encodeURIComponent(ticker)}&limit=${FLOW_LIMIT}&newer_than=${Math.floor(dayStart / 1000)}`;
-  const got = await pageBack(base, 'created_at', FLOW_LIMIT, dayStart, endMs, 8);
+  const got = await pageBack(base, 'created_at', FLOW_LIMIT, dayStart, endMs, 8, r => String(r.id ?? `${r.created_at}|${r.option_chain ?? ''}|${r.total_premium ?? ''}|${r.total_size ?? ''}`));
   const rows = got.rows.filter(r => nyDayOf(String(r.created_at || '')) === session);
   const stamps = rows.map(r => String(r.created_at || '')).sort();
   return {

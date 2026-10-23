@@ -17,6 +17,7 @@
 ==================================================
 */
 
+import { expiryWords, isLiveDay, shortDay } from './dayWords';
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Compass, Copy, Crosshair, Scale } from 'lucide-react';
@@ -70,7 +71,9 @@ function thetaWords(p: FlowPrint, thetaPct: number | null): { text: string; warn
   const rate = Math.abs(p.theta);
   const dp = (v: number) => (v < 0.1 ? 3 : 2);
   if (rate < p.fill) return { text: `${thetaPct.toFixed(1)}% of the fill · $${rate.toFixed(dp(rate))} a share`, warn: false };
-  const when = p.dte <= 0 ? 'expires today' : p.dte === 1 ? 'expires tomorrow' : `expires in ${p.dte} days`;
+  /* from New York's calendar day, not the tape's session (audit round 5: at 01:00 on Oct 23 an Oct 23 contract read
+     "expires tomorrow" and an Oct 22 one "expires today") */
+  const when = expiryWords(p.expiry) || (p.dte <= 0 ? 'expires at its session\'s bell' : `expires in ${p.dte} days`);
   return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share decays by then`, title: `The vendor's theta is a rate — $${rate.toFixed(dp(rate))} a share a day at this instant — and in an option's last days it runs past the price, because the value goes to zero at expiry. A day cannot take more than the $${p.fill.toFixed(2)} it is worth.`, warn: true };
 }
 
@@ -441,7 +444,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[11px] font-semibold tnum transition-colors"
             >
               <CalendarDays className="w-3 h-3" />
-              {dateIso === tapeIso ? 'Today' : dateLabel}
+              {isLiveDay(dateIso) ? 'Today' : dateLabel}
             </button>
             <button
               onClick={() => nextIso && setDateIso(nextIso)}
@@ -606,7 +609,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 <Fact label={print.trades && print.trades > 1 ? 'This alert, mostly' : 'This print'} value={print.side === 'ASK' ? 'paid the offer' : print.side === 'BID' ? 'hit the bid' : 'mid / no side'} valueCls={print.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
               )}
               {/* the contract's whole session by side — the same history row the table reads, mid shown on its own */}
-              <Fact label={dateIso === tapeIso ? "Today's volume by side" : 'Session volume by side'} value={dayLean ? <span title={dayLean.title}>{dayLean.text}</span> : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
+              <Fact label={isLiveDay(dateIso) ? "Today's volume by side" : `${shortDay(dateIso)} volume by side`} value={dayLean ? <span title={dayLean.title}>{dayLean.text}</span> : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
               {/* THE SIGNED DISTANCE, AND THE WORD (the re-audit, 2026-10-22: a 7600 put against 7,665 read "+0.8%" under
                   "Strike vs spot" — that was how far out of the money it is, not strike less spot) */}
               <Fact
@@ -624,7 +627,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               {/* ONE FIGURE, ITS SOURCE SAID (audit round 4: 146,691 on the Screener, 146,779 on the card, 146,713 elsewhere — three
                   "today's volume"): the card's is the contract's session row (after-hours prints included); the Screener's is
                   the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
-              <Fact label={dateIso === tapeIso && day ? "Today's volume · session row, after hours in" : 'Volume'} value={num(dayVol)} />
+              <Fact label={dateIso === tapeIso && day ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row, after hours in` : 'Volume'} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
               <Fact label="Vol ÷ OI" value={`${fixed(dayOi > 0 ? dayVol / dayOi : print.volOverOI)}x`} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
               {/* the cost to cross, off the print's OWN quote; a day of time off the vendor's own theta — no model */}
@@ -662,7 +665,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-print-tape>
                 <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
-                  <span className="font-mono text-[11px] text-textMuted">the contract and {print.ticker} on one clock · {dateIso === tapeIso ? 'today' : dateLabel}, {cf ? cf.window.label : `09:30–${sessionEndLabel(print.ticker)} ET`}</span>
+                  <span className="font-mono text-[11px] text-textMuted">the contract and {print.ticker} on one clock · {isLiveDay(dateIso) ? 'today' : dateLabel}, {cf ? cf.window.label : `09:30–${sessionEndLabel(print.ticker)} ET`}</span>
                   <span className="ml-auto flex items-center gap-0.5">
                     {INTERVALS.map(m => (
                       <Chip key={m} active={m === intervalMin} onClick={() => setIntervalMin(m)} title={`${m}-minute bars`}>

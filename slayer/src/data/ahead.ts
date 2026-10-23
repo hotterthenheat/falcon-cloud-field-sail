@@ -170,6 +170,7 @@ export function buildCorridor(snapshot: MarketSnapshot, profile: ExposureProfile
   const spot = snapshot.spot;
   const one = snapshot.liveBook ? datesOf(snapshot, snapshot.chain) : null;
   const sigmaDay = (snapshot.liveBook ? peekDaySigma(snapshot.ticker, Array.isArray(one) && one.length === 1 ? one[0] : null) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
+  /* the corridor is to the coming close — one session's move on the vendor's own scale (uwBook peekDaySigma) */
   const sigma = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
   const { callWall, putWall, flip } = profile.levels;
   const gravityEnd = gravityFor(clock.minutesLeft);

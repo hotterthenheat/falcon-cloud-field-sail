@@ -37,6 +37,9 @@ import { useMarketData } from '../../context/MarketDataContext';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import { isNetSegment, type MoneynessKey, type NetFlowSegment } from '../../data/flowBook';
 import { useLiveBook, usePaneFlow } from '../../data/traceLive';
+import { tapeSessionIso } from '../../data/traceLive';
+import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
+import { isLiveDay, sameDayWords, shortDay } from '../../components/trace/dayWords';
 import { usd as fmtUsd } from '../../data/traceLive';
 import { nyClock } from '../../core/nyTime';
 import Lean from '../../components/trace/Lean';
@@ -178,7 +181,7 @@ const Odte = () => {
   /* ONE COLOUR RULE: net puts bought lean bearish — said in words and inked as the direction they lean, never a green "+" */
   const putWords = (v: number) => (v >= 0 ? `bearish net puts bought ${fmtUsd(v)}` : `bullish net puts sold ${fmtUsd(Math.abs(v))}`);
   const read = awake
-    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} against ${putWords(npp)} on every contract expiring today, from the bell to ${asOf} ET.`
+    ? `The same-day money leans ${bullish ? 'bullish' : 'bearish'} — net calls ${signed(ncp)} against ${putWords(npp)} on every contract ${sameDayWords()}, from the bell to ${asOf} ET.${isLiveDay() ? '' : ` That is the ${shortDay(tapeSessionIso())} session's same-day book — it expired at that bell.`}`
     : flow.fault
       ? 'This read did not land — the same-day minutes fill when the feed answers.'
       : 'The same-day money is still waking up.';
@@ -240,15 +243,15 @@ const Odte = () => {
             <Fact label="Leans" testId="lean">
               <span className={!awake ? 'text-textMuted' : bullish ? 'text-bull' : 'text-bear'}>{awake ? (bullish ? 'bullish' : 'bearish') : '—'}</span>
             </Fact>
-            <Fact label="Net calls" testId="calls">
+            <Fact label="Net calls" testId="calls" title={VENDOR_TOTAL_NOTE}>
               {awake ? <Lean v={ncp} /> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="Net puts" testId="puts">
+            <Fact label="Net puts" testId="puts" title={VENDOR_TOTAL_NOTE}>
               {/* net puts bought lean bearish and wear red; sold, bullish and green (Lean's `put`) */}
               {awake ? <Lean v={npp} put /> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="As of" testId="as-of" title="The last minute the vendor's same-day series has a figure for">
-              {asOf ? `${asOf} ET` : '—'} <span className="text-textSecondary">· every contract expiring today</span>
+            <Fact label="As of" testId="as-of" title={`The last minute the vendor's same-day series (/net-flow/expiry, zero_dte) has a figure for. ${VENDOR_TOTAL_NOTE}`}>
+              {asOf ? `${asOf} ET` : '—'} <span className="text-textSecondary">· every contract {sameDayWords()}</span>
             </Fact>
           </>
         }

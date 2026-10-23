@@ -192,6 +192,13 @@ export function buildCongress(windowDays = 90, day = dayKey(), count = Math.roun
   return summariseCongress(trades, windowDays);
 }
 
+/** A Treasury bill report — the bulk of the book (cash parked in 4- to 52-week bills), not an equity bet. The pages hide
+    them by default and say how many they hid (audit round 5, 2026-10-23) */
+export const isTreasuryBill = (t: CongressTrade): boolean => {
+  const d = `${t.assetDescription || ''} ${t.ticker || ''}`;
+  return /\btreasury bills?\b|\bt-?bills?\b|\bus treasury bill|\bunited states treasury bill/i.test(d);
+};
+
 /** The feed's figures over any set of reports — the page re-sums whatever its cards leave */
 export function summariseCongress(trades: CongressTrade[], windowDays: number): CongressFeed {
   let totalLow = 0;

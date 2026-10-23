@@ -148,6 +148,8 @@ export interface BookContract {
   volGtOiStreak: number;
   /** Sessions until earnings, null = not reporting in the calendar window */
   earnDays: number | null;
+  /** The next report's date, YYYY-MM-DD, when earnDays is set — earnDays counts TRADING days (sessions) to it */
+  earnIso?: string | null;
   /** Prior session's volume by 15-min bucket, 26 values normalized 0-1 —
       the shape of the build, not a second volume fact */
   prevSpark: number[];

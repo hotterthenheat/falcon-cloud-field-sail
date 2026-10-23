@@ -45,6 +45,8 @@ import {
   type Alert,
 } from './alertStore';
 import type { ExposureLevels } from '../../types/gex';
+import { callWallWords, putWallWords } from '../../core/walls';
+import { flipSidesWords } from '../../data/flipLevel';
 
 /* ARMED WEARS HOLO SILVER here — the label, its count and the switches (Noah,
    2026-09-05: "change the alerts button and the sub toggle buttons to holo
@@ -56,24 +58,56 @@ const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 interface Watch {
   key: string;
   words: (levels: ExposureLevels | null) => string;
-  hint: string;
+  /* PLACEMENT-AWARE (the fifth audit, 2026-10-23: "The strike below with the most put gamma — a floor under drops" beside
+     a put wall at 769 with spot at 763.96): each level is described from where it sits against price (core/walls.ts) */
+  hint: (levels: ExposureLevels | null, spot: number | undefined) => string;
   arm: (ticker: string) => Alert | null;
   is: (a: Alert) => boolean;
 }
 
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const spotOf = (L: ExposureLevels | null, spot: number | undefined) => (spot && spot > 0 ? spot : L?.spot && L.spot > 0 ? L.spot : null);
+
 const WATCHES: Watch[] = [
-  { key: 'callWall', words: L => `Price reaches the call wall${L ? ` ${fmtStrike(L.callWall)}` : ''}`, hint: 'The strike above with the most call gamma — a lid on rallies', arm: t => armLevel(t, 'callWall'), is: a => a.kind === 'level' && a.level === 'callWall' },
-  { key: 'putWall', words: L => `Price reaches the put wall${L ? ` ${fmtStrike(L.putWall)}` : ''}`, hint: 'The strike below with the most put gamma — a floor under drops', arm: t => armLevel(t, 'putWall'), is: a => a.kind === 'level' && a.level === 'putWall' },
-  { key: 'flip', words: L => `Price crosses the gamma flip${L ? ` ${fmtStrike(L.flip)}` : ''}`, hint: 'Above it dealers absorb moves, below it they amplify them', arm: t => armLevel(t, 'flip'), is: a => a.kind === 'level' && a.level === 'flip' },
-  { key: 'supreme', words: L => `Price reaches the supreme${L ? ` ${fmtStrike(L.supreme)}` : ''}`, hint: 'The strike holding the most dealer gamma of all', arm: t => armLevel(t, 'supreme'), is: a => a.kind === 'level' && a.level === 'supreme' },
-  { key: 'gexflip', words: () => 'Dealers change sides', hint: 'Dealer hedging on this name flips from amplifying moves to absorbing them, or back', arm: t => armGexFlip(t), is: a => a.kind === 'gexflip' },
-  { key: 'newsupreme', words: () => 'The supreme moves to another strike', hint: 'The strike holding the most dealer gamma changes', arm: t => armNewSupreme(t), is: a => a.kind === 'newsupreme' },
-  { key: 'wallmove', words: () => 'A wall moves 2 strikes or more', hint: 'The call wall or the put wall is re-drawn 2 strikes or more from where it stood', arm: t => armWallMove(t, 2), is: a => a.kind === 'wallmove' },
+  {
+    key: 'callWall',
+    words: L => `Price reaches the call wall${L ? ` ${fmtStrike(L.callWall)}` : ''}`,
+    hint: (L, spot) => {
+      const s = spotOf(L, spot);
+      return L && s ? `The strike with ${callWallWords(L.callWall, s)}` : 'The strike with the most call gamma, either side of price';
+    },
+    arm: t => armLevel(t, 'callWall'),
+    is: a => a.kind === 'level' && a.level === 'callWall',
+  },
+  {
+    key: 'putWall',
+    words: L => `Price reaches the put wall${L ? ` ${fmtStrike(L.putWall)}` : ''}`,
+    hint: (L, spot) => {
+      const s = spotOf(L, spot);
+      return L && s ? `The strike with ${putWallWords(L.putWall, s)}` : 'The strike with the most put gamma, either side of price';
+    },
+    arm: t => armLevel(t, 'putWall'),
+    is: a => a.kind === 'level' && a.level === 'putWall',
+  },
+  {
+    key: 'flip',
+    words: L => (L && L.flipFound === false ? 'Price crosses the gamma flip (none within ±10% now)' : `Price crosses the gamma flip${L ? ` ${fmtStrike(L.flip)}` : ''}`),
+    hint: (L, spot) => {
+      const s = spotOf(L, spot);
+      return L && s && L.flipFound !== false && L.net != null ? cap(flipSidesWords(L.flip, s, L.net)) : 'Where dealer hedging switches between absorbing moves and amplifying them';
+    },
+    arm: t => armLevel(t, 'flip'),
+    is: a => a.kind === 'level' && a.level === 'flip',
+  },
+  { key: 'supreme', words: L => `Price reaches the supreme${L ? ` ${fmtStrike(L.supreme)}` : ''}`, hint: (L, spot) => { const s = spotOf(L, spot); return L && s ? `The strike holding the most dealer gamma of all, ${L.supreme > s ? 'above' : L.supreme < s ? 'below' : 'at'} price` : 'The strike holding the most dealer gamma of all'; }, arm: t => armLevel(t, 'supreme'), is: a => a.kind === 'level' && a.level === 'supreme' },
+  { key: 'gexflip', words: () => 'Dealers change sides', hint: () => 'Dealer hedging on this name flips from amplifying moves to absorbing them, or back', arm: t => armGexFlip(t), is: a => a.kind === 'gexflip' },
+  { key: 'newsupreme', words: () => 'The supreme moves to another strike', hint: () => 'The strike holding the most dealer gamma changes', arm: t => armNewSupreme(t), is: a => a.kind === 'newsupreme' },
+  { key: 'wallmove', words: () => 'A wall moves 2 strikes or more', hint: () => 'The call wall or the put wall is re-drawn 2 strikes or more from where it stood', arm: t => armWallMove(t, 2), is: a => a.kind === 'wallmove' },
 ];
 
 /* The plain voice (`waitingWords` / `firedWords`) lives in alertStore.ts, shared with the drawer (2026-09-10) */
 
-const WatchMenu = ({ ticker, levels }: { ticker: string; spot?: number; levels: ExposureLevels | null }) => {
+const WatchMenu = ({ ticker, spot, levels }: { ticker: string; spot?: number; levels: ExposureLevels | null }) => {
   const alerts = useAlerts(ticker);
   const armed = alerts.filter(a => !a.firedAt);
   const full = armed.length >= MAX_ALERTS;
@@ -116,7 +150,7 @@ const WatchMenu = ({ ticker, levels }: { ticker: string; spot?: number; levels: 
             <li key={w.key} className="flex items-center gap-3 px-3 py-2 border-b border-borderSubtle/40 last:border-b-0" data-watch={w.key}>
               <label htmlFor={id} className="flex-1 min-w-0 flex flex-col gap-[1px] cursor-pointer">
                 <span className={`font-mono text-[11px] leading-snug ${on ? 'font-semibold text-silver' : 'text-textPrimary'}`}>{w.words(levels)}</span>
-                <span className="font-mono text-[9px] leading-snug text-textMuted">{blocked ? `${MAX_ALERTS} is the most for one name — turn one off first` : w.hint}</span>
+                <span className="font-mono text-[9px] leading-snug text-textMuted">{blocked ? `${MAX_ALERTS} is the most for one name — turn one off first` : w.hint(levels, spot)}</span>
               </label>
               <Switch.Root
                 id={id}

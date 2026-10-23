@@ -39,8 +39,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { buildCatches, floorPackaged, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
+import { buildCatches, floorPackaged, FRESH_VOL_OI, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
 import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
+import { dayAdv, dayPos, earnWords, oiSpanWords } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -76,18 +77,18 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
   { value: 'P', label: 'Puts', hint: 'Puts only' },
 ];
 /** the print reads "18,479 @ $1.12" — 118 cut it to "@ $..."; the reason wraps to two lines, so it gives the room */
-const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 132, clipprem: 100, sideCol: 72, otm: 76, earn: 92 };
+const WIDTHS: Record<string, number> = { time: 92, ticker: 96, contract: 168, dte: 64, reason: 212, clip: 132, clipprem: 100, sideCol: 72, otm: 76, earn: 128 };
 const FLEXES: Record<string, number> = { reason: 3 };
 const PIN_LEFT = ['time', 'ticker', 'contract'];
 const PIN_RIGHT = ['clipprem'];
 const WATCHER_CUTS = createViewStore('slayer_watchers_cuts_v1');
 const TOOLTIPS: Record<string, string> = {
   reason: "Why the contract is in front of you — the desk's watchers, or one you wrote (the hollow ring)",
-  time: "When the contract last printed today, New York",
-  clip: "The contract's last fill today",
-  clipprem: "The contract's premium today — every print, not one",
+  time: "When the contract last printed in the session, New York",
+  clip: "The contract's last fill in the session",
+  clipprem: "The contract's premium in the session — every print, not one",
   sideCol: "Where its day's volume leaned — at the ask or on the bid (55% or more of the sided volume, with at least half the day on a side), even, or mostly mid / no side",
-  voloi: 'Volume over open interest — above 1.5 the positions were built today',
+  voloi: 'Volume over open interest — at 1.5 and above the positions were built in the session; "new" when there was no open interest to divide by',
 };
 
 /** Categorical reason dots — same idea as sector dots: a hue names the kind. The house's categorical tokens, cut deep on
@@ -118,7 +119,7 @@ const phoneRow = (a: Catch) => (
     aside={a.time}
     figures={[
       <span key="p" className="font-semibold text-textPrimary">
-        {fmtUsd(a.premium)} today
+        {fmtUsd(a.premium)} {dayAdv()}
       </span>,
       <span key="s">last ${a.last.toFixed(2)} at {a.time}</span>,
       <span key="z">{num(a.row.volume)} vol · {a.side === 'ASK' ? 'ask' : a.side === 'BID' ? 'bid' : a.side === 'MID' ? 'mid/no side' : 'even'}</span>,
@@ -146,7 +147,9 @@ const Watchers = () => {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const liveBook = useLiveBook(activeTicker).rows;
+  /* THE MARKET'S BOOK ONLY (audit round 5: the shell's active ticker was silently added — the market's top 200 plus its
+     top 80 — so changing the ticker elsewhere changed the "market" figures). A name is read with the search. */
+  const liveBook = useLiveBook(null).rows;
   // The shared hold (see LiveHold): book and tick freeze together while paused.
   const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
   const { book: heldBook, tick } = hold.value;
@@ -217,7 +220,7 @@ const Watchers = () => {
 
   /* ReactNode, not a string: the newest contract is a DOOR, opening the same card (Noah, 2026-08-30). */
   const read = useMemo<ReactNode>(() => {
-    if (catches.length === 0) return <RichRead text="Nothing flagged yet today — the desk is watching." />;
+    if (catches.length === 0) return <RichRead text={`Nothing flagged ${dayAdv()} — the desk is watching.`} />;
     const byRule = new Map<string, number>();
     for (const a of catches) for (const r of a.rules) byRule.set(r, (byRule.get(r) ?? 0) + 1);
     const loud = [...byRule.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -235,12 +238,12 @@ const Watchers = () => {
     const names = new Set(catches.map(a => a.row.ticker)).size;
     return (
       <>
-        <RichRead text={`${catches.length} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the book's ${num(bookSize)} standing contracts${stand.expired ? ` (${num(stand.expired)} that expired at today's bell left out)` : ''} — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
+        <RichRead text={`${catches.length} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the ${num(bookSize)} standing contracts on the market's book (the vendor's 200 with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}) — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
         <ReadDoor onOpen={() => setOpenKey(latest.row.key)}>
           {latest.row.ticker} {latest.row.strike}
           {latest.row.right}
         </ReadDoor>
-        <RichRead text={`, last at $${latest.last.toFixed(2)} (${latest.time} ET), ${fmtUsd(latest.premium)} today.`} />
+        <RichRead text={`, last at $${latest.last.toFixed(2)} (${latest.time} ET), ${fmtUsd(latest.premium)} ${dayAdv()}.`} />
       </>
     );
   }, [catches, reasonOf, bookSize, stand.expired]);
@@ -368,7 +371,7 @@ const Watchers = () => {
         header: 'Vol/OI',
         align: 'right',
         sortValue: a => a.row.volOverOI,
-        render: a => <span className={a.row.volOverOI >= 1.5 ? 'font-bold text-textPrimary' : 'text-textPrimary'}>{a.row.volOverOI.toFixed(2)}</span>,
+        render: a => <span className={a.row.oi > 0 && a.row.volOverOI >= FRESH_VOL_OI ? 'font-bold text-textPrimary' : 'text-textPrimary'} title={a.row.oi > 0 ? undefined : 'No open interest before the session — a new contract, nothing to divide by'}>{volOiText(a.row)}</span>,
       },
       {
         key: 'otm',
@@ -382,7 +385,7 @@ const Watchers = () => {
         header: 'Earnings',
         align: 'right',
         sortValue: a => a.row.earnDays ?? 999,
-        render: a => (a.row.earnDays == null ? <span className="text-textSecondary">—</span> : <span className={a.row.earnDays <= 5 ? 'text-warn' : 'text-textPrimary'}>{a.row.earnDays === 0 ? 'today' : `in ${a.row.earnDays}d`}</span>),
+        render: a => { const e = earnWords(a.row); return e ? <span className={a.row.earnDays! <= 5 ? 'text-warn' : 'text-textPrimary'} title={e.title}>{e.text}</span> : <span className="text-textSecondary">—</span>; },
       },
     ],
     // The Reason cell reads the shelf through reasonOf, the magnitude cells
@@ -411,7 +414,7 @@ const Watchers = () => {
     return { total: catches.length, loudName: loud ? (reasonOf(loud[0])?.label ?? '') : '', loudCount: loud ? loud[1] : 0, mine };
   }, [catches, reasonOf]);
   /* the expiry rides in the pill — two SPX 7000 calls on different dates are two contracts */
-  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} ${expiryLabel(a.row.expiry)} · ${fmtUsd(a.premium)} today`;
+  const pill = (a: Catch) => `${a.row.ticker} ${a.row.strike}${a.row.right} ${expiryLabel(a.row.expiry)} · ${fmtUsd(a.premium)} ${dayAdv()}${stockLike(a.row) ? ' · stock-like' : ''}`;
 
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_flowalerts_cols');
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
@@ -428,7 +431,7 @@ const Watchers = () => {
         facts={
           <>
             {/* the most frequent reason, named, its count after — never a reason read as a noun */}
-            <Fact label="Contracts caught" testId="caught" title={`Contracts on the live book (the ${num(bookSize)} standing ones with the most premium today, plus the terminal's name) that meet a reason — each counted once, whatever number of reasons it meets`}>
+            <Fact label="Contracts caught" testId="caught" title={`Contracts on the market's book (the ${num(bookSize)} standing ones among the vendor's 200 with the most premium ${dayAdv()}, every name — the terminal's ticker is not added) that meet a reason — each counted once, whatever number of reasons it meets`}>
               {num(facts.total)}
               {facts.loudName && (
                 <span className="text-textSecondary">
@@ -451,7 +454,7 @@ const Watchers = () => {
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Most money today" ink="supreme" title="The most premium today among contracts whose day was not mostly floor-traded multi-leg packages" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
+              <Champion label={`Most money ${dayAdv()}`} ink="supreme" title="The most premium among contracts whose day was not mostly floor-traded multi-leg packages" onOpen={() => setOpenKey(champs.all!.row.key)} testId="largest">
                 {pill(champs.all)}
               </Champion>
             )}

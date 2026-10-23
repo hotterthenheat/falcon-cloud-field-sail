@@ -88,7 +88,9 @@ const ContractCell = ({
       <span className="inline-flex items-baseline gap-1 font-mono text-[11px] leading-none tnum text-textSecondary whitespace-nowrap">
         {dte !== undefined && <span>{dte}d</span>}
         {dte !== undefined && (spot !== undefined || otmPct !== undefined) && <span aria-hidden>·</span>}
-        {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points, from its spot-exposure minutes' : undefined}>{ticker && indexRoot(ticker) ? `index ${Math.round(spot).toLocaleString('en-US')}` : `spot $${spot.toFixed(2)}`}</span>}
+        {/* THE STOCK AT THE PRINT, SAID SO (audit round 5: "spot $704.72" on the Live Tape beside a $703.29 elsewhere read as
+            two prices for one QQQ — it is the underlying at the print's own instant, not the close) */}
+        {spot !== undefined && <span title={ticker && indexRoot(ticker) ? 'The index level, whole points, from its spot-exposure minutes' : "The stock's price at the moment of this print — not the day's close, which the name's quote carries"}>{ticker && indexRoot(ticker) ? `index ${Math.round(spot).toLocaleString('en-US')}` : `$${spot.toFixed(2)} at print`}</span>}
         {spot !== undefined && otmPct !== undefined && <span aria-hidden>·</span>}
         {/* an index's level is whole points: its distance is about that, and says so; a small index's is not stated */}
         {otmPct !== undefined && <span title={!Number.isFinite(otmPct) ? 'The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)' : ticker && indexRoot(ticker) ? 'Against a whole-point index level — approximate' : undefined}>{Number.isFinite(otmPct) ? `${ticker && indexRoot(ticker) ? '≈' : ''}${pctSigned(otmPct, 1)}` : '—'}</span>}

@@ -80,10 +80,11 @@ const CATEGORY_OPTIONS: DropdownOption<CategoryPick>[] = [
   { value: 'Earnings', label: 'Earnings', hint: 'Prints and what they said' },
   { value: 'Guidance', label: 'Guidance', hint: 'What a company said about what is coming' },
   { value: 'Analyst', label: 'Analyst', hint: 'Upgrades, downgrades, targets' },
-  { value: 'Macro', label: 'Macro', hint: 'The economy, the Fed, markets, policy and the world — no single company' },
+  { value: 'Macro', label: 'Macro', hint: 'The economy and its data, central banks and rates, currencies, markets, policy, geopolitics and the world — no single company' },
   { value: 'M&A', label: 'M&A', hint: 'Deals, bids, spin-offs' },
   { value: 'Product', label: 'Product', hint: 'Launches and reviews' },
   { value: 'Regulatory', label: 'Regulatory', hint: 'Courts, agencies, probes' },
+  { value: 'General', label: 'General', hint: 'Stories the headline gives no beat — none of the above' },
 ];
 const LEAN_OPTIONS: DropdownOption<LeanPick>[] = [
   { value: 'any', label: 'Any lean', short: 'All', hint: 'Positive, negative and neutral stories' },
@@ -97,9 +98,9 @@ const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
   { value: 'macro', label: 'Macro only', hint: 'The economy, the Fed, markets and policy — stories with no company as their subject' },
 ];
 const SORT_OPTIONS: DropdownOption<Sort>[] = [
-  { value: 'matters', label: 'What matters', hint: 'Major stories on your Board first, then other stories on your Board, then the rest of the major ones — newest first inside each' },
+  { value: 'matters', label: 'What matters', hint: 'Major stories on your Board first, then the rest of your Board, then other major stories, then stories with a named stock or about the economy, then the rest — newest first inside each. Routine notices the wire flags major (a dividend declared, a results date, a conference slot) and unlisted press releases are not lifted' },
   { value: 'newest', label: 'Newest', hint: 'The latest story first' },
-  { value: 'move', label: 'Biggest move at publish', hint: 'The named stock that had moved most on the session when its story crossed, first' },
+  { value: 'move', label: 'Biggest move', hint: 'The named stock that had moved most on the session when its story crossed, first; a story that crossed before the open is ranked by its stock\'s last-session move, the move its row shows' },
   { value: 'loud', label: 'Loudest', hint: 'Major stories and big movers first' },
 ];
 
@@ -291,9 +292,22 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
                     data-news-tape-item={half === 0 ? e.id : undefined}
                   >
                     <ImpactMark tier={tierOf(e.severity)} />
-                    <span className="font-mono text-[10px] font-bold text-textPrimary">{nameWord(e.item)}</span>
-                    <span className="text-[11px] whitespace-normal">{e.item.headline}</span>
-                    <span className="font-mono text-[9px] text-textMuted">{ago(e.item.minutesAgo)}</span>
+                    {/* THE LOOP'S SECOND HALF IS DRAWN, NOT WRITTEN (audit round 5: every tape headline sat twice in the page's
+                        text, the wire read as listed twice): its words are CSS content, out of the text a reader or a
+                        screen reader copies, and the half is aria-hidden */}
+                    {half === 0 ? (
+                      <>
+                        <span className="font-mono text-[10px] font-bold text-textPrimary">{nameWord(e.item)}</span>
+                        <span className="text-[11px] whitespace-normal">{e.item.headline}</span>
+                        <span className="font-mono text-[9px] text-textMuted">{ago(e.item.minutesAgo)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-mono text-[10px] font-bold text-textPrimary before:content-[attr(data-copy)]" data-copy={nameWord(e.item)} />
+                        <span className="text-[11px] whitespace-normal before:content-[attr(data-copy)]" data-copy={e.item.headline} />
+                        <span className="font-mono text-[9px] text-textMuted before:content-[attr(data-copy)]" data-copy={ago(e.item.minutesAgo)} />
+                      </>
+                    )}
                   </button>
                 ))}
               </span>
@@ -354,10 +368,11 @@ const Fact = ({ label, children, testId, tip }: { label: string; children: React
 );
 
 /** A figure on the story card — label over value, the card's own smaller scale */
+/* the figure wraps inside its own column — "after hours +0.2% · 10/22 −4.6%" ran under the next figure (audit round 5) */
 const Figure = ({ label, tone = 'text-textPrimary', children, title }: { label: string; tone?: string; children: React.ReactNode; title?: string }) => (
-  <div className="min-w-0" title={title}>
+  <div className="min-w-0 overflow-hidden" title={title}>
     <div className="text-[9px] text-textMuted whitespace-nowrap truncate">{label}</div>
-    <div className={`mt-0.5 font-mono text-[12px] font-semibold tnum whitespace-nowrap ${tone}`}>{children}</div>
+    <div className={`mt-0.5 font-mono text-[12px] font-semibold tnum whitespace-normal break-words ${tone}`}>{children}</div>
   </div>
 );
 
@@ -520,6 +535,11 @@ const News = () => {
     ];
   }, [cut, picks]);
   const rows = useMemo(() => {
+    const moveKey = (e: GeoNewsEvent): number => {
+      const p = e.item.prediction;
+      const v = p.measured ? p.expMove1dPct : p.lastSession ? p.lastSession.pct : p.extMovePct;
+      return v == null || !Number.isFinite(v) ? -1 : Math.abs(v);
+    };
     const picked = new Set(picks);
     const kept = picked.size === 0 ? cut : cut.filter(e => picked.has(`name:${nameWord(e.item)}`) || picked.has(`city:${e.origin.city}`));
     const by: Record<Sort, (a: GeoNewsEvent, b: GeoNewsEvent) => number> = {
@@ -533,7 +553,9 @@ const News = () => {
         const rank = (e: GeoNewsEvent) => (onBoard(e) ? (lifted(e) ? 0 : 1) : lifted(e) ? 2 : e.item.ticker || e.item.category === 'Macro' ? 3 : 4);
         return rank(a) - rank(b) || a.item.minutesAgo - b.item.minutesAgo;
       },
-      move: (a, b) => Math.abs(b.item.prediction.expMove1dPct) - Math.abs(a.item.prediction.expMove1dPct),
+      /* OVERNIGHT EVERY STORY'S SESSION MOVE IS NONE YET (audit round 5: the sort did nothing before the open) — such a
+         story ranks by the last session's move it carries, the figure its row shows; a story with no move sinks */
+      move: (a, b) => moveKey(b) - moveKey(a) || a.item.minutesAgo - b.item.minutesAgo,
       loud: (a, b) => b.severity - a.severity,
     };
     return [...kept].sort(by[sort]);

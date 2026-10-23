@@ -635,7 +635,8 @@ const StockName = () => {
                 <span className="font-mono text-[11px] font-bold text-textSecondary">{T}</span>
                 <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the read, the pillars and the factors mean" testId="stock-guide" />
               </div>
-              <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={view.priceLine ?? undefined}>
+              {/* the price line wraps, never truncates (audit round 5, phone: "… after hours 19:59 ET · +…") */}
+              <p className="mt-0.5 text-[11px] leading-snug text-textMuted whitespace-normal break-words" title={view.priceLine ?? undefined}>
                 <span className="font-mono text-[12px] tnum text-textPrimary">
                   $<AnimatedNumber value={view.price} format={v => v.toFixed(2)} />
                 </span>
@@ -748,7 +749,7 @@ const StockName = () => {
               <Fact label="RSI · ADX" testId="rsi" tip="RSI and ADX over 14 sessions — the screener's rsi_14 and adx_14, the same figures the factors below score">
                 {trend.rsi14 != null ? trend.rsi14.toFixed(0) : '—'} <span className="text-textMuted">·</span> {trend.adx14 != null ? trend.adx14.toFixed(0) : '—'}
               </Fact>
-              <Fact label="Today's range" testId="atr">
+              <Fact label={`Range · ${sessionWord}`} testId="atr">
                 {trend.atrPercentile != null ? (
                   <>
                     {trend.rangeToday != null ? trend.rangeToday.toFixed(2) : ''} <span className="text-textMuted">· {ordinal(trend.atrPercentile)} pct</span>
@@ -821,9 +822,6 @@ const StockName = () => {
         </Box>
         <Box title="The money" sub="The live book · all expiries (every listed date) unless marked Today" aside={<PillarBarSmall p={byKey.money} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
-            <Fact label="Net GEX · all expiries" testId="gex" tip="Net gamma exposure over every strike of every listed expiry — the same figure Pinpoint shows on All expiries. Positive: dealers are long gamma and their hedging absorbs moves; negative: it amplifies them">
-              <Money v={shownGamma(money.netGex)} /> <span className="text-textMuted">· {money.regime}</span>
-            </Fact>
             <Fact label="Net DEX · VEX" testId="dex">
               <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
             </Fact>
@@ -855,7 +853,7 @@ const StockName = () => {
                 <span className="text-textMuted">—</span>
               )}
             </Fact>
-            <Fact label={money.darkWindow.complete ? 'Dark today' : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out`}>
+            <Fact label={money.darkWindow.complete ? `Dark · ${sessionWord}` : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out`}>
               {money.dark.prints.length ? (
                 <>
                   {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length}</span>
@@ -865,29 +863,49 @@ const StockName = () => {
               )}
             </Fact>
           </dl>
-          {/* THE BOOK ON A PRICE SCALE — both scopes from Pinpoint's levelsFor, each under its own scopeLabel */}
-          <div className="px-5 pb-1">
-            <div className="flex items-center justify-between gap-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-levels-scope="all">
-              <span className="text-textPrimary font-semibold shrink-0">{money.levelsAll?.scopeLabel ?? 'All expiries'}</span>
-              <span className="normal-case tracking-normal truncate">every listed date · as Pinpoint reads its All expiries scope{money.levelsAll && !money.levelsAll.complete ? ' · still loading' : ''}</span>
+          {/* TWO SCOPES, TWO ROWS (audit round 5: "Net GEX · all expiries $29.0M · absorbing" sat beside "TODAY · net GEX
+              −$73.9M · amplifying" and read as a contradiction). Both are Pinpoint's levelsFor, each under its own header —
+              the nearest expiry first, then the whole book — and the one line under them says why their signs can differ. */}
+          <div className="px-5 pb-2 flex flex-col gap-2" data-stock-gex-scopes>
+            <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope={money.levelsToday ? (money.levelsToday.date == null ? 'today-pending' : 'today') : 'today-none'} title="Pinpoint's nearest-expiry scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
+              <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">{money.levelsToday?.date ? `${money.levelsToday.scopeLabel.replace(/\s·\s(.+)$/, ' ($1)')} · nearest expiry` : 'Nearest expiry'}</span>
+                {money.levelsToday?.date ? (
+                  <span className="font-mono text-[11px] tnum" data-stock-gex-next>
+                    net GEX <Money v={money.levelsToday.netGex} /> {money.levelsToday.regime ? <span className="text-textMuted">· {money.levelsToday.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span> : null}
+                  </span>
+                ) : null}
+              </div>
+              {money.levelsToday && money.levelsToday.date == null ? (
+                <p className="mt-1 font-mono text-[10px] text-textMuted">Still reading this name's front expiry.</p>
+              ) : money.levelsToday ? (
+                <p className="mt-1 font-mono text-[10px] tnum text-textSecondary">
+                  put wall <span className="text-bear">{money.levelsToday.putWall ?? '—'}</span> · flip {money.levelsToday.flip != null ? money.levelsToday.flip.toFixed(2) : 'none within ±10%'} · call wall <span className="text-bull">{money.levelsToday.callWall ?? '—'}</span> · supreme {money.levelsToday.supreme}
+                </p>
+              ) : (
+                <p className="mt-1 font-mono text-[10px] text-textMuted">No book on this name's nearest expiry yet.</p>
+              )}
             </div>
-            {money.levelsAll ? (
-              <>
-                <LevelsScale spot={view.price} putWall={money.levelsAll.putWall} flip={money.levelsAll.flip} callWall={money.levelsAll.callWall} supreme={money.levelsAll.supreme} />
-                {money.levelsAll.flip == null && <p className="font-mono text-[10px] text-textMuted" data-stock-flip="none">No flip within ±10% — net gamma stays {money.levelsAll.regime === 'SHORT' ? 'short' : 'long'} across the range.</p>}
-              </>
-            ) : (
-              <p className="py-3 font-mono text-[10px] text-textMuted" data-stock-levels-pending>The levels land with the options book.</p>
-            )}
-            {money.levelsToday && money.levelsToday.date == null ? (
-              <p className="mt-1 font-mono text-[10px] text-textMuted" data-stock-levels-scope="today-pending">Pinpoint's nearest-expiry scope is still reading this name's front expiry.</p>
-            ) : money.levelsToday ? (
-              <p className="mt-1 font-mono text-[10px] tnum text-textSecondary" data-stock-levels-scope="today" title="Pinpoint's Today scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
-                <span className="text-textPrimary font-semibold uppercase tracking-widest text-[9px]">{money.levelsToday.scopeLabel}</span> · put wall <span className="text-bear">{money.levelsToday.putWall ?? '—'}</span> · flip {money.levelsToday.flip != null ? money.levelsToday.flip.toFixed(2) : 'no flip within ±10%'} · call wall <span className="text-bull">{money.levelsToday.callWall ?? '—'}</span> · supreme {money.levelsToday.supreme} · net GEX <Money v={money.levelsToday.netGex} /> {money.levelsToday.regime ? <span className="text-textMuted">· {money.levelsToday.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span> : null}
-              </p>
-            ) : (
-              <p className="mt-1 font-mono text-[10px] text-textMuted" data-stock-levels-scope="today-none">Pinpoint's nearest-expiry scope has no book on this name yet.</p>
-            )}
+            <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope="all" data-complete={money.levelsAll?.complete ? 'yes' : 'no'}>
+              <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                <span className="font-mono text-[9px] uppercase tracking-widest text-textPrimary font-semibold">All expiries · every listed date</span>
+                <span className="font-mono text-[11px] tnum" data-stock-gex-all title="Net gamma exposure over every strike of every listed expiry — the figure Pinpoint shows on All expiries. Positive: dealers are long gamma and their hedging absorbs moves; negative: it amplifies them">
+                  net GEX <Money v={money.levelsAll ? money.levelsAll.netGex : shownGamma(money.netGex)} /> <span className="text-textMuted">· {money.regime}</span>
+                </span>
+              </div>
+              {money.levelsAll ? (
+                <>
+                  <LevelsScale spot={view.price} putWall={money.levelsAll.putWall} flip={money.levelsAll.flip} callWall={money.levelsAll.callWall} supreme={money.levelsAll.supreme} />
+                  {money.levelsAll.flip == null && <p className="font-mono text-[10px] text-textMuted" data-stock-flip="none">No flip within ±10% — net gamma stays {money.levelsAll.regime === 'SHORT' ? 'short' : 'long'} across the range.</p>}
+                  {!money.levelsAll.complete && <p className="font-mono text-[10px] text-textMuted" data-stock-levels-provisional>Provisional — the later expiries are still landing; the figures settle when they are in.</p>}
+                </>
+              ) : (
+                <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>The levels land with the options book.</p>
+              )}
+            </div>
+            <p className="text-[10.5px] leading-relaxed text-textMuted" data-stock-gex-note>
+              The two scopes can differ in sign: the nearest expiry's dealers can be short gamma (amplifying) while the whole book is long (absorbing), or the reverse. Each figure is right for its own contracts; the nearest expiry drives the next session, the whole book the weeks after.
+            </p>
           </div>
           {prem > 0 ? (
           <div className="px-5 pb-2" data-stock-flow>
@@ -916,7 +934,7 @@ const StockName = () => {
                 {money.flowWindow.complete
                   ? `${money.flowWindow.alerts} flow alerts on ${sessionWord}`
                   : `the latest ${money.flowWindow.alerts} flow alerts on ${sessionWord}, ${money.flowWindow.from}–${money.flowWindow.to} ET`}{' '}
-                · {money.askSharePct.toFixed(0)}% of their premium on the ask · {money.sweepSharePct.toFixed(0)}% swept
+                · {money.askSharePct.toFixed(1)}% of their premium filled on the ask · {money.sweepSharePct.toFixed(0)}% swept
               </p>
             )}
           </div>
@@ -1206,6 +1224,16 @@ const StockName = () => {
             </div>
             {view.pillars.map(p => {
               const g = gradeOf(p.score);
+              /* a pillar the read leaves out (the news) is "not scored" here as in the head — never a grade it does not
+                 have (audit round 5: "not scored" above, "caution" here) */
+              if (!p.inRead)
+                return (
+                  <div key={p.key} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: 'minmax(0, 1fr) 72px 64px' }} data-stock-weight={p.key} data-grade="none">
+                    <span className="text-[11px] text-textMuted flex items-center gap-2 truncate">{p.name}</span>
+                    <span className="h-[6px] rounded-full bg-ink/[0.04]" />
+                    <span className="text-right font-mono text-[10px] text-textMuted whitespace-nowrap">not scored</span>
+                  </div>
+                );
               return (
                 <div key={p.key} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: 'minmax(0, 1fr) 72px 64px' }} data-stock-weight={p.key} data-grade={g}>
                   <span className="text-[11px] text-textPrimary flex items-center gap-2 truncate">
@@ -1385,17 +1413,17 @@ const StockName = () => {
         </Box>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="Busiest calls" sub="The three busiest by volume today · click one to weigh it" testId="calls">
+        <Box title="Busiest calls" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="calls">
           <div className="pb-2 mt-auto">
-            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No call volume on the book today</div>}
+            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No call volume on the book on {sessionWord}</div>}
             {money.busiest.calls.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onWarm={warm} onOpen={() => weigh(c)} />
             ))}
           </div>
         </Box>
-        <Box title="Busiest puts" sub="The three busiest by volume today · click one to weigh it" testId="puts">
+        <Box title="Busiest puts" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="puts">
           <div className="pb-2 mt-auto">
-            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No put volume on the book today</div>}
+            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">No put volume on the book on {sessionWord}</div>}
             {money.busiest.puts.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onWarm={warm} onOpen={() => weigh(c)} />
             ))}

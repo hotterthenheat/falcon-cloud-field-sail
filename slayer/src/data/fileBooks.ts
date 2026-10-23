@@ -283,6 +283,10 @@ export interface EtfRow {
   callVol: number | null;
   putVol: number | null;
   flows: EtfFlow[];
+  /** The window the five-day flow covers — the same dates for every fund (YYYY-MM-DD), and how many days */
+  flowFrom?: string | null;
+  flowTo?: string | null;
+  flowDays?: number;
   /** The latest `updated` date on the fund's holdings — the weights are as of this day */
   holdingsAsOf?: string | null;
 }

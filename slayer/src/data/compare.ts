@@ -22,7 +22,7 @@
 */
 
 import { bookCandles, peekBellShare, peekDaySigma, peekIv, peekSpot } from './uwBook';
-import { scopeDateOf } from './wall';
+import { scopeSigma } from './wall';
 import { UNIVERSE } from './universe';
 import { SESSION_MIN, buildCloseOdds, type AheadClock } from './ahead';
 import { sessionStarts } from './indicators';
@@ -100,6 +100,10 @@ export interface CompareSide {
   flipDistPct: number | null;
   /** One expected move for the minutes left, dollars — and as percent of spot */
   sigmaLeft: number;
+  /** "by Nov 20" when the move runs to a later expiry than the coming session — null for the close */
+  horizon: string | null;
+  /** Which number the move is ("the vendor's implied move into Oct 23") */
+  moveWords: string;
   sigmaLeftPct: number;
   sigmaDay: number;
   scales: DistanceScales;
@@ -198,8 +202,12 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   const gauge = buildFlipGauge(lens);
   const iv = peekIv(ticker) ?? 0.2;
   /* the expiry this side reads: its own implied move, not the 30-day IV (data/uwBook.ts peekDaySigma) */
-  const sigmaDay = (snapshot.liveBook ? peekDaySigma(ticker, scopeDateOf(lens)) : null) ?? impliedDaySigma(spot, iv) ?? spot * 0.01;
-  const sigmaLeft = sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  /* …over the scope's own horizon — "by Nov 20" for a later expiry (data/wall.ts scopeSigma, the fifth audit) */
+  const ss = scopeSigma(lens, clock.minutesLeft, iv);
+  const sigmaDay = snapshot.liveBook ? ss.sigmaDay : impliedDaySigma(spot, iv) ?? spot * 0.01;
+  const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaDay * Math.sqrt(clock.minutesLeft / SESSION_MIN);
+  const horizon = snapshot.liveBook ? ss.horizon : null;
+  const moveWords = snapshot.liveBook ? ss.words : 'the 30-day implied vol over one session';
   const scales: DistanceScales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: sigmaDay };
 
   const rows: Record<Greek, GexLevel[]> = { gex: [], dex: [], vex: [], vanna: [], charm: [] };
@@ -242,6 +250,8 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
     flip: gauge.flip,
     flipDistPct: gauge.distPct,
     sigmaLeft,
+    horizon,
+    moveWords,
     sigmaLeftPct: (sigmaLeft / spot) * 100,
     sigmaDay,
     scales,

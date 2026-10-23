@@ -20,7 +20,7 @@
 import type { SleeveKey } from '../types/compass';
 import type { BookContract, FlowPrint } from '../types/trace';
 import { sleeveForDte } from './compass';
-import { moneynessFilter, type MoneynessKey, type SpreadTrade } from './flowBook';
+import { FRESH_VOL_OI, moneynessFilter, type MoneynessKey, type SpreadTrade } from './flowBook';
 import type { ExpiryFlow } from './traceLive';
 import { usd as fmtUsd } from './traceLive';
 
@@ -32,6 +32,13 @@ export interface TraceSide {
   net: number;
   netCall: number;
   netPut: number;
+  /** Where net / netCall / netPut come from: the vendor's minute ticks (/stock/{t}/net-prem-ticks, the regular session —
+      the source Net Flow's pane and Intervals read) when the card is uncut, or its flow by expiry (/stock/{t}/flow-per-expiry,
+      the whole day) when a clock cuts it (audit round 5: the headline read QQQ +$24.1M by expiry beside −$53.6M on its own
+      pane and −$54.9M on Net Flow) */
+  netSource?: 'ticks' | 'expiry';
+  /** The by-expiry figures, always — shown beside the ticks when the card is uncut */
+  byExpiry?: { net: number; calls: number; puts: number };
   /** The same-day money: every contract on the name expiring TODAY (the vendor's flow for today's expiry), whatever the
       clock — the 0DTE desk's definition */
   odte: { net: number; calls: number; puts: number; vol: number; trades: number; has: boolean };
@@ -61,6 +68,8 @@ export interface TraceSide {
   tape: { prints: number; dollars: number; sweeps: number; after: number };
   /** Sessions until the name reports, null when the calendar has none */
   earnDays: number | null;
+  /** The next report's date, YYYY-MM-DD */
+  earnIso: string | null;
 }
 
 const onClock = (dte: number, tenor: SleeveKey | 'all') => tenor === 'all' || sleeveForDte(dte) === tenor;
@@ -107,6 +116,8 @@ export function buildTraceSide(
     net: netCall - netPut,
     netCall,
     netPut,
+    netSource: 'expiry',
+    byExpiry: { net: netCall - netPut, calls: netCall, puts: netPut },
     odte: today
       ? { net: today.callNet - today.putNet, calls: today.callNet, puts: today.putNet, vol: today.callVol + today.putVol, trades: today.trades, has: true }
       : { net: 0, calls: 0, puts: 0, vol: 0, trades: 0, has: false },
@@ -125,7 +136,7 @@ export function buildTraceSide(
         const pool = later.length ? later : rows;
         return Math.round(weighted(pool, r => r.iv, pool.reduce((a, r) => a + r.volume, 0)));
       })(),
-      builtToday: rows.filter(r => r.volOverOI >= 1.5).length,
+      builtToday: rows.filter(r => r.oi > 0 && r.volOverOI >= FRESH_VOL_OI).length,
     },
     interest: {
       added: rows.reduce((a, r) => a + (r.deltaOI > 0 ? r.deltaOI : 0), 0),
@@ -145,6 +156,7 @@ export function buildTraceSide(
       after: mine.length - prints.length,
     },
     earnDays,
+    earnIso: own.filter(r => r.earnDays === earnDays && r.earnIso).map(r => r.earnIso!)[0] ?? null,
   };
 }
 
@@ -171,11 +183,12 @@ export const signedUsd = (v: number) => `${v >= 0 ? '+' : ''}${fmtUsd(v)}`;
 /** `tapeWindow` names the stretch both tapes cover ("from 15:58 to 16:14 ET"); `regular` is false when either name has
     no regular-session print in that stretch — a count of after-hours prints says nothing about which name is busier, so
     the tape clause is then left out */
-export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over the same stretch', regular = true): TraceCompare {
+export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over the same stretch', regular = true, sameDay = 'expiring today'): TraceCompare {
   const bullish = a.net >= b.net ? a : b;
   const heavier = a.book.premium >= b.book.premium ? a : b;
   const busier = a.tape.prints >= b.tape.prints ? a : b;
-  const lean = (s: TraceSide) => ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${signedUsd(s.net)}`;
+  /* the net says its source and window — the ticks' regular session, or the clock's expiries for the whole day */
+  const lean = (s: TraceSide) => ` leans ${s.net >= 0 ? 'bullish' : 'bearish'} at ${signedUsd(s.net)}${s === b ? (s.netSource === 'ticks' ? " (net premium over the regular session, the vendor's minute ticks — the figure on Net Flow and Intervals)" : " (the clock's expiries, the vendor's expiry route)") : ''}`;
   const showTape = busier.tape.prints > 0 && regular;
   const parts: SentencePart[] = [
     { name: a.ticker },
@@ -189,7 +202,7 @@ export function buildTraceCompare(a: TraceSide, b: TraceSide, tapeWindow = 'over
       : busier === heavier
         ? [`the busier tape ${tapeWindow}, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]
         : [{ name: busier.ticker }, ` the busier tape ${tapeWindow}, ${num(busier.tape.prints)} prints for ${fmtUsd(busier.tape.dollars)}. `]),
-    `Money on contracts expiring today: `,
+    `Money on contracts ${sameDay} (by expiry, the vendor's expiry route): `,
     { name: a.ticker },
     ` ${signedUsd(a.odte.net)}, `,
     { name: b.ticker },

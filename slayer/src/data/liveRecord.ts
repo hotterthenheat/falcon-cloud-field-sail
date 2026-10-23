@@ -220,8 +220,11 @@ async function pageCongress(): Promise<void> {
       congressDone = true;
       congressCoverage = { ...congressCoverage, since: oldest ?? congressCoverage.since };
     } else if (oldest && oldest === congressCursor) {
-      /* the whole read was one day — more than 200 reports on it; step past it and say so */
-      congressCoverage = { ...congressCoverage, partialDays: [...congressCoverage.partialDays, oldest], since: oldest };
+      /* the whole read was one day — more than 200 reports on it; step past it and say so. ONLY A DAY WITH MEMBERS' ROWS
+         IS FLAGGED (audit round 5: Jul 29 was 200 of 256 executive-branch filings, none of them read by this page — "may
+         be incomplete" told the reader members' reports were missing when none had been seen) */
+      const members = rows.some(r => !r.member_type || /house|senate/i.test(r.member_type));
+      congressCoverage = { ...congressCoverage, partialDays: members ? [...congressCoverage.partialDays, oldest] : congressCoverage.partialDays, since: oldest };
       congressCursor = nyIsoDaysBack(1, oldest);
     } else {
       /* the oldest day may be cut mid-day: complete from the day after it, and the next read starts on it */

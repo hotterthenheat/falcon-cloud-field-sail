@@ -678,8 +678,10 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const bearishPremium = nOr(screen?.bearish_premium) ?? 0;
   const callVolume = nOr(screen?.call_volume) ?? 0;
   const putVolume = nOr(screen?.put_volume) ?? 0;
-  const flowPrem = file.flow.reduce((a, p) => a + p.premium, 0);
-  const askPrem = file.flow.filter(p => p.side === 'ASK').reduce((a, p) => a + p.premium, 0);
+  /* THE ASK SHARE IS THE DOLLARS PAID ON THE ASK (audit round 5: it summed whole alerts called ASK — 47% on AAPL against
+     44.6% actually filled on the ask): each alert's own ask-side premium, over the alerts' whole premium */
+  const flowPrem = file.flow.reduce((a, p) => a + Math.max(p.premium, (p.alertSides?.ask ?? 0) + (p.alertSides?.bid ?? 0) + (p.alertSides?.other ?? 0)), 0);
+  const askPrem = file.flow.reduce((a, p) => a + (p.alertSides ? p.alertSides.ask : p.side === 'ASK' ? p.premium : 0), 0);
   const sweepPrem = file.flow.filter(p => p.sweep).reduce((a, p) => a + p.premium, 0);
   const askSharePct = flowPrem > 0 ? (100 * askPrem) / flowPrem : null;
   const sweepSharePct = flowPrem > 0 ? (100 * sweepPrem) / flowPrem : null;

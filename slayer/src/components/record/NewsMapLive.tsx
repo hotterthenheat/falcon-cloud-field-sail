@@ -118,6 +118,9 @@ interface Props {
   flyTo?: FlyTo | null;
   sessions: LiveSession[];
   className?: string;
+  /** Called when the WebGL map cannot draw (no WebGL, a worker that never answers, a failed style) — the page swaps in
+      the flat SVG map rather than leave an empty dark box (audit round 5, the retail phone test) */
+  onFail?: () => void;
 }
 
 /** World width at zoom z is 512 * 2^z. Stay a hair inside that so the tiles cover the box. */
@@ -215,7 +218,9 @@ const ensureLayers = (map: maplibregl.Map) => {
   });
 };
 
-const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, flyTo = null, sessions, className = '' }: Props) => {
+const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, flyTo = null, sessions, className = '', onFail }: Props) => {
+  const onFailRef = useRef(onFail);
+  onFailRef.current = onFail;
   const theme = useResolvedTheme();
   const host = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -257,7 +262,9 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     if (!el) return;
     const z = coverZoom(el.clientWidth, el.clientHeight);
     coverRef.current = z;
-    const map = new maplibregl.Map({
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
       container: el,
       style: baseStyle(theme === 'light' ? 'light' : 'dark'),
       center: [8, 28],
@@ -270,6 +277,22 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
       renderWorldCopies: true,
       maxPitch: 0,
       fadeDuration: 0,
+    });
+    } catch {
+      onFailRef.current?.();
+      return;
+    }
+    /* the land must draw within a few seconds, or the box is an empty dark rectangle — the flat map stands in */
+    let loaded = false;
+    const failTimer = window.setTimeout(() => {
+      if (!loaded) onFailRef.current?.();
+    }, 7000);
+    map.on('error', () => {
+      if (!loaded) onFailRef.current?.();
+    });
+    map.on('load', () => {
+      loaded = true;
+      window.clearTimeout(failTimer);
     });
     map.touchZoomRotate.disableRotation();
     map.scrollZoom.setWheelZoomRate(1 / 240);
@@ -327,6 +350,7 @@ const LiveMap = ({ pins, selectedCity, hoverCity, onPick, onHover, heat, reach, 
     ro.observe(el);
     mapRef.current = map;
     return () => {
+      window.clearTimeout(failTimer);
       ro.disconnect();
       el.removeEventListener('wheel', onWheel);
       map.remove();

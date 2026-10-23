@@ -85,7 +85,7 @@ import { BookOrSkeleton } from './BookDown';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { aheadClock } from '../../data/ahead';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
-import { buildBuilding, type Building as BuildingData } from '../../data/building';
+import { buildBuilding, oiWhen, type Building as BuildingData } from '../../data/building';
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { readSessionClock } from '../../data/moc';
 import { MAX_PANES, OFF_SCOPE_TITLE, PANE_COLS, newPaneKey, readPanes, usePanesFollowScope, writePanes, type Pane } from '../../data/panes';
@@ -248,7 +248,9 @@ const Building = () => {
   }
   /* until any strike carries a change of open interest the book is still being read — "0 of 41 moved" over a
      loading ledger claimed a quiet day it had not seen (the ship pass, 2026-10-22) */
-  const counted = [...builds.values()].some(b => b.rows.some(r => r.dCall !== 0 || r.dPut !== 0));
+  /* …and "N of M moved" only once every pane's count is final (the fifth audit: "0 OF 23 MOVED" printed while the totals
+     still read "…") */
+  const counted = [...builds.values()].every(b => !b.loading) && [...builds.values()].some(b => b.rows.some(r => r.dCall !== 0 || r.dPut !== 0));
 
   /* THE NAMES DOOR — the Map's: "+ Names N", a name from the whole listing, four at most (NamesDoor, Targets' too) */
   const namesDoor = <NamesDoor count={panes.length} onPick={addPane} testId="build" />;
@@ -264,9 +266,9 @@ const Building = () => {
           <AgendaSwitch />
           <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the bar, the chip and the line mean" testId="build-guide" />
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
+        <p className="mt-0.5 text-[11px] text-textMuted lg:whitespace-nowrap lg:truncate" title={first.overnight ? `The overnight open-interest count · ${oiWhen(first.oiDates).long}` : undefined}>
           {first.overnight
-            ? `The overnight open-interest count${first.oiDates ? ` (${first.oiDates.from.slice(5)} → ${first.oiDates.to.slice(5)})` : ''}, contract by contract · the hedging yesterday's trading added or took off, each contract valued at its own gamma at today's price · every strike, the steady ones too — Show · What moved folds them away`
+            ? `The overnight open-interest count, contract by contract · the hedging ${oiWhen(first.oiDates).long} added or took off, each contract valued at its own gamma at today's price${oiWhen(first.oiDates).pending ? ` · ${oiWhen(first.oiDates).pending}` : ''} · every strike, the steady ones too — Show · What moved folds them away`
             : `${clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · estimated from the day's volume until the overnight open-interest count loads · every strike, the steady ones too — Show · What moved folds them away`}
           {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
         </p>
