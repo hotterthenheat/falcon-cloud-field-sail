@@ -44,7 +44,7 @@
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
 import { buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
-import type { Building, BuildVerdict } from './building';
+import { changeWhen, type Building, type BuildVerdict } from './building';
 import { levelRoles, putWallWordsAt, type LevelRole } from '../core/walls';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
@@ -85,8 +85,10 @@ export interface Target {
   /** Signed, percent of spot */
   distancePct: number;
   distanceSigma: number;
-  /** Odds price touches it by the close, 0..1 */
+  /** Odds price touches it by the close (or by `horizon`), 0..1 */
   reach: number;
+  /** "by Nov 20" when the odds run to a later expiry than the coming session — null for the close */
+  horizon: string | null;
   /** Odds it holds when reached, 0..1 — the floor for a trapdoor */
   hold: number;
   /** Dollars per 1% move at the strike: positive pushes back, negative pushes along */
@@ -98,8 +100,10 @@ export interface Target {
   holdTo: number | null;
   /** The latest change in the hedging here, dollars, and Building's word for it */
   build: number;
-  /** The change is the vendor's overnight open-interest count (yesterday's trading) — never "today" */
+  /** The change is the vendor's overnight open-interest count — named by the session it counts, never "today" */
   buildOvernight: boolean;
+  /** "in Oct 21's trading" — the session the change counts (data/building.ts changeWhen) */
+  buildWhen: string;
   /** The overnight count has not landed yet — the change is not known */
   buildLoading?: boolean;
   verdict: BuildVerdict;
@@ -136,6 +140,8 @@ export interface Agenda {
   marketPer1Pct: number;
   sigmaLeft: number;
   inSession: boolean;
+  /** "by Nov 20" when the reach odds run to a later expiry than the coming session (data/wall.ts scopeSigma) */
+  horizon: string | null;
   order: AgendaOrder;
   /** Every strike in the window, in the chosen order */
   targets: Target[];
@@ -147,6 +153,10 @@ export interface Agenda {
   wallsInReach: number;
   /** The nearest wall price can plausibly reach — a named call or put wall or an absorbing shelf, whichever side */
   nearestWall: Target | null;
+  /** The nearest wall in reach on each side of price (the fifth audit: "Nearest wall in reach 769" hid the call wall at
+      770 right beside it — each side is named) */
+  wallAbove: Target | null;
+  wallBelow: Target | null;
   /** The strike the close most likely lands on — null when no strike is likely enough to call it a lean (LEAN_MIN) */
   closesNear: { strike: number; odds: number } | null;
   /** The best single strike's odds even when it is no lean, for the words */
@@ -263,6 +273,7 @@ export function buildAgenda(
         distancePct: ((s.strike - spot) / spot) * 100,
         distanceSigma: o.distanceSigma,
         reach: o.reach,
+        horizon: ctx.horizon,
         hold: o.hold,
         weight: o.weight,
         weightEff: o.weightEff,
@@ -270,9 +281,10 @@ export function buildAgenda(
         breakFlow: o.breakPath.flow,
         pocket: !!o.breakPath.pocket,
         holdTo: o.holdPath.to,
-        /* the strike's ONE overnight change — Building's CHANGE column, now − was in the retail sign */
-        build: brow?.change ?? 0,
+        /* the strike's ONE overnight change — Building's CHANGE column: the wall's size change, + grew, − shrank */
+        build: brow?.sizeChange ?? 0,
         buildOvernight: building.overnight,
+        buildWhen: changeWhen(building).short,
         buildLoading: building.loading,
         verdict: brow?.verdict ?? 'steady',
         closes: closesAt.get(s.strike) ?? 0,
@@ -319,7 +331,13 @@ export function buildAgenda(
   /* THE WATCH-FIRST THREE ARE ALWAYS "MATTERS MOST" — the day's sentence and the Board's watch-first; the podium on the
      page shows the chosen order's own first three (TargetsBoard) */
   const first = byMatters.slice(0, 3).map(t => ordered.find(x => x.strike === t.strike) ?? t);
-  const mostReached = ordered.length ? ordered.reduce((a, b) => (b.reach > a.reach ? b : a)) : null;
+  /* NOT A STRIKE PRICE IS ALREADY ON (the fifth audit, 2026-10-23: "Most likely reached 764 · 99%" with spot at 763.96):
+     strikes within half a strike step of price are taken as reached already and left out */
+  const steps = asc.slice(1).map((x, i) => x.strike - asc[i].strike).filter(d => d > 0);
+  const step = steps.length ? Math.min(...steps) : spot * 0.002;
+  const onPrice = (t: Target) => Math.abs(t.strike - spot) < Math.max(step / 2, spot * 0.0005);
+  const reachable = ordered.filter(t => !onPrice(t));
+  const mostReached = reachable.length ? reachable.reduce((a, b) => (b.reach > a.reach ? b : a)) : null;
   /* THE WALLS IN REACH ARE EVERY WALL THE TABLE NAMES (the retail test, 2026-10-23: "Only wall in reach 770 · the only
      one" above a row tagging 769 PUT WALL, nearer): the absorbing shelves and the named call and put walls alike */
   const isWallRow = (t: Target) => t.isShelf || t.role === 'call wall' || t.role === 'put wall' || t.roles.includes('call wall') || t.roles.includes('put wall');
@@ -327,17 +345,20 @@ export function buildAgenda(
   const shelvesInReach = wallsInReach.filter(t => t.isShelf);
   const weakestWall = shelvesInReach.length ? shelvesInReach.reduce((a, b) => (b.hold < a.hold ? b : a)) : null;
   const nearestWall = wallsInReach.length ? wallsInReach.reduce((a, b) => (Math.abs(b.distancePct) < Math.abs(a.distancePct) ? b : a)) : null;
+  const nearestOf = (xs: Target[]) => (xs.length ? xs.reduce((a, b) => (Math.abs(b.distancePct) < Math.abs(a.distancePct) ? b : a)) : null);
+  const wallAbove = nearestOf(wallsInReach.filter(t => t.strike > spot));
+  const wallBelow = nearestOf(wallsInReach.filter(t => t.strike < spot));
   const closeTop = close.top[0] ? { strike: close.top[0].strike, odds: close.top[0].odds } : null;
   const closesNear = closeTop && closeTop.odds >= LEAN_MIN ? closeTop : null;
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time by ${clock.inSession ? 'the close' : 'the next close'}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall || lead.flat ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time ${ctx.horizon ?? (clock.inSession ? 'by the close' : 'by the next close')}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall || lead.flat ? 'too thin to be a wall' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';
 
-  return { ticker, spot, marketPer1Pct, sigmaLeft, inSession: clock.inSession, order, targets: ordered, first, mostReached, weakestWall, wallsInReach: wallsInReach.length, nearestWall, closesNear, closeTop, sentence };
+  return { ticker, spot, marketPer1Pct, sigmaLeft, inSession: clock.inSession, horizon: ctx.horizon, order, targets: ordered, first, mostReached, weakestWall, wallsInReach: wallsInReach.length, nearestWall, wallAbove, wallBelow, closesNear, closeTop, sentence };
 }
 
 /** The agenda as the page lists it: the strikes within `half` of spot either side, numbered in the chosen order. The
@@ -364,4 +385,4 @@ export const closeLeanWords = (a: Pick<Agenda, 'closesNear' | 'closeTop'>): stri
 
 /** Building's word for today's change at a strike, for the row */
 export const buildWords = (t: Target, inSession: boolean): string =>
-  t.buildLoading ? '…' : t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} · net ${signed(t.build)}${t.buildOvernight ? ' overnight' : inSession ? '' : ' last session'}`;
+  t.buildLoading ? '…' : t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} · ${signed(t.build)}${t.buildOvernight ? ` ${t.buildWhen}` : inSession ? '' : ' last session'}`;

@@ -14,7 +14,7 @@
 ==================================================
 */
 
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import Term from '../ui/Term';
 import type { TermKey } from '../../data/terms';
 import type { KeyLevelKind, KeyLevelRow } from '../../types/gex';

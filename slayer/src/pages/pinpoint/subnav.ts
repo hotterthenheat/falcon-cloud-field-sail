@@ -52,7 +52,7 @@ export const GEX_SUBPAGES: GexSubpage[] = [
        name is mine at his word ("choose a name for the overhead section name") */
     path: '/pinpoint/agenda',
     label: 'Agenda',
-    subtitle: 'Every strike in the order it matters today, and what today added to the book — two faces, switched at the head',
+    subtitle: 'Every strike in the order it matters, and what the overnight open-interest count added to the book — two faces, switched at the head',
     icon: ClipboardList,
   },
   {

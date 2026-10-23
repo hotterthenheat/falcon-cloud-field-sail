@@ -54,7 +54,7 @@ import PaneFoot from './PaneFoot';
 import ReplayStrip from './ReplayStrip';
 import { commitArm, evaluateAlert, markFired, useAlerts, type AlertContext, type IndicatorSource } from './alertStore';
 import { newsPulse } from '../../data/news';
-import { exposureNowFor, fmtUsd } from '../../data/gex';
+import { exposureNowFor, fmtGexUsd as fmtUsd } from '../../data/gex';
 import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock } from 'lucide-react';
 import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, gestureOf, isFreehand, isWordsKind, loadDrawings, needsThirdAnchor, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
 import DrawRailTools, { DrawSheet } from './DrawRailTools';

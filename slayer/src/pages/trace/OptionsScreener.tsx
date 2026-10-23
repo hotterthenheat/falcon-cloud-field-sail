@@ -49,6 +49,7 @@ import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import LeanCell from '../../components/trace/LeanCell';
+import { shyPct } from '../../components/trace/dayWords';
 import { dayAdv } from '../../components/trace/dayWords';
 import { SectorName } from '../../components/trace/SectorMark';
 import WatchStar from '../../components/trace/WatchStar';
@@ -80,7 +81,7 @@ const PIN_RIGHT = ['prem'];
 const leanWords = (r: BookContract) => {
   const l = dayLean(r);
   /* the share the rule is called on (the sided volume), and an even day's larger side too (retail, 2026-10-23) */
-  return l.lean === 'ASK' ? `ask ${Math.round(l.askSided)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bidSided)}%` : l.lean === 'UNSIDED' ? (Number.isFinite(l.mid) ? `mid/no side ${Math.round(l.mid)}%` : '—') : `even · ${l.askSided >= 50 ? `ask ${Math.round(l.askSided)}%` : `bid ${Math.round(l.bidSided)}%`}`;
+  return l.lean === 'ASK' ? `ask ${Math.round(l.askSided)}%` : l.lean === 'BID' ? `bid ${Math.round(l.bidSided)}%` : l.lean === 'UNSIDED' ? (Number.isFinite(l.mid) ? `mid/no side ${Math.round(l.mid)}%` : '—') : `even · ${l.askSided >= 50 ? `ask ${shyPct(l.askSided)}%` : `bid ${shyPct(l.bidSided)}%`}`;
 };
 
 /** A contract's day on a phone */

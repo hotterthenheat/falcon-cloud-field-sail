@@ -44,7 +44,7 @@
 
 import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { DEFAULT_R } from '../core/carry';
-import { cumulativeFlip, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
+import { cumulativeFlip, netGammaAt, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { inOwnIvHorizon, peekEntry, peekGammaPriced } from './uwBook';
@@ -159,19 +159,23 @@ export interface LevelFlip extends FlipRead {
 
 const cache = new Map<string, LevelFlip>();
 
-/** The flip of the contracts in `chain` (defaults to the snapshot's levels chain) — see the head of this file */
-export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain, at?: number): LevelFlip {
+interface LegSet {
+  legs: GammaLeg[];
+  complete: boolean;
+  key: string;
+  withVol: number;
+}
+
+/** The re-priced legs of the contracts in `chain` — the one leg set the flip, and the net path, are read off */
+function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: number): LegSet | null {
   const spot = snapshot.spot;
   const dates = snapshot.liveBook ? datesOf(snapshot, chain) : null;
   const entry = snapshot.liveBook ? peekEntry(snapshot.ticker) : undefined;
-  /* the running-net fallback is final only off a book that is not the live one; on the live book it stands in while the
-     dates land, and says so (the fourth audit's M1: "FLIP none nearby" for seconds on a cold load) */
-  const fallback = (final = !snapshot.liveBook): LevelFlip => ({ ...cumulativeFlip(chain.map(n => ({ strike: n.strike, net: n.netGex })), spot), complete: final });
-  if (!dates || !entry || !snapshot.uwByDate) return fallback();
+  if (!dates || !entry || !snapshot.uwByDate) return null;
   const by = snapshot.uwByDate;
   const floor = isoDate(bookToday());
   const want = dates === 'ALL' ? Object.keys(by).filter(d => d >= floor && by[d]?.length) : dates.filter(d => by[d]?.length);
-  if (!want.length) return fallback();
+  if (!want.length) return null;
   const listed = (snapshot.uwExpiries ?? []).map(e => e.date).filter(d => d >= floor);
   const complete = dates === 'ALL' ? listed.length === 0 || listed.every(d => want.includes(d)) : true;
   /* `at`: the clock to re-price at (a finished session's close) — without the asOf's contract-vol switch. A pinned clock
@@ -192,8 +196,6 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
      seconds, then 772.17): until their contracts are read the flip is provisional, and the pages print "…" */
   const factsIn = pinned != null || [...ownDates].every(d => !!entry.factsDates?.has(d));
   const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;
@@ -206,7 +208,6 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
     for (const l of ls) if (l.iv > 0) withVol++;
     legs.push(...ls);
   }
-  if (!withVol) return fallback(complete && factsIn);
   {
     /* the whole book's per-strike total less what the loaded dates hold, carried flat — G(spot) is the book's own net
        (nothing on a date's own chain or a sum of dates; on the whole book a listing not loaded, or — the session's book
@@ -219,10 +220,44 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
     }
     for (const [k, v] of onDates) if (!chain.some(n => n.strike === k)) legs.push({ strike: k, g0: -v, iv: 0, t: 0 });
   }
-  const read: LevelFlip = { ...repricedFlip(legs, spot, DEFAULT_R), complete: complete && factsIn };
+  return { legs, complete: complete && factsIn, key, withVol };
+}
+
+/** The flip of the contracts in `chain` (defaults to the snapshot's levels chain) — see the head of this file */
+export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain, at?: number): LevelFlip {
+  const spot = snapshot.spot;
+  /* the running-net fallback is final only off a book that is not the live one; on the live book it stands in while the
+     dates land, and says so (the fourth audit's M1: "FLIP none nearby" for seconds on a cold load) */
+  const fallback = (final = !snapshot.liveBook): LevelFlip => ({ ...cumulativeFlip(chain.map(n => ({ strike: n.strike, net: n.netGex })), spot), complete: final });
+  const set = legSet(snapshot, chain, at);
+  if (!set) return fallback();
+  const hit = cache.get(set.key);
+  if (hit) return hit;
+  if (!set.withVol) return fallback(set.complete);
+  const read: LevelFlip = { ...repricedFlip(set.legs, spot, DEFAULT_R), complete: set.complete };
   if (cache.size > 400) cache.clear();
-  cache.set(key, read);
+  cache.set(set.key, read);
   return read;
+}
+
+/*
+  THE BOOK'S NET THROUGH THE DAY, IN THE LEVELS' SCOPE (the fifth audit, 2026-10-23: the Map's "Dealer gamma through the
+  day" drew the vendor's whole-book minute series — −13B…−18B, the settled day in it, and NVDA's green 0…700M — under a
+  headline of the Today scope's −$3.1B / −$73.9M). The vendor's minute series is the open-interest book re-priced at
+  each minute's price; this is the same thing for the scope's own contracts: the legs the flip reads, priced at each
+  price handed in — so the path ends at the headline's net, in the same scope and the same sign. RETAIL sign (+ absorbs).
+  Null while the scope's legs are not final.
+*/
+export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNode[], prices: readonly number[]): { path: number[]; complete: boolean } | null {
+  const set = legSet(snapshot, chain);
+  if (!set || !set.withVol) return null;
+  const gross = set.legs.reduce((a, l) => a + Math.abs(l.g0), 0);
+  const legs = set.legs.map(l => (Math.abs(l.g0) < gross * 1e-7 || (!l.ownIv && Math.abs(l.g0) < gross * 1e-5) ? { ...l, iv: 0 } : l));
+  const path = prices.map(S => {
+    const v = netGammaAt(legs, snapshot.spot, S, DEFAULT_R);
+    return v === 0 ? 0 : -v;
+  });
+  return { path, complete: set.complete };
 }
 
 /* ---- the words ----------------------------------------------------------------------------------------------- */

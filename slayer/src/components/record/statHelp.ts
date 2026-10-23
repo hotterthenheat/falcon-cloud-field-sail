@@ -22,8 +22,10 @@ const HELP: Record<string, string> = {
   'Moves beyond it': 'Of the last eight reports, how many moved the stock more than the move priced today',
   'Next earnings': 'The next report date from the name’s Unusual Whales earnings file — “est.” until the company confirms it',
   'EPS · last print': 'Earnings per share in the latest report, against the analysts’ estimate',
-  'EPS growth · 4q': 'Earnings per share over the last four reports against the four before',
-  'EPS growth · 4 quarters': 'Earnings per share over the last four reports against the four before',
+  'EPS growth · 4q': "The latest quarter's earnings per share against the same quarter a year before",
+  'EPS growth · 4 quarters': "The latest quarter's earnings per share against the same quarter a year before",
+  'EPS growth · YoY': "The latest quarter's earnings per share against the same quarter a year before",
+  'EPS growth · year over year': "The latest quarter's earnings per share against the same quarter a year before",
   Estimates: 'The analysts’ average estimates on the feed',
   'IV rank': 'Where today’s implied volatility sits in its past-year range: 0 is the lowest of the year, 100 the highest',
   /* the stock */

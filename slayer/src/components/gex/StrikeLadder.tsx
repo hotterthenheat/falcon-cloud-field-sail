@@ -1,4 +1,4 @@
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import SpotRule from '../ui/SpotRule';
 import { heatCellStyle } from './heatmap';
 import type { BoardTicker } from '../../types/gex';

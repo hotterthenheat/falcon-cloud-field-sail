@@ -137,8 +137,10 @@ const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
   /* ONE QUOTE, SAID AS WHICH PRICE (liveQuote.priceWords): outside the session the regular close, the extended print
      and its clock in the title — the same figure the name's page leads with */
   const words = priceWords(q);
+  /* until the quote lands, the screener's REGULAR price — its after-hours print apart, in the title (audit round 5) */
   const px = words?.lead ?? data.price;
-  return <span className="font-mono text-[11px] tnum text-textPrimary" title={words?.line ?? 'the screener’s last price'}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+  const fallbackTitle = data.extPrice != null ? `${data.price.toFixed(2)} close · ${data.extPrice.toFixed(2)} outside the session (the screener's)` : 'the screener’s price';
+  return <span className="font-mono text-[11px] tnum text-textPrimary" title={words?.line ?? fallbackTitle}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 };
 const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const q = useLiveQuote(data?.ticker);
@@ -146,7 +148,8 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   /* before the open the session has not moved: the last session's change, dated */
   const pre = q?.phase === 'pre' && q.lastSessionPct != null;
   const chg = pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
-  const ext = extendedLine(q);
+  /* the extended move from the quote, else the screener's — every row the same convention (audit round 5: META) */
+  const ext = q ? extendedLine(q) : data.extPct != null ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
   return (
     <span className="flex flex-col items-end leading-tight" title={`${pre ? `The last session's change${q?.regDate ? ` (${q.regDate})` : ''}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
       <span className={`font-mono text-[11px] tnum ${dirInk(chg)}`}>{signedPct(chg, 2)}</span>

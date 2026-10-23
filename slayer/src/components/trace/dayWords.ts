@@ -7,7 +7,7 @@
 */
 
 import { isoDate, isTradingDay } from '../../core/calendar';
-import { nyIsoToday, tapeSessionIso } from '../../data/traceLive';
+import { LEAN_EDGE, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const parse = (iso: string) => {
@@ -74,3 +74,5 @@ export function earnWords(r: { earnDays: number | null; earnIso?: string | null 
   const title = `The name's next report${date ? `, ${date}` : ''}: ${r.earnDays} trading day${r.earnDays === 1 ? '' : 's'} (sessions) from the ${shortDay(tapeSessionIso())} session${Number.isFinite(cal) ? ` · ${cal} calendar day${Math.abs(cal) === 1 ? '' : 's'} from today` : ''}`;
   return { text, title };
 }
+/** An even day's share, never rounded up onto the edge it fell short of ("54.6", not "55") */
+export const shyPct = (v: number) => (Math.round(v) >= LEAN_EDGE ? (Math.floor(v * 10) / 10).toFixed(1) : String(Math.round(v)));

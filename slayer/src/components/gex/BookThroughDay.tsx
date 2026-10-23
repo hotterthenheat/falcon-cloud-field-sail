@@ -38,9 +38,13 @@ import { sessionBars } from '../../data/levelview';
 import { bookMinuteKind, deskBars, peekSettledNet, useBookMinutes, useBookRev } from '../../data/uwBook';
 import { roomLevels } from '../../data/roomLevels';
 import { nyIsoDate } from '../../core/nyTime';
-import { expirySpan } from '../../data/bookWindow';
+import { expirySpan, longDay } from '../../data/bookWindow';
+import { levelNetPath } from '../../data/flipLevel';
+import { nySessionPhase } from '../../core/nyTime';
+
+const inSessionNow = (): boolean => nySessionPhase() === 'open';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { hhmm } from '../../data/ahead';
 import { axisForSession } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
@@ -94,7 +98,7 @@ interface Minute {
     -$417.9M"), the scale only counts. */
 const axisUsd = (v: number): string => {
   const a = Math.abs(v);
-  const sign = v < 0 && a >= 0.5 ? '-' : '';
+  const sign = v < 0 && a >= 0.5 ? '−' : '';
   if (a >= 1e9) return `${sign}${(a / 1e9).toFixed(1)}B`;
   if (a >= 1e7) return `${sign}${Math.round(a / 1e6)}M`;
   if (a >= 1e6) return `${sign}${(a / 1e6).toFixed(1)}M`;
@@ -165,6 +169,25 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
         if (m > hi) hi = m;
       }
     }
+    /* THE LEVELS' SCOPE, RE-PRICED AT EACH MINUTE'S PRICE (the fifth audit, 2026-10-23: the vendor's whole-book minute
+       series — the settled day in it — drew −13B…−18B under a Today headline of −$3.1B, and NVDA's line read green
+       0…700M under "−$73.9M amplifies"). The line is the headline's own contracts (data/flipLevel.ts levelNetPath),
+       the open interest as it stands priced at each minute's price — the vendor's method, on the scope — so it ends at
+       the headline's figure, in its sign and its inks. Outside the session it ends at the close the levels are priced at. */
+    if (snapshot.liveBook) {
+      if (netPending) return [];
+      const cut = bars.filter(b => nyMinutes(b.time * 1000) <= endMin);
+      const pts = cut.map(b => ({ time: Math.floor(b.time / 60) * 60, min: nyMinutes(b.time * 1000), price: b.close }));
+      const lastBar = cut[cut.length - 1];
+      if (at == null && lastBar && !inSessionNow() && Math.abs(lastBar.close - snapshot.spot) > 1e-9 && nyMinutes(lastBar.time * 1000) < 16 * 60) {
+        const t = Math.floor(lastBar.time / 60) * 60 + 60;
+        pts.push({ time: t, min: nyMinutes(t * 1000), price: snapshot.spot });
+      }
+      if (pts.length < 2) return [];
+      const read = levelNetPath(snapshot, snapshot.chain, pts.map(p => p.price));
+      if (!read) return [];
+      return pts.map((p, i) => ({ time: p.time, min: p.min, net: read.path[i], spot: p.price }));
+    }
     const pool = vendor ?? [];
     let kept = pool.filter(m => m.min >= lo && m.min <= hi && m.min <= endMin);
     if (kept.length < 2) kept = pool.filter(m => m.min <= endMin);
@@ -177,7 +200,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
       return kept.map(m => ({ time: m.time, min: m.min, net: -m.net, spot: m.spot ?? priceAt.get(m.time) ?? null }));
     }
     return [];
-  }, [bars, vendor, at, bookNet]);
+  }, [bars, vendor, at, bookNet, snapshot, netPending]);
 
   /* the tape's clock, off the same bars (data/dayAxis.ts): live, the session so far */
   const phase = readSessionClock().phase;
@@ -437,12 +460,17 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
   const pool = vendor ?? [];
   const lastPrint = at == null ? pool[pool.length - 1] ?? null : last ?? null;
   const settled = at == null && kind === 'oi' ? peekSettledNet(ticker) : 0;
-  const lineNow = lastPrint ? (at == null ? -lastPrint.net : lastPrint.net) - (settled ?? 0) : null;
+  const lineNow = snapshot.liveBook ? last?.net ?? null : lastPrint ? (at == null ? -lastPrint.net : lastPrint.net) - (settled ?? 0) : null;
   const lineDay = lastPrint ? nyIsoDate(lastPrint.time * 1000) : null;
   const lineDayWords = lineDay && lineDay !== nyIsoDate() ? ` · ${expirySpan([lineDay])} session` : '';
-  const kindWord = kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · the session's trades${lineDayWords}`;
-  const kindTitle =
-    kind === 'oi'
+  const barDay = bars.length ? nyIsoDate(bars[bars.length - 1].time * 1000) : null;
+  const scoped = !!snapshot.liveBook;
+  const kindWord = scoped
+    ? `Net GEX through ${barDay && barDay !== nyIsoDate() ? longDay(barDay) : 'the day'} · ${bookLabel ?? 'these contracts'} at each minute's price`
+    : kind === 'oi' ? `Dealer gamma through the day · all expiries, the session's own included${lineDayWords}` : `Dealer hedging · the session's trades${lineDayWords}`;
+  const kindTitle = scoped
+    ? `The net GEX of the contracts the Levels card reads (${bookLabel ?? 'its scope'}) — their open interest as it stands now, re-priced at each minute's price${barDay && barDay !== nyIsoDate() ? ` through ${longDay(barDay)}'s session` : ''}. The vendor's own minute series does the same for the whole book; this is the same measure on the headline's contracts, so the line ends at the Net GEX beside it, in its sign: green above zero (dealers long gamma, their hedging absorbs), red below (it amplifies)`
+    : kind === 'oi'
       ? "The vendor's open-interest dealer gamma per 1% move on every expiry, re-priced at each minute's price (spot-exposures) — the same measure as the levels' net GEX. Through the session it counts the contracts expiring that day; after the close those settle, and the figure under Details takes them off, so it equals the All-expiries net"
       : "The vendor's dealer gamma per 1% move from the session's trades (volume-based, minute by minute) — a different measure from the open-interest book the levels are read from";
   const [showDetails, setShowDetails] = useState(false);
@@ -487,7 +515,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
                 </span>
               )}
             </PartFact>
-            {last && <PartFact label="Line changed sign" title="How many times through the session the line (every expiry) flipped between absorbing and amplifying">{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>}
+            {last && <PartFact label="Line changed sign" title={`How many times through the session the line${scoped ? '' : ' (every expiry)'} flipped between absorbing and amplifying`}>{flips === 0 ? 'not yet' : `${flips} ${flips === 1 ? 'time' : 'times'}`}</PartFact>}
             <button
               type="button"
               className="inline-flex items-baseline gap-1 font-mono text-[11px] uppercase tracking-wider text-textMuted hover:text-textPrimary underline-offset-2 hover:underline"
@@ -501,13 +529,13 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
               <span className="inline-flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded border border-borderSubtle/70 px-2 py-0.5" data-through-details>
                 {lineNow != null && (
                   <PartFact
-                    label={`Line's last print · all expiries${lastPrint ? ` · ${hhmm(nyMinutes(lastPrint.time * 1000))}` : ''}`}
-                    title={`${kindTitle}.${settled ? ` The contracts that settled at 4:00 (${settled > 0 ? '+' : ''}${fmtUsd(settled)}) are taken off.` : ''}${kind === 'oi' ? ' It is the All-expiries net as of that minute: with Levels on All expiries the Net GEX above is the same measure, re-priced at the latest price, so after the bell the two differ only by the move since the vendor\'s last print.' : ''}`}
+                    label={scoped ? `Line's last point${last ? ` · ${hhmm(last.min)}` : ''}` : `Line's last print · all expiries${lastPrint ? ` · ${hhmm(nyMinutes(lastPrint.time * 1000))}` : ''}`}
+                    title={scoped ? `${kindTitle}.` : `${kindTitle}.${settled ? ` The contracts that settled at 4:00 (${settled > 0 ? '+' : ''}${fmtUsd(settled)}) are taken off.` : ''}${kind === 'oi' ? ' It is the All-expiries net as of that minute: with Levels on All expiries the Net GEX above is the same measure, re-priced at the latest price, so after the bell the two differ only by the move since the vendor\'s last print.' : ''}`}
                   >
                     <span data-through-net={Math.round(lineNow)}>
                       {lineNow > 0 ? '+' : ''}
                       {fmtUsd(lineNow)}
-                      {settled ? <span className="ml-1 font-normal text-textMuted">(settled contracts off)</span> : null}
+                      {!scoped && settled ? <span className="ml-1 font-normal text-textMuted">(settled contracts off)</span> : null}
                     </span>
                   </PartFact>
                 )}

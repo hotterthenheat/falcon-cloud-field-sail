@@ -226,10 +226,11 @@ interface Valued {
  * chain's own exposure per contract, else Black-Scholes at that contract's vol (or the expiry's at-the-money vol).
  * Expired contracts and dates outside the scope are left out.
  */
-export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike: number }[], change: OiChange): Map<number, Valued> {
+export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike: number }[], change: OiChange, from?: string): Map<number, Valued> {
   const out = new Map<number, Valued>();
   const spot = snapshot.spot;
-  const floor = isoDate(bookToday());
+  /* `from`: the first expiry still counted — a past session's report counts its own (settled) date's contracts */
+  const floor = from && from < isoDate(bookToday()) ? from : isoDate(bookToday());
   const scope = snapshot.liveBook ? datesOf(snapshot, chain as MarketSnapshot['chain']) : null;
   const inScope = (d: string) => d >= floor && (scope == null || scope === 'ALL' || scope.includes(d));
   const by = snapshot.uwByDate ?? {};

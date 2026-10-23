@@ -234,6 +234,7 @@ const Compare = () => {
      link at all — it cannot follow the frame, that would make it the first. */
   const chipA = (
     <ScopeChip
+      closeOutside
       ticker={aTicker}
       linked={aScope === undefined}
       full
@@ -242,7 +243,7 @@ const Compare = () => {
       onPick={next => (aScope === undefined ? changeTicker(next) : setAScope(next))}
     />
   );
-  const chipB = <ScopeChip ticker={bTicker} quote onPick={next => setB(next)} title="The second name — pick another" />;
+  const chipB = <ScopeChip ticker={bTicker} quote closeOutside onPick={next => setB(next)} title="The second name — pick another" />;
   const onSwap = () => {
     const a = aTicker;
     const b = bTicker;

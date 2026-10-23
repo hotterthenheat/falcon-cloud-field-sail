@@ -41,7 +41,8 @@ import { useBoxFold } from '../../data/boxFold';
 import { sessionBars } from '../../data/levelview';
 import { flipSidesWords } from '../../data/flipLevel';
 import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev } from '../../data/uwBook';
-import { valueOiChange } from '../../data/building';
+import { oiWhen, valueOiChange } from '../../data/building';
+import { longDay, recordDay } from '../../data/bookWindow';
 import { fmtDollars as fmtUsdShort } from '../../data/ahead';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { nyClock, nyMinutes } from '../../core/nyTime';
@@ -186,10 +187,15 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
   const levelsScope = '0DTE' as const;
   /* the overnight open-interest change on these contracts, strike by strike (data/building.ts valueOiChange) */
   const bookRev = useBookRev();
+  const rec = recordDay();
+  const dayW = rec.isToday ? 'today' : longDay(rec.date);
+  const oiNow = peekOiChange(snapshot.ticker);
+  const oiWords = oiNow?.lastDate && oiNow.currDate ? oiWhen({ from: oiNow.lastDate, to: oiNow.currDate }) : null;
   const oiAt = useMemo(() => {
     ensureOiChange(snapshot.ticker);
     const ch = peekOiChange(snapshot.ticker);
-    return ch && ch.rows.length ? valueOiChange(snapshot, snapshot.chain, ch) : null;
+    /* the session on record's own contracts count too (a settled date's book, graded before today's open) */
+    return ch && ch.rows.length ? valueOiChange(snapshot, snapshot.chain, ch, recordDay().date) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, bookRev]);
   /* NOTHING PROVISIONAL (the fourth audit's M1: "SUPREME 760" — the whole book's — for seconds before today's landed) */
@@ -219,11 +225,11 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         const added = (v?.call ?? 0) + (v?.put ?? 0);
         const size = Math.abs(now) - Math.abs(now - added);
         if (Math.abs(size) < 0.05 * Math.max(1, Math.abs(now))) {
-          trendWord = 'steady overnight';
-          trend = 'about where it was before yesterday’s trading';
+          trendWord = 'steady';
+          trend = `about where it was before ${oiWords?.trade ?? 'the overnight count'}`;
         } else {
           trendFig = `${size > 0 ? '+' : '−'}${fmtUsdShort(Math.abs(size))}`;
-          trendWord = size > 0 ? 'added overnight' : 'taken off overnight';
+          trendWord = size > 0 ? `added${oiWords?.day ? ` ${oiWords.day}` : ' overnight'}` : `taken off${oiWords?.day ? ` ${oiWords.day}` : ' overnight'}`;
           trend = `${trendFig} ${trendWord}`;
         }
       }
@@ -296,7 +302,9 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
           five labels printed over again on each row). What a test and a break are, and how the rates are graded, is the
           guide's. */}
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
-        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary">How the levels held today</h3>
+        {/* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23: "How the levels held today" over Thursday's bars at
+            01:00 Friday) — "today" only while it is today's session */}
+        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary" data-report-day={rec.date}>How the levels held {rec.isToday ? 'today' : `· ${longDay(rec.date)}`}</h3>
         {scope}
         {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The contracts these levels are read from — the Levels card at the top of the page, the same as the Board's" data-report-span>{span}</span>}
         <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the rows, the strips and the ticks mean" testId="report-guide" />
@@ -304,7 +312,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         {rates.insideMove.n > 0 && (
           <span
             className="ml-auto inline-flex items-baseline gap-2 font-mono whitespace-nowrap"
-            title={`How many of the ${rates.insideMove.n} sessions before today closed inside the one move their options priced at the open`}
+            title={`How many of the ${rates.insideMove.n} sessions before ${dayW} closed inside the one move their options priced at the open`}
             data-base-rate="close"
             data-base-rates={rates.sessions}
           >
@@ -321,7 +329,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         </p>
       )}
       {open && !unavailable && (
-        <div className="font-mono" role="table" aria-label="Today's levels and how each held" data-level-rows>
+        <div className="font-mono" role="table" aria-label={`${rec.isToday ? "Today's" : `${longDay(rec.date)}'s`} levels and how each held`} data-level-rows>
           {/* THE COLUMNS, NAMED ONCE (the matrix's own head): a row per level under them */}
           <div className={`${grid} h-8 items-center border-t border-borderSubtle/60 text-[11px] uppercase tracking-wider text-textMuted`} role="row">
             <span role="columnheader" title="Which level the row is: call wall, put wall, flip, pin or supreme — hover a row for what it means">Level</span>
@@ -329,13 +337,13 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
             <span role="columnheader" className={desk}>
               Session <span className="normal-case tracking-normal tnum">{first != null ? `${hhmm(first)} → ${last != null ? hhmm(last) : 'now'}` : ''}</span>
             </span>
-            <span role="columnheader" className="text-right" title="How many one-minute bars reached the level today">Tests</span>
+            <span role="columnheader" className="text-right" title={`How many one-minute bars reached the level ${rec.isToday ? 'today' : `on ${longDay(rec.date)}`}`}>Tests</span>
             <span role="columnheader" className="text-right" title="Tests where the bar closed back on the near side — the level held">Held</span>
             <span role="columnheader" className="text-right" title="Tests where the bar closed through the level">Broke</span>
             <span role="columnheader" className="text-right" title="The time price last reached the level">Last</span>
-            <span role="columnheader" className={desk} title="How the hedging at the level changed in the overnight open-interest count — yesterday's trading, on the Levels card's contracts, valued at today's price. The flip is a price, not a strike, so it has none">Built overnight</span>
-            <span role="columnheader" className={`${desk} text-right whitespace-nowrap`} title={rates.sessions > 0 ? `How often the level's first test held, over the ${rates.sessions} sessions before today — each read off its own open, never a later book` : 'No sessions before today on hand'}>
-              Before today
+            <span role="columnheader" className={desk} title={`How the hedging at the level changed in the overnight open-interest count${oiWords ? ` — ${oiWords.long}` : ''}, on these contracts, each valued at its own gamma. The flip is a price, not a strike, so it has none${oiWords?.pending ? ` · ${oiWords.pending}` : ''}`}>{oiWords?.day ? `Built ${oiWords.day}` : 'Built overnight'}</span>
+            <span role="columnheader" className={`${desk} text-right whitespace-nowrap`} title={rates.sessions > 0 ? `How often the level's first test held, over the ${rates.sessions} sessions before ${dayW} — each read off its own open, never a later book` : `No sessions before ${dayW} on hand`}>
+              Before {rec.isToday ? 'today' : rec.date.slice(5).replace('-', '/')}
             </span>
           </div>
           {rows.map(r => {

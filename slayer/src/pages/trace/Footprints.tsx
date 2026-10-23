@@ -113,7 +113,7 @@ const TOOLTIPS: Record<string, string> = {
   prevoi: 'Open interest as of the close before',
   doi: 'What open interest did from the session before to this one — positions built or unwound',
   doipct: 'The change as a share of what stood before',
-  builton: 'Which side did the building yesterday — at the ask, buyers; on the bid, sellers',
+  builton: 'Which side did the building in the session before — at the ask, buyers; on the bid, sellers',
   prevavg: "The contract's close the session before",
   streak: 'Sessions in a row the interest has grown',
   spark: "Yesterday's volume, quarter hour by quarter hour",
@@ -214,7 +214,7 @@ const Footprints = () => {
     /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
     /* WHAT IT COVERS (the audit, 2026-10-22: "Open interest grew by 297,774 overnight" summed only the book's contracts) */
-    const base = `Across the ${num(filtered.length)} standing contracts ${cutWord ? `${cutWord} ` : ''}on the market's book (the vendor's 200 contracts with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}), open interest rose ${num(added)} ${oiSpanWords()} on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.`;
+    const base = `Across the ${num(filtered.length)} standing contract${filtered.length === 1 ? '' : 's'} ${cutWord ? `${cutWord} ` : ''}on the market's book (the vendor's 200 contracts with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}), open interest rose ${num(added)} ${oiSpanWords()} on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.`;
     if (!loudestBuild) return <RichRead text={base} />;
     return (
       <>
@@ -223,7 +223,7 @@ const Footprints = () => {
           {loudestBuild.ticker} {loudestBuild.strike}
           {loudestBuild.right}
         </ReadDoor>
-        <RichRead text={` [[+${num(loudestBuild.deltaOI)}]]${loudestBuild.prevVolume > 0 ? `, built ${loudestBuild.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}.`} />
+        <RichRead text={` [[+${num(loudestBuild.deltaOI)}]]${loudestBuild.prevVolume > 0 ? `, built ${loudestBuild.prevAskPct >= 50 ? 'at the ask' : 'on the bid'}` : ''}${stockLike(loudestBuild) ? ` — ${Math.abs(loudestBuild.otmPct).toFixed(0)}% in the money with ${loudestBuild.dte} days to run: likely a stock replacement or a roll, not a directional bet` : ''}.`} />
       </>
     );
   }, [filtered, cutWord, loudestBuild, stand.expired]);

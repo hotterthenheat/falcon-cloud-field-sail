@@ -51,7 +51,7 @@ export const splinePath = (pts: { x: number; y: number }[], xMin: number, xMax: 
   }
   return d;
 };
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { sinceOpenRead } from '../../data/levelview';
 import { afterGlide, onGlide, promisedWidth } from '../../core/glide';
 import HoverReadout from '../ui/HoverReadout';

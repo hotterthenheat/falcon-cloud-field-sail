@@ -45,7 +45,8 @@ import { buildExposureProfile } from '../../data/exposure';
 import { ThermalFieldPrimitive, type FieldPoint, type Rgb } from './thermalFieldPrimitive';
 import { dayAxisFrom, dayAxisTo } from '../../data/dayAxis';
 import { besideDot } from './besideDot';
-import { nyMinutes } from '../../core/nyTime';
+import { nyIsoDate, nyMinutes } from '../../core/nyTime';
+import { dayRef, longDay } from '../../data/bookWindow';
 import { armLevel, removeAlert, useAlerts, type LevelName } from './alertStore';
 import { setDayHover, useDayHover } from '../../data/dayHover';
 import { useResolvedTheme } from '../../theme/theme';
@@ -596,6 +597,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const say = (ws: string[]) => (ws.length <= 1 ? ws[0] ?? '' : `${ws.slice(0, -1).join(', ')} and ${ws[ws.length - 1]}`);
   const plotW = hostRef.current?.clientWidth ?? 0;
   const session = useMemo(() => (bars.length ? { lo: Math.min(...bars.map(b => b.low)), hi: Math.max(...bars.map(b => b.high)) } : null), [bars]);
+  /* THE BARS' OWN DAY (the fifth audit, 2026-10-23: "Price today · SESSION 761.17–767.71" at 01:00 Friday over Thursday's
+     session): "today" only when the bars are New York's today, else the day by name */
+  const barDay = bars.length ? nyIsoDate(bars[bars.length - 1].time * 1000) : null;
+  const priceWord = !barDay || dayRef(barDay) === 'today' ? 'Price today' : `Price · ${longDay(barDay)}`;
 
   /* THE CHART IS NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "remove the word 'the tape' sounds ai generated and lacks
      clarity … give me informative names as to what they do, i also dislike their size or font"): today's price, in the
@@ -604,8 +609,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const partHead = part ? (
     <>
       {headSlot && <span className="h-4 w-px bg-borderSubtle shrink-0" aria-hidden />}
-      <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-tape-part-word>
-        Price today
+      <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-tape-part-word data-tape-day={barDay ?? undefined}>
+        {priceWord}
       </span>
       {bars.length > 0 && session && (
         <>
@@ -649,7 +654,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                 {open ? 'Fold' : 'Unfold'}
               </button>
             </div>
-            <p className="mt-0.5 text-[11px] text-textMuted">Today's price with the book's levels on it</p>
+            <p className="mt-0.5 text-[11px] text-textMuted">{priceWord === 'Price today' ? "Today's price" : `${longDay(barDay!)}'s price`} with the book's levels on it</p>
           </div>
         )}
         {bars.length > 0 && session && (

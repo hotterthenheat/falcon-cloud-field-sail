@@ -443,7 +443,7 @@ const Earnings = () => {
 
   const sentence = useMemo(() => {
     const parts = [
-      `${weekEvents.length} reports ${weekWords}, ${weekKnown.length} of them known names, ${ahead.length} of those still to report`,
+      `${weekEvents.length.toLocaleString('en-US')} reports ${weekWords}, ${weekKnown.length.toLocaleString('en-US')} of them known names, ${ahead.length.toLocaleString('en-US')} of those still to report`,
       `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${weekKnown.length - weekHistOut} of ${weekKnown.length} read)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
     if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);

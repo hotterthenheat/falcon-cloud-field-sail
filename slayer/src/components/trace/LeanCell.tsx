@@ -6,6 +6,7 @@
 */
 
 import { dayLean, LEAN_EDGE, sideShares } from '../../data/traceLive';
+import { shyPct } from './dayWords';
 
 /* THE SIDE IN ONE INK (2026-10-13, the partner's rule at Noah's word): the ask share was green and the bid share red —
    direction inks on a fact about SIDE, the reading the tape's own quote cell refuses: a put bought at the ask is not
@@ -17,6 +18,7 @@ import { dayLean, LEAN_EDGE, sideShares } from '../../data/traceLive';
    over the WHOLE volume, and a lean is called only when it is real — at least half the day on a side, and that side
    LEAN_EDGE (55%) or more of it — the one rule (traceLive dayLean) every lean on Trace reads. A day that was mostly mid or
    no side says MID. */
+
 const LeanCell = ({ askPct: raw, split, unit = 'contracts' }: { askPct: number; split?: { ask: number; bid: number; mid: number }; unit?: 'contracts' | 'premium' }) => {
   if (split) {
     const l = dayLean({ askPct: raw, volume: split.ask + split.bid + split.mid, sideVol: split });
@@ -37,7 +39,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts' }: { askPct: number; 
     const askS = Math.round(l.askSided);
     /* AN EVEN DAY STILL SAYS WHICH WAY IT TIPPED (retail, 2026-10-23: NVDA's Screener read "EVEN" on nearly every row and
        answered nothing) — the larger side's share of the sided volume, lower-case and quiet: short of the 55% call */
-    const label = l.lean === 'ASK' ? `ASK ${askS}%` : l.lean === 'BID' ? `BID ${100 - askS}%` : l.lean === 'UNSIDED' ? `MID ${m}%` : askS >= 50 ? `ask ${askS}%` : `bid ${100 - askS}%`;
+    const label = l.lean === 'ASK' ? `ASK ${askS}%` : l.lean === 'BID' ? `BID ${100 - askS}%` : l.lean === 'UNSIDED' ? `MID ${m}%` : l.askSided >= 50 ? `ask ${shyPct(l.askSided)}%` : `bid ${shyPct(l.bidSided)}%`;
     const tone = l.lean === 'ASK' || l.lean === 'BID' ? 'text-textPrimary' : 'text-textSecondary';
     const total = split.ask + split.bid + split.mid;
     const noun = unit === 'premium' ? 'premium' : `${total.toLocaleString('en-US')} contracts`;

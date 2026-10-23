@@ -84,7 +84,7 @@ export function ladderExpiryOptions(ticker?: string): ExpiryChoice<ExposureExpir
     { value: '5D', label: `${fmtDay(day(5).date)} · ${day(5).weekday}`, hint: weekWord(day(5).date), date: day(5).date },
     { value: '7D', label: `${fmtDay(day(7).date)} · ${day(7).weekday}`, hint: 'A week out', date: day(7).date },
     { value: 'OPEX', label: `${fmtDay(monthlyExpiry(base))} · monthly`, hint: 'The monthly expiration — the heaviest structure', date: monthlyExpiry(base) },
-    { value: 'ALL', label: 'Every expiry', hint: 'Every expiry, weighed together', date: null },
+    { value: 'ALL', label: 'All expiries', hint: 'Every listed expiry, weighed together', date: null },
   ] as ExpiryChoice<ExposureExpiry>[])
     /* NAMED FOR THE DATE THE BOOK READS (the ship pass, 2026-10-22): the choices are the market calendar's, but a name
        lists only some days — NVDA has no Oct 22, and "Today · Oct 22" read its Oct 23 book. With a name in hand each

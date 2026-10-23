@@ -250,18 +250,15 @@ export function longDay(date: string): string {
   return `${DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${MONTHS[m - 1]} ${d}`;
 }
 
-/** A date said from where the clock stands: "today" for New York's own date, "yesterday" for the session before it when
-    that is the calendar day before, else "Thu Oct 22" — the one rule for every relative-day word on Pinpoint */
+/** A date said from where the clock stands: "today" for New York's own date, else the day by name, "Thu Oct 22" — never
+    "yesterday" (at 01:00 ET a reader's "yesterday" is ambiguous; the fifth audit) — the one rule for every relative-day
+    word on Pinpoint */
 export function dayRef(date: string | null | undefined): string {
   if (!date) return 'today';
-  const iso = nyIsoDate();
-  if (date === iso) return 'today';
-  const [y, m, d] = iso.split('-').map(Number);
-  if (date === isoDate(new Date(y, m - 1, d - 1))) return 'yesterday';
-  return longDay(date);
+  return date === nyIsoDate() ? 'today' : longDay(date);
 }
 
-/** The same, capitalised for a head: "Today", "Yesterday", "Thu Oct 22" */
+/** The same, capitalised for a head: "Today", "Thu Oct 22" */
 export const DayRef = (date: string | null | undefined): string => {
   const w = dayRef(date);
   return w.charAt(0).toUpperCase() + w.slice(1);

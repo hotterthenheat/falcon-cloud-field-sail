@@ -482,6 +482,7 @@ const MapDesk = () => {
   /** A box's chip: follows the frame, or holds its own name */
   const chipFor = (key: BoxKey, t: string) => (
     <ScopeChip
+      closeOutside
       ticker={t}
       linked={scopes[key] === undefined}
       quote

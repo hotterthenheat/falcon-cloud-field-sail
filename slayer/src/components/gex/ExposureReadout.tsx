@@ -7,7 +7,7 @@
 */
 
 import { shownGreek } from './retailSign';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { sinceOpenRead } from '../../data/levelview';
 import { GREEKS, GREEK_UNIT, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { BULL, LONG_GAMMA, PUT_WALL, SHORT_GAMMA } from './paletteInk';

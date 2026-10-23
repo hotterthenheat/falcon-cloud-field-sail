@@ -45,6 +45,7 @@ import { useLaunch } from './LaunchTransition';
 import Wordmark from '../../brand/Wordmark';
 import Signature from '../../brand/Signature';
 import { readMarketState } from '../../data/marketState';
+import { nyMinutes } from '../../core/nyTime';
 import { useAlertsDrawer } from '../../data/alertsDrawer';
 import FooterArt from './FooterArt';
 import { sceneFor } from './footer/registry';
@@ -186,7 +187,14 @@ const FooterLink = ({ to, home, gate, className, children }: { to: string; home:
 /* THE MARKET'S STATE, in New York, on the real clock (the status line): the brand's own reading (data/marketState.ts —
    the signature's word comes from the same place, so the dot and the words never disagree) and the clock */
 const NY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
-const marketNow = (d = new Date()): { words: string; clock: string } => ({ words: readMarketState(d).short, clock: NY.format(d).replace(/^24/, '00') });
+/* THE SESSION WORD ON THE REAL CLOCK (the fifth audit, 2026-10-23: "pre-market · 01:06" while the page head said "before the
+   open"): pre-market trading starts at 04:00 ET — before it, and from 20:00 on, it is the overnight */
+const sessionWordAt = (d: Date, short: string): string => {
+  if (short !== 'pre-market' && short !== 'after hours') return short;
+  const m = nyMinutes(d);
+  return m < 4 * 60 || m >= 20 * 60 ? 'overnight' : short;
+};
+const marketNow = (d = new Date()): { words: string; clock: string } => ({ words: sessionWordAt(d, readMarketState(d).short), clock: NY.format(d).replace(/^24/, '00') });
 const useMarketNow = () => {
   const [state, setState] = useState(marketNow);
   useEffect(() => {

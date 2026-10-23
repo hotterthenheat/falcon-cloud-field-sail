@@ -41,7 +41,7 @@ import { ArrowUpRight, Pencil, X } from 'lucide-react';
 import PositionForm from './PositionForm';
 import { buildPositionCurve, fmtPnl, type PositionCurve } from '../../data/positionCurve';
 import { removePosition, subjectWords, type Position, type PositionRead, type Verdict } from '../../data/positions';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import type { ExposureLevels } from '../../types/gex';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */

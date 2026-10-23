@@ -52,6 +52,13 @@ export function fmtUsd(v: number): string {
   return `${sign}$${a.toFixed(0)}`;
 }
 
+/** fmtUsd with the true minus (U+2212) — Pinpoint's figures print "−$595.1M" everywhere, never a hyphen beside a minus
+    (the fifth audit, 2026-10-23: the Map's "-$595.1M" beside the Agenda's "−$175M") */
+export const fmtGexUsd = (v: number): string => {
+  const s = fmtUsd(v);
+  return s.startsWith('-') ? `−${s.slice(1)}` : s;
+};
+
 // ---- metric extraction ------------------------------------------------------
 function metricValue(node: StrikeNode, metric: GexMetric): number {
   switch (metric) {

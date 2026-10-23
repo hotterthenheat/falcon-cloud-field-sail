@@ -43,7 +43,8 @@
 ==================================================
 */
 
-import { bellDay, todayScopeLabel } from '../../data/bookWindow';
+import { bellDay, longDay, recordDay, todayScopeLabel } from '../../data/bookWindow';
+import { useLevelsScope } from '../../data/levelsScope';
 import { GLOSSARY, kindTip } from './glossary';
 import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { bookDatesIn } from '../../data/uwBook';
@@ -54,7 +55,7 @@ import { buildExposureProfile } from '../../data/exposure';
 import { GREEKS, GREEK_UNIT } from '../../data/exposureSurface';
 import { distanceIn, fmtShared, sharedUnit, GREEK_EXPLAIN, GREEK_LABEL, WINDOW, type Compare, type CompareSide, type Greek } from '../../data/compare';
 import type { DistanceUnit } from '../../data/atr';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { netGexTitle } from '../../data/board';
 import { shownGreek } from './retailSign';
 import { replayRange, snapshotAt } from '../../data/replay';
@@ -124,6 +125,9 @@ const HEAVY_COLS = 'grid grid-cols-[14px_minmax(0,1fr)_68px_60px] items-center g
 const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPick, open, onToggle, stacked = false, full = false }: Props) => {
   const U = sharedUnit(unit);
   const L = GREEK_LABEL[greek];
+  const levelsScope = useLevelsScope();
+  const rec = recordDay();
+  const scopeWords = levelsScope === 'ALL' ? 'All expiries' : todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts";
   const [win, setWin] = useState('15m');
   const winIdx = Math.max(0, READ_WINDOWS.findIndex(w => w.key === win));
 
@@ -244,7 +248,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
             onClick={() => setWin(w.key)}
             aria-pressed={on}
             disabled={off}
-            title={off ? 'Before the open' : `What today's contracts did over the last ${w.key === 'open' ? 'session' : w.key}`}
+            title={off ? 'Before the open' : `What the levels' contracts (${scopeWords}) did over the last ${w.key === 'open' ? 'session' : w.key}${rec.isToday ? '' : ` of ${longDay(rec.date)}'s session`}`}
             className={`px-1 h-4 rounded font-mono text-[9px] tnum tabular-nums transition-colors ${on ? 'bg-ink/[0.1] text-textPrimary' : off ? 'text-textMuted/40 cursor-default' : 'text-textMuted hover:text-textPrimary hover:bg-ink/[0.05]'}`}
             data-side-win={w.key}
           >
@@ -342,7 +346,9 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
       </div>
 
       {/* TODAY'S CONTRACTS — one row of seven figures under their labels */}
-      <Cap tip={todayScopeLabel() === 'Today' ? "The contracts the levels read, re-priced at each window's price" : "The contracts the levels read, re-priced at each window's price, the windows counted back from the 4:00 close — the session is over, so nothing moves until the next open"}>{todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts"} · {L} · {todayScopeLabel() === 'Today' ? 'each window' : 'each window to the close'}</Cap>
+      {/* THE LEVELS' CONTRACTS, NAMED BY THEIR SCOPE (the fifth audit, 2026-10-23: "Today's contracts" in All expiries, and
+          "each window" over Thursday's bars at 01:00 Friday): the scope's own words, and the windows' session by date */}
+      <Cap tip={`The contracts the levels read (${scopeWords}), re-priced at each window's price${rec.isToday && !rec.done ? '' : `, the windows counted back from ${rec.isToday ? "today's" : `${longDay(rec.date)}'s`} 4:00 close — the session is over, so nothing moves until the next open`}`}>{scopeWords} · {L} · {rec.isToday && !rec.done ? 'each window' : `each window to ${rec.isToday ? 'the' : `${rec.date.slice(5).replace('-', '/')}'s`} close`}</Cap>
       <div className="pt-1 grid grid-cols-7 font-mono tnum tabular-nums" data-side-windows>
         {READ_WINDOWS.map((w, i) => (
           <span key={w.key} className="flex flex-col leading-tight min-w-0">

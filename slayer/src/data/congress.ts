@@ -232,9 +232,9 @@ const fmtMoney = (v: number) => `$${v.toLocaleString('en-US')}`;
 export function congressSentence(f: CongressFeed): string {
   if (f.trades.length === 0) return `No report on this cut of trades made in the last ${f.windowDays} days.`;
   const range = f.totalHigh === null ? `at least ${fmtMoney(f.totalLow)}` : `between ${fmtMoney(f.totalLow)} and ${fmtMoney(f.totalHigh)}`;
-  const parts = [`${f.trades.length} reports covering ${range} — the brackets summed, not a point estimate.`];
-  if (f.lateFilings > 0) parts.push(`${f.lateFilings} missed the 45-day deadline.`);
-  if (f.unknownAmounts > 0) parts.push(`${f.unknownAmounts} carried no amount the filing could be read for.`);
+  const parts = [`${f.trades.length.toLocaleString('en-US')} reports covering ${range} — the brackets summed, not a point estimate.`];
+  if (f.lateFilings > 0) parts.push(`${f.lateFilings.toLocaleString('en-US')} missed the 45-day deadline.`);
+  if (f.unknownAmounts > 0) parts.push(`${f.unknownAmounts.toLocaleString('en-US')} carried no amount the filing could be read for.`);
   return parts.join(' ');
 }
 

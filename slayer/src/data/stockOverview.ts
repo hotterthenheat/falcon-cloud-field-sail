@@ -424,7 +424,7 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
   if (month != null) trend.push({ key: 'chg20', label: 'The last month', value: pct(month * 100), lean: clamp((month * 100) / 8), weight: 0.1, note: month >= 0 ? 'up over the month' : 'down over the month' });
   const numbers: Factor[] = [];
   const growth = rowNum(row, 'eps_growth_4q');
-  if (growth != null) numbers.push({ key: 'growth', label: 'Earnings growth, four quarters', value: pct(growth * 100), lean: clamp(growth / 0.25), weight: 0.4, note: growth >= 0 ? 'earnings are growing' : 'earnings are shrinking' });
+  if (growth != null) numbers.push({ key: 'growth', label: 'Earnings growth, year over year', value: pct(growth * 100, 2), lean: clamp(growth / 0.25), weight: 0.4, note: growth >= 0 ? 'earnings are growing' : 'earnings are shrinking' });
   const money: Factor[] = [];
   const rvol = rowNum(row, 'relative_volume');
   if (rvol != null && rvol > 0) {
@@ -948,8 +948,8 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   if (growth != null) {
     factors.push({
       key: 'growth',
-      label: 'Earnings growth, four quarters',
-      value: pct(growth * 100),
+      label: 'Earnings growth, year over year',
+      value: pct(growth * 100, 2),
       lean: clamp(growth / 0.25),
       weight: 0.4,
       note: growth >= 0 ? 'earnings are growing' : 'earnings are shrinking',

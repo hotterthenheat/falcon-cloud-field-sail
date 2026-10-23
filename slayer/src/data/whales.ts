@@ -180,8 +180,8 @@ export const whalesCongress = () => paged<UwCongress>('/congress/recent-trades',
 export const whalesPoliticians = () => uw<UwPolitician[]>('/congress/politicians?last_traded_within_months=24');
 export const whalesInsiders = () => uw<UwInsider[]>('/insider/transactions');
 export const whalesEcon = () => uw<UwEcon[]>('/market/economic-calendar');
-export const whalesScreener = (tickers: string[]) =>
-  uw<Record<string, unknown>[]>(`/screener/stocks?ticker=${tickers.map(t => encodeURIComponent(t)).join(',')}`);
+export const whalesScreener = (tickers: string[], priority = false) =>
+  uw<Record<string, unknown>[]>(`/screener/stocks?ticker=${tickers.map(t => encodeURIComponent(t)).join(',')}`, priority);
 export const whalesFlow = () => uw<Record<string, unknown>[]>('/option-trades/flow-alerts');
 export const whalesDarkPool = () => uw<Record<string, unknown>[]>('/darkpool/recent');
 export const whalesEarnings = (ticker: string, priority = false) => uw<Record<string, unknown>[]>(`/earnings/${encodeURIComponent(ticker)}`, priority);

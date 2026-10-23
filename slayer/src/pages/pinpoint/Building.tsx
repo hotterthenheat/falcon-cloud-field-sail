@@ -287,6 +287,7 @@ const Building = () => {
           const head = (
             <>
               <ScopeChip
+                closeOutside
                 ticker={t}
                 linked={i === 0 ? linked : undefined}
                 /* the quote is room beside other panes — the chip and the Expiry card share one row there */

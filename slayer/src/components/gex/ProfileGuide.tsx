@@ -24,7 +24,7 @@
 ==================================================
 */
 
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { fmtFlow, type FlowLadder } from '../../data/hedgeFlow';
 import type { GexLevel } from '../../types/market';
 import type { PanelLevels } from './ProfilePanel';

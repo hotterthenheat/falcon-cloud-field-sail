@@ -84,8 +84,8 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="Next earnings">{next && next.daysOut >= 0 ? <span title={next.confirmed ? 'Date set by the company' : 'Not announced yet — Unusual Whales’ estimate'}>{next.dateLabel} · {untilWords(next.daysOut)}{next.confirmed ? '' : ' · est.'}</span> : '—'}</Fact>
             <Fact label="Dividend">{card.hasDividend == null ? '—' : card.hasDividend ? 'Pays one' : 'None'}</Fact>
             <Fact label="Dividend yield">{yieldPct != null ? <TickFigure value={yieldPct}>{`${yieldPct.toFixed(2)}%`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>
-            <Fact label="EPS growth · 4q">
-              {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : growth < 0 ? '−' : ''}{Math.abs(growth).toFixed(1)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}
+            <Fact label="EPS growth · YoY">
+              {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : growth < 0 ? '−' : ''}{Math.abs(growth).toFixed(2)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}
             </Fact>
           </dl>
           <p className="px-5 pb-4 text-[11px] text-textMuted">A street target, the forward estimates and the last call are not on this feed.</p>

@@ -820,7 +820,7 @@ export const MemberFile = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Reports")}>Reports</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{trades.length}</dd>
+            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{trades.length.toLocaleString('en-US')}{trades.length - purchases - sales > 0 ? <span className="text-textMuted"> · {(trades.length - purchases - sales).toLocaleString('en-US')} exchanged</span> : null}</dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={statHelp("Purchases")}>Purchases</dt>
@@ -846,7 +846,7 @@ export const MemberFile = () => {
           ? 'Reading their reports.'
           : book.status === 'sim'
             ? 'Their reports did not load.'
-            : <>{trades.length} {trades.length === 1 ? 'report' : 'reports'} of trades made in the last year{book.complete ? '' : ` — the read stopped at ${trades.length}, so older ones in the year may be missing`}. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days.{book.unreadTypes ? ` ${book.unreadTypes} with an unreadable type left out.` : ''}{billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from these counts.` : ''} Amounts are the disclosed ranges, nothing finer.</>}
+            : <>{trades.length.toLocaleString('en-US')} {trades.length === 1 ? 'report' : 'reports'} of trades made in the last year{book.complete ? '' : ` — the read stopped at ${trades.length}, so older ones in the year may be missing`}. {late === 0 ? 'None' : late} filed past {STOCK_ACT_DEADLINE_DAYS} days.{book.unreadTypes ? ` ${book.unreadTypes} with an unreadable type left out.` : ''}{billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from these counts.` : ''} Amounts are the disclosed ranges, nothing finer.</>}
       </p>
       <div className="px-5 pb-3 border-t border-borderSubtle/60" data-file-strip="member-know">
         <div className="h-[26px] flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
@@ -866,7 +866,7 @@ export const MemberFile = () => {
                   {line.sym ? <CompanyLogo ticker={line.sym} size={18} /> : null}
                   <span className={`text-[12px] font-bold text-textPrimary truncate ${line.sym ? 'font-mono' : ''}`}>{line.sym || k}</span>
                 </span>
-                <span className="mt-1.5 block font-mono text-[10px] tnum text-textSecondary truncate">{amountWord(t)}</span>
+                <span className="mt-1.5 block font-mono text-[10px] tnum text-textSecondary whitespace-normal break-words">{amountWord(t)}</span>
               </button>
               );
             })}

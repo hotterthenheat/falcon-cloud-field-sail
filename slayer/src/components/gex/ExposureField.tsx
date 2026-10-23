@@ -61,7 +61,7 @@ import { GREEK_PICK_OPTIONS, nextGreekPick, pickGreeks, type SurfaceCell } from 
 import CompanyLogo from '../ui/CompanyLogo';
 import TickerSearch from '../ui/TickerSearch';
 import { useFadeClose } from '../ui/useFadeClose';
-import { fmtUsd } from '../../data/gex';
+import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useLevelsScope } from '../../data/levelsScope';
 import ColumnFacts from './ColumnFacts';
@@ -1235,6 +1235,15 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* THE MATRIX AND THE LEVELS READ DIFFERENT CONTRACTS, SAID WHERE IT MATTERS (the retail test, 2026-10-22: row 764 read
      −$378.7M summed over "Oct 22 → Nov 2" beside "SUPREME · TODAY 764 · −$245.7M", with the note tiny at the foot) */
   const lvDate = snapshot ? levelsDate(snapshot, levelsScope) : null;
+  /* each name's levels' contracts, by strike — a level's matrix row prints them (ExposureMatrix levelLegsAt) */
+  const levelLegsOf = (snap: MarketSnapshot) => {
+    const chain = levelsBook(snap, levelsScope).chain;
+    const at = new Map(chain.map(n => [n.strike, n] as const));
+    return (k: number) => {
+      const n = at.get(k);
+      return n ? { put: n.putGex, call: n.callGex, net: n.netGex } : null;
+    };
+  };
   /* the matrix's window is said only once every listed date is in (the fourth audit's M1: "Oct 23 → Oct 29" became Nov 3) */
   const spanWords = !snapshot?.liveBook || bookDatesIn(snapshot.ticker) ? expirySpan(chosenDates) : '…';
   const allListed = (snapshot?.uwExpiries ?? []).filter(e => snapshot?.uwByDate?.[e.date]?.length).length;
@@ -1855,7 +1864,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                   {d.view === 'profile' ? (
                     <ExposureProfileView surface={surfDrawn} expiries={colShown} liveSpot={book.snapshot.spot} live={!fresh} selectedStrike={kept} onSelectStrike={keep} paper={paper} />
                   ) : d.view === 'matrix' ? (
-                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={scopeDiffers ? spanWords : null} />
+                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={scopeDiffers ? spanWords : null} levelLegsAt={scopeDiffers ? levelLegsOf(book.snapshot) : null} levelsWords={levelsLabel} />
                   ) : (
                     <ExposureLedger wantCols={colGreeks.length * colWindow.length} onNatural={packs ? naturalFor(c.ticker, 'calendar') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} open={view === 'calendar' && !fresh ? openSurfaceOf(book.ticker) : null} focusOn={colFocus} greeks={colGreeks} expiries={colWindow} rings={d.rings} leg={d.legs === 'both' || d.legs === 'all' ? 'net' : d.legs} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} afterBell={d.afterBell} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} onExpiry={(many || onExpiries) ? i => { const date = listedIso(book.snapshot)[i]; if (many && date) { setOwnDates(prev => ({ ...prev, [c.ticker]: [date] })); return; } setOwnDates({}); setRange({ from: i, through: i }); } : undefined} fitKey={c.ticker} onFit={reportFit} paper={paper} />
                   )}
