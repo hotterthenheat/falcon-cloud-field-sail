@@ -7,6 +7,7 @@ import { useShortRow } from '../../data/liveFiles';
 import { stockBookKey, useVendor, useVendorRow } from '../../data/vendorFeed';
 import { FILE_TTL_MS, FeedFallback, StaleMark, TickFigure, quietText, type FeedFault } from '../ui/liveRead';
 import { statHelp } from './statHelp';
+import { useSeen } from './CoName';
 
 /*
   Who is in the name. One box on the name's page: the largest house,
@@ -76,10 +77,13 @@ const shortDay = (iso: string | null) => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
-function useOwnWeights(ticker: string, etfs: string[]): Record<string, { weight: number; asOf: string | null } | null> {
+/* THE FUNDS' FILES WHEN THE FUNDS ARE ON SCREEN (audit round 10: five whole holdings files — VTI, VOO, SPY, IVV, VUG —
+   were read at page load for one "% of the fund" figure each) */
+function useOwnWeights(ticker: string, etfs: string[], seen: boolean): Record<string, { weight: number; asOf: string | null } | null> {
   const key = etfs.join(',');
   const [got, setGot] = useState<Record<string, { weight: number; asOf: string | null } | null>>({});
   useEffect(() => {
+    if (!seen) return;
     let dead = false;
     const sym = ticker.toUpperCase();
     etfs.forEach(etf =>
@@ -91,7 +95,7 @@ function useOwnWeights(ticker: string, etfs: string[]): Record<string, { weight:
       dead = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, key]);
+  }, [ticker, key, seen]);
   return got;
 }
 
@@ -116,7 +120,8 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
   const short = own_si ?? (shortLive.row ? { interestPct: shortLive.row.interestPct, daysToCover: shortLive.row.daysToCover, shortSharesM: shortLive.row.shortSharesM, asOf: null as string | null } : null);
   const houses = people(own?.state === 'live' ? own.data : null);
   const funds = people(held?.state === 'live' ? held.data : null);
-  const own_ = useOwnWeights(ticker, funds.map(f => f.etf).filter(Boolean));
+  const [fundsRef, fundsSeen] = useSeen<HTMLDivElement>();
+  const own_ = useOwnWeights(ticker, funds.map(f => f.etf).filter(Boolean), fundsSeen);
   const largest = houses[0];
   const fund = funds[0];
   const fault: FeedFault | null = own?.fault ?? held?.fault ?? (shortLive.status === 'error' ? 'failed' : null);
@@ -201,7 +206,8 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
           })}
         </>
       )}
-      <div className="h-3" />
+      {/* always in the page, so the funds' files are read once this end of the box is near the screen */}
+      <div ref={fundsRef} className="h-3" />
     </section>
   );
 };

@@ -74,7 +74,7 @@ import { peekRegularCloses, phaseOf } from './dayChange';
 import { epsResultOf, nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
 import type { GeoNewsEvent } from './newsroom';
 import { lookup } from './universe';
-import { tickerName } from './tickers';
+import { displayName, tickerName } from './tickers';
 import type { Fundamentals } from './fundamentals';
 import type { Candle, MarketSnapshot } from '../types/market';
 import type { BookContract, FlowPrint } from '../types/trace';
@@ -469,7 +469,9 @@ export function rvolFactor(pv: PacedVolume | null, up: boolean): Factor | null {
     key: 'rvol',
     label,
     value: pv.basis === 'paced' ? `${pv.label} · ${pv.raw.toFixed(2)}× of a full day so far` : pv.label,
-    lean: v > 1 ? clamp((v - 1) * (up ? 1 : -1)) : 0,
+    /* ONLY HEAVY VOLUME LEANS (audit round 10: AAPL 1.07× paced read "ordinary — no conviction either way" and was scored
+       AGAINST) — what the note calls ordinary or quiet scores neutral */
+    lean: heavy ? clamp((v - 1) * (up ? 1 : -1)) : 0,
     weight: 0.25,
     note: heavy ? `heavy for the name, ${up ? 'on an up day' : 'on a down day'}` : v <= 0.7 ? 'quiet — no conviction behind the move either way' : 'ordinary — no conviction either way',
   };
@@ -1366,7 +1368,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   const snapshot = snapshotOf(ticker, opts.allExpiries ? 'full' : 'board');
   if (!snapshot) return null;
   const u = lookup(ticker);
-  const name = u?.name ?? tickerName(ticker);
+  const name = displayName(u?.name ?? tickerName(ticker)) || ticker;
   const sector = u?.sector ?? null;
   const clock = readSessionClock();
   const marketWord = clock.phase === 'OPEN' ? 'market open' : clock.phase === 'AUCTION' ? 'the closing auction' : clock.phase === 'PREMARKET' ? 'before the open' : clock.phase === 'AFTERHOURS' ? 'after hours' : 'market closed';

@@ -450,7 +450,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         <Fact label={bellDay().clock} value={s.bellShare != null ? <span title={`${s.bellShare}% — ${bellDay().tip(s.ticker)}`}>{s.bellShare}% <span className="text-[10px] text-textMuted">of the hedging</span></span> : <span title={s.bellWhy === 'none' ? BELL_NONE_TITLE(s.ticker) : 'Still reading the expiry list'}>{s.bellWhy === 'none' ? bellNone() : '…'}</span>} />
       </div>
       <div className="pt-3 font-mono text-[9px] uppercase tracking-widest text-textMuted" data-side-foot>
-        {s.strikes.length} strikes · {bookDatesIn(s.ticker) ? `${s.expiryCount} ${s.expiryCount === 1 ? 'expiry' : 'expiries'}` : '… expiries'}
+        {s.strikes.length} strikes · {s.expiry !== 'ALL' || s.levels.complete !== false || bookDatesIn(s.ticker) ? `${s.expiryCount} ${s.expiryCount === 1 ? 'expiry' : 'expiries'}` : '… expiries'}
       </div>
     </div>
   );

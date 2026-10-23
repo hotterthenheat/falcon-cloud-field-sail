@@ -428,7 +428,9 @@ export function buildRoomInsights(events: GeoNewsEvent[]): RoomInsight[] {
       key: 'fresh',
       title: 'Just landed',
       ink: 'neutral',
-      read: `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling — ${who} ${fresh.length === 1 ? 'is' : 'are'} the freshest ink on the board.`,
+      read: who
+        ? `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling — ${who} ${named.length + macros > 1 ? 'are' : 'is'} the freshest ink on the board.`
+        : `${fresh.length} ${fresh.length === 1 ? 'story is' : 'stories are'} under an hour old and still rippling.`,
     });
   }
   return out;

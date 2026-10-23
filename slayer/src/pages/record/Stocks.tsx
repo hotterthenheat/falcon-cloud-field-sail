@@ -41,6 +41,7 @@
 ==================================================
 */
 
+import { displayName } from '../../data/tickers';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -117,7 +118,7 @@ const NameCell = ({ data }: ICellRendererParams<StockPick>) =>
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{data.name}</span>
+        <span className="text-[10px] text-textMuted truncate">{displayName(data.name)}</span>
       </span>
     </span>
   ) : null;
@@ -238,7 +239,7 @@ const StockCard = (p: StockPick) => {
           <span className="inline-flex items-center gap-2 min-w-0">
             <CompanyLogo ticker={p.ticker} size={16} />
             <span className="font-mono font-bold">{p.ticker}</span>
-            <span className="text-[10.5px] text-textMuted truncate">{p.name}</span>
+            <span className="text-[10.5px] text-textMuted truncate">{displayName(p.name)}</span>
           </span>
         }
         right={

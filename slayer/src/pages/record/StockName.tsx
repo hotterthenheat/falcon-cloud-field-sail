@@ -52,6 +52,7 @@
 ==================================================
 */
 
+import { displayName } from '../../data/tickers';
 import { PublishMove } from '../../components/record/publishMove';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -636,7 +637,19 @@ const StockName = () => {
   const screenDay = typeof file.screen?.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(file.screen.date) ? String(file.screen.date).slice(0, 10) : null;
   const screenWord = screenDay ? shortDay(screenDay) : sessionWord;
   const up = view.changePct >= 0;
-  const live = view.sources.filter(s => s.status === 'live').length;
+  /* THE BADGE FROM WHAT LOADED (audit round 10: "8 of 9 sources live · insiders and congress not live" beside both
+     sections' live rows — the source was the market-wide book; the page reads the name's own) */
+  const pageSources = view.sources.map(s => {
+    if (s.key !== 'record') return s;
+    const iLive = insiders.status === 'live';
+    const cLive = congressBook.status === 'live';
+    if (!iLive && !cLive) return s;
+    const iN = marketAll.length;
+    const cN = congressAll.length;
+    return { ...s, status: 'live' as const, stamp: `${iLive ? `${iN} open-market insider ${iN === 1 ? 'trade' : 'trades'} in 90 days` : 'insiders reading'} · ${cLive ? `${cN} congress ${cN === 1 ? 'report' : 'reports'} in 180 days` : 'congress reading'}` };
+  });
+  const live = pageSources.filter(s => s.status === 'live').length;
+  const completeness = Math.round((100 * live) / Math.max(1, pageSources.length));
   const maxPts = Math.max(0.1, ...view.contributions.map(c => Math.abs(c.points)));
   const maxDelta = Math.max(1, ...view.moves.map(m => Math.abs(m.delta)));
   const forIt = view.contributions.filter(c => c.points > 0).length;
@@ -817,16 +830,16 @@ const StockName = () => {
           {/* WHICH SOURCE IS OUT, AND WHETHER THE READ NEEDS IT (round 9: "8 of 9 sources live" named neither) — the scored
               read is the screener row's alone (trend, numbers, money); every source here is shown beside it */}
           <span
-            className={`ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted ${live < view.sources.length ? 'cursor-help' : ''}`}
-            data-stock-completeness={view.completeness}
+            className={`ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted ${live < pageSources.length ? 'cursor-help' : ''}`}
+            data-stock-completeness={completeness}
             title={
-              live < view.sources.length
-                ? `Not live: ${view.sources.filter(x => x.status !== 'live').map(x => `${x.label} (${x.stamp})`).join('; ')}. The read itself — the trend, the numbers and the money — is scored off the screener row alone, so it does not wait on ${view.sources.length - live === 1 ? 'it' : 'them'}; the boxes that show ${view.sources.length - live === 1 ? 'it' : 'them'} say so.`
+              live < pageSources.length
+                ? `Not live: ${pageSources.filter(x => x.status !== 'live').map(x => `${x.label} (${x.stamp})`).join('; ')}. The read itself — the trend, the numbers and the money — is scored off the screener row alone, so it does not wait on ${pageSources.length - live === 1 ? 'it' : 'them'}; the boxes that show ${pageSources.length - live === 1 ? 'it' : 'them'} say so.`
                 : 'Every source on the page is live. The read is scored off the screener row; the rest is shown beside it.'
             }
           >
-            {live} of {view.sources.length} sources live
-            {live < view.sources.length ? <span className="normal-case tracking-normal"> · {view.sources.filter(x => x.status !== 'live').map(x => x.label.toLowerCase()).join(', ')} not live · not in the read</span> : null}
+            {live} of {pageSources.length} sources live
+            {live < pageSources.length ? <span className="normal-case tracking-normal"> · {pageSources.filter(x => x.status !== 'live').map(x => x.label.toLowerCase()).join(', ')} not live · not in the read</span> : null}
           </span>
         </div>
       </div>
@@ -901,7 +914,7 @@ const StockName = () => {
               <Fact label="RSI · ADX" testId="rsi" tip="RSI and ADX over 14 sessions — the screener's rsi_14 and adx_14, the same figures the factors below score">
                 {trend.rsi14 != null ? trend.rsi14.toFixed(0) : '—'} <span className="text-textMuted">·</span> {trend.adx14 != null ? trend.adx14.toFixed(0) : '—'}
               </Fact>
-              <Fact label={`Range · ${screenWord}`} testId="atr">
+              <Fact label={`Range · ${screenWord}${file.rangeAsOf ? ` · to ${file.rangeAsOf}` : ''}`} testId="atr">
                 {trend.atrPercentile != null ? (
                   <>
                     {trend.rangeToday != null ? trend.rangeToday.toFixed(2) : ''} <span className="text-textMuted">· {ordinal(trend.atrPercentile)} pct</span>
@@ -1254,7 +1267,7 @@ const StockName = () => {
       <CompanyFile ticker={T} />
       <NameBooks ticker={T} />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} reports` : ''}`} aside={<PillarBarSmall p={byKey.news} held={held} />} testId="news">
+        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} earnings ${news.reports.length === 1 ? "report" : "reports"} below` : ''}`} aside={<PillarBarSmall p={byKey.news} held={held} />} testId="news">
           {news.stories.length === 0 ? (
             <div className="px-5 pb-4 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{wireReading ? 'Reading the wire' : recordNews.status === 'sim' ? 'This read did not land' : 'Nothing on the wire today'}</div>
           ) : (
@@ -1514,7 +1527,7 @@ const StockName = () => {
               <span>Status</span>
               <span>As of</span>
             </div>
-            {view.sources.map(s => (
+            {pageSources.map(s => (
               <div key={s.key} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: 'minmax(0, 1fr) 48px minmax(0, 1.5fr)' }} data-stock-source={s.key} data-status={s.status}>
                 <span className="text-[11px] text-textPrimary truncate">{s.label}</span>
                 <StatusTag status={s.status} />
@@ -1522,7 +1535,7 @@ const StockName = () => {
               </div>
             ))}
             <div className="px-5 py-3 border-t border-borderSubtle/40 text-[10.5px] leading-snug text-textSecondary">
-              <span className="text-textPrimary">{view.completeness}%</span> of the page is live. The word is the Stocks board's own: both read the same screener row.
+              <span className="text-textPrimary">{completeness}%</span> of the page is live. The word is the Stocks board's own: both read the same screener row.
             </div>
           </div>
         </div>
@@ -1778,10 +1791,10 @@ function OpenInterest({ ticker, fallbackCall, fallbackPut }: { ticker: string; f
 
 /* THE COMPANY'S NAME, never the ticker twice (the ship pass: SOUN read "SOUN SOUN") — names outside the built-in lists
    come from the vendor's info row, set in title case with the short acronyms kept ("SOUNDHOUND AI" → "Soundhound AI") */
-const titleCase = (raw: string) => raw.split(/\s+/).map(w => (w.length <= 3 && /^[A-Z&.]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(' ');
+const titleCase = (raw: string) => displayName(raw);
 function CompanyTitle({ ticker, name }: { ticker: string; name: string }) {
   const info = useVendorRow(stockBookKey(ticker), 'info');
-  if (name && name.toUpperCase() !== ticker.toUpperCase()) return <>{name}</>;
+  if (name && name.toUpperCase() !== ticker.toUpperCase()) return <>{displayName(name)}</>;
   const full = info?.state === 'live' ? String((info.data as { full_name?: string } | null)?.full_name ?? '') : '';
   return <>{full ? titleCase(full) : name}</>;
 }

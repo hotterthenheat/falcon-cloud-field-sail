@@ -46,7 +46,8 @@ const count = (v: number | null): string => {
 
 const CompanyFile = ({ ticker }: { ticker: string }) => {
   const card = useStockCard(ticker);
-  const file = useStockFile(ticker);
+  /* the head is all this card shows — the tapes are read by the page that draws them (audit round 10) */
+  const file = useStockFile(ticker, { tapes: false });
   /* the one next-earnings rule (data/earningsFeed.ts) — the same date the stock page and the earnings file show */
   const nextRow = nextReportRow(file.earnings, { skipOut: true });
   const next = nextRow?.report_date

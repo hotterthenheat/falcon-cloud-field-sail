@@ -52,7 +52,7 @@
 
 import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
 import { DEFAULT_R } from '../core/carry';
-import { cumulativeFlip, netGammaAt, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
+import { cumulativeFlip, dollarGammaPerContract, netGammaAt, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
 import { ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
@@ -62,7 +62,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The flip's rule in a reader's words — the one statement of it on the pages (keep it the code's: see the head) */
 export const FLIP_RULE =
-  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. When the profile crosses more than once, the flip stays on the crossing it stood on while that crossing is still there (the first read takes the one nearest price), the other is named beside it, and the flip moves only when its crossing closes — and says so. Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold; the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
+  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. When the profile crosses more than once, the flip stays on the crossing it stood on while that crossing is still there (the first read takes the one nearest price), and moves only once its crossing has been gone from three reads in a row over two minutes — and says so; the other crossing is named beside it once it has held its place for three reads over two minutes. Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold — and so does an in-the-money contract in its last day whose own vol runs over 150% and well above the smile's (its gamma then rests on a vol nobody trades at: it is re-priced at the smile's vol and the rest of its printed gamma is carried flat); the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
 
@@ -119,6 +119,9 @@ export function smileOf(chain: readonly StrikeNode[], spot: number): (k: number)
   };
 }
 
+/** The own vol over which a same-day in-the-money leg is taken as runaway (see legsOfDate) */
+const ITM_RUNAWAY_IV = 1.5;
+
 /** One date's legs. `own`: re-price with each contract's own vol where it is in (the front date), the same expiry's
     smile at that strike where it is not — else the date's ATM vol. `s0`: the price the date's gamma was priced at, when
     it is not the search's spot. `spot`: the price the smile's out-of-the-money side is read from. */
@@ -135,8 +138,31 @@ const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, n
     const volOf = (mine: number | undefined) => (own && mine && mine > 0 ? mine : wing > 0 ? wing : atmIv);
     /* THE CONTRACTS' OWN CEILING: a leg's dollar gamma can never pass what its open interest holds at the strike,
        OI × K·e^(−rT) / (√(2π)·σ·√T) — whatever vol it is re-priced with (core/gammaFlip.ts) */
-    if (n.callGex) out.push({ strike: n.strike, g0: n.callGex, iv: volOf(n.callIv), t, s0: own0, oi: own && n.callOI > 0 ? n.callOI : undefined, ownIv: own && !!n.callIv && n.callIv > 0 });
-    if (n.putGex) out.push({ strike: n.strike, g0: n.putGex, iv: volOf(n.putIv), t, s0: own0, oi: own && n.putOI > 0 ? n.putOI : undefined, ownIv: own && !!n.putIv && n.putIv > 0 });
+    const at = own0 && own0 > 0 ? own0 : spot;
+    const push = (g0: number, mine: number | undefined, oi: number, itm: boolean) => {
+      let g = g0;
+      let iv = volOf(mine);
+      let ownIv = own && !!mine && mine > 0;
+      /* AN IN-THE-MONEY SAME-DAY LEG AT A RUNAWAY VOL IS DAMPED (the tenth audit's M1, 2026-10-23: PLTR's 190C, $5 in the
+         money with minutes left, printed IV 265% and its gamma ran $0.5M at 15:01 → $8.28M at 15:25 with price unchanged —
+         an in-the-money contract near its bell trades at parity, so its vol, and the gamma the vendor computes from it, is
+         noise, and it hopped the flip). A leg in its last day, in the money, whose own vol is over ITM_RUNAWAY_IV and well
+         above the out-of-the-money side's at its strike (the smile), is re-priced at the smile's vol: its gamma at spot is
+         scaled by the two vols' gamma ratio, and the rest of the vendor's figure is carried flat (legSet), so the net at
+         spot is still the vendor's */
+      if (own && ownIv && itm && t < 1 / 365 && at > 0 && (mine ?? 0) > ITM_RUNAWAY_IV && wing > 0 && wing < (mine ?? 0) * 0.7) {
+        const g1 = dollarGammaPerContract(at, n.strike, t, wing, DEFAULT_R);
+        const g2 = dollarGammaPerContract(at, n.strike, t, mine!, DEFAULT_R);
+        if (g2 > 0) {
+          g = g0 * Math.min(1, g1 / g2);
+          iv = wing;
+          ownIv = false;
+        }
+      }
+      if (g) out.push({ strike: n.strike, g0: g, iv, t, s0: own0, oi: own && oi > 0 ? oi : undefined, ownIv });
+    };
+    if (n.callGex) push(n.callGex, n.callIv, n.callOI, n.strike < at);
+    if (n.putGex) push(n.putGex, n.putIv, n.putOI, n.strike > at);
   }
   return out;
 };
@@ -183,18 +209,40 @@ export interface LevelFlip extends FlipRead {
   first read takes the crossing nearest price.
 */
 const STICK_FRAC = 0.004;
-const sticky = new Map<string, { flip: number; moved: { from: number; at: number } | null }>();
-const STICK_STORE = 'pinpoint.flipStick.v1';
-let stickLoaded = false;
+/* THE HOLD OUTLASTS A BRIEF READ (the tenth audit's M1, 2026-10-23: Compare's SPY flip went 764.19 → 756.68 at 15:25 on
+   one read, GOOGL 325.33 → 316.31 → none → 329.40 across reloads; the vendor's in-the-money same-day gamma jumps between
+   reads — PLTR's 190C $0.5M at 15:01, $8.28M at 15:25 with price unchanged). The kept crossing has to be missing from
+   HOLD_READS reads in a row spanning HOLD_MS before the flip moves; until then the flip stays where it stood. */
+const HOLD_READS = 3;
+const HOLD_MS = 120_000;
+/* THE SECOND CROSSING IS NAMED ONLY ONCE IT IS STEADY (the same audit: the disclosed second flip jumped 769 → 750 → 752 →
+   753 → 756 → 776 → 788 in 70 minutes): a crossing is disclosed beside the flip only after it has been seen, within
+   STICK_FRAC of where it was, on SECOND_READS reads spanning SECOND_MS; once disclosed it keeps its place the way the
+   flip does */
+const SECOND_READS = 3;
+const SECOND_MS = 120_000;
+interface Stick {
+  flip: number | null;
+  moved: { from: number; at: number } | null;
+  /** The kept crossing has been missing since `since`, on `reads` reads in a row */
+  miss?: { since: number; reads: number } | null;
+  /** A second crossing being watched (`shown` once steady) */
+  second?: { at: number; since: number; reads: number; shown: boolean } | null;
+}
+const sticky = new Map<string, Stick>();
+const STICK_STORE = 'pinpoint.flipStick.v2';
+let stickRaw: string | null | undefined;
+/* EVERY PAGE OF THIS BROWSER READS THE SAME CHOICE (the same audit: QQQ's flip 732.17 on Compare against 692.34 on the
+   Board 12 minutes later): the kept choice is re-read from storage whenever another tab has written it */
 function loadStick(): void {
-  if (stickLoaded) return;
-  stickLoaded = true;
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STICK_STORE) : null;
+    if (raw === stickRaw) return;
+    stickRaw = raw;
     if (!raw) return;
     const today = nyIsoDate();
-    const got = JSON.parse(raw) as Record<string, { flip: number; moved: { from: number; at: number } | null }>;
-    for (const [k, v] of Object.entries(got)) if (k.endsWith(`|${today}`) && v && Number.isFinite(v.flip)) sticky.set(k, v);
+    const got = JSON.parse(raw) as Record<string, Stick>;
+    for (const [k, v] of Object.entries(got)) if (k.endsWith(`|${today}`) && v && (v.flip === null || Number.isFinite(v.flip))) sticky.set(k, v);
   } catch {
     /* no storage: the choice lives for this page */
   }
@@ -205,7 +253,8 @@ function saveStick(): void {
     const today = nyIsoDate();
     const out: Record<string, unknown> = {};
     for (const [k, v] of sticky) if (k.endsWith(`|${today}`)) out[k] = v;
-    localStorage.setItem(STICK_STORE, JSON.stringify(out));
+    stickRaw = JSON.stringify(out);
+    localStorage.setItem(STICK_STORE, stickRaw);
   } catch {
     /* no storage */
   }
@@ -214,21 +263,50 @@ function saveStick(): void {
 export function stickFlip(key: string, read: FlipRead, spot: number, now: number = Date.now()): { flip: number | null; second: number | null; moved: { from: number; at: number } | null } {
   loadStick();
   const xs = read.crossings ?? (read.flip != null ? [read.flip] : []);
-  const otherOf = (f: number) => xs.filter(x => Math.abs(x - f) > 1e-6).sort((a, b) => Math.abs(a - f) - Math.abs(b - f))[0] ?? null;
-  if (read.flip == null || !xs.length) return { flip: read.flip, second: null, moved: null };
+  const tol = STICK_FRAC * spot;
+  const nearestTo = (f: number, pool: readonly number[]) => [...pool].sort((a, b) => Math.abs(a - f) - Math.abs(b - f))[0] ?? null;
   const prev = sticky.get(key);
-  let flip = read.flip;
+  let flip: number | null = read.flip;
   let moved = prev?.moved ?? null;
-  if (prev) {
-    const near = [...xs].sort((a, b) => Math.abs(a - prev.flip) - Math.abs(b - prev.flip))[0];
-    if (near != null && Math.abs(near - prev.flip) <= STICK_FRAC * spot) flip = near;
-    else moved = { from: prev.flip, at: now };
+  let miss: Stick['miss'] = null;
+  if (prev && prev.flip != null) {
+    const near = nearestTo(prev.flip, xs);
+    if (near != null && Math.abs(near - prev.flip) <= tol) flip = near;
+    else {
+      /* the kept crossing is not on this read: hold it until it has stayed away HOLD_READS reads over HOLD_MS */
+      miss = { since: prev.miss?.since ?? now, reads: (prev.miss?.reads ?? 0) + 1 };
+      if (miss.reads >= HOLD_READS && now - miss.since >= HOLD_MS) {
+        flip = read.flip;
+        if (flip != null) moved = { from: prev.flip, at: now };
+        miss = null;
+      } else flip = prev.flip;
+    }
+  } else if (prev && prev.flip == null && read.flip != null) {
+    /* "no flip nearby" held the same way before a crossing is taken up */
+    miss = { since: prev.miss?.since ?? now, reads: (prev.miss?.reads ?? 0) + 1 };
+    if (miss.reads >= HOLD_READS && now - miss.since >= HOLD_MS) miss = null;
+    else flip = null;
   }
-  if (!prev || Math.abs(prev.flip - flip) > 1e-9 || prev.moved !== moved) {
-    sticky.set(key, { flip, moved });
+  /* the second crossing: the nearest other crossing to the flip, named only once steady */
+  const others = flip == null ? [] : xs.filter(x => Math.abs(x - flip!) > Math.max(1e-6, tol * 0.25));
+  let second: Stick['second'] = null;
+  if (others.length) {
+    const was = prev?.second;
+    const keep = was ? nearestTo(was.at, others) : null;
+    if (was && keep != null && Math.abs(keep - was.at) <= tol) {
+      const reads = was.reads + 1;
+      second = { at: keep, since: was.since, reads, shown: was.shown || (reads >= SECOND_READS && now - was.since >= SECOND_MS) };
+    } else {
+      const cand = nearestTo(flip!, others)!;
+      second = { at: cand, since: now, reads: 1, shown: false };
+    }
+  }
+  const next: Stick = { flip, moved, miss, second };
+  if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) {
+    sticky.set(key, next);
     saveStick();
   }
-  return { flip, second: xs.length > 1 ? otherOf(flip) : null, moved };
+  return { flip, second: second?.shown ? second.at : null, moved };
 }
 
 const cache = new Map<string, LevelFlip>();
@@ -317,7 +395,9 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   /* the live levels pick among crossings with hysteresis (stickFlip) — once final, so a provisional read never moves the
      kept choice; a pinned clock (a session's report, the replay) takes the crossing nearest its price */
   const live = at == null && snapshot.asOf == null && snapshot.flipAt == null;
-  if (live && set.complete && raw.flip != null) {
+  /* …a read with no crossing too: "none" is held like a missing crossing (the tenth audit's M1: GOOGL read none for one
+     reload between two flips) */
+  if (live && set.complete) {
     const dates = datesOf(snapshot, chain);
     const stick = stickFlip(`${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : (dates ?? []).join(',')}|${nyIsoDate()}`, raw, spot);
     read = { ...read, flip: stick.flip, second: stick.second, moved: stick.moved, beyond: stick.flip == null ? null : raw.netAtSpot < 0 ? 'short' : 'long' };
@@ -337,13 +417,22 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   price handed in — so the path ends at the headline's net, in the same scope and the same sign. RETAIL sign (+ absorbs).
   Null while the scope's legs are not final.
 */
-export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNode[], prices: readonly number[]): { path: number[]; complete: boolean } | null {
+/* …AT EACH MINUTE'S OWN CLOCK (the tenth audit's retail finding: the morning minutes were priced at the current time to
+   expiry, so a same-day leg drew the afternoon's gamma at the morning's prices). `times` (epoch ms, one per price): each
+   leg is re-priced with the time to its expiry that minute had — its time now plus the time since that minute. */
+export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNode[], prices: readonly number[], times?: readonly number[]): { path: number[]; complete: boolean } | null {
   const set = legSet(snapshot, chain);
   if (!set || !set.withVol) return null;
   const gross = set.legs.reduce((a, l) => a + Math.abs(l.g0), 0);
   const legs = set.legs.map(l => (Math.abs(l.g0) < gross * 1e-7 || (!l.ownIv && Math.abs(l.g0) < gross * 1e-5) ? { ...l, iv: 0 } : l));
-  const path = prices.map(S => {
-    const v = netGammaAt(legs, snapshot.spot, S, DEFAULT_R);
+  const wall = Date.now();
+  const ref = pricingClock(undefined, wall);
+  const YEAR_MS = YEAR_MIN * 60_000;
+  const path = prices.map((S, i) => {
+    const at = times?.[i];
+    const back = at != null && Number.isFinite(at) ? Math.max(0, ref - at) / YEAR_MS : 0;
+    const these = back > 0 ? legs.map(l => (l.iv > 0 && l.t > 0 ? { ...l, t: l.t + back, t0: l.t } : l)) : legs;
+    const v = netGammaAt(these, snapshot.spot, S, DEFAULT_R);
     return v === 0 ? 0 : -v;
   });
   return { path, complete: set.complete };

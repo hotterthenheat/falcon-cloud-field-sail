@@ -303,7 +303,52 @@ export function noteTraceHold(paused: boolean): void {
   holdsPaused = Math.max(0, holdsPaused + (paused ? 1 : -1));
 }
 export const traceHeld = () => holdsPaused > 0;
-export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true, pollMs = POLL_MS): LivePack<T> {
+
+/* ---- THE POLL FOLLOWS THE CLOCK (audit round 10, major 4: a 3-slot key, and after the close Compare made 150 calls a
+   minute, Multi-Leg 88, Net Flow 53 — re-asking a day that could no longer change) ---------------------------------------
+   - A DAY read (the default: the screener, the tides and minute ticks, a name's expiries, the structures, the alerts
+     walked back from the close) is read ONCE after the session has ended — from 16:15 New York through the night, the
+     weekend and a holiday — and held: a box read at least SETTLE_MS after the close stands until the next session. In
+     the pre-market (04:00–09:30) it is re-read every PRE_POLL_MS, since the vendor's next day and the morning's open
+     interest arrive then.
+   - A LIVE read (the newest prints after hours, the newest dark-pool crosses, a stock's last trade) keeps moving after
+     the close, slowly: outside the session it is re-read at most every QUIET_POLL_MS.
+   - A hidden tab (document.visibilityState) asks nothing; the next beat after it shows again catches up.
+   - A failed read is retried on its beat, in every phase. */
+export type ReadKind = 'day' | 'live';
+const SETTLE_MS = 5 * 60_000;
+const PRE_POLL_MS = 120_000;
+const QUIET_POLL_MS = 30_000;
+/** In the session the book-like reads (the screener, a name's expiries, contract days) every 8s — they were 4s */
+const READ_POLL_MS = 8_000;
+export const tabHidden = (): boolean => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+/** The ended session's close (ms) while the market stands closed after it — after 16:15, overnight, a weekend or a
+    holiday; null in the session and in the pre-market */
+export function heldCloseMs(at: Date = new Date()): number | null {
+  const ph = marketPhase(at);
+  if (ph !== 'after' && ph !== 'closed') return null;
+  return lastRegularClose(at)?.closeMs ?? null;
+}
+/** A read stamped `atMs` of the ended session's figures: it stands until the next session (read after the close settled) */
+export function heldFresh(atMs: number | null | undefined): boolean {
+  const c = heldCloseMs();
+  return c != null && atMs != null && atMs >= c + SETTLE_MS;
+}
+/** Is a read stamped `atMs` (null: never read) due again, on a beat of `pollMs`, for its kind */
+export function readDue(atMs: number | null | undefined, pollMs: number, kind: ReadKind, faulted = false): boolean {
+  if (atMs == null) return true;
+  if (tabHidden()) return false;
+  const age = Date.now() - atMs;
+  if (faulted) return age >= Math.min(pollMs, 20_000) - 250;
+  const ph = marketPhase();
+  if (kind === 'day') {
+    if (heldFresh(atMs)) return false;
+    if (ph === 'pre') return age >= PRE_POLL_MS - 250;
+  } else if (ph !== 'regular' && ph !== 'late') return age >= Math.max(pollMs, QUIET_POLL_MS) - 250;
+  return age >= pollMs - 250;
+}
+
+export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true, pollMs = READ_POLL_MS, kind: ReadKind = 'day'): LivePack<T> {
   const [, force] = useState(0);
   useEffect(() => {
     if (!enabled) return;
@@ -315,16 +360,23 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
     const me = sh;
     me.load = load;
     me.empty = empty;
-    /* an answer kept from an earlier page past its keep is not drawn as this page's */
-    if (!me.subs.size && me.box && (me.box.at == null || Date.now() - me.box.at > LIVE_KEEP_MS)) me.box = null;
+    /* an answer kept from an earlier page past its keep is not drawn as this page's — unless it is a closed session's
+       day, which no longer changes (it stands until the next session) */
+    if (!me.subs.size && me.box && (me.box.at == null || (Date.now() - me.box.at > LIVE_KEEP_MS && !(kind === 'day' && !me.box.fault && heldFresh(me.box.at))))) me.box = null;
     const fn = () => force(n => n + 1);
     me.subs.add(fn);
     if (me.timer == null) {
-      if (!me.box || me.box.at == null || Date.now() - me.box.at >= Math.min(POLL_MS, pollMs)) liveRun(key);
+      const due = (first: boolean) => {
+        const b = me.box;
+        if (!b || b.at == null) return true;
+        if (holdsPaused > 0) return false;
+        /* a page opened on a box another page read a moment ago draws it, and asks again only past the short beat */
+        return readDue(b.at, first ? Math.min(POLL_MS, pollMs) : pollMs, kind, !!b.fault);
+      };
+      if (due(true)) liveRun(key);
       me.timer = window.setInterval(() => {
-        if (holdsPaused > 0 && me.box && me.box.at != null) return;
-        liveRun(key);
-      }, pollMs);
+        if (due(false)) liveRun(key);
+      }, Math.min(pollMs, 15_000));
     }
     fn();
     return () => {
@@ -336,11 +388,11 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
     };
     // `key` is the request. `load` closes over the same key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled, pollMs]);
+  }, [key, enabled, pollMs, kind]);
   /* A NEW KEY NEVER WEARS THE OLD KEY'S ROWS (the ship pass, 2026-10-22): the box outlived its request, so a Net Flow pane
      moved from SPY to META drew SPY's minutes under META's name until the next answer landed */
   const sh = enabled ? liveShared.get(key) : undefined;
-  const kept = sh && sh.box && sh.box.key === key && (sh.subs.size > 0 || (sh.box.at != null && Date.now() - sh.box.at <= LIVE_KEEP_MS)) ? sh.box : null;
+  const kept = sh && sh.box && sh.box.key === key && (sh.subs.size > 0 || (sh.box.at != null && (Date.now() - sh.box.at <= LIVE_KEEP_MS || (kind === 'day' && !sh.box.fault && heldFresh(sh.box.at))))) ? sh.box : null;
   const mine = kept as CacheBox<T> | null;
   return { rows: mine?.rows ?? empty, at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: enabled && !mine };
 }
@@ -434,6 +486,9 @@ const indexAsks = new Map<string, Promise<void>>();
 export function indexRoot(ticker: string): string | null {
   return INDEX_ROOT[ticker.toUpperCase()] ?? null;
 }
+/** An index's distance from its level is approximate (audit round 10: SPXW read "0.0%" / "+0.3%" exact on Watchers,
+    Footprints and the Screener) — the level is the vendor's, not a live quote: marked "≈" with this hover, as on the tape */
+export const INDEX_OTM_TITLE = "An index: its level comes from the vendor's figures, not a live quote, so this distance is approximate";
 /** The newest index level we hold for this ticker's index, 0 when none */
 export function indexLevel(ticker: string): number {
   const root = indexRoot(ticker);
@@ -449,7 +504,7 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
   const jobs: Promise<void>[] = [];
   for (const root of roots) {
     const hit = indexLevels.get(root);
-    if (hit && Date.now() - hit.at < 30_000) continue;
+    if (hit && (Date.now() - hit.at < 30_000 || heldFresh(hit.at))) continue;
     /* STALE WHILE IT REFRESHES (audit round 8, load time): a level in hand is used while the new one is asked for — only a
        root with no level at all holds the rows back (every 30s the book's poll waited on /spot-exposures behind it) */
     const waitFor = !hit;
@@ -529,7 +584,7 @@ export async function ensureSpots(tickers: Iterable<string>): Promise<void> {
       if (!spotSeen.has(raw)) waitFor.push(pending);
       continue;
     }
-    if (Date.now() - (spotScreenAt.get(raw) ?? 0) < SPOT_SCREEN_MS) continue;
+    if (Date.now() - (spotScreenAt.get(raw) ?? 0) < SPOT_SCREEN_MS || (spotSeen.has(raw) && heldFresh(spotScreenAt.get(raw)))) continue;
     want.push(raw);
   }
   const chunks: string[][] = [];
@@ -768,7 +823,7 @@ async function mapBook(rows: Record<string, unknown>[]): Promise<BookContract[]>
 }
 
 export function useOptionTape(limit = 200): LivePack<FlowPrint[]> {
-  return useLive(`tape:${limit}`, async () => mapWithIndex(liveTrades(await getRows(`/option-trades?limit=${limit}`)), tradeToPrint), []);
+  return useLive(`tape:${limit}`, async () => mapWithIndex(liveTrades(await getRows(`/option-trades?limit=${limit}`)), tradeToPrint), [], true, POLL_MS, 'live');
 }
 
 /* ONE NAME'S TAPE AND STRUCTURES (Trace › Compare, 2026-10-22): the market-wide windows are the market's latest prints
@@ -882,6 +937,10 @@ const GAP_PAGES = 4;
 /** Late prints land in the vendor's store a few ms behind their fill time — each poll re-reads this far back (and drops
     the repeats by trade id) so a print stamped just before the newest one in hand is never skipped */
 const LATE_MS = 2_000;
+/** The stream's beats (audit round 10): a full tape every 8s (4 until then), a light one every 10s on a small page */
+const STREAM_BUSY_MS = 8_000;
+const STREAM_IDLE_MS = 10_000;
+const STREAM_IDLE_PAGE = 100;
 export { TAPE_CAP };
 
 export interface TapeQuery {
@@ -1033,16 +1092,16 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     setWaiting(true);
     setFault(null);
     /* a page's FULLNESS is the vendor's row count — a cancelled print dropped from a full page must not end the walk */
-    const page = async (cursor: { newerThan?: number; olderThan?: number }): Promise<FlowPrint[] & { full?: boolean; oldest?: number }> => {
+    const page = async (cursor: { newerThan?: number; olderThan?: number }, limit = TAPE_PAGE): Promise<FlowPrint[] & { full?: boolean; oldest?: number }> => {
       const capped = untilMs && (!cursor.olderThan || cursor.olderThan > untilMs) ? { ...cursor, olderThan: untilMs } : cursor;
-      const got = await getRows(`/option-trades?${tapeQueryString(query, { ...capped, limit: TAPE_PAGE })}`);
+      const got = await getRows(`/option-trades?${tapeQueryString(query, { ...capped, limit })}`);
       if (stop) return [];
       const live = liveTrades(got);
       await ensureIndexLevels(live.map(tickerOfRow));
       const keep = keepRef.current;
       const mapped = live.map(tradeToPrint);
       const out: FlowPrint[] & { full?: boolean; oldest?: number } = keep ? mapped.filter(keep) : mapped;
-      out.full = got.length >= TAPE_PAGE;
+      out.full = got.length >= limit;
       let o = 0;
       for (const r of got) {
         const t = Date.parse(String(r.executed_at || ''));
@@ -1052,11 +1111,12 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
       return out;
     };
     /** Everything newer than `sinceMs`, newest first; `joined` false when the walk stopped short of it */
-    const newerThan = async (sinceMs: number): Promise<{ batch: FlowPrint[]; joined: boolean }> => {
+    const newerThan = async (sinceMs: number, firstLimit = TAPE_PAGE): Promise<{ batch: FlowPrint[]; joined: boolean }> => {
       let acc: FlowPrint[] = [];
       let olderThan: number | undefined;
       for (let n = 0; n < GAP_PAGES && !stop; n++) {
-        const got = await page({ newerThan: sinceMs > 0 ? sinceMs - 1 : undefined, olderThan });
+        /* an idle tape asks a small first page (a 500-print page is ~600 KB); a full one walks on in whole pages */
+        const got = await page({ newerThan: sinceMs > 0 ? sinceMs - 1 : undefined, olderThan }, n === 0 ? firstLimit : TAPE_PAGE);
         acc = dedupe(acc.concat(got));
         if (!got.full) return { batch: acc, joined: true };
         const next = (got.oldest || oldestMs(got)) + 1;
@@ -1107,12 +1167,25 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     };
     void boot();
     let polling = false;
-    const id = window.setInterval(async () => {
+    /* THE BEAT FOLLOWS THE TAPE (audit round 10, major 4: 78 calls a minute in the session, 44 after the close, ~600 KB a
+       page): every STREAM_BUSY_MS while the last poll came back full, STREAM_IDLE_MS while it came back light (and then
+       asking a page of STREAM_IDLE_PAGE, not 500), QUIET_POLL_MS outside the session (the after-hours prints are few); a
+       hidden tab asks nothing. An anchored stream (untilMs — a closed session) never polls: nothing newer belongs to it. */
+    let lastCount = TAPE_PAGE;
+    let timer = 0;
+    const beat = () => {
+      const ph = marketPhase();
+      const ms = ph !== 'regular' && ph !== 'late' ? QUIET_POLL_MS : lastCount >= STREAM_IDLE_PAGE ? STREAM_BUSY_MS : STREAM_IDLE_MS;
+      timer = window.setTimeout(tick, ms);
+    };
+    const tick = async () => {
+      if (stop) return;
       /* paused (any Trace hold): no poll — the tape asks again on resume (audit round 9, minor 6) */
-      if (untilMs || !newest.current || polling || holdsPaused > 0) return;
+      if (untilMs || !newest.current || polling || holdsPaused > 0 || tabHidden()) return beat();
       polling = true;
       try {
-        const { batch, joined } = await newerThan(newest.current - LATE_MS);
+        const { batch, joined } = await newerThan(newest.current - LATE_MS, lastCount >= STREAM_IDLE_PAGE ? TAPE_PAGE : STREAM_IDLE_PAGE);
+        lastCount = batch.length;
         if (stop || !batch.length) return;
         newest.current = Math.max(newest.current, newestMs(batch));
         if (holdRef.current) {
@@ -1130,11 +1203,13 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
         /* a missed poll keeps the prints already in hand; the next one walks back to them */
       } finally {
         polling = false;
+        if (!stop) beat();
       }
-    }, POLL_MS);
+    };
+    if (!untilMs) beat();
     return () => {
       stop = true;
-      window.clearInterval(id);
+      window.clearTimeout(timer);
     };
     // `key` is the query. `query` closes over the same fields.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1464,7 +1539,13 @@ export function useAccumTape(kind: 'dark' | 'lit', limit: number): LivePack<Dark
       }
     };
     void run();
-    const id = window.setInterval(run, POLL_MS);
+    /* the newest crosses: every 8s in the session (4s until audit round 10), every 30s outside it, never in a hidden tab */
+    let last = Date.now();
+    const id = window.setInterval(() => {
+      if (holdsPaused > 0 || !readDue(last, READ_POLL_MS, 'live')) return;
+      last = Date.now();
+      void run();
+    }, POLL_MS);
     return () => {
       stop = true;
       window.clearInterval(id);
@@ -1635,7 +1716,7 @@ export function useStockLast(ticker: string | null): LivePack<StockLast | null> 
   return useLive(name ? `stock-last:${name}` : 'stock-last:off', async () => {
     const q = await stockLastOf(name);
     return q.price > 0 ? q : null;
-  }, null, !!name);
+  }, null, !!name, READ_POLL_MS, 'live');
 }
 /** A name's dark day — with `dateIso`, that session's own (the cross's date: audit round 6, an Oct 22 cross read "Dark
     dollars today" off whatever day the route held at 04:15 on Oct 23), its whole volume off that day's one-minute bars */
@@ -1657,7 +1738,10 @@ export function useDarkDay(ticker: string | null, dateIso: string | null = null)
       return darkDayOf(levels, vol);
     },
     null,
-    !!name
+    !!name,
+    READ_POLL_MS,
+    /* a dated day is fixed; the latest one keeps taking after-hours crosses to 20:00 */
+    dateIso ? 'day' : 'live'
   );
 }
 
@@ -1689,7 +1773,9 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
       return { view: darkView(name, mapped, darkLevels(levels, spot, mapped), spot, day && Number.isFinite(day.sharePct) ? day.sharePct : 0), lit: lit.filter(r => !r.canceled).map((r, i) => darkPrint(r, i, 0, 'lit')).filter(onDay), day };
     },
     { view: null, lit: [], day: null },
-    !!name
+    !!name,
+    READ_POLL_MS,
+    untilMs ? 'day' : 'live'
   );
 }
 
@@ -1987,7 +2073,8 @@ export function useFlowAlerts(limit = 50, opts?: { untilMs?: number | null; sess
   return useLive(`alerts:${limit}:${until ?? 'live'}:${session ?? 'any'}`, async () => {
     const rows = markAlertPackages(await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}${until ? `&older_than=${new Date(until).toISOString()}` : ''}`), alertToPrint));
     return session ? rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)) : rows;
-  }, [], opts?.enabled ?? true);
+    /* walked back from a close, the alerts are that day's and do not change; the newest are live */
+  }, [], opts?.enabled ?? true, READ_POLL_MS, until ? 'day' : 'live');
 }
 
 export function useAlertTrades(id: string | null): LivePack<FlowPrint[]> {
@@ -2627,11 +2714,11 @@ function useSettled(pack: LivePack<SpreadTrade[]>): LivePack<SpreadTrade[]> {
   /* THE BIGGEST NETS, AND THE NEWEST SCREENFUL (audit round 8 / retail round 7) — but only those (audit round 9, major 3:
      asking for every structure of every poll made 451 legs calls in 25s): the newest LEGS_FIRST and the LEGS_TOP largest
      by net, the page's own visible rows ahead of both (useLegsFirst) */
+  /* …and since audit round 10 (major 4: 74 legs reads a minute on a closed day — the page's "first screenful" was its first
+     twenty PENDING rows, so each one that settled let the next twenty in until every structure was read) only the LEGS_TOP
+     largest by net here; the rows on screen are the page's own ask (useLegsFirst, the first screenful of its cut and order) */
   useLegAsker(
-    useMemo(() => {
-      const top = [...pack.rows].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).slice(0, LEGS_TOP);
-      return [...new Set([...pack.rows.slice(0, LEGS_FIRST), ...top].map(t => t.id))];
-    }, [pack.rows]),
+    useMemo(() => [...pack.rows].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).slice(0, LEGS_TOP).map(t => t.id), [pack.rows]),
     1
   );
   const rows = useMemo(() => pack.rows.map(settleSpread), [pack.rows, rev]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2674,12 +2761,12 @@ export function useSpreads(limit = 80, opts?: { untilMs?: number | null; session
       const raw = await getRows(`/option-trades/multi-leg?limit=${limit}${until ? `&older_than=${new Date(until).toISOString()}` : ''}`);
       const rows = await mapWithIndex(dedupeSpreads(raw), r => ({ ...spreadOf(r), repeats: num(r.__repeats) || undefined }));
       return session ? rows.filter(t => (session === 'regular' ? !t.extended : !!t.extended)) : rows;
-    }, [], true, SPREADS_POLL_MS)
+    }, [], true, SPREADS_POLL_MS, until ? 'day' : 'live')
   );
 }
 /* THE STRUCTURES' FEED EVERY 15 SECONDS (audit round 9, major 3): the vendor's newest 200 cover about ten seconds of a busy
    session, so a four-second poll replaced the page wholesale every beat and re-asked legs for rows no one could read */
-const SPREADS_POLL_MS = 15_000;
+const SPREADS_POLL_MS = 20_000;
 
 /** One structure, settled from its own legs (the card) — read ahead of the page's queue */
 export function useSpreadTrade(trade: SpreadTrade | null): { trade: SpreadTrade | null; waiting: boolean; failed: boolean } {
@@ -2720,8 +2807,9 @@ export function useTide(kind: TideKind, name: string, enabled = true): LivePack<
     })).filter(p => p.time > 0);
   }, [], enabled, MINUTE_POLL_MS);
 }
-/** The vendor's per-minute series (tides, ticks, one-minute bars) are re-read every 15 seconds, not every 4 */
-const MINUTE_POLL_MS = 15_000;
+/** The vendor's per-minute series (tides, ticks, one-minute bars) are re-read every 30 seconds in the session — the vendor
+    writes them once a minute (15s until audit round 10; 4s before round 9) — and held after the close (readDue) */
+const MINUTE_POLL_MS = 30_000;
 
 /** One expiry of a name's day — /stock/{t}/flow-per-expiry: premium and contracts by side */
 export interface ExpiryFlow {

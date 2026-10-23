@@ -30,7 +30,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { FOOTPRINT_SCREENS, runFootprintScreen, stockLike, type FootprintScreenKey } from '../../data/flowBook';
-import { standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
+import { indexRoot, INDEX_OTM_TITLE, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, dayLabel, dayPos, earnWords, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, nextCountDay, oiRowTitle, prevSessionIso, shortDay, type OiCover } from '../../components/trace/dayWords';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -320,7 +320,7 @@ const Footprints = () => {
         header: 'OTM %',
         align: 'right',
         sortValue: r => r.otmPct,
-        render: r => (Number.isFinite(r.otmPct) ? <span className="text-textPrimary">{pctSigned(r.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
+        render: r => (Number.isFinite(r.otmPct) ? <span className="text-textPrimary" title={indexRoot(r.ticker) ? INDEX_OTM_TITLE : undefined}>{indexRoot(r.ticker) ? "≈" : ""}{pctSigned(r.otmPct, 1)}</span> : <span className="text-textMuted" title="The index level comes in whole points — too coarse for this distance on a small index (XSP, VIX)">—</span>),
       },
       {
         key: 'oi',

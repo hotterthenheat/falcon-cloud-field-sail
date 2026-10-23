@@ -123,10 +123,14 @@ export function countFlipCrossings(candles: readonly Candle[], snaps: readonly G
  * it) beside this; the word is "crossed N×" wherever this count is printed.
  */
 export function flipCrossings(bars: readonly Candle[], flip: number): number {
+  /* COUNTED AT THE PRINTED FLIP (the tenth audit's m1: TSLA's flip 372.0716 printed 372.07 — a recount at 372.07 read 22×,
+     the page 24×, closes of exactly 372.07 falling on either side): the level is the cent the pages print, and a close
+     on it changes no side */
+  const level = Math.round(flip * 100) / 100;
   let side = 0;
   let n = 0;
   for (const b of bars) {
-    const s = Math.sign(b.close - flip);
+    const s = Math.sign(Math.round(b.close * 100) / 100 - level);
     if (s === 0) continue;
     if (side !== 0 && s !== side) n++;
     side = s;
