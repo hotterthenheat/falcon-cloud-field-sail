@@ -284,13 +284,14 @@ const SignedBar = ({ v, thick = false }: { v: number; thick?: boolean }) => {
 const FactorRow = ({ f }: { f: Factor }) => (
   <div className="px-5 py-2 grid items-center gap-x-4 border-t border-borderSubtle/40" style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr) 96px' }} data-stock-factor={f.key} data-lean={f.lean.toFixed(2)}>
     <span className="min-w-0">
-      <span className="block text-[11px] text-textPrimary truncate">
+      {/* wraps on a phone (round 9: "Price against its 2…", "ADX, the trend's …" cut at 390) */}
+      <span className="block text-[11px] text-textPrimary truncate max-sm:whitespace-normal max-sm:break-words">
         {f.label}
         {f.context && <span className="ml-1.5 font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Shown for context; not in the read">context</span>}
       </span>
-      <span className="block text-[9px] text-textMuted truncate">{f.note}</span>
+      <span className="block text-[9px] text-textMuted truncate max-sm:whitespace-normal max-sm:break-words">{f.note}</span>
     </span>
-    <span className="font-mono text-[11px] tnum text-textPrimary truncate">{f.value}</span>
+    <span className="font-mono text-[11px] tnum text-textPrimary truncate max-sm:whitespace-normal max-sm:break-words">{f.value}</span>
     <SignedBar v={f.lean} />
   </div>
 );
@@ -334,7 +335,8 @@ const LEVEL_WORDS: Record<string, string> = {
 type LegsAt = TickerLevels['legsAt'];
 const ROLE_KEY: Record<LevelRole, string> = { supreme: 'supreme', 'call wall': 'call', 'put wall': 'put', flip: 'flip' };
 const ROLE_INK: Record<LevelRole, string> = { supreme: 'rgb(var(--supreme))', 'call wall': 'rgb(var(--bull))', 'put wall': 'rgb(var(--bear))', flip: SILVER };
-const levelPrice = (p: number) => (Number.isInteger(p * 2) ? String(p) : p.toFixed(2));
+/* a whole strike as written, any other to the cent — "212.50", as Pinpoint prints it */
+const levelPrice = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(2));
 /** The figure behind one role at its strike: "net +$1.2B" for the supreme, "calls +$…" / "puts −$…" for a wall */
 const roleFigure = (role: LevelRole, strike: number, legsAt?: LegsAt): string | null => {
   const legs = legsAt?.(strike);
@@ -365,7 +367,8 @@ const LevelsLine = ({ levels }: { levels: Pick<TickerLevels, 'supreme' | 'callWa
       return (
         <span key={g.price}>
           {i ? ' · ' : ''}
-          <span style={{ color: ROLE_INK[g.roles[0]] }}>{g.roles.join(' · ')}</span> {levelPrice(g.price)}
+          {/* roles sharing a strike join with "and" — "call wall · put wall 212.5" read as a missing value (round 9) */}
+          <span style={{ color: ROLE_INK[g.roles[0]] }}>{g.roles.length > 1 ? `${g.roles.slice(0, -1).join(', ')} and ${g.roles[g.roles.length - 1]}` : g.roles[0]}</span> {levelPrice(g.price)}
           {figs.length ? <span className="text-textMuted"> ({figs.join(' · ')})</span> : null}
         </span>
       );
@@ -811,8 +814,19 @@ const StockName = () => {
           </Door>
           {news.nextEarnings && <Door onClick={() => navigate(`/dossier/earnings/${T}`)}>Earnings</Door>}
           <Door onClick={() => navigate('/dossier/news', { state: { name: T } })}>The wire</Door>
-          <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted" data-stock-completeness={view.completeness}>
+          {/* WHICH SOURCE IS OUT, AND WHETHER THE READ NEEDS IT (round 9: "8 of 9 sources live" named neither) — the scored
+              read is the screener row's alone (trend, numbers, money); every source here is shown beside it */}
+          <span
+            className={`ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted ${live < view.sources.length ? 'cursor-help' : ''}`}
+            data-stock-completeness={view.completeness}
+            title={
+              live < view.sources.length
+                ? `Not live: ${view.sources.filter(x => x.status !== 'live').map(x => `${x.label} (${x.stamp})`).join('; ')}. The read itself — the trend, the numbers and the money — is scored off the screener row alone, so it does not wait on ${view.sources.length - live === 1 ? 'it' : 'them'}; the boxes that show ${view.sources.length - live === 1 ? 'it' : 'them'} say so.`
+                : 'Every source on the page is live. The read is scored off the screener row; the rest is shown beside it.'
+            }
+          >
             {live} of {view.sources.length} sources live
+            {live < view.sources.length ? <span className="normal-case tracking-normal"> · {view.sources.filter(x => x.status !== 'live').map(x => x.label.toLowerCase()).join(', ')} not live · not in the read</span> : null}
           </span>
         </div>
       </div>
@@ -962,6 +976,10 @@ const StockName = () => {
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             <Fact label="Net DEX · VEX" testId="dex">
               <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
+              {/* one plain line (round 9: "Net DEX −$30.8B" with no word on what it is) */}
+              <span className="block text-[9px] font-sans text-textMuted leading-snug" data-stock-fact="dex-says">
+                {money.netDex < 0 ? "dealers' options leave them short this much stock, before their hedge" : "dealers' options leave them long this much stock, before their hedge"}
+              </span>
             </Fact>
             <Fact label="Vanna · charm" testId="vanna">
               <Money v={money.netVanna} /> <span className="text-textMuted">·</span> <Money v={money.netCharm} />
@@ -998,11 +1016,12 @@ const StockName = () => {
             <Fact label={file.tapes === 'loading' || money.darkWindow.complete ? `Dark · ${sessionWord}` : 'Recent dark'} testId="darkshare" tip={`The off-exchange prints of 10K shares or $500K+ in hand${money.darkWindow.complete ? ' — the session paged back to the open' : money.darkWindow.cover ? `, from ${money.darkWindow.cover} ET on (the tape in hand stops there)` : ''}: dollars · prints, extended hours included. Own-terms prints (average-price, contingent, reference-price, derivative-priced${money.darkWindow.ownTerms ? ` — ${money.darkWindow.ownTerms} of them` : ''}) are left out. The buyer/seller read under it is on the regular session's prints at the quote alone${money.darkWindow.outsideRead ? ` — ${money.darkWindow.read.toLocaleString('en-US')} prints, ${fmtMoney(money.darkWindow.readNotional)}; the other ${money.darkWindow.outsideRead.toLocaleString('en-US')} (extended hours, or no quote to read against) are on the card, not in the read` : ''}`}>
               {money.dark.prints.length ? (
                 <>
-                  {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length.toLocaleString('en-US')}</span>
+                  {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length.toLocaleString('en-US')} prints</span>
                   {/* the card's set and the read's set, both stated (audit round 6: "$806M · 648" beside a read of 630) */}
                   {money.darkWindow.outsideRead ? (
                     <span className="block text-[10px] text-textMuted" data-name-fact="darkread">
-                      read: {money.darkWindow.read.toLocaleString('en-US')} in session · {fmtMoney(money.darkWindow.readNotional)}
+                      {/* said plainly (round 9: "read: 600 in session" beside 620 was two counts unexplained) */}
+                      buyer/seller read on the {money.darkWindow.read.toLocaleString('en-US')} regular-hours prints ({fmtMoney(money.darkWindow.readNotional)}); {money.darkWindow.outsideRead.toLocaleString('en-US')} outside hours or unquoted are not read
                     </span>
                   ) : null}
                 </>
@@ -1068,7 +1087,7 @@ const StockName = () => {
                   <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>supreme … · call wall … · put wall … · flip … — the levels are given once every listed expiry is in.</p>
                 ) : (
                   <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-deferred>
-                    The whole book's levels read every listed expiry (about forty dates) —{' '}
+                    The whole book's levels read every listed expiry{peekEntry(T)?.expiries?.length ? ` (${peekEntry(T)!.expiries.length} dates)` : ''} —{' '}
                     <button type="button" onClick={() => setAllWanted(true)} className="text-textSecondary hover:text-textPrimary underline decoration-dotted underline-offset-2" data-stock-levels-load>
                       read every expiry
                     </button>
@@ -1263,9 +1282,11 @@ const StockName = () => {
               {news.reports.map(r => (
                 <div key={r.label} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: '78px 52px minmax(0, 1fr) 96px' }} data-stock-report={r.label}>
                   <span className="font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">{r.label}</span>
-                  <span className="font-mono text-[11px] tnum text-textPrimary">{r.epsActual.toFixed(2)}</span>
-                  <span className={`min-w-0 truncate font-mono text-[10px] tnum ${r.result === 'beat' ? 'text-bull' : r.result === 'miss' ? 'text-bear' : 'text-textSecondary'}`} title={r.estOff ? `The vendor's estimate, ${r.epsEst.toFixed(2)}, is far off this name's other estimates — likely a vendor error, so no beat or miss size is read from it` : undefined}>
-                    {r.estOff ? (
+                  <span className={`font-mono text-[11px] tnum ${r.epsActual == null ? 'text-textMuted' : 'text-textPrimary'}`}>{r.epsActual == null ? '—' : r.epsActual.toFixed(2)}</span>
+                  <span className={`min-w-0 truncate font-mono text-[10px] tnum ${r.result === 'beat' ? 'text-bull' : r.result === 'miss' ? 'text-bear' : 'text-textSecondary'}`} title={r.estOff && r.epsEst != null ? `The vendor's estimate, ${r.epsEst.toFixed(2)}, is far off this name's other estimates — likely a vendor error, so no beat or miss size is read from it` : r.result == null ? 'The vendor has no street estimate for this report, so it is not called a beat or a miss' : undefined}>
+                    {r.result == null || r.epsActual == null || r.epsEst == null ? (
+                      <span className="text-textMuted">{r.epsActual == null ? 'no EPS on file' : 'no estimate on file'}</span>
+                    ) : r.estOff ? (
                       <>
                         <span className="text-textMuted">vs {r.epsEst.toFixed(2)} · </span>
                         <span className="text-warn">estimate looks off</span>
@@ -1556,7 +1577,8 @@ const StockName = () => {
                 <div className="min-w-0">
                   <MarkStrip ticks={r.ticks} n={trend.times.length} label={r.label} />
                   <div className="flex justify-between font-mono text-[9px] tnum text-textMuted px-1 -mt-0.5">
-                    <span>{trend.times.length ? dayOf(trend.times[0]) : ''}</span>
+                    {/* the year when the span runs past one (round 9: "Aug 14 → now" over 301 sessions) */}
+                    <span>{trend.times.length ? `${dayOf(trend.times[0])}${new Date(trend.times[0] * 1000).getUTCFullYear() !== new Date().getUTCFullYear() || trend.times.length > 250 ? `, ${new Date(trend.times[0] * 1000).getUTCFullYear()}` : ''}` : ''}</span>
                     <span>now</span>
                   </div>
                 </div>
@@ -1644,7 +1666,7 @@ const StockName = () => {
                   <span className="text-right font-mono text-[10px] tnum text-textPrimary max-xl:hidden">{Math.round(t.shares).toLocaleString('en-US')}</span>
                   <span className="text-right font-mono text-[10px] tnum font-semibold text-textPrimary">{fmtMoney(t.value)}</span>
                   <span className={`text-right font-mono text-[8px] uppercase tracking-widest max-xl:hidden ${t.plan === 'discretionary' ? (isChosenBuy(t) ? 'text-textPrimary font-bold' : 'text-textSecondary') : 'text-textMuted'}`}>
-                    {t.plan === 'discretionary' ? 'chosen' : t.plan === 'plan' ? 'planned' : 'unstated'}
+                    {t.entity && t.plan !== 'plan' ? 'corporate' : t.plan === 'discretionary' ? 'chosen' : t.plan === 'plan' ? 'planned' : 'unstated'}
                   </span>
                 </div>
               ))}

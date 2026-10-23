@@ -215,17 +215,35 @@ export function strikeWithRoles(strike: number, levels: NamedLevels, fmt: (k: nu
    price. */
 export type WallPlace = 'above' | 'below' | 'at';
 export const wallPlace = (strike: number, spot: number): WallPlace => (Math.abs(strike - spot) < spot * 0.0005 ? 'at' : strike > spot ? 'above' : 'below');
-export function putWallWordsAt(place: WallPlace): string {
+/* THE BEHAVIOUR WORDS FOLLOW THE STRIKE'S NET SIGN (the ninth audit, 2026-10-23: Compare called SPY's 762 call wall "a
+   lid: dealers long gamma there sell into rallies" and, a line later, "its puts are heavier still, so its net is
+   negative" — the same strike explained two opposite ways). A call wall is the most CALL gamma, but where its puts
+   outweigh it the dealers are short gamma there: it is not a lid. A put wall whose calls outweigh it is long gamma: it
+   absorbs rather than accelerates. `net` is the strike's net gamma in the RETAIL sign (+ dealers long, absorbs); without
+   it the words are the leg's alone, as before. */
+export function putWallWordsAt(place: WallPlace, net?: number | null): string {
+  if (net != null && net > 0)
+    return place === 'at'
+      ? 'the most put gamma, right at price, but its calls outweigh it — dealers are long gamma there, so it tends to absorb a move either way'
+      : place === 'above'
+        ? 'the most put gamma, sitting above price, but its calls outweigh it — dealers are long gamma there, so a rally into it tends to be absorbed'
+        : 'the most put gamma, below price, but its calls outweigh it — dealers are long gamma there, so a dip into it tends to be absorbed rather than accelerate';
   if (place === 'at') return 'the most put hedging, right at price — dealers are short gamma there, so a break below can accelerate';
   return place === 'above'
     ? 'the most put hedging, sitting above price — overhead put hedging, not a floor: if price rallies into it, dealers short gamma there can speed up selling, or it can act as a magnet'
     : 'the most put hedging, below price — support while it holds; dealers are short gamma there, so a break below can accelerate';
 }
-export function callWallWordsAt(place: WallPlace): string {
+export function callWallWordsAt(place: WallPlace, net?: number | null): string {
+  if (net != null && net < 0)
+    return place === 'at'
+      ? 'the most call gamma, right at price, but its puts outweigh it — not a lid: dealers are short gamma there, so a move through it can run'
+      : place === 'above'
+        ? 'the most call gamma, above price, but its puts outweigh it — not a lid: dealers are short gamma there, so a rally into it can run'
+        : 'the most call gamma, sitting below price, but its puts outweigh it — dealers are short gamma there, so a drop into it can run';
   if (place === 'at') return 'the most call hedging, right at price — dealers long gamma there lean against a move either way';
   return place === 'above'
     ? 'the most call hedging, above price — a lid: dealers long gamma there sell into rallies'
     : 'the most call hedging, sitting below price — price is through it, so it can act as support on a pullback while it holds';
 }
-export const putWallWords = (strike: number, spot: number): string => putWallWordsAt(wallPlace(strike, spot));
-export const callWallWords = (strike: number, spot: number): string => callWallWordsAt(wallPlace(strike, spot));
+export const putWallWords = (strike: number, spot: number, net?: number | null): string => putWallWordsAt(wallPlace(strike, spot), net);
+export const callWallWords = (strike: number, spot: number, net?: number | null): string => callWallWordsAt(wallPlace(strike, spot), net);

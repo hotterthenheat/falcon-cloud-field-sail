@@ -38,7 +38,7 @@ import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
-import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
 import ReadDoor from '../../components/trace/ReadDoor';
 import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -386,7 +386,7 @@ const MultiLeg = () => {
           (kind === 'ALL' || t.kind === kind) &&
           (money === 'ALL' || (t.netKnown !== false && (money === 'DEBIT' ? t.netPremium > 0 : t.netPremium < 0))) &&
           // A structure matches on its ticker or ANY of its legs' contracts.
-          (nq === '' || normSymbol(t.ticker).includes(nq) || t.legs.some(l => normSymbol(`${t.ticker}${l.strike}${l.right}`).includes(nq)))
+          (nq === '' || normSymbol(t.ticker).includes(nq) || t.legs.some(l => matchesContract(cutQuery, { ticker: t.ticker, strike: l.strike, right: l.right, expiry: l.expiry })))
       )
       /* NEWEST FIRST, BY THE INSTANT (retail, round 7: 16:14:48 then 16:14:59 under "newest first" — the vendor's order is
          not strictly by time); ties keep a stable order by id */
@@ -709,7 +709,8 @@ const MultiLeg = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            <StaleMark at={pack.at} ttlMs={FLOW_TTL_MS} fault={pack.fault} />
+            {/* paused is held, not stale; the feed is read every 15s (traceLive SPREADS_POLL_MS) */}
+            {!hold.paused && <StaleMark at={pack.at} ttlMs={45_000} fault={pack.fault} />}
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="structures" span />
             <DropdownSelect label="Screen" value={kind} options={SHAPE_OPTIONS} onChange={setKind} title="Which structures" testId="multi-leg-shape" />
             {/* "Debit · credit", not "Money" — Money meant moneyness on every other page */}

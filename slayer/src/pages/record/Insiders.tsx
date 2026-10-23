@@ -44,14 +44,15 @@ import { InsidersGuide } from '../../components/record/InsidersGuide';
 import { When } from '../../components/record/when';
 import { dollars3 as fmtDollars } from './money';
 import { useBoardNames } from '../../data/boardNames';
-import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, personSlug, bigWord, spanWords, splitWords, type SalesSplit } from '../../data/insiders';
+import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, isCorporateTrade, personSlug, bigWord, spanWords, splitWords, type SalesSplit } from '../../data/insiders';
 import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
 import { tickerName } from '../../data/tickers';
 import { useCompanyName } from '../../data/liveFiles';
+import { titleCompany } from '../../data/tickers';
 import { nyIsoDaysBack } from '../../data/nyDate';
 
-const titleCase = (raw: string) => raw.trim().split(/\s+/).map(w => (w.length <= 3 && /^[A-Z&.]+$/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(' ');
+const titleCase = (raw: string) => titleCompany(raw.trim().toUpperCase());
 import type { InsiderFlow, InsiderRole, InsiderTrade } from '../../types/record';
 import { NAMES_TO_KNOW } from './recordSkeletons';
 import { InsiderSectorFlow } from '../../components/record/ExtraFaces';
@@ -65,7 +66,8 @@ type NamesPick = 'all' | 'board';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
   /* THIS WEEK (round 8: the shortest window was 30 days) */
-  { value: 7, label: 'This week', short: '7 days', hint: 'Filings in the last seven days' },
+  /* one word for it everywhere (round 9: the menu said "This week", the chip "7 days") */
+  { value: 7, label: '7 days', hint: 'Filings in the last seven days' },
   { value: 30, label: '30 days', hint: 'Filings in the last month' },
   { value: 90, label: '90 days', hint: 'The last quarter' },
   { value: 180, label: '180 days', hint: 'The last half year' },
@@ -206,9 +208,9 @@ const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!TX_CODES[data.code].openMarket) return <span className="font-mono text-[10px] text-textMuted">—</span>;
   if (data.plan === 'plan') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Planned: the trade ran off a 10b5-1 plan — a schedule the insider fixed months earlier, so it carries no view on the day it happened">planned · 10b5-1</span>;
   if (data.plan === 'unknown') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way — not counted as chosen buying in the sums above">unstated</span>;
-  if (isCorporateBuy(data))
+  if (isCorporateTrade(data))
     return (
-      <span className="font-mono text-[8px] uppercase tracking-widest text-textSecondary" title="Bought by a company or a fund — a strategic stake or a private placement, not an insider choosing to buy. Not counted in chosen buying">
+      <span className="font-mono text-[8px] uppercase tracking-widest text-textSecondary" title={data.kind === 'BUY' ? 'Bought by a company or a fund — a strategic stake or a private placement, not an insider choosing to buy. Not counted in chosen buying' : 'Sold by a company or a fund — the filer is an entity, not an insider choosing to sell. Not counted in selling by choice'}>
         corporate
       </span>
     );
@@ -370,7 +372,8 @@ const Insiders = () => {
   const reading = coverage.buysReading || coverage.bigSalesReading || coverage.restReading;
   /* PROGRESS, SAID AS HOW FAR BACK (the retail test, 2026-10-23: "reading…" sat for 30s with nothing to say how far it
      had come): the filings are paged newest first, so the totals are complete back to the oldest day both reads reach */
-  const readBack = [coverage.buysReading ? coverage.buysSince : null, coverage.bigSalesReading ? coverage.bigSalesSince : null].filter((d): d is string => !!d).sort().reverse()[0] ?? null;
+  /* (round 9) "0 of 90 days" stood beside 970 filings: the parts still reading say how far they reach; a part done says its own */
+  const readBack = [coverage.buysReading ? coverage.buysSince : null, coverage.bigSalesReading ? coverage.bigSalesSince : null].filter((d): d is string => !!d).sort().reverse()[0] ?? [coverage.buysSince, coverage.bigSalesSince].filter((d): d is string => !!d).sort().reverse()[0] ?? null;
   const readingWord = readBack ? ` · read back to ${shortDay(readBack)} of ${window} days` : ' · reading the first pages';
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the filings' : 'No filing on this cut';
   const cut = useMemo(() => {

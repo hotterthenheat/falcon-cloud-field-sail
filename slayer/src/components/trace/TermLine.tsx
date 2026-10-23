@@ -44,7 +44,7 @@ export const TERMS: Record<TermKey, { word: string; plain: string }> = {
   },
   stockLike: {
     word: 'stock-like',
-    plain: 'Deep in the money (25% or more) with six months or more to run — it moves almost one-for-one with the stock, so it is usually a stock replacement or a roll, not a bet on direction.',
+    plain: 'Deep in the money (25% or more) with a month or more to run — it moves almost one-for-one with the stock, so it is usually a stock replacement or a roll, not a bet on direction.',
   },
   oiDay: {
     word: 'the open-interest day',

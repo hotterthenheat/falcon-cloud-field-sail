@@ -33,7 +33,7 @@ import { companyName } from '../../data/tickers';
 import { extendedLine, useLiveQuote, useSetMoves } from '../../data/liveQuote';
 import { PublishMove, storyNameWord } from '../../components/record/publishMove';
 import { nyTodayIso, shortDay } from '../../data/nyDate';
-import { useEveryReportQuiet } from '../../data/earningsFeed';
+import { useNearReports } from '../../data/earningsFeed';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -109,6 +109,8 @@ const SORT_OPTIONS: DropdownOption<Sort>[] = [
 
 /** A notice, not news: dividends declared, results dates and calls scheduled, conference slots, tokenized listings */
 /* a figure's decimal point ("$15.63/share") is not the end of a sentence (the third audit, 2026-10-23) */
+/* sport, fashion and lifestyle — press releases that are not market news */
+const LIFESTYLE_RE = /\b(?:fc|football|soccer|bundesliga|premier league|la liga|serie a|champions league|world cup|nba|nfl|mlb|nhl|wnba|formula (?:1|one)|f1|grand prix|nascar|olympics?|tennis|golf|pga|ufc|esports?|stadium|jersey|kit sponsor|bayern|real madrid|barcelona|manchester united|fashion|runway|couture|apparel collection|capsule collection|handbags?|sneakers?|fragrance|cosmetics|skincare|beauty|lifestyle|wellness|recipes?|celebrity|red carpet|film festival|concert|album|music video|call of duty|modern warfare)\b/i;
 const ROUTINE_RE = /\bdeclares?\b(?:[^.]|\.(?=\d)){0,40}\bdividends?\b|\bdividends?\b(?:[^.]|\.(?=\d)){0,20}\bdeclared\b|\b(?:to (?:announce|report|release|host)|announces?|schedules?|sets?)\b(?:[^.]|\.(?=\d)){0,60}\b(?:results|earnings release|conference call|webcast)\b(?:[^.]|\.(?=\d)){0,40}\b(?:on|date|dates|for)\b|\b(?:to )?(?:participate|present) (?:in|at)\b(?:[^.]|\.(?=\d)){0,40}\bconferences?\b|\btokeni[sz]ed\b|\bbinance futures\b|\belected\b(?:[^.]|\.(?=\d)){0,40}\bdirector\b/i;
 
 const ago = (m: number) => (m < 1 ? 'just now' : m < 60 ? `${Math.round(m)}m ago` : `${Math.floor(m / 60)}h ${Math.round(m % 60)}m ago`);
@@ -551,7 +553,9 @@ const News = () => {
         /* and a press release from a company the page does not list (no ticker, the Product beat — "MiniTool
            ShadowMaker 5.0 Introduces Cloud Sync") is never lifted to lead the wire (the third audit, 2026-10-23) */
         const lifted = (e: GeoNewsEvent) => e.item.major && !ROUTINE_RE.test(e.item.headline) && !(e.item.ticker == null && e.item.category !== 'Macro');
-        const rank = (e: GeoNewsEvent) => (onBoard(e) ? (lifted(e) ? 0 : 1) : lifted(e) ? 2 : e.item.ticker || e.item.category === 'Macro' ? 3 : 4);
+        /* (round 9) a sport, fashion or lifestyle press release ranks last off the Board — a Bayern Munich deal and a
+           fashion launch sat high on "What matters" */
+        const rank = (e: GeoNewsEvent) => (onBoard(e) ? (lifted(e) ? 0 : 1) : LIFESTYLE_RE.test(e.item.headline) && e.item.category !== 'Earnings' && e.item.category !== 'M&A' ? 5 : lifted(e) ? 2 : e.item.ticker || e.item.category === 'Macro' ? 3 : 4);
         return rank(a) - rank(b) || a.item.minutesAgo - b.item.minutesAgo;
       },
       /* OVERNIGHT EVERY STORY'S SESSION MOVE IS NONE YET (audit round 5: the sort did nothing before the open) — such a
@@ -638,21 +642,34 @@ const News = () => {
     return [...set].sort();
   }, [events, coverage.reading]);
   const setMoves = useSetMoves(moveNames);
-  const biggest = useMemo(() => {
-    if (!setMoves.complete) return null;
+  /* THE LEADER SO FAR (round 9: "reading 59 names" stood 25 seconds while the wire's pages landed): the names of the
+     stories already read — frozen once, so the set is read once — give a leader labelled "so far" until the whole set is in */
+  const earlyRef = useRef<string[] | null>(null);
+  if (coverage.reading && !earlyRef.current && events.length >= 20) {
+    const set = new Set<string>();
+    for (const e of events) {
+      if (e.item.ticker) set.add(e.item.ticker);
+      for (const t of e.item.tickers ?? []) set.add(t);
+    }
+    earlyRef.current = [...set].sort();
+  }
+  const earlyMoves = useSetMoves(setMoves.complete ? [] : earlyRef.current ?? []);
+  const leaderOf = (m: typeof setMoves) => {
     let top: { ticker: string; pct: number; date: string } | null = null;
-    for (const [t, q] of setMoves.moves) {
+    for (const [t, q] of m.moves) {
       if (!top || Math.abs(q.pct) > Math.abs(top.pct) || (Math.abs(q.pct) === Math.abs(top.pct) && t < top.ticker)) top = { ticker: t, pct: q.pct, date: q.date };
     }
     return top;
-  }, [setMoves]);
+  };
+  const biggest = useMemo(() => (setMoves.complete ? leaderOf(setMoves) : null), [setMoves]); // eslint-disable-line react-hooks/exhaustive-deps
+  const earlyBiggest = useMemo(() => (!setMoves.complete && earlyMoves.complete ? leaderOf(earlyMoves) : null), [setMoves, earlyMoves]); // eslint-disable-line react-hooks/exhaustive-deps
   const moveDayIsToday = biggest ? biggest.date === nyTodayIso() : true;
   const selectedQuote = useLiveQuote(selected?.item.ticker ?? null);
   const nextPrint = calendar.find(c => c.impact === 'high' && c.inMinutes >= 0) ?? calendar.find(c => c.inMinutes >= 0) ?? null;
   /* THE NEXT PRINT IS AN EARNINGS ONE TOO (round 8: "nothing ahead on the calendar" while the earnings calendar listed
      RCBC after today's close and ~710 reports next week): with no economic release ahead, the next report still to come
      on the fortnight's lists — read once the calendar below asks for them, after the headlines */
-  const reportsQ = useEveryReportQuiet();
+  const reportsQ = useNearReports();
   const nextReport = useMemo(() => {
     const today = nyTodayIso();
     const ahead = reportsQ.events.filter(e => !e.reported && (e.iso ?? '') >= today);
@@ -660,7 +677,7 @@ const News = () => {
     const order = (e: (typeof ahead)[number]) => `${e.iso}|${e.slot === 'BMO' && e.timeKnown !== false ? 0 : 1}`;
     const first = [...ahead].sort((a, b) => order(a).localeCompare(order(b)) || Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0))[0];
     const same = ahead.filter(e => order(e) === order(first)).length;
-    return { e: first, same, total: ahead.length, today: first.iso === today };
+    return { e: first, same, total: ahead.length, today: first.iso === today, scope: reportsQ.fortnight ? "on the fortnight's lists" : 'today and next session' };
   }, [reportsQ]);
   const unmarked = positive === 0 && negative === 0;
   const moodInk = mood.label === 'LEANS BULLISH' ? 'text-bull' : mood.label === 'LEANS BEARISH' ? 'text-bear' : 'text-textPrimary';
@@ -733,7 +750,12 @@ const News = () => {
               </Fact>
             )}
             <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : 'Biggest move today'} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name today's stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
-              {coverage.reading ? (
+              {!biggest && earlyBiggest ? (
+                <span title={`So far: the leader among the ${earlyMoves.screened} names in the stories read first — the whole day's set is still being read`}>
+                  {earlyBiggest.ticker} <span className={earlyBiggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(earlyBiggest.pct)}</span>
+                  <span className="text-warn"> · so far, of {earlyMoves.screened} names</span>
+                </span>
+              ) : coverage.reading ? (
                 <span className="text-textMuted">reading today's stories</span>
               ) : biggest ? (
                 <>
@@ -751,10 +773,10 @@ const News = () => {
                 </>
               ) : (
                 nextReport ? (
-                  <span title={`No economic release is ahead on the calendar; the next earnings report still to come — ${nextReport.total.toLocaleString('en-US')} on the fortnight's lists`} data-news-next="earnings">
+                  <span title={`No economic release is ahead on the calendar; the next earnings report still to come — ${nextReport.total.toLocaleString('en-US')} ${nextReport.scope}`} data-news-next="earnings">
                     {nextReport.e.ticker} reports{nextReport.same > 1 ? <span className="text-textMuted"> +{nextReport.same - 1}</span> : null}{' '}
                     <span className="text-textMuted">
-                      · {nextReport.e.timeKnown === false ? 'time not set' : nextReport.e.slot === 'BMO' ? 'before the open' : 'after the close'} {nextReport.today ? 'today' : nextReport.e.dateLabel} · {nextReport.total.toLocaleString('en-US')} reports ahead
+                      · {nextReport.e.timeKnown === false ? 'time not set' : nextReport.e.slot === 'BMO' ? 'before the open' : 'after the close'} {nextReport.today ? 'today' : nextReport.e.dateLabel} · {nextReport.total.toLocaleString('en-US')} reports ahead{reportsQ.fortnight ? '' : ' by next session'}
                     </span>
                   </span>
                 ) : (

@@ -47,7 +47,7 @@ import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
 import { buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
-import { changeWhen, sizeWords, switchedWords, type Building, type BuildVerdict } from './building';
+import { bothWords, changeWhen, sizeWords, switchedWords, type Building, type BuildVerdict } from './building';
 import { levelRoles, putWallWordsAt, wallPlace, type LevelRole } from '../core/walls';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
@@ -115,7 +115,9 @@ export interface Target {
   buildFrom: number;
   buildTo: number;
   /** What the change measures: a call wall by its calls, a put wall by its puts, everything else by its net (building.ts) */
-  buildBasis: 'calls' | 'puts' | 'net';
+  buildBasis: 'calls' | 'puts' | 'net' | 'both';
+  /** Both walls on one strike: each leg's size change (building.ts bothWords) */
+  buildLegs?: { call: number; put: number };
   /** The change is the vendor's overnight open-interest count — named by the session it counts, never "today" */
   buildOvernight: boolean;
   /** "in Oct 21's trading" — the session the change counts (data/building.ts changeWhen) */
@@ -280,6 +282,9 @@ function wordsOf(o: WallOdds, shelf: boolean, flat = false): string {
 
 /* ---- the build ----------------------------------------------------------------- */
 
+/** The least reach a strike's "matters most" score counts (see buildAgenda) */
+const REACH_FLOOR = 0.0005;
+
 export function buildAgenda(
   snapshot: MarketSnapshot,
   profile: ExposureProfileData,
@@ -352,13 +357,17 @@ export function buildAgenda(
         buildFrom: brow ? (brow.open === 0 ? 0 : -brow.open) : 0,
         buildTo: brow ? (brow.now === 0 ? 0 : -brow.now) : 0,
         buildBasis: brow?.basis ?? 'net',
+        buildLegs: brow?.basis === 'both' ? { call: brow.callSize ?? 0, put: brow.putSize ?? 0 } : undefined,
         buildOvernight: building.overnight,
         buildWhen: changeWhen(building).short,
         buildLoading: building.loading,
         verdict: brow?.verdict ?? 'steady',
         closes: closesAt.get(s.strike) ?? 0,
         stake,
-        matters: (o.reach * stake) / Math.max(1, marketPer1Pct),
+        /* A FLOOR UNDER THE REACH (the ninth audit's M5: NVDA's #7–#16 were 135…180 at "<1% reached × $0 at stake" above 220
+           — $19M, $8 away — because every far reach underflowed to 0 and tied): a strike's reach counts for at least
+           REACH_FLOOR, so among the strikes price is unlikely to reach the bigger stake still ranks first */
+        matters: (Math.max(o.reach, REACH_FLOOR) * stake) / Math.max(1, marketPer1Pct),
         why: '',
         words: wordsOf(o, isShelf, Math.abs(s.gex.net) < FLAT_SHARE * heaviestNet),
         odds: o,
@@ -377,7 +386,9 @@ export function buildAgenda(
     t.driver = r >= s * 1.3 ? 'odds' : s >= r * 1.3 ? 'size' : 'both';
   }
 
-  const byMatters = [...targets].sort((a, b) => b.matters - a.matters);
+  /* …and ties broken by the stake, then the distance (the ninth audit's M5) — one order, every time */
+  const byMattersSort = (a: Target, b: Target) => b.matters - a.matters || b.stake - a.stake || Math.abs(a.distancePct) - Math.abs(b.distancePct) || a.strike - b.strike;
+  const byMatters = [...targets].sort(byMattersSort);
   /* A LEADER IS KEPT UNTIL ANOTHER CLEARLY BEATS IT (the third audit, 2026-10-23: "Watch first" flipped 765 ↔ 762 on
      after-hours ticks of ±$0.15). The last leader stays first while it scores within HOLD_LEAD of the top; a
      challenger has to pass it by more than that to take the spot. */
@@ -389,7 +400,7 @@ export function buildAgenda(
   }
   if (byMatters[0]) leaderOf.set(key, byMatters[0].strike);
   const sorters: Record<AgendaOrder, (a: Target, b: Target) => number> = {
-    matters: (a, b) => b.matters - a.matters,
+    matters: byMattersSort,
     nearest: (a, b) => Math.abs(a.distancePct) - Math.abs(b.distancePct),
     reached: (a, b) => b.reach - a.reach || b.matters - a.matters,
     weakest: (a, b) => Number(b.isShelf) - Number(a.isShelf) || a.hold - b.hold || b.reach - a.reach,
@@ -462,4 +473,4 @@ export const buildWords = (t: Target, inSession: boolean): string =>
     ? '…'
     : t.verdict === 'steady'
       ? 'steady'
-      : `${t.verdict === 'switched' ? switchedWords(t.buildFrom, t.buildTo) : `${t.verdict === 'new' ? 'new' : t.verdict} · ${t.buildBasis === 'net' ? '' : `${t.buildBasis === 'calls' ? 'call' : 'put'} wall `}${sizeWords(t.build)}`}${t.buildOvernight ? ` ${t.buildWhen}` : inSession ? '' : ' last session'}`;
+      : `${t.verdict === 'switched' ? switchedWords(t.buildFrom, t.buildTo) : t.buildBasis === 'both' && t.buildLegs ? bothWords({ callSize: t.buildLegs.call, putSize: t.buildLegs.put }) : `${t.verdict === 'new' ? 'new' : t.verdict} · ${t.buildBasis === 'net' ? '' : `${t.buildBasis === 'calls' ? 'call' : 'put'} wall `}${sizeWords(t.build)}`}${t.buildOvernight ? ` ${t.buildWhen}` : inSession ? '' : ' last session'}`;

@@ -25,7 +25,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { nyClock } from '../../core/nyTime';
 import { Pause, Play } from 'lucide-react';
-import { marketPhase, type MarketPhase } from '../../data/traceLive';
+import { marketPhase, noteTraceHold, type MarketPhase } from '../../data/traceLive';
 
 /* THE BADGE SAYS THE SESSION (the re-audit, 2026-10-22: every page wore LIVE after the close while its prints were
    after-hours ones) — and it is a LABEL, not a button (the third audit: the "AFTER HOURS" badge was the pause button, so
@@ -72,6 +72,13 @@ export function useHold<T>(live: T, resetKey?: unknown, ready = true): Hold<T> {
     heldReady.current = ready;
   }
   const waitingFirst = paused && !ready && !heldReady.current;
+  /* a hold that has its moment stops the page's reads (data/traceLive noteTraceHold) — nothing shown moves, nothing is asked */
+  const holding = paused && !waitingFirst;
+  useEffect(() => {
+    if (!holding) return;
+    noteTraceHold(true);
+    return () => noteTraceHold(false);
+  }, [holding]);
 
   // A new key (the active ticker) releases the hold.
   useEffect(() => {

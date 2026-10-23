@@ -32,7 +32,8 @@ import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { now } from '../../core/clock';
 import { buildMonthCalendar, dayKeyOf, fdaStamp, setLiveEarnings, subscribeFda, type CalDay, type CalEvent } from '../../data/monthCalendar';
-import { useEarningsPending, useEveryReport } from '../../data/earningsFeed';
+import { ensureEarnings, useEveryReportQuiet } from '../../data/earningsFeed';
+import { useSeen } from './CoName';
 import CardTabs from '../ui/CardTabs';
 import CompanyLogo from '../ui/CompanyLogo';
 import { SUPREME, alpha } from '../gex/paletteInk';
@@ -115,9 +116,16 @@ const NewsCalendar = () => {
   const [kind, setKind] = useState<KindPick>('all');
   const fdaRev = useSyncExternalStore(subscribeFda, fdaStamp, fdaStamp);
   /* the earnings are the Earnings page's own fortnight — one date per name across the Dossier */
-  const reports = useEveryReport();
+  /* THE FORTNIGHT ONCE THE CALENDAR IS ON SCREEN (round 9: the News page read ~25 earnings-calendar pages at load, mostly
+     for the "Next print" chip, which now reads only today's and the next session's lists) */
+  const [calRef, calSeen] = useSeen<HTMLDivElement>();
+  useEffect(() => {
+    if (calSeen) ensureEarnings();
+  }, [calSeen]);
+  const reportsQ = useEveryReportQuiet();
+  const reports = reportsQ.events;
   /* the day's empty line waits for the fortnight's reports to land (audit round 7: "nothing" before the read was in) */
-  const reportsPending = useEarningsPending();
+  const reportsPending = reportsQ.status === 'loading';
   useEffect(() => {
     setLiveEarnings(
       reports
@@ -164,6 +172,7 @@ const NewsCalendar = () => {
   /* The day beside the month from md; under it on a phone, where the head row wraps too (the phone pass, 2026-09-13) */
   return (
     <div
+      ref={calRef}
       className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_var(--cal-day-w)]"
       style={{ '--cal-day-w': `${CAL_DAY_W}px` } as CSSProperties}
       data-news-calendar

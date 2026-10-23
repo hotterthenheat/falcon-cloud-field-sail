@@ -40,7 +40,7 @@
 ==================================================
 */
 
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
 import { contractKey, crossOfWatch, useWatch, type WatchSource, type WatchedContract, type WatchedCross, type WatchedItem, type WatchedPrint } from '../../context/WatchContext';
@@ -49,7 +49,7 @@ import type { DarkPoolPrint } from '../../types/darkpool';
 
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
-import { dayLean, expiredAtBell, occOf, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
+import { dayLean, ensureSpots, expiredAtBell, liveSpotOf, occOf, traceHeld, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
 import { nyParts } from '../../core/nyTime';
 import { ensureBook, peekSpot, useBookRev } from '../../data/uwBook';
 import type { BookContract } from '../../types/trace';
@@ -297,7 +297,18 @@ const FlowTracker = () => {
   /** The open card: a contract's key, and the print clip when opened from a print row. */
   const [open, setOpen] = useState<{ key: string; clip?: { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } } | null>(null);
 
-  const contractPack = useLiveBook(activeTicker);
+  /* AN EMPTY TRACKER ASKS NOTHING (audit round 9, minor 6: with no marks it polled two screener routes every 4s) */
+  const contractPack = useLiveBook(activeTicker, options.length > 0);
+  /* the marks' names' live prices — the "now" beside each mark's spot then (traceLive liveSpotOf) */
+  const markNames = useMemo(() => [...new Set(options.map(w => w.ticker.toUpperCase()))].sort().join(','), [options]);
+  useEffect(() => {
+    if (!markNames) return;
+    void ensureSpots(markNames.split(','));
+    const id = window.setInterval(() => {
+      if (!traceHeld()) void ensureSpots(markNames.split(','));
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [markNames]);
   const bookRev = useBookRev();
   const liveBook = contractPack.rows;
   // The shared hold (see LiveHold): the SINCE columns freeze with the tick.
@@ -330,7 +341,8 @@ const FlowTracker = () => {
         .map(w => {
           const isIndex = INDEX_ROOTS.has(w.ticker.toUpperCase());
           if (!isIndex) ensureBook(w.ticker, 'board');
-          const spotNow = isIndex ? null : peekSpot(w.ticker);
+          /* the name's live price — the one every Trace page draws (liveSpotOf), the book's spot only without it */
+          const spotNow = isIndex ? null : liveSpotOf(w.ticker) || peekSpot(w.ticker);
           const spotThen = w.at.spot;
           const spotChg = spotNow != null && spotThen > 0 ? pct(spotNow, spotThen) : null;
           if (w.kind === 'structure') {

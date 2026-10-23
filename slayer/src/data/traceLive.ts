@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { uwCall } from './whales';
+import { peekQuote } from './liveQuote';
 import { vendorFault, type FeedFault } from '../components/ui/liveRead';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
@@ -293,7 +294,16 @@ function liveRun(key: string) {
       liveNotify(sh);
     });
 }
-export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true): LivePack<T> {
+/* PAUSE STOPS THE READS (audit round 9, minor 6: the Live Tape kept polling /option-trades under Pause, its "Today so far"
+   line and whole-day panel still moving): while any Trace page holds (LiveHold's useHold), no shared read polls again —
+   a read that has not landed yet still lands (a page paused before its first read holds at it), and a card opened under
+   the pause reads once. Resume and the polls pick up on their next beat. */
+let holdsPaused = 0;
+export function noteTraceHold(paused: boolean): void {
+  holdsPaused = Math.max(0, holdsPaused + (paused ? 1 : -1));
+}
+export const traceHeld = () => holdsPaused > 0;
+export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enabled = true, pollMs = POLL_MS): LivePack<T> {
   const [, force] = useState(0);
   useEffect(() => {
     if (!enabled) return;
@@ -310,8 +320,11 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
     const fn = () => force(n => n + 1);
     me.subs.add(fn);
     if (me.timer == null) {
-      if (!me.box || me.box.at == null || Date.now() - me.box.at >= POLL_MS) liveRun(key);
-      me.timer = window.setInterval(() => liveRun(key), POLL_MS);
+      if (!me.box || me.box.at == null || Date.now() - me.box.at >= Math.min(POLL_MS, pollMs)) liveRun(key);
+      me.timer = window.setInterval(() => {
+        if (holdsPaused > 0 && me.box && me.box.at != null) return;
+        liveRun(key);
+      }, pollMs);
     }
     fn();
     return () => {
@@ -323,7 +336,7 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
     };
     // `key` is the request. `load` closes over the same key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
+  }, [key, enabled, pollMs]);
   /* A NEW KEY NEVER WEARS THE OLD KEY'S ROWS (the ship pass, 2026-10-22): the box outlived its request, so a Net Flow pane
      moved from SPY to META drew SPY's minutes under META's name until the next answer landed */
   const sh = enabled ? liveShared.get(key) : undefined;
@@ -345,11 +358,31 @@ async function getRows(path: string): Promise<Record<string, unknown>[]> {
     "Mid" is the vendor's mid_side or no side at all, never our own reading of the quote (the audit, 2026-10-22: 757 of
     2,700 prints the vendor tags bid_side or ask_side fill a cent inside the spread, and the tape called them NEUTRAL
     while the card called them bought or sold). Falls back to the quote only when the row carries no side tag. */
+/** THE QUOTE GIVES NO READ (audit round 9, minor 1: AAPL261023C00347500 filled 0.51 against a bid of 0.85 — that bid
+    stamped 16:11Z, over an hour before the fill — and an ask of 0.51; the vendor's bid_side tag stood and the print read
+    BEARISH). A crossed quote (bid at or over the ask) or a side quoted more than five minutes before the fill is not a
+    quote the fill can be read against: no side, whatever the tag says — "quote crossed · no read". */
+const STALE_QUOTE_MS = 5 * 60_000;
+export function quoteNoReadOf(row: Record<string, unknown>, price: number, bid: number, ask: number, atMs: number): 'crossed' | 'stale' | null {
+  if (!(price > 0)) return null;
+  if (bid > 0 && ask > 0 && bid >= ask) return 'crossed';
+  if (atMs > 0) {
+    for (const k of ['nbbo_bid_time', 'nbbo_ask_time']) {
+      const t = Date.parse(String(row[k] ?? ''));
+      if (Number.isFinite(t) && atMs - t > STALE_QUOTE_MS) return 'stale';
+    }
+  }
+  return null;
+}
+/** The words for a print whose quote gives no read */
+export const quoteNoReadWords = (k: 'crossed' | 'stale') => (k === 'crossed' ? 'quote crossed · no read' : 'quote stale · no read');
 export function sideOfTags(tags: unknown, price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' {
   const t = Array.isArray(tags) ? tags.map(String) : [];
   /* A TAG THE QUOTE AT THE PRINT CONTRADICTS loses to the quote: an "ask_side" fill at or under the bid was a sale, a
      "bid_side" fill at or over the ask a purchase (the retail pass, 2026-10-22: a fill a cent inside the spread keeps its
      tag — 757 such prints — but a tag on the far side of the quote is the vendor's error, not the print's side) */
+  /* a crossed quote (bid at or over the ask) says nothing about the side — no read (quoteNoReadOf) */
+  if (price > 0 && bid > 0 && ask > 0 && bid >= ask) return 'MID';
   const quoted = price > 0 && bid > 0 && ask > bid;
   if (t.includes('ask_side')) return quoted && price <= bid + 1e-6 ? 'BID' : 'ASK';
   if (t.includes('bid_side')) return quoted && price >= ask - 1e-6 ? 'ASK' : 'BID';
@@ -371,7 +404,7 @@ export function sideOfTags(tags: unknown, price: number, bid: number, ask: numbe
    `futures_floor` flag rides on EVERY floor trade — slft, mlft, mfsl, tlft as well as cbmo, 1,713 of the 2,000 newest
    $1M prints — so it alone is not compression; the condition code is.) */
 const COMPRESSION_CODES = new Set(['cbmo', 'mctp']);
-export function printCondition(row: Record<string, unknown>): { multi: boolean; sweep: boolean; floor: boolean; compression: boolean } {
+export function printCondition(row: Record<string, unknown>): { multi: boolean; sweep: boolean; floor: boolean; compression: boolean; cross: boolean } {
   const cond = String(row.upstream_condition_detail || '').toLowerCase();
   const flags = (Array.isArray(row.report_flags) ? row.report_flags.map(String) : [String(row.report_flags || '')]).join(' ');
   const tags = Array.isArray(row.tags) ? row.tags.map(String) : [];
@@ -380,6 +413,9 @@ export function printCondition(row: Record<string, unknown>): { multi: boolean; 
     sweep: cond === 'isoi' || /sweep/i.test(flags),
     floor: /floor/i.test(flags) || /^(ml|tl)ft$|^[mt]fsl$/.test(cond),
     compression: COMPRESSION_CODES.has(cond) || tags.includes('arbitrage'),
+    /* a cross trade (report_flags "cross_trade") is pre-arranged between two parties at one price — no side taken on the
+       screen (audit round 9: a 25,000-lot PLTR 175C cross was crowned "largest") */
+    cross: /cross_trade/i.test(flags),
   };
 }
 
@@ -444,6 +480,100 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
 }
 const tickerOfRow = (r: Record<string, unknown>) => String(r.underlying_symbol || r.ticker || r.ticker_symbol || '').toUpperCase();
 
+/* ---- THE LIVE SPOT, ONE PER NAME (audit round 9, major 1) ----------------------------------------------------------
+   The screener's `stock_price` is the vendor's stock-state, and on Oct 23 that sat at its 10:35 print all day: NVDA
+   212.745 against a live 211.67, so NVDA 212.5C read "−0.1%" in the money (it was +0.4% out), Compare's 0DTE + OTM cut
+   dropped it, TSLA 370C/P stood on the wrong side, and the Tracker stored 212.75 as "spot then". Every Trace grid and card
+   now takes one spot per name, the NEWEST of:
+     - the live quote (data/liveQuote: the quote's last trade, or the book's newest bar, when the state has stalled);
+     - the newest option print's `underlying_price` the tape has handed us (stamped by its own fill time);
+     - the stock screener's `close` (/screener/stocks, sixty names a call — live while the state is frozen), read at most
+       once a minute for the names on the page;
+   and the screener row's own stock_price only when none of those is in hand. */
+interface SeenSpot {
+  spot: number;
+  at: number;
+}
+const spotSeen = new Map<string, SeenSpot>();
+const spotScreenAt = new Map<string, number>();
+const spotAsks = new Map<string, Promise<void>>();
+const SPOT_SCREEN_MS = 60_000;
+/** Note a price for a name, stamped by when it printed — the newest wins */
+export function noteSpot(ticker: string, spot: number, at: number): void {
+  if (!ticker || !(spot > 0) || !(at > 0)) return;
+  const t = ticker.toUpperCase();
+  const had = spotSeen.get(t);
+  if (!had || at >= had.at) spotSeen.set(t, { spot, at });
+}
+/** The newest live price we hold for a name, with its time; null when none (an index reads its level instead) */
+export function liveSpotAt(ticker: string): SeenSpot | null {
+  const t = (ticker || '').toUpperCase();
+  if (!t || indexRoot(t)) return null;
+  const seen = spotSeen.get(t) ?? null;
+  const q = peekQuote(t);
+  const quoted = q && q.spot > 0 ? { spot: q.spot, at: q.tapeAt } : null;
+  if (seen && quoted) return quoted.at >= seen.at ? quoted : seen;
+  return seen ?? quoted;
+}
+/** The newest live price for a name, 0 when none is in hand */
+export const liveSpotOf = (ticker: string): number => liveSpotAt(ticker)?.spot ?? 0;
+/** Read the names' live prices off the stock screener (sixty a call), at most once a minute a name. Waits only for names
+    with no price at all; never throws. */
+export async function ensureSpots(tickers: Iterable<string>): Promise<void> {
+  const want: string[] = [];
+  const waitFor: Promise<void>[] = [];
+  for (const raw of new Set([...tickers].map(t => (t || '').toUpperCase()))) {
+    if (!raw || indexRoot(raw) || !/^[A-Z][A-Z0-9.]{0,9}$/.test(raw)) continue;
+    const pending = spotAsks.get(raw);
+    if (pending) {
+      if (!spotSeen.has(raw)) waitFor.push(pending);
+      continue;
+    }
+    if (Date.now() - (spotScreenAt.get(raw) ?? 0) < SPOT_SCREEN_MS) continue;
+    want.push(raw);
+  }
+  const chunks: string[][] = [];
+  let cur: string[] = [];
+  let len = 0;
+  for (const t of want) {
+    if (cur.length && len + t.length + 1 > 300) {
+      chunks.push(cur);
+      cur = [];
+      len = 0;
+    }
+    cur.push(t);
+    len += t.length + 1;
+  }
+  if (cur.length) chunks.push(cur);
+  for (const chunk of chunks) {
+    const job = (async () => {
+      try {
+        const got = await uwCall(`/screener/stocks?ticker=${chunk.join(',')}`, true);
+        const readAt = Date.now();
+        for (const r of got.error ? [] : rowsOf(got.data)) {
+          const t = String(r.ticker ?? '').toUpperCase();
+          const close = num(r.close);
+          /* the screener row carries no clock of its own: stamped a little before the read, so a print seen since wins */
+          if (t && close > 0) noteSpot(t, close, readAt - 5_000);
+        }
+      } catch {
+        /* no price: the row keeps its own */
+      } finally {
+        for (const t of chunk) {
+          spotScreenAt.set(t, Date.now());
+          spotAsks.delete(t);
+        }
+      }
+    })();
+    for (const t of chunk) spotAsks.set(t, job);
+    if (chunk.some(t => !spotSeen.has(t) && !peekQuote(t))) waitFor.push(job);
+  }
+  /* never holds a page's first read long: past SPOT_WAIT_MS the rows map with what is in hand, and the next poll (4s)
+     carries the live prices once they land */
+  if (waitFor.length) await Promise.race([Promise.all(waitFor), new Promise(r => setTimeout(r, SPOT_WAIT_MS))]);
+}
+const SPOT_WAIT_MS = 2_000;
+
 /* AN INDEX LEVEL IN WHOLE POINTS IS TOO COARSE FOR A DISTANCE ON A SMALL INDEX (the re-audit, 2026-10-22: "VIX 19 put ·
    0.0%"): a point is 5% of VIX and 0.13% of XSP, so the distance is not stated there. SPX, NDX and RUT (thousands of
    points) keep theirs, marked "≈" where it is drawn. */
@@ -472,9 +602,15 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const bid = num(row.nbbo_bid);
   const ask = num(row.nbbo_ask);
   const spot = num(row.underlying_price || row.stock_price) || indexLevel(ticker);
+  /* the print's own underlying price is the name's price at that instant — the live spot hears it (noteSpot) */
+  if (num(row.underlying_price) > 0 && when.ms > 0) noteSpot(ticker, num(row.underlying_price), when.ms);
   const strike = num(row.strike);
   const right: 'C' | 'P' = String(row.option_type || row.type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
-  const side = sideOfTags(row.tags, fill, bid, ask);
+  /* (a flow alert's side is its money's split, not one quote — the check is a print's) */
+  const quoteNoRead = row.__aggregate ? null : quoteNoReadOf(row, fill, bid, ask, when.ms);
+  /* a cross trade takes no side on the screen — no read either (audit round 9) */
+  const crossPrint = /cross_trade/i.test(Array.isArray(row.report_flags) ? row.report_flags.join(' ') : String(row.report_flags || ''));
+  const side = quoteNoRead || crossPrint ? 'MID' : sideOfTags(row.tags, fill, bid, ask);
   /* the vendor's flag, else the clock: a fill outside the name's regular session (09:30 to 16:00, 16:15 for the index
      and ETF options) is an extended-hours print whether or not it came flagged (a HIVE call at 17:11:50 did not) */
   /* BY THE PRINT, NOT THE WALL CLOCK (the third audit): between 16:00 and 16:15 the vendor's own flag decides — SPY, QQQ,
@@ -493,7 +629,7 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const askVol = num(row.ask_vol);
   const bidVol = num(row.bid_vol);
   const volSum = askVol + bidVol;
-  const { multi, sweep, compression } = printCondition(row);
+  const { multi, sweep, compression, cross } = printCondition(row);
   const idRaw = String(row.id || `${ticker}-${when.epoch}-${i}`);
   return {
     id: hashId(idRaw),
@@ -537,6 +673,8 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     theta: row.theta != null && row.theta !== '' ? num(row.theta) : undefined,
     daySide: row.ask_vol != null || row.bid_vol != null ? { ask: askVol, bid: bidVol, mid: num(row.mid_vol) + num(row.no_side_vol) } : undefined,
     compression: compression || undefined,
+    cross: cross || undefined,
+    quoteNoRead: quoteNoRead ?? undefined,
   };
 }
 
@@ -574,6 +712,7 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
       flow_alert_id: row.id,
       upstream_condition_detail: '',
       report_flags: [],
+      __aggregate: true,
       ask_vol: undefined,
       bid_vol: undefined,
     },
@@ -620,6 +759,12 @@ export function markAlertPackages(rows: FlowPrint[]): FlowPrint[] {
 async function mapWithIndex<T>(rows: Record<string, unknown>[], fn: (r: Record<string, unknown>, i: number) => T): Promise<T[]> {
   await ensureIndexLevels(rows.map(tickerOfRow));
   return rows.map(fn);
+}
+/** Screener rows mapped once their names' live prices are in hand too — the row's stock_price is the stalled state */
+async function mapBook(rows: Record<string, unknown>[]): Promise<BookContract[]> {
+  const names = rows.map(tickerOfRow);
+  await Promise.all([ensureIndexLevels(names), ensureSpots(names)]);
+  return rows.map(contractRow);
 }
 
 export function useOptionTape(limit = 200): LivePack<FlowPrint[]> {
@@ -669,13 +814,13 @@ export function useNameSpreads(ticker: string | null, limit = 80, pages = 3, leg
       return { rows, complete };
     },
     { rows: [] as SpreadTrade[], complete: false },
-    !!name
+    !!name,
+    /* up to three pages a read — every half minute, not every four seconds (audit round 9, major 3) */
+    30_000
   );
   const rev = useLegRev();
   const raw = pack.rows.rows;
-  useEffect(() => {
-    wantLegs([...raw].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).slice(0, legsFor).map(t => t.id));
-  }, [raw, legsFor]);
+  useLegAsker(useMemo(() => [...raw].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).slice(0, legsFor).map(t => t.id), [raw, legsFor]), 1);
   const rows = useMemo(() => raw.map(settleSpread), [raw, rev]); // eslint-disable-line react-hooks/exhaustive-deps
   const from = raw.length ? raw.reduce((m, t) => ((t.epochMs ?? Infinity) < (m.epochMs ?? Infinity) ? t : m), raw[0]).time : null;
   return { rows, at: pack.at, fault: pack.fault, waiting: pack.waiting, session, complete: pack.rows.complete, from };
@@ -719,7 +864,8 @@ export function useContractLast(occ: string | null | undefined): LivePack<Contra
       const rows = liveTrades(got);
       const r = rows.find(x => !extendedOf(x)) ?? rows[0];
       if (!r) return null;
-      const side = sideOfTags(r.tags, num(r.price), num(r.nbbo_bid), num(r.nbbo_ask));
+      const noRead = quoteNoReadOf(r, num(r.price), num(r.nbbo_bid), num(r.nbbo_ask), Date.parse(String(r.executed_at ?? '')));
+      const side = noRead ? 'MID' : sideOfTags(r.tags, num(r.price), num(r.nbbo_bid), num(r.nbbo_ask));
       const { multi, sweep } = printCondition(r);
       return { size: num(r.size), fill: num(r.price), side, time: clock(r.executed_at).time, bid: num(r.nbbo_bid), ask: num(r.nbbo_ask), premium: num(r.premium), multi, sweep, extended: extendedOf(r), theta: r.theta != null && r.theta !== '' ? num(r.theta) : undefined, volume: num(r.volume) || undefined };
     },
@@ -962,7 +1108,8 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     void boot();
     let polling = false;
     const id = window.setInterval(async () => {
-      if (untilMs || !newest.current || polling) return;
+      /* paused (any Trace hold): no poll — the tape asks again on resume (audit round 9, minor 6) */
+      if (untilMs || !newest.current || polling || holdsPaused > 0) return;
       polling = true;
       try {
         const { batch, joined } = await newerThan(newest.current - LATE_MS);
@@ -1546,13 +1693,17 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
   );
 }
 
-function contractRow(row: Record<string, unknown>, i: number): BookContract {
+/** One screener row as a book contract (exported for scripts/trace-moneyness-proof.ts) */
+export function contractRow(row: Record<string, unknown>, i: number): BookContract {
   const ticker = String(row.ticker_symbol || row.underlying_symbol || row.ticker || '').toUpperCase();
   const expiryIso = String(row.expiry || '').slice(0, 10);
   const strike = num(row.strike);
   const right: 'C' | 'P' = String(row.option_type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
-  /* an index's screener row carries no stock_price — the index level from its spot-exposure minutes (see indexLevel) */
-  const spot = num(row.stock_price) || indexLevel(ticker);
+  /* THE LIVE SPOT FIRST (audit round 9, major 1): the row's stock_price is the vendor's stock-state, frozen at 10:35 ET on
+     Oct 23 — the name's newest live price (liveSpotOf) wins, the row's own only when none is in hand; an index's row
+     carries no stock_price — the index level from its spot-exposure minutes (see indexLevel) */
+  const live = liveSpotOf(ticker);
+  const spot = live || num(row.stock_price) || indexLevel(ticker);
   const volume = num(row.volume);
   const oi = num(row.open_interest);
   const premium = num(row.premium);
@@ -1572,7 +1723,7 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
     expiry: expiryLabel(expiryIso),
     dte,
     spot,
-    otmPct: otmOf(right, strike, spot, !(num(row.stock_price) > 0) && !!indexRoot(ticker)),
+    otmPct: otmOf(right, strike, spot, !(live > 0) && !(num(row.stock_price) > 0) && !!indexRoot(ticker)),
     last: num(row.close || row.avg_price),
     /* the fill against the contract's prior close (chain_prev_close) — `roc` is not a price change (TSLA 370C: roc 0.76
        beside a real +15.0%); no prior close (a new listing) is no change to state */
@@ -1595,6 +1746,7 @@ function contractRow(row: Record<string, unknown>, i: number): BookContract {
     sweepPct: volume > 0 ? (num(row.sweep_volume) / volume) * 100 : 0,
     multiPct: volume > 0 ? (num(row.multileg_volume) / volume) * 100 : 0,
     floorPct: volume > 0 ? (num(row.floor_volume) / volume) * 100 : 0,
+    crossPct: volume > 0 ? Math.min(100, (num(row.cross_volume) / volume) * 100) : 0,
     askPct: ask + bid > 0 ? (ask / (ask + bid)) * 100 : 0,
     prevOI: num(row.prev_oi),
     prevVolume: 0,
@@ -1778,12 +1930,12 @@ export function usePairedOi(rows: BookContract[]): BookContract[] {
 }
 
 /** Hottest chains, plus the name on the desk so a one-name page is not an empty SPX book. */
-export function useLiveBook(ticker?: string | null): LivePack<BookContract[]> {
-  const pack = useLiveBookRaw(ticker);
+export function useLiveBook(ticker?: string | null, enabled = true): LivePack<BookContract[]> {
+  const pack = useLiveBookRaw(ticker, enabled);
   const rows = usePairedOi(pack.rows);
   return useMemo(() => ({ ...pack, rows }), [pack.at, pack.fault, pack.waiting, rows]); // eslint-disable-line react-hooks/exhaustive-deps
 }
-function useLiveBookRaw(ticker?: string | null): LivePack<BookContract[]> {
+function useLiveBookRaw(ticker?: string | null, enabled = true): LivePack<BookContract[]> {
   const name = (ticker || '').trim().toUpperCase();
   return useLive(
     `book:${name || 'mkt'}`,
@@ -1795,7 +1947,7 @@ function useLiveBookRaw(ticker?: string | null): LivePack<BookContract[]> {
         ? getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(name)}&limit=80&order=premium&order_direction=desc`).catch(() => [] as Record<string, unknown>[])
         : Promise.resolve([] as Record<string, unknown>[]);
       const [a, b] = await Promise.all([market, named]);
-      await ensureIndexLevels(b.concat(a).map(tickerOfRow));
+      await Promise.all([ensureIndexLevels(b.concat(a).map(tickerOfRow)), ensureSpots(b.concat(a).map(tickerOfRow))]);
       const seen = new Set<string>();
       const out: BookContract[] = [];
       for (const row of b.concat(a)) {
@@ -1809,7 +1961,8 @@ function useLiveBookRaw(ticker?: string | null): LivePack<BookContract[]> {
       }
       return out;
     },
-    []
+    [],
+    enabled
   );
 }
 
@@ -1821,20 +1974,20 @@ export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, o
   if (issue === 'stock') parts.push('issue_types[]=Common Stock');
   else if (issue === 'etf') parts.push('issue_types[]=ETF');
   const q = parts.join('&');
-  const pack = useLive(`contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}`, async () => mapWithIndex(await getRows(`/screener/option-contracts?${q}`), contractRow), []);
+  const pack = useLive(`contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}`, async () => mapBook(await getRows(`/screener/option-contracts?${q}`)), []);
   const rows = usePairedOi(pack.rows);
   return useMemo(() => ({ ...pack, rows }), [pack.at, pack.fault, pack.waiting, rows]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** The newest flow alerts — or, with `opts.untilMs`, the newest filed before that instant (the regular session's last
     alerts, after the close); `opts.session` keeps only the alerts whose fills sat in (or outside) the regular session */
-export function useFlowAlerts(limit = 50, opts?: { untilMs?: number | null; session?: 'regular' | 'extended' | null }): LivePack<FlowPrint[]> {
+export function useFlowAlerts(limit = 50, opts?: { untilMs?: number | null; session?: 'regular' | 'extended' | null; enabled?: boolean }): LivePack<FlowPrint[]> {
   const until = opts?.untilMs ?? null;
   const session = opts?.session ?? null;
   return useLive(`alerts:${limit}:${until ?? 'live'}:${session ?? 'any'}`, async () => {
     const rows = markAlertPackages(await mapWithIndex(await getRows(`/option-trades/flow-alerts?limit=${limit}${until ? `&older_than=${new Date(until).toISOString()}` : ''}`), alertToPrint));
     return session ? rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)) : rows;
-  }, []);
+  }, [], opts?.enabled ?? true);
 }
 
 export function useAlertTrades(id: string | null): LivePack<FlowPrint[]> {
@@ -1991,55 +2144,108 @@ export function payoffRange(legs: SpreadLeg[], netPremium: number): { maxLoss: n
    once (/option-trades/multi-leg/{id}/legs, two at a time beside the page's own calls) and kept. */
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
+/* LEGS ARE READ ON A BUDGET (audit round 9, major 3: one Multi-Leg view made 451 legs calls in ~25s — every poll's 200
+   structures went to the back of an endless queue while the feed's 200 cover ~10s, so the queue never drained and the
+   page's own rows still read "…"). Now:
+   - a structure's legs are read once and kept for good (an id's legs never change);
+   - the PAGE asks for the rows it shows and the few that can be its largest — each asker's list REPLACES its last one, so
+     a structure that has scrolled off or aged out of the feed is never read;
+   - the page's asks go one at a time, at most one every LEG_GAP_MS, in the key's low-priority lane (beside, never ahead
+     of, the page's own reads); an opened card's structure is read at once, ahead of everything. */
 const legRaw = new Map<string, Record<string, unknown>[] | 'none'>();
 const legFails = new Map<string, number>();
-const legQueue: string[] = [];
-const legQueued = new Set<string>();
+const legCard: string[] = [];
+const legAsks = new Map<string, { order: number; ids: string[] }>();
+const legInflight = new Set<string>();
 let legBusy = 0;
-const LEG_LANES = 2;
+let legLast = 0;
+let legTimer: number | null = null;
+const LEG_GAP_MS = 1_200;
+let legAskSeq = 0;
 let legRev = 0;
+let legCalls = 0;
 const legListeners = new Set<() => void>();
 const legNotify = () => {
   legRev++;
   for (const fn of legListeners) fn();
 };
+/** How many legs reads this tab has made (the proof scripts read it) */
+export const legsReadCount = () => legCalls;
+const legOpen = (id: string) => !!id && !legRaw.has(id) && !legInflight.has(id);
+function readLegs(id: string, low: boolean) {
+  legInflight.add(id);
+  legBusy++;
+  legCalls++;
+  uwCall(`/option-trades/multi-leg/${encodeURIComponent(id)}/legs`, !low, low)
+    .then(got => {
+      if (got.error) {
+        if (got.status === 404 || got.status === 422 || got.status === 403) legRaw.set(id, 'none');
+        else throw new Error(got.error);
+        return;
+      }
+      const rows = rowsOf(got.data);
+      legRaw.set(id, rows.length ? rows : 'none');
+    })
+    .catch(() => {
+      const n = (legFails.get(id) ?? 0) + 1;
+      legFails.set(id, n);
+      if (n >= 3) legRaw.set(id, 'none');
+    })
+    .finally(() => {
+      legInflight.delete(id);
+      legBusy--;
+      legNotify();
+      pumpLegs();
+    });
+}
 function pumpLegs() {
-  while (legBusy < LEG_LANES && legQueue.length) {
-    const id = legQueue.shift()!;
-    legQueued.delete(id);
-    if (legRaw.has(id)) continue;
-    legBusy++;
-    getRows(`/option-trades/multi-leg/${encodeURIComponent(id)}/legs`)
-      .then(rows => legRaw.set(id, rows.length ? rows : 'none'))
-      .catch(() => {
-        const n = (legFails.get(id) ?? 0) + 1;
-        legFails.set(id, n);
-        if (n >= 3) legRaw.set(id, 'none');
-      })
-      .finally(() => {
-        legBusy--;
-        legNotify();
-        pumpLegs();
-      });
+  /* an opened card's structure first, at once */
+  while (legCard.length && legBusy < 2) {
+    const id = legCard.shift()!;
+    if (legOpen(id)) readLegs(id, false);
+  }
+  if (legBusy > 0) return;
+  /* the rows on screen (rank 0) at twice the pace of the rest */
+  const asks = [...legAsks.values()].sort((a, b) => a.order - b.order);
+  const onScreen = asks.some(a => a.order < 1_000_000 && a.ids.some(legOpen));
+  const wait = legLast + (onScreen ? LEG_GAP_MS / 2 : LEG_GAP_MS) - Date.now();
+  if (wait > 0) {
+    if (legTimer == null) legTimer = window.setTimeout(() => {
+      legTimer = null;
+      pumpLegs();
+    }, wait);
+    return;
+  }
+  /* the page's asks, oldest asker first (the rows on screen ask before the largest-net sweep) */
+  for (const a of asks) {
+    const id = a.ids.find(legOpen);
+    if (id) {
+      legLast = Date.now();
+      readLegs(id, true);
+      return;
+    }
   }
 }
-/** Ask for these structures' legs, newest first; `front` puts them ahead of the queue (an opened card) */
-function wantLegs(ids: string[], front = false) {
-  const fresh = ids.filter(id => id && !legRaw.has(id) && !legQueued.has(id));
-  if (front) {
-    for (const id of ids) {
-      const i = legQueue.indexOf(id);
-      if (i >= 0) legQueue.splice(i, 1);
-      legQueued.delete(id);
-    }
-    const now = ids.filter(id => id && !legRaw.has(id));
-    for (const id of now) legQueued.add(id);
-    legQueue.unshift(...now);
-  } else {
-    for (const id of fresh) legQueued.add(id);
-    legQueue.push(...fresh);
-  }
+/** An opened card's structure: read ahead of the page */
+function wantLegsNow(ids: string[]) {
+  for (const id of ids) if (legOpen(id) && !legCard.includes(id)) legCard.unshift(id);
   pumpLegs();
+}
+/** One asker's list of structures, in its order — it replaces that asker's last list; null withdraws it */
+function askLegs(asker: string, ids: string[] | null, rank: number) {
+  if (!ids || !ids.length) legAsks.delete(asker);
+  else legAsks.set(asker, { order: rank * 1_000_000 + (legAsks.get(asker)?.order ?? ++legAskSeq) % 1_000_000, ids });
+  pumpLegs();
+}
+/** A stable asker id for one hook */
+function useLegAsker(ids: string[], rank: number): void {
+  const me = useRef<string>('');
+  if (!me.current) me.current = `ask:${++legAskSeq}`;
+  const key = ids.join(',');
+  useEffect(() => {
+    askLegs(me.current, key ? key.split(',') : null, rank);
+  }, [key, rank]);
+  useEffect(() => () => askLegs(me.current, null, rank), [rank]);
 }
 function useLegRev(): number {
   const [rev, setRev] = useState(legRev);
@@ -2416,24 +2622,24 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
 /** Rows with their legs settled as they land; the legs are asked for in the rows' order */
 function useSettled(pack: LivePack<SpreadTrade[]>): LivePack<SpreadTrade[]> {
   const rev = useLegRev();
-  useEffect(() => {
-    /* THE BIGGEST NETS NEXT (audit round 8: Multi-Leg took 35s to settle, its "Largest" moving as each leg landed) — after
-       the first screenful, the structures that can be the largest are read first, the small ones last */
-    wantLegs([...pack.rows].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).map(t => t.id));
-    /* THE NEWEST FIRST (retail, round 7: the first rows read "…" for size, net and risk) — a poll's new structures land at
-       the top of the page but went to the back of the queue behind the older 200; the first screenful jumps the queue */
-    wantLegs(pack.rows.slice(0, LEGS_FIRST).map(t => t.id), true);
-  }, [pack.rows]);
+  /* THE BIGGEST NETS, AND THE NEWEST SCREENFUL (audit round 8 / retail round 7) — but only those (audit round 9, major 3:
+     asking for every structure of every poll made 451 legs calls in 25s): the newest LEGS_FIRST and the LEGS_TOP largest
+     by net, the page's own visible rows ahead of both (useLegsFirst) */
+  useLegAsker(
+    useMemo(() => {
+      const top = [...pack.rows].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).slice(0, LEGS_TOP);
+      return [...new Set([...pack.rows.slice(0, LEGS_FIRST), ...top].map(t => t.id))];
+    }, [pack.rows]),
+    1
+  );
   const rows = useMemo(() => pack.rows.map(settleSpread), [pack.rows, rev]); // eslint-disable-line react-hooks/exhaustive-deps
   return { ...pack, rows };
 }
-const LEGS_FIRST = 24;
-/** Put these structures' legs at the front of the queue — the rows a page shows first under its own cut and order */
+const LEGS_FIRST = 20;
+const LEGS_TOP = 12;
+/** The rows a page shows first under its own cut and order — their legs ahead of the rest */
 export function useLegsFirst(ids: string[]): void {
-  const key = ids.slice(0, LEGS_FIRST).join(',');
-  useEffect(() => {
-    if (key) wantLegs(key.split(','), true);
-  }, [key]);
+  useLegAsker(useMemo(() => ids.slice(0, LEGS_FIRST), [ids.slice(0, LEGS_FIRST).join(',')]), 0); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /* ONE STRUCTURE ONCE (audit round 4: "SPX short call butterfly 7690/7720/7750 16:59:23" and "put double calendar 7630/7640
@@ -2466,16 +2672,19 @@ export function useSpreads(limit = 80, opts?: { untilMs?: number | null; session
       const raw = await getRows(`/option-trades/multi-leg?limit=${limit}${until ? `&older_than=${new Date(until).toISOString()}` : ''}`);
       const rows = await mapWithIndex(dedupeSpreads(raw), r => ({ ...spreadOf(r), repeats: num(r.__repeats) || undefined }));
       return session ? rows.filter(t => (session === 'regular' ? !t.extended : !!t.extended)) : rows;
-    }, [])
+    }, [], true, SPREADS_POLL_MS)
   );
 }
+/* THE STRUCTURES' FEED EVERY 15 SECONDS (audit round 9, major 3): the vendor's newest 200 cover about ten seconds of a busy
+   session, so a four-second poll replaced the page wholesale every beat and re-asked legs for rows no one could read */
+const SPREADS_POLL_MS = 15_000;
 
 /** One structure, settled from its own legs (the card) — read ahead of the page's queue */
 export function useSpreadTrade(trade: SpreadTrade | null): { trade: SpreadTrade | null; waiting: boolean; failed: boolean } {
   const rev = useLegRev();
   const id = trade?.id ?? null;
   useEffect(() => {
-    if (id) wantLegs([id], true);
+    if (id) wantLegsNow([id]);
   }, [id]);
   const out = useMemo(() => (trade ? settleSpread(trade) : null), [trade, rev]); // eslint-disable-line react-hooks/exhaustive-deps
   return { trade: out, waiting: !!id && out?.legsState === 'pending', failed: out?.legsState === 'none' };
@@ -2507,8 +2716,10 @@ export function useTide(kind: TideKind, name: string, enabled = true): LivePack<
       volume: Math.abs(num(r.net_volume)),
       price: num(r.close || r.price),
     })).filter(p => p.time > 0);
-  }, [], enabled);
+  }, [], enabled, MINUTE_POLL_MS);
 }
+/** The vendor's per-minute series (tides, ticks, one-minute bars) are re-read every 15 seconds, not every 4 */
+const MINUTE_POLL_MS = 15_000;
 
 /** One expiry of a name's day — /stock/{t}/flow-per-expiry: premium and contracts by side */
 export interface ExpiryFlow {
@@ -2561,7 +2772,7 @@ export function useTopNet(limit = 40): LivePack<TopNet[]> {
       volume: num(r.volume),
       count: num(r.count) || 1,
     }));
-  }, []);
+  }, [], true, MINUTE_POLL_MS);
 }
 
 
@@ -2609,7 +2820,8 @@ export function useNameMinutes(ticker: string | null): LivePack<NameMinute[]> {
         .filter(r => r.min >= 0 && r.min < sessionEndMin(name) - SESSION_OPEN)
         .sort((a, b) => a.min - b.min),
     [],
-    !!name
+    !!name,
+    MINUTE_POLL_MS
   );
 }
 
@@ -2648,8 +2860,10 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
      more while the key's three slots were busy, and Compare stood a by-expiry figure under the ticks' label): the ticks
      and the one-minute closes are fetched on their own, and the line draws from the ticks the moment they land — priced
      by the closes once those are in */
-  const ticks = useLive(name ? `pane-ticks:${name}` : 'pane-ticks:off', async () => getRows(`/stock/${encodeURIComponent(name)}/net-prem-ticks`), [] as Record<string, unknown>[], enabled && !!name);
-  const bars = useLive(name ? `pane-bars:${name}` : 'pane-bars:off', async () => getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]), [] as Record<string, unknown>[], enabled && !!name);
+  /* MINUTE SERIES, READ EVERY 15 SECONDS (audit round 9: four 0DTE panes made 66 /net-flow/expiry calls a minute for
+     figures the vendor writes once a minute) */
+  const ticks = useLive(name ? `pane-ticks:${name}` : 'pane-ticks:off', async () => getRows(`/stock/${encodeURIComponent(name)}/net-prem-ticks`), [] as Record<string, unknown>[], enabled && !!name, MINUTE_POLL_MS);
+  const bars = useLive(name ? `pane-bars:${name}` : 'pane-bars:off', async () => getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]), [] as Record<string, unknown>[], enabled && !!name, MINUTE_POLL_MS);
   const named = useMemo<PaneFlowPoint[]>(() => {
     if (!name) return [];
     const close = new Map<number, number>();
@@ -2709,7 +2923,8 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
         .filter(pt => pt.time > 0);
     },
     [] as PaneFlowPoint[],
-    enabled && !name
+    enabled && !name,
+    MINUTE_POLL_MS
   );
   return name ? { rows: named, at: ticks.at, fault: ticks.fault, waiting: ticks.waiting } : cut;
 }
@@ -2723,7 +2938,7 @@ export function useNameTopContracts(ticker: string | null, limit = 3): LivePack<
   const name = (ticker || '').trim().toUpperCase();
   return useLive(
     name ? `top-contracts:${name}:${limit}` : 'top-contracts:off',
-    async () => mapWithIndex(await getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}&order=premium&order_direction=desc`), contractRow),
+    async () => mapBook(await getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}&order=premium&order_direction=desc`)),
     [],
     !!name
   );
@@ -2736,7 +2951,7 @@ export function useNameTopContracts(ticker: string | null, limit = 3): LivePack<
 
 /** The market's contracts with the most premium today — the screener, the whole day */
 export function useDayTopContracts(limit = 5, enabled = true): LivePack<BookContract[]> {
-  return useLive(`day-top:${limit}`, async () => mapWithIndex(await getRows(`/screener/option-contracts?limit=${limit}&order=premium&order_direction=desc`), contractRow), [], enabled);
+  return useLive(`day-top:${limit}`, async () => mapBook(await getRows(`/screener/option-contracts?limit=${limit}&order=premium&order_direction=desc`)), [], enabled);
 }
 
 /** The day's largest flow alerts: the vendor's alerts of `minPremium` and up, filed before `untilMs` (the close), largest

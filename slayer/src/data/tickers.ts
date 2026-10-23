@@ -106,18 +106,45 @@ const saveNames = () => {
     }
   }, 800);
 };
-/* the vendor writes names in capitals ("SERVE ROBOTICS INC"): sentence them, keeping short capital words that are names */
-const KEEP_UPPER = new Set(['AG', 'SA', 'NV', 'SE', 'LP', 'LLC', 'PLC', 'ETF', 'ETN', 'REIT', 'II', 'III', 'IV', 'US', 'USA', 'UK', 'AI', 'NYSE', 'SPDR', 'MSCI', 'S&P', 'ADR', 'ADS', 'NA', 'BDC', 'CO']);
+/* the vendor writes names in capitals ("SERVE ROBOTICS INC"): sentence them, keeping short capital words that are names.
+   ROUND 9: "Cme Group", "Gamestop", "Jpmorgan Chase", "Bny Mellon", "Ishares", "Spdr", "Msci", "Ftse", "Pc Connection" —
+   a short all-caps word (three letters or fewer) stays in capitals unless it is a common word, and the brands that are
+   not written in plain title case keep their own casing. */
+const KEEP_UPPER = new Set(['AG', 'SA', 'NV', 'SE', 'LP', 'LLC', 'PLC', 'ETF', 'ETN', 'ETFS', 'REIT', 'II', 'III', 'IV', 'US', 'USA', 'UK', 'AI', 'NYSE', 'SPDR', 'MSCI', 'FTSE', 'S&P', 'ADR', 'ADS', 'NA', 'BDC', 'ESG', 'NASDAQ']);
+const COMMON_SHORT = new Set(['of', 'the', 'and', 'for', 'inc', 'co', 'new', 'one', 'two', 'all', 'big', 'top', 'de', 'la', 'del', 'du', 'des', 'le', 'el', 'in', 'on', 'at', 'by', 'to', 'an', 'a', 'or', 'ltd', 'bio', 'gas', 'oil', 'air', 'sun', 'art', 'car', 'bay', 'sea', 'box', 'key', 'red', 'pet', 'go', 'gap', 'tex', 'its', 'net', 'web', 'lab', 'max', 'pro', 'fit', 'far', 'day', 'way', 'man', 'son', 'sons', 'old', 'hub', 'cap', 'mid', 'low', 'high', 'fund', 'tr', 'cl', 'cos', 'ord', 'shs', 'adj', 'sr', 'jr', 'st', 'ave', 'la', 'van', 'von', 'den', 'der', 'und', 'et', 'y', 'e', 'i', 'o', 'up', 'out', 'my', 'we', 'us']);
+const BRAND_CASE: Record<string, string> = {
+  gamestop: 'GameStop', jpmorgan: 'JPMorgan', ishares: 'iShares', ipath: 'iPath', proshares: 'ProShares', vaneck: 'VanEck', wisdomtree: 'WisdomTree',
+  blackrock: 'BlackRock', paypal: 'PayPal', ebay: 'eBay', youtube: 'YouTube', linkedin: 'LinkedIn', fedex: 'FedEx', exxonmobil: 'ExxonMobil',
+  "mcdonald's": "McDonald's", mcdonalds: "McDonald's", mckesson: 'McKesson', mccormick: 'McCormick', abbvie: 'AbbVie', nvidia: 'NVIDIA', jetblue: 'JetBlue',
+  hubspot: 'HubSpot', doordash: 'DoorDash', coreweave: 'CoreWeave', applovin: 'AppLovin', crowdstrike: 'CrowdStrike', servicenow: 'ServiceNow',
+  datadog: 'Datadog', moneylion: 'MoneyLion', sofi: 'SoFi', robinhood: 'Robinhood', ipg: 'IPG', directv: 'DirecTV', duPont: 'DuPont', dupont: 'DuPont',
+  'at&t': 'AT&T', 'p&g': 'P&G', 'h&r': 'H&R', 'l3harris': 'L3Harris', 'iheartmedia': 'iHeartMedia', 'irobot': 'iRobot', 'iqiyi': 'iQIYI', 'nextera': 'NextEra',
+  'globalfoundries': 'GlobalFoundries', 'marketaxess': 'MarketAxess', 'firstenergy': 'FirstEnergy', 'centerpoint': 'CenterPoint', 'novocure': 'NovoCure',
+  nasdaq: 'Nasdaq',
+};
+const CONNECTORS = new Set(['of', 'and', 'the', 'for', 'de', 'la', 'du', 'des', 'del', 'et', 'und', 'on', 'in', 'at', 'by', 'to']);
+const casedWord = (w: string): string => {
+  const lower = w.toLowerCase();
+  if (BRAND_CASE[lower]) return BRAND_CASE[lower];
+  if (KEEP_UPPER.has(w.toUpperCase()) && w.length <= 6) return w.toUpperCase();
+  /* a short all-caps word is an initialism (CME, BNY, PC, IBM) unless it is a common word */
+  const letters = w.replace(/[^A-Za-z]/g, '');
+  if (letters.length >= 2 && letters.length <= 3 && !COMMON_SHORT.has(lower.replace(/[^a-z]/g, '')) && /^[A-Za-z&.]+$/.test(w)) return w.toUpperCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+};
 const titled = (s: string): string =>
   s === s.toUpperCase() && /[A-Z]{3}/.test(s)
     ? s
-        .toLowerCase()
         .split(/(\s+|-|\/)/)
-        .map(w => (KEEP_UPPER.has(w.toUpperCase()) && w.length <= 4 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
+        .map((w, i) => (/^(\s+|-|\/)$/.test(w) || !w ? w : i > 0 && CONNECTORS.has(w.toLowerCase()) ? w.toLowerCase() : casedWord(w)))
         .join('')
         .replace(/\bInc\b\.?/g, 'Inc.')
         .replace(/\bCorp\b\.?/g, 'Corp.')
+        .replace(/\bCo\b\.?(?=\s|$)/g, 'Co.')
     : s;
+
+/** A vendor name in capitals, cased the house's way (brands and initialisms kept) */
+export const titleCompany = (s: string): string => titled(s);
 
 /** Remember the vendor's own name for a symbol (the stock's info) */
 export function rememberCompanyName(symbol: string, name: string | null | undefined): void {
@@ -131,8 +158,32 @@ export function rememberCompanyName(symbol: string, name: string | null | undefi
   nameListeners.forEach(fn => fn());
 }
 
+/** Names another vendor read already carries (the earnings calendar's, a screener row's) — kept only where the stock's own
+    info has not given one, so a name cell need not ask for it (round 9: the Insiders page asked /info per ticker) */
+export function rememberCompanyNames(pairs: readonly (readonly [string, string | null | undefined])[]): void {
+  let changed = false;
+  for (const [symbol, name] of pairs) {
+    const sym = symbol.toUpperCase();
+    const n = (name ?? '').trim();
+    if (!sym || !n || n.toUpperCase() === sym || uwNames.has(sym)) continue;
+    uwNames.set(sym, titled(n));
+    changed = true;
+  }
+  if (!changed) return;
+  saveNames();
+  nameListeners.forEach(fn => fn());
+}
+
 /** The vendor's name if known, then the bundled listing's, then the symbol */
+/* names remembered by an earlier visit were cased by the old rule ("Cme Group") — re-cased once, from their capitals */
+let recased = false;
+const recaseStored = () => {
+  if (recased) return;
+  recased = true;
+  for (const [k, v] of uwNames) uwNames.set(k, titled(v.toUpperCase()));
+};
 export function companyName(symbol: string): string {
+  recaseStored();
   const sym = symbol.toUpperCase();
   return uwNames.get(sym) ?? tickerName(sym);
 }

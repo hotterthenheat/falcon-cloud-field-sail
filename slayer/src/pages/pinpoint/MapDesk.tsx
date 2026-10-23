@@ -57,6 +57,7 @@ import { FLAT_DOOR, FLAT_ON } from '../../components/ui/flatDoor';
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Play } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
+import { useIsPhone } from '../../components/ui/useMediaQuery';
 import { snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
@@ -178,6 +179,7 @@ const MapDesk = () => {
   const bookRev = useBookRev();
   const { focus, toggleFocus, focusOn } = useFocus();
   const levelsScope = useLevelsScope();
+  const phone = useIsPhone();
 
   /* TYPE A STRIKE TO KEEP IT (idea 8, 2026-10-13): `/` opens a small prompt; Enter keeps the nearest strike the chain
      has, everywhere on the page; Esc closes. Caught before the command line, which `/` opens on pages with no search. */
@@ -539,7 +541,9 @@ const MapDesk = () => {
     focusOn(best, ticker);
   };
 
-  const bookH = `calc(clamp(640px, 100dvh - 190px, 1000px) - ${bandSlotH > 0 ? bandSlotH + 8 : 0}px)`;
+  /* ON A PHONE THE BOOK IS TALLER THAN THE SCREEN (the ninth audit's retail finding: the matrix was an inner box of ~5
+     strikes under its own controls at 390) — the page scrolls past it, and the matrix shows ~20 strikes */
+  const bookH = phone ? 'calc(100dvh + 300px)' : `calc(clamp(640px, 100dvh - 190px, 1000px) - ${bandSlotH > 0 ? bandSlotH + 8 : 0}px)`;
   /* The book stays the width of its panes. It used to stretch to the row whenever the day chart could not sit beside
      it (under ~1,070px of page), which is the old wide map. The day sits beside from 420px of room; under that it
      wraps, and the book does not grow to fill the gap. */

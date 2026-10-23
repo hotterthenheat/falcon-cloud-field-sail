@@ -737,7 +737,7 @@ const DarkPool = () => {
                 <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-textMuted" />
                 Closed{closed ? ` · ${shortDay(closed.iso)}` : ''}
               </span>
-            ) : (
+            ) : hold.paused ? null : (
               <StaleMark at={named ? nameBook.at : tapeKind === 'lit' ? lit.at : dark.at} ttlMs={FLOW_TTL_MS} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />
             )}
             {/* THE SEARCH, the Live Tape's own: a name typed cuts the tape to it; a prefix narrows it */}

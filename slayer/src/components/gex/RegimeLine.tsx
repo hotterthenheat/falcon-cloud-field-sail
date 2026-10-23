@@ -15,6 +15,7 @@
 import { useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { useLevelsFor } from '../../data/levelsFor';
+import { FLIP_RULE } from '../../data/flipLevel';
 import { peekGammaPriced } from '../../data/uwBook';
 import { nyClock } from '../../core/nyTime';
 import { useLevelsScope } from '../../data/levelsScope';
@@ -66,6 +67,18 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
             </span>
             {said.rest}
             {lv && <span className="text-textMuted"> · {lv.ticker} · {lv.scopeLabel}</span>}
+            {/* TWO CROSSINGS, SAID (the ninth audit's M4): the flip keeps its crossing; the other is named, never swapped in silently */}
+            {lv?.flip != null && lv.flipSecond != null && (
+              <span className="text-textMuted" title={FLIP_RULE} data-flip-second={lv.flipSecond}>
+                {' '}· a second flip at {fmtK(lv.flipSecond)} — the profile crosses twice
+              </span>
+            )}
+            {/* A LEVEL THAT CHANGED STRIKE TODAY, SAID (the ninth audit: the call wall 765 at 12:55, 762 at 13:08, no note) */}
+            {lv && lv.moves.length > 0 && (
+              <span className="text-textMuted" data-level-moves={lv.moves.length} title={lv.moves.map(m => `${m.level} moved ${fmtK(m.from)} → ${fmtK(m.to)} at ${nyClock(m.at)} ET`).join('\n')}>
+                {' '}· {lv.moves.slice(-2).map(m => `${m.level} moved ${fmtK(m.from)} → ${fmtK(m.to)} at ${nyClock(m.at)}`).join(' · ')}
+              </span>
+            )}
             {/* THE PRICING MINUTE (the eighth audit: 765 read $53M on the Map and $38M on the Agenda, minutes apart) — every
                 strike figure on these pages is the vendor's row priced at this minute and price; a later load re-prices it */}
             {priced && (

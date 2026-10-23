@@ -637,7 +637,9 @@ export function useCongressBook(): LiveSnapshot['congress'] {
   );
 }
 
-export function useCongressFeed(windowDays: number): CongressFeed {
+/** The reports in a window — by the trade's date, or (basis 'filed') by the day the report was filed (round 9: "This week"
+    by trade date hid purchases FILED this week, Cleo Fields' TSM buy among them) */
+export function useCongressFeed(windowDays: number, basis: 'traded' | 'filed' = 'traded'): CongressFeed {
   const congress = useSyncExternalStore(
     fn => {
       const off = listen(fn);
@@ -651,8 +653,8 @@ export function useCongressFeed(windowDays: number): CongressFeed {
     if (congress.status !== 'live') return { ...EMPTY_CONGRESS, windowDays };
     /* the executive-branch filings left out, counted for the window (audit round 6: counted, never shown) */
     const notMembers = (congress.notMemberAges ?? []).filter(d => d <= windowDays).length;
-    return { ...rollCongress(congress.trades.filter(t => t.tradedDaysAgo <= windowDays), windowDays), notMembers };
-  }, [congress, windowDays]);
+    return { ...rollCongress(congress.trades.filter(t => (basis === 'filed' ? t.filedDaysAgo : t.tradedDaysAgo) <= windowDays), windowDays), notMembers };
+  }, [congress, windowDays, basis]);
 }
 
 function useInsidersSnap() {

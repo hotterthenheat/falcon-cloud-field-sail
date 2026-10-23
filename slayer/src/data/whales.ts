@@ -115,6 +115,11 @@ type UwAnswer = { status: number; data: unknown; error: string | null };
    reads move with the tape and are polled — they are only ever shared in flight */
 const LIVE_PATH = /\/(option-trades|flow-alerts|market-tide|sector-tide|etf-tide|top-net-impact|net-flow|greek-flow|stock-state|quote|flow-per-strike-intraday|net-prem-ticks|nope|spot-exposures|greek-exposure|gex-levels|flow-per-|oi-|option-contracts|atm-chains|interpolated-iv|ohlc\/(?:1m|2m|3m|5m|15m|1h)|darkpool|lit-flow|options-volume|stock-price-levels|stock-volume-price-levels)(\/|$)|^\/option-contract\//;
 const REUSE_MS = 60_000;
+/* (round 9, Dossier) a live route's finished answer is reused for a little less than the proxy keeps it (its 3- and
+   15-second classes), so two readers of one page (the stock page's book and its vendor rows) make one request, never
+   staler than the proxy's own copy */
+const PROXY_15S = /\/(greek-exposure|gex-levels|flow-per-|oi-|option-contracts|atm-chains|interpolated-iv|ohlc\/(?:1m|2m|3m|5m|15m|1h)|darkpool|lit-flow|options-volume|stock-price-levels|stock-volume-price-levels)(\/|$)/;
+const liveReuseMs = (p: string): number => (/^\/option-contract\//.test(p) ? 0 : PROXY_15S.test(p) && !/\/(flow-per-strike-intraday)(\/|$)/.test(p) ? 12_000 : 2_500);
 const shared = new Map<string, { at: number; done: boolean; p: Promise<UwAnswer> }>();
 const copyOf = (a: UwAnswer): UwAnswer => {
   try {
@@ -128,7 +133,8 @@ const copyOf = (a: UwAnswer): UwAnswer => {
 export async function uwCall(path: string, priority = false, low = false): Promise<UwAnswer> {
   const now = Date.now();
   const hit = shared.get(path);
-  if (hit && (!hit.done || (!LIVE_PATH.test(path.split('?')[0]) && now - hit.at < REUSE_MS))) return copyOf(await hit.p);
+  const bare = path.split('?')[0];
+  if (hit && (!hit.done || now - hit.at < (LIVE_PATH.test(bare) ? liveReuseMs(bare) : REUSE_MS))) return copyOf(await hit.p);
   const entry = { at: now, done: false, p: uwFetch(path, priority && !low, low) };
   shared.set(path, entry);
   const got = await entry.p;

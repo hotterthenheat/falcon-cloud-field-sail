@@ -213,7 +213,7 @@ export interface NewsRead {
   /** The average absolute move the session after the last reports, and how many reports that is */
   reaction: { pct: number; reports: number } | null;
   /** The last reports, newest first: what it earned against the estimate and how the stock took it */
-  reports: { label: string; epsActual: number; epsEst: number; beat: boolean; result: 'beat' | 'inline' | 'miss'; movePct: number | null; estOff: boolean }[];
+  reports: { label: string; epsActual: number | null; epsEst: number | null; beat: boolean; result: 'beat' | 'inline' | 'miss' | null; movePct: number | null; estOff: boolean }[];
 }
 
 export interface Source {
@@ -474,6 +474,18 @@ export function rvolFactor(pv: PacedVolume | null, up: boolean): Factor | null {
     note: heavy ? `heavy for the name, ${up ? 'on an up day' : 'on a down day'}` : v <= 0.7 ? 'quiet — no conviction behind the move either way' : 'ordinary — no conviction either way',
   };
 }
+/* VOLUME AMPLIFIES THE SIDE, IT DOES NOT PICK ONE (round 9: TSLA's money read "poor" and counted as agreeing bearish
+   while its own evidence said "the two sides are about even — no lean (49%)" — heavy volume on a down day carried it).
+   Heavy volume leans only where the side of the trade leans the same way; with the side even (or the other way) it
+   is said and not weighed. */
+export function volumeFollowsSide(factors: Factor[]): Factor[] {
+  const side = factors.find(f => f.key === 'side');
+  return factors.map(f => {
+    if (f.key !== 'rvol' || f.context || f.lean === 0) return f;
+    if (side && side.lean !== 0 && Math.sign(side.lean) === Math.sign(f.lean)) return f;
+    return { ...f, lean: 0, note: `${f.note} — but the side of the trade ${side && side.lean !== 0 ? 'leans the other way' : 'is about even'}, so no lean` };
+  });
+}
 /** The side of the trade is a lean only past this distance from even (a 49/51 split is no lean) */
 const SIDE_DEADBAND = 0.05;
 
@@ -550,7 +562,7 @@ export function screenFactors(row: ScreenRow): ScreenPillars {
   const bull = rowNum(row, 'bullish_premium') ?? 0;
   const bear = rowNum(row, 'bearish_premium') ?? 0;
   money.push(...premiumFactors(bull, bear, rowNum(row, 'call_premium') ?? 0, rowNum(row, 'put_premium') ?? 0));
-  return { trend, numbers, money, refClose: last };
+  return { trend, numbers, money: volumeFollowsSide(money), refClose: last };
 }
 /** The scored factors' weight — a pillar with none of it is left out of the read */
 const scoredWeight = (factors: readonly Factor[]): number => factors.reduce((a, f) => a + (f.context ? 0 : f.weight), 0);
@@ -920,7 +932,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
      the plain call/put split is a smaller second read, named for what it is — premium spent on calls, not buying. */
   factors.push(...premiumFactors(bullishPremium, bearishPremium, callPremium, putPremium));
   if (readPrints.length) factors.push({ key: 'dark', label: 'Off-exchange prints', value: posture === 'ACCUMULATING' ? 'over the mid' : posture === 'DISTRIBUTING' ? 'under the mid' : 'split', lean: clamp(netPosturePct / 40), weight: 0.3, note: dark.postureNote });
-  return { read, factors };
+  return { read, factors: volumeFollowsSide(factors) };
 };
 
 /* ---- the news, from the wire ----------------------------------------------------- */
@@ -928,7 +940,7 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
 /* the name's own headlines (liveRecord.useTickerNews), not the whole day's wire */
 const wireLive = (ticker: string) => peekTickerNews(ticker).status === 'live';
 
-const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Factor[]; lastReport: { label: string; epsActual: number; epsEst: number; beat: boolean; result: 'beat' | 'inline' | 'miss'; movePct: number | null } | null } => {
+const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Factor[]; lastReport: { label: string; epsActual: number | null; epsEst: number | null; beat: boolean; result: 'beat' | 'inline' | 'miss' | null; movePct: number | null } | null } => {
   const feed = peekTickerNews(ticker);
   /* the vendor's own feed for the name: every story on it is the name's, whichever symbol leads it */
   const stories = (feed.status === 'live' ? feed.events : [])
@@ -944,9 +956,12 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
   const ests = past.slice(0, 8).map(r => Math.abs(nOr(r.street_mean_est) ?? 0)).filter(v => v > 0).sort((a, b) => a - b);
   const medEst = ests.length >= 3 ? ests[Math.floor(ests.length / 2)] : 0;
   const reports: NewsRead['reports'] = past.slice(0, 8).map(r => {
-    const actual = nOr(r.actual_eps) ?? 0;
-    const est = nOr(r.street_mean_est) ?? 0;
+    const actualOr = nOr(r.actual_eps);
+    const estOr = nOr(r.street_mean_est);
+    const actual = actualOr ?? 0;
+    const est = estOr ?? 0;
     const move = nOr(r.post_earnings_move_1d);
+    if (actualOr == null || estOr == null) return { label: reportDayLabelYear(String(r.report_date || '')), epsActual: actualOr, epsEst: estOr, beat: false, result: null, movePct: move == null ? null : move * 100, estOff: false };
     const result = epsResultOf(actual, est);
     const estOff = medEst > 0.25 && Math.abs(est) > 0 && (Math.abs(est) < medEst * 0.55 || Math.abs(est) > medEst * 1.8) && Math.abs(actual - est) > Math.abs(est) * 0.5;
     /* the move is a fraction of the price, per the spec ("0.0724" is 7.24%) */
@@ -954,11 +969,8 @@ const newsFor = (ticker: string, file: StockFile): { read: NewsRead; factors: Fa
   });
   /* THE USUAL MOVE ON ITS OWN ROWS: the latest eight reports with a next-session move, whether or not they carry an EPS
      estimate (the re-audit, 2026-10-22: GME's four newest reports had no estimate and were skipped) */
-  const today = nyTodayIso();
-  const movedRows = file.earnings
-    .filter(r => r.report_date && String(r.report_date) <= today && nOr(r.post_earnings_move_1d) != null)
-    .sort((a, b) => String(b.report_date).localeCompare(String(a.report_date)))
-    .slice(0, 8);
+  /* (round 9) the same eight reports the table lists */
+  const movedRows = past.slice(0, 8).filter(r => nOr(r.post_earnings_move_1d) != null);
   const reaction = movedRows.length ? { pct: movedRows.reduce((a, r) => a + Math.abs((nOr(r.post_earnings_move_1d) ?? 0) * 100), 0) / movedRows.length, reports: movedRows.length } : null;
   const last = reports[0];
   const lastReport = last ? { label: last.label, epsActual: last.epsActual, epsEst: last.epsEst, beat: last.beat, result: last.result, movePct: last.movePct } : null;
@@ -1022,10 +1034,17 @@ const nOr = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-const pastPrints = (rows: EarnRow[]): EarnRow[] =>
-  rows
-    .filter(r => r.actual_eps != null && r.street_mean_est != null && r.report_date)
+/* EVERY REPORT, ESTIMATE OR NOT (round 9: GME's page led with 09/09/25 — its 2026-09-08 report (EPS 0.27, +5.3%) and
+   2025-12-09 (0.24) carry no street_mean_est and were dropped). A report is a past row with an actual or a next-session
+   move; beat / in line / miss is read only where an estimate is on file (earningsFeed historyOf's rule). */
+const hasVal = (v: unknown) => v != null && v !== '';
+const pastPrints = (rows: EarnRow[]): EarnRow[] => {
+  const today = nyTodayIso();
+  return rows
+    .filter(r => r.report_date && String(r.report_date).slice(0, 10) <= today && (hasVal(r.actual_eps) || hasVal(r.post_earnings_move_1d)))
     .sort((a, b) => String(b.report_date).localeCompare(String(a.report_date)));
+};
+const withEstimate = (r: EarnRow) => hasVal(r.actual_eps) && hasVal(r.street_mean_est);
 
 /* The last print, earnings growth, the dividend and the market cap. Revenue, margins and a fair value are not on this feed. */
 const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } => {
@@ -1043,7 +1062,8 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   const runMed = runEsts.length >= 3 ? runEsts[Math.floor(runEsts.length / 2)] : 0;
   const estOff = epsEstimate != null && epsActual != null && runMed > 0.25 && Math.abs(epsEstimate) > 0 && (Math.abs(epsEstimate) < runMed * 0.55 || Math.abs(epsEstimate) > runMed * 1.8) && Math.abs(epsActual - epsEstimate) > Math.abs(epsEstimate) * 0.5;
   const epsSurprisePct = !estOff && epsActual != null && epsEstimate != null && epsEstimate !== 0 ? ((epsActual - epsEstimate) / Math.abs(epsEstimate)) * 100 : null;
-  const results = window.map(r => epsResultOf(nOr(r.actual_eps) ?? 0, nOr(r.street_mean_est) ?? 0));
+  const scored = window.filter(withEstimate);
+  const results = scored.map(r => epsResultOf(nOr(r.actual_eps) ?? 0, nOr(r.street_mean_est) ?? 0));
   const beats = results.filter(x => x === 'beat').length;
   const inline = results.filter(x => x === 'inline').length;
   const misses = results.filter(x => x === 'miss').length;
@@ -1072,12 +1092,12 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
       note: growth >= 0 ? 'earnings are growing' : 'earnings are shrinking',
     });
   }
-  if (window.length) {
+  if (scored.length) {
     factors.push({
       key: 'beats',
       label: 'Against the estimate',
-      value: `${beats} beat · ${inline} in line · ${misses} missed`,
-      lean: clamp((beats - misses) / window.length),
+      value: `${beats} beat · ${inline} in line · ${misses} missed${scored.length < window.length ? ` · ${window.length - scored.length} with no estimate` : ''}`,
+      lean: clamp((beats - misses) / scored.length),
       weight: 0.2,
       note: beats > misses ? 'more beats than misses' : misses > beats ? 'more misses than beats' : 'as many misses as beats',
     });
@@ -1091,10 +1111,10 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
       revenueEstimateB: null,
       revenueActualB: null,
       revenueSurprisePct: null,
-      beats: window.length ? beats : null,
-      beatOf: window.length,
-      inline: window.length ? inline : null,
-      misses: window.length ? misses : null,
+      beats: scored.length ? beats : null,
+      beatOf: scored.length,
+      inline: scored.length ? inline : null,
+      misses: scored.length ? misses : null,
       revenueGrowthPct: null,
       epsGrowthPct: growth != null ? growth * 100 : null,
       operatingMarginPct: null,
@@ -1252,6 +1272,20 @@ const explanationOf = (name: string, composite: number, pillars: Pillar[], numbe
   const next = [...others].sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50))[0];
   const nextWord = next ? (sideOf(next.score) === side ? verbs(next, 'agrees', 'agree') : sideOf(next.score) === 'middle' ? verbs(next, 'sits in the middle', 'sit in the middle') : verbs(next, 'argues', 'argue')) : '';
   return `${lead}${next ? `; ${lowerName(next)} ${nextWord}` : ''}.${fair} ${agreement.risk}`;
+};
+/* THE DAY'S MOVE, SAID AGAINST THE WIRE AND THE MARKET (round 9: AAPL's "why" was technicals only on a down day). A move
+   of half a percent or more names today's story on the name when there is one, and the market's own move (SPY's), or
+   says plainly that no story on the wire explains it. */
+const todayWhyOf = (ticker: string, dayPct: number | null | undefined, news: NewsRead): string => {
+  if (dayPct == null || !Number.isFinite(dayPct) || Math.abs(dayPct) < 0.5 || ticker === 'SPY') return '';
+  const today = nyIsoDate();
+  const story = news.stories.find(st => nyIsoDate(st.item.atMs) === today);
+  const spy = peekQuote('SPY');
+  const market = spy && spy.phase === 'regular' && Number.isFinite(spy.changePct) ? ` The market: SPY ${pct(spy.changePct)} today.` : '';
+  const move = pct(dayPct);
+  return story
+    ? ` Today's ${move}: on the wire, "${story.item.headline.length > 110 ? `${story.item.headline.slice(0, 107)}…` : story.item.headline}".${market}`
+    : ` No story on the wire today explains the ${move} move.${market}`;
 };
 const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: Pillar[], composite: number, lean: Lean): Method => ({
   observed: [
@@ -1420,7 +1454,8 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
   }
   if (news.lastReport) {
     const q = news.lastReport;
-    timeline.push({ key: `earnings:${q.label}`, when: q.label, kind: 'earnings', text: `${q.result === 'beat' ? 'beat' : q.result === 'inline' ? 'in line' : 'missed'} on EPS — ${q.epsActual.toFixed(2)} against ${q.epsEst.toFixed(2)}${q.movePct != null ? ` · ${pct(q.movePct)} the session after` : ''}`, time: null, score: null });
+    const said = q.result == null || q.epsActual == null || q.epsEst == null ? (q.epsActual != null ? `reported EPS ${q.epsActual.toFixed(2)} — no estimate on file` : 'reported — no EPS on file') : `${q.result === 'beat' ? 'beat' : q.result === 'inline' ? 'in line' : 'missed'} on EPS — ${q.epsActual.toFixed(2)} against ${q.epsEst.toFixed(2)}`;
+    timeline.push({ key: `earnings:${q.label}`, when: q.label, kind: 'earnings', text: `${said}${q.movePct != null ? ` · ${pct(q.movePct)} the session after` : ''}`, time: null, score: null });
   }
 
   const contributions = contributionsOf(livePillars);
@@ -1490,7 +1525,7 @@ export function buildStockOverview(tickerRaw: string, tape: readonly FlowPrint[]
     weights: PILLAR_WEIGHTS,
     whyNow: whyNowOf(scored),
     thesis: sr.thesis,
-    explanation: explanationOf(name, composite, livePillars, numbers.read, agreement),
+    explanation: `${explanationOf(name, composite, livePillars, numbers.read, agreement)}${todayWhyOf(ticker, dayPct, news.read)}`,
     wouldMove: moves.slice(0, 2).map(m => {
       const now = gradeOfComposite(composite);
       const then = gradeOfComposite(m.to);

@@ -59,10 +59,17 @@ type Show = 'all' | 'late' | 'purchases' | 'sales';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
   /* THIS WEEK (round 8: the shortest window was 30 days) */
-  { value: 7, label: 'This week', short: '7 days', hint: 'Trades made in the last seven days' },
-  { value: 30, label: '30 days', hint: 'Trades made in the last month' },
-  { value: 90, label: '90 days', hint: 'Trades made in the last quarter' },
-  { value: 180, label: '180 days', hint: 'Trades made in the last half year' },
+  { value: 7, label: '7 days', hint: 'The last seven days — filed or traded, as the Dated-by menu says' },
+  { value: 30, label: '30 days', hint: 'The last month' },
+  { value: 90, label: '90 days', hint: 'The last quarter' },
+  { value: 180, label: '180 days', hint: 'The last half year' },
+];
+type Basis = 'filed' | 'traded';
+/* THE FILING DAY FOR THE SHORT WINDOWS (round 9: "This week" by trade date read "2 reports · 0 bought" while purchases
+   filed that week — Cleo Fields' TSM buy, filed 10/23 — sat outside it; a report is filed up to 45 days after the trade) */
+const BASIS_OPTIONS: DropdownOption<Basis>[] = [
+  { value: 'filed', label: 'Filed', hint: 'Reports filed in the window — what is new on the record; the trade date is shown on each row' },
+  { value: 'traded', label: 'Traded', hint: 'Trades made in the window, whenever they were filed' },
 ];
 const CHAMBER_OPTIONS: DropdownOption<ChamberPick>[] = [
   { value: 'both', label: 'Both', hint: 'House and Senate' },
@@ -84,7 +91,9 @@ const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'sales', label: 'Sales', hint: 'Sales only, full or partial', tone: 'bear' },
 ];
 
-const seat = (t: CongressTrade) => seatLabel(t.member);
+/* a member the vendor's roster carries no party or state for (Alan Armstrong: party, chamber and district all null on
+   /congress/politicians) says so, never a blank tag (round 9) */
+const seat = (t: CongressTrade) => seatLabel(t.member) || `${t.member.chamber === 'Senate' ? 'Senate' : t.member.chamber === 'House' ? 'House' : ''}${t.member.chamber ? ' · ' : ''}party n/a`;
 const typeWord = (t: CongressTrade) => (t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : 'Sale');
 const typeInk = (t: CongressTrade) => (t.type === 'Purchase' ? 'text-bull' : t.type === 'Exchange' ? 'text-textMuted' : 'text-bear');
 
@@ -366,7 +375,13 @@ export const BillsSwitch = ({ hide, onToggle, hidden, testId }: { hide: boolean;
 const Congress = () => {
   const navigate = useNavigate();
   const phone = usePhoneCards();
-  const [window, setWindow] = useState<Window>(90);
+  const [window, setWindowRaw] = useState<Window>(90);
+  const [basis, setBasis] = useState<Basis>('traded');
+  /* a short window opens on the filing day, a long one on the trade day; the menu changes it either way */
+  const setWindow = (w: Window) => {
+    setWindowRaw(w);
+    setBasis(w <= 30 ? 'filed' : 'traded');
+  };
   const [chamber, setChamber] = useState<ChamberPick>('both');
   const [owner, setOwner] = useState<OwnerPick>('any');
   const [show, setShow] = useState<Show>('all');
@@ -376,8 +391,9 @@ const Congress = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   /* The feed is the live record when it answers; the reports are paged back by trade day until the window is covered */
-  const feed = useCongressFeed(window);
-  useEffect(() => wantCongressWindow(window), [window]);
+  const feed = useCongressFeed(window, basis);
+  /* by filing day the reports are read back 90 days of trades at least, so a report filed this week on an older trade is in */
+  useEffect(() => wantCongressWindow(basis === 'filed' ? Math.max(window, 90) : window), [window, basis]);
   const coverage = useCongressCoverage();
   /* a failed read is not a quiet quarter — the figures go to dashes and the page says the read did not land */
   const status = useCongressStatus();
@@ -502,8 +518,8 @@ const Congress = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a row, a bracket, an owner and the lag mean" testId="congress-guide" />
           </div>
           {/* on a phone the line wraps rather than cutting off mid-word (the retail test, round 7) */}
-          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate">Every report of a trade made in the window, newest filing first · a row opens that member’s book</p>
-          {!failed && <CongressProgress coverage={coverage} window={window} waiting={waiting} />}
+          <p className="mt-0.5 text-[11px] text-textMuted sm:whitespace-nowrap sm:truncate">{basis === 'filed' ? `Every report filed in the last ${window} days, whenever the trade was made (its date on each row)` : 'Every report of a trade made in the window'}, newest filing first · a row opens that member’s book</p>
+          {!failed && <CongressProgress coverage={coverage} window={basis === 'filed' ? Math.max(window, 90) : window} waiting={waiting} />}
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
@@ -528,9 +544,9 @@ const Congress = () => {
           </div>
           <div>
             {/* a trade made under 45 days ago cannot be late yet — on the 30-day window the count is structurally nil, and says so */}
-            <dt className="text-[10px] text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among trades made in the last ${window} days`}>Past the deadline</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days`}>Past the deadline</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${stats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
-              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS ? <span className="text-textMuted">none can be yet</span> : stats.lateFilings.toLocaleString('en-US')}
+              {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : stats.lateFilings.toLocaleString('en-US')}
             </dd>
           </div>
         </dl>
@@ -538,18 +554,19 @@ const Congress = () => {
       {/* THE ONE LINE OF CONTROLS */}
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-congress-controls>
         <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the reports run" testId="congress-window" />
+        <DropdownSelect label="Dated by" value={basis} options={BASIS_OPTIONS} onChange={setBasis} title="Count a report by the day it was filed, or the day of the trade" testId="congress-basis" />
         <DropdownSelect label="Chamber" value={chamber} options={CHAMBER_OPTIONS} onChange={setChamber} title="Which chamber" testId="congress-chamber" />
         <DropdownSelect label="Owner" value={owner} options={OWNER_OPTIONS} onChange={setOwner} title="Whose holding" testId="congress-owner" />
         <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
         <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="congress-bills" />
       </div>
-      {!failed && !waiting && <CongressCoverageLine coverage={coverage} window={window} unread={feed.unreadTypes ?? 0} notMembers={feed.notMembers ?? 0} />}
+      {!failed && !waiting &&  <CongressCoverageLine coverage={coverage} window={basis === 'filed' ? Math.max(window, 90) : window} unread={feed.unreadTypes ?? 0} notMembers={feed.notMembers ?? 0} />}
       {failed ? (
         <FeedFallback />
       ) : (
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-congress-sentence>
-          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among trades made in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
+          {waiting ? 'Reading the reports.' : stats.trades.length === 0 && show === 'late' ? `No late report among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days${window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? ` — none of them is ${STOCK_ACT_DEADLINE_DAYS} days old yet` : ''}.` : `${bondStats.trades.length ? `Stocks, options and funds: ${congressSentence(equityStats).replace(/^No report on this cut/, 'none on this cut')} Bonds apart — ${bondStats.trades.length.toLocaleString('en-US')} ${bondStats.trades.length === 1 ? 'report' : 'reports'} of notes, munis and corporate bonds covering ${bondStats.totalHigh === null ? `at least ${dollars3(bondStats.totalLow)}` : `${dollars3(bondStats.totalLow)}–${dollars3(bondStats.totalHigh)}`}, on the grid but not in that total.` : congressSentence(stats)}${billsHidden ? ` ${billsHidden.toLocaleString('en-US')} Treasury-bill ${billsHidden === 1 ? 'report is' : 'reports are'} hidden from every count here.` : ''}`}
         </p>
       )}
       {/* THE REPORTS TO KNOW */}
@@ -605,7 +622,7 @@ const Congress = () => {
         </>
         )}
       </div>
-      <CongressHoldings />
+      <CongressHoldings since={coverage.since} />
     </div>
   );
 };

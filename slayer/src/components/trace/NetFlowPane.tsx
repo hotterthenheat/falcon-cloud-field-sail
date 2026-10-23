@@ -547,6 +547,7 @@ const NetFlowPane = ({
       if (!card) return;
       if (!param.time || !param.point) {
         card.style.opacity = '0';
+        card.style.visibility = 'hidden';
         applyPick(null);
         restTipRef.current();
         return;
@@ -611,6 +612,7 @@ const NetFlowPane = ({
       // readout lives in the pane's quietest corner and updates as the
       // crosshair glides, so it never covers what the eye is reading.
       card.style.opacity = '1';
+      card.style.visibility = 'visible';
     };
     chart.subscribeCrosshairMove(onMove);
 
@@ -791,8 +793,15 @@ const NetFlowPane = ({
           {/* THE LINES' KEY (retail, round 8: the chart had no legend for its lines) — each label wears its line's stroke */}
           <span style={{ color: inksNow.spot }} data-pane-legend="spot" title={ticker ? `The thin solid line — ${ref}'s price, its own scale on the left` : `The white line is ${ref}'s price — the vendor's reference line on every cut, not ${seg === 'indexes' ? 'an index level' : "the cut's own price"}; the cut's money is every name in it`}>
             <span aria-hidden className="inline-block align-middle w-3.5 mr-1 border-t" style={{ borderColor: inksNow.spot }} />
-            {ticker ? `${ref} price` : seg === 'indexes' ? `${ref} price · reference, not an index` : `${ref} price · reference`}
+            {ticker ? `${ref} price` : seg === 'indexes' ? `${ref} price for reference, not an index` : `${ref} price for reference`}
           </span>
+          {/* WHOSE MONEY (audit round 9: "SPY … net calls −$2.0M, net puts −$5.8M" read as SPY's own 0DTE flow — Compare showed
+              SPY's −$3.7M / −$0.1M): on a cut the figures are every name in the cut, said beside them */}
+          {!ticker && (
+            <span className="text-textSecondary uppercase text-[11px] tracking-wider" data-pane-scope title="The net call and put premium below are every name in this cut — not the reference name's own; the price line is only a clock to read them against">
+              {seg === 'all' ? "all names'" : "the cut's names'"} {dteMax <= 1 ? '0DTE flow' : 'flow'}
+            </span>
+          )}
           {/* a picked name on the same-day desk draws its money across EVERY expiry — the vendor has no same-day-only
               series per name per minute (the ship pass, 2026-10-22); the cut panes are exact, this one says what it is */}
           {ticker && uncutNote && live == null && (
@@ -850,6 +859,9 @@ const NetFlowPane = ({
         <div
           ref={tipRef}
           aria-hidden
+          /* hidden, not only faded, at rest (audit round 9: the resting readout read as a second "NET PUTS" beside the
+             head's — the head carries the latest figures; the card is the hover's) */
+          style={{ visibility: 'hidden' }}
           className="pointer-events-none absolute top-2 left-14 z-20 w-[168px] opacity-0 transition-opacity duration-100 border border-borderSubtle bg-panel/60 backdrop-blur-md rounded-md shadow-lg shadow-black/30 px-2.5 py-2"
         >
           <span ref={tipTimeRef} className="block font-mono text-[11px] uppercase tracking-widest text-textMuted mb-1">
@@ -880,7 +892,9 @@ const NetFlowPane = ({
           </span>
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.volLoud }} />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted">Volume</span>
+            {/* A CUT'S BAR IS THE CHANGE IN NET VOLUME (audit round 9, minor 4): the vendor's net-flow and sector-tide minutes
+                carry a running net volume, not contracts traded — the bar is |Δ net volume| that minute, named so */}
+            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted" title={ticker ? "Contracts traded that minute — the name's calls and puts" : "The change in the vendor's running net volume that minute (calls less puts), sign dropped — not contracts traded"}>{ticker ? 'Volume' : 'Net vol chg'}</span>
             <span ref={tipVolRef} className={`${TIP_VOL_BASE} text-textSecondary`}>
               —
             </span>

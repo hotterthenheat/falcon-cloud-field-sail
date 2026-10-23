@@ -243,7 +243,7 @@ const NetFlow = () => {
               <span className="text-textMuted">{tide.waiting ? '…' : '—'}</span>
             )}
           </Fact>
-          <Fact label="The board · bullish · bearish" testId="sides" title={`The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market. ${VENDOR_TOTAL_NOTE}`}>
+          <Fact label="The board · bullish · bearish · whole day" testId="sides" title={`The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market. ${VENDOR_TOTAL_NOTE}`}>
             {/* the bearish names' sum is a sum of names' NET premium, below zero — bearish, red (audit round 5: it wore the
                 put-premium ink and read bullish green) */}
             {leaders.length === 0 ? <span className="text-textMuted">—</span> : <><Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" /></>}
@@ -264,12 +264,12 @@ const NetFlow = () => {
           {/* the two ends of the board, each named for what it is; the larger of the two wears the magenta */}
           {facts.top && facts.top.net > 0 && (
             <Champion label="Most bullish" ink={champ === facts.top ? 'supreme' : 'bull'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.top!.ticker)} testId="bullish">
-              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : `${shortDay(tapeSessionIso())}, whole day`}</span>
+              {facts.top.ticker} · {signed(facts.top.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : shortDay(tapeSessionIso())}, whole day, pre-market in</span>
             </Champion>
           )}
           {facts.bottom && facts.bottom.net < 0 && (
             <Champion label="Most bearish" ink={champ === facts.bottom ? 'supreme' : 'bear'} title={`Put this name on the pane · ${dayPos()} whole-day net premium. ${VENDOR_TOTAL_NOTE}`} onOpen={() => onQuery(facts.bottom!.ticker)} testId="bearish">
-              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : `${shortDay(tapeSessionIso())}, whole day`}</span>
+              {facts.bottom.ticker} · {signed(facts.bottom.net)} <span className="text-textSecondary">· {isLiveDay() ? 'today' : shortDay(tapeSessionIso())}, whole day, pre-market in</span>
             </Champion>
           )}
         </>
@@ -277,7 +277,8 @@ const NetFlow = () => {
       controls={
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-          <StaleMark at={top.at} ttlMs={FLOW_TTL_MS} fault={top.fault} />
+          {/* the board is a per-minute series read every 15s; paused is held, not stale */}
+          {!hold.paused && <StaleMark at={top.at} ttlMs={45_000} fault={top.fault} />}
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
             {unknown && (
@@ -300,7 +301,7 @@ const NetFlow = () => {
             <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of the board's lean</span>
-              <span title={`The vendor's own ranking (top net impact) — each name's whole day by its minute ticks; Compare's net and Intervals read the same ticks over the regular session. ${VENDOR_TOTAL_NOTE}`}>Net {dayAdv()} · whole day</span>
+              <span title={`The vendor's own ranking (top net impact) — each name's whole day, pre-market included; the pane beside it, Compare's net and Intervals read the regular session only (09:30 on), so a name's figure there can differ. ${VENDOR_TOTAL_NOTE}`}>Day net · pre-mkt in</span>
             </div>
           )}
           {leaders.length === 0 && (

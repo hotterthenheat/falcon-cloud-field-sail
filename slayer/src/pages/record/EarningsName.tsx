@@ -664,7 +664,7 @@ const EarningsName = () => {
                   <span className="text-right font-mono text-[10px] tnum text-textPrimary max-xl:hidden">{Math.round(t.shares).toLocaleString('en-US')}</span>
                   <span className="text-right font-mono text-[10px] tnum font-semibold text-textPrimary">{fmtDollars(t.value)}</span>
                   <span className={`text-right font-mono text-[8px] uppercase tracking-widest max-xl:hidden ${t.plan === 'discretionary' ? (isChosenBuy(t) ? 'text-textPrimary font-bold' : 'text-textSecondary') : 'text-textMuted'}`}>
-                    {t.plan === 'discretionary' ? 'chosen' : t.plan === 'plan' ? 'planned' : 'unstated'}
+                    {t.entity && t.plan !== 'plan' ? 'corporate' : t.plan === 'discretionary' ? 'chosen' : t.plan === 'plan' ? 'planned' : 'unstated'}
                   </span>
                 </div>
               ))}

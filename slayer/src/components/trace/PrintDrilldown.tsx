@@ -32,7 +32,7 @@ import Chip from '../ui/Chip';
 import { isSpreadLeg, sentimentOf } from '../../data/tape';
 import { SESSION_MIN } from '../../data/contractflow';
 import { isoToDate, sessionIsoBack, sessionOnOrBefore, useContractTape, type CardDay, type ContractTape } from '../../data/contractflow';
-import { dteFrom, indexRoot, nyDateOf, sessionEndLabel, sessionIsoAt, sideShares, tapeSessionIso, useAlertTrades, usd as fmtUsd } from '../../data/traceLive';
+import { dteFrom, indexRoot, quoteNoReadWords, sessionPhase, nyDateOf, sessionEndLabel, sessionIsoAt, sideShares, tapeSessionIso, useAlertTrades, usd as fmtUsd } from '../../data/traceLive';
 import { printKind } from '../../data/tape';
 import { isTradingDay, isoDate } from '../../core/calendar';
 import type { NetMetric } from './ContractFlowChart';
@@ -178,6 +178,12 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
     ? ' It is a compression print (OPRA cbmo / mctp, or the vendor’s arbitrage tag) — a package that nets open interest down between members, a call against a put at one strike — so it is not a bet and is not read bullish or bearish.'
     : p.extended
     ? ' It printed after hours, against a thin post-market quote, so it is not read bullish or bearish.'
+    : p.cross
+    ? ' It is a cross trade — pre-arranged between two parties at one price, no side taken on the screen — so it is not read bullish or bearish and is never crowned.'
+    : p.quoteNoRead === 'crossed'
+    ? ` The quote at the fill was crossed (bid $${fixed(p.bid)} at or over ask $${fixed(p.ask)}), so the fill cannot be read against it — no side, whatever the vendor tagged, and no bullish or bearish read.`
+    : p.quoteNoRead === 'stale'
+    ? ' One side of the quote at the fill was more than five minutes old, so the fill cannot be read against it — no side, whatever the vendor tagged, and no bullish or bearish read.'
     : isSpreadLeg(p) && p.dayCard
     ? ' Half or more of its day traded as legs of multi-leg orders — the side a leg prints on is how its package was filled, so the day is not read bullish or bearish; Multi-Leg reads which way the structures went.'
     : isSpreadLeg(p)
@@ -576,6 +582,10 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <SignalBadge tone="neutral">COMPRESSION · NOT A BET</SignalBadge>
             ) : print.extended ? (
               <SignalBadge tone="neutral">AFTER HOURS</SignalBadge>
+            ) : print.cross ? (
+              <SignalBadge tone="neutral">CROSS · NO READ</SignalBadge>
+            ) : print.quoteNoRead ? (
+              <SignalBadge tone="neutral">{print.quoteNoRead === 'crossed' ? 'QUOTE CROSSED · NO READ' : 'QUOTE STALE · NO READ'}</SignalBadge>
             ) : isSpreadLeg(print) && !print.trades ? (
               <SignalBadge tone="neutral">{print.dayCard ? 'SPREAD LEGS · NO READ' : 'SPREAD LEG · NO READ'}</SignalBadge>
             ) : (
@@ -645,7 +655,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               {print.dayCard ? (
                 <Fact label={`Last ${print.dayCard.session} print`} value={print.dayCard.last ? `${print.dayCard.last.side === 'ASK' ? 'paid the offer' : print.dayCard.last.side === 'BID' ? 'hit the bid' : 'mid / no side'} · ${print.dayCard.last.time}` : '—'} valueCls={!print.dayCard.last || print.dayCard.last.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
               ) : (
-                <Fact label={print.trades && print.trades > 1 ? 'This alert, mostly' : 'This print'} value={print.side === 'ASK' ? 'paid the offer' : print.side === 'BID' ? 'hit the bid' : 'mid / no side'} valueCls={print.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
+                <Fact label={print.trades && print.trades > 1 ? 'This alert, mostly' : 'This print'} value={print.quoteNoRead ? quoteNoReadWords(print.quoteNoRead) : print.cross ? 'a cross · no side' : print.side === 'ASK' ? 'paid the offer' : print.side === 'BID' ? 'hit the bid' : 'mid / no side'} valueCls={print.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
               )}
               {/* the contract's whole session by side — the same history row the table reads, mid shown on its own */}
               <Fact label={isLiveDay(dateIso) ? "Today's volume by side" : `${shortDay(dateIso)} volume by side`} value={dayLean ? <span title={dayLean.title}>{dayLean.text}</span> : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
@@ -666,7 +676,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               {/* ONE FIGURE, ITS SOURCE SAID (audit round 4: 146,691 on the Screener, 146,779 on the card, 146,713 elsewhere — three
                   "today's volume"): the card's is the contract's session row (after-hours prints included); the Screener's is
                   the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
-              <Fact label={day && day.vol > 0 ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt)} ET` : ''}, after hours in` : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
+              <Fact label={day && day.vol > 0 ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt)} ET` : ''}${isLiveDay(dateIso) && sessionPhase() !== 'after' && sessionPhase() !== 'closed' ? '' : ', after-hours prints included'}` : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
               <Fact label={day && day.vol > 0 ? 'Vol ÷ OI' : print.dayCard ? 'Vol ÷ OI' : `Vol ÷ OI · at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={(() => {
                   /* never "0.00x" for 21 on 5,164 (audit round 8) */

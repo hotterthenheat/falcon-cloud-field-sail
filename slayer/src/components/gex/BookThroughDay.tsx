@@ -490,7 +490,7 @@ const BookThroughDay = ({ snapshot, bars: barsProp, scope, part = false, at, dat
             {part ? (
               /* NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "'the book' … give me informative names as to what they do"):
                  the dealers' hedging through the day — amplifying or absorbing, as the figure beside it says */
-              <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap" data-through-part-word title={kindTitle}>
+              <span className="text-[12px] font-semibold text-textPrimary sm:whitespace-nowrap min-w-0" data-through-part-word title={kindTitle}>
                 {kindWord}
               </span>
             ) : (

@@ -75,6 +75,9 @@ export interface FlipRead {
   range: number;
   /** How the flip was found — 'repriced' (Black-Scholes at each leg's vol) or 'cumulative' (strike-ordered running net) */
   method: 'repriced' | 'cumulative';
+  /** Every crossing inside the range, low to high — more than one when the profile crosses zero more than once (the
+      flip is then chosen with hysteresis, data/flipLevel.ts) */
+  crossings?: number[];
 }
 
 const RANGE = 0.1;
@@ -183,6 +186,7 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: numbe
   const ys = xs.map(at);
   let best: number | null = null;
   let bestD = Infinity;
+  const all: number[] = [];
   for (let i = 1; i < xs.length; i++) {
     const y0 = ys[i - 1];
     const y1 = ys[i];
@@ -200,13 +204,14 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: numbe
       } else b = m;
     }
     const x = (a + b) / 2;
+    all.push(x);
     const d = Math.abs(x - spot);
     if (d < bestD) {
       bestD = d;
       best = x;
     }
   }
-  return { flip: best, netAtSpot: net0, beyond: best == null ? null : net0 < 0 ? 'short' : 'long', range, method: 'repriced' };
+  return { flip: best, netAtSpot: net0, beyond: best == null ? null : net0 < 0 ? 'short' : 'long', range, method: 'repriced', crossings: all };
 }
 
 /** The fallback when no vol is on hand: the price where the strike-ordered running net (from the lowest strike up)

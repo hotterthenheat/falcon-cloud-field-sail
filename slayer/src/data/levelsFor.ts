@@ -16,6 +16,7 @@ import { levelFlip, regimeOfNet } from './flipLevel';
 import { levelsBook, levelsDate, levelsWords } from './bookWindow';
 import { ensureScopeDates, scopeDatesPending, snapshotFor, useBookRev } from './uwBook';
 import { LEVELS_WINDOW } from './roomLevels';
+import { nyIsoDate } from '../core/nyTime';
 import type { LevelsScope } from './levelsScope';
 
 export interface TickerLevels {
@@ -40,11 +41,51 @@ export interface TickerLevels {
   regime: 'LONG' | 'SHORT' | null;
   /** False while some of the scope's expiries are still loading — the figures are then provisional */
   complete: boolean;
+  /** Another crossing of the profile inside ±10% when it crosses more than once — the flip keeps its own (FLIP_RULE) */
+  flipSecond: number | null;
+  /** Today's moves of a level from one strike (or flip price) to another, newest last: "call wall moved 765 → 762 at 13:08" */
+  moves: LevelMove[];
   /** One strike's net GEX on these contracts, RETAIL sign — null when the strike is not on them */
   netAt: (strike: number) => number | null;
   /** One strike's call leg, put leg and net on these contracts, RETAIL sign — a wall is printed by the leg that makes
       it (calls for the call wall, puts for the put wall), the supreme by its net (the sixth audit's m7) */
   legsAt: (strike: number) => { call: number; put: number; net: number } | null;
+}
+
+export interface LevelMove {
+  level: 'call wall' | 'put wall' | 'supreme' | 'flip';
+  from: number;
+  to: number;
+  /** Epoch ms the move was seen */
+  at: number;
+}
+
+/*
+  A LEVEL THAT CHANGES STRIKE TODAY SAYS SO (the ninth audit's retail finding: the call wall read 765 at 12:55 and 762 at
+  13:08 with no note). Each final reading of a name's levels in a scope is compared with the last one this page saw today;
+  a level on a new strike is kept as a move (the flip's own moves come from flipLevel's hysteresis). Kept for the New York
+  day, in this page.
+*/
+const lastSeen = new Map<string, { callWall: number | null; putWall: number | null; supreme: number; flip: number | null; moves: LevelMove[] }>();
+function trackMoves(key: string, lv: { callWall: number | null; putWall: number | null; supreme: number; flip: number | null; complete: boolean }, flipMoved: { from: number; at: number } | null | undefined): LevelMove[] {
+  const prev = lastSeen.get(key);
+  if (!lv.complete) return prev?.moves ?? [];
+  const moves = [...(prev?.moves ?? [])];
+  const now = Date.now();
+  const note = (level: LevelMove['level'], from: number | null | undefined, to: number | null) => {
+    if (from == null || to == null || Math.abs(from - to) < 1e-9) return;
+    moves.push({ level, from, to, at: now });
+  };
+  if (prev) {
+    note('call wall', prev.callWall, lv.callWall);
+    note('put wall', prev.putWall, lv.putWall);
+    note('supreme', prev.supreme, lv.supreme);
+  }
+  if (flipMoved && lv.flip != null && !moves.some(m => m.level === 'flip' && Math.abs(m.to - lv.flip!) < 1e-6 && Math.abs(m.from - flipMoved.from) < 1e-6))
+    moves.push({ level: 'flip', from: flipMoved.from, to: lv.flip, at: flipMoved.at });
+  const kept = moves.slice(-8);
+  lastSeen.set(key, { callWall: lv.callWall, putWall: lv.putWall, supreme: lv.supreme, flip: lv.flip, moves: kept });
+  return kept;
 }
 
 /** One name's levels for a scope — null until its book is live */
@@ -76,6 +117,9 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
   const lv = profile.levels;
   const hasCall = book.chain.some(n => n.callGex);
   const hasPut = book.chain.some(n => n.putGex);
+  const complete = flip.complete && !scopeDatesPending(t, scope) && (scope === 'ALL' || levelsDate(snap, scope) != null);
+  const date = levelsDate(snap, scope);
+  const moves = trackMoves(`${t}|${scope}|${date ?? 'ALL'}|${nyIsoDate()}`, { callWall: hasCall ? lv.callWall : null, putWall: hasPut ? lv.putWall : null, supreme: lv.supreme, flip: flip.flip, complete }, flip.moved);
   return {
     ticker: t,
     scope,
@@ -98,7 +142,9 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
       const r = (v: number) => (v === 0 ? 0 : -v);
       return n ? { call: r(n.callGex), put: r(n.putGex), net: r(n.netGex) } : null;
     },
-    complete: flip.complete && !scopeDatesPending(t, scope) && (scope === 'ALL' || levelsDate(snap, scope) != null),
+    complete,
+    flipSecond: flip.second ?? null,
+    moves,
   };
 }
 

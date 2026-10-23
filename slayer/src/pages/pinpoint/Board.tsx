@@ -37,7 +37,7 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast, peekPriceAt, refreshBoardPrices } from '../../data/uwBook';
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { fmtDistance, impliedDaySigma } from '../../data/atr';
 import { readLevelsScope } from '../../data/levelsScope';
@@ -169,6 +169,12 @@ const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
         <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
         <DayChange data={data} lead />
       </span>
+      {/* THE PRICE'S OWN TIME (the ninth audit's m2) — when the price was printed, not when the board was built */}
+      {!ext && data.priceAt != null && (
+        <span className="text-[10px] text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true })} ET — the board refreshes prices every 10s and the levels every 90s`} data-price-at={data.priceAt}>
+          as of {nyClock(data.priceAt)}
+        </span>
+      )}
       <DayChange data={data} extOnly />
     </TickFigure>
   );
@@ -206,7 +212,7 @@ const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   /* The shell's words, not "LONG GAMMA" (2026-09-09): plain English on Pinpoint */
   return (
     <span className="font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
-      {data.regime === 'SHORT' ? 'amplifying moves' : 'absorbing moves'}
+      {data.regime === 'SHORT' ? 'amplifies' : 'absorbs'}
       <ExpiryMark data={data} />
     </span>
   );
@@ -231,6 +237,17 @@ const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
 /* EVERY LEVEL THE NEAREST WALL IS, IN THE ONE ORDER (core/walls.ts levelRoles — supreme · call wall · put wall; the fourth
    audit: "PUT WALL · SUPREME", and SOFI's All-expiries 15, both walls, read only one). Two lines when it is more than one
    level, so the distance is never cut ("277 +$" at 1440) */
+/** The roles in the one order, the two walls on one strike said once: "supreme · call & put wall" */
+const shortRoles = (roles: readonly string[]): string[] => {
+  if (!(roles.includes('call wall') && roles.includes('put wall'))) return [...roles];
+  const out: string[] = [];
+  for (const r of roles) {
+    if (r === 'put wall') continue;
+    out.push(r === 'call wall' ? 'call & put wall' : r);
+  }
+  return out;
+};
+
 const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (data?.pending) return <Pending data={data} />;
   if (!data) return null;
@@ -241,14 +258,15 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
   const place = wallPlace(data.nearest.strike, data.spot);
   const placeWords = [
     `${fmtStrike(data.nearest.strike)} · ${roles.join(' · ')} · ${place === 'at' ? 'at price' : `${place} price`}`,
-    ...(roles.includes('call wall') ? [`Call wall: ${callWallWordsAt(place)}.`] : []),
-    ...(roles.includes('put wall') ? [`Put wall: ${putWallWordsAt(place)}.`] : []),
+    ...(roles.includes('call wall') ? [`Call wall: ${callWallWordsAt(place, data.nearestNet)}.`] : []),
+    ...(roles.includes('put wall') ? [`Put wall: ${putWallWordsAt(place, data.nearestNet)}.`] : []),
     ...(roles.includes('supreme') ? ['Supreme: the strike with the most hedging of all — price is drawn to it near expiry.'] : []),
   ].join('\n');
   const label = (
-    <span className="text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title={placeWords}>
-      {roles.map((r, i) => (
-        <span key={r} style={{ color: ink(r) }}>
+    <span className="text-[9px] font-bold uppercase tracking-wide leading-[11px] whitespace-normal" title={placeWords}>
+      {/* both walls on one strike read "call & put wall" — the three roles fit the column at 1440 (the ninth audit) */}
+      {shortRoles(roles).map((r, i) => (
+        <span key={r} style={{ color: ink(r === 'call & put wall' ? 'call wall' : r) }}>
           {i > 0 && <span className="text-textMuted"> · </span>}
           {r}
         </span>
@@ -286,12 +304,12 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
       <span className="inline-flex items-baseline gap-2">
         <span className="text-[11px] font-semibold text-textPrimary">{fmtStrike(w.strike)}</span>
         {kind && (
-          <span className="text-[8px] uppercase tracking-widest" style={{ color: ink }} title={kindTip(w.roles?.[0] ?? kind)}>
-            {kind}
+          <span className="text-[8px] uppercase tracking-wide leading-[10px] whitespace-normal" style={{ color: ink }} title={kindTip(w.roles?.[0] ?? kind)}>
+            {w.roles?.length ? shortRoles(w.roles).join(' · ') : kind}
           </span>
         )}
       </span>
-      <span className="text-[10px] text-textSecondary whitespace-nowrap">
+      <span className="text-[10px] leading-[12px] text-textSecondary whitespace-normal">
         {/* a strike the session already traded through is reached, not a chance (the eighth audit) */}
         {w.atPrice ? 'at price' : w.today ? <span title={`Today's session has already traded through ${fmtStrike(w.strike)}${w.today.tests != null ? ` — ${todayWords(w.today)}` : ''}; ${chanceLabel(w.reach)} to touch it again`}>reached today</span> : `${chanceLabel(w.reach)} ${w.horizon ? `reached ${w.horizon}` : 'reached'}`}
         {w.isShelf && (
@@ -357,14 +375,14 @@ const CrossCell = ({ data }: ICellRendererParams<BoardRow>) =>
       className="font-mono text-[11px] tnum tabular-nums text-textSecondary"
       title={data.crossWhy ?? `${recordPossessive().replace(/^t/, 'T')} session against ${data.crossFlip != null ? `the ${fmtStrike(data.crossFlip)} flip of ` : ''}${data.crossLabel}`}
     >
-      {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? (data.crossEarly ? 'counts from 9:40' : '—') : data.crossFlip == null ? 'no flip' : `${data.crossings}×`}
+      {data.crossWhy ? (data.crossWhy.startsWith('The session has not opened') ? 'opens 9:30' : 'not available') : data.crossings == null ? (data.crossEarly ? 'counts from 9:40' : '—') : data.crossFlip == null ? 'no flip' : `crossed ${data.crossings}×`}
     </span>
   ) : null;
 
 /** The session's closes as one quiet line — the day's shape, not a chart */
 const SparkCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data || data.spark.length < 2) return <span className="font-mono text-[10px] text-textMuted">—</span>;
-  const W = 120;
+  const W = 56;
   const H = 26;
   const min = Math.min(...data.spark);
   const max = Math.max(...data.spark);
@@ -535,8 +553,11 @@ const Board = () => {
     rebuild(names, true);
   }, [names, rebuild, bookRev]);
   useEffect(() => {
+    /* the prices every scan, in one call (uwBook refreshBoardPrices — the ninth audit's m2); the levels on their own cadence */
+    refreshBoardPrices(names);
     const id = window.setInterval(() => {
       lastRef.current = Date.now();
+      refreshBoardPrices(names);
       rebuild(names, false);
     }, SCAN_INTERVAL_MS);
     return () => window.clearInterval(id);
@@ -599,18 +620,19 @@ const Board = () => {
      the day's path, crossings, positions) leave the grid there. Anything past the screen scrolls inside the grid. */
   const phone = useIsPhone();
   const levelsScope = useLevelsScope();
+  const anyMine = rows.some(r => r.yours.positions > 0);
   const recKey = `${recordDay().date}|${recordDay().isToday}|${recordDay().done}|${bellDay().head}|${todayScopeLabel()}`;
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
-      { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 104, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
-      { headerName: 'Price', field: 'spot', flex: 1, minWidth: 156, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
-      { headerName: levelsScope === 'ALL' ? 'Hedging · all expiries' : todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 0.8, minWidth: 116, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
-      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : `Net GEX · ${todayScopeLabel().toLowerCase()}`, field: 'netGex', flex: 0.9, minWidth: 100, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
+      { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 100, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
+      { headerName: 'Price', field: 'spot', flex: 0.9, minWidth: 108, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
+      { headerName: levelsScope === 'ALL' ? 'Hedging · all expiries' : todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 0.6, minWidth: 82, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
+      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : `Net GEX · ${todayScopeLabel().toLowerCase()}`, field: 'netGex', flex: 0.7, minWidth: 84, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
-        flex: 1.1,
-        minWidth: 132,
+        flex: 0.9,
+        minWidth: 118,
         cellRenderer: FlipCell,
         sort: 'asc',
         headerTooltip: "The flip: the price where the name's net gamma, re-priced at that price, crosses zero — where dealer hedging switches between absorbing and amplifying moves — and how far it is from the current price. Names closest to their flip — as a share of price, whatever the ruler prints — come first; \"none nearby\" means no crossing within 10%, and those come last",
@@ -620,29 +642,29 @@ const Board = () => {
       {
         headerName: 'Nearest wall',
         field: 'nearest',
-        flex: 1.2,
-        minWidth: 148,
+        flex: 1.4,
+        minWidth: 150,
         cellRenderer: WallCell,
         cellDataType: false,
         headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: levelsScope === 'ALL' ? 'Supreme · all exp.' : todayScopeLabel() === 'Today' ? 'Supreme · today' : 'Supreme · next', field: 'supreme', flex: 0.7, minWidth: 90, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
+      { headerName: levelsScope === 'ALL' ? 'Supreme · all' : todayScopeLabel() === 'Today' ? 'Supreme · today' : 'Supreme · next', field: 'supreme', flex: 0.5, minWidth: 72, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
       {
         headerName: 'Watch first',
         field: 'watch',
-        flex: 1.4,
-        minWidth: 188,
+        flex: 1.6,
+        minWidth: 168,
         cellRenderer: WatchCell,
         cellDataType: false,
         headerTooltip: `The one price to watch first: the strike price is most likely to reach with the most hedging behind it. "Reached" is the chance price gets there ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'}; "% of the top wall" is its size against the biggest wall on this name; the dollar figure is the hedging parked there`,
         // The name whose first target matters most, first
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
-      { headerName: bellDay().head, field: 'bellShare', flex: 0.9, minWidth: 108, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
+      { headerName: bellDay().head, field: 'bellShare', flex: 0.7, minWidth: 82, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
       /* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23): before today's open these are the last session's */
-      { headerName: recordDay().isToday ? 'Times price crossed the flip today' : `Times price crossed the flip · ${longDay(recordDay().date)}`, field: 'crossings', flex: 1.1, minWidth: 150, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session — the flip of the contracts that were live in it (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
-      { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 1.2, minWidth: 140, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
+      { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${longDay(recordDay().date)}`, field: 'crossings', flex: 0.6, minWidth: 92, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session: one-minute closes changing side of it — the same count the Map's report prints on its flip row ("crossed N×"). The flip is the one of the contracts that were live in that session (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
+      { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 0.5, minWidth: 80, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
       {
         headerName: 'Your positions',
         field: 'yours',
@@ -654,12 +676,15 @@ const Board = () => {
         comparator: (a: BoardRow['yours'], b: BoardRow['yours']) => a.contracts - b.contracts,
       },
     ];
-    if (!phone) return cols;
+    /* EVERY COLUMN ON SCREEN AT 1440 (the ninth audit: "SUPREME · CALL WALL · PU", the crossings column off-screen): the
+       columns are narrower, the long cells wrap to a second line, and "Your positions" is a column only once a name on
+       the board carries one */
+    if (!phone) return anyMine ? cols : cols.filter(c => c.field !== 'yours');
     const order = ['ticker', 'spot', 'regime', 'netGex', 'flipDistPct', 'nearest', 'supreme', 'bellShare'];
     return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
     // the heads name the session on record and the bell's day — they roll at the open and the close (recKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, levelsScope, recKey]);
+  }, [phone, levelsScope, recKey, anyMine]);
   /* a long head ("Supreme · all exp.", "Net GEX · today") wraps to two lines rather than cut (the sixth audit's m11) */
   const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip', wrapHeaderText: true, autoHeaderHeight: true }), []);
 

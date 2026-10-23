@@ -113,6 +113,8 @@ interface Entry {
   termDte?: Record<string, number>;
   /** The whole book's gamma is the vendor's live open-interest book (spot-exposures/strike), not the morning snapshot */
   gammaLive?: boolean;
+  /** When the price in `spot` was printed (epoch ms): the state's tape time, the newest bar's, or the price refresh's quote */
+  priceAt?: number;
 }
 
 const cache = new Map<string, Entry>();
@@ -1045,6 +1047,60 @@ export const bookDatesIn = (ticker: string): boolean => {
   return !!e && (!!e.everFull || (e.status === 'live' && !e.wantFull));
 };
 
+/** When the price Pinpoint reads for a name was printed (epoch ms) — null until its book is live */
+export function peekPriceAt(ticker: string): number | null {
+  const e = peekEntry(ticker);
+  return e?.status === 'live' && e.priceAt ? e.priceAt : null;
+}
+
+/*
+  THE BOARD'S PRICES EVERY TEN SECONDS, ONE CALL (the ninth audit's m2, 2026-10-23: the Board's price could be 90s old
+  under "updated … every 10s" — a Board name's book refreshes every 90s). In the regular session every live name on the
+  Board takes its last price from one /screener/stocks call (the quote's last trade, quote_time — fresh while the
+  stock-state is stalled), so the price, every distance and "at price" move on at the Board's own cadence; the levels
+  refresh on theirs. Names whose book is not live yet are left alone.
+*/
+const pricedAsk = new Map<string, number>();
+const PRICES_MS = 10_000;
+export function refreshBoardPrices(tickers: readonly string[]): void {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  /* per name: a name asked in the last ten seconds (by the Board or the page on it) is not asked again */
+  const live = tickers.map(t => t.toUpperCase()).filter(t => {
+    const e = cache.get(t);
+    return e?.status === 'live' && e.state?.market_time === 'regular' && now - (pricedAsk.get(t) ?? 0) >= PRICES_MS - 500;
+  });
+  if (!live.length) return;
+  const [y, m, d] = nyIsoDate().split('-').map(Number);
+  if (!isTradingDay(new Date(y, m - 1, d)) || nyMinutes() < OPEN_MIN || nyMinutes() >= CLOSE_MIN) return;
+  for (const t of live) pricedAsk.set(t, now);
+  void (async () => {
+    let changed = false;
+    for (let i = 0; i < live.length; i += 50) {
+      const part = live.slice(i, i + 50);
+      const res = await uwCall(`/screener/stocks?ticker=${part.map(encodeURIComponent).join(',')}`);
+      const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
+      for (const r of rows) {
+        const t = String(r.ticker ?? '').toUpperCase();
+        const e = cache.get(t);
+        const px = num(r.close);
+        const at = num(r.quote_time);
+        if (!e || e.status !== 'live' || !(px > 0) || !(at > 0) || String(r.date ?? '') !== nyIsoDate()) continue;
+        if (e.priceAt && at <= e.priceAt) continue;
+        if (Math.abs(px - e.spot) > e.spot * 0.2) continue;
+        e.priceAt = at;
+        if (px === e.spot) continue;
+        e.spot = px;
+        e.last = px;
+        if (e.state) e.state = { ...e.state, close: px };
+        applyDay(e);
+        changed = true;
+      }
+    }
+    if (changed) emit();
+  })().catch(() => {});
+}
+
 export function peekSpot(ticker: string): number | null {
   const e = peekEntry(ticker);
   return e?.status === 'live' && e.spot > 0 ? e.spot : null;
@@ -1489,7 +1545,13 @@ export function usePinpointFeed(ticker: string | null | undefined): MarketSnapsh
     ensureBook(ticker, 'full');
     startPinpoint(ticker);
     const id = window.setInterval(() => ensureBook(ticker, 'full'), 30_000);
-    return () => window.clearInterval(id);
+    /* the name on screen's price every ten seconds too, as the Board's (refreshBoardPrices) — so "at price" and every
+       distance agree between the Board and the page the name is open on */
+    const px = window.setInterval(() => refreshBoardPrices([ticker]), PRICES_MS);
+    return () => {
+      window.clearInterval(id);
+      window.clearInterval(px);
+    };
   }, [ticker]);
   return useMemo(() => {
     if (!ticker) return null;
@@ -1540,7 +1602,11 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     /* A WHOLE DAY OF BARS, NOT THE LAST FEW HOURS (the ship pass, 2026-10-22): the feed hands bars newest first,
        post-market included — after the bell 500 one-minute bars reached back only to ~11:40, so the day's chart and
        "How the levels held" started late morning. 1000 / 200 cover pre-market, the session and the evening. */
-    whalesBars(ticker, mode === 'full' ? '1m' : '5m', mode === 'full' ? 1000 : 200).catch(() => [] as UwBar[]),
+    /* ONE-MINUTE BARS FOR EVERY NAME (the ninth audit's M1/M2, 2026-10-23): a Board name read 5-minute bars, so its
+       "Times price crossed the flip" and the Map's "How the levels held" — opened from the Board, or after a Board refresh
+       re-read a full name in board mode — counted 5-minute bars (SPY 9/7/2 against 14/10/4) where one-minute counts are
+       promised. One /ohlc/1m call a name a refresh, the same URL the full book and the Dossier read (one proxy copy). */
+    whalesBars(ticker, '1m', 1000).catch(() => [] as UwBar[]),
     liveGamma(ticker, null, hot).catch(() => null),
   ]);
   if (!still()) return;
@@ -1558,7 +1624,12 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const tapeMs = Date.parse(String((state as { tape_time?: string }).tape_time ?? ''));
   const newest = barsSplit.tape[barsSplit.tape.length - 1] ?? barsSplit.cash[barsSplit.cash.length - 1];
   const stateStalled = state.market_time === 'regular' && !!newest && Number.isFinite(tapeMs) && newest.time * 1000 + 60_000 - tapeMs > 120_000;
-  const last = stateStalled ? newest!.close : num(state.close);
+  const barOrState = stateStalled ? newest!.close : num(state.close);
+  const readAt = stateStalled ? newest!.time * 1000 + 60_000 : Number.isFinite(tapeMs) ? tapeMs : Date.now();
+  /* a newer price already in hand (the Board's ten-second refresh, refreshBoardPrices) is not stepped back by a reload */
+  const held = cache.get(ticker);
+  const keepHeld = state.market_time === 'regular' && held?.status === 'live' && !!held.priceAt && held.priceAt > readAt && held.spot > 0;
+  const last = keepHeld ? held!.spot : barOrState;
   const mt = typeof state.market_time === 'string' ? state.market_time : undefined;
   const offPhase = dayChangeOf({ close: last, prev_close: num(state.prev_close), market_time: mt }, null).phase;
   const regClose = num(state.prev_close);
@@ -1575,13 +1646,16 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     ticker,
     status: 'live',
     at: Date.now(),
-    full: false,
+    /* A REFRESH NEVER DOWNGRADES OR BLANKS (the ninth audit's M1): a full book read again stays full — its dates and
+       their contracts are carried below and re-read in place — so nothing on the page drops back to "loading" */
+    full: !!prevEntry?.full && (mode === 'full' || !!prevEntry?.wantFull),
     wantFull: mode === 'full' || !!prevEntry?.wantFull,
     spot,
     prev,
     changePct: prev > 0 ? ((spot - prev) / prev) * 100 : 0,
     state: { close: last, prev_close: num(state.prev_close), market_time: mt },
     last,
+    priceAt: keepHeld ? held!.priceAt : readAt,
     iv: iv > 0 ? iv : 0,
     impliedMove: impliedMoveOf(Array.isArray(termRows) ? termRows : [], nyIsoDate(), spot),
     termIv: termIvOf(Array.isArray(termRows) ? termRows : []) ?? prevEntry?.termIv,
@@ -1617,7 +1691,10 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
      per bar — do it after the page has the live book, not in front of the paint. */
   const histTicker = ticker;
   const histChain = entry.all;
-  const histCandles = entry.tape.length >= 2 ? entry.tape : entry.candles;
+  const histAll = entry.tape.length >= 2 ? entry.tape : entry.candles;
+  /* a name read for the Board alone keeps its replay book at five minutes (one object per strike per bar) — the bars
+     are one-minute for the counts, the book it never draws need not be */
+  const histCandles = entry.wantFull ? histAll : histAll.filter((c, i) => i === histAll.length - 1 || Math.floor(c.time / 60) % 5 === 0);
   const histFlow = entry.flow;
   const buildHist = () => {
     if (gen.get(histTicker) !== token) return;
@@ -2116,6 +2193,9 @@ export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
     if (mode === 'full') e.wantFull = true;
     return;
   }
+  /* NEVER A DOWNGRADE (the ninth audit's M1): a name the Map holds in full is refreshed in full whoever asks — a Board
+     caller's 'board' read used to reload it with the Board's mode */
+  if (e && (e.full || e.wantFull)) mode = 'full';
   const age = e ? Date.now() - e.at : Infinity;
   const limit = e?.status === 'error' ? 15_000 : e?.full ? FULL_MS : BOARD_MS;
   const stale = !e || age > limit;

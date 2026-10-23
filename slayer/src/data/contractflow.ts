@@ -27,7 +27,7 @@
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';
 import { isoDate, isTradingDay } from '../core/calendar';
-import { liveTrades, sideOfTags, printCondition, sessionEndMin, tapeSessionIso } from './traceLive';
+import { liveTrades, sideOfTags, printCondition, quoteNoReadOf, sessionEndMin, tapeSessionIso } from './traceLive';
 
 export type FlowSide = 'BID' | 'MID' | 'ASK';
 
@@ -315,7 +315,8 @@ export async function loadContractTape(occ: string, ticker: string, dateIso: str
         min: at?.min ?? 0,
         price,
         size: num(r.size),
-        side: sideOfTags(r.tags, price, bid, ask),
+        /* a crossed quote, or a side quoted minutes before the fill, gives no read (audit round 9) */
+        side: quoteNoReadOf(r, price, bid, ask, Date.parse(String(r.executed_at ?? ''))) ? 'MID' : sideOfTags(r.tags, price, bid, ask),
         premium: num(r.premium) || price * num(r.size) * 100,
         bid,
         ask,

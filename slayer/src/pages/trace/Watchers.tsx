@@ -39,7 +39,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { buildCatches, floorPackaged, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
+import { buildCatches, floorPackaged, notABetHint, notABetLabel, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
 import { dayLean, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, dayPos, earnWords, shyPct } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
@@ -61,7 +61,7 @@ import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import ReasonDoor from '../../components/trace/ReasonDoor';
 import ReadDoor from '../../components/trace/ReadDoor';
-import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
 import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { WatchersGuide } from '../../components/trace/TraceGuide';
@@ -72,7 +72,7 @@ import { expiryLabel, pctSigned } from '../../core/format';
 
 /** A day's lean with the figure it is called on (audit round 7: "bid", "ask", "even" with no share) — the one lean rule */
 const leanText = (r: BookContract): string => {
-  if (notABet(r)) return floorPackaged(r) ? 'floor package · no lean' : `spread legs ${Math.round(r.multiPct)}% · no lean`;
+  if (notABet(r)) return floorPackaged(r) ? 'floor package · no lean' : r.multiPct >= 50 ? `spread legs ${Math.round(r.multiPct)}% · no lean` : `a cross ${Math.round(r.crossPct ?? 0)}% · no lean`;
   const l = dayLean(r);
   if (l.lean === 'ASK') return `ask ${Math.round(l.askSided)}%`;
   if (l.lean === 'BID') return `bid ${Math.round(l.bidSided)}%`;
@@ -201,7 +201,7 @@ const Watchers = () => {
 
   const rows = useMemo(() => {
     const nq = normSymbol(query);
-    return catches.filter(a => (rule === 'ALL' || a.rules.includes(rule)) && (side === 'ALL' || a.row.right === side) && (nq === '' || normSymbol(`${a.row.ticker}${a.row.strike}${a.row.right}`).includes(nq)));
+    return catches.filter(a => (rule === 'ALL' || a.rules.includes(rule)) && (side === 'ALL' || a.row.right === side) && (nq === '' || matchesContract(query, a.row)));
   }, [catches, rule, side, query]);
   const shown = rows;
 
@@ -367,7 +367,7 @@ const Watchers = () => {
         sortValue: a => a.row.askPct,
         // The tape's rule: the side in one ink
         /* THE LEAN PRINTS ITS FIGURE (audit round 7: "bid", "ask", "even" with no share) — the house lean cell, the one rule */
-        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} legsPct={a.row.multiPct} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' || a.side === 'LEGS' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
+        render: a => (a.row.sideVol ? <LeanCell askPct={a.row.askPct} split={a.row.sideVol} legsPct={a.row.multiPct} crossPct={a.row.crossPct} /> : <span className={`text-[11px] ${a.side === 'EVEN' || a.side === 'MID' || a.side === 'LEGS' ? 'text-textMuted' : 'text-textPrimary'}`}>{leanText(a.row)}</span>),
       },
       {
         key: 'vol',
@@ -478,7 +478,7 @@ const Watchers = () => {
               </Champion>
             )}
             {champs.packaged && (!champs.all || champs.packaged.premium > champs.all.premium) && (
-              <Champion label={floorPackaged(champs.packaged.row) ? 'Floor packages · not a bet' : 'Spread legs · not a bet'} ink="plain" title={floorPackaged(champs.packaged.row) ? `More premium, but ${Math.round(champs.packaged.row.floorPct)}% of its day traded on the floor and ${Math.round(champs.packaged.row.multiPct)}% in multi-leg packages — the shape of compression (OPRA cbmo), which nets open interest down, not a directional bet` : `More premium, but ${spreadLegHint(champs.packaged.row)}`} onOpen={() => setOpenKey(champs.packaged!.row.key)} testId="packaged">
+              <Champion label={`${notABetLabel([champs.packaged.row])} · not a bet`} ink="plain" title={`More premium, but ${notABetHint(champs.packaged.row)}`} onOpen={() => setOpenKey(champs.packaged!.row.key)} testId="packaged">
                 {pill(champs.packaged)}
               </Champion>
             )}

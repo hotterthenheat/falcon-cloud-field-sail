@@ -44,7 +44,7 @@ export function sourceWords(ticker?: string): { short: string; long: string; liv
   if (isLive(ticker))
     return {
       short: 'Unusual Whales',
-      long: "Unusual Whales' live open-interest book: each strike's gamma is the vendor's own (open interest × gamma × 100 × spot² × 1%, by strike and by expiry — spot-exposures); delta, vanna and charm are its greek-exposure rows; open interest, vega and each contract's own implied vol are its option-contracts rows",
+      long: "Unusual Whales' live open-interest book: each strike's gamma is the vendor's own (open interest × gamma × 100 × spot² × 1%, by strike and by expiry — spot-exposures); delta, vanna and charm are its greek-exposure rows; open interest, vega and each contract's own implied vol are its option-contracts rows. The whole book is the sum of its expiries' own rows (spot-exposures by strike and expiry), not the vendor's separate whole-book total, which is a second snapshot and can differ (MU +$212M against +$155M summed)",
       live: true,
     };
   return { short: 'House book', long: "the terminal's own chain, open interest and tape, built in the terminal", live: false };
