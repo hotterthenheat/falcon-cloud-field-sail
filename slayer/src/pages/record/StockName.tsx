@@ -85,7 +85,9 @@ import { untilWords } from '../../data/earningsFeed';
 import NameBooks from '../../components/record/NameBooks';
 import { StockFacts } from '../../components/vendor/LiveDesk';
 import { stockBookKey, useVendorRow } from '../../data/vendorFeed';
-import { nyIsoDate, nyWallTime } from '../../core/nyTime';
+import { nyClock, nyIsoDate, nyWallTime } from '../../core/nyTime';
+import { LEVEL_ORDER, type LevelRole } from '../../core/walls';
+import type { TickerLevels } from '../../data/levelsFor';
 import { statHelp } from '../../components/record/statHelp';
 import { useLiveQuote } from '../../data/liveQuote';
 
@@ -311,14 +313,62 @@ const LEVEL_WORDS: Record<string, string> = {
 };
 /* the flip is drawn only when levelsFor found one — null means net gamma does not cross zero within ±10%, and the scale
    says so instead of putting a "flip" on spot (the third audit, 2026-10-23: GME read "25.14 FLIP · 25.14 SPOT") */
-const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number; putWall: number | null; flip: number | null; callWall: number | null; supreme: number }) => {
+/* ONE ORDER, EVERY ROLE (round 6, the house's LEVEL_ORDER in core/walls.ts: supreme · call wall · put wall · flip): a strike
+   that is several levels is one mark naming all of them in that order (AAPL's 350 "supreme · call wall"), and each
+   figure is the one Pinpoint prints — the supreme by its net, a wall by the leg that makes it */
+type LegsAt = TickerLevels['legsAt'];
+const ROLE_KEY: Record<LevelRole, string> = { supreme: 'supreme', 'call wall': 'call', 'put wall': 'put', flip: 'flip' };
+const ROLE_INK: Record<LevelRole, string> = { supreme: 'rgb(var(--supreme))', 'call wall': 'rgb(var(--bull))', 'put wall': 'rgb(var(--bear))', flip: SILVER };
+const levelPrice = (p: number) => (Number.isInteger(p * 2) ? String(p) : p.toFixed(2));
+/** The figure behind one role at its strike: "net +$1.2B" for the supreme, "calls +$…" / "puts −$…" for a wall */
+const roleFigure = (role: LevelRole, strike: number, legsAt?: LegsAt): string | null => {
+  const legs = legsAt?.(strike);
+  if (!legs) return null;
+  if (role === 'supreme') return `net ${legs.net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(legs.net))}`;
+  if (role === 'call wall') return `calls ${legs.call >= 0 ? '+' : '−'}${fmtMoney(Math.abs(legs.call))}`;
+  if (role === 'put wall') return `puts ${legs.put >= 0 ? '+' : '−'}${fmtMoney(Math.abs(legs.put))}`;
+  return null;
+};
+/** The scope's levels grouped by strike, in LEVEL_ORDER: each group one price and every role it holds */
+const levelGroups = (lv: { supreme: number; callWall: number | null; putWall: number | null; flip: number | null }) => {
+  const at: Record<LevelRole, number | null> = { supreme: lv.supreme, 'call wall': lv.callWall, 'put wall': lv.putWall, flip: lv.flip };
+  const groups: { price: number; roles: LevelRole[] }[] = [];
+  for (const role of LEVEL_ORDER) {
+    const price = at[role];
+    if (price == null) continue;
+    const g = groups.find(x => Math.abs(x.price - price) < 1e-9);
+    if (g) g.roles.push(role);
+    else groups.push({ price, roles: [role] });
+  }
+  return groups;
+};
+/** The levels as one line, in the house order: "350 supreme · call wall (net +$… · calls +$…) · 340 put wall (puts −$…) · flip 340.82" */
+const LevelsLine = ({ levels }: { levels: Pick<TickerLevels, 'supreme' | 'callWall' | 'putWall' | 'flip' | 'legsAt'> }) => (
+  <p className="mt-1 font-mono text-[10px] tnum text-textSecondary" data-stock-levels-line>
+    {levelGroups(levels).map((g, i) => {
+      const figs = g.roles.map(r => roleFigure(r, g.price, levels.legsAt)).filter(Boolean);
+      return (
+        <span key={g.price}>
+          {i ? ' · ' : ''}
+          <span style={{ color: ROLE_INK[g.roles[0]] }}>{g.roles.join(' · ')}</span> {levelPrice(g.price)}
+          {figs.length ? <span className="text-textMuted"> ({figs.join(' · ')})</span> : null}
+        </span>
+      );
+    })}
+    {levels.flip == null ? <span className="text-textMuted">{' · '}flip none within ±10%</span> : null}
+  </p>
+);
+const LevelsScale = ({ spot, putWall, flip, callWall, supreme, legsAt }: { spot: number; putWall: number | null; flip: number | null; callWall: number | null; supreme: number; legsAt?: LegsAt }) => {
   const [hot, setHot] = useState<string | null>(null);
   const marks = [
-    ...(putWall != null ? [{ key: 'put', price: putWall, word: 'put wall', ink: 'rgb(var(--bear))' }] : []),
-    ...(flip != null ? [{ key: 'flip', price: flip, word: 'flip', ink: SILVER }] : []),
-    { key: 'spot', price: spot, word: 'spot', ink: 'rgb(var(--text-primary))' },
-    ...(callWall != null ? [{ key: 'call', price: callWall, word: 'call wall', ink: 'rgb(var(--bull))' }] : []),
-    { key: 'supreme', price: supreme, word: 'supreme', ink: 'rgb(var(--supreme))' },
+    ...levelGroups({ supreme, callWall, putWall, flip }).map(g => ({
+      key: g.roles.map(r => ROLE_KEY[r]).join('-'),
+      price: g.price,
+      word: g.roles.join(' · '),
+      ink: ROLE_INK[g.roles[0]],
+      roles: g.roles,
+    })),
+    { key: 'spot', price: spot, word: 'spot', ink: 'rgb(var(--text-primary))', roles: [] as LevelRole[] },
   ].sort((a, b) => a.price - b.price);
   const lo = marks[0].price;
   const hi = marks[marks.length - 1].price;
@@ -331,26 +381,27 @@ const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number;
     rows.push(prev && x(m.price) - x(prev.price) < 11 ? (rows[i - 1] === 0 ? 1 : 0) : 0);
   });
   const hotMark = marks.find(m => m.key === hot) ?? null;
+  const hotFigs = hotMark ? hotMark.roles.map(r => roleFigure(r, hotMark.price, legsAt)).filter(Boolean) : [];
   return (
     <div className="relative">
       {hotMark && (
         <ScaleCard at={x(hotMark.price)}>
           <span className="font-mono font-bold tnum" style={{ color: hotMark.ink }}>
-            {hotMark.word} {hotMark.key === 'spot' ? hotMark.price.toFixed(2) : hotMark.price}
+            {hotMark.word} {hotMark.key === 'spot' ? hotMark.price.toFixed(2) : levelPrice(hotMark.price)}
           </span>
           {hotMark.key !== 'spot' && (
             <span className="font-mono tnum text-textPrimary">
               {' '}
-              · {pct(((hotMark.price - spot) / spot) * 100)} from spot
+              · {pct(((hotMark.price - spot) / spot) * 100)} from spot{hotFigs.length ? ` · ${hotFigs.join(' · ')}` : ''}
             </span>
           )}
-          <span className="block text-textMuted">{LEVEL_WORDS[hotMark.key]}</span>
+          <span className="block text-textMuted">{hotMark.key === 'spot' ? LEVEL_WORDS.spot : hotMark.roles.map(r => LEVEL_WORDS[ROLE_KEY[r]]).join('; ')}</span>
         </ScaleCard>
       )}
-      <svg width="100%" height={54} className="block overflow-visible" role="img" aria-label={`The book on a price scale: put wall ${putWall ?? 'none'}, flip ${flip != null ? flip.toFixed(2) : 'none within ±10%'}, spot ${spot.toFixed(2)}, call wall ${callWall ?? 'none'}, supreme ${supreme}`} data-stock-scale={hot ?? 'rest'}>
+      <svg width="100%" height={54} className="block overflow-visible" role="img" aria-label={`The book on a price scale: supreme ${supreme}, call wall ${callWall ?? 'none'}, put wall ${putWall ?? 'none'}, flip ${flip != null ? flip.toFixed(2) : 'none within ±10%'}, spot ${spot.toFixed(2)}`} data-stock-scale={hot ?? 'rest'}>
         <line x1="0%" x2="100%" y1={27} y2={27} stroke="rgb(var(--ink))" strokeOpacity={0.14} />
         {/* the likely range between the walls, faint */}
-        {putWall != null && callWall != null && <rect x={`${x(putWall)}%`} y={24} width={`${Math.max(0, x(callWall) - x(putWall))}%`} height={6} fill={SILVER} fillOpacity={0.1} />}
+        {putWall != null && callWall != null && <rect x={`${x(Math.min(putWall, callWall))}%`} y={24} width={`${Math.abs(x(callWall) - x(putWall))}%`} height={6} fill={SILVER} fillOpacity={0.1} />}
         {marks.map((m, i) => {
           const up = rows[i] === 1;
           const isSpot = m.key === 'spot';
@@ -362,7 +413,7 @@ const LevelsScale = ({ spot, putWall, flip, callWall, supreme }: { spot: number;
               <line x1={`${x(m.price)}%`} x2={`${x(m.price)}%`} y1={isSpot ? 18 : 22} y2={isSpot ? 36 : 32} stroke={m.ink} strokeWidth={isSpot || on ? 2 : 1.25} strokeDasharray={m.key === 'flip' ? '2 2' : undefined} />
               <text x={`${x(m.price)}%`} y={up ? 12 : 46} textAnchor="middle" fontSize={9} fontFamily="ui-monospace, Menlo, monospace" fill={m.ink} fontWeight={isSpot || on ? 700 : 500}>
                 {/* a strike prints as written; an interpolated level (the flip) to the cent, never fifteen decimals */}
-                {isSpot || !Number.isInteger(m.price * 2) ? m.price.toFixed(2) : m.price}
+                {isSpot ? m.price.toFixed(2) : levelPrice(m.price)}
               </text>
               <text x={`${x(m.price)}%`} y={up ? 4 : 54} textAnchor="middle" fontSize={7.5} fontFamily="ui-monospace, Menlo, monospace" letterSpacing={0.6} fill={m.ink} fillOpacity={on ? 1 : 0.75}>
                 {m.word.toUpperCase()}
@@ -553,7 +604,9 @@ const StockName = () => {
   /* THE DARK PRINTS ON TODAY'S TAPE: the session minute by minute as the line, the off-exchange prints summed per minute as bars under
      it at their true minute (a print's clock matched to the bar of that minute), the biggest of each minute kept for the card */
   const todayPoints: ChartPoint[] = [...new Map(money.today.map(c => [c.time, { time: c.time, value: c.close }])).values()].sort((a, b) => a.time - b.time);
-  const minuteOf = new Map(money.today.map(c => [clockOf(c.time), c.time]));
+  /* a print's clock is New York's: the bars are matched on New York's minute, not the reader's (round 6: in another zone
+     half the prints matched the wrong hour and the rest fell back, the bars smeared over the morning) */
+  const minuteOf = new Map(money.today.map(c => [nyClock(c.time * 1000), c.time]));
   const darkMinutes = (() => {
     const byMin = new Map<string, { time: number; value: number; n: number; biggest: (typeof money.dark.prints)[number] }>();
     for (const p of money.dark.prints) {
@@ -898,11 +951,9 @@ const StockName = () => {
                 ) : null}
               </div>
               {money.levelsToday && !money.levelsToday.complete ? (
-                <p className="mt-1 font-mono text-[10px] tnum text-textMuted" data-stock-levels-provisional>put wall … · flip … · call wall … · supreme … <span className="normal-case">— reading this name's front expiry</span></p>
+                <p className="mt-1 font-mono text-[10px] tnum text-textMuted" data-stock-levels-provisional>supreme … · call wall … · put wall … · flip … <span className="normal-case">— reading this name's front expiry</span></p>
               ) : money.levelsToday ? (
-                <p className="mt-1 font-mono text-[10px] tnum text-textSecondary">
-                  put wall <span className="text-bear">{money.levelsToday.putWall ?? '—'}</span> · flip {money.levelsToday.flip != null ? money.levelsToday.flip.toFixed(2) : 'none within ±10%'} · call wall <span className="text-bull">{money.levelsToday.callWall ?? '—'}</span> · supreme {money.levelsToday.supreme}
-                </p>
+                <LevelsLine levels={money.levelsToday} />
               ) : (
                 <p className="mt-1 font-mono text-[10px] text-textMuted">Reading the options book…</p>
               )}
@@ -923,11 +974,12 @@ const StockName = () => {
               </div>
               {money.levelsAll?.complete ? (
                 <>
-                  <LevelsScale spot={view.price} putWall={money.levelsAll.putWall} flip={money.levelsAll.flip} callWall={money.levelsAll.callWall} supreme={money.levelsAll.supreme} />
+                  <LevelsScale spot={view.price} putWall={money.levelsAll.putWall} flip={money.levelsAll.flip} callWall={money.levelsAll.callWall} supreme={money.levelsAll.supreme} legsAt={money.levelsAll.legsAt} />
+                  <LevelsLine levels={money.levelsAll} />
                   {money.levelsAll.flip == null && <p className="font-mono text-[10px] text-textMuted" data-stock-flip="none">No flip within ±10% — net gamma stays {money.levelsAll.regime === 'SHORT' ? 'short' : 'long'} across the range.</p>}
                 </>
               ) : (
-                <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>put wall … · flip … · call wall … · supreme … — the levels are given once every listed expiry is in.</p>
+                <p className="py-2 font-mono text-[10px] text-textMuted" data-stock-levels-pending>supreme … · call wall … · put wall … · flip … — the levels are given once every listed expiry is in.</p>
               )}
             </div>
             <p className="text-[10.5px] leading-relaxed text-textMuted" data-stock-gex-note>
