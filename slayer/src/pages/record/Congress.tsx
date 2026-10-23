@@ -566,7 +566,7 @@ const Congress = () => {
         <DropdownSelect label="Owner" value={owner} options={OWNER_OPTIONS} onChange={setOwner} title="Whose holding" testId="congress-owner" />
         <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="Which reports" testId="congress-show" />
         <DropdownMulti label="Filter" values={picks} groups={filterGroups} onChange={setPicks} title="The names and members on the page right now — tick any number; only those stay" testId="congress-filter" />
-        <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="congress-bills" />
+        <BillsSwitch hide={hideBills} onToggle={() => setHideBills(v => !v)} hidden={billsHidden} testId="congress-bills" reading={waiting} />
       </div>
       {!failed && !waiting &&  <CongressCoverageLine coverage={coverage} window={basis === 'filed' ? Math.max(window, 90) : window} unread={feed.unreadTypes ?? 0} notMembers={feed.notMembers ?? 0} />}
       {failed ? (

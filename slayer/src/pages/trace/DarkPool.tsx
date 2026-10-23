@@ -598,7 +598,12 @@ const DarkPool = () => {
           <ReadDoor onOpen={() => setOpenCross(largest)} title="Open the cross's card">
             {view ? '' : `${largest.ticker} `}{num(largest.size)} at ${largest.price.toFixed(2)}
           </ReadDoor>
-          <RichRead text={` for ${fmtUsd(largest.notional)}${largest.special ? ` — ${/^[aeiou]/i.test(largest.special) ? 'an' : 'a'} ${largest.special}, no read` : largest.extended ? ' — after hours, no read' : largest.sized ? ` — read as ${INTENT_WORD[largest.intent]}` : ' — too small to read'}.`} />
+          <RichRead text={` for ${fmtUsd(largest.notional)}${largest.special ? ` — ${/^[aeiou]/i.test(largest.special) ? 'an' : 'a'} ${largest.special}, no read` : largest.extended ? ' — after hours, no read' : largest.sized ? ` — on its own it reads ${INTENT_WORD[largest.intent]}${(() => {
+            /* ONE RULE (retail, round 10: "Posture: Balanced" over "read as accumulation") — the posture weighs every sized
+               cross by its dollars; one cross's read is its own, and the sentence says which is which when they differ */
+            const own = largest.intent === 'ACCUMULATION' ? 'ACCUMULATING' : largest.intent === 'DISTRIBUTION' ? 'DISTRIBUTING' : 'BALANCED';
+            return own !== head.posture ? `; the posture weighs every sized cross by its dollars and reads ${POSTURE_WORD[head.posture].toLowerCase()}` : '';
+          })()}` : ' — too small to read'}.`} />
         </>
       ) : (
         <RichRead text={litLane ? 'No lit print on this cut.' : 'No cross on this cut.'} />
@@ -670,7 +675,8 @@ const DarkPool = () => {
                   </>
                 ) : (
                   <>
-                    {tapeWindow ?? '—'} <span className="text-textMuted">· {regularView && tapeKind === 'lit' && !named ? `${litNames.length} names` : `last ${num(cut.length)} prints`}</span>
+                    {/* not yet is not nothing (audit round 10, minor 6: "— · last 0 prints" before the first read) */}
+                    {cut.length === 0 && (srcReading || darkReg.waiting) ? <span className="text-textMuted">Reading…</span> : <>{tapeWindow ?? '—'} <span className="text-textMuted">· {regularView && tapeKind === 'lit' && !named ? `${litNames.length} names` : `last ${num(cut.length)} prints`}</span></>}
                   </>
                 )}
               </Fact>
@@ -697,7 +703,7 @@ const DarkPool = () => {
             <Fact label="On this cut" testId="cut">
               {srcReading ? <span className="text-textMuted">—</span> : <>{fmtUsd(facts.dollars)} <span className="text-textMuted">· {cut.length} {litLane ? 'prints' : 'crosses'}</span></>}
             </Fact>
-            <Fact label="Sized: over · under the mid" testId="sides" title={`Every sized print on this cut (10,000 shares or $500K, priced at the quote) by where it printed, any distance from the mid: over it (paid up — buyer-initiated) and under it (sold down — seller-initiated)${facts.atMid > 0 ? `; ${fmtUsd(facts.atMid)} crossed at the mid` : ''}${facts.afterHours ? `; ${facts.afterHours} of them after hours, against a post-market quote, so they are counted here but never read` : ''}`}>
+            <Fact label="Sized: over · under the mid" testId="sides" title={`Every sized print on this cut ($250K and up by its dollars, priced at the quote) by where it printed, any distance from the mid: over it (paid up — buyer-initiated) and under it (sold down — seller-initiated)${facts.atMid > 0 ? `; ${fmtUsd(facts.atMid)} crossed at the mid` : ''}${facts.afterHours ? `; ${facts.afterHours} of them after hours, against a post-market quote, so they are counted here but never read` : ''}`}>
               {srcReading ? (
                 <span className="text-textMuted">—</span>
               ) : facts.sizedCount === 0 ? (

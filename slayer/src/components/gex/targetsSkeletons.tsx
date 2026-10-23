@@ -23,9 +23,9 @@ import { Skeleton } from '../ui/Skeleton';
    did not use, and the floor now fits a 1440 screen beside the rail */
 /* THE SESSION'S OWN TESTS IN A COLUMN OF THEIR OWN (the tenth audit's retail finding: the Reached column mixed "today"
    with "<1%"): Reached is always a chance, Today what the session has already done at the strike */
-export const AGENDA_COLUMNS = '32px 148px 64px 56px 76px 96px minmax(120px,1fr) minmax(120px,1fr) 100px minmax(90px,1fr) 124px';
+export const AGENDA_COLUMNS = '32px 140px 64px 84px 64px 96px minmax(112px,1fr) minmax(112px,1fr) 100px minmax(80px,1fr) 124px';
 /** The columns' floor plus ten 12px gaps */
-export const AGENDA_MIN_W = 1146;
+export const AGENDA_MIN_W = 1128;
 export const CARD_H = 158;
 export const ROW_H = 32;
 

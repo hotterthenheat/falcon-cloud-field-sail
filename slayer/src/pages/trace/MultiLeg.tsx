@@ -29,7 +29,7 @@ import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { indexRoot, lastRegularClose, plural, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
-import { spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
+import { markSplitOrders, spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
 import BookDrill from '../../components/trace/BookDrill';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
 import { DOOR, DOOR_HOVER_TEXT } from '../../components/trace/door';
@@ -72,7 +72,7 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
 /* the set at rest sums under a 1440 box (audit round 4: the Net $ column stood half under the pinned risk columns) */
 /* round 7 (retail: "paid $12" — the Premium column clipped under the pinned risk at 1440): the set at rest fits the 1440
    box with room; the leg count opens folded (one click away in Columns) */
-const WIDTHS: Record<string, number> = { time: 112, ticker: 88, strikes: 150, exp: 96, size: 60, net: 136, prem: 140, legs: 56, kind: 160, maxloss: 92, maxprofit: 92 };
+const WIDTHS: Record<string, number> = { time: 112, ticker: 88, strikes: 150, exp: 112, size: 60, net: 136, prem: 140, legs: 56, kind: 160, maxloss: 92, maxprofit: 92 };
 /* the structure's who on the left; its risk at the right, always on screen (Max loss and Max profit stood off a 1280
    screen) */
 const PIN_LEFT = ['time', 'ticker'];
@@ -369,7 +369,8 @@ const MultiLeg = () => {
   const { trades: heldTrades, tick } = hold.value;
   /* THE EXPIRY CUT: a structure sits on its near leg's expiry */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldTrades, t => t.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
-  const trades = useMemo(() => cutExpiry(heldTrades), [heldTrades, cutExpiry]);
+  /* a piece of a split order is marked (flowBook markSplitOrders) — shown and explained, never crowned */
+  const trades = useMemo(() => markSplitOrders(cutExpiry(heldTrades)), [heldTrades, cutExpiry]);
   /* the row's identity carries whether its legs are in: the grid redraws a row only when its key or its sort value moves,
      and a structure that settles keeps its id — so a settled row is a new row, never a stale "…" */
   const keyOf = useCallback((t: SpreadTrade) => `${t.id}:${t.legsState ?? ''}`, []);
@@ -456,7 +457,7 @@ const MultiLeg = () => {
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
     /* THE BIGGEST BY ITS NET (the audit, 2026-10-22: "$1.3M collected" was the gross of every leg; the net was ~$830K) */
     /* the biggest whose legs are read — never one the vendor alone has named (audit round 8) */
-    const big = [...bets].filter(t => t.legsState === 'in').sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
+    const big = [...bets].filter(t => t.legsState === 'in' && !t.splitOf).sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
     if (!big) return <RichRead text={`In the ${trades.length} multi-leg trades in hand (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets — reading their legs before naming the biggest…`} />;
     return (
       <>
@@ -515,6 +516,11 @@ const MultiLeg = () => {
                 vendor's name
               </span>
             )}
+            {t.splitOf && (
+              <span className="text-[10px] text-textMuted shrink-0" title={`Printed in the same second, on the same strikes and expiry, under the same name (${t.vendorShape ?? t.shapeOfVendor}) as a ${t.splitOf} whose legs do make that shape — this one's own legs make ${t.shape}. Most likely one order the vendor split into pieces: shown as its legs read, never crowned the largest`} data-split-order>
+                piece of a {t.splitOf}
+              </span>
+            )}
             {t.compression ? (
               <span className="text-[10px] uppercase text-warn" title={COMPRESSION_HINT}>
                 compression · not a bet
@@ -542,8 +548,17 @@ const MultiLeg = () => {
            up the tails and left the DATES ragged — the wrong thing anchored. */
         sortValue: t => t.dte,
         render: t => (
-          <span className="text-textPrimary text-[11px]">
-            {expiryLabel(t.expiry)} <span className="text-textSecondary">· {t.dte}d</span>
+          <span className="text-textPrimary text-[11px] whitespace-nowrap" title={t.farExpiry ? `Two expiries: the near leg ${expiryLabel(t.expiry)} (${t.dte}d), the far leg ${expiryLabel(t.farExpiry)} (${t.farDte}d)` : undefined}>
+            {t.farExpiry ? (
+              <>
+                {expiryLabel(t.expiry)}
+                <span className="text-textSecondary">→{expiryLabel(t.farExpiry)}</span>
+              </>
+            ) : (
+              <>
+                {expiryLabel(t.expiry)} <span className="text-textSecondary">· {t.dte}d</span>
+              </>
+            )}
           </span>
         ),
       },
@@ -649,7 +664,7 @@ const MultiLeg = () => {
     /* no compression package is a champion (audit round 5: "Largest · SPX bullish risk reversal · $271.0K" was a cbmo) */
     /* …and no structure whose legs are not read (audit round 8: the "Largest" changed as the legs came in, and named
        shapes the vendor got wrong) — a champion stands on its own legs */
-    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(t => !t.compression && t.legsState === 'in' && pick(t)).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
+    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(t => !t.compression && !t.splitOf && t.legsState === 'in' && pick(t)).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
     /* WHICH ONES THE CROWN WAS PICKED FROM (audit round 10, minor 2: "Largest paid · QQQ call diagonal $449" beside an
        ORCL row paid $23.3K whose legs were not read yet) — said on the pill: among the N of M structures whose legs are in */
     const bets = shown.filter(t => !t.compression);

@@ -47,11 +47,13 @@ export const CONTROLS_LINE = 'flex items-center gap-2 flex-wrap max-sm:grid max-
 
 /* ---- the head's facts ------------------------------------------------------------ */
 
-export const Fact = ({ label, children, testId, title }: { label: string; children: ReactNode; testId?: string; title?: string }) => (
-  <div className="min-w-0" title={title}>
+export const Fact = ({ label, children, testId, title, wrap = false }: { label: string; children: ReactNode; testId?: string; title?: string; wrap?: boolean }) => (
+  /* `wrap`: a fact that is a sentence takes the line's width and wraps at every width (retail, round 10: the Live Tape's
+     "NVDA · biggest with a clear side today" ran past the card's right edge at 1440) */
+  <div className={wrap ? 'min-w-0 basis-full' : 'min-w-0'} title={title}>
     <dt className="text-[11px] text-textMuted whitespace-nowrap max-sm:whitespace-normal">{label}</dt>
     {/* ON A PHONE A FACT WRAPS, never clips (audit round 5: "close of 10…", "$101.5…") */}
-    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap max-sm:whitespace-normal max-sm:break-words" data-trace-fact={testId}>
+    <dd className={`mt-0.5 font-mono text-[12px] tnum text-textPrimary ${wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap max-sm:whitespace-normal max-sm:break-words'}`} data-trace-fact={testId}>
       {children}
     </dd>
   </div>

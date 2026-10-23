@@ -1275,6 +1275,11 @@ function execOf(price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' 
    — seller-initiated — and reads DISTRIBUTION (red); a print at the mid (within half a cent) leans neither way. Any
    distance from the mid counts: the Sized fact and the reads share one cut. Only a sized print, in the regular session,
    priced at the quote, carries a read. */
+/** A SIZED CROSS IS DOLLARS, NOT SHARES (audit round 10, minor 7: the bar was 10,000 shares OR $500K, so RIVN 10,000 sh
+    for $119K read as distribution while GS 500 sh for $440K was "too small" — a share count means nothing across a $12 and
+    an $880 stock). A cross of $250K and up carries a read; below it, none. */
+export const DARK_SIZED_USD = 250_000;
+export const DARK_SIZED_WORDS = '$250K and up, by its dollars — not its share count';
 function intentOf(cents: number, sized: boolean): DarkPoolIntent {
   if (!sized) return 'ROTATION';
   if (cents > 0) return 'ACCUMULATION';
@@ -1348,7 +1353,7 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const ownWords = [...new Set((own.some(c => AUCTION_CODES.has(c) && c !== 'cross_trade') ? own.filter(c => c !== 'cross_trade') : own).map(c => SPECIAL_WORD[c]))];
   const special = ownWords.length ? ownWords.join(', ') : null;
   const auction = own.some(c => AUCTION_CODES.has(c));
-  const sized = size >= 10_000 || notional >= 500_000;
+  const sized = notional >= DARK_SIZED_USD;
   /* AFTER HOURS (the vendor's ext_hour_sold_codes "extended_hours_trade"): the quote it is set against is the thin
      post-market one, so the print is shown and labelled, never read */
   const extended = row.ext_hour_sold_codes != null && row.ext_hour_sold_codes !== '';
@@ -1853,7 +1858,7 @@ export function contractRow(row: Record<string, unknown>, i: number): BookContra
     earnIso: /^\d{4}-\d{2}-\d{2}$/.test(String(row.next_earnings_date || '').slice(0, 10)) ? String(row.next_earnings_date).slice(0, 10) : null,
     prevSpark: [],
     sideVol: { ask, bid, mid },
-    expired: expiredAtBell(expiryIso),
+    expired: expiredAtBell(expiryIso, ticker),
     theta: row.theta != null && row.theta !== '' ? num(row.theta) : undefined,
     lastDay: when.ms > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(when.ms)) : undefined,
   };
@@ -1861,14 +1866,17 @@ export function contractRow(row: Record<string, unknown>, i: number): BookContra
 
 /** A contract whose expiry was the tape's session (or before it) and whose bell has rung: it settled, it no longer
     stands (the re-audit, 2026-10-22: 64 of Footprints' 146 builds were Oct 22 contracts, read after the close as standing) */
-export function expiredAtBell(expiryIso: string): boolean {
+/** …ITS OWN BELL (audit round 10, major 3: from 16:00 to 16:15 SPY, QQQ and SPXW same-day contracts were dropped as expired
+    while they still traded — Compare's SPY book fell from 66 to 37 contracts at 16:02): 16:15 for the late-closing index
+    and ETF options (sessionEndMin), 16:00 for a stock's */
+export function expiredAtBell(expiryIso: string, ticker?: string | null): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryIso)) return false;
   const session = tapeSessionIso();
   if (expiryIso < session) return true;
   if (expiryIso > session) return false;
   const p = nyParts(new Date());
   const today = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
-  return today > session || p.hour * 60 + p.minute >= 960;
+  return today > session || p.hour * 60 + p.minute >= sessionEndMin(ticker);
 }
 
 /** The contracts that still stand — the expired ones left out, and how many were */
@@ -2668,6 +2676,9 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
   const tradeDay = when.epoch > 0 ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(when.epoch * 1000)) : '';
   const expiryIso = tradeDay ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + dteAtTrade * 86_400_000).toISOString().slice(0, 10) : '';
   const code = String(row.code || '').toLowerCase();
+  /* the far leg (audit round 10, minor 4: a diagonal showed only its near leg, "10/23/2026 · 0d" for min_dte 0 / max_dte 7) */
+  const farDte = row.max_dte != null && row.max_dte !== '' ? num(row.max_dte) : dteAtTrade;
+  const farIso = tradeDay && farDte > dteAtTrade ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + farDte * 86_400_000).toISOString().slice(0, 10) : '';
   return {
     id: String(row.id || `${ticker}-${when.epoch}-${strikes.join('-')}`),
     /* OPRA's condition on the structure (mlet, mlat, cbmo…) — cbmo / mctp is a compression package, not a bet (audit
@@ -2685,6 +2696,8 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     shapeOfVendor: shapeName(strategy),
     strikesLabel: strikes.length ? strikes.join(' / ') : '—',
     expiry: expiryIso ? expiryLabel(expiryIso) : '—',
+    farExpiry: farIso ? expiryLabel(farIso) : undefined,
+    farDte: farIso ? farDte : undefined,
     /* the vendor's min_dte — counted from the trade's own day (audit round 6: XSP Oct 26 read "3d" against min_dte 4,
        SPY Nov 20 "28d" against 29 — counted from the clock's Oct 23) */
     dte: row.min_dte != null && row.min_dte !== '' ? dteAtTrade : expiryIso ? dteFrom(expiryIso, tradeDay || tapeSessionIso()) : 0,

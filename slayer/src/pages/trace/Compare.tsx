@@ -687,7 +687,7 @@ const Compare = () => {
     },
     {
       /* THE WINDOW SAID (audit round 6: "Structures 80 · the same" was the fetch cap) */
-      title: `Structures · each name's on the ${shortDay(todayIso)} session${frozen.current.spreadSinceMs != null ? `, since ${nyClock(frozen.current.spreadSinceMs, { seconds: true })} ET — the stretch both names' last ${SPREADS_N * 3} cover, both cut at that second` : spreadsDone ? ', the whole session' : ''} · regular hours only, compression packages left out`,
+      title: `Structures · each name's on the ${shortDay(todayIso)} session${frozen.current.spreadSinceMs != null ? `, since ${nyClock(frozen.current.spreadSinceMs, { seconds: true })} ET — the stretch both names' last ${SPREADS_N * 3} cover, both cut at that second` : spreadsDone ? ', the whole session' : ''} · regular hours only, compression packages left out${mny !== 'all' ? ' · every strike (the money cut is not on this list)' : ''}`,
       rows: [
         {
           key: 'structures',
@@ -858,7 +858,7 @@ const Compare = () => {
       <div className="px-5 flex items-center gap-2 border-y border-borderSubtle/60 paper-band" style={{ height: CMP_LIST_HEAD_H }}>
         <CompanyLogo ticker={s.ticker} size={14} />
         <span className="text-[12px] font-semibold text-textPrimary whitespace-nowrap">{s.ticker}'s structures</span>
-        <span className="text-[10.5px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">· the tape reconstructed · the most net premium first</span>
+        <span className="text-[10.5px] text-textMuted break-words sm:whitespace-nowrap sm:truncate" title={mny !== 'all' ? "A structure's legs sit at several strikes, on both sides of the stock — the money cut is not applied to this list; the clock cut is, by the near leg" : undefined}>· the tape reconstructed · the most net premium first{mny !== 'all' ? ' · every strike — the money cut is not on this list' : ''}</span>
       </div>
       {s.structures.list.slice(0, CMP_LISTED).map(t => (
         <div
@@ -871,8 +871,8 @@ const Compare = () => {
         >
           <span className="text-[11.5px] font-semibold text-textPrimary whitespace-nowrap">{kindOf(t)}</span>
           <span className="font-mono text-[12px] tnum font-semibold text-textPrimary break-words sm:whitespace-nowrap sm:truncate">{t.strikesLabel}</span>
-          <span className="font-mono text-[10px] tnum text-textMuted whitespace-nowrap max-sm:hidden">
-            {t.expiry} · {t.dte}d
+          <span className="font-mono text-[10px] tnum text-textMuted whitespace-nowrap max-sm:hidden" title={t.farExpiry ? `Two expiries: the near leg ${t.expiry} (${t.dte}d), the far leg ${t.farExpiry} (${t.farDte}d)` : undefined}>
+            {t.farExpiry ? `${t.expiry.slice(0, 5)}–${t.farExpiry.slice(0, 5)} · ${t.dte}–${t.farDte}d` : `${t.expiry} · ${t.dte}d`}
           </span>
           <span className="font-mono text-[11px] tnum text-right whitespace-nowrap max-sm:hidden">
             {/* paid or collected is a fact, not a lean — the Multi-Leg page's neutral ink; a structure the vendor priced no net

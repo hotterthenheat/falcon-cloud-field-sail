@@ -1267,7 +1267,7 @@ const StockName = () => {
       <CompanyFile ticker={T} />
       <NameBooks ticker={T} />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} earnings ${news.reports.length === 1 ? "report" : "reports"} below` : ''}`} aside={<PillarBarSmall p={byKey.news} held={held} />} testId="news">
+        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} earnings ${news.reports.length === 1 ? "report" : "reports"}` : ''}`} aside={<PillarBarSmall p={byKey.news} held={held} />} testId="news">
           {news.stories.length === 0 ? (
             <div className="px-5 pb-4 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{wireReading ? 'Reading the wire' : recordNews.status === 'sim' ? 'This read did not land' : 'Nothing on the wire today'}</div>
           ) : (

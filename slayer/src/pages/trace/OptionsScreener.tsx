@@ -141,7 +141,8 @@ const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ?
    and Sweep sat under the pinned Prem — fourteen columns summed 1,468px in a 1,149px box). Every visible column has its
    floor here, the set at rest sums under the box, and the DTE (the contract cell carries the date) and the OI (the card,
    Vol/OI and ΔOI carry it) open folded — one click away in Columns. */
-const WIDTHS: Record<string, number> = { time: 76, ticker: 84, contract: 140, dte: 56, otm: 72, last: 140, vol: 84, oi: 80, doi: 120, prem: 84, iv: 96, voloi: 68, sweep: 60, floor: 64, multi: 64, sector: 176, lean: 100 };
+/* the lean fits its words at 1440 (retail, round 10: "bid 53%…") */
+const WIDTHS: Record<string, number> = { time: 72, ticker: 84, contract: 132, dte: 56, otm: 70, last: 134, vol: 84, oi: 80, doi: 112, prem: 84, iv: 96, voloi: 64, sweep: 56, floor: 64, multi: 64, sector: 176, lean: 132 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
@@ -255,8 +256,8 @@ const OptionsScreener = () => {
     let crosses = 0;
     const names = new Set<string>();
     for (const r of rows) {
-      if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI) fresh++;
-      names.add(r.ticker);
+      /* THE NAMES AND THE FRESH COUNT ARE THE BETS' (audit round 10, minor 3: "on 46 names" counted all 200 rows — the bets
+         span 35 — and "1.5× OI" counted packages, legs and crosses), as on Compare */
       if (floorPackaged(r)) {
         pkgPrem += r.premium;
         pkg++;
@@ -276,6 +277,8 @@ const OptionsScreener = () => {
       }
       prem += r.premium;
       if (r.right === 'C') callPrem += r.premium;
+      names.add(r.ticker);
+      if (r.oi > 0 && r.volOverOI >= FRESH_VOL_OI) fresh++;
     }
     return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, pkgPrem, pkg, legPrem, legs, crossPrem, crosses };
   }, [rows]);
@@ -295,7 +298,7 @@ const OptionsScreener = () => {
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
     const apart = [facts.pkg ? `${plural(facts.pkg, 'floor-package contract', 'floor-package contracts')} (${fmtUsd(facts.pkgPrem)}, mostly floor-traded multi-leg packages)` : '', facts.legs ? `${plural(facts.legs, 'spread-leg contract', 'spread-leg contracts')} (${fmtUsd(facts.legPrem)}, half or more of the day in multi-leg orders)` : '', facts.crosses ? `${plural(facts.crosses, 'contract', 'contracts')} traded mostly in cross trades (${fmtUsd(facts.crossPrem)})` : ''].filter(Boolean);
     const pkgWords = apart.length ? ` (${apart.join(' and ')} left out — packages, legs and crosses, not bets of their own)` : '';
-    return `${fmtUsd(facts.prem)} across ${plural(rows.length - facts.pkg - facts.legs - facts.crosses, 'contract', 'contracts')}${pkgWords} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'contract has', 'contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
+    return `${fmtUsd(facts.prem)} across ${plural(rows.length - facts.pkg - facts.legs - facts.crosses, 'contract', 'contracts')}${pkgWords} on ${plural(facts.names, 'name', 'names')} — calls ${facts.callPct}% of it, puts ${100 - facts.callPct}%. ${plural(facts.fresh, 'single-bet contract has', 'single-bet contracts have')} traded at least 1.5 times ${facts.fresh === 1 ? 'its' : 'their'} open interest ${dayAdv()}.`;
   }, [rows.length, facts, bookReading, query]);
   /* AN EMPTY CUT NAMES THE CARDS THAT EMPTIED IT */
   const emptyText = useMemo(() => {
@@ -456,10 +459,10 @@ const OptionsScreener = () => {
                 </>
               )}
             </Fact>
-            <Fact label="Contracts" testId="contracts">
-              {bookReading ? <span className="text-textMuted">—</span> : <>{num(rows.length)} <span className="text-textSecondary">· {facts.names} names</span></>}
+            <Fact label="Contracts" testId="contracts" title="The single bets on this cut and the names they span; floor packages, days of spread legs and days of crosses are counted apart — not bets">
+              {bookReading ? <span className="text-textMuted">—</span> : <>{num(rows.length - facts.pkg - facts.legs - facts.crosses)} <span className="text-textSecondary">bets · {facts.names} names{facts.pkg + facts.legs + facts.crosses ? ` · ${num(facts.pkg + facts.legs + facts.crosses)} apart` : ''}</span></>}
             </Fact>
-            <Fact label="Vol ≥ 1.5× OI" testId="fresh" title={`Contracts on this cut whose volume ${dayAdv()} is at least 1.5 times their open interest — positions likely built in the session (the one floor across Trace; a contract with no open interest before the session is new and not counted)`}>
+            <Fact label="Vol ≥ 1.5× OI" testId="fresh" title={`Single-bet contracts on this cut (floor packages, spread legs and crosses left out) whose volume ${dayAdv()} is at least 1.5 times their open interest — positions likely built in the session (the one floor across Trace; a contract with no open interest before the session is new and not counted)`}>
               {bookReading ? <span className="text-textMuted">—</span> : facts.fresh}
             </Fact>
             {champs.call && champs.call !== champs.all && (

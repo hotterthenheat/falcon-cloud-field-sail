@@ -641,6 +641,9 @@ export interface SpreadTrade {
   /** Near leg's expiry & DTE */
   expiry: string;
   dte: number;
+  /** A structure over two expiries (a diagonal, a calendar): its far leg's expiry and DTE, from the vendor's max_dte */
+  farExpiry?: string;
+  farDte?: number;
   size: number;
   /** Per-UNIT price (net premium over units × 100): positive = debit paid, negative = credit collected; 0 = not known */
   net: number;
@@ -688,6 +691,32 @@ export interface SpreadTrade {
   read?: string;
   /** Whether its legs are in hand */
   legsState?: 'pending' | 'in' | 'none';
+  /** A PIECE OF A SPLIT ORDER (retail, round 10: MDB 290/430/490/640 Mar '28 stood as "long call condor, paid $23.92" and,
+      the same second, "calls bought · 4 strikes, paid $433.98, uncapped" — crowned Largest): the vendor printed it in the
+      same second, on the same strikes and expiry, under the same name as another structure whose legs DO make that shape,
+      while its own legs make another. The shape that structure's legs make; shown, explained, never crowned. */
+  splitOf?: string;
+}
+
+/** Mark the pieces of split orders (SpreadTrade.splitOf): same ticker, second, expiry and vendor name as a structure whose
+    legs agree with the vendor's name, while this one's legs name it otherwise */
+export function markSplitOrders(list: SpreadTrade[]): SpreadTrade[] {
+  const groups = new Map<string, SpreadTrade[]>();
+  const keyOf = (t: SpreadTrade) => `${t.ticker}|${Math.floor((t.epochMs ?? 0) / 1000) || t.time}|${t.expiry}|${t.shapeOfVendor ?? ''}|${t.strikesLabel}`;
+  for (const t of list) {
+    const k = keyOf(t);
+    const g = groups.get(k);
+    if (g) g.push(t);
+    else groups.set(k, [t]);
+  }
+  const split = new Map<string, string>();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const agree = g.filter(t => t.legsState === 'in' && !t.vendorShape && !t.compression).sort((a, b) => (b.units ?? 0) - (a.units ?? 0))[0];
+    if (!agree) continue;
+    for (const t of g) if (t !== agree && t.legsState === 'in' && t.vendorShape) split.set(t.id, agree.shape);
+  }
+  return split.size ? list.map(t => (split.has(t.id) ? { ...t, splitOf: split.get(t.id) } : t)) : list;
 }
 
 /** One leg as a book row — every figure the vendor's legs route sends for it (its day volume, open interest, fill,

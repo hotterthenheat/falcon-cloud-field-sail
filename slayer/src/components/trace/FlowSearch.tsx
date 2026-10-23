@@ -275,7 +275,12 @@ const FlowSearch = ({
   }, [tallies, nq, value, countNoun, tickersOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doorRow: Suggestion | null = door ? { key: 'door', kind: 'door', primary: door.label(value.trim()) } : null;
-  const flat: Suggestion[] = scope ? scoped : [...tickers, ...contracts, ...(doorRow ? [doorRow] : [])];
+  /* A STRIKE TYPED IS A CONTRACT ASKED FOR (audit round 10, minor 1: "NVDA 215C" + Enter picked "Everything on NVDA"): with
+     a strike in the query the contracts lead the menu, and Enter keeps the query itself — every expiry of that strike and
+     side, or the one contract when a date is typed */
+  const parsedQ = tickersOnly ? null : parseContractQuery(value);
+  const contractAsked = !!parsedQ && parsedQ.strike != null;
+  const flat: Suggestion[] = scope ? scoped : contractAsked ? [...contracts, ...tickers, ...(doorRow ? [doorRow] : [])] : [...tickers, ...contracts, ...(doorRow ? [doorRow] : [])];
   const clampedHi = Math.min(hi, Math.max(0, flat.length - 1));
 
   const pick = (s: Suggestion) => {
@@ -320,9 +325,16 @@ const FlowSearch = ({
       e.preventDefault();
       setHi(h => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
-      if (open && flat[clampedHi]) {
+      if (open && contractAsked && !scope && clampedHi === 0) {
+        e.preventDefault();
+        close();
+      } else if (open && flat[clampedHi]) {
         e.preventDefault();
         pick(flat[clampedHi]);
+      } else if (open) {
+        /* nothing to pick: Enter keeps what is typed and closes the card, never leaves it over the page (retail, round 10) */
+        e.preventDefault();
+        close();
       }
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       // Tab walks on to the next control — the card does not stay open behind the reader
@@ -361,6 +373,8 @@ const FlowSearch = ({
         className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${lit ? WASH[s.kind === 'contract' ? s.right : 'plain'] : ''}`}
         data-flow-search-row={s.kind}
         data-lit={lit || undefined}
+        /* the figures say what they count (retail, round 10: "80 contracts $476.8M" unexplained) */
+        title={quiet ? undefined : `${s.kind === 'contract' ? `${s.ticker} ${s.strike}${s.right}` : s.kind === 'all' ? `Everything on ${s.ticker}` : s.ticker} — ${s.count ? `${s.count.replace('×', ' times')} ` : ''}on this page${s.money ? `, ${s.money} in premium among them` : ''}`}
       >
         <span className="w-4 h-4 shrink-0 flex items-center justify-center" aria-hidden="true">
           {s.kind === 'back' ? (
@@ -424,7 +438,9 @@ const FlowSearch = ({
           <input
             value={value}
             onChange={e => {
-              onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9 .]/g, '').slice(0, 12));
+              /* the date's "/" and "-" stay, and room for a whole contract (audit round 10, minor 1: "NVDA 215C 10/30" became
+                 "NVDA 215C 10" — the field kept 12 letters and digits; an OCC symbol alone is 21) */
+              onChange(e.target.value.toUpperCase().replace(/[^A-Z0-9 ./-]/g, '').slice(0, 28));
               setScope(null); // typing is searching again
               setOpen(true);
               setHi(0);
@@ -485,13 +501,19 @@ const FlowSearch = ({
             </>
           ) : (
             <>
-              {tickers.length > 0 && (
+              {contractAsked && contracts.length > 0 && (
                 <>
-                  <div className={HEADING}>Names</div>
-                  {tickers.map((s, i) => renderRow(s, i))}
+                  <div className={HEADING}>Contracts · Enter keeps “{value.trim()}”</div>
+                  {contracts.map((s, i) => renderRow(s, i))}
                 </>
               )}
-              {contracts.length > 0 && (
+              {tickers.length > 0 && (
+                <>
+                  <div className={`${HEADING} ${contractAsked && contracts.length > 0 ? 'mt-1 border-t border-borderSubtle/70 pt-2' : ''}`}>{`Names · ${countNoun} on this page · their premium`}</div>
+                  {tickers.map((s, i) => renderRow(s, (contractAsked ? contracts.length : 0) + i))}
+                </>
+              )}
+              {!contractAsked && contracts.length > 0 && (
                 <>
                   <div className={`${HEADING} ${tickers.length > 0 ? 'mt-1 border-t border-borderSubtle/70 pt-2' : ''}`}>Contracts</div>
                   {contracts.map((s, i) => renderRow(s, tickers.length + i))}
