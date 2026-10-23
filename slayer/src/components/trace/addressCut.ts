@@ -80,4 +80,29 @@ export const oneOf = (list: readonly string[]) => (v: string) => list.includes(v
 /** An expiry, YYYY-MM-DD */
 export const isIsoDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 /** A search: letters, digits, spaces and dots, as the search field writes it */
-export const isQuery = (v: string) => /^[A-Z0-9 .]{1,12}$/.test(v);
+/* a whole contract fits ("NVDA 215C 10/30", an OCC symbol of 21) — the field's own rule (FlowSearch) */
+export const isQuery = (v: string) => /^[A-Z0-9 ./-]{1,28}$/.test(v);
+
+/** THE SEARCH IN THE ADDRESS (the owner, 2026-10-23: a search link can be shared) — `?q=` for a page with no other cut in
+    its address; `memory` keeps it across route changes when the address has none */
+export function useQParam(memory?: { q: string }): [string, (q: string) => void] {
+  const [params, setParams] = useSearchParams();
+  const raw = params.get('q');
+  const q = raw !== null && isQuery(raw.toUpperCase()) ? raw.toUpperCase() : raw === null && memory ? memory.q : '';
+  const set = useCallback(
+    (v: string) => {
+      if (memory) memory.q = v;
+      setParams(
+        prev => {
+          const next = new URLSearchParams(prev);
+          if (v) next.set('q', v);
+          else next.delete('q');
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setParams, memory]
+  );
+  return [q, set];
+}

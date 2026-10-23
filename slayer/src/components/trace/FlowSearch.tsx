@@ -91,6 +91,8 @@ export interface ContractQuery {
 }
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 export const CONTRACT_FORMATS = 'NVDA 220C 11/20, NVDA 220 C Nov 20 or NVDA261120C00220000';
+/** A search that matched nothing, in one voice on every Trace page: what was asked and the forms the field takes */
+export const searchMiss = (q: string, noun: string) => `No ${noun} matches “${q.trim()}” — the search takes a name, or a contract written like ${CONTRACT_FORMATS}`;
 export function parseContractQuery(raw: string): ContractQuery | null {
   const q = raw.trim().toUpperCase();
   if (!q) return null;

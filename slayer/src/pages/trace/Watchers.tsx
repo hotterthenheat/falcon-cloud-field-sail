@@ -61,9 +61,9 @@ import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import ReasonDoor from '../../components/trace/ReasonDoor';
 import ReadDoor from '../../components/trace/ReadDoor';
-import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol } from '../../components/trace/FlowSearch';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { WatchersGuide } from '../../components/trace/TraceGuide';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
@@ -121,6 +121,7 @@ const phoneRow = (a: Catch) => (
     lead={<WatchStar k={contractKey(a.row)} make={() => watchContract(a.row, 'watchers')} />}
     title={
       <>
+        <CompanyLogo ticker={a.row.ticker} size={15} />
         <span className="font-bold">{a.row.ticker}</span>
         <span className="font-bold tnum">{a.row.strike}</span>
         <span className={a.row.right === 'C' ? 'text-bull' : 'text-bear'}>{a.row.right === 'C' ? 'call' : 'put'}</span>
@@ -160,7 +161,8 @@ const Watchers = () => {
 
   /* THE MARKET'S BOOK ONLY (audit round 5: the shell's active ticker was silently added — the market's top 200 plus its
      top 80 — so changing the ticker elsewhere changed the "market" figures). A name is read with the search. */
-  const bookPack = useLiveBook(null);
+  /* ENDLESS (the owner, 2026-10-23): the screener's next pages by premium as the reader scrolls */
+  const bookPack = useLiveBook(null, true, true);
   const liveBook = bookPack.rows;
   /* NOT YET IS NOT NOTHING (audit round 8, major 5: "Contracts caught 0 … Nothing flagged today" while the book loaded) */
   const reading = bookPack.waiting && liveBook.length === 0;
@@ -254,7 +256,7 @@ const Watchers = () => {
     const names = new Set(catches.map(a => a.row.ticker)).size;
     return (
       <>
-        <RichRead text={`${catches.length} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the ${num(bookSize)} standing contracts on the market's book (the vendor's 200 with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}) — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
+        <RichRead text={`${catches.length} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the ${num(bookSize)} standing contracts on the market's book (the contracts loaded, ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}) — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
         <ReadDoor onOpen={() => setOpenKey(latest.row.key)}>
           {latest.row.ticker} {latest.row.strike}
           {latest.row.right}
@@ -450,7 +452,7 @@ const Watchers = () => {
         facts={
           <>
             {/* the most frequent reason, named, its count after — never a reason read as a noun */}
-            <Fact label="Contracts caught" testId="caught" title={`Contracts on the market's book (the ${num(bookSize)} standing ones among the vendor's 200 with the most premium ${dayAdv()}, every name — the terminal's ticker is not added) that meet a reason — each counted once, whatever number of reasons it meets`}>
+            <Fact label="Contracts caught" testId="caught" title={`Contracts on the market's book (the ${num(bookSize)} standing ones among the contracts loaded, most premium ${dayAdv()} first — more as you scroll, every name — the terminal's ticker is not added) that meet a reason — each counted once, whatever number of reasons it meets`}>
               {reading ? <span className="text-textMuted">—</span> : num(facts.total)}
               {!reading && facts.loudName && (
                 <span className="text-textSecondary">
@@ -511,7 +513,7 @@ const Watchers = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, 'contracts on the book', "the vendor's list for the day is done", hold.paused)} emptyText={query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
       </TraceBox>
 
       <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} tick={tick} />

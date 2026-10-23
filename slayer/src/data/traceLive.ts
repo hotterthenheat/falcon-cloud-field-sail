@@ -399,6 +399,15 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
   return { rows: mine?.rows ?? empty, at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: enabled && !mine };
 }
 
+/** A read the reader asked for by scrolling — the key's low-priority lane, beside the pages' own reads, never ahead */
+async function getRowsLow(path: string): Promise<Record<string, unknown>[]> {
+  const got = await uwCall(path, false, true);
+  if (got.error) {
+    if (got.status === 422 || got.status === 403 || got.status === 404) return [];
+    throw new Error(got.error);
+  }
+  return rowsOf(got.data);
+}
 async function getRows(path: string): Promise<Record<string, unknown>[]> {
   const got = await uwCall(path, true);
   if (got.error) {
@@ -786,6 +795,8 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     ratioBidPct: whole > 0 ? Math.round((bidPrem / whole) * 100) : NaN,
     alertSides: { ask: askPrem, bid: bidPrem, other: Math.max(0, total - sided) },
     alertRule: row.alert_rule ? String(row.alert_rule) : undefined,
+    /* the alert's filing instant — the route's older_than cursor (the endless lists) */
+    createdMs: row.created_at != null && Number.isFinite(Date.parse(String(row.created_at))) ? Date.parse(String(row.created_at)) : undefined,
     fillEnd: row.end_time != null && row.start_time != null && num(row.end_time) - num(row.start_time) >= 1000 ? clock(row.end_time).time : undefined,
     /* an alert carries no session flag of its own: its fill time says it */
     extended: (() => {
@@ -931,7 +942,10 @@ export function useContractLast(occ: string | null | undefined): LivePack<Contra
   );
 }
 
-const TAPE_CAP = 2000;
+/* ENDLESS (the owner, 2026-10-23): the tape opens on its newest BOOT_FILL prints and pages older ones in as the reader
+   scrolls, to the session's start — held in memory to TAPE_CAP, then said so */
+const TAPE_CAP = 50_000;
+const BOOT_FILL = 2_000;
 /** The route's largest page (the spec: limit max 500) */
 const TAPE_PAGE = 500;
 /** Pages one poll may walk back to close the gap to the newest print in hand — 2,000 prints, the buffer's whole cap */
@@ -1039,6 +1053,8 @@ export interface PrintStream extends LivePack<FlowPrint[]> {
   pending: number;
   loadingOlder: boolean;
   hasOlder: boolean;
+  /** Why there is no older page: the session's start reached, or the memory cap */
+  olderEnd: 'start' | 'cap' | null;
   flush: () => void;
   loadOlder: () => void;
 }
@@ -1053,7 +1069,12 @@ export interface PrintStream extends LivePack<FlowPrint[]> {
  *    the buffer is REPLACED by the newest prints rather than left with a hole in the middle — what is held is always
  *    one unbroken stretch of the tape.
  */
-export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs?: number | null; keep?: (p: FlowPrint) => boolean }): PrintStream {
+export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs?: number | null; keep?: (p: FlowPrint) => boolean; startMs?: number | null }): PrintStream {
+  /* `startMs`: the session's first instant — an older page asks nothing before it, and a page that comes back short there
+     is the start of the session reached */
+  const startMs = opts?.startMs ?? null;
+  const startRef = useRef(startMs);
+  startRef.current = startMs;
   /* AN ANCHOR IN THE PAST (the third audit, 2026-10-22: after the close the tape held only after-hours prints, "Window
      16:38:05–17:11:50 ET … all after hours" under a Regular session card, and the day's session could not be reached):
      with `untilMs` the stream walks back from that instant — the last regular-session stretch — and does not poll, since
@@ -1095,7 +1116,9 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     setFault(null);
     /* a page's FULLNESS is the vendor's row count — a cancelled print dropped from a full page must not end the walk */
     const page = async (cursor: { newerThan?: number; olderThan?: number }, limit = TAPE_PAGE): Promise<FlowPrint[] & { full?: boolean; oldest?: number }> => {
-      const capped = untilMs && (!cursor.olderThan || cursor.olderThan > untilMs) ? { ...cursor, olderThan: untilMs } : cursor;
+      const capped0 = untilMs && (!cursor.olderThan || cursor.olderThan > untilMs) ? { ...cursor, olderThan: untilMs } : cursor;
+      /* nothing before the session's start (a name's 2,000 prints can reach into the day before) */
+      const capped = startRef.current && !capped0.newerThan ? { ...capped0, newerThan: startRef.current - 1 } : capped0;
       const got = await getRows(`/option-trades?${tapeQueryString(query, { ...capped, limit })}`);
       if (stop) return [];
       const live = liveTrades(got);
@@ -1141,7 +1164,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
         let more = !!first.full;
         setHasOlder(more);
         let cursorMs = first.oldest || oldestMs(held);
-        for (let guard = 0; more && held.length < TAPE_CAP && !stop && guard < 12; guard++) {
+        for (let guard = 0; more && held.length < BOOT_FILL && !stop && guard < 12; guard++) {
           setLoadingOlder(true);
           const older = await page({ olderThan: cursorMs + 1 });
           if (stop) return;
@@ -1157,7 +1180,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
           }
           cursorMs = Math.min(cursorMs, nextCursor);
         }
-        if (held.length >= TAPE_CAP) setHasOlder(true);
+        if (held.length >= BOOT_FILL) setHasOlder(true);
       } catch (e) {
         if (stop) return;
         setFault(vendorFault(e instanceof Error ? e.message : 'unusual whales') ?? 'failed');
@@ -1230,11 +1253,26 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     });
   }, []);
 
+  const [olderEnd, setOlderEnd] = useState<'start' | 'cap' | null>(null);
+  useEffect(() => setOlderEnd(null), [key]);
+  /* ONE OLDER PAGE A CALL, ON DEMAND, IN THE LOW LANE (the owner's endless tape): from the oldest print in hand back to the
+     session's start (`newer_than` it), 500 at a time; a short page is the start reached */
   const loadOlder = useCallback(() => {
     const oldest = oldestMs(rowsRef.current);
-    if (filling.current || !oldest || loadingOlder || !hasOlder || rowsRef.current.length >= TAPE_CAP) return;
+    if (filling.current || !oldest || loadingOlder || !hasOlder) return;
+    if (rowsRef.current.length >= TAPE_CAP) {
+      setHasOlder(false);
+      setOlderEnd('cap');
+      return;
+    }
+    const start = startRef.current;
+    if (start && oldest <= start) {
+      setHasOlder(false);
+      setOlderEnd('start');
+      return;
+    }
     setLoadingOlder(true);
-    void getRows(`/option-trades?${tapeQueryString(query, { olderThan: oldest + 1, limit: TAPE_PAGE })}`)
+    void getRowsLow(`/option-trades?${tapeQueryString(query, { olderThan: oldest + 1, newerThan: start ? start - 1 : undefined, limit: TAPE_PAGE })}`)
       .then(async got => {
         const live = liveTrades(got);
         await ensureIndexLevels(live.map(tickerOfRow));
@@ -1242,10 +1280,15 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
         const mapped = live.map(tradeToPrint);
         const batch = keep ? mapped.filter(keep) : mapped;
         setRows(prev => mergePrints(prev, batch, 'back'));
-        if (got.length < TAPE_PAGE) setHasOlder(false);
+        if (got.length < TAPE_PAGE) {
+          setHasOlder(false);
+          setOlderEnd('start');
+        }
         setAt(Date.now());
       })
-      .catch(() => setHasOlder(false))
+      .catch(() => {
+        /* a failed page is asked again on the next scroll */
+      })
       .finally(() => setLoadingOlder(false));
   }, [hasOlder, loadingOlder, query]);
 
@@ -1258,6 +1301,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     pending: fresh ? pending.length : 0,
     loadingOlder,
     hasOlder: hasOlder && rows.length < TAPE_CAP,
+    olderEnd: fresh ? (rows.length >= TAPE_CAP ? 'cap' : olderEnd) : null,
     flush,
     loadOlder,
   };
@@ -2026,10 +2070,18 @@ export function usePairedOi(rows: BookContract[]): BookContract[] {
 }
 
 /** Hottest chains, plus the name on the desk so a one-name page is not an empty SPX book. */
-export function useLiveBook(ticker?: string | null, enabled = true): LivePack<BookContract[]> {
+/** A book contract's identity across pages (its row key carries its index on the page) */
+const bookIdOf = (r: BookContract) => `${r.ticker}|${r.strike}|${r.right}|${r.expiry}`;
+export interface EndlessBook extends LivePack<BookContract[]> {
+  /** The older pages (the screener's `page`), read as the reader scrolls — present when asked for */
+  older?: OlderPages<BookContract>;
+}
+/** `endless` (the market's book only): the screener's next pages by premium, 200 at a time, as the reader scrolls */
+export function useLiveBook(ticker?: string | null, enabled = true, endless = false): EndlessBook {
   const pack = useLiveBookRaw(ticker, enabled);
-  const rows = usePairedOi(pack.rows);
-  return useMemo(() => ({ ...pack, rows }), [pack.at, pack.fault, pack.waiting, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const older = useOlderPages(`book:${(ticker || '').toUpperCase() || 'mkt'}`, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, 'order=premium&order_direction=desc', 200), enabled && endless && !ticker);
+  const rows = usePairedOi(endless ? older.rows : pack.rows);
+  return useMemo(() => ({ ...pack, rows, older: endless ? older : undefined }), [pack.at, pack.fault, pack.waiting, rows, endless, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 function useLiveBookRaw(ticker?: string | null, enabled = true): LivePack<BookContract[]> {
   const name = (ticker || '').trim().toUpperCase();
@@ -2064,15 +2116,18 @@ function useLiveBookRaw(ticker?: string | null, enabled = true): LivePack<BookCo
 
 /** The screener's page — 200 contracts in the vendor's own order: by premium, or by volume for "most active" (it asked
     for premium and the page said "heaviest volume first", the audit 2026-10-22) */
-export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, order: 'premium' | 'volume' = 'premium'): LivePack<BookContract[]> {
-  const parts = ['limit=200', `order=${order}`, 'order_direction=desc'];
+export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, order: 'premium' | 'volume' = 'premium'): EndlessBook {
+  const parts = [`order=${order}`, 'order_direction=desc'];
   if (unusual) parts.push('unusual=true');
   if (issue === 'stock') parts.push('issue_types[]=Common Stock');
   else if (issue === 'etf') parts.push('issue_types[]=ETF');
   const q = parts.join('&');
-  const pack = useLive(`contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}`, async () => mapBook(await getRows(`/screener/option-contracts?${q}`)), []);
-  const rows = usePairedOi(pack.rows);
-  return useMemo(() => ({ ...pack, rows }), [pack.at, pack.fault, pack.waiting, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const key = `contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}`;
+  const pack = useLive(key, async () => mapBook(await getRows(`/screener/option-contracts?limit=200&${q}`)), []);
+  /* ENDLESS (the owner, 2026-10-23): the screener's next pages in the same order, 200 at a time, as the reader scrolls */
+  const older = useOlderPages(key, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, q, 200));
+  const rows = usePairedOi(older.rows);
+  return useMemo(() => ({ ...pack, rows, older }), [pack.at, pack.fault, pack.waiting, rows, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** The newest flow alerts — or, with `opts.untilMs`, the newest filed before that instant (the regular session's last
@@ -2768,17 +2823,22 @@ function dedupeSpreads(rows: Record<string, unknown>[]): Record<string, unknown>
 /** The newest structures, `limit` of them (the vendor's feed is newest first). THE SESSION (audit round 4: under "Regular"
     after the close the page showed only 16:28–16:59 structures, unmarked): `regular` keeps the regular session's — after
     the close walked back from the 16:15 close (`untilMs`) — and `extended` the ones outside it */
-export function useSpreads(limit = 80, opts?: { untilMs?: number | null; session?: 'regular' | 'extended' }): LivePack<SpreadTrade[]> {
+export function useSpreads(limit = 80, opts?: { untilMs?: number | null; session?: 'regular' | 'extended'; sinceMs?: number | null }): LivePack<SpreadTrade[]> & { older: OlderPages<SpreadTrade> } {
   const until = opts?.untilMs ?? null;
   const session = opts?.session ?? null;
-  return useSettled(
-    useLive(`spreads:${limit}:${until ?? 'live'}:${session ?? 'any'}`, async () => {
+  const since = opts?.sinceMs ?? null;
+  const key = `spreads:${limit}:${until ?? 'live'}:${session ?? 'any'}`;
+  const pack = useLive(key, async () => {
       const raw = await getRows(`/option-trades/multi-leg?limit=${limit}${until ? `&older_than=${new Date(until).toISOString()}` : ''}`);
       const rows = await mapWithIndex(dedupeSpreads(raw), r => ({ ...spreadOf(r), repeats: num(r.__repeats) || undefined }));
       return session ? rows.filter(t => (session === 'regular' ? !t.extended : !!t.extended)) : rows;
-    }, [], true, SPREADS_POLL_MS, until ? 'day' : 'live')
-  );
+    }, [], true, SPREADS_POLL_MS, until ? 'day' : 'live');
+  /* ENDLESS (the owner, 2026-10-23): older structures of the session, 200 a page, as the reader scrolls */
+  const older = useOlderPages<SpreadTrade>(key, pack.rows, spreadIdOf, inHand => olderSpreads(inHand, since, session));
+  const settled = useSettled({ ...pack, rows: older.rows });
+  return { ...settled, older };
 }
+const spreadIdOf = (t: SpreadTrade) => t.id;
 /* THE STRUCTURES' FEED EVERY 15 SECONDS (audit round 9, major 3): the vendor's newest 200 cover about ten seconds of a busy
    session, so a four-second poll replaced the page wholesale every beat and re-asked legs for rows no one could read */
 const SPREADS_POLL_MS = 20_000;
@@ -3252,4 +3312,99 @@ export function occOf(root: string, strike: number, right: 'C' | 'P', expiry: st
   const d = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!d || !(strike > 0) || !root) return null;
   return `${root.toUpperCase()}${d[1].slice(2)}${d[2]}${d[3]}${right}${String(Math.round(strike * 1000)).padStart(8, '0')}`;
+}
+
+/* ---- ENDLESS LISTS (the owner, 2026-10-23: "make it infinite") ------------------------------------------------------
+   A list read by useLive is its NEWEST page, polled. Older pages are asked only when the reader scrolls near the bottom —
+   one at a time, in the key's low-priority lane — appended under it, and kept until the question changes. `fetchOlder`
+   is handed every row in hand (to find its cursor: an older_than instant, a page number) and says when the route has no
+   more. Rows are kept to `cap`, then said so. */
+export interface OlderPages<T> {
+  rows: T[];
+  state: 'more' | 'loading' | 'end' | 'cap' | 'idle';
+  loaded: number;
+  loadOlder: () => void;
+}
+export function useOlderPages<T>(key: string, base: T[], idOf: (r: T) => string, fetchOlder: (inHand: T[], pageNo: number) => Promise<{ rows: T[]; end: boolean }>, enabled = true, cap = 50_000): OlderPages<T> {
+  const [older, setOlder] = useState<{ key: string; rows: T[]; pages: number; end: boolean }>({ key, rows: [], pages: 0, end: false });
+  const [loading, setLoading] = useState(false);
+  const busy = useRef(false);
+  const mine = older.key === key ? older : { key, rows: [] as T[], pages: 0, end: false };
+  const rows = useMemo(() => {
+    if (!mine.rows.length) return base;
+    const seen = new Set(base.map(idOf));
+    return base.concat(mine.rows.filter(r => !seen.has(idOf(r))));
+  }, [base, mine.rows, idOf]);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const fetchRef = useRef(fetchOlder);
+  fetchRef.current = fetchOlder;
+  const capped = rows.length >= cap;
+  const loadOlder = useCallback(() => {
+    if (!enabled || busy.current || mine.end || capped || !rowsRef.current.length) return;
+    busy.current = true;
+    setLoading(true);
+    const k = key;
+    const pageNo = mine.pages + 1;
+    fetchRef
+      .current(rowsRef.current, pageNo)
+      .then(got => setOlder(prev => {
+        const cur = prev.key === k ? prev : { key: k, rows: [] as T[], pages: 0, end: false };
+        const seen = new Set(cur.rows.map(idOf));
+        const fresh = got.rows.filter(r => !seen.has(idOf(r)));
+        return { key: k, rows: cur.rows.concat(fresh), pages: pageNo, end: got.end || (fresh.length === 0 && got.rows.length === 0) };
+      }))
+      .catch(() => {
+        /* asked again on the next scroll */
+      })
+      .finally(() => {
+        busy.current = false;
+        setLoading(false);
+      });
+  }, [enabled, key, mine.end, mine.pages, capped, idOf]);
+  return { rows, state: !enabled ? 'idle' : loading ? 'loading' : capped ? 'cap' : mine.end ? 'end' : 'more', loaded: rows.length, loadOlder };
+}
+
+/** The older flow alerts, walked back from the oldest in hand (`older_than` its filing) to `sinceMs` */
+export async function olderAlerts(inHand: FlowPrint[], sinceMs: number | null, session: 'regular' | 'extended' | null, limit = 100): Promise<{ rows: FlowPrint[]; end: boolean }> {
+  const oldest = inHand.reduce((m, p) => Math.min(m, p.createdMs ?? p.epochMs ?? Infinity), Infinity);
+  if (!Number.isFinite(oldest) || (sinceMs != null && oldest <= sinceMs)) return { rows: [], end: true };
+  const got = await getRowsLow(`/option-trades/flow-alerts?limit=${limit}&older_than=${new Date(oldest).toISOString()}${sinceMs ? `&newer_than=${new Date(sinceMs).toISOString()}` : ''}`);
+  const rows = markAlertPackages(await mapWithIndex(got, alertToPrint));
+  return { rows: session ? rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)) : rows, end: got.length < limit };
+}
+
+/** The older structures of the session, walked back from the oldest in hand */
+export async function olderSpreads(inHand: SpreadTrade[], sinceMs: number | null, session: 'regular' | 'extended' | null, ticker?: string | null, limit = 200): Promise<{ rows: SpreadTrade[]; end: boolean }> {
+  const oldest = inHand.reduce((m, t) => Math.min(m, t.epochMs ?? Infinity), Infinity);
+  if (!Number.isFinite(oldest) || (sinceMs != null && oldest <= sinceMs)) return { rows: [], end: true };
+  const raw = await getRowsLow(`/option-trades/multi-leg?limit=${limit}${ticker ? `&ticker_symbol=${encodeURIComponent(ticker)}` : ''}&older_than=${new Date(oldest).toISOString()}`);
+  const all = (await mapWithIndex(dedupeSpreads(raw), r => ({ ...spreadOf(r), repeats: num(r.__repeats) || undefined }))).filter(t => sinceMs == null || (t.epochMs ?? 0) >= sinceMs);
+  const rows = session ? all.filter(t => (session === 'regular' ? !t.extended : !!t.extended)) : all;
+  const reached = raw.some(r => typeof r.executed_at === 'string' && sinceMs != null && Date.parse(r.executed_at) < sinceMs);
+  return { rows, end: raw.length < limit || reached };
+}
+
+/** The next page of the screener's book (the route's `page`, 0 first), `limit` a page */
+export async function olderBook(pageNo: number, query: string, limit: number): Promise<{ rows: BookContract[]; end: boolean }> {
+  const got = await getRowsLow(`/screener/option-contracts?${query}&limit=${limit}&page=${pageNo}`);
+  return { rows: await mapBook(got), end: got.length < limit };
+}
+
+/** The day's next-largest regular-session crosses, walked down by `max_premium` from the smallest in hand */
+export async function olderDarkDay(iso: string, inHand: DarkPoolPrint[], limit = 200): Promise<{ rows: DarkPoolPrint[]; end: boolean }> {
+  const floor = inHand.reduce((m, p) => Math.min(m, p.notional), Infinity);
+  if (!Number.isFinite(floor) || floor <= 0) return { rows: [], end: true };
+  const got = await getRowsLow(`/darkpool/recent?limit=${limit}&date=${iso}&order_by=premium&order=desc&max_premium=${Math.floor(floor)}`);
+  const rows = got.filter(r => !r.canceled).map((r, j) => darkPrint(r, inHand.length + j)).filter(p => !p.extended && (!p.dateIso || p.dateIso === iso));
+  return { rows, end: got.length < limit };
+}
+/** One name's older crosses of the day, walked back from the oldest in hand (`older_than`) */
+export async function olderNameDark(ticker: string, inHand: DarkPoolPrint[], dayIso: string, limit = 200): Promise<{ rows: DarkPoolPrint[]; end: boolean }> {
+  const oldest = inHand.reduce((m, p) => Math.min(m, p.epochMs ?? Infinity), Infinity);
+  if (!Number.isFinite(oldest)) return { rows: [], end: true };
+  const got = await getRowsLow(`/darkpool/${encodeURIComponent(ticker)}?limit=${limit}&older_than=${oldest}`);
+  const mapped = got.filter(r => !r.canceled).map((r, i) => darkPrint(r, inHand.length + i));
+  const rows = mapped.filter(p => !p.dateIso || p.dateIso === dayIso);
+  return { rows, end: got.length < limit || rows.length < mapped.length };
 }

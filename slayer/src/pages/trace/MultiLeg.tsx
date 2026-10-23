@@ -27,7 +27,8 @@ import { useTraceSession } from '../../components/trace/traceSession';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { indexRoot, lastRegularClose, plural, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
+import { indexRoot, lastRegularClose, plural, tapeSessionIso, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
+import { nyWallTime } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { markSplitOrders, spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
 import BookDrill from '../../components/trace/BookDrill';
@@ -38,7 +39,7 @@ import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
-import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol } from '../../components/trace/FlowSearch';
 import ReadDoor from '../../components/trace/ReadDoor';
 import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -46,7 +47,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import WatchStar from '../../components/trace/WatchStar';
 import { structureKey, watchStructure } from '../../context/WatchContext';
 import RichRead from '../../components/ui/RichRead';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
 import { createViewStore } from '../../data/savedViews';
@@ -301,6 +302,7 @@ const phoneRow = (t: SpreadTrade) => (
     lead={<span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />}
     title={
       <>
+        <CompanyLogo ticker={t.ticker} size={15} />
         <span className="font-bold">{t.ticker}</span>
         <span className="truncate">{shapeWord(t)}</span>
         {t.compression && <span className="text-[10px] uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
@@ -359,7 +361,13 @@ const MultiLeg = () => {
     }), 30_000);
     return () => window.clearInterval(id);
   }, []);
-  const pack = useSpreads(SPREADS_N, { untilMs: session === 'regular' && closed ? closed.closeMs : null, session });
+  /* ENDLESS (the owner, 2026-10-23): older structures page in as the reader scrolls, back to the session's start */
+  const sinceMs = useMemo(() => {
+    const iso = closed?.iso ?? tapeSessionIso();
+    const [y, m, d] = iso.split('-').map(Number);
+    return session === 'regular' ? nyWallTime(y, m, d, 9, 30) : nyWallTime(y, m, d, 4, 0);
+  }, [closed?.iso, session]);
+  const pack = useSpreads(SPREADS_N, { untilMs: session === 'regular' && closed ? closed.closeMs : null, session, sinceMs });
   /* NOT YET / NOT AT ALL is not "no structures": before the tape lands, and when it fails, the page had read "No
      multi-leg trades on the tape yet today" over 0 · 0 (the ship pass, 2026-10-22) */
   const tapeState: 'reading' | 'down' | 'in' = pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
@@ -397,7 +405,13 @@ const MultiLeg = () => {
   }, [trades, kind, money, cutQuery]);
   /* THE FIRST SCREENFUL'S LEGS, AND ONLY THOSE (audit round 10, major 4): the first rows of the cut in its order, read or
      not — a settled row is skipped by the reader, and the rows below never let themselves in as the top ones settle */
-  useLegsFirst(useMemo(() => rows.slice(0, FIRST_SCREEN).map(t => t.id), [rows]));
+  /* …and once the reader scrolls, the rows on screen in the grid's own order (TraceGrid onVisible) */
+  const [onScreen, setOnScreen] = useState<string[] | null>(null);
+  const onVisible = useCallback((vis: SpreadTrade[]) => setOnScreen(prev => {
+    const ids = vis.map(t => t.id);
+    return prev && prev.join(',') === ids.join(',') ? prev : ids;
+  }), []);
+  useLegsFirst(useMemo(() => onScreen ?? rows.slice(0, FIRST_SCREEN).map(t => t.id), [rows, onScreen]));
   /* every row — the grid draws only what is on screen */
   const shown = rows;
   const legRows = useMemo(() => (legTrade ? legTrade.legs.map((_, i) => spreadLegRow(legTrade, i)) : []), [legTrade]);
@@ -700,7 +714,7 @@ const MultiLeg = () => {
         guide={{ title: 'How to read the structures', door: 'What a shape, its strikes and its risk mean', body: <StructureGuide />, testId: 'multi-leg-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Structures" testId="structures" title={`The vendor's newest ${SPREADS_N} multi-leg trades${session === 'regular' ? (closed ? ' before the 16:15 close, regular-session ones only' : ', regular-session ones only') : ', the ones outside the regular session'}, repeats folded — not the whole day`}>
+            <Fact label="Structures" testId="structures" title={`The multi-leg trades loaded — the vendor's newest ${SPREADS_N} and older pages as you scroll${session === 'regular' ? (closed ? ' before the 16:15 close, regular-session ones only' : ', regular-session ones only') : ', the ones outside the regular session'}, repeats folded — not the whole day`}>
               {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{num(trades.length)} <span className="text-textSecondary">· {windowSpan} ET</span></>}
               {tapeState === 'in' && facts.loudKind && (
                 <span className="text-textSecondary">
@@ -757,7 +771,7 @@ const MultiLeg = () => {
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={onVisible} endless={endlessOf(pack.older, 'structures', `the ${session === 'regular' ? 'session' : 'day'}'s start reached`, hold.paused)} key={tapeState} emptyText={cutQuery.trim() && trades.length > 0 ? searchMiss(cutQuery, 'structure') : tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
         {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}
         {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>

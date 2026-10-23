@@ -43,12 +43,12 @@ import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import ReadDoor from '../../components/trace/ReadDoor';
 import { earnMarks, weightInk, type InkMarks } from '../../components/trace/earnedInk';
-import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol } from '../../components/trace/FlowSearch';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import LeanCell from '../../components/trace/LeanCell';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
 import { createViewStore } from '../../data/savedViews';
@@ -71,7 +71,7 @@ const SIDE_OPTIONS: DropdownOption<'ALL' | 'C' | 'P'>[] = [
 const PREV_DAY_KEYS = new Set(['builton', 'prevvol', 'prevprem', 'spark']);
 /* fitted to 1440 with every column on (audit round 10, minor 10: "Earr", "Oct 22 cl…", "4 trading…" and the ΔOI with its
    not-a-bet tag were cut) */
-const WIDTHS: Record<string, number> = { ticker: 108, contract: 150, dte: 56, otm: 70, oi: 88, prevoi: 88, doi: 136, doipct: 76, builton: 104, prevavg: 104, prevprem: 92, streak: 64, spark: 96, earn: 116, lean: 96 };
+const WIDTHS: Record<string, number> = { ticker: 104, contract: 144, dte: 52, otm: 80, oi: 88, prevoi: 88, doi: 142, doipct: 72, builton: 104, prevavg: 100, prevprem: 92, streak: 60, spark: 96, earn: 108, lean: 96 };
 const PIN_LEFT = ['ticker', 'contract'];
 const PIN_RIGHT = ['doi'];
 const FOOT_CUTS = createViewStore('slayer_footprints_cuts_v1');
@@ -93,6 +93,7 @@ const phoneRow = (r: BookContract) => (
     lead={<WatchStar k={contractKey(r)} make={() => watchContract(r, 'footprints')} />}
     title={
       <>
+        <CompanyLogo ticker={r.ticker} size={15} />
         <span className="font-bold">{r.ticker}</span>
         <span className="font-bold tnum">{r.strike}</span>
         <span className={r.right === 'C' ? 'text-bull' : 'text-bear'}>{r.right === 'C' ? 'call' : 'put'}</span>
@@ -172,7 +173,8 @@ const Footprints = () => {
   /* THE MARKET'S BOOK ONLY (audit round 5: the "market" book silently took in the shell's active ticker — the market's top
      200 plus SPY's top 80 — so changing the ticker elsewhere moved the market's figures, and SPY 767P stood as the
      biggest build though it is not among the market's 200). A name is read with the search. */
-  const bookPack = useLiveBook(null);
+  /* ENDLESS (the owner, 2026-10-23): the screener's next pages by premium as the reader scrolls */
+  const bookPack = useLiveBook(null, true, true);
   const liveBook = bookPack.rows;
   /* NOT YET IS NOT NOTHING (audit round 8, major 5: "+0 added … No open interest changed" while the book loaded) */
   const reading = bookPack.waiting && liveBook.length === 0;
@@ -247,7 +249,7 @@ const Footprints = () => {
     /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
     /* WHAT IT COVERS (the audit, 2026-10-22: "Open interest grew by 297,774 overnight" summed only the book's contracts) */
-    const base = `Across the ${num(counted.length)} standing contract${counted.length === 1 ? '' : 's'} ${cutWord ? `${cutWord} ` : ''}that are single bets on the market's book (the vendor's 200 contracts with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}), open interest rose ${num(added)} ${oiInWords(cover.day)} on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.${apartWords}${tail}`;
+    const base = `Across the ${num(counted.length)} standing contract${counted.length === 1 ? '' : 's'} ${cutWord ? `${cutWord} ` : ''}that are single bets on the market's book (the ${num(heldBook.length)} contracts loaded, ${dayPos()} heaviest premium first${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}), open interest rose ${num(added)} ${oiInWords(cover.day)} on ${builds.length} of them and fell ${num(Math.abs(removed))} on ${unwinds.length}.${apartWords}${tail}`;
     if (!loudest) return <RichRead text={base} />;
     const unwind = loudest.deltaOI < 0;
     return (
@@ -505,7 +507,7 @@ const Footprints = () => {
         guide={{ title: 'How to read the footprints', door: 'What open interest, a build and a streak mean', body: <FootprintsGuide />, testId: 'footprints-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label={`OI ${oiInWords(cover.day)} · ${cutWord || 'on the book'}`} testId="overnight" title={`Open interest added and shed ${oiInWords(cover.day)} (counted the morning after), summed over the ${num(facts.counted)} standing contracts${cutWord ? ` ${cutWord}` : ''}${cover.lagging ? ` (${num(cover.lagging)} still on the count before are left out)` : ''} on the market's book that are single bets — the vendor's 200 contracts with the most premium ${dayAdv()}, every name; the terminal's ticker is not added — not the whole market${facts.apart ? `. ${num(facts.apart)} floor packages, days of spread legs or of crosses are left out: not bets` : ''}`}>
+            <Fact label={`OI ${oiInWords(cover.day)} · ${cutWord || 'on the book'}`} testId="overnight" title={`Open interest added and shed ${oiInWords(cover.day)} (counted the morning after), summed over the ${num(facts.counted)} standing contracts${cutWord ? ` ${cutWord}` : ''}${cover.lagging ? ` (${num(cover.lagging)} still on the count before are left out)` : ''} on the market's book that are single bets — the contracts loaded, most premium ${dayAdv()} first (more as you scroll), every name; the terminal's ticker is not added — not the whole market${facts.apart ? `. ${num(facts.apart)} floor packages, days of spread legs or of crosses are left out: not bets` : ''}`}>
               {reading ? <span className="text-textMuted">—</span> : <><span className="text-bull">+{num(facts.added)}</span> <span className="text-textSecondary">added ·</span> <span className="text-bear">−{num(facts.shed)}</span> <span className="text-textSecondary">shed</span></>}
             </Fact>
             <Fact label="Contracts" testId="contracts">
@@ -554,7 +556,7 @@ const Footprints = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : "Nothing on this cut — no contract's open interest moved enough to show under these cards"} testId="footprints" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, 'contracts', "the vendor's list for the day is done", hold.paused)} emptyText={query.trim() && book.length > 0 ? searchMiss(query, 'contract') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : "Nothing on this cut — no contract's open interest moved enough to show under these cards"} testId="footprints" />
       </TraceBox>
 
       <BookDrill list={loudest && !shown.some(r => r.key === loudest.key) ? [loudest, ...shown] : shown} openKey={openKey} onOpen={setOpenKey} tick={tick} />
