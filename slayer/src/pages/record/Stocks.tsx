@@ -387,11 +387,12 @@ const Stocks = () => {
   const newsQuiet = picks.length > 0 && picks.every(p => p.quiet.includes('news'));
   /* THE DAY COLUMN NAMES ITS DAY (audit round 7: "Today" held Oct 22's change before the open) — in the session it is
      today; outside it, the last session's date, off the market's own quote */
-  useScreenerQuotes(useMemo(() => ['SPY', ...picks.map(p => p.ticker)], [picks]));
+  useScreenerQuotes(useMemo(() => picks.map(p => p.ticker), [picks]));
   /* a house name the screener has no row for (BYDDY) is said, never silently dropped */
   const unscreened = useMemo(() => (liveBoard.status === 'live' && picks.length ? UNIVERSE.filter(u => !picks.some(p => p.ticker === u.ticker)).map(u => u.ticker) : []), [liveBoard.status, picks]);
-  const spyBatch = useBatchQuote('SPY');
-  const dayHead = spyBatch && !spyBatch.live ? shortDayWord(spyBatch.date) : 'Today';
+  /* the day the rows' change belongs to, off the rows' own bulk read */
+  const headBatch = useBatchQuote(picks[0]?.ticker);
+  const dayHead = headBatch && !headBatch.live ? shortDayWord(headBatch.date) : 'Today';
 
   const columnDefs = useMemo<ColDef<StockPick>[]>(() => {
     const cols: ColDef<StockPick>[] = [

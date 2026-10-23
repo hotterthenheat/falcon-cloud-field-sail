@@ -72,6 +72,10 @@ export interface EarningsEvent {
   reported?: boolean;
   /** The stock's move the session after the report, signed % — the vendor's `reaction`, null until it is in */
   actualMovePct?: number | null;
+  /** True while actualMovePct is the reacting session's move so far, off the live price (round 9) */
+  moveLive?: boolean;
+  /** The New York session that reacts to the report: the report day before the open, the next session after the close */
+  reactionIso?: string;
   /** How many past reports the usual move is the average of (the live feed; the sample has eight) */
   histCount?: number;
   /** Past reports with both an actual and an estimate, split three ways — an in-line print is not a beat */

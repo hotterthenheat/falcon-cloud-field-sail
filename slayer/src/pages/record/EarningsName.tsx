@@ -51,7 +51,8 @@ import { dollars3 as fmtDollars } from './money';
 import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
-import { MIN_PRICED_PRINTS, reportedNow, useLiveDossier, useWireCheck } from '../../data/earningsFeed';
+import { nyIsoDate } from '../../core/nyTime';
+import { MIN_PRICED_PRINTS, reportedNow, useLiveDossier, useLiveReactions, useWireCheck } from '../../data/earningsFeed';
 import { useStockCard } from '../../data/liveFiles';
 import { FUND_TYPES } from '../../data/liveFiles';
 import { type ActiveContract, type EarningsDossier } from '../../data/earnings';
@@ -313,6 +314,8 @@ const EarningsName = () => {
   const liveFile = useLiveDossier(T);
   useWireCheck(T, liveFile.dossier?.event.iso, liveFile.dossier?.event.slot);
   const dossier = liveFile.status === 'live' ? liveFile.dossier : null;
+  /* the reacting session's move so far, off the live price — the board's own read (round 9: WDC) */
+  useLiveReactions(useMemo(() => (dossier ? [{ ...dossier.event, reported: reportedNow(dossier.event) }] : []), [dossier]));
   /* A busiest row → the Weigher with THE contract picked, this page as the way back */
   const weigh = (c: ActiveContract) =>
     navigate('/weigher', { state: { weigh: { ticker: T, strike: c.strike, right: c.right === 'CALL' ? 'C' : 'P', expiry: c.expiry }, wayBack: location.pathname } });
@@ -435,10 +438,10 @@ const EarningsName = () => {
                 {reported ? (
                   e.actualMovePct != null ? (
                     <span className="text-textMuted" data-earnings-moved>
-                      the stock moved <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> {e.slot === 'BMO' ? 'on the report day' : 'the session after'}
+                      {e.moveLive ? 'the stock is moving' : 'the stock moved'} <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> {e.moveLive ? 'so far' : ''} {e.slot === 'BMO' && e.timeKnown !== false ? 'on the report day' : 'the session after'}
                     </span>
                   ) : (
-                    <span className="text-textMuted">{e.slot === 'BMO' ? "the move is the report day's session — the vendor has not posted it yet" : "the move is the next session's — it is not made yet"}</span>
+                    <span className="text-textMuted">{e.reactionIso && e.reactionIso === nyIsoDate() ? 'the reacting session is today — reading its move' : e.slot === 'BMO' ? "the move is the report day's session — the vendor has not posted it yet" : "the move is the next session's — it is not made yet"}</span>
                   )
                 ) : (
                   <span className={e.confirmed ? 'text-textMuted' : 'text-warn'}>{e.confirmed ? 'the company has confirmed the date' : 'date estimated — the company has not set it'}</span>

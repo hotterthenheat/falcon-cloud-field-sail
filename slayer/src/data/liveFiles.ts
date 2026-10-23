@@ -819,6 +819,7 @@ async function pullStocks() {
       const ticker = String(row.ticker || '').toUpperCase();
       const u = UNIVERSE.find(x => x.ticker === ticker);
       const read = screenerRead(row, closesOf.get(ticker) ?? null);
+      if (ticker && read) seedBatch(ticker, row, read);
       /* the REGULAR price — the after-hours print kept apart, as every row and the quote read it */
       const price = read?.regular ?? null;
       if (!ticker || price == null || !(price > 0)) continue;
@@ -1219,6 +1220,8 @@ const BATCH_LIVE_MS = 45_000;
 const BATCH_IDLE_MS = 5 * 60_000;
 const batchQuotes = new Map<string, BatchQuote>();
 const batchSettled = new Map<string, number>();
+/** when each name's bulk price was last read (the index's own screen read seeds it) */
+const batchAt = new Map<string, number>();
 const batchMissing = new Set<string>();
 const batchRunning = new Map<string, Promise<void>>();
 let batchRev = 0;
@@ -1247,6 +1250,12 @@ function readBatch(key: string): Promise<void> {
   batchRunning.set(key, p);
   return p;
 }
+function seedBatch(t: string, row: Record<string, unknown>, r: NonNullable<ReturnType<typeof screenerRead>>): void {
+  const qt = Number(row.quote_time);
+  batchMissing.delete(t);
+  batchAt.set(t, Date.now());
+  batchQuotes.set(t, { price: r.regular, pct: r.pct, date: r.date, live: !screenerNeedsCloses(row), ext: r.ext, extPct: r.extPct, tapeAt: Number.isFinite(qt) && qt > 0 ? qt : null });
+}
 async function readBatchNow(key: string): Promise<void> {
   try {
     const names = key.split(',');
@@ -1259,10 +1268,8 @@ async function readBatchNow(key: string): Promise<void> {
         const closes = screenerNeedsCloses(row) ? await loadRegularCloses(t).catch(() => null) : null;
         const r = screenerRead(row, closes);
         if (!r) continue;
-        const qt = Number(row.quote_time);
         got.add(t);
-        batchMissing.delete(t);
-        batchQuotes.set(t, { price: r.regular, pct: r.pct, date: r.date, live: !screenerNeedsCloses(row), ext: r.ext, extPct: r.extPct, tapeAt: Number.isFinite(qt) && qt > 0 ? qt : null });
+        seedBatch(t, row, r);
       }
     }
     for (const t of names) if (!got.has(t) && !batchQuotes.has(t)) batchMissing.add(t);
@@ -1282,7 +1289,8 @@ export function useScreenerQuotes(tickers: readonly string[]): { settled: boolea
     let id = 0;
     const tick = () => {
       if (dead) return;
-      const last = batchSettled.get(key) ?? 0;
+      /* the oldest of the set's reads — the index's own screen read counts, so the page does not ask twice at load */
+      const last = Math.max(batchSettled.get(key) ?? 0, Math.min(...key.split(',').map(t => batchAt.get(t) ?? 0)));
       const every = sessionLive() ? BATCH_LIVE_MS : BATCH_IDLE_MS;
       const wait = Math.max(0, last + every - Date.now());
       id = window.setTimeout(() => {
@@ -1297,7 +1305,7 @@ export function useScreenerQuotes(tickers: readonly string[]): { settled: boolea
     };
   }, [key]);
   const rev = useSyncExternalStore(subscribeBatch, batchRevOf, batchRevOf);
-  return { settled: !!key && batchSettled.has(key), missing: batchMissing, rev };
+  return { settled: !!key && (batchSettled.has(key) || key.split(',').every(t => batchAt.has(t))), missing: batchMissing, rev };
 }
 /** One name's price from the bulk read (null until it lands, or when the screener has no row for it) */
 export function useBatchQuote(ticker: string | null | undefined): BatchQuote | null {
