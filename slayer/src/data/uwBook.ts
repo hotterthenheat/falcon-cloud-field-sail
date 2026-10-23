@@ -605,54 +605,33 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
   return out;
 }
 
-/* every contract of a name, one walk shared a minute — the near and the far dates' facts, and a second page asking the
-   same name, read one walk rather than three (the sixth audit's M3) */
-const contractsAll = new Map<string, { at: number; p: Promise<UwContract[] | null> }>();
-function allContracts(ticker: string, priority: boolean): Promise<UwContract[] | null> {
-  const hit = contractsAll.get(ticker);
-  if (hit && Date.now() - hit.at < 60_000) return hit.p;
-  const p = whalesOptionContractsPaged(ticker, undefined, priority, 80).catch(() => null);
-  contractsAll.set(ticker, { at: Date.now(), p });
-  void p.then(rows => {
-    if (!rows && contractsAll.get(ticker)?.p === p) contractsAll.delete(ticker);
-  });
-  return p;
-}
-
 /** Open interest and vega the greek-by-expiry rows do not carry. One request a date. */
 async function fillExpiryFacts(entry: Entry, token: number, only?: readonly string[]): Promise<void> {
   const still = () => gen.get(entry.ticker) === token;
   const dates = only ? only.filter(d => d in entry.byDate) : Object.keys(entry.byDate);
   if (!dates.length) return;
-  /* THE FEWER ASKS (the sixth audit's M3): one expiry's contracts a page of 500 at a time, or every contract of the name
-     in one walk — whichever needs fewer pages. A date's contracts are about twice its strikes; the whole walk covers
-     every listed date. The rows are the same either way, so the vols the flip reads do not depend on the path. */
-  const floor = isoDate(bookToday());
-  const pagesOf = (strikes: number) => Math.max(1, Math.ceil((2 * strikes + 1) / 500));
-  const perDate = dates.reduce((a, d) => a + pagesOf(entry.byDate[d]?.length ?? 0), 0);
-  const allStrikes = Object.keys(entry.byDate).filter(d => d >= floor).reduce((a, d) => a + (entry.byDate[d]?.length ?? 0), 0);
-  const whole = pagesOf(allStrikes);
+  /* ONE EXPIRY AT A TIME, NEVER THE WHOLE NAME IN ONE WALK (the seventh audit's M1, 2026-10-23): the whole-name walk of
+     option-contracts pages unstably — META's handed 7,416 rows of which 6,332 were unique and 916 own-vol-date contracts
+     were missing, a different 1,096 on the next walk, so the All-expiries flip read 617.29 on one load and 617.11 on
+     the next. Each date's contracts are read on their own (whales.ts whalesOptionContractsPaged: one page, or calls and
+     puts apart — no unstable paging), and a date whose read fails is left unread (not marked in), so it is asked
+     again rather than taken as having no contracts. */
   const hot = isHot(entry.ticker);
-  let books: (readonly [string, Map<number, LegBook>])[] | null = null;
-  if (dates.length > 1 && whole < perDate) {
-    const rows = await allContracts(entry.ticker, hot);
-    if (rows) books = dates.map(date => [date, foldContracts(rows, date)] as const);
-  }
-  if (!books)
-    books = await mapLimit(dates, 3, async date => {
-      try {
-        const rows = await whalesOptionContractsPaged(entry.ticker, date, hot);
-        return [date, Array.isArray(rows) ? foldContracts(rows, date) : new Map<number, LegBook>()] as const;
-      } catch {
-        return [date, new Map<number, LegBook>()] as const;
-      }
-    });
+  const books = await mapLimit(dates, 3, async date => {
+    try {
+      const rows = await whalesOptionContractsPaged(entry.ticker, date, hot);
+      return [date, Array.isArray(rows) ? foldContracts(rows, date) : null] as const;
+    } catch {
+      return [date, null] as const;
+    }
+  });
   if (!still()) return;
   const current = cache.get(entry.ticker);
   if (!current) return;
   const byDate = { ...current.byDate };
   const facts = new Set(current.factsDates ?? []);
   for (const [date, book] of books) {
+    if (!book) continue;
     const chain = byDate[date];
     if (chain && book.size) byDate[date] = paintLegs(chain, book, true);
     facts.add(date);
@@ -804,6 +783,81 @@ const LIVE_KEYS = ['callGex', 'putGex', 'netGex', 'callDex', 'putDex', 'netDex',
    last session, so before the next open "every expiry" still carried the settled 0DTE's gamma. Once that date's own
    chain is in, it comes off the total, strike by strike. */
 function liveAll(entry: Entry): StrikeNode[] {
+  const memo = liveAllMemo.get(entry);
+  const floor = isoDate(bookToday());
+  if (memo && memo.all === entry.all && memo.byDate === entry.byDate && memo.floor === floor && memo.n === entry.expiries.length) return memo.out;
+  const out = oneSnapshot(entry, liveAllOld(entry));
+  liveAllMemo.set(entry, { all: entry.all, byDate: entry.byDate, floor, n: entry.expiries.length, out });
+  return out;
+}
+const liveAllMemo = new WeakMap<Entry, { all: StrikeNode[]; byDate: Entry['byDate']; floor: string; n: number; out: StrikeNode[] }>();
+
+/*
+  THE WHOLE BOOK'S GAMMA IS THE SUM OF ITS DATES' ROWS, ONE SNAPSHOT (the seventh audit's m9, 2026-10-23): the vendor's
+  whole-book rows (spot-exposures/strike) and its per-expiry rows (spot-exposures/expiry-strike) are two snapshots with
+  their own minutes, and the difference was carried flat into the flip (META +$297.46M net against +$297.33M on the
+  dates). Once every live listed date's rows are in, the whole book's call and put gamma at each strike ARE those
+  dates' rows added up — the net, the walls and the flip are then read off the one snapshot. Until then the vendor's
+  whole-book rows stand in, and the levels say they are provisional (datesComplete). Delta, vanna, charm and open
+  interest stay on the whole-book greek rows (the per-date ones are not read for a Board-only name).
+*/
+function oneSnapshot(entry: Entry, base: StrikeNode[]): StrikeNode[] {
+  const floor = isoDate(bookToday());
+  /* every live listing must be one the dates read (the first forty — datesComplete) */
+  if (!entry.gammaLive || !datesComplete(entry) || entry.expiries.filter(e => e.date >= floor).length > 40) return base;
+  const dates = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length);
+  if (!dates.length) return base;
+  const sum = new Map<number, { c: number; p: number; px?: number; at?: number }>();
+  for (const d of dates)
+    for (const n of entry.byDate[d]) {
+      const cur = sum.get(n.strike) ?? { c: 0, p: 0 };
+      cur.c += n.callGex;
+      cur.p += n.putGex;
+      if (n.gexAt != null && (cur.at == null || n.gexAt >= cur.at)) {
+        cur.at = n.gexAt;
+        cur.px = n.gexPx;
+      }
+      sum.set(n.strike, cur);
+    }
+  const seen = new Set<number>();
+  const out = base.map(n => {
+    seen.add(n.strike);
+    const v = sum.get(n.strike);
+    const callGex = v ? v.c : 0;
+    const putGex = v ? v.p : 0;
+    return { ...n, callGex, putGex, netGex: callGex + putGex, gexPx: v?.px ?? n.gexPx, gexAt: v?.at ?? n.gexAt };
+  });
+  for (const [k, v] of sum) if (!seen.has(k)) out.push({ ...emptyNode(k), callGex: v.c, putGex: v.p, netGex: v.c + v.p, gexPx: v.px, gexAt: v.at });
+  out.sort((a, b) => a.strike - b.strike);
+  return out;
+}
+
+/** THE BOOK A FINISHED SESSION RAN ON, ONE SNAPSHOT (the seventh audit's m9): the live dates' rows added up (oneSnapshot)
+    with the contracts that settled at that session's bell put back from their own live rows — null until every date
+    is in (the vendor's whole-book rows, a second snapshot, then stand in) */
+export function peekSessionAll(ticker: string, settledDate: string): StrikeNode[] | null {
+  const e = cache.get(ticker.toUpperCase());
+  if (!e || e.status !== 'live' || !e.gammaLive) return null;
+  const floor = isoDate(bookToday());
+  if (!datesComplete(e) || e.expiries.filter(x => x.date >= floor).length > 40) return null;
+  const live = liveAll(e);
+  const rows = settledLive.get(`${e.ticker}|${settledDate}`);
+  if (!rows?.size) return live;
+  const seen = new Set<number>();
+  const out = live.map(n => {
+    seen.add(n.strike);
+    const l = rows.get(n.strike);
+    if (!l) return n;
+    const callGex = n.callGex - l.c;
+    const putGex = n.putGex - l.p;
+    return { ...n, callGex, putGex, netGex: callGex + putGex };
+  });
+  for (const [k, l] of rows) if (!seen.has(k)) out.push({ ...emptyNode(k), callGex: -l.c, putGex: -l.p, netGex: -l.c - l.p });
+  out.sort((a, b) => a.strike - b.strike);
+  return out;
+}
+
+function liveAllOld(entry: Entry): StrikeNode[] {
   const floor = isoDate(bookToday());
   const settled = Object.keys(entry.byDate).filter(d => d < floor && entry.byDate[d]?.length);
   if (!settled.length) return entry.all;
@@ -1608,8 +1662,9 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     if (!still()) return;
     current = cache.get(entry.ticker);
     if (!current || current.full) return;
-    current.factsDates = new Set([...(current.factsDates ?? []), front]);
     if (rows) {
+      /* in only once read — a failed read is asked again on the next pass, never taken as "no contracts" */
+      current.factsDates = new Set([...(current.factsDates ?? []), front]);
       const book = foldContracts(rows, front);
       const have = current.byDate[front] ?? chain;
       if (book.size && have.length) current.byDate = { ...current.byDate, [front]: paintLegs(have, book, true) };
@@ -1827,6 +1882,9 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
     entry.full = true;
     entry.everFull = true;
     vexOntoAll(entry);
+    /* an own-vol date whose contracts failed to read is asked again here, not left provisional until the next listing */
+    const missing = horizonFactsMissing(entry);
+    if (missing.length) void fillExpiryFacts(entry, token, missing);
     return;
   }
   let listed: { date: string; dte: number }[] = [];

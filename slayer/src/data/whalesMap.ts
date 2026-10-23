@@ -461,7 +461,8 @@ const TAG_KIND: Record<string, AssetKind> = {
   OP: 'Stock Option',
   GS: 'Other',
   CS: 'Corporate Bond',
-  AB: 'Corporate Bond',
+  /* [AB] is the House's asset-backed-securities code (Pelosi's "REOF XXX, LLC [AB]"), not a corporate bond */
+  AB: 'Asset-Backed Security',
   MF: 'Fund',
   EF: 'Fund',
   ET: 'Fund',
@@ -477,6 +478,16 @@ const assetKindOf = (notes?: string, issuer?: string): AssetKind => {
   if (tag && TAG_KIND[tag]) return TAG_KIND[tag];
   const s = `${notes || ''} ${issuer || ''}`;
   if (/\btreasury\b|\bt-?bills?\b|\[GS\]/i.test(s)) return 'Other';
+  /* OPTION EVIDENCE WINS OVER THE UNDERLYING'S NAME (audit round 7): Pelosi's untagged "Intel Corporation - Common Stock
+     (INTC) 50 call options, Strike: $50" and Sen. Armstrong's "…Common Stock\nOption Type: Call\nStrike price: $80.00"
+     read as share trades because "Common Stock" vetoed the option. A count of calls/puts, an "Option Type:" line or a
+     strike is the contract itself; only the bare word "call"/"option" stays vetoed by "Common Stock". */
+  if (
+    /\b(call|put)\s+options?\b|\boption\s+type\s*:\s*(call|put)\b|\bstrike(\s+price)?\s*:|\b\d[\d,]*\s+(call|put)s?\b|\b(call|put)s?\b[^.\n]{0,40}\bexp(iration|ires)?\b/i.test(
+      s,
+    )
+  )
+    return 'Stock Option';
   if (/\b(call|put)\b|\boptions?\b/i.test(s) && !/common stock/i.test(s)) return 'Stock Option';
   if (/corporate bond|\bnote due\b|\bbond\b|Rate\/Coupon|\bMatures:/i.test(s)) return 'Corporate Bond';
   if (/municipal/i.test(s)) return 'Municipal Security';
@@ -727,29 +738,50 @@ function dedupeFilings(rows: { t: InsiderTrade; filed: string; cik: string; amen
    design. Exercise and conversion codes (M, X, C, O and the derivative lines) never take the currency test. */
 const EXERCISE_CODES = new Set(['M', 'X', 'C', 'O', 'E', 'H']);
 const DERIVATIVE_LINE = /option|warrant|right to buy|convertible|\brsus?\b|restricted stock unit|performance share|phantom/i;
-/* A FOREIGN LISTING IS A FACT OF THE ISSUER, not of one row's price: its lines are depositary or ordinary shares (TAK's
-   "American Depositary Shares"), or two or more of its market-priced rows sit ten times off the stock's price */
+/* A FOREIGN LISTING IS A FACT OF THE ISSUER, not of one row's price (audit round 7: UMC's chairman sold "Common Shares"
+   at 142.33 and 145.00 — Taiwan dollars, the TWSE line — beside the NYSE ADR's $18.53, and $229M of false sales passed
+   because 7.7× is under the old tenfold test). Two facts mark an issuer whose filings can be in a home currency:
+     · the vendor's own issuer record calls the US listing an ADR (/stock/{T}/info issue_type — the live record reads it
+       for every issuer with a row FOREIGN_OFF times over its listing, and hands the answer here through
+       markForeignIssuers). A row of such an issuer FOREIGN_OFF times over the listing is in the home currency: no ADR
+       is worth less than one of its own shares in dollars, and the currencies these issuers file in (TWD, JPY, HKD, INR,
+       KRW…) are all several to the dollar. A row far UNDER the ADR is one ordinary share in dollars (BABA's 13.55 beside
+       the 8-share ADR's $101.82, BEKE's 5.27 beside the 3-share ADR's $17.24) — that is a dollar price and stays in;
+     · its lines are depositary or ordinary shares (TAK's "American Depositary Shares") — weaker, so only a non-market
+       row ten times over the listing is read as home-priced (the round-4 rule).
+   A home-priced row stays on the page, flagged "not USD", and its value is out of every dollar total. A US stock that
+   simply fell (FJET's $8.55 sales beside $0.87 today) is not touched: its issuer record says Common Stock. */
 const DEPOSITARY_LINE = /american depositary|\bads\b|\badrs?\b|ordinary shares?/i;
-const tenfoldOff = (price: number, spot: number): boolean => spot > 0 && price > 0 && (price > spot * 10 || price * 10 < spot);
-function foreignIssuers(rows: UwInsiderRow[]): Set<string> {
-  const depositary = new Set<string>();
-  const off = new Map<string, number>();
+const FOREIGN_OFF = 2.5;
+const over = (price: number, spot: number, k: number): boolean => spot > 0 && price > spot * k;
+/** Issuers the vendor's issuer record names as a depositary listing (filled by the live record) */
+const knownForeign = new Set<string>();
+export function markForeignIssuers(tickers: Iterable<string>): void {
+  for (const t of tickers) knownForeign.add(t.toUpperCase());
+}
+const marketPriced = (r: UwInsiderRow): boolean => {
+  const code = (r.transaction_code || '').toUpperCase();
+  return !EXERCISE_CODES.has(code) && !DERIVATIVE_LINE.test(r.security_title || '') && (Number(r.price) || 0) > 0 && (Number(r.stock_price) || 0) > 0;
+};
+/** Issuers with a market-priced row FOREIGN_OFF times over the listing — the live record reads their issuer record */
+export function foreignSuspects(rows: UwInsiderRow[]): string[] {
+  const out = new Set<string>();
   for (const r of rows) {
     const t = (r.ticker || '').toUpperCase();
-    if (!t) continue;
-    if (DEPOSITARY_LINE.test(r.security_title || '')) depositary.add(t);
-    const code = (r.transaction_code || '').toUpperCase();
-    if (EXERCISE_CODES.has(code) || DERIVATIVE_LINE.test(r.security_title || '')) continue;
-    if (tenfoldOff(Number(r.price) || 0, Number(r.stock_price) || 0)) off.set(t, (off.get(t) ?? 0) + 1);
+    if (!t || knownForeign.has(t) || !marketPriced(r)) continue;
+    if (over(Number(r.price), Number(r.stock_price), FOREIGN_OFF)) out.add(t);
   }
-  const out = new Set(depositary);
-  for (const [t, n] of off) if (n >= 2) out.add(t);
+  return [...out];
+}
+function depositaryIssuers(rows: UwInsiderRow[]): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows) if (r.ticker && DEPOSITARY_LINE.test(r.security_title || '')) out.add(r.ticker.toUpperCase());
   return out;
 }
 
 export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
   const out: InsiderTrade[] = [];
-  const abroad = foreignIssuers(rows);
+  const depositary = depositaryIssuers(rows);
   const meta2: { t: InsiderTrade; filed: string; cik: string; amended: boolean; indirect: boolean }[] = [];
   let notShares = 0;
   let implausible = 0;
@@ -773,23 +805,26 @@ export function readInsiders(rows: UwInsiderRow[]): InsiderRead {
     const cap = Number(r.marketcap) || 0;
     /* a "price" ten times the stock's own, or a tenth of it, is a note's face or a unit mix-up, not a share price — a
        SAFE filed at $2,000,000 "a share" read as $15.7 trillion of buying (the retail pass, 2026-10-22) */
-    if (meta.openMarket && spot > 0 && price > 0 && (price > spot * 10 || price * 10 < spot)) {
+    const tkr = (r.ticker || '').toUpperCase();
+    const marketLine = !EXERCISE_CODES.has(code) && !DERIVATIVE_LINE.test(r.security_title || '');
+    const homePriced = marketLine && ((knownForeign.has(tkr) && over(price, spot, FOREIGN_OFF)) || (!meta.openMarket && depositary.has(tkr) && over(price, spot, 10)));
+    if (meta.openMarket && !homePriced && spot > 0 && price > 0 && (price > spot * 10 || price * 10 < spot)) {
       implausible += 1;
       continue;
     }
     /* THE SIZE AGAINST THE COMPANY (the data audit, 2026-10-22): the price check above needs the stock's price, and 130
        rows carry none — UUU's $5,134 "price" on a $16M company read as $93M of buying, SVRE added $13B on a $1.16M
        company. One open-market trade worth more than a quarter of the whole company is not a trade. */
-    if (meta.openMarket && cap > 0 && shares * price > cap * MAX_CAP_SHARE) {
+    if (meta.openMarket && !homePriced && cap > 0 && shares * price > cap * MAX_CAP_SHARE) {
       implausible += 1;
       continue;
     }
     /* NOT IN DOLLARS (the fourth audit, 2026-10-23): Takeda's directors filed ordinary-share tax withholdings at 4,931.20 —
        yen — beside the US listing's $20.36, and MARAGANORE JOHN read "$5.68M" for ¥5.68M. A grant, award or withholding
-       row whose price is ten times the listing's own (or a tenth of it) is a home-market price: it stays on the row,
+       row of a foreign-priced issuer (see foreignIssuers) whose price is FOREIGN_OFF times the listing's own, open-market rows
+       included since round 7, is a home-market price: it stays on the row,
        flagged, and its value is out of every dollar total. */
-    const foreign =
-      !meta.openMarket && !EXERCISE_CODES.has(code) && !DERIVATIVE_LINE.test(r.security_title || '') && abroad.has((r.ticker || '').toUpperCase()) && tenfoldOff(price, spot);
+    const foreign = homePriced;
     const held = Number(r.shares_owned_after) || 0;
     const before = Number(r.shares_owned_before) || 0;
     const plan = r.is_10b5_1 === true ? 'plan' : r.is_10b5_1 === false ? 'discretionary' : 'unknown';

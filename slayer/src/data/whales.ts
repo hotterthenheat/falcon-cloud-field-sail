@@ -312,16 +312,50 @@ export const whalesFlowTicker = (ticker: string) =>
     and Dec 31 and QQQ's Dec 18 and Dec 31 stopped at 500 rows). One expiry's contracts, or — no expiry — every listed
     contract of the name, walked 500 at a time until a short page. Null when the first page fails; a later page that
     fails ends the walk with an error, so a caller never takes a cut list for the whole. */
+/* NEVER A CUT OR UNSTABLE WALK (the seventh audit's M1, 2026-10-23): the vendor's paging is not stable — the same walk
+   hands some rows twice and skips others (META's whole-name walk: 7,416 rows, 6,332 of them unique, 916 own-vol-date
+   contracts missing; SPY's Dec 18 in two pages: 516 rows, 501 unique, while its calls and puts asked apart are 258 +
+   258). So: an expiry that fits one page (under 500 rows) is read in one ask — nothing to page; one that fills a page
+   is read calls and puts apart (option_type) — each side one page on every name the desk carries (a side past 500
+   strikes still pages). Every row is kept once, by its contract. A walk that reaches `maxPages` is not the whole
+   list and comes back null — never a truncated list taken for the whole. */
 export async function whalesOptionContractsPaged(ticker: string, expiry?: string, priority = false, maxPages = 60): Promise<UwContract[] | null> {
-  const out: UwContract[] = [];
-  for (let page = 0; page < maxPages; page++) {
-    const got = await uwCall(`/stock/${enc(ticker)}/option-contracts?limit=500${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}&page=${page}`, priority);
-    if (got.error || !Array.isArray(got.data)) return null;
-    const rows = got.data as UwContract[];
-    out.push(...rows);
-    if (rows.length < 500) return out;
+  const base = `/stock/${enc(ticker)}/option-contracts?limit=500${expiry ? `&expiry=${encodeURIComponent(expiry)}` : ''}`;
+  /** One walk of `path`: every page until a short one — null on a failed page or when `maxPages` is reached */
+  const walk = async (path: string, from: UwContract[] = []): Promise<{ rows: UwContract[] } | null> => {
+    const out: UwContract[] = [...from];
+    for (let page = from.length ? 1 : 0; page < maxPages; page++) {
+      const got = await uwCall(`${path}&page=${page}`, priority);
+      if (got.error || !Array.isArray(got.data)) return null;
+      const rows = got.data as UwContract[];
+      out.push(...rows);
+      if (rows.length < 500) return { rows: out };
+    }
+    return null;
+  };
+  const byContract = (lists: UwContract[][]): UwContract[] => {
+    const seen = new Map<string, UwContract>();
+    for (const list of lists) for (const r of list) {
+      const sym = String(r.option_symbol ?? '');
+      if (sym && !seen.has(sym)) seen.set(sym, r);
+    }
+    return [...seen.values()];
+  };
+  const first = await uwCall(`${base}&page=0`, priority);
+  if (first.error || !Array.isArray(first.data)) return null;
+  const head = first.data as UwContract[];
+  if (head.length < 500) return byContract([head]);
+  if (!expiry) {
+    const all = await walk(base, head);
+    return all ? byContract([all.rows]) : null;
   }
-  return out;
+  const side = async (type: 'call' | 'put'): Promise<UwContract[] | null> => {
+    const path = `${base}&option_type=${type}`;
+    const one = await walk(path);
+    return one ? one.rows : null;
+  };
+  const [calls, puts] = await Promise.all([side('call'), side('put')]);
+  return calls && puts ? byContract([calls, puts]) : null;
 }
 /** One expiry's listed contracts, or the chain's busiest when no expiry is given (one page, as before — see the paged walk above). */
 export const whalesOptionContracts = (ticker: string, expiry?: string, priority = false) =>

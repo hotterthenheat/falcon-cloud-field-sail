@@ -19,7 +19,7 @@ import GradeMeter from '../ui/GradeMeter';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 import { nyClock } from '../../core/nyTime';
-import { nyDateOf, postureOf, quotePlace, tapeSessionIso, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
+import { execWord, nyDateOf, postureOf, quotePlace, tapeSessionIso, useDarkDay, useStockLast, useStockMinutes } from '../../data/traceLive';
 import { dayAdv } from './dayWords';
 import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
@@ -55,8 +55,9 @@ const venueWord = (v: string) => (v.trim().length > 2 && /[A-Za-z]/.test(v) ? v.
 /* NO SIDE WHERE THERE IS NONE (audit round 4: crosses 3% over the quote read "inside quote" — the fallback for a print with
    no execution side): an own-terms print is priced by its terms; a print with no quote has no place in one */
 const sideWord = (p: DarkPoolPrint) =>
-  p.special ? 'own terms' : p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : p.exec === 'MID' ? 'inside quote' : p.bid == null || p.ask == null ? 'no quote' : 'off the quote';
-const sideLabel = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'BOUGHT' : p.exec === 'BID' ? 'SOLD' : p.exec === 'MID' ? 'MID' : '');
+  p.special ? 'own terms' : p.exec === 'ASK' ? 'paid offer' : p.exec === 'BID' ? 'hit bid' : p.exec === 'MID' ? (execWord(p) === 'MID' ? 'at the mid' : execWord(p) === 'OVER MID' ? 'inside, over mid' : 'inside, under mid') : p.bid == null || p.ask == null ? 'no quote' : 'off the quote';
+/* the label agrees with the read (audit round 7): inside the spread it is MID only within the ¼¢ band */
+const sideLabel = (p: DarkPoolPrint) => (p.exec === 'ASK' ? 'BOUGHT' : p.exec === 'BID' ? 'SOLD' : p.exec === 'MID' ? execWord(p) ?? '' : '');
 
 const fillFrac = (p: DarkPoolPrint): number | null => {
   if (p.bid != null && p.ask != null && p.ask > p.bid) return Math.min(1, Math.max(0, (p.price - p.bid) / (p.ask - p.bid)));
@@ -437,7 +438,13 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               {/* THE DAY IS THE NAME'S OWN DAY (the audit, 2026-10-22: "Dark dollars today" was the buffer's few prints) —
                   /darkpool/{t}/price-levels, every dark and lit share by price */}
               <Fact label={`Off-exchange ${dayAdv(crossIso ?? undefined)}`} value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
-              <Fact label={`Dark dollars ${dayAdv(crossIso ?? undefined)}`} value={day.rows ? `≈${fmtUsd(day.rows.darkDollars)} · ${num(day.rows.darkShares)} sh${day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}` : day.waiting ? '…' : '—'} />
+              <Fact label={`Dark dollars ${dayAdv(crossIso ?? undefined)}`} value={day.rows ? (
+                /* THE METHOD SAID (audit round 7: "≈$488.9M" priced every share at its $35 bucket): the vendor sends dark
+                   shares by price bucket, no VWAP — each bucket's shares at the bucket's price */
+                <span title={`Each of the vendor's price buckets' dark shares at the bucket's own price (/darkpool/{t}/price-levels groups shares into coarse price buckets — often whole dollars — and sends no average price), so the dollars are approximate`}>
+                  ≈{fmtUsd(day.rows.darkDollars)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at bucket prices</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
+                </span>
+              ) : day.waiting ? '…' : '—'} />
               <Fact label="Crosses in hand" value={view ? `${view.prints.length} · ${view.prints.filter(p => p.sized).length} sized` : '—'} />
               <Fact label="This cross" value={print.sized ? 'Sized' : 'Ordinary'} valueCls={print.sized ? 'text-textPrimary' : 'text-textMuted'} />
             </div>

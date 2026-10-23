@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { darkView, lastStockClose, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, usd as fmtUsd } from '../../data/traceLive';
+import { darkView, execWord, lastStockClose, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
@@ -60,7 +60,11 @@ const signedPct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(
 const dirInk = (v: number) => (v > 0 ? 'text-bull' : v < 0 ? 'text-bear' : 'text-textMuted');
 /* an after-hours print's place in a thin post-market quote is shown, never inked as a side (the third audit) */
 const placeInk = (p: DarkPoolPrint, cents: number) => (p.extended ? 'text-textSecondary' : cents === 0 ? 'text-textMuted' : dirInk(cents));
-const execInk = (p: DarkPoolPrint) => (p.extended || !p.exec || p.exec === 'MID' ? 'text-textMuted' : p.exec === 'ASK' ? 'text-bull' : 'text-bear');
+/* the place wears the read's ink: over the mid (at the ask included) bought up, under it sold down, at the mid plain */
+const execInk = (p: DarkPoolPrint) => {
+  const w = execWord(p);
+  return p.extended || !w || w === 'MID' ? 'text-textMuted' : w === 'ASK' || w === 'OVER MID' ? 'text-bull' : 'text-bear';
+};
 
 /* THE CARDS — the cuts as labelled cards (the walk, 2026-09-09 — never chip rows) */
 type ReadCut = 'all' | DarkPoolIntent;
@@ -426,7 +430,7 @@ const DarkPool = () => {
       { key: 'vs', header: 'vs mid', align: 'right', sortValue: p => p.vsSpotPct, render: p => { const place = quotePlace(p.vsSpotPct, p.price); return <span className={`font-mono tnum ${placeInk(p, place.cents)}`}>{place.text}</span>; } },
       { key: 'shares', header: 'Shares', align: 'right', sortValue: p => p.size, render: p => <span className={`font-mono tnum ${weightInk(p.size, marks.size)}`}>{num(p.size)}</span> },
       { key: 'dollars', header: 'Dollars', align: 'right', sortValue: p => p.notional, render: p => <span className={`font-mono tnum ${weightInk(p.notional, marks.notional)}`}>{fmtUsd(p.notional)}</span> },
-      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-[10px] ${execInk(p)}`} title={p.extended ? 'After hours — where it sat in a thin post-market quote, not a side' : undefined}>{p.exec ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
+      { key: 'exec', header: 'Print', sortValue: p => p.exec ?? '', render: p => <span className={`font-mono text-[10px] ${execInk(p)}`} title={p.extended ? 'After hours — where it sat in a thin post-market quote, not a side' : undefined}>{execWord(p) ?? '—'}{p.extended ? <span className="text-textMuted"> · AH</span> : null}</span> },
       /* a shelf is a name's (its day by price) — the market's tape has none, so the column stands only on a name */
       ...(view
         ? [

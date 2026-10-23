@@ -24,7 +24,8 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { VENDOR_TOTAL_NOTE, windowLabel, type IntervalWindow } from '../../data/flowBook';
-import { SESSION_OPEN, sessionEndLabel, sessionEndMin, sessionPhase, useNameMinutes, usd as fmtUsd, type NameMinute } from '../../data/traceLive';
+import { SESSION_OPEN, sessionEndLabel, sessionEndMin, sessionPhase, tapeSessionIso, useNameMinutes, usd as fmtUsd, type NameMinute } from '../../data/traceLive';
+import { isLiveDay, shortDay } from '../../components/trace/dayWords';
 import { nyParts } from '../../core/nyTime';
 import type { Column } from '../../components/ui/DataTable';
 import RichRead from '../../components/ui/RichRead';
@@ -106,9 +107,9 @@ const TOOLTIPS: Record<string, string> = {
   share: "The quarter hour's share of the session's contracts — so far while the session runs",
   calls: 'Calls traded, and how many of them at the ask against on the bid',
   puts: 'Puts traded, and how many of them at the ask against on the bid',
-  ncall: 'Net call premium: call premium at the ask less on the bid — bought leans bullish',
-  nput: 'Net put premium: put premium at the ask less on the bid — bought leans bearish',
-  net: 'Net calls less net puts — the quarter hour’s lean',
+  ncall: `Net call premium: call premium at the ask less on the bid — bought leans bullish. ${VENDOR_TOTAL_NOTE}`,
+  nput: `Net put premium: put premium at the ask less on the bid — bought leans bearish. ${VENDOR_TOTAL_NOTE}`,
+  net: `Net calls less net puts — the quarter hour’s lean. ${VENDOR_TOTAL_NOTE}`,
 };
 
 const SideSplit = ({ ask, bid, total }: { ask: number; bid: number; total: number }) => (
@@ -145,6 +146,10 @@ const Windows = () => {
   const setWin = useCallback((v: number | 'live') => addr.set({ win: String(v) }), [addr]);
 
   const marks = useMemo(() => ({ vol: earnMarks(quarters, q => q.vol) }), [quarters]);
+  /* THE DATA'S DAY, NAMED (audit round 7: "Between 16:00 and 16:15 ET, SPY traded…" at 07:30 the next morning) */
+  const dataDay = hold.value.find(m => m.day)?.day ?? tapeSessionIso();
+  const onDay = isLiveDay(dataDay) ? 'today' : `on ${shortDay(dataDay)}`;
+  const dayTag = isLiveDay(dataDay) ? '' : `${shortDay(dataDay)} · `;
   const day = useMemo(() => {
     const t = quarters.reduce(
       (a, q) => ({ vol: a.vol + q.vol, netCall: a.netCall + q.netCall, netPut: a.netPut + q.netPut }),
@@ -163,10 +168,10 @@ const Windows = () => {
     const lean = sel.netCall - sel.netPut;
     return (
       <RichRead
-        text={`Between ${sel.label.replace('–', ' and ')} ET, ${name} traded ${num(sel.vol)} option contracts — ${sel.sharePct.toFixed(1)}% of its ${closed ? 'session' : 'session so far'} — net calls ${signed(sel.netCall)} and ${sel.netPut >= 0 ? `bearish net puts bought ${fmtUsd(sel.netPut)}` : `bullish net puts sold ${fmtUsd(Math.abs(sel.netPut))}`}, so the quarter hour leaned ${lean >= 0 ? 'bullish' : 'bearish'} by ${fmtUsd(Math.abs(lean))}${sel.live ? '. It is still filling' : ''}. Every expiry, from the vendor's minute ticks.`}
+        text={`${isLiveDay(dataDay) ? '' : `On ${shortDay(dataDay)}, b`}${isLiveDay(dataDay) ? 'B' : ''}etween ${sel.label.replace('–', ' and ')} ET, ${name} traded ${num(sel.vol)} option contracts — ${sel.sharePct.toFixed(1)}% of its ${closed ? 'session' : 'session so far'} — net calls ${signed(sel.netCall)} and ${sel.netPut >= 0 ? `bearish net puts bought ${fmtUsd(sel.netPut)}` : `bullish net puts sold ${fmtUsd(Math.abs(sel.netPut))}`}, so the quarter hour leaned ${lean >= 0 ? 'bullish' : 'bearish'} by ${fmtUsd(Math.abs(lean))}${sel.live ? '. It is still filling' : ''}. Every expiry, from the vendor's minute ticks — a vendor total, spread legs and floor packages in it.`}
       />
     );
-  }, [state, sel, name, closed]);
+  }, [state, sel, name, closed, dataDay]);
 
   const columns = useMemo<Column<Quarter>[]>(
     () => [
@@ -235,12 +240,12 @@ const Windows = () => {
       <DayStrip windows={state === 'in' ? windows : []} selectedIdx={winIdx} onSelect={i => setWin(i)} paused={hold.paused} slots={slots} />
       <TraceBox
         title="A quarter hour of the day"
-        sub={`${name}'s options, every expiry, 09:30–${sessionEndLabel(name)} ET in quarter hours — from the vendor's minute ticks · a row or a bar picks the quarter hour`}
+        sub={`${name}'s options ${onDay}, every expiry, 09:30–${sessionEndLabel(name)} ET in quarter hours — from the vendor's minute ticks · a row or a bar picks the quarter hour`}
         testId="windows"
         data={{ name, window: sel?.label, rows: quarters.length }}
         facts={
           <>
-            <Fact label="The session" testId="session" title={`${name}'s option contracts traded ${closed ? '' : 'so far '}in the regular session (09:30–${sessionEndLabel(name)} ET), every expiry — the vendor's minute ticks (/stock/{t}/net-prem-ticks), the figure Net Flow's pane and Compare's net show. ${VENDOR_TOTAL_NOTE}`}>
+            <Fact label={isLiveDay(dataDay) ? 'The session' : `The session · ${shortDay(dataDay)}`} testId="session" title={`${name}'s option contracts traded ${onDay} ${closed ? '' : 'so far '}in the regular session (09:30–${sessionEndLabel(name)} ET), every expiry — the vendor's minute ticks (/stock/{t}/net-prem-ticks), the figure Net Flow's pane and Compare's net show. ${VENDOR_TOTAL_NOTE}`}>
               {state !== 'in' ? <span className="text-textMuted">—</span> : <>{num(day.vol)} <span className="text-textSecondary">contracts · lean</span> <span className={callInk(day.netCall - day.netPut)}>{signed(day.netCall - day.netPut)}</span></>}
             </Fact>
             <Fact label="This quarter hour" testId="window">
@@ -255,17 +260,17 @@ const Windows = () => {
             </Fact>
             {day.busiest && (
               <Champion label="Busiest" ink="supreme" title="Open this quarter hour" onOpen={() => setWin(day.busiest!.idx)} testId="busiest">
-                {day.busiest.label} · {num(day.busiest.vol)}
+                {dayTag}{day.busiest.label} · {num(day.busiest.vol)}
               </Champion>
             )}
             {day.bull && day.bull.netCall - day.bull.netPut > 0 && (
-              <Champion label="Most bullish" ink="bull" title="Open this quarter hour" onOpen={() => setWin(day.bull!.idx)} testId="bull">
-                {day.bull.label} · {signed(day.bull.netCall - day.bull.netPut)}
+              <Champion label="Most bullish" ink="bull" title={`Open this quarter hour · net calls less net puts, the vendor's minute ticks. ${VENDOR_TOTAL_NOTE}`} onOpen={() => setWin(day.bull!.idx)} testId="bull">
+                {dayTag}{day.bull.label} · {signed(day.bull.netCall - day.bull.netPut)}
               </Champion>
             )}
             {day.bear && day.bear.netCall - day.bear.netPut < 0 && (
-              <Champion label="Most bearish" ink="bear" title="Open this quarter hour" onOpen={() => setWin(day.bear!.idx)} testId="bear">
-                {day.bear.label} · {signed(day.bear.netCall - day.bear.netPut)}
+              <Champion label="Most bearish" ink="bear" title={`Open this quarter hour · net calls less net puts, the vendor's minute ticks. ${VENDOR_TOTAL_NOTE}`} onOpen={() => setWin(day.bear!.idx)} testId="bear">
+                {dayTag}{day.bear.label} · {signed(day.bear.netCall - day.bear.netPut)}
               </Champion>
             )}
           </>
