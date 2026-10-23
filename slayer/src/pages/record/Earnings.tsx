@@ -324,7 +324,7 @@ const nextWeekday = (iso: string): string => {
   while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
   return d.toISOString().slice(0, 10);
 };
-const reactionSession = (e: EarningsEvent): string => (e.slot === 'BMO' && e.timeKnown !== false ? e.iso : nextWeekday(e.iso));
+const reactionSession = (e: EarningsEvent): string => (e.slot === 'BMO' && e.timeKnown !== false ? e.iso ?? '' : e.iso ? nextWeekday(e.iso) : '');
 const reactionLive = (e: EarningsEvent): boolean => {
   if (!e.reported || e.actualMovePct == null) return false;
   const m = nyMinutes();
@@ -404,7 +404,26 @@ const Earnings = () => {
   const knownEvents = useMemo(() => events.filter(e => e.known), [events]);
   /* the Fed's published FOMC dates and payrolls Friday; the CPI date the engine can only approximate stays off the board */
   const macro = useMemo(() => macroWindow(new Date(), 10, 20).filter(m => !/approximated/i.test(m.detail)), []);
-  const [week, setWeek] = useState<WeekPick>('0');
+  const [week, setWeekRaw] = useState<WeekPick>('0');
+  /* THE WEEK OPENS WHERE REPORTS ARE LEFT (round 8: on Friday the default "This week" showed a week already reported,
+     "113 known names, 0 still to report"). Once the lists are in, a this-week with no report left opens on next week;
+     a reader's own pick is never overridden. */
+  const [weekTouched, setWeekTouched] = useState(false);
+  const setWeek = (w: WeekPick) => {
+    setWeekTouched(true);
+    setWeekRaw(w);
+  };
+  const thisWeekLeft = useMemo(() => events.filter(e => e.weekIdx === 0 && !e.reported), [events]);
+  const thisWeekKnownLeft = useMemo(() => thisWeekLeft.filter(e => e.known).length, [thisWeekLeft]);
+  const nextWeekCount = useMemo(() => events.filter(e => e.weekIdx === 1).length, [events]);
+  const [autoNext, setAutoNext] = useState(false);
+  useEffect(() => {
+    if (weekTouched || pending || failed || !events.length) return;
+    if (thisWeekLeft.length === 0 && nextWeekCount > 0 && week === '0') {
+      setWeekRaw('1');
+      setAutoNext(true);
+    }
+  }, [weekTouched, pending, failed, events.length, thisWeekLeft.length, nextWeekCount, week]);
   const [show, setShow] = useState<ShowPick>('all');
   const [layout, setLayout] = useState<Layout>('board');
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
@@ -478,7 +497,9 @@ const Earnings = () => {
   const sentence = useMemo(() => {
     const parts = [
       `${weekEvents.length.toLocaleString('en-US')} reports ${weekWords}, ${weekKnown.length.toLocaleString('en-US')} of them known names, ${ahead.length.toLocaleString('en-US')} of those still to report`,
-      `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${ahead.length - weekHistOut} of ${ahead.length} read)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
+      ahead.length === 0
+        ? 'nothing is left to price — a report that is out carries its move instead'
+        : `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${ahead.length - weekHistOut} of ${ahead.length} read)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
     if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
     parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
@@ -589,6 +610,22 @@ const Earnings = () => {
             {pending ? 'Reading the fortnight.' : sentence}
           </p>
         )}
+        {!pending && !failed && autoNext && week === '1' && (
+          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note>
+            Every report this week is out, so the board opens on next week.{' '}
+            <button type="button" onClick={() => setWeek('0')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors">
+              See this week's results
+            </button>
+          </p>
+        )}
+        {!pending && !failed && week === '0' && thisWeekKnownLeft === 0 && nextWeekCount > 0 && (
+          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note>
+            Every known name this week has reported{thisWeekLeft.length ? ` — ${thisWeekLeft.length} smaller ${thisWeekLeft.length === 1 ? 'name is' : 'names are'} still to come` : ''}; next week holds {nextWeekCount.toLocaleString('en-US')} reports.{' '}
+            <button type="button" onClick={() => setWeek('1')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors" data-earnings-next-week>
+              Go to next week
+            </button>
+          </p>
+        )}
 
         {/* THE WEEK — the board, or a list of days; a failed read shows no empty days */}
         {failed ? null : pending ? (
@@ -655,11 +692,12 @@ const Earnings = () => {
           <div
             key={`board-${week}-${show}`}
             /* On a phone the five-day board scrolls sideways inside its box at a readable width (the phone pass, 2026-09-13) */
-            className="border-t border-borderSubtle animate-soft-in max-lg:overflow-x-auto min-w-0 max-w-full"
+            className="border-t border-borderSubtle animate-soft-in max-lg:overflow-x-auto max-sm:overflow-x-visible min-w-0 max-w-full"
             data-earnings-board
           >
             {weeks.map(weekIdx => (
-              <div key={weekIdx} className="grid grid-cols-5 gap-px bg-borderSubtle/60 border-b border-borderSubtle/60 last:border-0 max-lg:min-w-[1000px]">
+              /* on a phone the five days stand one under the other, full width (round 8: at 390 the sideways board cut its cards at the right edge with no cue to scroll) */
+              <div key={weekIdx} className="grid grid-cols-5 gap-px bg-borderSubtle/60 border-b border-borderSubtle/60 last:border-0 max-lg:min-w-[1000px] max-sm:min-w-0 max-sm:grid-cols-1">
                 {WEEKDAYS.map(wd => {
                   const { label, isToday } = weekDayLabel(weekIdx, wd);
                   const dayAll = shown.filter(e => e.weekIdx === weekIdx && e.weekday === wd);
@@ -680,21 +718,35 @@ const Earnings = () => {
                   const dayMacro = macro.filter(m => m.iso === isoOf(weekDayDate(weekIdx, wd)));
                   const bmoList = bmo.list;
                   const amcList = amc.list;
-                  const shelf = (list: EarningsEvent[], slot: EarningsEvent['slot'], timed = true) =>
+                  /* EACH SHELF CARRIES ITS OWN "+ MORE" (round 8: Friday's "+13 more" sat under After the close, which held
+                     one name — the thirteen were before the open) */
+                  const shelf = (list: EarningsEvent[], slot: EarningsEvent['slot'], timed = true, hidden = 0) =>
                     list.length === 0 ? null : (
                       <div>
                         <span className="flex items-center gap-1.5 px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">
                           <SlotMark slot={slot} timeKnown={timed} className="w-2.5 h-2.5" /> {!timed ? 'time not set' : slot === 'BMO' ? 'before the open' : 'after the close'}
                         </span>
-                        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                        <div className="mt-1.5 grid grid-cols-2 max-sm:grid-cols-3 gap-1.5">
                           {list.map(e => (
                             <Card key={e.ticker} e={e} onOpen={open} asked={e.ticker === asked} />
                           ))}
                         </div>
+                        {hidden > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setOpenDays(d => ({ ...d, [dayKey]: true }))}
+                            title={`The rest of this day ${!timed ? 'with no time set' : slot === 'BMO' ? 'before the open' : 'after the close'}`}
+                            className="mt-1.5 px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
+                            data-earnings-board-more={hidden}
+                            data-shelf={!timed ? 'unset' : slot}
+                          >
+                            + {hidden} more {!timed ? 'time not set' : slot === 'BMO' ? 'before the open' : 'after the close'}
+                          </button>
+                        )}
                       </div>
                     );
                   return (
-                    <div key={wd} className={`bg-panel px-3 py-3 min-h-[176px] flex flex-col ${isToday ? 'bg-silver/[0.04]' : ''}`} data-earnings-board-day={label} data-today={isToday || undefined} data-more={more || undefined}>
+                    <div key={wd} className={`bg-panel px-3 py-3 min-h-[176px] max-sm:min-h-0 flex flex-col ${isToday ? 'bg-silver/[0.04]' : ''}`} data-earnings-board-day={label} data-today={isToday || undefined} data-more={more || undefined}>
                       <div className="flex items-center justify-between">
                         <span className={`font-mono text-[11px] font-bold tnum ${isToday ? 'text-silver' : 'text-textPrimary'}`}>{label}</span>
                         {isToday && <span className="font-mono text-[8px] uppercase tracking-widest text-silver">today</span>}
@@ -711,20 +763,19 @@ const Earnings = () => {
                         dayMacro.length === 0 && more === 0 && <div className="mt-7 text-center font-mono text-[9px] uppercase tracking-widest text-textMuted">{show === 'all' ? 'no reports' : 'none priced this way'}</div>
                       ) : (
                         <div className="mt-2.5 flex flex-col gap-3">
-                          {shelf(bmoList, 'BMO')}
-                          {shelf(amcList, 'AMC')}
-                          {shelf(unset.list, 'AMC', false)}
+                          {shelf(bmoList, 'BMO', true, bmo.hidden)}
+                          {shelf(amcList, 'AMC', true, amc.hidden)}
+                          {shelf(unset.list, 'AMC', false, unset.hidden)}
                         </div>
                       )}
-                      {(more > 0 || (opened && capped)) && (
+                      {opened && capped && (
                         <button
                           type="button"
-                          onClick={() => setOpenDays(d => ({ ...d, [dayKey]: !opened }))}
-                          title={opened ? 'Back to the names that matter' : 'The rest of this day'}
-                          className={`${bmo.list.length + amc.list.length + unset.list.length === 0 ? 'mt-7' : 'mt-auto pt-3'} self-start px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors`}
-                          data-earnings-board-more={more || undefined}
+                          onClick={() => setOpenDays(d => ({ ...d, [dayKey]: false }))}
+                          title="Back to the names that matter"
+                          className="mt-auto pt-3 self-start px-1 font-mono text-[9px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors"
                         >
-                          {opened ? 'Show fewer' : `+ ${more} more`}
+                          Show fewer
                         </button>
                       )}
                     </div>

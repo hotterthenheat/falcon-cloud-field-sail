@@ -156,7 +156,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
               </button>
             ) : state(siRow) === 'wait' ? pending : state(siRow) === 'error' ? failedWord : '—'}
           </Fact>
-          <Fact label="Largest fund">{fund ? fund.name : state(held) === 'wait' ? pending : state(held) === 'error' ? failedWord : '—'}</Fact>
+          <Fact label="Fund holding most">{fund ? <>{fund.etf || fund.name}{fund.units !== '—' ? <span className="text-textMuted"> · {fund.units} shares</span> : null}</> : state(held) === 'wait' ? pending : state(held) === 'error' ? failedWord : '—'}</Fact>
           {/* the ownership read answers fifty houses a page — fifty is the page, not the count, so it reads "50+" */}
           <Fact label="Holders">{own?.state === 'live' || own?.okAt ? (own?.n == null ? '—' : own.n >= 50 ? '50+' : own.n) : state(own) === 'wait' ? pending : state(own) === 'error' ? failedWord : '—'}</Fact>
         </dl>
@@ -182,7 +182,10 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
       )}
       {funds.length > 0 && (
         <>
-          <Head cols={['Funds', 'Weight', 'Fund']} />
+          {/* ONE ORDER, ITS OWN HEAD (round 8: SPY's funds came in shares-held order under a "Weight" head, and "Largest
+              fund" named a $436M fund): the funds holding the most shares of the name first, the shares beside each, then
+              the name's weight inside that fund */}
+          <Head cols={['Funds · most shares first', 'Shares held', 'Of the fund']} />
           {funds.map(f => {
             const mine = own_[f.etf];
             const cell = mine ? (
@@ -194,7 +197,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
             ) : (
               <span title={`${f.etf}'s holdings file does not list this name in its top lines — Unusual Whales' exposure figure, which can lag`}>{f.weight} <span className="text-textMuted">est.</span></span>
             );
-            return <Row key={f.name} testId={f.name} onClick={() => navigate(`/dossier/etfs/${f.etf || f.name}`)} cells={[f.name, cell, f.etf]} />;
+            return <Row key={f.name} testId={f.name} onClick={() => navigate(`/dossier/etfs/${f.etf || f.name}`)} cells={[<span key="n">{f.name}{f.etf ? <span className="text-textMuted"> · {f.etf}</span> : null}</span>, f.units, cell]} />;
           })}
         </>
       )}
@@ -212,7 +215,9 @@ const numOf = (v: unknown): number | null => {
 
 function people(data: unknown): { name: string; units: string; value: string; weight: string; etf: string }[] {
   if (!Array.isArray(data)) return [];
-  return data.slice(0, 5).map(r => {
+  /* most shares of the name first — the order the head says, whatever order the vendor sent */
+  const held = (r: unknown) => (r && typeof r === 'object' ? numOf((r as Record<string, unknown>).units ?? (r as Record<string, unknown>).shares) ?? 0 : 0);
+  return [...data].sort((a, b) => held(b) - held(a)).slice(0, 5).map(r => {
     if (!r || typeof r !== 'object') return { name: '—', units: '—', value: '—', weight: '—', etf: '' };
     const o = r as Record<string, unknown>;
     const name = quietText(String(o.name || o.short_name || o.full_name || o.etf || '—'));

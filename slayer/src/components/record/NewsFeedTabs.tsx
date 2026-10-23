@@ -17,6 +17,7 @@
                   prints as they land
     ANALYST       upgrades, downgrades, targets
     DEALS         M&A, product, regulatory
+    OTHER         company stories of no named beat
 
   A row is the wire's row, in the wire's grammar
   (time · name · kind · reads · headline with its
@@ -48,14 +49,16 @@ import { ImpactLegend, ImpactMark, NEWS_FLAG_TIP, NewsFlag, tierOf } from './imp
 export const nameWord = (item: { ticker: string | null; category: string; mentions?: string[] }): string => item.ticker ?? (item.mentions?.length ? `mentions ${item.mentions[0]}` : item.category === 'Macro' ? 'MACRO' : 'NO NAME');
 import { useBoardNames } from '../../data/boardNames';
 
-export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals';
+export type FeedTab = 'all' | 'following' | 'earnings' | 'data' | 'analyst' | 'deals' | 'other';
 export const FEED_TABS = [
   { value: 'all', label: 'All finance news' },
   { value: 'following', label: 'Following' },
   { value: 'earnings', label: 'Earnings news' },
   { value: 'data', label: 'Data news' },
   { value: 'analyst', label: 'Analyst' },
-  { value: 'deals', label: 'Deals & product' },
+  { value: 'deals', label: 'Deals, product & rules' },
+  /* the stories of no named beat have a tab of their own (round 8: "DEALS & PRODUCT · 69" held the General stories) */
+  { value: 'other', label: 'Other company news' },
 ] as const;
 const leanOf = (g: NewsGrade): 'positive' | 'negative' | null => (g === 'ALLY' ? 'positive' : g === 'THREAT' ? 'negative' : null);
 /** The wire's columns — the same seven the rows under the map wear */
@@ -139,7 +142,9 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
       case 'analyst':
         return newest.filter(e => e.item.category === 'Analyst');
       case 'deals':
-        return newest.filter(e => e.item.category === 'M&A' || e.item.category === 'Product' || e.item.category === 'Regulatory' || e.item.category === 'General');
+        return newest.filter(e => e.item.category === 'M&A' || e.item.category === 'Product' || e.item.category === 'Regulatory');
+      case 'other':
+        return newest.filter(e => e.item.category === 'General');
       default:
         return newest;
     }
@@ -147,14 +152,15 @@ const NewsFeedTabs = ({ events, calendar, selectedId, onPick, wire = 'read' }: P
   /* the prints that already landed today, on the Data tab, the latest first */
   const printed = useMemo(() => (tab === 'data' ? calendar.filter(c => c.inMinutes < 0).sort((a, b) => b.inMinutes - a.inMinutes) : []), [calendar, tab]);
   const counts = useMemo(() => {
-    const c = { all: events.length, following: 0, earnings: 0, data: 0, analyst: 0, deals: 0 };
+    const c = { all: events.length, following: 0, earnings: 0, data: 0, analyst: 0, deals: 0, other: 0 };
     for (const e of events) {
       if (e.item.ticker && followed.has(e.item.ticker)) c.following++;
       const k = e.item.category;
       if (k === 'Earnings' || k === 'Guidance') c.earnings++;
       else if (k === 'Macro') c.data++;
       else if (k === 'Analyst') c.analyst++;
-      else c.deals++;
+      else if (k === 'M&A' || k === 'Product' || k === 'Regulatory') c.deals++;
+      else c.other++;
     }
     return c;
   }, [events, followed]);

@@ -69,6 +69,16 @@ const SESSION_BARS = 390;
    once; ten minutes is the floor where a zero starts meaning something. */
 export const GAUGE_MIN_BARS = 10;
 
+/* TEN MINUTES, NOT TEN BARS (the eighth audit's m1: the Board's names read 5-minute bars, so ten bars was 10:20 and every
+   name but the active one showed a bare "—" for the first fifty minutes). The floor is ten minutes of the session,
+   whatever the bars' width. */
+export const coveredMinutes = (bars: readonly Candle[]): number => {
+  if (!bars.length) return 0;
+  const step = bars.length >= 2 ? Math.max(60, bars[1].time - bars[0].time) : 60;
+  return (bars[bars.length - 1].time - bars[0].time + step) / 60;
+};
+const tooEarly = (bars: readonly Candle[]): boolean => coveredMinutes(bars) < GAUGE_MIN_BARS;
+
 /**
  * Crossings of the per-bar flip, from bar-aligned candle and snapshot tails.
  *
@@ -128,7 +138,7 @@ export function buildFlipGauge(snapshot: MarketSnapshot): FlipGauge {
      report reads (data/levelRecord.ts levelTicks) — the per-bar flips off the volume-walked history counted something
      else (TSLA 1× on the Board against 11 on the Map) */
   const candles = sessionBars(ticker) ?? [];
-  if (flip === null || candles.length < GAUGE_MIN_BARS) return { ...base, bars: candles.length };
+  if (flip === null || tooEarly(candles)) return { ...base, bars: candles.length };
   return { ...base, crossings: levelTicks(candles, flip, flip >= spot ? 'call' : 'put').length, bars: candles.length };
 }
 
@@ -145,6 +155,8 @@ export interface SessionCrossings {
   why: string | null;
   /** False while the count's flip is provisional (its contracts' own vols not all in) — the count is then not shown */
   complete: boolean;
+  /** The session is under ten minutes old — no count yet, and the cell says when it starts rather than a bare dash */
+  early?: boolean;
 }
 
 /* A FINISHED SESSION'S COUNT IS FROZEN (the third audit, 2026-10-23: QQQ's "Flip crossed today" read 13× and then 9×
@@ -174,8 +186,8 @@ export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0
   const book = sb.book;
   const read = levelFlip(book, book.chain);
   let out: SessionCrossings;
-  if (read.flip === null) out = { crossings: candles.length >= GAUGE_MIN_BARS ? 0 : null, flip: null, label: sb.label, why: null, complete: read.complete };
-  else if (candles.length < GAUGE_MIN_BARS) out = { crossings: null, flip: read.flip, label: sb.label, why: null, complete: read.complete };
+  if (read.flip === null) out = { crossings: !tooEarly(candles) ? 0 : null, flip: null, label: sb.label, why: null, complete: read.complete, early: tooEarly(candles) };
+  else if (tooEarly(candles)) out = { crossings: null, flip: read.flip, label: sb.label, why: null, complete: read.complete, early: true };
   /* the side rule the Map's report uses (WallReportCard: flip ≥ spot is tested from below) */
   else out = { crossings: levelTicks(candles, read.flip, read.flip >= book.spot ? 'call' : 'put').length, flip: read.flip, label: sb.label, why: null, complete: read.complete };
   /* kept once the whole session is in (its last bar at 15:55 or later) and the book's dates have all landed */

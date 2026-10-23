@@ -105,7 +105,7 @@ function composite(sl: StockSleeves, quiet: readonly (keyof StockSleeves)[] = []
     the numbers, the money, the news — what each says when it is for a name
     and when it is against it. The figures stay inside the engine. */
 const SLEEVE_WORDS: Record<keyof StockSleeves, { name: string; good: string; bad: string }> = {
-  momentum: { name: 'the trend', good: 'the trend is up', bad: 'the trend is broken' },
+  momentum: { name: 'the trend', good: 'the short-term trend (weeks, not the year) is up', bad: 'the short-term trend (weeks, not the year) has turned down' },
   quality: { name: 'the numbers', good: 'the numbers are clean', bad: 'the numbers are slipping' },
   flow: { name: 'the money', good: 'the money is buying', bad: 'the money is selling' },
   news: { name: 'the news', good: 'the news helps', bad: 'the news hurts' },

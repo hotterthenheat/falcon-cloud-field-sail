@@ -16,6 +16,7 @@
 ==================================================
 */
 
+import { notABet } from '../../data/flowBook';
 import { useMemo } from 'react';
 import { useContractLast } from '../../data/traceLive';
 import PrintDrilldown from './PrintDrilldown';
@@ -30,7 +31,7 @@ interface BookDrillProps {
   openKey: string | null;
   onOpen: (key: string | null) => void;
   /** Anchor-print override per row — Watchers hands in the exact clip */
-  clipFor?: (row: BookContract) => { size: number; fill: number; side: 'ASK' | 'BID'; time: string } | undefined;
+  clipFor?: (row: BookContract) => { size: number; fill: number; side: 'ASK' | 'BID'; time: string; multi?: boolean } | undefined;
   /** The host's hold tick (kept for the hosts; the card reads the vendor itself) */
   tick?: unknown;
 }
@@ -62,8 +63,9 @@ const BookDrill = ({ list, openKey, onOpen, clipFor }: BookDrillProps) => {
       ask: last && last.ask > 0 ? last.ask : day.ask,
       time: last?.time ?? day.time,
       fillPos: last && last.ask > last.bid && last.bid > 0 ? Math.min(1, Math.max(0, (last.fill - last.bid) / (last.ask - last.bid))) : 0.5,
-      /* the day is not a leg of anything — its multi-leg share is on the row, not a reason to withhold its read */
-      legs: 1,
+      /* the day is not a leg of anything — unless half or more of it traded as legs of multi-leg orders (audit round 8,
+         flowBook notABet): then its side is the packages', and the card gives it no read */
+      legs: notABet(row) ? 2 : 1,
       strat: '—' as const,
       theta: last?.theta ?? day.theta,
       dayCard: { last: last ? { fill: last.fill, size: last.size, time: last.time, side: last.side, volume: last.volume ?? 0 } : null, session: last?.extended ? 'after hours' : 'regular session' },

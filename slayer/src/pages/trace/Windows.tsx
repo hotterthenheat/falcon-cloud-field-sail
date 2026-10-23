@@ -129,7 +129,7 @@ const Windows = () => {
   });
   const name = (addr.cut.name || activeTicker || 'SPY').toUpperCase();
   const pack = useNameMinutes(name);
-  const hold = useHold(pack.rows, name);
+  const hold = useHold(pack.rows, name, !(pack.waiting && pack.rows.length === 0));
   /* THE NAME'S OWN SESSION: to 16:15 for the index and ETF options that trade then (the re-audit, 2026-10-22) */
   const endMin = sessionEndMin(name);
   const slots = (endMin - SESSION_OPEN) / 15;

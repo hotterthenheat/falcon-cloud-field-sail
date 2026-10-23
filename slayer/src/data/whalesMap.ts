@@ -43,17 +43,21 @@ const ANALYST_RE = /\btarget price\b|\bprice targets?\b|\bpt to\b|\b(?:rating|ra
 const MA_RE = /\bacqui(?:re|res|red|ring|sition)s?\b|\bmerger\b|\bmerge\b|\bbuyout\b|\btakeover\b|\btender offer\b|\bto buy\b[^.;]{0,30}\bfor \$|\b(?:agrees?|agreed|deal) to (?:buy|sell|acquire|merge)\b|\bspin[- ]?off\b|\bdivest/i;
 const REG_RE = /\bsec\b|\bregulat|\bantitrust\b|\bdoj\b|\bftc\b|\bfda\b|\bprobe\b|\binvestigat|\blawsuit|\bclass action\b|\blitigation\b|\bsues?\b|\bsued\b|\bcourt\b|\bjudge\b|\bsettle(?:s|d|ment)\b|\bfined?\b|\bpenalt/i;
 const MACRO_RE =
-  /\$MACRO\b|\bfed\b|\bfomc\b|\bpowell\b|\bcpi\b|\bppi\b|\bpce\b|inflation|\bpayrolls?\b|jobs report|jobless claims|unemployment|\bgdp\b|recession|central bank|\becb\b|\bboj\b|\bboe\b|\bpboc\b|\brate (?:cut|hike)s?\b|interest rates?|treasury yields?|bond yields?|\byields? (?:rise|fall|jump|climb|slide)|\btariffs?\b|trade war|\bcrude\b|\bbrent\b|\boil (?:prices?|surpasses|tops|jumps|falls|rises|slides)|\bopec\b|the dollar\b|consumer confidence|consumer sentiment|\bpmi\b|retail sales|housing starts|home sales|\beconom(?:y|ic|ies)\b|government shutdown|\bdeficit\b|\bchancellor\b|\btreasury secretary\b|\bs&p 500\b|\bnasdaq composite\b|\bdow jones\b|\bwall street\b|global markets|\b(?<!'s )stocks (?:tumble|rally|fall|rise|slide|surge|drop|climb|sink|slump)/i;
+  /\$MACRO\b|\bfed\b|\bfomc\b|\bpowell\b|\bcpi\b|\bppi\b|\bpce\b|inflation|\bpayrolls?\b|jobs report|jobless claims|unemployment|\bgdp\b|recession|central bank|\becb\b|\bboj\b|\bboe\b|\bpboc\b|\brate (?:cut|hike)s?\b|interest rates?|treasury yields?|bond yields?|\byields? (?:rise|fall|jump|climb|slide)|\btariffs?\b|trade war|\bcrude\b|\bbrent\b|\boil (?:prices?|surpasses|tops|jumps|falls|rises|slides)|\bopec\b|the dollar\b|consumer confidence|consumer sentiment|\bpmi\b|retail sales|housing starts|home sales|\b(?:the|us|u\.s\.|global|world|china's|chinese|german|germany's|uk|britain's|euro(?:zone|pe's)?|japan's|japanese|india's|american) econom(?:y|ies)\b|\beconomic (?:data|growth|slowdown|outlook|activity|indicators?|calendar|report|figures|contraction|recovery)\b|government shutdown|\bdeficit\b|\bchancellor\b|\btreasury secretary\b|\bs&p 500\b|\bnasdaq composite\b|\bdow jones\b|\bwall street\b|global markets|\b(?<!'s )stocks (?:tumble|rally|fall|rise|slide|surge|drop|climb|sink|slump)/i;
 
+/* TIGHTER WORDS FOR POLICY (round 8: press releases filed Macro on a bare "president", "congress", "sterling",
+   "economy" or "military" — "Acme names Jane Doe President and CEO", "World Congress of…", "Sterling Bancorp…", "the
+   creator economy", "a military contract"). Each needs the policy sense: the President by office or name, Congress
+   acting, sterling as the currency, an economy that is a country's, the military as a force in action. */
 const GOV_RE =
-  /\b(?:government|congress|senate|house (?:passes|votes|republicans|democrats)|white house|president|trump|biden|administration|election|parliament|prime minister|minister|ministry|cabinet|lawmakers?|legislation|bill (?:passes|signed)|sanctions?|embargo|war\b|ceasefire|nato|united nations|\bun\b|imf|world bank|g7|g20|budget|tax (?:cut|hike|bill|plan)|debt ceiling|stimulus|regulators?|commodit(?:y|ies)|gold (?:prices?|futures|rises|falls|climbs|slips)|silver prices?|copper prices?|natural gas|bitcoin|crypto(?:currency|currencies)? market|futures (?:rise|fall|edge|point)|stock futures|equit(?:y|ies) markets?|markets? (?:open|close|rally|slump|wrap)|asian (?:stocks|markets)|european (?:stocks|markets)|ftse|dax|nikkei (?:225|average|index|stock average|(?:rises|falls|gains|drops|climbs|slips|ends|closes))|hang seng|kospi|sensex|yuan|yen|euro\b|sterling|forex)\b/i;
+  /\b(?:government (?:shutdown|spending|debt|bonds?|data|officials?|says|said|plans?|policy|funding)|(?:federal|us|u\.s\.|state|national|eu|china's|japan's) government|congress(?:ional)? (?:passes|passed|votes?|voted|approves?|approved|leaders?|republicans|democrats|bill|hearing|budget|funding)|(?:the )?senate (?:passes|passed|votes?|voted|approves?|bill|confirms?)|house (?:passes|votes|republicans|democrats)|white house|(?:the|us|u\.s\.|french|russian|chinese|ukrainian|south korean|mexican|brazilian) president\b(?! (?:and|&|of (?:the )?(?:company|sales|operations|marketing|engineering|global|north|asia|europe|investor)))|president (?:trump|biden|xi|putin|zelensk(?:y|iy)|macron|lula|erdogan|milei|sheinbaum|lee)|trump|biden|(?:trump|biden|the) administration|election|parliament|prime minister|(?:finance|foreign|trade|economy|defense|defence|energy) minister|ministry of|cabinet (?:reshuffle|meeting|approves)|lawmakers?|legislation|bill (?:passes|signed)|sanctions?|embargo|war\b(?! (?:room|chest|game))|ceasefire|nato|united nations|imf|world bank|g7|g20|(?:federal|state|national|government|eu) budget|budget (?:deficit|bill|talks|vote|proposal)|tax (?:cut|hike|bill|plan)|debt ceiling|stimulus|regulators?|commodit(?:y|ies) (?:prices?|markets?)|gold (?:prices?|futures|rises|falls|climbs|slips)|silver prices?|copper prices?|natural gas (?:prices?|futures)|bitcoin (?:price|falls|rises|slides|jumps|tops|drops)|crypto(?:currency|currencies)? market|futures (?:rise|fall|edge|point)|stock futures|equit(?:y|ies) markets?|markets? (?:open|close|rally|slump|wrap)|asian (?:stocks|markets)|european (?:stocks|markets)|ftse (?:100|250)?|dax|nikkei (?:225|average|index|stock average|(?:rises|falls|gains|drops|climbs|slips|ends|closes))|hang seng|kospi|sensex|yuan|yen\b|euro\b(?![- ]?(?:pacific|net|bank))|sterling (?:rises|falls|slips|gains|weakens|strengthens|hits|drops|climbs|against|edges)|pound sterling|forex)\b/i;
 
 /* THE WORLD BEYOND THE FIVE BEATS IS MACRO, AND A STORY OF NO BEAT IS GENERAL (audit round 5, 2026-10-23). Israel and
    Ukraine stories, "US Dollar Recovery… FX", Italy's bill auction, a bid-to-cover, UK natural gas and India's PMI all
    fell through to PRODUCT, the old fallback. Geopolitics, currencies, rates and auctions, and economic data are Macro
    (no single company as the subject); a launch, a release, a rollout is Product; anything else is General. */
-const GEO_RE = /\b(?:israel(?:i|is)?|gaza|hamas|hezbollah|west bank|ukrain(?:e|ian|ians)|kyiv|kremlin|russia(?:n|ns)?|moscow|putin|zelensk(?:y|iy)|iran(?:ian)?|tehran|syria|yemen|houthis?|red sea|north korea|pyongyang|taiwan strait|missiles?|drone strikes?|airstrikes?|troops|military|invasion|ceasefire|truce|peace (?:talks|deal|plan)|nato|sanctions?|geopolitic\w*|trade (?:officials|talks|ministers?|negotiat\w+|truce|deal)|bank of (?:korea|japan|england|canada|israel|mexico|thailand)|reserve bank|central bank|finance ministry|bls|bureau of labor)\b/i;
-const FX_RE = /\b(?:fx|forex|currenc(?:y|ies)|(?:us )?dollar(?: index)?|dxy|greenback|euro(?:zone)?|sterling|yen|yuan|renminbi|rupee|swiss franc|loonie|aussie dollar|kiwi dollar|peso|lira)\b(?![- ]denominated (?:bond|debt))/i;
+const GEO_RE = /\b(?:israel(?:i|is)?|gaza|hamas|hezbollah|west bank|ukrain(?:e|ian|ians)|kyiv|kremlin|russia(?:n|ns)?|moscow|putin|zelensk(?:y|iy)|iran(?:ian)?|tehran|syria|yemen|houthis?|red sea|north korea|pyongyang|taiwan strait|missiles?|drone strikes?|airstrikes?|troops|military (?:strikes?|action|operations?|escalation|build-?up|exercises?|drills?|offensive|aid|spending|junta)|invasion|ceasefire|truce|peace (?:talks|deal|plan)|nato|sanctions?|geopolitic\w*|trade (?:officials|talks|ministers?|negotiat\w+|truce|deal)|bank of (?:korea|japan|england|canada|israel|mexico|thailand)|reserve bank|central bank|finance ministry|bls|bureau of labor)\b/i;
+const FX_RE = /\b(?:fx|forex|currenc(?:y|ies)|(?:us )?dollar(?: index)?|dxy|greenback|euro(?:zone)?|pound sterling|sterling(?= (?:rises|falls|slips|gains|weakens|strengthens|hits|drops|climbs|against|edges|trades))|yen|yuan|renminbi|rupee|swiss franc|loonie|aussie dollar|kiwi dollar|peso|lira)\b(?![- ]denominated (?:bond|debt))/i;
 const RATES_RE = /\b(?:(?:t-|treasury |government |sovereign |\d+-(?:month|week|year) )bills?|government bonds?|sovereign bonds?|bunds?|gilts?|btps?|oats|jgbs?|treasur(?:y|ies)|yields?|bid[- ]to[- ]cover|(?:bill|bond|debt|treasury) auctions?|swap rates?|repo|interest rates?|rate (?:cut|hike|decision|path|outlook)s?|policy rate|basis points|bps)\b|\b(?:italy|italian|spain|spanish|germany|german|france|french|uk|britain|japan|eurozone|greece|portugal|ireland|belgium|austria|netherlands|dutch|finland|us|u\.s\.)\b[^.;]{0,40}\bbills?\b/i;
 const DATA_RE = /\b(?:pmi|purchasing managers|gdp|cpi|ppi|pce|inflation|deflation|payrolls?|unemployment|jobless|claims|retail sales|industrial (?:output|production)|factory (?:orders|output)|durable goods|trade (?:balance|deficit|surplus)|current account|housing starts|building permits|home sales|consumer (?:confidence|sentiment|prices)|business (?:confidence|climate|sentiment)|ifo|zew|tankan|inventor(?:y|ies)|stockpiles?|natural gas|nat gas|crude|brent|wti|gasoline|survey|index (?:rose|fell|rises|falls|climbs|slips|jumps|drops)|economic data)\b/i;
 const PRODUCT_RE = /\b(?:launch(?:es|ed|ing)?|unveil(?:s|ed|ing)?|introduc(?:es|ed|ing)|releases?d?|rolls? out|rolled out|rollout|debut(?:s|ed)?|new (?:product|model|version|service|feature|chip|phone|platform|app)|ships?|shipping|recalls?|recalled|availability|now available|partners? with|partnership|collaborat\w+|deploy(?:s|ed|ment)?|pilot|beta|preview|upgrade[sd]? (?:its|the) (?:app|platform|service)|update[sd]? (?:its|the) (?:app|platform|service)|approval for|wins? (?:contract|order|deal)|contract|orders?)\b/i;
@@ -61,6 +65,7 @@ const PRODUCT_RE = /\b(?:launch(?:es|ed|ing)?|unveil(?:s|ed|ing)?|introduc(?:es|
 const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boolean): NewsCategory => {
   const s = `${headline} ${(tags ?? []).join(' ')}`;
   if (/\$MACRO\b/i.test(s)) return 'Macro';
+  if (!hasTicker && INDEX_MOVE_RE.test(headline)) return 'Macro';
   /* a broker's note is the analyst beat even when it names a quarter ("HSBC cuts target price on X after Q3") */
   if (/\btarget price\b|\bprice targets?\b|\bupgrades?\b|\bupgraded\b|\bdowngrades?\b|\bdowngraded\b/i.test(headline)) return 'Analyst';
   /* THE DATA BEFORE THE OUTLOOK (audit round 6): "EUROZONE OCTOBER COMPOSITE PMI DROPS TO 51.9, LOWER THAN EXPECTED
@@ -151,6 +156,26 @@ const COMPANY_RE = UNIVERSE.filter(u => u.name.length >= 4 && u.name !== u.ticke
   const proper = u.name === u.name.toUpperCase() ? u.name.charAt(0) + u.name.slice(1).toLowerCase() : u.name;
   return { ticker: u.ticker, re: new RegExp(`\\b(?:${esc(u.name)}|${esc(proper)}|${esc(u.name.toUpperCase())})\\b`) };
 });
+/* THE SHORT NAMES THE WIRE WRITES (round 8: "Western Digital…" and "Abbott…" stories came untagged and read NO NAME —
+   the listing's names are "Western Digital Corporation" (two plain words, skipped by the headline matcher) and "Abbott
+   Laboratories" (the wire never writes "Laboratories")). Each entry is a company's usual short name, unambiguous as
+   written — capitalised, or in an all-caps headline — and the listed symbol it means. */
+const SHORT_NAMES: [string, string][] = [
+  ['Western Digital', 'WDC'], ['Abbott', 'ABT'], ['Johnson & Johnson', 'JNJ'], ['Procter & Gamble', 'PG'], ['Eli Lilly', 'LLY'],
+  ['Goldman Sachs', 'GS'], ['Morgan Stanley', 'MS'], ['JPMorgan', 'JPM'], ['Bank of America', 'BAC'], ['Wells Fargo', 'WFC'],
+  ['Citigroup', 'C'], ['ExxonMobil', 'XOM'], ['Exxon', 'XOM'], ['Chevron', 'CVX'], ['ConocoPhillips', 'COP'], ['Pfizer', 'PFE'],
+  ['Merck', 'MRK'], ['AbbVie', 'ABBV'], ['Bristol Myers', 'BMY'], ['Bristol-Myers', 'BMY'], ['UnitedHealth', 'UNH'],
+  ['Boeing', 'BA'], ['Lockheed Martin', 'LMT'], ['Northrop Grumman', 'NOC'], ['General Dynamics', 'GD'], ['Caterpillar', 'CAT'],
+  ['Deere', 'DE'], ['Walmart', 'WMT'], ['Costco', 'COST'], ['Home Depot', 'HD'], ["McDonald's", 'MCD'], ['Starbucks', 'SBUX'],
+  ['Coca-Cola', 'KO'], ['PepsiCo', 'PEP'], ['Disney', 'DIS'], ['Netflix', 'NFLX'], ['Comcast', 'CMCSA'], ['Verizon', 'VZ'],
+  ['Intel', 'INTC'], ['Micron', 'MU'], ['Qualcomm', 'QCOM'], ['Broadcom', 'AVGO'], ['Oracle', 'ORCL'], ['Salesforce', 'CRM'],
+  ['Cisco', 'CSCO'], ['Palantir', 'PLTR'], ['Nvidia', 'NVDA'], ['NVIDIA', 'NVDA'], ['Tesla', 'TSLA'], ['Amazon', 'AMZN'],
+  ['Microsoft', 'MSFT'], ['Alphabet', 'GOOGL'], ['Seagate', 'STX'], ['Texas Instruments', 'TXN'], ['Applied Materials', 'AMAT'],
+  ['Lam Research', 'LRCX'], ['General Motors', 'GM'], ['Ford Motor', 'F'], ['American Express', 'AXP'], ['Mastercard', 'MA'],
+  ['Thermo Fisher', 'TMO'], ['Medtronic', 'MDT'], ['Honeywell', 'HON'], ['3M', 'MMM'], ['UPS', 'UPS'], ['FedEx', 'FDX'],
+];
+const SHORT_NAME_RE = SHORT_NAMES.map(([name, ticker]) => ({ ticker, re: new RegExp(`(?<![\\w&-])(?:${esc(name)}|${esc(name.toUpperCase())})(?:'s|’s)?(?![\\w&-])`) }));
+
 /* A WIRE TAG MUST BE BORNE OUT BY ITS HEADLINE: the vendor tags by bare word — "AI", "Gold" (Barrick), "Bond",
    "CPI", "FUTURE" (FutureFuel), "Tesla Eyes" (Second Sight). A tag stands when the headline writes it as a symbol
    ($T, (T), NASDAQ: T) or names the company by its distinctive word; otherwise it is dropped — a missing tag costs
@@ -187,14 +212,21 @@ const firstWordOf = (t: string): RegExp | null => {
    broker's name is read out of the headline before any tag is checked against it. */
 const SPONSORED_DATA_RE = /\b(?:pmi|purchasing managers'?(?: index)?)\b/i;
 const BROKER_LEAD_RE = /^\s*(?:[A-Z][\w&.'-]*\s+){1,4}?(?:raises|lifts|boosts|cuts|lowers|trims|reduces|reiterates|maintains|keeps|initiates|starts|resumes|upgrades|downgrades|assumes|sets|hikes|ups)\b(?=[^.;]{0,60}\b(?:target|rating|coverage|price objective|pt|to (?:buy|sell|hold|neutral|outperform|underperform|overweight|underweight|equal[- ]weight|market perform))\b)/i;
+/* AN INDEX IS NOT ITS EXCHANGE (round 8: "NASDAQ DOWN 111.60 POINTS" came tagged NDAQ and read MAJOR — like the
+   vendor's other bare-word tags). A headline about an index's level or its points is the market's move: no company is
+   its subject, it files under Macro, and a tick of the tape is not major news. */
+export const INDEX_MOVE_RE =
+  /^\W*(?:the\s+)?(?:nasdaq(?: composite| 100)?|dow(?: jones)?(?: industrials| industrial average)?|s&p(?: 500)?|nyse composite|russell (?:2000|1000|3000)|djia|spx|ndx)\b(?:[^.;]|\.(?=\d)){0,40}?\b(?:up|down|rises?|falls?|gains?|loses?|drops?|climbs?|slips?|jumps?|sinks?|closes?|opens?|ends?|extends?|pares?|turns?|hits?|tops?|record)\b(?:[^.;]|\.(?=\d)){0,40}?(?:\bpoints?\b|\bpts\b|%|\brecord\b|\bhigh\b|\blow\b)/i;
+const INDEX_TAGS = new Set(['NDAQ', 'ICE', 'SPGI', 'CME', 'DJI', 'DIA', 'QQQ', 'SPY', 'IWM', 'CBOE', 'MSCI']);
 function storyTickers(headline: string, tags: readonly string[] | undefined): { tickers: string[]; mentions: string[] } {
   if (/\$MACRO\b/i.test(headline)) return { tickers: [], mentions: [] };
+  if (INDEX_MOVE_RE.test(headline) && (tags ?? []).every(t => INDEX_TAGS.has(t.trim().toUpperCase()))) return { tickers: [], mentions: [] };
   if (SPONSORED_DATA_RE.test(headline)) return { tickers: [], mentions: [] };
   const broker = BROKER_LEAD_RE.exec(headline);
   if (broker) headline = headline.slice(broker[0].length).replace(/^\s+/, '');
   const tagged = [...new Set((tags ?? []).map(t => t.trim().toUpperCase()).filter(t => /^[A-Z][A-Z0-9.]{0,5}$/.test(t)))].filter(t => borneOut(t, headline));
   if (tagged.length) return { tickers: tagged, mentions: [] };
-  const named = COMPANY_RE.filter(c => c.re.test(headline));
+  const named = [...COMPANY_RE, ...SHORT_NAME_RE].filter(c => c.re.test(headline)).filter((c, i, all) => all.findIndex(x => x.ticker === c.ticker) === i);
   /* an untagged company story names its company by the listing's own name (data/tickers.ts companiesInHeadline) —
      "COCA-COLA SAYS…" is KO, "Medpace Slumps…" MEDP (the re-audit, 2026-10-22: dozens of NO TICKER rows) */
   const listed = companiesInHeadline(headline).filter(t => !named.some(n => n.ticker === t));
@@ -246,7 +278,7 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
     const { tickers, mentions } = storyTickers(headline, r.tickers);
     const ticker = tickers[0] ?? null;
     const category = categoryOf(headline, r.tags, !!ticker);
-    const major = !!r.is_major && (!!ticker || category === 'Macro') && !ROUTINE_RE.test(headline);
+    const major = !!r.is_major && (!!ticker || category === 'Macro') && !ROUTINE_RE.test(headline) && !INDEX_MOVE_RE.test(headline);
     const pm = publishMove(r.meta, ticker, priorClose, r.created_at);
     const moved = pm.day;
     const move = moved ?? 0;
@@ -487,8 +519,12 @@ export const assetTagOf = (notes?: string): string | null => {
 };
 const assetKindOf = (notes?: string, issuer?: string): AssetKind => {
   const tag = assetTagOf(notes);
-  if (tag && TAG_KIND[tag]) return TAG_KIND[tag];
   const s = `${notes || ''} ${issuer || ''}`;
+  /* [GS] IS EVERY GOVERNMENT SECURITY (round 8: munis tagged [GS] read as Treasuries — the tag decided before the muni
+     words were read). Under [GS] a Treasury or federal-agency issue stays a government security; every other one — a state,
+     a county, a district, an authority, however the filer abbreviates it — is a municipal security. */
+  if (tag === 'GS' && !/\btreasur(?:y|ies)\b|\bt-?bills?\b|\bu\.?s\.? (?:govt|government|treas\w*)\b|\bunited states\b|\bfnma\b|\bfannie\b|\bfreddie\b|\bfhlmc\b|\bfhlb\b|federal (?:home loan|farm credit)|\bginnie\b|\bgnma\b|\btips\b|\bstrips\b|\bagency\b/i.test(s)) return 'Municipal Security';
+  if (tag && TAG_KIND[tag]) return TAG_KIND[tag];
   if (/\btreasury\b|\bt-?bills?\b|\[GS\]/i.test(s)) return 'Other';
   /* OPTION EVIDENCE WINS OVER THE UNDERLYING'S NAME (audit round 7): Pelosi's untagged "Intel Corporation - Common Stock
      (INTC) 50 call options, Strike: $50" and Sen. Armstrong's "…Common Stock\nOption Type: Call\nStrike price: $80.00"
@@ -528,7 +564,19 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
   const trades: CongressTrade[] = [];
   /* the vendor repeats some reports word for word (Sen. Boozman's 10/21 filings came back twice each) — a report that
      matches one already read, filing day included, is the same report and is read once */
-  const seen = new Set<string>();
+  /* ONLY THE PAGING'S OVERLAP IS ONE REPORT (round 8: two identical lots filed the same day were collapsed into one).
+     Rows identical in every field are counted per answer they came in (liveRecord marks each row's read, `__page`); a
+     report stands as many times as the most any one answer holds it — the overlap between reads is not counted twice,
+     a member's genuine identical lots are all kept. */
+  const lots = new Map<string, Map<number, number>>();
+  for (const r of rows) {
+    const k = rowKey(r as unknown as Record<string, unknown>);
+    const page = (r as unknown as { __page?: number }).__page ?? 0;
+    const per = lots.get(k) ?? new Map<number, number>();
+    per.set(page, (per.get(page) ?? 0) + 1);
+    lots.set(k, per);
+  }
+  const seen = new Map<string, number>();
   let unread = 0;
   let notMembers = 0;
   const notMemberAges: number[] = [];
@@ -585,9 +633,11 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
        stock bought beside it — Whitehouse read 30 of 37, Pelosi 26 / 18 of 28 / 20, the 90-day book 673 of 699. Only a
        true repeat — every field the vendor sent identical (the paging re-reads the cursor's day) — is read once. */
     const whole = rowKey(r as unknown as Record<string, unknown>);
-    if (seen.has(whole)) continue;
-    seen.add(whole);
-    const id = `${member.id}-${r.transaction_date ?? ''}-${hashKey(whole)}`;
+    const had = seen.get(whole) ?? 0;
+    const allowed = Math.max(1, ...(lots.get(whole)?.values() ?? [1]));
+    if (had >= allowed) continue;
+    seen.set(whole, had + 1);
+    const id = `${member.id}-${r.transaction_date ?? ''}-${hashKey(whole)}${had ? `-${had + 1}` : ''}`;
     trades.push({
       /* the notes join the id: two unnamed treasury bills bought the same day were one row id (duplicate grid rows) */
       id,

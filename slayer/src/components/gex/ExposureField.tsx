@@ -1913,7 +1913,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                 {/* NOTHING PROVISIONAL, SAID (the fourth audit's M1: the matrix's window grew from "Oct 23 → Oct 29" to Nov 3 as
                     the dates landed, its figures with it, and the supreme read the whole book for seconds): until every
                     listed date and the levels' contracts are in, the book is veiled and says why */}
-                {book.snapshot.liveBook && !fresh && (!bookDatesIn(c.ticker) || roomLevels(levelsBook(book.snapshot, levelsScope), '0DTE')?.complete === false) && (
+                {/* …but a matrix or profile on the Levels card's own front date needs only that date (the eighth audit: a phone's Map
+                    still read "Loading SPY's expiries…" at 12s while the forty far dates landed behind a window of one) */}
+                {book.snapshot.liveBook && !fresh && (!(bookDatesIn(c.ticker) || (d.view !== 'calendar' && levelsScope !== 'ALL' && !differs && dates.length === 1)) || roomLevels(levelsBook(book.snapshot, levelsScope), '0DTE')?.complete === false) && (
                   <div className="absolute inset-0 z-10 grid place-items-center bg-card/80 backdrop-blur-[2px]" data-ledger-loading={c.ticker}>
                     <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">Loading {c.ticker}'s expiries…</span>
                   </div>

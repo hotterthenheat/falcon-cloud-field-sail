@@ -76,8 +76,14 @@ export interface BuildRow {
   /** Contracts */
   dCall: number;
   dPut: number;
-  /** |now| − |open| — the wall's size change, positive = built */
+  /** The change as the strike is printed, positive = built: a CALL WALL by its call gamma, a PUT WALL by its put gamma (the
+      leg that makes it — levelsFor legsAt), the supreme and every other strike by |net now| − |net was| (the eighth audit's
+      M2: the 765 call wall "shrank $341M" off its net while 8,499 calls were added to it) */
   sizeChange: number;
+  /** What `sizeChange` measures */
+  basis: 'calls' | 'puts' | 'net';
+  /** |now| − |open| on the net, whatever the strike is — the totals' figure */
+  netSizeChange: number;
   /** Net gamma now less what it was, in the RETAIL sign every page prints (calls +, puts −): the one change a strike shows
       — now − was = change, always (the fourth audit: "783 +$9M · was −$11M" beside a change of "−$2M") */
   change: number;
@@ -299,6 +305,13 @@ const SHAPE_POINTS = 40;
 
 const fmtContracts = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US')}`;
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${fmtDollars(v)}`;
+/** A strike whose net changed sides, both figures in the RETAIL sign: "flipped from put-heavy to call-heavy (−$147M → +$122M)"
+    — never "shrank $25M", which is the difference of two sizes on opposite sides (the eighth audit) */
+export const switchedWords = (fromRetail: number, toRetail: number): string => {
+  const side = (v: number) => (v > 0 ? 'call-heavy' : 'put-heavy');
+  const f = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtDollars(Math.abs(v))}`;
+  return `flipped from ${side(fromRetail)} to ${side(toRetail)} (${f(fromRetail)} → ${f(toRetail)})`;
+};
 /** A wall's size change in words — "grew $171M" / "shrank $171M" — never a sign beside a signed net (the seventh audit) */
 export const sizeWords = (v: number): string => (Math.abs(v) < 0.5 ? 'held its size' : `${v > 0 ? 'grew' : 'shrank'} ${fmtDollars(Math.abs(v))}`);
 
@@ -403,11 +416,18 @@ export function buildBuilding(
     const open = now - added;
     const callAdded = real ? -(oc?.call ?? 0) : dCall * Math.abs(u.call);
     const putAdded = real ? (oc?.put ?? 0) : dPut * Math.abs(u.put);
-    const sizeChange = Math.abs(now) - Math.abs(open);
+    const netSizeChange = Math.abs(now) - Math.abs(open);
     const nowNode = chain.find(x => x.strike === K);
     const nowC = nowNode?.callGex ?? 0;
     const nowP = nowNode?.putGex ?? 0;
     legsAt.set(K, { nowC, nowP, openC: nowC - callAddedSigned, openP: nowP - putAddedSigned });
+    /* THE LEG THAT MAKES THE LEVEL (the eighth audit's M2): a call wall is the most call gamma, so it grew when its call
+       gamma grew; a put wall by its puts; the supreme (the most net) and every other strike by the net */
+    const kRoles = levelRoles(K, levels);
+    const basis: BuildRow['basis'] = kRoles.includes('supreme') ? 'net' : kRoles.includes('call wall') && !kRoles.includes('put wall') ? 'calls' : kRoles.includes('put wall') && !kRoles.includes('call wall') ? 'puts' : 'net';
+    const legNow = basis === 'calls' ? nowC : basis === 'puts' ? nowP : now;
+    const legOpen = basis === 'calls' ? nowC - callAddedSigned : basis === 'puts' ? nowP - putAddedSigned : open;
+    const sizeChange = basis === 'net' ? netSizeChange : Math.abs(legNow) - Math.abs(legOpen);
 
     /* The shape: the wall's size through the day at today's units */
     const series = sampled.map(snap => {
@@ -439,14 +459,15 @@ export function buildBuilding(
        under "built overnight +$146M" — the bar was 5% of the book's biggest wall, which on SPY no single strike's change
        reached). A strike moved when its size changed by a tenth of what it holds (open or now, the larger), and by more
        than rounding: half a percent of the biggest wall in the window. */
-    const own = Math.max(Math.abs(now), Math.abs(open));
+    const own = Math.max(Math.abs(legNow), Math.abs(legOpen));
     const material = Math.abs(sizeChange) >= MATERIAL * own && Math.abs(sizeChange) >= FLOOR_SHARE * maxAbsBook;
-    const switched = hasOi && Math.sign(now) !== Math.sign(open) && Math.abs(now) >= FLOOR_SHARE * maxAbsBook && Math.abs(open) >= FLOOR_SHARE * maxAbsBook;
+    /* a wall's own leg cannot change sides — only a strike read by its net can */
+    const switched = basis === 'net' && hasOi && Math.sign(now) !== Math.sign(open) && Math.abs(now) >= FLOOR_SHARE * maxAbsBook && Math.abs(open) >= FLOOR_SHARE * maxAbsBook;
     const verdict: BuildVerdict = !hasOi ? 'steady' : isNew && material ? 'new' : switched ? 'switched' : material ? (sizeChange > 0 ? 'building' : 'draining') : 'steady';
     const byClose = real ? 0 : (sizeChange / elapsedMin) * minutesLeft;
 
     const role: BuildRole = K === levels.callWall ? 'call wall' : K === levels.putWall ? 'put wall' : K === levels.supreme ? 'supreme' : null;
-    rows.push({ strike: K, role, roles: levelRoles(K, levels), pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, change: shownGamma(now) - shownGamma(open), shape, when, verdict, byClose, words: '' });
+    rows.push({ strike: K, role, roles: kRoles, pin: !!s.pin, now, open, callAdded, putAdded, dCall, dPut, sizeChange, basis, netSizeChange, change: shownGamma(now) - shownGamma(open), shape, when, verdict, byClose, words: '' });
     maxAbs = Math.max(maxAbs, Math.abs(now));
     maxChange = Math.max(maxChange, Math.abs(callAdded), Math.abs(putAdded));
   }
@@ -487,7 +508,11 @@ export function buildBuilding(
         : r.verdict === 'building' && (callHeavy ? r.dCall : r.dPut) < 0
           ? `, though contracts were closed: the ${callHeavy ? 'puts' : 'calls'} that left had been offsetting it`
           : '';
-    const change = `The wall ${sizeWords(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)${why}`;
+    const legWord = r.basis === 'calls' ? 'The call wall, read by its call gamma,' : r.basis === 'puts' ? 'The put wall, read by its put gamma,' : 'The wall';
+    const change =
+      r.verdict === 'switched'
+        ? `It ${switchedWords(shownGamma(r.open), shownGamma(r.now))} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)`
+        : `${legWord} ${sizeWords(r.sizeChange)} ${day} (${fmtContracts(r.dCall)} calls, ${fmtContracts(r.dPut)} puts)${r.basis === 'net' ? why : ''}`;
     const when = r.when ? `, ${whenWords(r.when)}` : '';
     const pace = clock.inSession && !real && r.verdict !== 'steady' ? ` At today's pace ${signed(r.byClose)} ${r.byClose >= 0 ? 'more' : 'further'} by the close.` : '';
     switch (r.verdict) {
@@ -516,9 +541,11 @@ export function buildBuilding(
     }
   }
 
-  const built = rows.reduce((a, r) => a + Math.max(0, r.sizeChange), 0);
-  const drained = rows.reduce((a, r) => a + Math.max(0, -r.sizeChange), 0);
-  const byUp = [...rows].sort((a, b) => b.sizeChange - a.sizeChange);
+  /* the totals are the book's own: every strike by its net, so a wall's leg is not counted on top of its strike */
+  const built = rows.reduce((a, r) => a + Math.max(0, r.netSizeChange), 0);
+  const drained = rows.reduce((a, r) => a + Math.max(0, -r.netSizeChange), 0);
+  /* grew / shrank most: the change as each strike is printed — a strike that changed sides has no one size, so it is left out */
+  const byUp = rows.filter(r => r.verdict !== 'switched').sort((a, b) => b.sizeChange - a.sizeChange);
   const fastestUp = byUp[0] && byUp[0].sizeChange > 0 ? byUp[0] : null;
   const fastestDown = byUp[byUp.length - 1] && byUp[byUp.length - 1].sizeChange < 0 ? byUp[byUp.length - 1] : null;
   const spotAfter = rows.findIndex(r => r.strike < spot);

@@ -19,6 +19,7 @@
 
 import { expiryWords, isLiveDay, isoOf, shortDay } from './dayWords';
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { nyClock } from '../../core/nyTime';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Compass, Copy, Crosshair, Scale } from 'lucide-react';
 import Modal from '../ui/Modal';
@@ -177,6 +178,8 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
     ? ' It is a compression print (OPRA cbmo / mctp, or the vendor’s arbitrage tag) — a package that nets open interest down between members, a call against a put at one strike — so it is not a bet and is not read bullish or bearish.'
     : p.extended
     ? ' It printed after hours, against a thin post-market quote, so it is not read bullish or bearish.'
+    : isSpreadLeg(p) && p.dayCard
+    ? ' Half or more of its day traded as legs of multi-leg orders — the side a leg prints on is how its package was filled, so the day is not read bullish or bearish; Multi-Leg reads which way the structures went.'
     : isSpreadLeg(p)
     ? ' It is one leg of a multi-leg order — half of a structure, so on its own it is not read bullish or bearish; Multi-Leg reads which way the structure went.'
     : ` By its side and its right it reads ${sent.toLowerCase()}${sent === 'BULLISH' ? (p.right === 'P' ? ' — a put sold' : ' — a call bought') : sent === 'BEARISH' ? (p.right === 'P' ? ' — a put bought' : ' — a call sold') : ''}.`;
@@ -364,6 +367,9 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
      per-contract routes, and the underlying's net premium minute by minute — data/contractflow.ts */
   const load = useContractTape(print?.occ, print?.ticker, dateIso);
   const cf: ContractTape | null = load.tape;
+  /* WHEN EACH VOLUME WAS READ (audit round 8: four day volumes on one card, 80,921 / 81,472 / 81,135 / 81,269, unlabelled
+     by time) — the session row's figure carries the minute it was read */
+  const cfAt = useMemo(() => (cf ? Date.now() : null), [cf]);
 
   /* The print's minute since the bell — the marker through both strips, only on the print's own session, and inside the
      strip's own window (an after-hours print widens that window — the card's tape covers every hour the contract traded) */
@@ -562,7 +568,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             </span>
             {/* White: a leg count is a fact, not a status — the tape's own rule (2026-08-30). */}
             {print.legs > 1 && (
-              <span className="font-mono text-[11px] text-textPrimary" title={print.trades ? 'The alert held multi-leg prints' : "The print's OPRA condition marks it a leg of a multi-leg order — how many legs it had is not on the print"}>
+              <span className="font-mono text-[11px] text-textPrimary" title={print.trades ? 'The alert held multi-leg prints' : print.dayCard ? 'Half or more of the day traded as legs of multi-leg orders' : "The print's OPRA condition marks it a leg of a multi-leg order — how many legs it had is not on the print"}>
                 multi-leg
               </span>
             )}
@@ -570,8 +576,8 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <SignalBadge tone="neutral">COMPRESSION · NOT A BET</SignalBadge>
             ) : print.extended ? (
               <SignalBadge tone="neutral">AFTER HOURS</SignalBadge>
-            ) : isSpreadLeg(print) && !print.trades && !print.dayCard ? (
-              <SignalBadge tone="neutral">SPREAD LEG · NO READ</SignalBadge>
+            ) : isSpreadLeg(print) && !print.trades ? (
+              <SignalBadge tone="neutral">{print.dayCard ? 'SPREAD LEGS · NO READ' : 'SPREAD LEG · NO READ'}</SignalBadge>
             ) : (
               <SignalBadge tone={SENT_TONE[sent]}>{sent}</SignalBadge>
             )}
@@ -620,7 +626,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 <RichRead
                   text={
                     print.dayCard
-                      ? `the day: ${num(print.size)} contracts (screener) · last ${print.dayCard.session} print $${fixed(print.dayCard.last?.fill ?? print.fill)} × ${num(print.dayCard.last?.size ?? 0)} at ${print.dayCard.last?.time ?? print.time} ET${print.dayCard.last?.volume ? ` (day volume ${num(print.dayCard.last.volume)} at that print)` : ''}`
+                      ? `the day: ${num(print.size)} contracts (the screener's row, as of its ${print.time} ET fill) · last ${print.dayCard.session} print $${fixed(print.dayCard.last?.fill ?? print.fill)} × ${num(print.dayCard.last?.size ?? 0)} at ${print.dayCard.last?.time ?? print.time} ET${print.dayCard.last?.volume ? ` (day volume ${num(print.dayCard.last.volume)} at that print)` : ''}`
                       : print.trades && print.trades > 1
                       ? alertFacts
                         ? `last fill $${fixed(alertFacts.last.fill)} × ${num(alertFacts.last.size)} at ${alertFacts.last.time} · ${num(alertFacts.contracts)} contracts in ${alertFacts.n} prints, ${print.time}${print.fillEnd && print.fillEnd !== print.time ? `–${print.fillEnd}` : ''} ET${print.extended ? ' · after hours' : ''}`
@@ -660,9 +666,13 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               {/* ONE FIGURE, ITS SOURCE SAID (audit round 4: 146,691 on the Screener, 146,779 on the card, 146,713 elsewhere — three
                   "today's volume"): the card's is the contract's session row (after-hours prints included); the Screener's is
                   the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
-              <Fact label={day && day.vol > 0 ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row, after hours in` : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
+              <Fact label={day && day.vol > 0 ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt)} ET` : ''}, after hours in` : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
-              <Fact label={day && day.vol > 0 ? 'Vol ÷ OI' : print.dayCard ? 'Vol ÷ OI' : `Vol ÷ OI · at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={`${fixed(dayOi > 0 ? dayVol / dayOi : print.volOverOI)}x`} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
+              <Fact label={day && day.vol > 0 ? 'Vol ÷ OI' : print.dayCard ? 'Vol ÷ OI' : `Vol ÷ OI · at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={(() => {
+                  /* never "0.00x" for 21 on 5,164 (audit round 8) */
+                  const voi = dayOi > 0 ? dayVol / dayOi : print.volOverOI;
+                  return Number.isFinite(voi) && voi > 0 && voi < 0.01 ? '<0.01x' : `${fixed(voi)}x`;
+                })()} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
               {/* the cost to cross, off the print's OWN quote; a day of time off the vendor's own theta — no model */}
               <Fact
                 label="Spread at the print"

@@ -1550,7 +1550,15 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
      levels were priced at the 4:00 close (the vendor's rows carry that price), so the price on Pinpoint, and every
      distance to a level, is that close — the Dossier's own convention (data/liveQuote.ts priceWords). The after-hours
      or pre-market print is kept apart (`last`) and labelled where it is shown. */
-  const last = num(state.close);
+  /* A STALLED STOCK-STATE IS NOT THE PRICE (the eighth Pinpoint fix, 2026-10-23 11:16 ET: the vendor's stock-state sat at
+     its 10:35 print — SPY 759.68, tape_time 14:35Z — on every name for 40 minutes while the one-minute bars and the quote
+     ran on at 762.8; every distance and "at price" on Pinpoint was read off the stalled print). In the regular session a
+     bar newer than the state's tape time by more than two minutes is the price. */
+  const barsSplit = candlesFrom(Array.isArray(bars) ? bars : []);
+  const tapeMs = Date.parse(String((state as { tape_time?: string }).tape_time ?? ''));
+  const newest = barsSplit.tape[barsSplit.tape.length - 1] ?? barsSplit.cash[barsSplit.cash.length - 1];
+  const stateStalled = state.market_time === 'regular' && !!newest && Number.isFinite(tapeMs) && newest.time * 1000 + 60_000 - tapeMs > 120_000;
+  const last = stateStalled ? newest!.close : num(state.close);
   const mt = typeof state.market_time === 'string' ? state.market_time : undefined;
   const offPhase = dayChangeOf({ close: last, prev_close: num(state.prev_close), market_time: mt }, null).phase;
   const regClose = num(state.prev_close);
@@ -1562,7 +1570,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const ivRaw = num(ivRow?.volatility);
   const iv = ivRaw > 3 ? ivRaw / 100 : ivRaw;
   const prevEntry = cache.get(ticker);
-  const split = candlesFrom(Array.isArray(bars) ? bars : []);
+  const split = barsSplit;
   const entry: Entry = {
     ticker,
     status: 'live',
@@ -1987,10 +1995,10 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
      open interest onto each of them, so a November column wore October's contracts. */
   const dates = listed.map(r => r.date).slice(0, 40);
   const near = dates.slice(0, 6);
-  const pull = (list: string[]) =>
+  const pull = (list: string[], first = list === near) =>
     mapLimit(list, 3, async date => {
       try {
-        return [date, (await dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && list === near)) ?? []] as const;
+        return [date, (await dateChain(entry.ticker, date, entry.spot, true, isHot(entry.ticker) && first)) ?? []] as const;
       } catch {
         return [date, [] as StrikeNode[]] as const;
       }
@@ -2019,11 +2027,21 @@ async function loadExpiries(entry: Entry, token: number): Promise<void> {
      read +$0 for the better part of a minute. The dates on screen get theirs as soon as they are in. */
   /* the far dates' live gamma in one walk of every expiry (liveGammaAll — the sixth audit's M3), read beside the near
      dates; each far date then asks only its greek rows, its live rows already in hand */
+  /* THE FRONT DATE FIRST, ON ITS OWN (the eighth audit's load times: Map 17s, Agenda 19s, Building 27s). "Today" — the
+     desk's default scope — is final once the front date's chain and its contracts are in; it waited on all six near
+     dates' chains before its contracts were even asked. The front date is pulled and its contracts asked at once; the
+     other near dates follow beside them. */
+  const front = near.slice(0, 1);
+  const frontGot = await pull(front, true);
+  if (!still()) return;
+  apply(frontGot, false);
+  const atFront = cache.get(entry.ticker);
+  if (atFront) void fillExpiryFacts(atFront, token, front);
   const walk = dates.length > 6 ? liveGammaAll(entry.ticker, isHot(entry.ticker)).catch(() => null) : null;
-  apply(await pull(near), dates.length <= 6);
+  apply(await pull(near.slice(1), true), dates.length <= 6);
   if (!still()) return;
   const first = cache.get(entry.ticker);
-  if (first) void fillExpiryFacts(first, token, near);
+  if (first) void fillExpiryFacts(first, token, near.slice(1));
   if (dates.length > 6) {
     await walk;
     if (!still()) return;

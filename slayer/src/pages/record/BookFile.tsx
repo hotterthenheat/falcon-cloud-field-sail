@@ -39,7 +39,7 @@ import { holdingAssetKey } from '../../data/fileBooks';
 import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, isTreasuryBill, seatLabel } from '../../data/congress';
-import { memberFromRoster, useCongressCoverage, useCongressFeed, useCongressStatus, useMemberBook } from '../../data/liveRecord';
+import { memberFromRoster, useCongressCoverageQuiet, useCongressFeedIf, useCongressRoster, useCongressStatusQuiet, useMemberBook } from '../../data/liveRecord';
 import { nyIsoDaysBack } from '../../data/nyDate';
 import { reportDayLabelYear } from '../../data/earningsFeed';
 import { congressFromWhales, ownerWord } from '../../data/whalesMap';
@@ -374,7 +374,7 @@ export const ShortFile = () => {
           </div>
           {row.shortVolRatio != null ? (
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`Of the last session's volume, the share reported as short sales — market makers' hedges count too, so about half is ordinary. Source: ${row.shortVolSource ?? 'Unusual Whales short volume and ratio (FINRA)'}`}>Short volume</dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`Of the last session's off-exchange volume reported to FINRA (dark pools and wholesalers — not the lit exchanges' trades), the share reported as short sales; market makers' hedges count too, so about half is ordinary. Source: ${row.shortVolSource ?? 'Unusual Whales short volume and ratio (FINRA)'}`}>Short volume · off-exchange</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%{row.shortVolDate ? <span className="text-textMuted"> · {asOfDay(row.shortVolDate)}</span> : null}</dd>
             {/* the source named on the card (audit round 6) */}
             <dd className="font-mono text-[9px] text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'FINRA CNMS · by-market rows' : 'FINRA CNMS · short volume read'}</dd>
@@ -407,7 +407,18 @@ export const ShortFile = () => {
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-short-sentence>
         {row.shortSharesM.toFixed(1)}M shares short, {row.interestPct.toFixed(2)}% of a {row.floatM.toFixed(0)}M float, {row.daysToCover.toFixed(1)} days to cover.
         {row.availableM == null ? ' The feed did not say how many shares are left to borrow.' : row.availableM >= 10 - 1e-9 ? ' At least 10M shares are available to borrow.' : ` ${borrowM(row.availableM)} shares are available to borrow.`}
-        {lead ? (
+        {/* ONE MARKET IS NOT "THE HEAVIEST" (round 8: "FINRA CNMS printed the heaviest short volume, 51% of that market"
+            with no other market on file). FINRA's CNMS rows are the off-exchange trades reported to its trade-reporting
+            facilities — the dark pools and the wholesalers — so their total is off-exchange volume alone, never the day's. */}
+        {lead && markets.length === 1 ? (
+          <>
+            {' '}
+            On {row.exchangesDate ? asOfDay(row.exchangesDate) : 'the last session'}, {(lead.shortM).toFixed(2)}M of the {lead.totalM.toFixed(2)}M shares{' '}
+            <span className="text-textPrimary font-semibold">{/finra/i.test(lead.exchange) ? 'traded off-exchange (reported to FINRA)' : `reported by ${lead.exchange}`}</span> were short sales, {lead.ratio.toFixed(0)}%
+            {/finra/i.test(lead.exchange) ? ' — that total is off-exchange volume only; the lit exchanges’ trades are not in it' : ''}
+            {row.exchangesDate && row.shortVolDate && row.exchangesDate !== row.shortVolDate ? ` (a session behind the ${row.shortVolRatio != null ? `${row.shortVolRatio.toFixed(0)}% ` : ''}short volume of ${asOfDay(row.shortVolDate)})` : ''}.
+          </>
+        ) : lead ? (
           <>
             {' '}
             <span className="text-textPrimary font-semibold">{lead.exchange}</span> printed the heaviest short volume{row.exchangesDate ? ` on ${asOfDay(row.exchangesDate)}` : ''}, {lead.ratio.toFixed(0)}% of that market{row.exchangesDate && row.shortVolDate && row.exchangesDate !== row.shortVolDate ? ` — the by-market figures are a session behind the ${row.shortVolRatio != null ? `${row.shortVolRatio.toFixed(0)}% ` : ''}short volume of ${asOfDay(row.shortVolDate)}` : ''}.
@@ -647,8 +658,8 @@ export const FundFile = () => {
         </AgGridProvider>
         {fundPaged.bar(rows.length, 'fund-holdings')}
       </div>
-      <Board title="Sectors" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by sector, from the fund’s own weights — not only the lines above'} testId="fund-sectors" rows={sectors.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={SECTOR_COLS} />
-      <Board title="Countries" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by country, from the fund’s own weights'} testId="fund-countries" rows={countries.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={COUNTRY_COLS} />
+      <Board title="Sectors" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by sector, from the fund’s own weights — not only the lines above'} testId="fund-sectors" rows={sectors.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={SECTOR_COLS} reading={weights.status === 'loading'} />
+      <Board title="Countries" rest={weights.status === 'loading' ? 'Reading the fund’s weights' : 'The whole fund by country, from the fund’s own weights'} testId="fund-countries" rows={countries.map(s => ({ id: s.name, name: s.name, weight: s.weight }))} cols={COUNTRY_COLS} reading={weights.status === 'loading'} />
     </Page>
     </>
   );
@@ -700,7 +711,7 @@ const WEIGHT_BAR: ColDef<{ id: string; name: string; weight: number }> = { heade
 const SECTOR_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Sector', field: 'name', flex: 1.2, minWidth: 140, headerTooltip: 'The sector it files under' }, WEIGHT_BAR];
 const COUNTRY_COLS: ColDef<{ id: string; name: string; weight: number }>[] = [{ headerName: 'Country', field: 'name', flex: 1.2, minWidth: 140, headerTooltip: 'Where the company is based' }, WEIGHT_BAR];
 
-function Board<T extends IdRow>({ title, rest, testId, rows, cols }: { title: string; rest: string; testId: string; rows: T[]; cols: ColDef<T>[] }) {
+function Board<T extends IdRow>({ title, rest, testId, rows, cols, reading = false }: { title: string; rest: string; testId: string; rows: T[]; cols: ColDef<T>[]; /** the read is still out — never "nothing" before it lands (round 8) */ reading?: boolean }) {
   return (
     <div>
       <div className="px-5 border-t border-borderSubtle/60">
@@ -716,7 +727,8 @@ function Board<T extends IdRow>({ title, rest, testId, rows, cols }: { title: st
             theme={GRID_THEME}
             domLayout="autoHeight"
             rowData={rows}
-            overlayNoRowsTemplate={noRows('Nothing on file')}
+            overlayNoRowsTemplate={noRows(reading ? 'Reading' : 'Nothing on file')}
+            key={reading ? 'reading' : 'read'}
             columnDefs={cols}
             defaultColDef={defaultColDef}
             getRowId={p => p.data?.id ?? ''}
@@ -755,15 +767,20 @@ export const MemberFile = () => {
   const { member: id = '' } = useParams();
   const phone = usePhoneCards();
   useVendor('dossier', '', `/dossier/congress/${id}`);
-  const congressStatus = useCongressStatus();
-  const feed = useCongressFeed(365);
-  const fromFeed = feed.trades.find(t => t.member.id === id)?.member ?? null;
+  /* THE ROSTER NAMES THE MEMBER (round 8: the page walked the whole 90-day book for a name) — the book is read only
+     for a member the roster does not list */
+  const rosterStatus = useCongressRoster();
   const roster = memberFromRoster(id);
+  const needBook = rosterStatus !== 'loading' && !roster;
+  const feed = useCongressFeedIf(needBook, 365);
+  const bookStatus = useCongressStatusQuiet();
+  const congressStatus = needBook ? bookStatus : rosterStatus;
+  const fromFeed = needBook ? feed.trades.find(t => t.member.id === id)?.member ?? null : null;
   /* the member's identity from the market book, else the politician roster (a member with no trade in the book's reach) */
   const member = fromFeed ?? (roster ? congressFromWhales([{ politician_id: id, name: roster.name, txn_type: 'Buy', transaction_date: nyIsoDaysBack(0), filed_at_date: nyIsoDaysBack(0) }], [roster]).trades[0]?.member ?? null : null);
   /* their own reports of trades made in the last year — not the latest 40 by name */
   const book = useMemberBook(id, member?.name ?? null);
-  const coverage = useCongressCoverage();
+  const coverage = useCongressCoverageQuiet();
   const [guideOpen, setGuideOpen] = useState(false);
   const [kind, setKind] = useState<TypePick>('any');
   const [owner, setOwner] = useState<OwnerPick>('any');
@@ -932,6 +949,7 @@ export const MemberFile = () => {
         testId="member-held"
         rows={held.map(t => ({ id: `${holdingAssetKey(t)}|${t.owner}`, ticker: assetLine(t).sym || assetLine(t).title, owner: ownerWord(t.owner), amount: amountWord(t) }))}
         cols={HELD_COLS}
+        reading={book.status === 'loading'}
       />
     </Page>
     </>

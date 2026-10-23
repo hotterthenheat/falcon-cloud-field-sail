@@ -128,6 +128,8 @@ const MAP_JUMPS = [
   { value: 'map-report', label: 'Report' },
 ] as const;
 type MapJump = (typeof MAP_JUMPS)[number]['value'];
+/* NOT STICKY ON A PHONE (the eighth audit: pinned under the top bar it floated over the book's price axis and the day's
+   chart as they scrolled under it) — it stands at the head of the page, and each box's scroll margin lands its head clear */
 const MapJumps = () => {
   const [at, setAt] = useState<MapJump>('map-book');
   useEffect(() => {
@@ -156,7 +158,7 @@ const MapJumps = () => {
     return () => obs.disconnect();
   }, []);
   return (
-    <nav className="sm:hidden sticky top-9 z-30 isolate -mx-4 px-4 py-1.5 border-b border-borderSubtle/60 bg-panel shadow-[0_1px_0_rgb(var(--border-subtle))]" aria-label="Jump to a box" data-map-jumps={at}>
+    <nav className="sm:hidden -mx-4 px-4 py-1.5 border-b border-borderSubtle/60 bg-panel" aria-label="Jump to a box" data-map-jumps={at}>
       <FilterTabs
         options={MAP_JUMPS}
         value={at}

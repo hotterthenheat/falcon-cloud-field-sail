@@ -53,6 +53,7 @@
 ==================================================
 */
 
+import { GLOSSARY } from './glossary';
 import { levelsFor } from '../../data/levelsFor';
 import { readLevelsScope } from '../../data/levelsScope';
 import { bellNone as bellNoneWords, BELL_NONE_TITLE } from '../../data/flipLevel';
@@ -593,7 +594,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                   transform: turn ? 'translateX(calc(-100% - 6px))' : last ? 'translateX(2px)' : undefined,
                   ...(active ? { color: SILVER } : {}),
                 }}
-                title={`${hhmm(p.from)}–${hhmm(p.to)} — ${onSeek ? 'click to move the replay here' : 'click to keep this phase'}`}
+                title={`${hhmm(p.from)}–${hhmm(p.to)} — ${onSeek ? 'click to move the replay here' : 'click to keep this phase'}${p.key === 'charm' ? `\n${GLOSSARY.charm}` : ''}`}
               >
                 {SHORT_NAME[p.key] ?? hhmm(p.from)}
               </button>

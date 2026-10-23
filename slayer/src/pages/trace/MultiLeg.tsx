@@ -181,6 +181,7 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
           {trade.extended && <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted whitespace-nowrap" title="Filled after hours against thin post-market quotes — the shape is shown, not read for direction">after hours · not read</span>}
           {trade.compression && <span className="font-mono text-[10px] uppercase tracking-wider text-warn whitespace-nowrap" title={COMPRESSION_HINT}>compression · not a bet</span>}
           {t.vendorShape && <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title="The vendor's own label — the legs as they were bought and sold say otherwise">vendor: {t.vendorShape}</span>}
+          {t.namedBy === 'vendor' && !t.compression && <span className="font-mono text-[10px] text-textMuted whitespace-nowrap" title={t.legsState === 'pending' ? "The vendor's name — the legs are still being read" : "The vendor's name — its legs could not be settled into buys and sells that add up to its net, so the app has not named it from them"}>vendor's name</span>}
         </span>
       }
       headerActions={
@@ -251,8 +252,8 @@ const SpreadCard = ({ trade, onClose, onLeg }: { trade: SpreadTrade; onClose: ()
               theta == null ? (
                 <span className="text-textMuted">—</span>
               ) : (
-                <span className="text-textSecondary" title="Dollars a day the whole position gains (+) or loses (−) to time: each leg's theta × its contracts × 100, bought plus, sold minus">
-                  {theta >= 0 ? '+' : '−'}${Math.abs(theta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} a day
+                <span className={t.thetaCapped ? 'text-warn' : 'text-textSecondary'} title={t.thetaCapped ? `The vendor's theta is a rate, and this close to expiry it runs past what the legs are worth — a day cannot take more than that, so this is the cap: each leg's day at most its own fill, the position's at most the ${t.netPremium > 0 ? 'debit paid' : 'credit collected'} (${fmtUsd(Math.abs(t.netPremium))})` : "Dollars a day the whole position gains (+) or loses (−) to time: each leg's theta × its contracts × 100, bought plus, sold minus"} data-spread-theta={t.thetaCapped ? 'capped' : 'rate'}>
+                  {theta >= 0 ? '+' : '−'}${Math.abs(theta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{t.thetaCapped ? ' — what is left decays by expiry' : ' a day'}
                 </span>
               )
             )}
@@ -362,7 +363,7 @@ const MultiLeg = () => {
   const tapeState: 'reading' | 'down' | 'in' = pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
   const liveTrades = pack.rows;
   // The shared hold (see LiveHold): structures and tick freeze together while paused.
-  const hold = useHold(useMemo(() => ({ trades: liveTrades, tick: marketData }), [liveTrades, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ trades: liveTrades, tick: marketData }), [liveTrades, marketData]), activeTicker, tapeState !== 'reading');
   const { trades: heldTrades, tick } = hold.value;
   /* THE EXPIRY CUT: a structure sits on its near leg's expiry */
   const { expiry, setExpiry, expiries, cut: cutExpiry, chosen } = useExpiryCut(heldTrades, t => t.expiry, { value: addr.cut.exp || null, onChange: iso => addr.set({ exp: iso ?? '' }) });
@@ -451,7 +452,9 @@ const MultiLeg = () => {
     const unpriced = bets.length - paid - collected;
     const loud = [...byKind.entries()].sort((a, b) => b[1] - a[1])[0];
     /* THE BIGGEST BY ITS NET (the audit, 2026-10-22: "$1.3M collected" was the gross of every leg; the net was ~$830K) */
-    const big = [...bets].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
+    /* the biggest whose legs are read — never one the vendor alone has named (audit round 8) */
+    const big = [...bets].filter(t => t.legsState === 'in').sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
+    if (!big) return <RichRead text={`In the ${trades.length} multi-leg trades in hand (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets — reading their legs before naming the biggest…`} />;
     return (
       <>
         <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest: `} />
@@ -501,9 +504,14 @@ const MultiLeg = () => {
         header: 'Strategy',
         sortValue: t => t.kind,
         render: t => (
-          <span className="inline-flex max-w-full items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap overflow-hidden" title={`${shapeWord(t)} — ${t.read ?? KIND_META[t.kind].read}`}>
+          <span className="inline-flex max-w-full items-center gap-1.5 text-[11px] text-textPrimary whitespace-nowrap overflow-hidden" title={`${shapeWord(t)}${t.legsState === 'pending' ? " (the vendor's name — reading its legs)" : ''} — ${t.read ?? KIND_META[t.kind].read}`}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />
-            <span className="truncate">{shapeWord(t)}</span>
+            <span className={`truncate ${t.legsState === 'pending' ? 'text-textSecondary' : ''}`}>{shapeWord(t)}</span>
+            {t.namedBy === 'vendor' && !t.compression && t.legsState !== 'pending' && (
+              <span className="text-[10px] text-textMuted shrink-0" title={t.legsState === 'none' ? "The vendor's name — its legs did not load, so the app could not name the shape from them" : "The vendor's name — its legs could not be settled into buys and sells that add up to its net, so the app has not named it from them"} data-vendor-name>
+                vendor's name
+              </span>
+            )}
             {t.compression ? (
               <span className="text-[10px] uppercase text-warn" title={COMPRESSION_HINT}>
                 compression · not a bet
@@ -636,7 +644,9 @@ const MultiLeg = () => {
      The bull/bear pills only show when they are not the magenta one. */
   const champs = useMemo(() => {
     /* no compression package is a champion (audit round 5: "Largest · SPX bullish risk reversal · $271.0K" was a cbmo) */
-    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(t => !t.compression && pick(t)).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
+    /* …and no structure whose legs are not read (audit round 8: the "Largest" changed as the legs came in, and named
+       shapes the vendor got wrong) — a champion stands on its own legs */
+    const by = (pick: (t: SpreadTrade) => boolean) => shown.filter(t => !t.compression && t.legsState === 'in' && pick(t)).reduce<SpreadTrade | null>((a, t) => (a === null || Math.abs(t.netPremium) > Math.abs(a.netPremium) ? t : a), null);
     return { paid: by(t => t.netKnown !== false && t.netPremium > 0), collected: by(t => t.netKnown !== false && t.netPremium < 0), all: by(() => true) };
   }, [shown]);
   const facts = useMemo(() => {

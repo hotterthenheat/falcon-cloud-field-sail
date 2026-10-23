@@ -349,8 +349,18 @@ export const FRESH_VOL_OI = 1.5;
 export function volOiText(r: Pick<BookContract, 'oi' | 'volume' | 'volOverOI'>): string {
   /* volOverOI is against the count at the session's open — a row may now show the newer count (usePairedOi), so the
      ratio itself says whether there was one */
-  if (r.volOverOI > 0) return r.volOverOI.toFixed(2);
+  /* never "0.00x" for 21 on 5,164 (audit round 8) — under a hundredth says so */
+  if (r.volOverOI > 0) return r.volOverOI < 0.01 ? '<0.01' : r.volOverOI.toFixed(2);
   return r.volume > 0 ? 'new' : '—';
+}
+/** A ΔOI's tail: "new" only when there was nothing (or next to nothing against the change) before; a percentage when it
+    means something; nothing otherwise (audit round 8: CCJ 65P 64 → 66 read "+2 new") */
+export function doiTail(r: Pick<BookContract, 'prevOI' | 'deltaOI' | 'deltaOIPct'>): string {
+  if (r.deltaOI === 0) return '';
+  if (r.prevOI <= 0 || (r.deltaOI > 0 && r.prevOI * 20 < r.deltaOI)) return 'new';
+  if (!Number.isFinite(r.deltaOIPct) || Math.abs(r.deltaOIPct) > 999) return '';
+  const p = Math.round(r.deltaOIPct);
+  return `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`;
 }
 /** A DEEP-IN-THE-MONEY, LONG-DATED CONTRACT IS LIKELY NOT A BET (retail, 2026-10-23: NVDA's top "bet" on the Live Tape was a
     2028 put 88.5% in the money, ΔOI +57): 25% or more in the money with six months or more to run trades like the
@@ -624,7 +634,14 @@ export interface SpreadTrade {
   maxProfit: number | 'uncapped' | null;
   iv: number;
   delta: number;
+  /** Whose name the shape wears: 'legs' when the app named it from the legs as they were bought and sold, 'vendor' when it
+      is the vendor's label (its legs not read, or not settled into one textbook shape) — said so on the row */
+  namedBy?: 'legs' | 'vendor';
+  /** The position's dollars a day to time (traceLive positionTheta) — capped at what the position is worth */
   theta: number;
+  /** True when the vendor's rate ran past what the legs are worth and the figure is the cap: a near-expiry position
+      whose remaining value goes to zero by the bell */
+  thetaCapped?: boolean;
   spot: number;
   legs: SpreadLeg[];
   /** False when the vendor printed no net premium at all */

@@ -62,6 +62,7 @@ import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnCh
 import ReasonDoor from '../../components/trace/ReasonDoor';
 import ReadDoor from '../../components/trace/ReadDoor';
 import FlowSearch, { normSymbol } from '../../components/trace/FlowSearch';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { WatchersGuide } from '../../components/trace/TraceGuide';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
@@ -506,6 +507,7 @@ const Watchers = () => {
               </p>
             )}
             {read}
+            <TermLine keys={['standing', 'floor', 'spreadLegs', 'volOi', 'stockLike']} testId="watchers" />
           </>
         }
       >

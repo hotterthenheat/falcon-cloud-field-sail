@@ -48,6 +48,7 @@ import NetFlowPane, { CLOCK_OPTIONS, MONEY_OPTIONS } from '../../components/trac
 const TAPE_N = 300;
 const SPREADS_N = 80;
 import ReadDoor from '../../components/trace/ReadDoor';
+import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, Fact } from '../../components/trace/TraceBox';
 import { CompareGuide } from '../../components/trace/TraceGuide';
 import { CMP_COLUMNS, CMP_LIST_HEAD_H, CMP_LIST_ROW_H, CMP_LISTED, CMP_PANE_H, CMP_ROW_H, CMP_SECTION_H } from './traceSkeletons';
@@ -304,7 +305,7 @@ const Compare = () => {
   const bookState: 'reading' | 'down' | 'in' = liveBook.length ? 'in' : bookPack.fault ? 'down' : 'reading';
   /* The shared hold (see LiveHold): the book and the panes' tick freeze together; the two names' tapes and structures
      freeze with them below */
-  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker);
+  const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, liveBook.length > 0 || !!bookPack.fault);
   const { book, tick } = hold.value;
 
   /* Only names on today's book can be compared — busiest first, so the defaults are the names that matter */
@@ -949,11 +950,14 @@ const Compare = () => {
               chip's third figure, is left off on a phone; the hover still says it) */}
           {/* On a phone's two-column cards line the pair takes the whole row (the phone pass, 2026-09-13); a chip wider than
               the row (a name's last-session change and its pre-market move) wraps inside itself rather than run off the card */}
-          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&>[data-scope]]:shrink-0 max-sm:[&>[data-scope]]:shrink max-sm:[&>[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&>[data-scope]]:h-auto max-sm:[&>[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1 max-sm:[&_[data-scope-ext]]:hidden" data-compare-names>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">A</span>
+          <span className="flex items-center gap-1.5 max-sm:col-span-2 max-sm:flex-wrap max-sm:gap-y-2 [&_[data-scope]]:shrink-0 max-sm:[&_[data-scope]]:shrink max-sm:[&_[data-scope]]:max-w-[calc(100%-1rem)] max-sm:[&_[data-scope]]:h-auto max-sm:[&_[data-scope]]:min-h-6 max-sm:[&_[data-scope-pick]]:flex-wrap max-sm:[&_[data-scope-pick]]:py-1 max-sm:[&_[data-scope-pick]]:gap-y-1 max-sm:[&_[data-scope-ext]]:hidden" data-compare-names>
+            {/* EACH LETTER STAYS WITH ITS CHIP (audit round 8, 390: "B" wrapped away from its name) */}
+            <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:flex-1" data-compare-pair="a">
+            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted shrink-0">A</span>
             {/* The two chips wear the same clothes (Noah, 2026-09-09): the first in the full following look
                 with its silver link, the second its own name with no link at all */}
             <ScopeChip ticker={aTicker} linked={aFollows} full quote closeOutside onToggleLink={() => setAPick(aFollows ? aTicker : null)} onPick={next => (aFollows ? changeTicker(next) : setAPick(next))} />
+            </span>
             <button
               type="button"
               onClick={onSwap}
@@ -964,15 +968,22 @@ const Compare = () => {
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
             </button>
-            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">B</span>
+            <span className="inline-flex items-center gap-1.5 min-w-0 max-sm:w-full max-sm:pr-9" data-compare-pair="b">
+            <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted shrink-0">B</span>
             <ScopeChip ticker={bTicker} quote closeOutside onPick={next => setBPick(next)} title="The second name — pick another" />
+            </span>
           </span>
           {/* The two cuts as labelled cards — ONE pair for both names */}
           <DropdownSelect label="Clock" value={tenor} options={CLOCK_OPTIONS} onChange={setTenor} title="How far out the contracts run — both names" testId="compare-clock" />
           <DropdownSelect label="Money" value={mny} options={MONEY_OPTIONS} onChange={setMny} title="Which strikes against the stock — both names" testId="compare-money" />
         </>
       }
-      sentence={bookState === 'reading' ? "Reading the day's book." : bookState === 'down' ? 'This read did not land — the two names fill when the feed answers.' : sentence}
+      sentence={bookState === 'reading' ? "Reading the day's book." : bookState === 'down' ? 'This read did not land — the two names fill when the feed answers.' : (
+          <>
+            {sentence}
+            <TermLine keys={['standing', 'floor', 'spreadLegs', 'volOi', 'oiDay', 'stockLike']} testId="compare" />
+          </>
+        )}
     >
       {bookState !== 'in' ? (
         <div className="border-t border-borderSubtle h-40 flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted" data-compare-empty>

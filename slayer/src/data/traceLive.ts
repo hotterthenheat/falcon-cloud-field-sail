@@ -414,6 +414,9 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
   for (const root of roots) {
     const hit = indexLevels.get(root);
     if (hit && Date.now() - hit.at < 30_000) continue;
+    /* STALE WHILE IT REFRESHES (audit round 8, load time): a level in hand is used while the new one is asked for — only a
+       root with no level at all holds the rows back (every 30s the book's poll waited on /spot-exposures behind it) */
+    const waitFor = !hit;
     let job = indexAsks.get(root);
     if (!job) {
       job = (async () => {
@@ -435,7 +438,7 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
       })();
       indexAsks.set(root, job);
     }
-    jobs.push(job);
+    if (waitFor) jobs.push(job);
   }
   await Promise.all(jobs);
 }
@@ -824,6 +827,7 @@ function newestMs(batch: FlowPrint[]): number {
   return c;
 }
 
+const EMPTY_PRINTS: FlowPrint[] = [];
 export interface PrintStream extends LivePack<FlowPrint[]> {
   pending: number;
   loadingOlder: boolean;
@@ -858,6 +862,10 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
   const [pending, setPending] = useState<FlowPrint[]>([]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasOlder, setHasOlder] = useState(true);
+  /* THE ROWS SAY WHOSE QUESTION THEY ANSWER (audit round 8: typed NVDA, the market's rows stood one render under the new
+     question, cut to nothing, and the grid said "No prints on this cut" until NVDA's own landed) — under a new key the
+     stream reads as waiting, never as the old key's rows cut empty */
+  const [rowsFor, setRowsFor] = useState(key);
   /** the newest fill in hand (rows or held) — the next poll's floor */
   const newest = useRef(0);
   const rowsRef = useRef<FlowPrint[]>([]);
@@ -873,6 +881,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     newest.current = 0;
     pendingGap.current = false;
     setRows([]);
+    setRowsFor(key);
     setPending([]);
     setHasOlder(true);
     setWaiting(true);
@@ -1016,12 +1025,13 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
       .finally(() => setLoadingOlder(false));
   }, [hasOlder, loadingOlder, query]);
 
+  const fresh = rowsFor === key;
   return {
-    rows,
-    at,
-    fault,
-    waiting: waiting && rows.length === 0,
-    pending: pending.length,
+    rows: fresh ? rows : EMPTY_PRINTS,
+    at: fresh ? at : null,
+    fault: fresh ? fault : null,
+    waiting: !fresh || (waiting && rows.length === 0),
+    pending: fresh ? pending.length : 0,
     loadingOlder,
     hasOlder: hasOlder && rows.length < TAPE_CAP,
     flush,
@@ -1778,6 +1788,8 @@ function useLiveBookRaw(ticker?: string | null): LivePack<BookContract[]> {
   return useLive(
     `book:${name || 'mkt'}`,
     async () => {
+      /* SPX's level is asked beside the book, not after it (audit round 8, load time) — nearly every book carries SPXW */
+      void ensureIndexLevels(['SPX']);
       const market = getRows('/screener/option-contracts?limit=200&order=premium&order_direction=desc');
       const named = name
         ? getRows(`/screener/option-contracts?ticker_symbol=${encodeURIComponent(name)}&limit=80&order=premium&order_direction=desc`).catch(() => [] as Record<string, unknown>[])
@@ -1918,8 +1930,35 @@ function resolveLegs(raw: Record<string, unknown>[], structSize: number, netPrem
 /** The position's theta in dollars a day: Σ ± theta × contracts × 100 over legs whose direction is settled; null when any
     is not (the vendor's net_theta mixes units — "−$8607.55/day" on a 5-lot SPX vertical risking $675) */
 export function positionTheta(legs: SpreadLeg[]): number | null {
+  return positionThetaCapped(legs)?.value ?? null;
+}
+/* A DAY OF THETA CANNOT TAKE MORE THAN THE POSITION IS WORTH (audit round 8, major 4: an SPY 767/772 0DTE bull call
+   spread, 3 units, $42 paid, max loss $42, read THETA −$293.86 a day). The vendor's theta is a per-share RATE, and in an
+   option's last hours it runs far past the option's price (SPY 765C 0DTE: theta −2.05 on a $0.27 fill) — the single-print
+   card's rule (PrintDrilldown thetaWords): a day takes at most what is left. Each leg's day is capped at its own fill, and
+   the position's at what it is worth — the debit paid for a bought structure, the credit collected for a sold one. */
+export function positionThetaCapped(legs: SpreadLeg[], netPremium?: number): { value: number; capped: boolean } | null {
   if (!legs.length || legs.some(l => l.side == null || l.theta == null)) return null;
-  return legs.reduce((a, l) => a + (l.side === 'BUY' ? 1 : -1) * (l.theta as number) * (l.contracts ?? 1) * 100, 0);
+  let capped = false;
+  let v = legs.reduce((a, l) => {
+    const rate = l.theta as number;
+    const fill = Number.isFinite(l.fill) && l.fill > 0 ? l.fill : Infinity;
+    const day = Math.abs(rate) > fill ? Math.sign(rate) * fill : rate;
+    if (day !== rate) capped = true;
+    return a + (l.side === 'BUY' ? 1 : -1) * day * (l.contracts ?? 1) * 100;
+  }, 0);
+  if (netPremium != null && Number.isFinite(netPremium) && netPremium !== 0) {
+    const worth = Math.abs(netPremium);
+    /* a bought structure loses to time at most what it cost; a sold one gains at most what it collected */
+    if (netPremium > 0 && v < -worth) {
+      v = -worth;
+      capped = true;
+    } else if (netPremium < 0 && v > worth) {
+      v = worth;
+      capped = true;
+    }
+  }
+  return { value: v, capped };
 }
 
 /** Profit and loss at expiry from settled legs on ONE expiry: the payoff is piecewise straight between strikes, so its
@@ -2227,6 +2266,35 @@ function doubleCalendarOf(legs: SpreadLeg[]): { name: string; kind: SpreadKind }
   return { name: `${legs[0].right === 'C' ? 'call' : 'put'} double calendar`, kind: 'calendar' };
 }
 
+/* THE VENDOR'S NAME, CHECKED AGAINST THE LEGS (audit round 8: "put butterfly 7535/7585/7625" had wings of 50 and 40;
+   "XSP iron condor … paid $133" was bought — a short iron condor is a credit; AMD "put diagonal" 620/622.5 was both legs
+   bought at the ask). When the legs name no textbook shape, a settled set says what it did ("2 puts bought"); an unsettled
+   one keeps the vendor's word, corrected where the strikes or the money alone say it is wrong, and marked as the
+   vendor's. */
+function vendorChecked(vendor: string, legs: SpreadLeg[], net: number): { name: string; kind?: SpreadKind; by: 'legs' | 'vendor' } | null {
+  if (!legs.length) return null;
+  const v = vendor === 'unnamed' ? '' : vendor;
+  const rights = new Set(legs.map(l => l.right));
+  const strikes = [...new Set(legs.map(l => l.strike))].sort((a, b) => a - b);
+  const settled = legs.every(l => l.side != null);
+  if (settled) {
+    const sides = new Set(legs.map(l => l.side));
+    if (sides.size === 1) {
+      const way = legs[0].side === 'BUY' ? 'bought' : 'sold';
+      const what = rights.size === 1 ? (legs[0].right === 'C' ? 'calls' : 'puts') : 'calls and puts';
+      const exp = new Set(legs.map(l => l.expiry)).size;
+      return { name: `${what} ${way} · ${exp > 1 ? `${exp} expiries` : `${strikes.length} strikes`}`, kind: 'custom', by: 'legs' };
+    }
+    /* settled, but no textbook shape: what the legs did, never the vendor's word unchecked (a "iron condor" that bought
+       two puts and a call against one call sold) */
+    const nb = legs.filter(l => l.side === 'BUY').length;
+    return { name: `custom · ${nb} bought, ${legs.length - nb} sold`, kind: 'custom', by: 'legs' };
+  }
+  if (/butterfly/.test(v) && !/iron/.test(v) && legs.length === 3 && rights.size === 1 && strikes.length === 3 && strikes[1] - strikes[0] !== strikes[2] - strikes[1] && !/uneven/.test(v)) return { name: `${v} (uneven wings)`, by: 'vendor' };
+  if (/iron (condor|butterfly)/.test(v) && !/\b(long|short)\b/.test(v) && net !== 0) return { name: `${net > 0 ? 'long' : 'short'} ${v}`, by: 'vendor' };
+  return null;
+}
+
 /** The structure the row stands for, settled from its legs once they are in hand */
 function settleSpread(t: SpreadTrade): SpreadTrade {
   const raw = legRaw.get(t.id);
@@ -2249,7 +2317,11 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
   /* every distinct strike the legs carry (the vendor's strikes list had 2 for a 4-leg structure) and the name the
      settled legs give it */
   const legStrikes = [...new Set(legs.map(l => l.strike))].sort((a, b) => a - b);
-  const named0 = settled ? nameFromLegs(legs) : doubleCalendarOf(legs);
+  const vendor0 = t.shapeOfVendor ?? t.shape;
+  const fromLegs = settled ? nameFromLegs(legs) : doubleCalendarOf(legs);
+  const checked = fromLegs ? null : vendorChecked(vendor0, legs, known ? t.netPremium : 0);
+  const named0 = fromLegs ?? (checked ? { name: checked.name, kind: checked.kind ?? t.kind } : null);
+  const namedBy: 'legs' | 'vendor' = fromLegs || checked?.by === 'legs' ? 'legs' : 'vendor';
   /* A COMPRESSION PACKAGE OR AN AFTER-HOURS FILL KEEPS ITS SHAPE, NOT ITS VERDICT (audit round 5: "Largest · SPX bullish
      risk reversal · $271.0K" was an OPRA cbmo floor package; an after-hours "bull put spread" was read against thin
      post-market quotes) — the shape's name without bull / bear */
@@ -2263,6 +2335,7 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
     shape: named ? named.name : t.shape,
     kind: named ? named.kind : t.kind,
     vendorShape: named && vendor !== 'unnamed' && !named.name.includes(vendor) ? vendor : undefined,
+    namedBy,
     legs,
     units,
     contracts: legs.reduce((a, l) => a + (l.contracts ?? 0), 0),
@@ -2272,7 +2345,10 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
     maxLoss: range ? range.maxLoss : null,
     maxProfit: range ? range.maxProfit : null,
     riskNote: !settled ? 'unsettled' : !oneExpiry ? 'expiries' : !known ? 'no-net' : undefined,
-    theta: positionTheta(legs) ?? NaN,
+    ...(() => {
+      const th = positionThetaCapped(legs, known ? t.netPremium : undefined);
+      return { theta: th ? th.value : NaN, thetaCapped: th?.capped || undefined };
+    })(),
     /* WHAT THE LEGS' TAGS ACTUALLY SAY (the third audit: an SPX 7630/7640 card said "its legs print no side" while three
        of its four legs carried one): the count, and why a partial set cannot settle it */
     read: known
@@ -2333,6 +2409,7 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     legs: [],
     legCount: num(row.leg_count) || undefined,
     legsState: 'pending',
+    namedBy: 'vendor',
   };
 }
 
@@ -2340,7 +2417,9 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
 function useSettled(pack: LivePack<SpreadTrade[]>): LivePack<SpreadTrade[]> {
   const rev = useLegRev();
   useEffect(() => {
-    wantLegs(pack.rows.map(t => t.id));
+    /* THE BIGGEST NETS NEXT (audit round 8: Multi-Leg took 35s to settle, its "Largest" moving as each leg landed) — after
+       the first screenful, the structures that can be the largest are read first, the small ones last */
+    wantLegs([...pack.rows].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).map(t => t.id));
     /* THE NEWEST FIRST (retail, round 7: the first rows read "…" for size, net and risk) — a poll's new structures land at
        the top of the page but went to the back of the queue behind the older 200; the first screenful jumps the queue */
     wantLegs(pack.rows.slice(0, LEGS_FIRST).map(t => t.id), true);

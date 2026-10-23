@@ -58,12 +58,14 @@ import { InsiderSectorFlow } from '../../components/record/ExtraFaces';
 import { CardLine, PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { statHelp } from '../../components/record/statHelp';
 
-type Window = 30 | 90 | 180;
+type Window = 7 | 30 | 90 | 180;
 type Show = 'market' | 'all';
 type RolePick = 'any' | InsiderRole;
 type NamesPick = 'all' | 'board';
 
 const WINDOW_OPTIONS: DropdownOption<Window>[] = [
+  /* THIS WEEK (round 8: the shortest window was 30 days) */
+  { value: 7, label: 'This week', short: '7 days', hint: 'Filings in the last seven days' },
   { value: 30, label: '30 days', hint: 'Filings in the last month' },
   { value: 90, label: '90 days', hint: 'The last quarter' },
   { value: 180, label: '180 days', hint: 'The last half year' },
@@ -194,7 +196,7 @@ const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
           and the account mark beside it, small */}
       {data.stakePct < 0 ? '—' : data.stakePct >= 99.95 ? '100%' : data.stakePct < 0.1 ? '<0.1%' : `${data.stakePct.toFixed(1)}%`}
       {data.stakePct >= 99.95 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> · {data.kind === 'BUY' ? 'first buy' : 'all sold'}</span> : null}
-      {data.indirect && data.stakePct >= 0 ? <span className="text-[8px] uppercase tracking-widest text-textMuted"> · of account</span> : null}
+      {data.indirect && data.stakePct >= 0 ? <span className="text-[8px] uppercase tracking-widest text-textMuted" title="An indirect holding — a trust, a fund or a family member's account the insider reports: the percent is of that account's shares alone, not of everything the insider holds"> · of that account</span> : null}
     </span>
   ) : null;
 
@@ -202,7 +204,7 @@ const StakeCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
 const PlanCell = ({ data }: ICellRendererParams<InsiderTrade>) => {
   if (!data) return null;
   if (!TX_CODES[data.code].openMarket) return <span className="font-mono text-[10px] text-textMuted">—</span>;
-  if (data.plan === 'plan') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Ran off a 10b5-1 plan adopted months earlier — no view on the day">planned</span>;
+  if (data.plan === 'plan') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="Planned: the trade ran off a 10b5-1 plan — a schedule the insider fixed months earlier, so it carries no view on the day it happened">planned · 10b5-1</span>;
   if (data.plan === 'unknown') return <span className="font-mono text-[8px] uppercase tracking-widest text-textMuted" title="The filing carried no plan box either way — not counted as chosen buying in the sums above">unstated</span>;
   if (isCorporateBuy(data))
     return (
@@ -487,12 +489,14 @@ const Insiders = () => {
               {waiting
                 ? `Reading the filings · 0 of ${window} days so far`
                 : reading
-                  ? `Reading · ${readBack ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${readBack}T12:00:00Z`)) / 86_400_000))) : 0} of ${window} days so far — the totals grow as older filings land`
+                  ? `Reading · ${readBack ? Math.max(0, Math.min(window, Math.round((Date.parse(`${nyIsoDaysBack(0)}T12:00:00Z`) - Date.parse(`${readBack}T12:00:00Z`)) / 86_400_000))) : 0} of ${window} days so far — the totals beside are provisional and grow as older filings land`
                   : `Complete · the read is done for ${window} days (what each part covers is under the controls)`}
             </p>
           )}
         </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
+        {/* PROVISIONAL, SAID AND SHOWN (round 8: the totals moved under "READING · 71 OF 90 DAYS" with nothing on them to
+            say so) — while the read pages back the figures are greyed, each marked "so far" */}
+        <dl className={`flex flex-wrap gap-x-6 gap-y-2 transition-opacity ${reading && !failed && !waiting ? 'opacity-60' : ''}`} data-insiders-provisional={reading && !failed && !waiting ? 'yes' : undefined} title={reading && !failed && !waiting ? 'Provisional — the filings are still being read back; these totals grow until the window is complete' : undefined}>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Rows on the grid right now, after the window and the cards above">Filings</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-count>
@@ -504,14 +508,14 @@ const Insiders = () => {
             <dt className="text-[10px] text-textMuted cursor-help" title="Purchases (code P — on the open market or in a private placement) that a person chose to make, not on a 10b5-1 plan. Purchases by companies and funds — strategic stakes — are counted apart under Company & fund buys">Chosen buying</dt>
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${facts.chosen > 0 ? 'text-bull' : 'text-textMuted'}`} data-insiders-chosen>
               {failed || waiting ? '—' : facts.chosen > 0 ? fmtDollars(facts.chosen) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="Code-P purchases by a company or a fund (Volkswagen buying Rivian, a bank buying into a broker): strategic stakes and private placements, not an insider choosing to buy">Company &amp; fund buys</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-corporate>
               {failed || waiting ? '—' : facts.corporate > 0 ? fmtDollars(facts.corporate) : 'none'}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
           <div>
@@ -521,14 +525,14 @@ const Insiders = () => {
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-sold>
               {failed || waiting ? '—' : facts.sold > 0 ? fmtDollars(facts.sold) : 'none'}
               {split && !failed && !waiting ? <span className="text-[9px] text-textMuted"> · {window} days{facts.smallCount ? ` · + ${fmtDollars(facts.smallSold)} smaller, ${spanWords(split.from, split.to)}` : ''}</span> : null}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={`The share of those sales${split ? ` (the ${bigWord(split.big)}+ ones)` : ''} that ran off a 10b5-1 plan: a schedule set months earlier, so it says little about today`}>Sales on a plan</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-insiders-planned>
               {facts.plannedPct == null ? '—' : `${facts.plannedPct}%`}
-              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · partial</span> : null}
+              {reading && !failed && !waiting ? <span className="text-[9px] text-textMuted" title={`Still paging back${readBack ? ` — complete from ${shortDay(readBack)}` : ''}`}> · so far</span> : null}
             </dd>
           </div>
         </dl>
@@ -546,7 +550,12 @@ const Insiders = () => {
         <FeedFallback />
       ) : (
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insiders-sentence>
-          {waiting ? 'Reading the filings.' : insidersSentence(rows, window, split)}
+          {waiting ? 'Reading the filings.' : `${reading ? 'So far: ' : ''}${insidersSentence(rows, window, split)}`}
+        </p>
+      )}
+      {!failed && (
+        <p className="px-5 pb-3 -mt-1 text-[11px] leading-relaxed text-textMuted" data-insiders-words>
+          <span className="text-textSecondary">Planned · 10b5-1</span> — sold or bought on a schedule the insider fixed months earlier, so it says little about the day. <span className="text-textSecondary">Of that account</span> — the trade was in a trust, a fund or a family member's account the insider reports; the percent is of that account alone.
         </p>
       )}
       {/* THE NAMES TO KNOW */}

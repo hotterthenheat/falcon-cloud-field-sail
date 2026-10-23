@@ -41,11 +41,13 @@
 ==================================================
 */
 
-import { aheadWord } from './bookWindow';
+import { aheadWord, recordDay } from './bookWindow';
+import { levelTicks } from './levelRecord';
+import { nyIsoDate, nyMinutes } from '../core/nyTime';
 import { buildCloseOdds, fmtDollars, fmtStrike, type AheadClock } from './ahead';
 import { SHELF_SHARE } from './airPockets';
 import { buildWallContext, pathFlowWords, chanceLabel, holdLabel, oddsAt, type WallContext, type WallOdds, type WallRole, type WallSide } from './wall';
-import { changeWhen, sizeWords, type Building, type BuildVerdict } from './building';
+import { changeWhen, sizeWords, switchedWords, type Building, type BuildVerdict } from './building';
 import { levelRoles, putWallWordsAt, wallPlace, type LevelRole } from '../core/walls';
 import type { ExposureSurface } from './exposureSurface';
 import type { ExposureProfileData } from '../types/gex';
@@ -90,6 +92,11 @@ export interface Target {
   reach: number;
   /** Within half a strike step of price — reached already: the rows say "at price", and "Most likely reached" skips it */
   atPrice?: boolean;
+  /** TODAY'S SESSION HAS ALREADY TRADED THROUGH IT (the eighth audit: "Most likely reached · 760 · 82%" with the low at
+      759.14 and 760 tested 5–7 times on the Map): the session's range covers the strike, so it is reached — not a chance.
+      The tests are the Map's report's own count (data/levelRecord.ts levelTicks) on the same cash bars — null counts when
+      the bars are coarser than a minute (a Board name's 5-minute bars), where only "reached" is said */
+  today: { tests: number | null; held: number | null; broke: number | null } | null;
   /** "by Nov 20" when the odds run to a later expiry than the coming session — null for the close */
   horizon: string | null;
   /** Odds it holds when reached, 0..1 — the floor for a trapdoor */
@@ -103,6 +110,12 @@ export interface Target {
   holdTo: number | null;
   /** The latest change in the hedging here, dollars, and Building's word for it */
   build: number;
+  /** The strike's net before and after the change, RETAIL sign — a strike that changed sides prints both (the eighth
+      audit: 767 −$147M → +$122M read "shrank $25M") */
+  buildFrom: number;
+  buildTo: number;
+  /** What the change measures: a call wall by its calls, a put wall by its puts, everything else by its net (building.ts) */
+  buildBasis: 'calls' | 'puts' | 'net';
   /** The change is the vendor's overnight open-interest count — named by the session it counts, never "today" */
   buildOvernight: boolean;
   /** "in Oct 21's trading" — the session the change counts (data/building.ts changeWhen) */
@@ -178,6 +191,37 @@ const IN_REACH = 0.15;
    trapdoor only with SHELF_SHARE of the heaviest strike's net gamma, whichever its sign; under that it is too thin to be
    either and carries no tag. */
 export const FLAT_SHARE = SHELF_SHARE;
+/* ---- ONE CLASSIFIER, ONE INPUT, EVERYWHERE (the eighth audit's M1: 759 was "TRAPDOOR" on the Board and Compare and "too
+   thin to be a trapdoor" on the Agenda — the Board's and Compare's copy never saw `flat`). The Agenda's rows, the Board's
+   watch-first and Compare's all read the kind here, off the same Target fields. ---- */
+export type StrikeKind = 'named' | 'shelf' | 'trapdoor' | 'thin';
+export type KindInput = Pick<Target, 'isShelf' | 'role' | 'isWall' | 'flat'>;
+/** What a strike is: a named level, a shelf (a wall the Map does not name), a trapdoor (its hedging pushes the move
+    along), or too thin to be any of them */
+export const strikeKind = (t: KindInput): StrikeKind => (t.isShelf ? (t.role ? 'named' : 'shelf') : t.isWall || t.flat ? 'thin' : 'trapdoor');
+/** The tag a strike wears: every level it is, in the one order; else shelf or trapdoor; a thin strike wears none */
+export const strikeTag = (t: KindInput & { roles?: readonly string[] }): string | null => {
+  if (t.roles?.length) return t.roles.join(' · ');
+  if (t.role) return t.role;
+  const k = strikeKind(t);
+  return k === 'shelf' ? 'shelf' : k === 'trapdoor' ? 'trapdoor' : null;
+};
+/** The thin strike's words: absorbing but light is no wall, pushing along but light is no trapdoor */
+export const thinWords = (t: Pick<Target, 'isWall'>): string => (t.isWall ? 'too thin to be a wall' : 'too thin to be a trapdoor');
+
+/** "reached today · held 5, broke 2" — a level the session already traded through says so, never a chance */
+export const todayWords = (d: NonNullable<Target['today']>, short = false): string =>
+  short || d.tests == null ? 'reached today' : d.tests === 0 ? 'reached today' : `reached today · held ${d.held}, broke ${d.broke}`;
+/** The reached cell: at price · reached today · the chance */
+export const reachWords = (t: Pick<Target, 'atPrice' | 'today' | 'reach'>, short = false): string => (t.atPrice ? 'at price' : t.today ? todayWords(t.today, short) : chanceLabel(t.reach));
+
+/** Today's cash bars of the session on record — empty before today's open (the session on record is then a past one) */
+function todayCash(bars: readonly Candle[]): Candle[] {
+  const rec = recordDay();
+  if (!rec.isToday) return [];
+  return bars.filter(b => nyIsoDate(b.time * 1000) === rec.date && nyMinutes(b.time * 1000) >= 570 && nyMinutes(b.time * 1000) < 960);
+}
+
 /* "THE CLOSE LEANS TO 766 · 6%" IS NOT A LEAN (the retail test, 2026-10-23): one strike's odds have to reach this
    before the page says the close leans anywhere */
 export const LEAN_MIN = 15;
@@ -192,13 +236,13 @@ function whyOf(t: Target, order: AgendaOrder, marketPer1Pct: number): string {
   const ratio = t.stake / Math.max(1, marketPer1Pct);
   switch (order) {
     case 'matters':
-      return `${pct(t.reach)} reached × ${fmtDollars(t.stake)} at stake`;
+      return t.today ? `${todayWords(t.today, true)} · ${pct(t.reach)} to touch again × ${fmtDollars(t.stake)} at stake` : `${pct(t.reach)} reached × ${fmtDollars(t.stake)} at stake`;
     case 'nearest':
       return `${Math.abs(t.distancePct).toFixed(2)}% ${t.side === 'call' ? 'above' : 'below'} · ${t.distanceSigma.toFixed(1)}× the expected move`;
     case 'reached':
-      return `${pct(t.reach)} reached · ${t.distanceSigma.toFixed(1)}× the expected move away`;
+      return t.today ? `${todayWords(t.today)} · ${t.distanceSigma.toFixed(1)}× the expected move away` : `${pct(t.reach)} reached · ${t.distanceSigma.toFixed(1)}× the expected move away`;
     case 'weakest':
-      return t.isShelf ? `${holdLabel(t.hold)} · ${pct(t.reach)} reached` : t.isWall ? 'too thin to be a wall' : t.flat && !t.role ? 'too thin to be a trapdoor' : t.role === 'put wall' ? 'the put wall — short gamma, so a break can accelerate' : 'a trapdoor — pushes the move along';
+      return t.isShelf ? `${holdLabel(t.hold)} · ${reachWords(t)}${t.today ? '' : ' reached'}` : strikeKind(t) === 'thin' && !t.role ? thinWords(t) : t.role === 'put wall' ? 'the put wall — short gamma, so a break can accelerate' : 'a trapdoor — pushes the move along';
     case 'biggest':
       return `${fmtDollars(Math.abs(t.weight))} here + ${fmtDollars(Math.abs(t.breakFlow))} on the way through · ${ratio.toFixed(1)}× the market`;
   }
@@ -257,6 +301,19 @@ export function buildAgenda(
   const nodeAt = new Map(snapshot.chain.map(n => [n.strike, n]));
   const asc = [...profile.strikes].sort((a, b) => a.strike - b.strike);
   const heaviestNet = Math.max(1, ...asc.map(s => Math.abs(s.gex.net)));
+  /* TODAY'S SESSION SO FAR — a strike inside its range is reached already (todayWords); the counts only off minute bars */
+  const cash = todayCash(bars);
+  const lo = cash.length ? Math.min(...cash.map(b => b.low)) : Infinity;
+  const hi = cash.length ? Math.max(...cash.map(b => b.high)) : -Infinity;
+  const minuteBars = cash.length >= 2 && cash[1].time - cash[0].time <= 60;
+  const todayAt = (k: number): Target['today'] => {
+    if (!(k >= lo && k <= hi)) return null;
+    if (!minuteBars) return { tests: null, held: null, broke: null };
+    /* the Map's report's side rule (WallReportCard sideOf): a level at or above price is tested from below */
+    const ticks = levelTicks(cash, k, k >= spot ? 'call' : 'put');
+    const broke = ticks.filter(x => x.kind === 'broke').length;
+    return { tests: ticks.length, held: ticks.length - broke, broke };
+  };
 
   const targets: Target[] = asc
     .map((s, i) => ({ s, i }))
@@ -281,6 +338,7 @@ export function buildAgenda(
         distancePct: ((s.strike - spot) / spot) * 100,
         distanceSigma: o.distanceSigma,
         reach: o.reach,
+        today: todayAt(s.strike),
         horizon: ctx.horizon,
         hold: o.hold,
         weight: o.weight,
@@ -291,6 +349,9 @@ export function buildAgenda(
         holdTo: o.holdPath.to,
         /* the strike's ONE overnight change — Building's CHANGE column: the wall's size change, + grew, − shrank */
         build: brow?.sizeChange ?? 0,
+        buildFrom: brow ? (brow.open === 0 ? 0 : -brow.open) : 0,
+        buildTo: brow ? (brow.now === 0 ? 0 : -brow.now) : 0,
+        buildBasis: brow?.basis ?? 'net',
         buildOvernight: building.overnight,
         buildWhen: changeWhen(building).short,
         buildLoading: building.loading,
@@ -347,7 +408,8 @@ export function buildAgenda(
   /* …and the rows say so, so the head's "most likely reached" and the table read off the same set (the sixth audit's
      retail test: "Most likely reached 763 · 84%" over a row of 764 at 99%) */
   for (const t of ordered) t.atPrice = onPrice(t);
-  const reachable = ordered.filter(t => !onPrice(t));
+  /* …and neither is a strike the session has already traded through: it is reached, not likely (the eighth audit) */
+  const reachable = ordered.filter(t => !onPrice(t) && !t.today);
   const mostReached = reachable.length ? reachable.reduce((a, b) => (b.reach > a.reach ? b : a)) : null;
   /* THE WALLS IN REACH ARE EVERY WALL THE TABLE NAMES (the retail test, 2026-10-23: "Only wall in reach 770 · the only
      one" above a row tagging 769 PUT WALL, nearer): the absorbing shelves and the named call and put walls alike */
@@ -364,7 +426,7 @@ export function buildAgenda(
 
   const lead = first[0];
   const sentence = lead
-    ? `Watch ${fmtStrike(lead.strike)} first${lead.roles.length ? `, the ${lead.roles.join(' and the ')}` : lead.role ? `, the ${lead.role}` : ''}: reached ${pct(lead.reach)} of the time ${ctx.horizon ?? (clock.inSession ? 'by the close' : aheadWord() === 'today' ? "by today's close" : 'by the next close')}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : lead.isWall ? 'too thin to be a wall' : lead.flat && !lead.role ? 'too thin to be a trapdoor' : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
+    ? `Watch ${fmtStrike(lead.strike)} first${lead.roles.length ? `, the ${lead.roles.join(' and the ')}` : lead.role ? `, the ${lead.role}` : ''}: ${lead.atPrice ? 'price is on it now' : lead.today ? `${lead.today.tests ? `already ${todayWords(lead.today)}` : 'already reached today'}` : `reached ${pct(lead.reach)} of the time ${ctx.horizon ?? (clock.inSession ? 'by the close' : aheadWord() === 'today' ? "by today's close" : 'by the next close')}`}, ${lead.isShelf ? `${holdLabel(lead.hold)}` : strikeKind(lead) === 'thin' && !lead.role ? thinWords(lead) : lead.role === 'put wall' ? 'short gamma there, so a break can accelerate' : 'a trapdoor (dealers short gamma there)'}; a ${lead.isShelf ? 'break' : 'move'} ${lead.side === 'call' ? 'above' : 'below'} ${lead.breakTo != null ? `runs to ${fmtStrike(lead.breakTo)}${flowWords(lead.breakFlow, lead.side)}` : 'has no shelf behind it'}.${
         first.length > 1 ? ` Then ${first.slice(1).map(t => fmtStrike(t.strike)).join(' and ')}.` : ''
       }`
     : 'No strikes on the window.';
@@ -396,4 +458,8 @@ export const closeLeanWords = (a: Pick<Agenda, 'closesNear' | 'closeTop'>): stri
 
 /** Building's word for today's change at a strike, for the row */
 export const buildWords = (t: Target, inSession: boolean): string =>
-  t.buildLoading ? '…' : t.verdict === 'steady' ? 'steady' : `${t.verdict === 'switched' ? 'changed sides' : t.verdict === 'new' ? 'new' : t.verdict} · ${sizeWords(t.build)}${t.buildOvernight ? ` ${t.buildWhen}` : inSession ? '' : ' last session'}`;
+  t.buildLoading
+    ? '…'
+    : t.verdict === 'steady'
+      ? 'steady'
+      : `${t.verdict === 'switched' ? switchedWords(t.buildFrom, t.buildTo) : `${t.verdict === 'new' ? 'new' : t.verdict} · ${t.buildBasis === 'net' ? '' : `${t.buildBasis === 'calls' ? 'call' : 'put'} wall `}${sizeWords(t.build)}`}${t.buildOvernight ? ` ${t.buildWhen}` : inSession ? '' : ' last session'}`;

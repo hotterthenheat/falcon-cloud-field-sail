@@ -49,7 +49,7 @@ import { GLOSSARY, kindTip } from './glossary';
 import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { bookDatesIn } from '../../data/uwBook';
 import { holdLabel } from '../../data/wall';
-import { LEAN_MIN } from '../../data/agenda';
+import { LEAN_MIN, strikeTag, thinWords } from '../../data/agenda';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { buildExposureProfile } from '../../data/exposure';
@@ -187,8 +187,21 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const strike = focus ?? s.supreme[greek].strike;
   const kept = focus != null;
   const front = rowOf(strike);
-  const watchKind = s.watch ? (s.watch.roles?.length ? s.watch.roles.join(' · ') : s.watch.role ?? (s.watch.isShelf ? 'shelf' : s.watch.isWall ? 'thin' : 'trapdoor')) : '';
+  /* ONE CLASSIFIER, THE AGENDA'S (the eighth audit's M1) — a thin strike says so in words */
+  const watchKind = s.watch ? strikeTag(s.watch) ?? thinWords(s.watch) : '';
   const others = GREEKS.filter(g => g !== greek);
+  /* the odd-looking walls, plainly: a call wall is the most CALL gamma (its puts can still outweigh it), a put wall the most
+     PUT gamma (above price it is overhead put hedging, not a floor) */
+  const wallWhy = (() => {
+    const parts: string[] = [];
+    const cw = s.callWall.strike;
+    const pw = s.putWall.strike;
+    const cwNet = valueAt(cw, 'gex', 'net');
+    if (cwNet != null && shownGreek('gex', cwNet) < 0) parts.push(`${fmtStrike(cw)} is the call wall because it holds the most call gamma; its puts are heavier still, so its net is negative.`);
+    else if (cw < s.spot) parts.push(`The call wall ${fmtStrike(cw)} is below price: the most call gamma sits under it, which can act as support.`);
+    if (pw > s.spot) parts.push(`The put wall ${fmtStrike(pw)} is above price: that is overhead put hedging, not a floor.`);
+    return parts.join(' ');
+  })();
 
   /* EVERY FIGURE IN THE PRIMARY INK — a missing one muted; no ramp, no family colour on a number */
   /* GAMMA IN THE READER'S SIGN AND INK (the ship pass, 2026-10-22, retailSign.ts): positive absorbs, green; negative
@@ -297,6 +310,13 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         <Level word="put wall" tone="bear" k={s.putWall.strike} />
         <Level word="flip" tone="white" k={s.flip} />
       </div>
+      {/* WHY A WALL SITS WHERE IT DOES, IN ONE LINE (the eighth audit, QQQ: a 710 CALL WALL with net −$179.4M, the 711 put wall
+          and supreme above price) — said only when the levels look odd */}
+      {greek === 'gex' && wallWhy && (
+        <p className="pt-1 text-[10.5px] leading-snug text-textMuted" data-side-wall-why>
+          {wallWhy}
+        </p>
+      )}
 
       {/* HEAVIEST TODAY — a hairline table: rank · strike · dollars · the window's change */}
       <Cap aside={windowRail}>
@@ -413,10 +433,11 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
           label="Watch first"
           value={
             s.watch ? (
-              <span className="inline-flex items-baseline gap-1.5">
+              /* wraps under its strike on a phone rather than run off the card ("supreme · put wal", the eighth audit) */
+              <span className="inline-flex flex-wrap items-baseline justify-end gap-x-1.5 text-right max-w-[220px]">
                 <Door k={s.watch.strike} />
                 <span className="text-[10px] text-textMuted" title={kindTip(s.watch.roles?.[0] ?? watchKind)}>
-                  {watchKind} · {pct(s.watch.reach)} reached{s.watch.horizon ? ` ${s.watch.horizon}` : ''}{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
+                  {watchKind} · {s.watch.atPrice ? 'at price' : s.watch.today ? 'reached today' : `${pct(s.watch.reach)} reached${s.watch.horizon ? ` ${s.watch.horizon}` : ''}`}{s.watch.isShelf ? ` · ${holdLabel(s.watch.hold)}` : ''}
                 </span>
               </span>
             ) : (
