@@ -376,7 +376,9 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
       if (due(true)) liveRun(key);
       me.timer = window.setInterval(() => {
         if (due(false)) liveRun(key);
-      }, Math.min(pollMs, 15_000));
+        /* checked often, cheaply: the beat runs from the last ANSWER, so a check on the poll's own period would skip one
+           beat in two (a read that took 1.5s is 6.5s old at the next 8s tick) */
+      }, Math.max(1_000, Math.min(pollMs / 4, 5_000)));
     }
     fn();
     return () => {
