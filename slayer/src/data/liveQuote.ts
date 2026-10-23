@@ -43,6 +43,11 @@ export interface LiveQuote {
 }
 
 const TTL = 15_000;
+/* the stock-state counts as stalled market-wide when a name's print is this old in the session (a thin name can go
+   minutes without a trade; ten minutes on a name the page asks for is the vendor, not the tape) */
+const STALL_MARKET = 10 * 60_000;
+const STALL_HOLD = 5 * 60_000;
+let stalledAt = 0;
 interface Raw {
   close: number;
   prev_close: number;
@@ -110,6 +115,21 @@ export function ensureQuote(ticker: string): void {
   const hit = raw.get(t);
   if (hit && Date.now() - hit.at < TTL) return;
   inflight.add(t);
+  /* while the stock-state is known to be stalled (seen on any name in the last five minutes), a name already read
+     today asks the quote alone — one call, not two (the ninth audit: the Stocks index made ~170 calls a minute reading
+     both); its prev_close does not move in the session. The state is asked again once the five minutes pass. */
+  if (hit && hit.prev_close > 0 && (hit.market_time ?? '').toLowerCase().startsWith('reg') && nySessionPhase() === 'open' && Date.now() - stalledAt < STALL_HOLD) {
+    whalesQuote(t)
+      .then(q => {
+        const qp = Number(q?.last_trade?.price);
+        const qt = Number(q?.last_trade?.time);
+        raw.set(t, qp > 0 && Number.isFinite(qt) && qt >= hit.tapeAt ? { ...hit, close: qp, tapeAt: qt, at: Date.now() } : { ...hit, at: Date.now() });
+        emit();
+      })
+      .catch(() => {})
+      .finally(() => inflight.delete(t));
+    return;
+  }
   whalesState(t)
     .then(async s => {
       const close = Number(s?.close);
@@ -122,6 +142,7 @@ export function ensureQuote(ticker: string): void {
          for more than an hour while the quote's last trade ran on): when the state's print is over two minutes old in
          the regular session, the quote's last trade is the price, if it is newer */
       if ((mt ?? '').toLowerCase().startsWith('reg') && nySessionPhase() === 'open' && Number.isFinite(tape) && Date.now() - tape > 120_000) {
+        if (Date.now() - tape > STALL_MARKET) stalledAt = Date.now();
         const q = await whalesQuote(t).catch(() => null);
         const qp = Number(q?.last_trade?.price);
         const qt = Number(q?.last_trade?.time);
