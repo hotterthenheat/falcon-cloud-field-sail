@@ -60,7 +60,9 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
   const reading = card === undefined;
   const line = card?.sector || (reading ? 'Reading the company' : '—');
   const fault = file.status === 'error' ? 'failed' as const : null;
-  const profile = card?.description ? quietText(card.description) : '—';
+  /* the vendor's profile can start lower-case (GME's "gamestop corp. engages in…", round 11) — its first letter capped */
+  const profileRaw = card?.description ? quietText(card.description) : '—';
+  const profile = profileRaw.charAt(0).toUpperCase() + profileRaw.slice(1);
   return (
     <section className="border border-borderSubtle rounded-md bg-panel" data-company-file-root={ticker}>
       <div className="px-5 pt-4 pb-3">
@@ -83,7 +85,9 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="Beta">{card.beta != null ? <TickFigure value={card.beta}>{card.beta.toFixed(2)}</TickFigure> : '—'}</Fact>
             <Fact label="Average volume · company file"><TickFigure value={card.avgVolume}>{count(card.avgVolume)}</TickFigure></Fact>
             <Fact label="Next earnings">{next && next.daysOut >= 0 ? <span title={next.confirmed ? 'Date set by the company' : 'Not announced yet — Unusual Whales’ estimate'}>{next.dateLabel} · {untilWords(next.daysOut)}{next.confirmed ? '' : ' · est.'}</span> : '—'}</Fact>
-            <Fact label="Dividend">{card.hasDividend == null ? '—' : card.hasDividend ? 'Pays one' : 'None'}</Fact>
+            {/* "PAYS ONE" ONLY ON A POSITIVE YIELD (round 11: GME read "Pays one" beside "Dividend yield —" — the vendor's
+                has_dividend is true for a name that pays none) */}
+            <Fact label="Dividend">{yieldPct != null && yieldPct > 0 ? 'Pays one' : yieldPct != null || card.hasDividend === false ? 'None' : file.status === 'loading' ? '…' : '—'}</Fact>
             <Fact label="Dividend yield">{yieldPct != null ? <TickFigure value={yieldPct}>{`${yieldPct.toFixed(2)}%`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>
             <Fact label="EPS growth · YoY">
               {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : growth < 0 ? '−' : ''}{Math.abs(growth).toFixed(2)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}

@@ -2,7 +2,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday } from '../core/calendar';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
-import { bookCandles, bookRevision, peekEntry, peekSessionAll } from './uwBook';
+import { bookCandles, bookFixed, bookRevision, fixedAsOfWords, peekEntry, peekSessionAll } from './uwBook';
 
 /*
 ==================================================
@@ -394,4 +394,13 @@ function sessionBookRaw(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): Sessio
     why: null,
     after,
   };
+}
+
+/** THE CADENCE A PAGE'S "UPDATED" LINE NAMES (the eleventh audit's M3: "updated … · every 10s" on a closed market whose
+    book and prices no longer move): `live` in the session; "as of the Oct 23 close" once the closed market's book is held
+    (uwBook bookFixed); between them (the pre-market, the minutes after the bell) the levels' own cadence */
+export function cadenceWords(live = 'every 10s'): string {
+  if (sessionDay().open) return live;
+  if (bookFixed()) return `as of ${fixedAsOfWords()}`;
+  return 'levels about once a minute';
 }

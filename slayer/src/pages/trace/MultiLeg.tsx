@@ -432,6 +432,17 @@ const MultiLeg = () => {
   );
 
   const activeKind = kind === 'ALL' ? null : KIND_META[kind];
+  /* ONE PLAIN LINE (retail, round 11): how many structures, paid or collected — the full read behind "more" */
+  const leadLine = useMemo(() => {
+    if (tapeState === 'reading') return askedName ? `Reading ${askedName}'s multi-leg trades…` : 'Reading the multi-leg trades…';
+    if (tapeState === 'down') return 'The multi-leg feed did not answer — it fills when it does.';
+    if (rows.length === 0) return askedName ? `No multi-leg trades for ${askedName} on this cut.` : 'No multi-leg trades on this cut.';
+    const bets = rows.filter(t => !t.compression);
+    const paid = bets.filter(t => t.netKnown !== false && t.netPremium > 0).length;
+    const collected = bets.filter(t => t.netKnown !== false && t.netPremium < 0).length;
+    const net = bets.reduce((a, t) => a + (t.netKnown !== false ? t.netPremium : 0), 0);
+    return `${askedName ? `${askedName}: ` : ''}${num(rows.length)} multi-leg trades (${windowSpan} ET) — ${num(paid)} paid for, ${num(collected)} sold for a credit; on balance ${fmtUsd(Math.abs(net))} ${net >= 0 ? 'paid' : 'collected'}.`;
+  }, [tapeState, rows, askedName, windowSpan]);
   /* ReactNode: the largest structure is a door into its own card, whether
      or not the current cut shows it. */
   /* THE SCREENER'S GRAMMAR (Noah, 2026-08-30: "i dont like confusing
@@ -769,9 +780,10 @@ const MultiLeg = () => {
                 {cuts.said}
               </p>
             )}
-            {read}
           </>
         }
+        lead={leadLine}
+        detail={read}
       >
         <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={onVisible} endless={endlessOf(pack.older, 'structures', `the ${session === 'regular' ? 'session' : 'day'}'s start reached`, hold.paused)} key={tapeState} emptyText={cutQuery.trim() && trades.length > 0 ? searchMiss(cutQuery, 'structure') : tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
         {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}

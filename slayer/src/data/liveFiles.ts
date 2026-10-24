@@ -9,7 +9,7 @@ import { houseSector, houseSlug, type EtfHolding, type EtfKind, type EtfRow, typ
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
 import { nyDayOfUtcStamp, nyDaysAgo } from './nyDate';
-import { companyName, displayName, hasVendorName, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames } from './tickers';
+import { companyName, displayName, hasVendorName, placeDisplay, isListed, rememberCompanyName, rememberCompanyNames, subscribeCompanyNames } from './tickers';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { loadRegularCloses } from './dayChange';
 import {
@@ -1122,7 +1122,7 @@ export function useEtfWeights(etf: string): { status: FileStatus; sectors: { nam
       setGot({
         status: res.error ? 'error' : 'live',
         sectors: sectorsOf((d.sector ?? []).map(r => ({ name: r.sector, weight: r.weight }))),
-        countries: list((d.country ?? []).map(r => ({ name: r.country, weight: r.weight }))),
+        countries: list((d.country ?? []).map(r => ({ name: placeDisplay(r.country), weight: r.weight }))),
       });
     });
     return () => {

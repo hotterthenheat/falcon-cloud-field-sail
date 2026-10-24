@@ -556,6 +556,11 @@ const Footprints = () => {
                 {cuts.said}
               </p>
             )}
+          </>
+        }
+        lead={reading ? `Reading ${bookWord}…` : facts.builds + facts.unwinds === 0 ? `No open interest changed ${oiInWords(cover.day)} on ${cutWord ? `the contracts ${cutWord}` : bookWord}.` : `Open interest ${oiInWords(cover.day)}: ${num(facts.builds)} contract${facts.builds === 1 ? '' : 's'} built (+${num(facts.added)}), ${num(facts.unwinds)} unwound (−${num(facts.shed)})${loudest ? ` — biggest ${loudest.deltaOI < 0 ? 'unwind' : 'build'} ${loudest.ticker} ${loudest.strike}${loudest.right} ${loudest.deltaOI < 0 ? '−' : '+'}${num(Math.abs(loudest.deltaOI))}` : ''}.`}
+        detail={
+          <>
             {read}
             <TermLine keys={['standing', 'doi', 'oiDay', 'stockLike']} testId="footprints" />
           </>

@@ -199,9 +199,10 @@ const AmountCell = ({ data }: ICellRendererParams<CongressTrade>) => {
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-2.5" title={`Rung ${AMOUNT_BRACKETS[data.bracket].column} of ${AMOUNT_BRACKETS.length}`}>
+    <span className="inline-flex items-center gap-2.5 min-w-0" title={`${bracketLabel(data.bracket)} · rung ${AMOUNT_BRACKETS[data.bracket].column} of ${AMOUNT_BRACKETS.length}`}>
       <Ladder bracket={data.bracket} />
-      <span className="font-mono text-[11px] tnum text-textPrimary whitespace-nowrap">{bracketLabel(data.bracket)}</span>
+      {/* the short form fits the column (round 11: "$5,000,001 – $25,000,0" cut); the filed figures on hover */}
+      <span className="font-mono text-[11px] tnum text-textPrimary whitespace-nowrap">{bracketShort(data.bracket)}</span>
     </span>
   );
 };
@@ -274,7 +275,8 @@ const ReportCard = ({ t, on, onToggle }: { t: CongressTrade; on: boolean; onTogg
           /* an unlisted asset ("Reof Xxx, Llc", "Bank of No…" cut on the card — the re-audit, 2026-10-22) takes the whole
              line, the member under it, the full name on hover */
           <span className="flex flex-col min-w-0 leading-tight">
-            <span className="text-[12px] font-bold text-textPrimary truncate" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>{line.title}</span>
+            {/* two lines before it cuts (round 11: "Not Fade Away LLC Co…") */}
+            <span className="text-[12px] font-bold text-textPrimary line-clamp-2 break-words" title={line.sub ? `${line.title} · ${line.sub}` : line.title}>{line.title}</span>
             <span className="min-w-0 text-[10px] text-textSecondary truncate" title={`${t.member.name} ${seat(t)}`}>
               {t.member.name} <span className="font-mono text-textMuted">{seat(t)}</span>
             </span>
@@ -388,6 +390,7 @@ const Congress = () => {
   /* TREASURY BILLS HIDDEN BY DEFAULT (audit round 5): parked cash in 4- to 52-week bills filled the book and every
      member's page, burying the equity trades — one switch shows them, and the head says how many it hid */
   const [hideBills, setHideBills] = useState(true);
+  const [phoneMore, setPhoneMore] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
 
   /* The feed is the live record when it answers; the reports are paged back by trade day until the window is covered */
@@ -400,6 +403,10 @@ const Congress = () => {
   const failed = status === 'sim';
   const waiting = status === 'loading';
   const quiet = failed || waiting;
+  /* PARTIAL TOTALS SAY SO (round 11: "Reports 197 · Median lag 17d · Past the deadline 0" at 1.5s, settling at 723 / 23d
+     / 4) — while the read pages back the figures are greyed and marked "so far", as on Insiders */
+  const partial = !quiet && coverage.reading;
+  const soFar = partial ? <span className="text-[9px] text-textMuted" title="Still paging back — the figures grow as older reports land"> · so far</span> : null;
   const gridEmpty = failed ? 'This read did not land' : waiting ? 'Reading the reports' : 'No report on this cut';
   const billsHidden = useMemo(() => (hideBills ? feed.trades.filter(isTreasuryBill).length : 0), [feed, hideBills]);
   const cut = useMemo(
@@ -524,7 +531,7 @@ const Congress = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="STOCK Act reports on the grid right now, after the cards — bought, sold (full or partial) and exchanged add up to the whole">Reports</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-count>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${partial ? 'opacity-60' : ''} text-textPrimary`} data-congress-count data-partial={partial ? '' : undefined}>
               {quiet ? '—' : (
                 <>
                   {stats.trades.length.toLocaleString('en-US')}{' '}
@@ -532,32 +539,50 @@ const Congress = () => {
                     · {stats.purchases.toLocaleString('en-US')} bought · {stats.sales.toLocaleString('en-US')} sold
                     {stats.trades.length - stats.purchases - stats.sales > 0 ? ` · ${(stats.trades.length - stats.purchases - stats.sales).toLocaleString('en-US')} exchanged` : ''}
                   </span>
+                  {soFar}
                 </>
               )}
             </dd>
           </div>
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title="The middle number of days between a trade and its report — half filed faster, half slower">Median lag</dt>
-            <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap" data-congress-lag>
-              {quiet || stats.trades.length === 0 ? '—' : `${stats.medianLag}d`}
+            <dd className={`mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap ${partial ? 'opacity-60' : ''}`} data-congress-lag>
+              {quiet || stats.trades.length === 0 ? '—' : <>{stats.medianLag}d{soFar}</>}
             </dd>
           </div>
           <div>
             {/* a trade made under 45 days ago cannot be late yet — on the 30-day window the count is structurally nil, and says so */}
             <dt className="text-[10px] text-textMuted cursor-help" title={window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade. Every trade in the last ${window} days is younger than that, so none of them can be late yet — pick 90 or 180 days` : `Reports filed more than ${STOCK_ACT_DEADLINE_DAYS} days after the trade, the STOCK Act's limit — among ${basis === 'filed' ? 'reports filed' : 'trades made'} in the last ${window} days`}>Past the deadline</dt>
-            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${equityStats.lateFilings ? 'text-bear' : 'text-textPrimary'}`} data-congress-late>
+            <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${equityStats.lateFilings ? 'text-bear' : 'text-textPrimary'} ${partial ? 'opacity-60' : ''}`} data-congress-late>
               {quiet ? '—' : window <= STOCK_ACT_DEADLINE_DAYS && basis === 'traded' ? <span className="text-textMuted">none can be yet</span> : (
                 /* ONE BASIS WITH THE SENTENCE (audit round 10: "Past the deadline 7" counted the bonds, the line under it said
                    "4 missed the 45-day deadline" of the stocks) — the stocks' count, the bonds' said beside it */
                 <>
                   {equityStats.lateFilings.toLocaleString('en-US')}
                   {bondStats.lateFilings > 0 ? <span className="text-textMuted"> · +{bondStats.lateFilings.toLocaleString('en-US')} {bondStats.lateFilings === 1 ? 'bond' : 'bonds'}</span> : null}
+                  {soFar}
                 </>
               )}
             </dd>
           </div>
         </dl>
       </div>
+      {/* ON A PHONE THE CONTROLS AND THE PROSE FOLD BEHIND ONE ROW (round 11: ~1,500px of menus, sentences and cards stood
+          before the first trade) */}
+      {phone && (
+        <button
+          type="button"
+          onClick={() => setPhoneMore(v => !v)}
+          aria-expanded={phoneMore}
+          className="mx-5 mb-3 h-8 px-3 rounded border border-borderMuted font-mono text-[10px] uppercase tracking-widest text-textSecondary flex items-center justify-between"
+          data-congress-phone-more={phoneMore ? 'open' : 'closed'}
+        >
+          <span>{phoneMore ? 'Hide' : 'Show'} the filters, the summary and the reports to know</span>
+          <span aria-hidden>{phoneMore ? '−' : '+'}</span>
+        </button>
+      )}
+      {(!phone || phoneMore) && (
+      <>
       {/* THE ONE LINE OF CONTROLS */}
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-congress-controls>
         <DropdownSelect label="Window" value={window} options={WINDOW_OPTIONS} onChange={setWindow} title="How far back the reports run" testId="congress-window" />
@@ -598,6 +623,8 @@ const Congress = () => {
           </div>
         )}
       </div>
+      </>
+      )}
       {/* THE GRID — grown to its rows, the page scrolls (2026-09-11, the Compass board's rule) */}
       <div className="slayer-board border-t border-borderSubtle" data-congress-grid>
         {phone ? (

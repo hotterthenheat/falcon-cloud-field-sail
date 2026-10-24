@@ -36,7 +36,7 @@ import { EtfsGuide, InstitutionsGuide, ShortsGuide } from '../../components/reco
 import { useBoardNames } from '../../data/boardNames';
 import { houseSlug, positionWord, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type ShortRow } from '../../data/fileBooks';
 import { HOUSE_LINES, SHORTS_MIN_FLOAT, SHORTS_SCREEN, fundHoldingsRead, useCompanyName, useEtfs, useInstitutions, useShorts, wantAllHouses, wantFundHoldings } from '../../data/liveFiles';
-import { tickerName } from '../../data/tickers';
+import { displayName, tickerName } from '../../data/tickers';
 import { FeedFallback } from '../../components/ui/liveRead';
 
 import { NAMES_TO_KNOW } from './recordSkeletons';
@@ -133,7 +133,7 @@ const InstFiled = ({ data }: ICellRendererParams<InstitutionRow>) =>
       {quarterEnd(data.report) ? <span className="font-mono text-[9px] text-textMuted">holdings as of {quarterEnd(data.report)}</span> : null}
     </span>
   ) : null;
-const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary truncate">{data.name}</span> : null);
+const InstHouse = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="text-[12px] font-semibold text-textPrimary truncate">{displayName(data.name)}</span> : null);
 const InstBook = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className={`font-mono text-[11px] ${BOOK_INK[data.book]}`}>{data.book === 'stock' && data.security ? data.security : BOOK_WORD[data.book]}</span> : null);
 const InstShares = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{data.sharesM.toFixed(1)}M</span> : null);
 const InstValue = ({ data }: ICellRendererParams<InstitutionRow>) => (data ? <span className="font-mono text-[11px] tnum text-textPrimary">{moneyB(data.valueB)}</span> : null);
@@ -147,7 +147,7 @@ const InstCard = ({ row, on, onToggle }: { row: InstitutionRow; on: boolean; onT
     <span className="flex items-center gap-2 min-w-0">
       {row.unlisted ? null : <CompanyLogo ticker={row.ticker} size={18} />}
       <span className="font-mono text-[12px] font-bold text-textPrimary">{row.ticker}</span>
-      <span className="text-[10px] text-textSecondary truncate">{row.name}</span>
+      <span className="text-[10px] text-textSecondary truncate">{displayName(row.name)}</span>
     </span>
     <span className="mt-1.5 flex items-baseline gap-2 font-mono tnum">
       <span className="text-[13px] font-bold text-textPrimary">{moneyB(row.valueB)}</span>
@@ -164,7 +164,7 @@ const cellJsx = <T,>(Cell: (p: ICellRendererParams<T>) => ReactNode, data: T) =>
 const InstPhone = (r: InstitutionRow) => (
   <>
     <CardLine left={cellJsx(InstName, r)} right={cellJsx(InstValue, r)} />
-    <CardLine muted left={<>{r.name} · filed {cellJsx(InstFiled, r)}</>} right={<span className="inline-flex gap-2">{cellJsx(InstBook, r)} {cellJsx(InstStatus, r)}</span>} />
+    <CardLine muted left={<>{displayName(r.name)} · filed {cellJsx(InstFiled, r)}</>} right={<span className="inline-flex gap-2">{cellJsx(InstBook, r)} {cellJsx(InstStatus, r)}</span>} />
   </>
 );
 const ShortPhone = (r: ShortRow) => (
@@ -234,7 +234,7 @@ export const Institutions = () => {
     const order = (a: [string, number], b: [string, number]) => b[1] - a[1] || a[0].localeCompare(b[0]);
     return [
       { title: 'Names', options: [...byName.entries()].sort(order).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: tickerName(n), count: c })) },
-      { title: 'Houses', options: [...byHouse.entries()].sort(order).map(([n, c]) => ({ value: `house:${n}`, label: n, count: c })) },
+      { title: 'Houses', options: [...byHouse.entries()].sort(order).map(([n, c]) => ({ value: `house:${n}`, label: displayName(n), count: c })) },
     ];
   }, [cut, picks]);
   const rows = useMemo(() => {
@@ -366,7 +366,7 @@ export const Institutions = () => {
       <p className={`px-5 pb-3 text-[12px] leading-relaxed text-textSecondary ${failed ? 'hidden' : ''}`} data-institutions-sentence>
         {facts.lead ? (
           <>
-            <span className="text-textPrimary font-semibold">{facts.lead.name}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses.toLocaleString('en-US')} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines.toLocaleString('en-US')} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
+            <span className="text-textPrimary font-semibold">{displayName(facts.lead.name)}</span>’s largest line is <span className="text-textPrimary font-semibold">{facts.lead.ticker}</span>, {moneyB(facts.lead.valueB)}. {facts.houses.toLocaleString('en-US')} {facts.houses === 1 ? 'house' : 'houses'} filed {facts.lines.toLocaleString('en-US')} {facts.lines === 1 ? 'line' : 'lines'} on this cut — {facts.calls} marked call, {facts.puts} marked put, and no strike on any of them.
           </>
         ) : live.status === 'loading' ? (
           'Reading the 13Fs.'

@@ -55,7 +55,7 @@ import { readSessionClock } from '../../data/moc';
 import type { MarketSnapshot } from '../../types/market';
 import type { ExposureExpiry } from '../../types/gex';
 import { LEVELS_OPTIONS, useLevelsScope } from '../../data/levelsScope';
-import { todayScopeLabel } from '../../data/bookWindow';
+import { cadenceWords, todayScopeLabel } from '../../data/bookWindow';
 import { BOOK_TTL_MS, StaleMark } from '../../components/ui/liveRead';
 
 /** The reads sweep on their own cadence — a comparison must not vibrate with every tick */
@@ -346,7 +346,7 @@ const Compare = () => {
               swap
             </button>
             <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap tabular-nums" data-compare-updated>
-              updated {scan.at} · every 10s
+              updated {scan.at} · {cadenceWords()}
             </span>
             <StaleMark at={bookAt} ttlMs={BOOK_TTL_MS} fault={bookFault} />
           </span>

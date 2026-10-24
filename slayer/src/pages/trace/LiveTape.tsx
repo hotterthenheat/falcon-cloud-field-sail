@@ -178,7 +178,7 @@ const KIND_WORD: Record<PrintKind, string> = { SWEEP: 'Sweep', BLOCK: 'Block', M
 /* EVERY COLUMN IN THE BOX AT 1440 WITH THE RAIL OPEN (retail, round 11: IV and Kind sat under the pinned premium, blank
    headers, "13" and "4(" for IVs, "bid 60%.." for the day's lean) — the widths sum to the box's ~1,150px; the time takes
    the rank's room only in a ranked order */
-const WIDTHS: Record<string, number> = { time: 102, ticker: 90, contract: 168, dte: 64, otm: 76, quote: 134, size: 148, prem: 84, dayRatio: 122, sentiment: 78, vol: 76, oi: 76, volOverOi: 64, iv: 58, tag: 84 };
+const WIDTHS: Record<string, number> = { time: 96, ticker: 84, contract: 168, dte: 64, otm: 76, quote: 134, size: 148, prem: 80, dayRatio: 116, sentiment: 92, vol: 76, oi: 76, volOverOi: 64, iv: 66, tag: 80 };
 const WIDTHS_RANKED: Record<string, number> = { ...WIDTHS, time: 146 };
 const FLEXES: Record<string, number> = {};
 /* The row's who and what stand still; the money stands at the right */
@@ -628,6 +628,7 @@ const LiveTape = () => {
     return {
       onNear: stream.loadOlder,
       state,
+      loaded: n,
       note:
         state === 'end'
           ? `${from}showing ${held} — ${sessionWord} reached`
@@ -1127,6 +1128,23 @@ const LiveTape = () => {
     )
   );
   const openCut = (q: string) => setParams(new URLSearchParams(q), { replace: true });
+  /* ONE PLAIN LINE (retail, round 11): which way the money in view leaned, in dollars — the full read behind "more" */
+  const leadLine = useMemo(() => {
+    const noun = lane === 'alerts' ? 'alerts' : 'prints';
+    if (tapeDown && beamRows.length === 0) return 'The tape did not answer — it fills when the feed does.';
+    if (headReading) return lane === 'alerts' ? 'Reading the alerts…' : searchQuery.trim() ? `Reading the prints for ${searchQuery.trim()}…` : 'Reading the tape…';
+    const day =
+      lane === 'prints' && dayNet && !scopeActive && regularOnly
+        ? `The whole market leaned ${dayNet.net >= 0 ? 'bullish' : 'bearish'} ${anchor ? dayAdv(anchor.iso) : 'so far today'} — ${fmtUsd(Math.abs(dayNet.net))} more net into ${dayNet.net >= 0 ? 'calls than puts' : 'puts than calls'}. `
+        : '';
+    if (beamRows.length === 0) return searchQuery.trim() ? `No ${noun} for ${searchQuery.trim()} ${dayAdv(dayIso)}${jumpAt != null ? ` before ${nyClock(jumpAt)} ET` : ''}.` : `${day}No ${noun} in this view.`;
+    const who = searchQuery.trim() ? `${searchQuery.trim()} — ` : '';
+    const span = spanWords(beamRows);
+    const shown = `${num(beamRows.length)} ${noun}${span ? ` (${span} ET)` : ''}`;
+    if (beamSummary.bullPremium === 0 && beamSummary.bearPremium === 0) return `${day}${who}${shown}: none bought or sold with a clear side.`;
+    const bull = beamSummary.bullPremium >= beamSummary.bearPremium;
+    return `${day}${who}${bull ? 'More bullish' : 'More bearish'} money in the ${shown}: ${fmtUsd(beamSummary.bullPremium)} bullish vs ${fmtUsd(beamSummary.bearPremium)} bearish.`;
+  }, [lane, tapeDown, beamRows, headReading, searchQuery, dayNet, scopeActive, regularOnly, anchor, beamSummary, dayIso, jumpAt]);
 
   return (
     <>
@@ -1266,6 +1284,11 @@ const LiveTape = () => {
                 {cuts.said}
               </p>
             )}
+          </>
+        }
+        lead={leadLine}
+        detail={
+          <>
             {readNode}
             <TermLine keys={['spreadLegs', 'floor', 'stockLike', 'volOi']} testId="live-tape" />
           </>

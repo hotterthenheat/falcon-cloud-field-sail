@@ -47,7 +47,7 @@ import { useBoardNames } from '../../data/boardNames';
 import { ALL_CODES, OPEN_MARKET_CODES, TX_CODES, insidersSentence, isChosenBuy, isCorporateBuy, isCorporateTrade, personSlug, bigWord, spanWords, splitWords, type SalesSplit } from '../../data/insiders';
 import { useInsiderBook, useInsiderBuyers, useInsiderCoverage, useInsidersStatus, useInsiderTrades, wantInsiderWindow, type InsiderCoverage } from '../../data/liveRecord';
 import { FeedFallback } from '../../components/ui/liveRead';
-import { tickerName } from '../../data/tickers';
+import { personDisplay, tickerName } from '../../data/tickers';
 import { useCompanyName } from '../../data/liveFiles';
 import { titleCompany } from '../../data/tickers';
 import { nyIsoDaysBack } from '../../data/nyDate';
@@ -124,8 +124,8 @@ const NameCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
 const WhoCell = ({ data }: ICellRendererParams<InsiderTrade>) =>
   data ? (
     <span className="flex flex-col leading-tight min-w-0 text-left" data-open-person={personSlug(data.person)}>
-      <span className="text-[12px] font-semibold text-textPrimary truncate" title={data.owners && data.owners.length > 1 ? `One joint filing by ${data.owners.join(', ')} — counted once` : data.person}>
-        {data.person}
+      <span className="text-[12px] font-semibold text-textPrimary truncate" title={data.owners && data.owners.length > 1 ? `One joint filing by ${data.owners.map(personDisplay).join(', ')} — counted once` : personDisplay(data.person)}>
+        {personDisplay(data.person)}
         {data.owners && data.owners.length > 1 ? <span className="font-mono text-[9px] font-normal text-textMuted"> +{data.owners.length - 1} joint</span> : null}
       </span>
       <span className="text-[10px] text-textMuted truncate" title={data.title ? `Filed as: ${data.title}` : undefined}>{data.role === 'Officer' && data.title ? data.title : data.role === 'Other' ? 'Role not stated' : data.role}</span>
@@ -229,7 +229,7 @@ const InsiderCard = (t: InsiderTrade) => (
     <CardLine
       left={
         <>
-          <span className="font-mono font-bold">{t.ticker}</span> <span className="font-semibold">{t.person}</span>
+          <span className="font-mono font-bold">{t.ticker}</span> <span className="font-semibold">{personDisplay(t.person)}</span>
           {t.owners && t.owners.length > 1 ? <span className="font-mono text-[9px] text-textMuted"> +{t.owners.length - 1} joint</span> : null}
         </>
       }
@@ -404,7 +404,7 @@ const Insiders = () => {
     const roleOf = (person: string) => cut.find(t => t.person === person);
     return [
       { title: 'Names', options: [...byNames.entries()].sort(order).map(([n, c]) => ({ value: `name:${n}`, label: n, hint: tickerName(n), count: c })) },
-      { title: 'People', options: [...byPeople.entries()].sort(order).map(([p, c]) => ({ value: `person:${p}`, label: p, hint: roleOf(p) ? `${roleOf(p)!.role} · ${roleOf(p)!.ticker}` : undefined, count: c })) },
+      { title: 'People', options: [...byPeople.entries()].sort(order).map(([p, c]) => ({ value: `person:${p}`, label: personDisplay(p), hint: roleOf(p) ? `${roleOf(p)!.role} · ${roleOf(p)!.ticker}` : undefined, count: c })) },
       { title: 'Roles', options: [...byRoles.entries()].sort(order).map(([r, c]) => ({ value: `role:${r}`, label: r, count: c })) },
     ];
   }, [cut, picks]);
@@ -683,7 +683,7 @@ export const InsiderFile = () => {
       <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col" data-insider-file={book.person}>
         <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{book.person}</h3>
+            <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{personDisplay(book.person)}</h3>
             <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
               {book.role} · {book.ticker} ·{' '}
               {book.windowDays > 0
@@ -729,7 +729,7 @@ export const InsiderFile = () => {
         <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-insider-sentence>
           {(() => {
             const names = [...new Set(book.trades.map(t => t.ticker))];
-            return `${book.person} filed ${book.trades.length} ${book.trades.length === 1 ? 'row' : 'rows'}${book.windowDays > 0 ? ' in the last year' : ''}, at ${names.length === 1 ? names[0] : `${names.length} companies (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''})`}.`;
+            return `${personDisplay(book.person)} filed ${book.trades.length} ${book.trades.length === 1 ? 'row' : 'rows'}${book.windowDays > 0 ? ' in the last year' : ''}, at ${names.length === 1 ? names[0] : `${names.length} companies (${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''})`}.`;
           })()}{' '}
           {(() => {
             /* "0 of them never reached the market" read as a double negative — say how many were grants, awards or

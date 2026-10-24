@@ -988,12 +988,15 @@ const Compare = () => {
           <DropdownSelect label="Money" value={mny} options={MONEY_OPTIONS} onChange={setMny} title="Which strikes against the stock — both names" testId="compare-money" />
         </>
       }
-      sentence={bookState === 'reading' ? "Reading the day's book." : bookState === 'down' ? 'This read did not land — the two names fill when the feed answers.' : (
+      sentence={null}
+      /* ONE PLAIN LINE (retail, round 11): each name's day in dollars and which way it leaned — the full read behind "more" */
+      lead={bookState === 'reading' ? "Reading the day's book." : bookState === 'down' ? 'This read did not land — the two names fill when the feed answers.' : `${a.ticker} traded ${fmtUsd(a.book.premium)} in options, net ${a.netPending ? '…' : `${a.net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(a.net))}`} into calls over puts; ${b.ticker} ${fmtUsd(b.book.premium)}, net ${b.netPending ? '…' : `${b.net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(b.net))}`}.`}
+      detail={bookState === 'in' ? (
           <>
             {sentence}
             <TermLine keys={['standing', 'floor', 'spreadLegs', 'volOi', 'oiDay', 'stockLike']} testId="compare" />
           </>
-        )}
+        ) : null}
     >
       {bookState !== 'in' ? (
         <div className="border-t border-borderSubtle h-40 flex items-center justify-center font-mono text-[11px] uppercase tracking-widest text-textMuted" data-compare-empty>

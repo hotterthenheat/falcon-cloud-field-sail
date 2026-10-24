@@ -81,6 +81,7 @@ import DayMoveText from './DayMoveText';
 import { DataCard } from './BookProvenance';
 import { ABSORB, AMPLIFY, CALL_WALL, PUT_WALL, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import ExposureProfileView from './ExposureProfileView';
+import { openFirstTime } from './glossary';
 
 /* THE LEGS (the competitive audit, 2026-10-13 — a net-only grid was the category's toy-grade marker): the net, one leg
    alone, or both side by side on the matrix (the two columns a greek, the bars mirrored at the seam). The calendar's
@@ -1173,6 +1174,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* …and on a coarse pointer (a tablet) while the picks cannot be named on one row: a thumb cannot hover a bare pick's
      tooltip, and at 682px (a tablet with the rail folded) the two tidy rows ran to four */
   const bandScroll = toolbar === 'band' && bandW > 0 && (bandW < BAND_SCROLL_PX || (coarsePointer && bandW < BAND_NAMED_ROW_PX));
+  /* ON A PHONE THE CONTROLS FOLD BEHIND ONE ROW (the eleventh audit's retail finding: ~1,100px of controls before the first
+     strike row at 390): the name and one "Controls" door; the picks, the doors and the supreme open under it */
+  const [phoneBand, setPhoneBand] = useState(false);
   const namedFits = toolbar === 'band' && namedNeed > 0 && bandW >= namedNeed + 24;
   /* THE DOORS' WORDS GO ONE DOOR AT A TIME, the least read first, until the row fits — the picks keep theirs */
   const compactDoors = new Set<DoorKey>();
@@ -1454,7 +1458,15 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     </>
   );
   const head = toolbar === 'band' ? (
-    bandRows === 'one' ? (
+    bandScroll && !phoneBand ? (
+      <div ref={bandRef} className="shrink-0 flex items-center gap-x-2 px-3 py-2 border-b border-borderSubtle/60 bg-panel" data-ledger-toolbar data-ledger-toolbar-rows="folded" data-ledger-toolbar-mode={bandMode} data-ledger-toolbar-scroll="">
+        {backButton}
+        {leadFold}
+        <button type="button" onClick={() => setPhoneBand(true)} aria-expanded={false} className="hit ml-auto inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" title="View, greek, legs, expiries, strikes, names, replay and the read" data-band-controls>
+          Controls · {VIEW_OPTION[view]?.label ?? view} ▾
+        </button>
+      </div>
+    ) : bandRows === 'one' ? (
       <div ref={bandRef} className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-1.5 border-b border-borderSubtle/60 bg-panel" data-ledger-toolbar data-ledger-toolbar-rows="one" data-ledger-toolbar-mode={bandMode}>
         {backButton}
         {leadFold}
@@ -1473,6 +1485,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         <div className={`flex items-center gap-x-2 gap-y-1.5 ${bandScroll ? 'flex-wrap [&>*]:shrink-0 py-2' : 'flex-wrap'}`} data-ledger-toolbar-row="doors">
           {doors}
         </div>
+        {bandScroll && (
+          <button type="button" onClick={() => setPhoneBand(false)} aria-expanded className="hit self-start mb-2 inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[10px] uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors" data-band-controls>
+            Fold the controls ▴
+          </button>
+        )}
         {bandScroll && !many && (
           <div className="flex items-center min-w-0 pb-2 [&>button]:ml-0 [&>button]:max-w-full [&>button]:flex-wrap [&>button]:h-auto [&>button]:min-h-7 [&>button]:py-1 [&>button]:gap-y-0.5 [&>button]:text-left" data-ledger-toolbar-row="supreme">
             {supremeDoor}
@@ -1626,7 +1643,10 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {toolbar === 'band' && !noteSeen && (
         <div className="shrink-0 flex items-start gap-3 px-4 py-2 border-b border-borderSubtle/60 bg-silver/[0.04] text-[11px] text-textSecondary" data-map-note>
           <p className="min-w-0 flex-1 leading-relaxed">
-            <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'green means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, blue the call wall, gold the put wall. Click a row to keep it on every box.
+            <span className="font-semibold text-textPrimary">First time here?</span> Each row is a strike. {palette === 'thermal' ? 'Red and orange mean' : 'Ember orange means'} dealer hedging pushes a move along there, {palette === 'thermal' ? 'green means' : 'glacier blue means'} it holds one back. A strike in magenta is the supreme, blue the call wall, gold the put wall. Click a row to keep it on every box.{' '}
+            <button type="button" onClick={openFirstTime} className="underline decoration-dotted underline-offset-2 text-textPrimary hover:text-silver" data-map-note-words>
+              Every word Pinpoint uses →
+            </button>
           </p>
           <button type="button" onClick={dismissNote} className="hit shrink-0 h-6 px-2 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] text-textPrimary hover:border-borderMuted transition-colors" data-map-note-close>
             Got it

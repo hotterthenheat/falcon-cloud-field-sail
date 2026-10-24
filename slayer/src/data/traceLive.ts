@@ -2215,16 +2215,19 @@ function useLiveBookRaw(ticker?: string | null, enabled = true): LivePack<BookCo
 
 /** The screener's page — 200 contracts in the vendor's own order: by premium, or by volume for "most active" (it asked
     for premium and the page said "heaviest volume first", the audit 2026-10-22) */
-export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, order: 'premium' | 'volume' = 'premium'): EndlessBook {
+export function useContracts(unusual: boolean, issue?: 'stock' | 'etf' | null, order: 'premium' | 'volume' = 'premium', ticker?: string | null, enabled = true): EndlessBook {
   const parts = [`order=${order}`, 'order_direction=desc'];
+  /* a name searched is asked of the vendor (audit round 11, major 5 — the Screener as Footprints and Watchers) */
+  const t = (ticker || '').trim().toUpperCase();
+  if (t) parts.push(`ticker_symbol=${encodeURIComponent(t)}`);
   if (unusual) parts.push('unusual=true');
   if (issue === 'stock') parts.push('issue_types[]=Common Stock');
   else if (issue === 'etf') parts.push('issue_types[]=ETF');
   const q = parts.join('&');
-  const key = `contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}`;
-  const pack = useLive(key, async () => mapBook(await getRows(`/screener/option-contracts?limit=200&${q}`)), []);
+  const key = `contracts:${unusual ? 'u' : 'h'}:${issue ?? 'any'}:${order}:${t || 'mkt'}`;
+  const pack = useLive(key, async () => mapBook(await getRows(`/screener/option-contracts?limit=200&${q}`)), [], enabled);
   /* ENDLESS (the owner, 2026-10-23): the screener's next pages in the same order, 200 at a time, as the reader scrolls */
-  const older = useOlderPages(key, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, q, 200));
+  const older = useOlderPages(key, pack.rows, bookIdOf, (_inHand, pageNo) => olderBook(pageNo, q, 200), enabled);
   const rows = usePairedOi(older.rows);
   return useMemo(() => ({ ...pack, rows, older }), [pack.at, pack.fault, pack.waiting, rows, older.state, older.loadOlder]); // eslint-disable-line react-hooks/exhaustive-deps
 }

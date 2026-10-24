@@ -511,12 +511,17 @@ const Watchers = () => {
                 {cuts.said}
               </p>
             )}
+          </>
+        }
+        lead={reading ? `Reading ${bookWord}…` : catches.length === 0 ? `Nothing on ${bookWord} meets a reason ${dayAdv()}.` : `${num(facts.total)} contracts on ${bookWord} meet a reason ${dayAdv()}${facts.loudName ? ` — most often “${facts.loudName}”` : ''}${facts.mine ? `, ${num(facts.mine)} from yours` : ''}.`}
+        detail={
+          <>
             {read}
             <TermLine keys={['standing', 'floor', 'spreadLegs', 'volOi', 'stockLike']} testId="watchers" />
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts on the book', "the vendor's list for the day is done", hold.paused, 'Load more ↓')} emptyText={query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts on the book', "the vendor's list for the day is done", hold.paused, 'Load more ↓')} emptyText={query.trim() && book.some(r => matchesContract(query, r)) ? `${query.trim()} is on ${bookWord} but meets no reason ${dayAdv()}` : query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
       </TraceBox>
 
       <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} tick={tick} />

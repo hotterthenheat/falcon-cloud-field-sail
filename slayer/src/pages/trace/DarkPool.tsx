@@ -120,7 +120,7 @@ const TOOLTIPS: Record<string, string> = {
   says: 'The read in a sentence',
 };
 /* The sector and the share flex — the table fills its box (Noah, 2026-09-13: his sat half-width beside empty space) */
-const LEADER_WIDTHS: Record<string, number> = { ticker: 140, price: 120, dark: 120, avg: 120, shares: 140 };
+const LEADER_WIDTHS: Record<string, number> = { ticker: 140, price: 120, dark: 120, avg: 120, shares: 140, share: 168 };
 const LEADER_TOOLTIPS: Record<string, string> = {
   dark: 'Off-exchange dollars in the dark prints in hand',
   share: 'Against the heaviest name in its sector',
@@ -300,8 +300,11 @@ const DarkPool = () => {
               read: tape.read,
               totalNotional: tape.totalNotional,
             }
-          : null,
-    [view, tape]
+          : named && nameBook.rows.unknown
+            ? /* NO SUCH TICKER (audit round 11, minor 5) — the page stands and says so, never its skeleton */
+              { ticker: named, dpSharePct: 0, posture: 'BALANCED' as const, netPosturePct: 0, postureNote: `No ticker “${named}” — check the symbol.`, read: 0, totalNotional: 0 }
+            : null,
+    [view, tape, named, nameBook.rows.unknown]
   );
   /* THE FIELD KEEPS ITS CARET (the ship pass, 2026-10-22): a typed letter that is a ticker ("S") made the page wait on
      that name's book with no head, the whole page fell back to its skeleton, and the search field it was typed into
@@ -626,6 +629,14 @@ const DarkPool = () => {
       )}
     </>
   );
+  /* ONE PLAIN LINE (retail, round 11): how much crossed in the dark and which way it leaned — the full read behind "more" */
+  const darkLead = srcReading
+    ? `Reading ${named ? `${named}'s crosses` : tapeKind === 'lit' ? 'the lit tape' : "the market's crosses"}…`
+    : named && nameBook.rows.unknown
+      ? `No ticker “${named}”.`
+      : !head || !(head.totalNotional > 0)
+        ? litLane ? 'No lit prints on this cut.' : `No crosses${named ? ` for ${named}` : ''} on this cut.`
+        : `${named ?? 'The market'}: ${fmtUsd(head.totalNotional)} ${litLane ? 'printed on the exchanges' : 'crossed off-exchange'}${tapeWindow ? ` (${tapeWindow})` : ''}${litLane || head.read === 0 ? '' : ` — reads ${POSTURE_WORD[head.posture].toLowerCase()}`}${largest ? `; largest ${fmtUsd(largest.notional)}${view ? '' : ` in ${largest.ticker}`}` : ''}.`;
   const lead = shownSector?.rows.slice(0, 3) ?? [];
   const leadersSentence: ReactNode = shownSector ? (
     <>
@@ -786,7 +797,9 @@ const DarkPool = () => {
             </div>
           </>
         }
-        sentence={
+        sentence={null}
+        lead={darkLead}
+        detail={
           <>
             {sentence}
             <TermLine keys={['ownTerms']} testId="dark-pool" />
