@@ -39,7 +39,7 @@ import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
-import FlowSearch, { searchMiss, matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
 import ReadDoor from '../../components/trace/ReadDoor';
 import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -367,10 +367,12 @@ const MultiLeg = () => {
     const [y, m, d] = iso.split('-').map(Number);
     return session === 'regular' ? nyWallTime(y, m, d, 9, 30) : nyWallTime(y, m, d, 4, 0);
   }, [closed?.iso, session]);
-  const pack = useSpreads(SPREADS_N, { untilMs: session === 'regular' && closed ? closed.closeMs : null, session, sinceMs });
+  /* A NAME SEARCHED IS ASKED FOR (audit round 11, major 5): that name's own structures (ticker_symbol), paged back */
+  const askedName = useSearchedName(query);
+  const pack = useSpreads(SPREADS_N, { untilMs: session === 'regular' && closed ? closed.closeMs : null, session, sinceMs, ticker: askedName });
   /* NOT YET / NOT AT ALL is not "no structures": before the tape lands, and when it fails, the page had read "No
      multi-leg trades on the tape yet today" over 0 · 0 (the ship pass, 2026-10-22) */
-  const tapeState: 'reading' | 'down' | 'in' = pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
+  const tapeState: 'reading' | 'down' | 'in' = searchedName(query) !== askedName ? 'reading' : pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
   const liveTrades = pack.rows;
   // The shared hold (see LiveHold): structures and tick freeze together while paused.
   const hold = useHold(useMemo(() => ({ trades: liveTrades, tick: marketData }), [liveTrades, marketData]), activeTicker, tapeState !== 'reading');
@@ -446,7 +448,7 @@ const MultiLeg = () => {
     const cutBits = [activeKind ? `${activeKind.label.toLowerCase()}s` : '', money === 'DEBIT' ? 'paid' : money === 'CREDIT' ? 'collected' : '', cutQuery ? `matching "${cutQuery}"` : '', expiry ? `on the ${expiryLabel(expiry)} expiry` : ''].filter(Boolean);
     const cutOn = cutBits.length > 0;
     const pool = rows;
-    if (cutOn && pool.length === 0) return <RichRead text={`None of the ${trades.length} multi-leg trades in hand (${windowSpan} ET) is on this cut (${cutBits.join(', ')}).`} />;
+    if (cutOn && pool.length === 0) return <RichRead text={`None of the ${num(trades.length)} multi-leg trades in hand (${windowSpan} ET) is on this cut (${cutBits.join(', ')}).`} />;
     const byKind = new Map<SpreadKind, number>();
     const names = new Set<string>();
     let prem = 0;
@@ -457,7 +459,7 @@ const MultiLeg = () => {
     const packs = pool.filter(t => t.compression);
     const packMoney = packs.reduce((a, t) => a + Math.abs(t.netPremium), 0);
     const bets = pool.filter(t => !t.compression);
-    if (bets.length === 0) return <RichRead text={`The ${pool.length} multi-leg trades ${cutOn ? `on this cut (${cutBits.join(', ')}) ` : ''}in hand (${windowSpan} ET) are all compression packages — ${fmtUsd(packMoney)} in their nets, not bets.`} />;
+    if (bets.length === 0) return <RichRead text={`The ${num(pool.length)} multi-leg trades ${cutOn ? `on this cut (${cutBits.join(', ')}) ` : ''}in hand (${windowSpan} ET) are all compression packages — ${fmtUsd(packMoney)} in their nets, not bets.`} />;
     for (const t of bets) {
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
       names.add(t.ticker);
@@ -472,10 +474,10 @@ const MultiLeg = () => {
     /* THE BIGGEST BY ITS NET (the audit, 2026-10-22: "$1.3M collected" was the gross of every leg; the net was ~$830K) */
     /* the biggest whose legs are read — never one the vendor alone has named (audit round 8) */
     const big = [...bets].filter(t => t.legsState === 'in' && !t.splitOf).sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
-    if (!big) return <RichRead text={`In the ${trades.length} multi-leg trades in hand (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets — reading their legs before naming the biggest…`} />;
+    if (!big) return <RichRead text={`In the ${num(trades.length)} multi-leg trades in hand (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets — reading their legs before naming the biggest…`} />;
     return (
       <>
-        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest${bets.filter(t => t.legsState === 'in').length < bets.length ? ` among the ${num(bets.filter(t => t.legsState === 'in').length)} of ${num(bets.length)} whose legs are read` : ''}: `} />
+        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${num(trades.length)} multi-leg trades, walked back from the 16:15 close` : `newest ${num(trades.length)} regular-session multi-leg trades`) : `newest ${num(trades.length)} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${num(names.size)} names — ${num(loud[1])} ${KIND_META[loud[0]].label.toLowerCase()}s, ${num(paid)} paid, ${num(collected)} collected${unpriced ? `, ${num(unpriced)} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest${bets.filter(t => t.legsState === 'in').length < bets.length ? ` among the ${num(bets.filter(t => t.legsState === 'in').length)} of ${num(bets.length)} whose legs are read` : ''}: `} />
         {/* the door and its comma never part across a line (phone, round 7: an orphan ", 17 units") */}
         <span className="whitespace-nowrap">
           <ReadDoor onOpen={() => setDrill(big)}>

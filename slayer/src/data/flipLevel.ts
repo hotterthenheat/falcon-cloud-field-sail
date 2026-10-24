@@ -62,7 +62,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 
 /** The flip's rule in a reader's words — the one statement of it on the pages (keep it the code's: see the head) */
 export const FLIP_RULE =
-  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. When the profile crosses more than once, the flip stays on the crossing it stood on while that crossing is still there (the first read takes the one nearest price), and moves only once its crossing has been gone from three reads in a row over two minutes — and says so; the other crossing is named beside it once it has held its place for three reads over two minutes. Each leg is re-priced from the price and minute the vendor priced it at, to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold — and so does an in-the-money contract in its last day whose own vol runs over 150% and well above the smile's (its gamma then rests on a vol nobody trades at: it is re-priced at the smile's vol and the rest of its printed gamma is carried flat); the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
+  "The flip is the price where the book's net gamma, re-priced at that price, crosses zero within ±10%. In the session, when the profile crosses more than once, the flip stays on the crossing it stood on while that crossing is still there (the first read takes the one nearest price); while that crossing is missing the flip shows the crossing nearest it, and it moves for good once its crossing has been gone from three reads in a row over two minutes — and says so; the other crossing is named beside it once it has held its place for three reads over two minutes. Outside the session the vendor's rows stand still, so the flip is the crossing nearest price — the same on every page. Each leg is re-priced from the price and minute the vendor priced it at (after the close, the rows' own minute — never the wall clock), to 4:00 ET on its expiry. Vol: on the front expiry and on every expiry holding 0.5% or more of the book's gamma, each contract's own implied vol; a contract there with no vol of its own takes its expiry's smile at that strike (linear between the strikes that have one), capped at what its open interest can hold — and so does an in-the-money contract in its last day whose own vol runs over 150% and well above the smile's (its gamma then rests on a vol nobody trades at: it is re-priced at the smile's vol and the rest of its printed gamma is carried flat); the smaller expiries take their at-the-money vol off the term structure. A leg too small to matter — under a ten-millionth of the book's gross gamma, or under a hundred-thousandth with no vol of its own — is carried flat (its growth would be rounding, or rest on a vol nobody quoted)";
 
 /* ---- which dates a chain is ---------------------------------------------------------------------------------- */
 
@@ -212,7 +212,7 @@ const STICK_FRAC = 0.004;
 /* THE HOLD OUTLASTS A BRIEF READ (the tenth audit's M1, 2026-10-23: Compare's SPY flip went 764.19 → 756.68 at 15:25 on
    one read, GOOGL 325.33 → 316.31 → none → 329.40 across reloads; the vendor's in-the-money same-day gamma jumps between
    reads — PLTR's 190C $0.5M at 15:01, $8.28M at 15:25 with price unchanged). The kept crossing has to be missing from
-   HOLD_READS reads in a row spanning HOLD_MS before the flip moves; until then the flip stays where it stood. */
+   HOLD_READS reads in a row spanning HOLD_MS before the hold gives it up. */
 const HOLD_READS = 3;
 const HOLD_MS = 120_000;
 /* THE SECOND CROSSING IS NAMED ONLY ONCE IT IS STEADY (the same audit: the disclosed second flip jumped 769 → 750 → 752 →
@@ -221,6 +221,20 @@ const HOLD_MS = 120_000;
    flip does */
 const SECOND_READS = 3;
 const SECOND_MS = 120_000;
+/*
+  THE HOLD NEVER PRINTS A CROSSING THAT IS NOT THERE, AND COUNTS READS, NOT CALLS (the eleventh audit's B1, 2026-10-24:
+  on a closed market Compare and the Dossier read SPY's Next-session flip 766.50 while the Map read 773.31 — the profile
+  crossed once, at 773.31. Compare's side panel prices replay books at the day's earlier prices, each was taken as a live
+  read, and the last one, priced at 763.64, seeded the kept crossing; the result was cached on its input key, so the hold
+  never looked again while the market was shut). Now:
+  · only the live book at its own price is a read of the hold (holdRead below) — a replay, a scenario or a session's
+    report is priced on its own and never touches it;
+  · a read counts once per input key (`seen`): the same rows read by ten components are one read;
+  · the flip printed is always one of the current read's crossings — while the kept one is missing it is the crossing
+    nearest where the kept one stood, and the kept one is given up once it has been missing HOLD_READS reads over HOLD_MS;
+  · outside the session there is no hold at all: the rows do not move, so every page and every fresh profile takes the
+    same crossing off the same inputs — the one nearest price (data/flipLevel.ts levelFlip).
+*/
 interface Stick {
   flip: number | null;
   moved: { from: number; at: number } | null;
@@ -228,9 +242,11 @@ interface Stick {
   miss?: { since: number; reads: number } | null;
   /** A second crossing being watched (`shown` once steady) */
   second?: { at: number; since: number; reads: number; shown: boolean } | null;
+  /** The input key of the last read counted */
+  seen?: string;
 }
 const sticky = new Map<string, Stick>();
-const STICK_STORE = 'pinpoint.flipStick.v2';
+const STICK_STORE = 'pinpoint.flipStick.v3';
 let stickRaw: string | null | undefined;
 /* EVERY PAGE OF THIS BROWSER READS THE SAME CHOICE (the same audit: QQQ's flip 732.17 on Compare against 692.34 on the
    Board 12 minutes later): the kept choice is re-read from storage whenever another tab has written it */
@@ -255,37 +271,41 @@ function saveStick(): void {
     for (const [k, v] of sticky) if (k.endsWith(`|${today}`)) out[k] = v;
     stickRaw = JSON.stringify(out);
     localStorage.setItem(STICK_STORE, stickRaw);
+    /* the old store's choices are not read again (v2 counted every call and held crossings that had gone) */
+    localStorage.removeItem('pinpoint.flipStick.v2');
   } catch {
     /* no storage */
   }
 }
-/** The flip among the profile's crossings, with hysteresis (see above) — `key` names the name, contracts and day */
-export function stickFlip(key: string, read: FlipRead, spot: number, now: number = Date.now()): { flip: number | null; second: number | null; moved: { from: number; at: number } | null } {
+/** The flip among the profile's crossings, with hysteresis (see above) — `key` names the name, contracts and day;
+    `readKey` the read's inputs (a read is counted once however many pages ask) */
+export function stickFlip(key: string, read: FlipRead, spot: number, now: number = Date.now(), readKey: string = `${now}`): { flip: number | null; second: number | null; moved: { from: number; at: number } | null } {
   loadStick();
   const xs = read.crossings ?? (read.flip != null ? [read.flip] : []);
   const tol = STICK_FRAC * spot;
   const nearestTo = (f: number, pool: readonly number[]) => [...pool].sort((a, b) => Math.abs(a - f) - Math.abs(b - f))[0] ?? null;
   const prev = sticky.get(key);
+  const fresh = !prev || prev.seen !== readKey;
+  /* the crossing kept, the one printed (always on this read), and the miss count */
+  let kept: number | null = read.flip;
   let flip: number | null = read.flip;
   let moved = prev?.moved ?? null;
   let miss: Stick['miss'] = null;
   if (prev && prev.flip != null) {
     const near = nearestTo(prev.flip, xs);
-    if (near != null && Math.abs(near - prev.flip) <= tol) flip = near;
+    if (near != null && Math.abs(near - prev.flip) <= tol) kept = flip = near;
     else {
-      /* the kept crossing is not on this read: hold it until it has stayed away HOLD_READS reads over HOLD_MS */
-      miss = { since: prev.miss?.since ?? now, reads: (prev.miss?.reads ?? 0) + 1 };
+      /* the kept crossing is not on this read: print the crossing nearest where it stood, keep it until it has stayed
+         away HOLD_READS reads over HOLD_MS */
+      miss = fresh ? { since: prev.miss?.since ?? now, reads: (prev.miss?.reads ?? 0) + 1 } : prev.miss ?? { since: now, reads: 1 };
+      flip = near;
       if (miss.reads >= HOLD_READS && now - miss.since >= HOLD_MS) {
+        kept = read.flip;
         flip = read.flip;
-        if (flip != null) moved = { from: prev.flip, at: now };
+        if (kept != null) moved = { from: prev.flip, at: now };
         miss = null;
-      } else flip = prev.flip;
+      } else kept = prev.flip;
     }
-  } else if (prev && prev.flip == null && read.flip != null) {
-    /* "no flip nearby" held the same way before a crossing is taken up */
-    miss = { since: prev.miss?.since ?? now, reads: (prev.miss?.reads ?? 0) + 1 };
-    if (miss.reads >= HOLD_READS && now - miss.since >= HOLD_MS) miss = null;
-    else flip = null;
   }
   /* the second crossing: the nearest other crossing to the flip, named only once steady */
   const others = flip == null ? [] : xs.filter(x => Math.abs(x - flip!) > Math.max(1e-6, tol * 0.25));
@@ -294,14 +314,14 @@ export function stickFlip(key: string, read: FlipRead, spot: number, now: number
     const was = prev?.second;
     const keep = was ? nearestTo(was.at, others) : null;
     if (was && keep != null && Math.abs(keep - was.at) <= tol) {
-      const reads = was.reads + 1;
+      const reads = was.reads + (fresh ? 1 : 0);
       second = { at: keep, since: was.since, reads, shown: was.shown || (reads >= SECOND_READS && now - was.since >= SECOND_MS) };
     } else {
       const cand = nearestTo(flip!, others)!;
       second = { at: cand, since: now, reads: 1, shown: false };
     }
   }
-  const next: Stick = { flip, moved, miss, second };
+  const next: Stick = { flip: kept, moved, miss, second, seen: readKey };
   if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) {
     sticky.set(key, next);
     saveStick();
@@ -351,7 +371,12 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
      326.75), and the Board froze "Flip crossed · 10/22" at META 6× (0×), GOOGL 18× (0×). Pinned or live, a flip is
      final only once the dates it re-prices with their own vols have their contracts read. */
   const factsIn = [...ownDates].every(d => !!entry.factsDates?.has(d));
-  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}`;
+  /* …AND ONLY ONCE EVERY INPUT THAT MOVES THE ANSWER IS IN (the eleventh audit's B1): the own-vol dates' live rows with
+     the price and minute the vendor priced them at (until then a date is re-priced from the wrong price and clock), and
+     the term structure the other dates take their vol from */
+  const pricedIn = pinned != null || !entry.gammaLive || [...ownDates].every(d => !!peekGammaPriced(snapshot.ticker, d));
+  const termIn = want.every(d => ownDates.has(d)) || !!entry.termIv;
+  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}`;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;
@@ -376,7 +401,7 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
     }
     for (const [k, v] of onDates) if (!chain.some(n => n.strike === k)) legs.push({ strike: k, g0: -v, iv: 0, t: 0 });
   }
-  return { legs, complete: complete && factsIn, key, withVol };
+  return { legs, complete: complete && factsIn && pricedIn && termIn, key, withVol };
 }
 
 /** The flip of the contracts in `chain` (defaults to the snapshot's levels chain) — see the head of this file */
@@ -387,26 +412,49 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
   const fallback = (final = !snapshot.liveBook): LevelFlip => ({ ...cumulativeFlip(chain.map(n => ({ strike: n.strike, net: n.netGex })), spot), complete: final });
   const set = legSet(snapshot, chain, at);
   if (!set) return fallback();
-  const hit = cache.get(set.key);
-  if (hit) return hit;
   if (!set.withVol) return fallback(set.complete);
-  const raw = repricedFlip(set.legs, spot, DEFAULT_R);
-  let read: LevelFlip = { ...raw, complete: set.complete, second: null, moved: null };
-  /* the live levels pick among crossings with hysteresis (stickFlip) — once final, so a provisional read never moves the
-     kept choice; a pinned clock (a session's report, the replay) takes the crossing nearest its price */
-  const live = at == null && snapshot.asOf == null && snapshot.flipAt == null;
-  /* …a read with no crossing too: "none" is held like a missing crossing (the tenth audit's M1: GOOGL read none for one
-     reload between two flips) */
-  if (live && set.complete) {
-    const dates = datesOf(snapshot, chain);
-    const stick = stickFlip(`${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : (dates ?? []).join(',')}|${nyIsoDate()}`, raw, spot);
-    read = { ...read, flip: stick.flip, second: stick.second, moved: stick.moved, beyond: stick.flip == null ? null : raw.netAtSpot < 0 ? 'short' : 'long' };
-  } else if ((raw.crossings?.length ?? 0) > 1 && raw.flip != null) {
-    read = { ...read, second: raw.crossings!.filter(x => x !== raw.flip).sort((a, b) => Math.abs(a - raw.flip!) - Math.abs(b - raw.flip!))[0] ?? null };
+  /* the re-pricing is cached on its inputs; the hold is applied on every call (it is cheap, and another page of this
+     browser may have moved it) */
+  let base = cache.get(set.key);
+  if (!base) {
+    const raw = repricedFlip(set.legs, spot, DEFAULT_R);
+    /* off the hold: the crossing nearest price, and the other crossing nearest it disclosed — the same inputs give the same
+       answer on every page and in every profile */
+    const second = (raw.crossings?.length ?? 0) > 1 && raw.flip != null ? raw.crossings!.filter(x => x !== raw.flip).sort((a, b) => Math.abs(a - raw.flip!) - Math.abs(b - raw.flip!))[0] ?? null : null;
+    base = { ...raw, complete: set.complete, second, moved: null };
+    if (cache.size > 400) cache.clear();
+    cache.set(set.key, base);
   }
-  if (cache.size > 400) cache.clear();
-  cache.set(set.key, read);
-  return read;
+  /* THE HOLD IS THE LIVE BOOK'S, IN THE SESSION, ONCE FINAL (the eleventh audit's B1): a read is the hold's only when it is
+     the live book itself at its own price — not a replay or scenario book priced at another price (Compare's side panel
+     seeded SPY's hold at 766.51 from its 763.64 replay), not a pinned clock (a session's report). Outside the session the
+     rows stand still and there is no hold: every page reads the crossing nearest price off the same inputs. */
+  if (!set.complete || !holdRead(snapshot, at)) return base;
+  const dates = datesOf(snapshot, chain);
+  const stick = stickFlip(`${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : (dates ?? []).join(',')}|${nyIsoDate()}`, base, spot, Date.now(), set.key);
+  if (stick.flip === base.flip && stick.second === base.second && stick.moved == null) return base;
+  const memoKey = `${set.key}|${stick.flip}|${stick.second}|${stick.moved?.from ?? ''}|${stick.moved?.at ?? ''}`;
+  const hit = held.get(memoKey);
+  if (hit) return hit;
+  const out: LevelFlip = { ...base, flip: stick.flip, second: stick.second, moved: stick.moved, beyond: stick.flip == null ? null : base.netAtSpot < 0 ? 'short' : 'long' };
+  if (held.size > 400) held.clear();
+  held.set(memoKey, out);
+  return out;
+}
+const held = new Map<string, LevelFlip>();
+
+/** The market is in its regular session — the only time the vendor's rows move under the levels */
+export function sessionLive(now: number = Date.now()): boolean {
+  const [y, m, d] = nyIsoDate(now).split('-').map(Number);
+  return nySessionPhase(now) === 'open' && isTradingDay(new Date(y, m - 1, d));
+}
+
+/** A read of the live book itself, at its own price, in the session — the only read the hold keeps */
+function holdRead(snapshot: MarketSnapshot, at: number | undefined): boolean {
+  if (at != null || snapshot.asOf != null || snapshot.flipAt != null || !snapshot.liveBook) return false;
+  const e = peekEntry(snapshot.ticker);
+  if (!e || e.byDate !== snapshot.uwByDate || e.spot !== snapshot.spot) return false;
+  return sessionLive();
 }
 
 /*
@@ -535,4 +583,12 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
     /* the one order (core/walls.ts LEVEL_ORDER): the call wall, then the put wall (the seventh audit's m2) */
     read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}`,
   };
+}
+
+/* _fix11-pp TEMP DEBUG — remove */
+export function __flipRaw(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain): unknown {
+  const set = legSet(snapshot, chain);
+  if (!set) return null;
+  const raw = repricedFlip(set.legs, snapshot.spot, DEFAULT_R);
+  return { key: set.key, complete: set.complete, flip: raw.flip, crossings: raw.crossings, spot: snapshot.spot };
 }

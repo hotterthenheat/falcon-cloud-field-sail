@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
 import { bookToday, expiryFor, isoDate, isTradingDay, nextSession } from '../core/calendar';
-import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
+import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { pickLegWalls } from '../core/walls';
 import { registerChainDates } from './chainDates';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
@@ -1663,6 +1663,38 @@ async function hotGet<T>(path: string, hot: boolean): Promise<T> {
   return got.data as T;
 }
 
+/** The last regular session's close off the one-minute bars (the last bar the vendor marks "r"; its daily close for that
+    date when the daily rows are in), with the newest extended-hours print kept apart — for a state outside the session
+    that still says "regular". Null when the bars carry no regular bar. */
+function regularCloseOf(ticker: string, bars: readonly UwBar[]): { close: number; prevClose: number; at: number; last: number; marketTime: string } | null {
+  let reg: { t: number; close: number } | null = null;
+  let ext: { t: number; close: number; mt: string } | null = null;
+  for (const b of bars) {
+    const mt = String((b as { market_time?: string }).market_time ?? '');
+    const t = Date.parse(b.end_time || b.start_time || '');
+    const c = num(b.close);
+    if (!Number.isFinite(t) || !(c > 0)) continue;
+    if (mt === 'r') {
+      if (!reg || t > reg.t) reg = { t, close: c };
+    } else if ((mt === 'po' || mt === 'pr') && (!ext || t > ext.t)) ext = { t, close: c, mt };
+  }
+  if (!reg) return null;
+  const day = nyIsoDate(reg.t - 60_000);
+  const closes = peekRegularCloses(ticker) ?? [];
+  const own = closes.find(c => c.date === day);
+  const before = closes.find(c => c.date < day);
+  const close = own?.close ?? reg.close;
+  const after = ext && ext.t > reg.t ? ext : null;
+  return {
+    close,
+    prevClose: before?.close ?? 0,
+    at: reg.t,
+    last: after ? after.close : close,
+    /* the phase the extended print belongs to; with no print past the close the session is simply over */
+    marketTime: after?.mt === 'pr' ? 'premarket' : 'postmarket',
+  };
+}
+
 async function loadCore(ticker: string, mode: BookMode, token: number): Promise<void> {
   const still = () => gen.get(ticker) === token;
   const hot = isHot(ticker);
@@ -1699,18 +1731,30 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const barsSplit = candlesFrom(Array.isArray(bars) ? bars : []);
   const tapeMs = Date.parse(String((state as { tape_time?: string }).tape_time ?? ''));
   const newest = barsSplit.tape[barsSplit.tape.length - 1] ?? barsSplit.cash[barsSplit.cash.length - 1];
-  const stateStalled = state.market_time === 'regular' && !!newest && Number.isFinite(tapeMs) && newest.time * 1000 + 60_000 - tapeMs > 120_000;
-  const barOrState = stateStalled ? newest!.close : num(state.close);
-  const readAt = stateStalled ? newest!.time * 1000 + 60_000 : Number.isFinite(tapeMs) ? tapeMs : Date.now();
+  /* …ONLY INSIDE THE SESSION (the eleventh audit's M1, 2026-10-23 20:31 ET: the state was still stuck on its 10:35 print
+     marked "regular", so after the close the stalled rule took the newest bar — the 19:59 after-hours print, SPY 761.11
+     −0.37% "as of 20:00" — as the price, while the Dossier printed "$759.85 close · 761.11 after hours"). */
+  const [ty, tm, td] = nyIsoDate().split('-').map(Number);
+  const sessionOpen = isTradingDay(new Date(ty, tm - 1, td)) && nySessionPhase() === 'open';
+  const stateStalled = sessionOpen && state.market_time === 'regular' && !!newest && Number.isFinite(tapeMs) && newest.time * 1000 + 60_000 - tapeMs > 120_000;
+  /* OUTSIDE THE SESSION A STATE STILL SAYING "REGULAR" IS NOT BELIEVED: the price is the last regular session's close — its
+     last regular one-minute bar (market_time "r"), the vendor's daily close for that date where it is in hand — and the
+     newest after-hours or pre-market bar is kept apart as the extended print (data/liveQuote.ts's convention) */
+  const offRegular = !sessionOpen && state.market_time === 'regular' ? regularCloseOf(ticker, Array.isArray(bars) ? bars : []) : null;
+  const barOrState = stateStalled ? newest!.close : offRegular ? offRegular.last : num(state.close);
+  const readAt = stateStalled ? newest!.time * 1000 + 60_000 : offRegular ? offRegular.at : Number.isFinite(tapeMs) ? tapeMs : Date.now();
   /* a newer price already in hand (the Board's ten-second refresh, refreshBoardPrices) is not stepped back by a reload */
   const held = cache.get(ticker);
-  const keepHeld = state.market_time === 'regular' && held?.status === 'live' && !!held.priceAt && held.priceAt > readAt && held.spot > 0;
+  const keepHeld = sessionOpen && state.market_time === 'regular' && held?.status === 'live' && !!held.priceAt && held.priceAt > readAt && held.spot > 0;
   const last = keepHeld ? held!.spot : barOrState;
-  const mt = typeof state.market_time === 'string' ? state.market_time : undefined;
-  const offPhase = dayChangeOf({ close: last, prev_close: num(state.prev_close), market_time: mt }, null).phase;
-  const regClose = num(state.prev_close);
+  const mt = offRegular ? offRegular.marketTime : typeof state.market_time === 'string' ? state.market_time : undefined;
+  const statePrev = offRegular ? offRegular.close : num(state.prev_close);
+  const offPhase = dayChangeOf({ close: last, prev_close: statePrev, market_time: mt }, null).phase;
+  const regClose = statePrev;
   const spot = (offPhase === 'post' || offPhase === 'pre') && regClose > 0 ? regClose : last;
-  const prev = num(state.prev_close) || num(state.open) || spot;
+  /* the close before that session: the daily rows', else the state's own prev_close when its print is of that session */
+  const prevOff = offRegular ? offRegular.prevClose || (Number.isFinite(tapeMs) && nyIsoDate(tapeMs) === nyIsoDate(offRegular.at - 60_000) ? num(state.prev_close) : 0) : 0;
+  const prev = (offRegular ? prevOff : num(state.prev_close)) || num(state.open) || spot;
   if (!(spot > 0)) throw new Error('spot');
   const ivList = Array.isArray(ivRows) ? ivRows : [];
   const ivRow = ivList.reduce<UwIv | undefined>((best, row) => (!best || String(row.date ?? '') > String(best.date ?? '') ? row : best), undefined);
@@ -1729,7 +1773,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     spot,
     prev,
     changePct: prev > 0 ? ((spot - prev) / prev) * 100 : 0,
-    state: { close: last, prev_close: num(state.prev_close), market_time: mt },
+    state: { close: last, prev_close: statePrev, market_time: mt },
     last,
     priceAt: keepHeld ? held!.priceAt : readAt,
     iv: iv > 0 ? iv : 0,
@@ -2305,6 +2349,50 @@ function load(ticker: string, mode: BookMode) {
   });
 }
 
+/*
+  A CLOSED MARKET'S BOOK IS READ ONCE (the eleventh audit's M3, 2026-10-23 evening: the Map sat at 35 requests a minute on
+  SPY's Next-session book and the Board at 158 — option-contracts, spot-exposures/expiry-strike and greek-exposure/
+  strike-expiry asked again every 45–90s over rows that do not move until the next session). From BOOK_SETTLED_MIN on a
+  trading day (the vendor's last rows print by ~16:15) to PREMARKET_MIN on the next trading day, a book that has landed
+  whole is held: it is read again at ~07:00 ET on the next trading day, then at the session's cadence. A book that has not
+  landed whole (a failed or missing piece) keeps being read until it has.
+*/
+const BOOK_SETTLED_MIN = 16 * 60 + 30;
+const PREMARKET_MIN = 7 * 60;
+/** When a book read at `at` is next read: null in the live window (07:00 → 16:30 ET on a trading day), else the next
+    trading day's 07:00 ET (epoch ms) */
+export function bookFixedUntil(at: number = Date.now()): number | null {
+  const [y, m, d] = nyIsoDate(at).split('-').map(Number);
+  const mins = nyMinutes(at);
+  const trading = isTradingDay(new Date(y, m - 1, d));
+  if (trading && mins >= PREMARKET_MIN && mins < BOOK_SETTLED_MIN) return null;
+  const day = trading && mins < PREMARKET_MIN ? new Date(y, m - 1, d) : nextSession(new Date(y, m - 1, d + 1));
+  return nyWallTime(day.getFullYear(), day.getMonth() + 1, day.getDate(), 7, 0);
+}
+/** The market is between the settled close and the next pre-market — the book, the prices and the counts stand still */
+export const bookFixed = (now: number = Date.now()): boolean => bookFixedUntil(now) != null;
+/** "the Oct 23 close" — the session a fixed book is as of */
+export function fixedAsOfWords(now: number = Date.now()): string {
+  const [y, m, d] = nyIsoDate(now).split('-').map(Number);
+  let day = new Date(y, m - 1, d);
+  if (!(isTradingDay(day) && nyMinutes(now) >= CLOSE_MIN))
+    for (let back = 1; back < 12; back++) {
+      const p = new Date(y, m - 1, d - back);
+      if (isTradingDay(p)) {
+        day = p;
+        break;
+      }
+    }
+  return `the ${MON3[day.getMonth()]} ${day.getDate()} close`;
+}
+/** Every piece of a name's book has landed — the only book a closed market holds */
+function bookSettled(e: Entry): boolean {
+  if (e.status !== 'live' || !e.gammaLive || !e.termIv || !e.all.length) return false;
+  if (e.wantFull ? !e.everFull : !e.frontFacts) return false;
+  if ((e.wantFull || readLevelsScope() === 'ALL') && horizonFactsMissing(e).length) return false;
+  return true;
+}
+
 export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
   if (typeof window === 'undefined') return;
   const t = ticker.trim().toUpperCase();
@@ -2317,6 +2405,11 @@ export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
   /* NEVER A DOWNGRADE (the ninth audit's M1): a name the Map holds in full is refreshed in full whoever asks — a Board
      caller's 'board' read used to reload it with the Board's mode */
   if (e && (e.full || e.wantFull)) mode = 'full';
+  /* a closed market's settled book is held until the next pre-market (bookFixedUntil) — an upgrade to the full book
+     still loads what the board read lacks */
+  const heldTo = e && bookSettled(e) ? bookFixedUntil(e.at) : null;
+  const upgrading = mode === 'full' && !!e && e.status === 'live' && !e.full && !e.wantFull;
+  if (heldTo != null && Date.now() < heldTo && !upgrading) return;
   const age = e ? Date.now() - e.at : Infinity;
   const limit = e?.status === 'error' ? 15_000 : e?.full ? FULL_MS : BOARD_MS;
   const stale = !e || age > limit;
@@ -2398,6 +2491,12 @@ export function peekOiChangeCheck(ticker: string): { at: number | null; behind: 
   const c = oiChangeCache.get(t);
   return { at: oiChangeChecked.get(t) ?? oiChangeAt.get(t) ?? null, behind: !!c?.lastDate && c.lastDate < finishedSessionIso() };
 }
+/** A trading day between 07:00 ET and the close — when a new open-interest count can appear */
+export function oiCheckWindow(now: number = Date.now()): boolean {
+  const [y, m, d] = nyIsoDate(now).split('-').map(Number);
+  const mins = nyMinutes(now);
+  return isTradingDay(new Date(y, m - 1, d)) && mins >= PREMARKET_MIN && mins < CLOSE_MIN;
+}
 export function ensureOiChange(ticker: string): void {
   const t = ticker.toUpperCase();
   if (!t || oiChangeWait.has(t)) return;
@@ -2405,6 +2504,10 @@ export function ensureOiChange(ticker: string): void {
   const behind = !!held?.lastDate && held.lastDate < finishedSessionIso();
   const age = Date.now() - Math.max(oiChangeAt.get(t) ?? 0, oiChangeChecked.get(t) ?? 0);
   if (held && age < (behind ? OI_STALE_MS : OI_CHANGE_MS)) return;
+  /* THE COUNT IS LOOKED FOR ONLY WHEN IT CAN LAND (the eleventh audit's M3: Building probed every five minutes all
+     weekend): the vendor sets it overnight and has it out before the open, so a count in hand is asked again only on a
+     trading day from 07:00 ET until the close — and, behind, until the newer count lands */
+  if (held && !oiCheckWindow()) return;
   oiChangeWait.add(t);
   if (held && behind) {
     /* a probe: the first page's dates — the whole count is read again only when they move */

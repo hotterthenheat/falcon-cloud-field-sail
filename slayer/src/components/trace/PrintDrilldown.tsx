@@ -676,7 +676,9 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               {/* ONE FIGURE, ITS SOURCE SAID (audit round 4: 146,691 on the Screener, 146,779 on the card, 146,713 elsewhere — three
                   "today's volume"): the card's is the contract's session row (after-hours prints included); the Screener's is
                   the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
-              <Fact label={day && day.vol > 0 ? `${isLiveDay(dateIso) ? "Today's" : `${shortDay(dateIso)}'s`} volume · session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt)} ET` : ''}${isLiveDay(dateIso) && sessionPhase() !== 'after' && sessionPhase() !== 'closed' ? '' : ', after-hours prints included'}` : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
+              {/* THE LABEL IS SHORT, ITS SOURCE ON HOVER (retail, round 11: "TODAY'S VOLUME · SESSION ROW, READ 20:18 ET, AFTER-HOURS
+                  PRINTS INCLUDED" ran over the Open interest beside it) */}
+              <Fact label={day && day.vol > 0 ? <span title={`The contract's session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt)} ET` : ''}${isLiveDay(dateIso) && sessionPhase() !== 'after' && sessionPhase() !== 'closed' ? '' : ' — after-hours prints included'}`}>{isLiveDay(dateIso) ? "Today's volume" : `${shortDay(dateIso)} volume`}</span> : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
               <Fact label={day && day.vol > 0 ? 'Vol ÷ OI' : print.dayCard ? 'Vol ÷ OI' : `Vol ÷ OI · at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={(() => {
                   /* never "0.00x" for 21 on 5,164 (audit round 8) */

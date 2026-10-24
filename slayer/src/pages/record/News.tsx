@@ -361,10 +361,18 @@ const NewsAlertDoor = ({ ticker }: { ticker: string }) => {
   );
 };
 
-const Fact = ({ label, children, testId, tip }: { label: string; children: React.ReactNode; testId?: string; tip?: string }) => (
+/** "Fri Oct 23" for a "2026-10-23" */
+const weekdayDay = (iso: string): string => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const wd = new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12)).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+  return `${wd} ${shortDay(iso)}`;
+};
+
+/** A head figure. `partial` greys it while the read is still landing — the count grows, said "so far" (round 11) */
+const Fact = ({ label, children, testId, tip, partial, wrap }: { label: string; children: React.ReactNode; testId?: string; tip?: string; partial?: boolean; wrap?: boolean }) => (
   <div>
     <dt className="text-[10px] text-textMuted whitespace-nowrap cursor-help" title={tip}>{label}</dt>
-    <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap max-w-[22ch] truncate" data-news-fact={testId}>
+    <dd className={`mt-0.5 font-mono text-[12px] tnum ${partial ? 'text-textMuted' : 'text-textPrimary'} ${wrap ? 'max-sm:whitespace-normal sm:whitespace-nowrap sm:truncate max-w-[34ch]' : 'whitespace-nowrap max-w-[22ch] truncate'}`} data-news-fact={testId} data-partial={partial ? '' : undefined}>
       {children}
     </dd>
   </div>
@@ -456,7 +464,15 @@ const News = () => {
   const news = useNewsFeed();
   /* what the wire on the page covers: the whole day once the read has reached New York's midnight, else since when */
   const coverage = useNewsCoverage();
-  const coverText = coverage.fromMs == null ? 'Reading the wire' : coverage.wholeDay ? 'Every story on the wire today' : `The wire since ${nyClock(coverage.fromMs)} ET${coverage.reading ? ', reading further back' : ''}`;
+  /* THE WIRE'S DAY (round 11): on a weekend, a holiday or a trading day before its first story the wire is the last
+     session's, said with its day, and the newer stories since it are counted beside */
+  const wireDayWord = coverage.today ? 'today' : weekdayDay(coverage.day);
+  const sinceText = coverage.since > 0 ? ` · and ${coverage.since.toLocaleString('en-US')} ${coverage.since === 1 ? 'story' : 'stories'} since` : '';
+  const coverText = coverage.fromMs == null
+    ? 'Reading the wire'
+    : coverage.wholeDay
+      ? coverage.today ? 'Every story on the wire today' : `${wireDayWord}'s wire${sinceText}`
+      : `The wire since ${coverage.today ? '' : `${wireDayWord}, `}${nyClock(coverage.fromMs)} ET${coverage.reading ? ', reading further back' : ''}`;
   const econ = useEconFeed();
   const events = useMemo(() => (news.status === 'live' ? news.events : []), [news, wireRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const calendar = useMemo(() => (econ.status === 'live' ? econ.events : []), [econ, wireRev]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -720,7 +736,7 @@ const News = () => {
             <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" data-news-coverage>{coverText} · a pin on every city a story comes from · click a pin or a row and the story opens beside the map</p>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
-            <Fact label="Stories" testId="stories" tip="Headlines on the wire after the cards and the filter">
+            <Fact label="Stories" testId="stories" tip={`Headlines on the wire after the cards and the filter${coverage.reading ? ' — still reading back, the count grows' : ''}`} partial={coverage.reading && rows.length > 0}>
               {news.status === 'loading' && rows.length === 0 ? (
                 <span className="text-textMuted">Reading</span>
               ) : news.status === 'sim' ? (
@@ -729,16 +745,17 @@ const News = () => {
                 <>
                   {rows.length.toLocaleString('en-US')}
                   {!unmarked && <span className="text-textMuted"> · {positive} positive · {negative} negative</span>}
+                  {coverage.reading && <span className="text-[9px]"> · so far</span>}
                 </>
               )}
             </Fact>
             {mood.unmarked ? (
               <>
-                <Fact label="Major" testId="major" tip="Headlines Unusual Whales flags as major">
-                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : rows.filter(r => r.item.major).length}
+                <Fact label="Major" testId="major" tip="Headlines Unusual Whales flags as major" partial={coverage.reading && rows.length > 0}>
+                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(r => r.item.major).length}{coverage.reading && <span className="text-[9px]"> · so far</span>}</>}
                 </Fact>
-                <Fact label="On your Board" testId="board" tip="Headlines that name a stock on your Board">
-                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : rows.filter(onBoard).length}
+                <Fact label="On your Board" testId="board" tip="Headlines that name a stock on your Board" partial={coverage.reading && rows.length > 0}>
+                  {news.status === 'loading' && rows.length === 0 ? <span className="text-textMuted">Reading</span> : news.status === 'sim' ? <span className="text-textMuted">—</span> : <>{rows.filter(onBoard).length}{coverage.reading && <span className="text-[9px]"> · so far</span>}</>}
                 </Fact>
               </>
             ) : (
@@ -746,9 +763,9 @@ const News = () => {
                 <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
               </Fact>
             )}
-            <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : 'Biggest move today'} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name today's stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
+            <Fact label={biggest && !moveDayIsToday ? `Biggest move · ${shortDay(biggest.date)}` : coverage.today ? 'Biggest move today' : `Biggest move · ${shortDay(coverage.day)}`} testId="biggest" tip={`The regular session's change${biggest && !moveDayIsToday ? ` on ${shortDay(biggest.date)}, the last session` : ''} — not the move when the story crossed — over every name ${coverage.today ? "today's" : `${wireDayWord}'s`} stories are about (${moveNames.length} names, read in bulk off the screener; the regular close is each name's daily row — ${setMoves.moves.size} read, the other ${Math.max(0, setMoves.screened - setMoves.moves.size)} ruled out because their whole session range sits inside the leader's move)`}>
               {coverage.reading ? (
-                <span className="text-textMuted">reading today's stories{namesSoFar ? ` · ${namesSoFar} names so far` : ''}</span>
+                <span className="text-textMuted">reading {coverage.today ? "today's" : `${wireDayWord}'s`} stories{namesSoFar ? ` · ${namesSoFar} names so far` : ''}</span>
               ) : biggest ? (
                 <>
                   {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.pct)}</span>
@@ -758,7 +775,7 @@ const News = () => {
                 <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no regular close on these names' : `reading ${Math.min(setMoves.screened, moveNames.length)} of ${moveNames.length} names`) : 'no named stories yet'}</span>
               )}
             </Fact>
-            <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
+            <Fact label="Next print" testId="next" wrap tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
               {nextPrint ? (
                 <>
                   {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} ET · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
@@ -766,10 +783,9 @@ const News = () => {
               ) : (
                 nextReport ? (
                   <span title={`No economic release is ahead on the calendar; the next earnings report still to come — ${nextReport.total.toLocaleString('en-US')} ${nextReport.scope}`} data-news-next="earnings">
-                    {nextReport.e.ticker} reports{nextReport.same > 1 ? <span className="text-textMuted"> +{nextReport.same - 1}</span> : null}{' '}
-                    <span className="text-textMuted">
-                      · {nextReport.e.timeKnown === false ? 'time not set' : nextReport.e.slot === 'BMO' ? 'before the open' : 'after the close'} {nextReport.today ? 'today' : nextReport.e.dateLabel} · {nextReport.total.toLocaleString('en-US')} reports ahead{reportsQ.fortnight ? '' : ' by next session'}
-                    </span>
+                    {/* "VZ and 11 more report Mon before the open" (round 11: "VZ reports +11 · before the open…" read as a move) */}
+                    {nextReport.e.ticker}
+                    <span className="text-textMuted">{nextReport.same > 1 ? ` and ${nextReport.same - 1} more report` : ' reports'} {nextReport.today ? 'today' : nextReport.e.iso ? weekdayDay(nextReport.e.iso).split(' ')[0] : nextReport.e.dateLabel} {nextReport.e.timeKnown === false ? '(time not set)' : nextReport.e.slot === 'BMO' ? 'before the open' : 'after the close'}</span>
                   </span>
                 ) : (
                   <span className="text-textMuted">{econ.status === 'loading' || reportsQ.status === 'loading' ? 'reading the calendar' : econ.status === 'sim' && reportsQ.status === 'sim' ? 'the calendar did not answer' : 'nothing ahead on the calendar'}</span>

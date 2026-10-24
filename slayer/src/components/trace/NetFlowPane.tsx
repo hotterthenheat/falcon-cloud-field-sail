@@ -321,12 +321,14 @@ const NetFlowPane = ({
   /* The spot ribbon: the picked name's own tape, or SPY's under a cut of the book. */
   const ref = ticker ?? 'SPY';
   const bookRev = useBookRev();
-  if (!indexRoot(ref)) ensureBook(ref, 'board');
   const times = useMemo(() => paneTimes(ref), [ref, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   /* THE VENDOR'S MINUTES (traceLive's usePaneFlow): the lines and the head's figures read the same series — a host that
      hands its own `live` keeps that path */
   const own = usePaneFlow({ ticker: ticker ?? null, seg, mny, zeroDte: dteMax <= 1, enabled: live == null });
   const series = live ?? own.rows;
+  /* THE NAME'S BOOK ONLY WHEN IT IS DRAWN (audit round 11, minor 5: Net Flow read the leader's whole Pinpoint book — ~16
+     calls — on open, though its candles are drawn only when the name's own minutes are empty) */
+  if (!indexRoot(ref) && !series.length && (live != null || !own.waiting)) ensureBook(ref, 'board');
   const tail = series.length ? series[series.length - 1] : null;
   /* a name's minutes carry gross contracts; a cut's only the net, so a cut prints no volume figure */
   const headVol = ticker ? series.reduce((a, p) => a + p.vol, 0) : null;

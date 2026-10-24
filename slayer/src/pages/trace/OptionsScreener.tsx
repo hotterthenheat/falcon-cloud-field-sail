@@ -312,7 +312,8 @@ const OptionsScreener = () => {
     if (filters.excludeItm) on.push('the moneyness');
     if (expiry) on.push('the expiry');
     if (query) on.push('the search');
-    return on.length ? `Nothing matches this cut — no contract passes ${on.join(', ')} together; loosen one of them${query ? ` (the search takes a name, or a contract written like ${CONTRACT_FORMATS})` : ''}` : 'Nothing has traded on the book';
+    /* in plain words (audit round 11, minor 5: "no contract passes … together") */
+    return on.length ? `No contract fits all of these at once: ${on.join(', ')} — loosen one${query ? ` (the search takes a name, or a contract written like ${CONTRACT_FORMATS})` : ''}` : 'Nothing has traded on the book';
   }, [screen, filters, expiry, query]);
   const activeScreen = FLOW_SCREENS.find(s => s.key === screen) ?? FLOW_SCREENS[0];
   /* a DAY total, said so — the card it opens heads its own print */
@@ -429,7 +430,10 @@ const OptionsScreener = () => {
      folded — one click away in Columns */
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols_v3', ['floor', 'multi', 'sector', 'dte', 'oi']);
   /* WHAT THE BOOK IS (the audit: "every contract that traded today" headed the vendor's top 200) */
-  const pool = unusual
+  /* NOT YET IS NOT NOTHING (retail, round 11: "the 0 single-stock contracts loaded" while the book read) */
+  const pool = bookReading
+    ? 'reading the book…'
+    : unusual
     ? `from the vendor's unusual list — the ${num(liveBook.length)} unusual contracts loaded, most premium ${dayAdv()} first (more as you scroll), the pool every unusual screen (bullish, bearish, new positioning, conviction calls and puts) reads`
     : screen === 'active'
       ? `the ${num(liveBook.length)} single-stock contracts loaded, most volume ${dayAdv()} first — more as you scroll`
@@ -477,7 +481,9 @@ const OptionsScreener = () => {
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Largest" ink="supreme" title="The biggest single bet by premium — the most premium among contracts whose day was not mostly floor-traded packages, spread legs (half or more in multi-leg orders) or cross trades. Not a side: the Lean column says which way it leaned" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
+              /* THE SCOPE IN THE PILL (retail, round 11: the tape's "Most premium" — every name, index included — and this
+                 "Largest" — single stocks on Most active — disagreed unless the fine print was read) */
+              <Champion label={`Largest · ${screen === 'active' ? 'single stocks' : unusual ? 'unusual list' : 'all names incl. index'}`} ink="supreme" title="The biggest single bet by premium — the most premium among contracts whose day was not mostly floor-traded packages, spread legs (half or more in multi-leg orders) or cross trades. Not a side: the Lean column says which way it leaned" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
                 {pill(champs.all)}
               </Champion>
             )}
@@ -523,7 +529,7 @@ const OptionsScreener = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(pack.older, 'contracts', "the vendor's list for the day is done", hold.paused)} emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(pack.older, 'contracts', "the vendor's list for the day is done", hold.paused, 'Load more ↓')} emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
         {pack.fault && rows.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
       <BookDrill list={rows} openKey={openKey} onOpen={setOpenKey} tick={tick} />
