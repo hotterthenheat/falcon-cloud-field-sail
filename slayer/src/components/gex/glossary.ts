@@ -2,7 +2,8 @@
   PINPOINT'S WORDS, DEFINED ONCE (the retail test, 2026-10-22: "supreme", "trapdoor", "shelf" and "the book" printed
   with no word on what they mean). Every place one of them stands on Pinpoint carries the line below on hover.
 */
-export const GLOSSARY = {
+const WORDS = {
+  gex: 'GEX (gamma exposure): the dollars of stock dealers would trade for a 1% move to stay hedged, strike by strike — positive (green) means they are long gamma and trade against the move, negative (red) short gamma and trade with it',
   supreme: 'Supreme: the single strike with the most dealer gamma on it (either sign), on the contracts the Levels card reads — usually the strongest level on the chart',
   trapdoor: 'Trapdoor: a strike where dealers are short gamma — their hedging speeds a move through it instead of slowing it',
   shelf: 'Shelf: a strike where dealers are long gamma and that holds at least a third of the biggest wall — their hedging slows price there',
@@ -20,20 +21,35 @@ export const GLOSSARY = {
   likeliestClose: 'Likeliest close: the strike the 4:00 print most likely lands on, from the expected move left — named only when one strike reaches 15%. Not max pain, which is where the most option value would expire worthless',
 } as const;
 
+/* EVERY TERM'S HOVER POINTS AT THE ONE CARD (the eleventh audit's retail finding: GEX, DEX, VEX, vanna, charm, NOPE, supreme,
+   trapdoor and flip were defined only where each stood) — the card ("First time here?", on Pinpoint's head) holds them all */
+export const FIRST_TIME_HINT = ' · Every term in one place: “First time here?” at the top of Pinpoint’s pages';
+export const GLOSSARY = Object.fromEntries(Object.entries(WORDS).map(([k, v]) => [k, `${v}${FIRST_TIME_HINT}`])) as { readonly [K in keyof typeof WORDS]: string };
+
+/** Ask the "First time here?" card to open (RegimeLine listens) — the Map's colour note and any page can link to it */
+export const FIRST_TIME_EVENT = 'pinpoint:first-time';
+export const openFirstTime = (): void => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(FIRST_TIME_EVENT));
+};
+
 /** The words a newcomer meets on Pinpoint, in the order they matter — the "First time here?" card reads this */
 export const FIRST_TIME: { term: string; says: string }[] = [
+  { term: 'GEX', says: WORDS.gex.replace(/^GEX \(gamma exposure\): /, 'Gamma exposure: ') },
   { term: 'Long / short gamma', says: 'Long gamma: dealers trade against the move (buy dips, sell rips), so moves tend to be absorbed and price tends to pin. Short gamma: they trade with it, so moves tend to run.' },
-  { term: 'Flip', says: GLOSSARY.flip.replace(/^Flip: /, '') },
-  { term: 'Supreme', says: GLOSSARY.supreme.replace(/^Supreme: /, '') },
-  { term: 'Call wall', says: GLOSSARY.callWall.replace(/^Call wall: /, '') },
-  { term: 'Put wall', says: GLOSSARY.putWall.replace(/^Put wall: /, '') },
-  { term: 'Shelf', says: GLOSSARY.shelf.replace(/^Shelf: /, '') },
-  { term: 'Trapdoor', says: GLOSSARY.trapdoor.replace(/^Trapdoor: /, '') },
-  { term: 'Too thin to be a trapdoor', says: GLOSSARY.thin.replace(/^Too thin to be a trapdoor \(or a wall\): /, '') },
-  { term: 'Charm', says: GLOSSARY.charm.replace(/^Charm: /, '') },
-  { term: 'NOPE', says: GLOSSARY.nope.replace(/^NOPE \(net options pricing effect\): /, '') },
-  { term: 'DEX · VEX · vanna', says: `${GLOSSARY.dex.replace(/^DEX \(delta exposure\): /, 'DEX: ')} ${GLOSSARY.vex.replace(/^VEX \(vega exposure\): /, 'VEX: ')} ${GLOSSARY.vanna}` },
-  { term: 'Max pain vs likeliest close', says: GLOSSARY.maxPain.replace(/^Max pain: /, 'Max pain: ') },
+  { term: 'Flip', says: WORDS.flip.replace(/^Flip: /, '') },
+  { term: 'Supreme', says: WORDS.supreme.replace(/^Supreme: /, '') },
+  { term: 'Call wall', says: WORDS.callWall.replace(/^Call wall: /, '') },
+  { term: 'Put wall', says: WORDS.putWall.replace(/^Put wall: /, '') },
+  { term: 'Shelf', says: WORDS.shelf.replace(/^Shelf: /, '') },
+  { term: 'Trapdoor', says: WORDS.trapdoor.replace(/^Trapdoor: /, '') },
+  { term: 'Too thin to be a trapdoor', says: WORDS.thin.replace(/^Too thin to be a trapdoor \(or a wall\): /, '') },
+  { term: 'Charm', says: WORDS.charm.replace(/^Charm: /, '') },
+  { term: 'NOPE', says: WORDS.nope.replace(/^NOPE \(net options pricing effect\): /, '') },
+  { term: 'DEX · VEX · vanna', says: `${WORDS.dex.replace(/^DEX \(delta exposure\): /, 'DEX: ')} ${WORDS.vex.replace(/^VEX \(vega exposure\): /, 'VEX: ')} ${WORDS.vanna}` },
+  { term: 'The book', says: WORDS.book.replace(/^The book: /, '') },
+  { term: 'Today · Next session', says: 'The Levels card reads today’s expiring contracts while the session is ahead or running; after the 4:00 close (and over a weekend) it reads the next session’s — the day each figure belongs to is named beside it.' },
+  { term: 'Colours on the Map', says: 'Each row is a strike. Red and orange (ember orange on the other palette): dealer hedging pushes a move along there; green (glacier blue): it holds one back. Magenta marks the supreme, blue the call wall, gold the put wall.' },
+  { term: 'Max pain vs likeliest close', says: WORDS.maxPain.replace(/^Max pain: /, 'Max pain: ') },
 ];
 
 /** The definition for a strike's kind word, as the Agenda and the Board print it */

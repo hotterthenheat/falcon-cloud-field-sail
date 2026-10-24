@@ -36,7 +36,7 @@ const sentimentOf = (s: string): number => (s === 'positive' || s === 'bullish' 
    cutting or reaffirming an outlook; a macro story names the economy, a central bank, rates, prices or the whole
    market. A company story that is none of the five named beats files under Product, the company beat. */
 const EARNINGS_RE =
-  /\bearnings?\b|\beps\b|\bq[1-4]\b|\b(?:first|second|third|fourth)[- ]quarter (?:results|profit|loss|revenue|sales|earnings)|\bquarterly (?:results|profit|loss|revenue|sales|earnings)\b|\b(?:profit|revenue|sales|net income|net loss)s? (?:rose|rises|fell|falls|jumps?|drops?|beats?|miss(?:es)?|tops?|surges?|slumps?|climbs?|declines?)\b|\b(?:beats?|miss(?:es)?|tops?) (?:estimates|expectations|forecasts|consensus)\b|\breports? (?:results|fiscal)\b|\bfiscal (?:\d{4}|q[1-4]|first|second|third|fourth|year) (?:results|earnings)/i;
+  /\b(?:first|second|third|fourth) quarter (?:(?:of )?(?:fiscal )?(?:year )?(?:\d{4} )?)(?:financial )?(?:results|earnings)\b|\bfiscal (?:year )?\d{4} (?:\w+ )?(?:quarter )?results\b|\bearnings?\b|\beps\b|\bq[1-4]\b|\b(?:first|second|third|fourth)[- ]quarter (?:results|profit|loss|revenue|sales|earnings)|\bquarterly (?:results|profit|loss|revenue|sales|earnings)\b|\b(?:profit|revenue|sales|net income|net loss)s? (?:rose|rises|fell|falls|jumps?|drops?|beats?|miss(?:es)?|tops?|surges?|slumps?|climbs?|declines?)\b|\b(?:beats?|miss(?:es)?|tops?) (?:estimates|expectations|forecasts|consensus)\b|\breports? (?:results|fiscal)\b|\bfiscal (?:\d{4}|q[1-4]|first|second|third|fourth|year) (?:results|earnings)/i;
 const GUIDANCE_RE =
   /\b(?:raises?|raised|lifts?|lifted|boosts?|boosted|lowers?|lowered|cuts?|trims?|trimmed|reaffirms?|reaffirmed|reiterates?|reiterated|maintains?|withdraws?|withdrew|suspends?|narrows?|narrowed|updates?|issues?|initiates?|sets?|sees)\b[^.;]{0,40}\b(?:guidance|outlook|forecast)\b|\b(?:guidance|outlook|forecast)\b[^.;]{0,25}\b(?:raised|lowered|cut|above|below|ahead of|short of|for (?:fy|fiscal|q[1-4]|20\d\d|the (?:full )?year|full[- ]year))\b|\b(?:fy|full[- ]year)\s?'?\d{0,4}\s(?:guidance|outlook)\b/i;
 const ANALYST_RE = /\btarget price\b|\bprice targets?\b|\bpt to\b|\b(?:rating|ratings)\b|\breiterat\w* (?:at )?(?:buy|sell|hold|neutral|outperform|underperform|overweight|underweight)\b|\bupgrades?\b|\bupgraded\b|\bdowngrades?\b|\bdowngraded\b|price target|\bpt\b(?= (?:to|raised|cut|lowered))|\b(?:initiates?|initiated|resumes?|starts?) coverage|\banalysts? (?:say|says|see|expect|rate|raise|cut)|\b(?:overweight|underweight|outperform|underperform|buy rating|sell rating|neutral rating)\b/i;
@@ -62,6 +62,7 @@ const RATES_RE = /\b(?:(?:t-|treasury |government |sovereign |\d+-(?:month|week|
 const DATA_RE = /\b(?:pmi|purchasing managers|gdp|cpi|ppi|pce|inflation|deflation|payrolls?|unemployment|jobless|claims|retail sales|industrial (?:output|production)|factory (?:orders|output)|durable goods|trade (?:balance|deficit|surplus)|current account|housing starts|building permits|home sales|consumer (?:confidence|sentiment|prices)|business (?:confidence|climate|sentiment)|ifo|zew|tankan|inventor(?:y|ies)|stockpiles?|natural gas|nat gas|crude|brent|wti|gasoline|survey|index (?:rose|fell|rises|falls|climbs|slips|jumps|drops)|economic data)\b/i;
 const PRODUCT_RE = /\b(?:launch(?:es|ed|ing)?|unveil(?:s|ed|ing)?|introduc(?:es|ed|ing)|releases?d?|rolls? out|rolled out|rollout|debut(?:s|ed)?|new (?:product|model|version|service|feature|chip|phone|platform|app)|ships?|shipping|recalls?|recalled|availability|now available|partners? with|partnership|collaborat\w+|deploy(?:s|ed|ment)?|pilot|beta|preview|upgrade[sd]? (?:its|the) (?:app|platform|service)|update[sd]? (?:its|the) (?:app|platform|service)|approval for|wins? (?:contract|order|deal)|contract|orders?)\b/i;
 
+const SOFT_RE = /\b(?:dinner|gala|banquet|party|celebrit(?:y|ies)|red carpet|wedding|birthday|award show|podcast|talk show|espn|halloween|costume|stephen a\. smith)\b/i;
 const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boolean): NewsCategory => {
   const s = `${headline} ${(tags ?? []).join(' ')}`;
   if (/\$MACRO\b/i.test(s)) return 'Macro';
@@ -87,6 +88,9 @@ const categoryOf = (headline: string, tags: string[] | undefined, hasTicker: boo
      Introduces Cloud Sync", Chery's crash tests and a Warhound launch were filed MACRO and featured as the lead. A story
      with no listed name is macro only when it is about the economy, a central bank, rates, prices, markets, or government
      and policy; a press release from a company the page does not list is a company story — the Product beat. */
+  /* a celebrity, a dinner or a show at the White House is not policy (round 11: "Stephen A. Smith… White House dinner"
+     filed MACRO) */
+  if (!hasTicker && SOFT_RE.test(headline) && !DATA_RE.test(s) && !RATES_RE.test(s)) return 'General';
   if (!hasTicker && (GOV_RE.test(s) || GEO_RE.test(s) || FX_RE.test(s) || RATES_RE.test(s) || DATA_RE.test(s))) return 'Macro';
   if (PRODUCT_RE.test(s)) return 'Product';
   return 'General';

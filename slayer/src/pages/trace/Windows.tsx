@@ -173,6 +173,15 @@ const Windows = () => {
     );
   }, [state, sel, name, closed, dataDay]);
 
+  /* ONE PLAIN LINE (retail, round 11) — the picked quarter hour's lean in dollars; the full read behind "more" */
+  const leadLine =
+    state === 'reading'
+      ? `Reading ${name}'s minutes…`
+      : state === 'down'
+        ? 'This read did not land — the quarter hours fill when the feed answers.'
+        : !sel
+          ? `${name} has no options traded in the regular session yet.`
+          : `${sel.label} ET: ${name} leaned ${sel.netCall - sel.netPut >= 0 ? 'bullish' : 'bearish'} by ${fmtUsd(Math.abs(sel.netCall - sel.netPut))} on ${num(sel.vol)} contracts.`;
   const columns = useMemo<Column<Quarter>[]>(
     () => [
       {
@@ -303,7 +312,9 @@ const Windows = () => {
             </span>
           </>
         }
-        sentence={read}
+        sentence={null}
+      lead={leadLine}
+      detail={read}
       >
         <TraceGrid
           rows={quarters}

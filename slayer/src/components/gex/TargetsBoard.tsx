@@ -70,7 +70,7 @@ import { chanceLabel, holdLabel, holdShort, pathFlowWords, pathLean } from '../.
 import { GLOSSARY, kindTip } from './glossary';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
 import { useDistanceUnit } from '../../data/distanceUnits';
-import { longDay, recordDay, aheadWord } from '../../data/bookWindow';
+import { cadenceWords, longDay, recordDay, aheadWord, sessionDay } from '../../data/bookWindow';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
 import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
 
@@ -427,7 +427,7 @@ export const TargetsControls = ({ order, onOrder, window, onWindow, names, updat
     <DropdownSelect label="Strikes" value={window} options={WINDOW_OPTIONS} onChange={v => onWindow(v as StrikeWindow)} title="How many strikes around spot" testId="targets-strikes" />
     {names}
     <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" data-targets-updated>
-      {strikes} strikes · updated {updatedAt} · every 10s
+      {strikes} strikes · updated {updatedAt} · {cadenceWords()}
     </span>
   </div>
 );
@@ -559,7 +559,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : aheadWord())}, and the chance — strikes price is already on, and strikes today's session has already traded through, are left out (they are reached, not likely)`}>Most likely reached <span className="text-textMuted/70">· not yet today</span></dt>
+            <dt className="text-[10px] text-textMuted cursor-help" title={`The strike price is most likely to touch ${agenda.horizon ?? (clock.inSession ? 'by the close' : aheadWord())}, and the chance — strikes price is already on, and strikes today's session has already traded through, are left out (they are reached, not likely)`}>Most likely reached <span className="text-textMuted/70">· {clock.inSession ? 'not yet today' : aheadWord() === 'today' ? 'today' : `next session, ${longDay(sessionDay().next)}`}</span></dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary whitespace-nowrap">{agenda.mostReached ? `${fmtStrike(agenda.mostReached.strike)} · ${pct(agenda.mostReached.reach)}` : '—'}</dd>
           </div>
           {/* THE NEAREST WALL ON EACH SIDE (the fifth audit, 2026-10-23: "Nearest wall in reach 769 · supreme · put wall"
@@ -632,7 +632,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
           {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the vendor's implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
-          {full && headCell('Today', false, 'whitespace-nowrap', recordDay().isToday ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : 'The session has not opened yet — nothing has been reached today')}
+          {full && headCell('Today', false, 'whitespace-nowrap', recordDay().isToday && !recordDay().done ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : recordDay().isToday ? `Today's session has closed — these targets are the next session's (${longDay(sessionDay().next)}); how today's levels held is on the Map` : 'The session has not opened yet — nothing has been reached today')}
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}
           {/* ONE SHORT HEAD (the tenth audit's retail finding: "Built the overnight open-interest count" ran into "At stake") */}
@@ -648,7 +648,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
               <div
                 key={t.strike}
                 className={`grid grid-cols-subgrid ${cols.span} items-center border-t border-borderSubtle/40 rounded cursor-pointer ${wash}`}
-                style={{ height: ROW_H }}
+                style={full ? { minHeight: ROW_H } : { height: ROW_H }}
                 data-target-row={t.strike}
                 onPointerEnter={() => setHover(t.strike)}
                 onClick={onRowClick(t)}
@@ -690,7 +690,9 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
                     <span className="absolute right-0 font-mono text-[10px] tnum text-textPrimary">{fmtDollars(t.stake)}</span>
                   </div>
                 )}
-                {full && <div className="text-[10px] leading-[13px] text-textMuted line-clamp-2">{t.why}</div>}
+                {/* THE WHOLE REASON, WRAPPED (the eleventh audit's retail finding: "reached today · 87% to touch…" cut at two lines) —
+                    the row grows to hold it */}
+                {full && <div className="text-[10px] leading-[13px] text-textMuted py-1 break-words">{t.why}</div>}
                 <Actions t={t} armed={armedAt(t.strike)} onChart={onChart} onAlert={onAlert} icons={!wide} />
               </div>
             );

@@ -34,10 +34,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMarketData } from '../../context/MarketDataContext';
-import { nyDateOf, tapeSessionIso, tideBetween, useTopNet, useLiveBook, useTide } from '../../data/traceLive';
+import { nyDateOf, tapeSessionIso, tideBetween, useTickerKnown, useTopNet, useLiveBook, useTide } from '../../data/traceLive';
 import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
 import { dayAdv, dayPos, isLiveDay, shortDay } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
+import { useQParam } from '../../components/trace/addressCut';
 import { nyClock } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { type MoneynessKey } from '../../data/flowBook';
@@ -69,11 +70,24 @@ const NetFlow = () => {
   const { marketData, activeTicker } = useMarketData();
   /* Arriving through a door: the name goes on the pane and the clock is set before the first paint */
   const handoff = (useLocation().state ?? null) as NetFlowHandoff | null;
+  /* the name in the address (?q=) — a search link carries it (the owner, 2026-10-23) */
+  const [qParam, setQParam] = useQParam();
   const [picked, setPicked] = useState<string | null>(() => (typeof handoff?.ticker === 'string' && /^[A-Z0-9.]{1,6}$/.test(handoff.ticker) ? handoff.ticker : null));
+  /* A NAME IS CHECKED BEFORE IT GOES ON THE PANE (audit round 11, minor 5: "?q=ZZZZ" read "NO FLOW ON THIS CUT YET" after
+     ~10 routes asked for a name the vendor does not carry): a typed or linked ticker waits here until the vendor says it
+     exists */
+  const [want, setWant] = useState<string | null>(() => (!picked && /^[A-Z][A-Z0-9.]{0,5}$/.test(qParam) ? qParam : null));
+  const wantKnown = useTickerKnown(want);
+  useEffect(() => {
+    if (want && wantKnown === true) {
+      setPicked(want);
+      setWant(null);
+    }
+  }, [want, wantKnown]);
   /* THE FIELD IS NOT THE PICK: anything typed went on the pane — "ZZZZ" drew letter logos and an invented price line.
      The field holds what is typed; the pane takes a name only when the book carries it, and keeps the last real one
      meanwhile. */
-  const [query, setQuery] = useState<string>(picked ?? '');
+  const [query, setQuery] = useState<string>(picked ?? want ?? '');
   const [mny, setMny] = useState<MoneynessKey>('all');
   const [tenor, setTenor] = useState<SleeveKey | 'all'>(() => (typeof handoff?.tenor === 'string' && TENORS.has(handoff.tenor) ? handoff.tenor : 'all'));
   const [guideOpen, setGuideOpen] = useState(false);
@@ -83,7 +97,8 @@ const NetFlow = () => {
      and their sum was headed "Net across the board" as if it were the market. The market's net is the vendor's market
      tide — every name's net call premium less net put premium, running from the open. */
   const tide = useTide('market', '');
-  const liveBook = useLiveBook(picked || activeTicker).rows;
+  /* the picked name's book only (the suggestions) — not the shell's ticker, which this page does not show */
+  const liveBook = useLiveBook(picked).rows;
   /* NOT YET IS NOT NOTHING (audit round 8, major 5: "The board $0 · Names 0 · No name has leaned yet today" while the
      board loaded) — the board's facts read "—" and the pane waits for the board's first name rather than drawing SPY and
      then the leader (two reads for one pane) */
@@ -118,10 +133,12 @@ const NetFlow = () => {
   const typeTimer = useRef(0);
   const onQuery = (v: string) => {
     setQuery(v);
+    setQParam(v);
     window.clearTimeout(typeTimer.current);
+    setWant(null);
     if (!v) setPicked(null);
     else if (known.has(v)) setPicked(v);
-    else if (/^[A-Z][A-Z0-9.]{0,5}$/.test(v)) typeTimer.current = window.setTimeout(() => setPicked(v), 450);
+    else if (/^[A-Z][A-Z0-9.]{0,5}$/.test(v)) typeTimer.current = window.setTimeout(() => setWant(v), 450);
   };
   useEffect(() => () => window.clearTimeout(typeTimer.current), []);
   const unknown = query !== '' && !/^[A-Z][A-Z0-9.]{0,5}$/.test(query);
@@ -213,6 +230,14 @@ const NetFlow = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facts, leaders.length, market, boardReading, boardFault]);
 
+  /* ONE PLAIN LINE (retail, round 11): the market's lean and the two loudest names — the full read behind "more" */
+  const leadLine = boardReading
+    ? "Reading the board and the market's net…"
+    : !facts.top || !facts.bottom
+      ? boardFault
+        ? 'The board did not answer — it fills when the feed does.'
+        : 'The board is still waking up.'
+      : `${market && !market.none && session === 'regular' ? `The whole market ${market.day && !isLiveDay(market.day) ? `on ${shortDay(market.day)}` : 'today'} leans ${market.net >= 0 ? 'bullish' : 'bearish'} (${signed(market.net)} net). ` : ''}${facts.top.ticker} leads bullish at ${signed(facts.top.net)}; ${facts.bottom.ticker} leans most bearish at ${signed(facts.bottom.net)}.`;
   /* The search PICKS a name (it is a board, not a filter); the board scrolls the picked row into view */
   const boardRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -249,7 +274,7 @@ const NetFlow = () => {
             {leaders.length === 0 ? <span className="text-textMuted">—</span> : <><Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" /></>}
           </Fact>
           <Fact label="Names" testId="names">
-            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <>{leaders.length} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span></>}
+            {leaders.length === 0 ? <span className="text-textMuted">—</span> : <>{num(leaders.length)} <span className="text-textSecondary">·</span> <span className="text-bull">{facts.bullish} bullish</span> <span className="text-textSecondary">·</span> <span className="text-bear">{facts.bearish} bearish</span></>}
           </Fact>
           {facts.hasVol && (
             <Fact label="Contracts traded" testId="volume" title="Volume across the board, and how many contracts carried it">
@@ -281,15 +306,22 @@ const NetFlow = () => {
           {!hold.paused && <StaleMark at={top.at} ttlMs={45_000} fault={top.fault} />}
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
-            {unknown && (
+            {(unknown || (want && wantKnown === false)) && (
               <span role="status" className="text-[11px] text-textSecondary" data-net-unknown>
-                "{query}" is not a ticker — the pane keeps {sel}
+                No ticker “{unknown ? query : want}”{sel ? ` — the pane keeps ${sel}` : ''}
+              </span>
+            )}
+            {want && wantKnown == null && (
+              <span role="status" className="text-[11px] text-textMuted" data-net-checking>
+                Looking up {want}…
               </span>
             )}
           </span>
         </>
       }
-      sentence={read}
+      sentence={null}
+      lead={leadLine}
+      detail={read}
     >
       {/* ON A PHONE THE BOARD STANDS OVER THE PANE: side by side at 390px the pane was squeezed to a sliver beside the
           board — its chart and its menus cut off at the screen's edge */}
@@ -335,8 +367,8 @@ const NetFlow = () => {
                     <span className={`absolute left-0 top-0 h-full ${l.net >= 0 ? 'bg-bull/60' : 'bg-bear/60'}`} style={{ width: `${Math.round((Math.abs(l.net) / maxAbs) * 100)}%` }} />
                   </span>
                   {facts.hasVol ? (
-                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${l.count} contracts traded on ${l.ticker} ${dayAdv()}`}>
-                      C {fmtUsd(l.netCall)} · P {fmtUsd(l.netPut)} · {num(l.volume)} vol · {l.count} cons
+                    <span className="font-mono text-[11px] text-textPrimary tnum whitespace-nowrap" title={`Net calls, net puts, volume and the ${num(l.count)} contracts traded on ${l.ticker} ${dayAdv()}`}>
+                      C {fmtUsd(l.netCall)} · P {fmtUsd(l.netPut)} · {num(l.volume)} vol · {num(l.count)} cons
                     </span>
                   ) : (
                     <span className="font-mono text-[11px] text-textMuted whitespace-nowrap">{l.net >= 0 ? 'net bullish' : 'net bearish'}</span>

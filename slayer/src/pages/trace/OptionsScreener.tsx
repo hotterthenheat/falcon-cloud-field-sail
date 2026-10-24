@@ -45,7 +45,7 @@ import DropdownMulti from '../../components/ui/DropdownMulti';
 import BookDrill from '../../components/trace/BookDrill';
 import ContractCell from '../../components/trace/ContractCell';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
-import FlowSearch, { CONTRACT_FORMATS, matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { CONTRACT_FORMATS, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import LeanCell from '../../components/trace/LeanCell';
@@ -54,7 +54,7 @@ import { dayAdv, oiAfterWords, oiCoverOf, oiInWords, oiLags, oiPendingWords, oiR
 import { SectorName } from '../../components/trace/SectorMark';
 import WatchStar from '../../components/trace/WatchStar';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { ScreenerGuide } from '../../components/trace/TraceGuide';
 import { contractKey, watchContract } from '../../context/WatchContext';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
@@ -92,6 +92,7 @@ const phoneRow = (r: BookContract) => (
     lead={<WatchStar k={contractKey(r)} make={() => watchContract(r, 'screener')} />}
     title={
       <>
+        <CompanyLogo ticker={r.ticker} size={15} />
         <span className="font-bold">{r.ticker}</span>
         <span className="font-bold tnum">{r.strike}</span>
         <span className={r.right === 'C' ? 'text-bull' : 'text-bear'}>{r.right === 'C' ? 'call' : 'put'}</span>
@@ -142,7 +143,7 @@ const snap = (v: number, steps: number[]) => steps.reduce((best, s) => (s <= v ?
    floor here, the set at rest sums under the box, and the DTE (the contract cell carries the date) and the OI (the card,
    Vol/OI and ΔOI carry it) open folded — one click away in Columns. */
 /* the lean fits its words at 1440 (retail, round 10: "bid 53%…") */
-const WIDTHS: Record<string, number> = { time: 72, ticker: 84, contract: 132, dte: 56, otm: 70, last: 134, vol: 84, oi: 80, doi: 112, prem: 84, iv: 96, voloi: 64, sweep: 56, floor: 64, multi: 64, sector: 176, lean: 132 };
+const WIDTHS: Record<string, number> = { time: 76, ticker: 84, contract: 132, dte: 56, otm: 70, last: 140, vol: 84, oi: 80, doi: 120, prem: 84, iv: 92, voloi: 66, sweep: 60, floor: 64, multi: 64, sector: 176, lean: 132 };
 const TOOLTIPS: Record<string, string> = {
   time: 'When the contract last printed, New York — the bookmark tracks it in the Tracker',
   contract: 'The strike, the side and the expiry — click the row for the card',
@@ -210,8 +211,10 @@ const OptionsScreener = () => {
      and the sub-line says so */
   const unusual = screen === 'bullish' || screen === 'bearish' || screen === 'fresh' || screen === 'conviction-calls' || screen === 'conviction-puts';
   /* MOST ACTIVE IS ASKED BY VOLUME (the audit, 2026-10-22: it asked the vendor for premium order under "heaviest volume first") */
-  const hottest = useContracts(false, screen === 'active' ? 'stock' : null, screen === 'active' ? 'volume' : 'premium');
-  const unusualBook = useContracts(true);
+  /* A NAME SEARCHED IS ASKED FOR (audit round 11, major 5): the name's own contracts, in the screen's order, paged */
+  const askedName = useSearchedName(query);
+  const hottest = useContracts(false, screen === 'active' ? 'stock' : null, screen === 'active' ? 'volume' : 'premium', askedName, !unusual);
+  const unusualBook = useContracts(true, null, 'premium', askedName, unusual);
   const pack = unusual ? unusualBook : hottest;
   const liveBook = pack.rows;
   /* ONE hold for the whole page: paused, the book AND the tick freeze together */
@@ -282,7 +285,7 @@ const OptionsScreener = () => {
     }
     return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, pkgPrem, pkg, legPrem, legs, crossPrem, crosses };
   }, [rows]);
-  const bookReading = pack.waiting && liveBook.length === 0;
+  const bookReading = (pack.waiting && liveBook.length === 0) || searchedName(query) !== askedName;
   const champs = useMemo(() => {
     /* a day that was mostly floor-traded multi-leg packages — compression's shape — is named apart, never crowned the
        largest without saying so (the third audit; flowBook floorPackaged) */
@@ -311,7 +314,9 @@ const OptionsScreener = () => {
     if (filters.excludeItm) on.push('the moneyness');
     if (expiry) on.push('the expiry');
     if (query) on.push('the search');
-    return on.length ? `Nothing matches this cut — no contract passes ${on.join(', ')} together; loosen one of them${query ? ` (the search takes a name, or a contract written like ${CONTRACT_FORMATS})` : ''}` : 'Nothing has traded on the book';
+    /* in plain words (audit round 11, minor 5: "no contract passes … together") */
+    if (on.length === 1 && query) return `No contract on this list matches “${query}” — the search takes a name, or a contract written like ${CONTRACT_FORMATS}`;
+    return on.length ? `No contract fits all of these at once: ${on.join(', ')} — loosen one${query ? ` (the search takes a name, or a contract written like ${CONTRACT_FORMATS})` : ''}` : 'Nothing has traded on the book';
   }, [screen, filters, expiry, query]);
   const activeScreen = FLOW_SCREENS.find(s => s.key === screen) ?? FLOW_SCREENS[0];
   /* a DAY total, said so — the card it opens heads its own print */
@@ -428,15 +433,24 @@ const OptionsScreener = () => {
      folded — one click away in Columns */
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols_v3', ['floor', 'multi', 'sector', 'dte', 'oi']);
   /* WHAT THE BOOK IS (the audit: "every contract that traded today" headed the vendor's top 200) */
-  const pool = unusual
-    ? `from the vendor's unusual list — its 200 unusual contracts with the most premium ${dayAdv()}, the pool every unusual screen (bullish, bearish, new positioning, conviction calls and puts) reads`
+  /* NOT YET IS NOT NOTHING (retail, round 11: "the 0 single-stock contracts loaded" while the book read) */
+  const pool = bookReading
+    ? 'reading the book…'
+    : unusual
+    ? `from the vendor's unusual list — the ${num(liveBook.length)} unusual contracts loaded, most premium ${dayAdv()} first (more as you scroll), the pool every unusual screen (bullish, bearish, new positioning, conviction calls and puts) reads`
     : screen === 'active'
-      ? `the 200 single-stock contracts with the most volume ${dayAdv()}`
-      : `the 200 contracts with the most premium ${dayAdv()}`;
+      ? `the ${num(liveBook.length)} single-stock contracts loaded, most volume ${dayAdv()} first — more as you scroll`
+      : `the ${num(liveBook.length)} contracts loaded, most premium ${dayAdv()} first — more as you scroll`;
   const chooserCols = useMemo(() => columns.map(c => ({ key: c.key, label: typeof c.header === 'string' ? c.header : c.key })), [columns]);
   const screenOptions = useMemo<DropdownOption<ScreenKey>[]>(() => FLOW_SCREENS.map(s => ({ value: s.key, label: s.label, hint: s.hint })), []);
   const tenorGroups = useMemo(() => [{ title: 'Tenor', options: SLEEVES.map(s => ({ value: s.key, label: s.label, hint: s.blurb })) }], []);
   const openCut = (q: string) => setParams(new URLSearchParams(q), { replace: true });
+  /* ONE PLAIN LINE (retail, round 11) — the money on this screen and where it went; the full read behind "more" */
+  const leadLine = bookReading
+    ? 'Reading the book…'
+    : rows.length === 0
+      ? sentence
+      : `${fmtUsd(facts.prem)} traded ${dayAdv()} on ${num(rows.length - facts.pkg - facts.legs - facts.crosses)} contracts across ${num(facts.names)} names — ${facts.callPct}% in calls, ${100 - facts.callPct}% in puts.`;
 
   return (
     <>
@@ -450,7 +464,7 @@ const OptionsScreener = () => {
         facts={
           <>
             <Fact label={facts.pkg || facts.legs || facts.crosses ? 'Premium · packages, legs & crosses out' : 'Premium'} testId="premium" title={facts.pkg || facts.legs || facts.crosses ? `The day's premium of the contracts on this cut, less ${num(facts.pkg)} whose day was mostly floor-traded multi-leg packages (${fmtUsd(facts.pkgPrem)}), ${num(facts.legs)} whose day was half or more legs of multi-leg orders (${fmtUsd(facts.legPrem)}) and ${num(facts.crosses)} whose day was half or more cross trades (${fmtUsd(facts.crossPrem)}) — set apart, not single bets` : "The day's premium of the contracts on this cut"}>
-              {bookReading ? <span className="text-textMuted">—</span> : fmtUsd(facts.prem)}
+              {bookReading ? <span className="text-textMuted">Reading…</span> : fmtUsd(facts.prem)}
               {/* no premium, no split — "calls 0% / puts 100%" on $0 was a division by nothing */}
               {facts.prem > 0 && (
                 <>
@@ -460,10 +474,10 @@ const OptionsScreener = () => {
               )}
             </Fact>
             <Fact label="Contracts" testId="contracts" title="The single bets on this cut and the names they span; floor packages, days of spread legs and days of crosses are counted apart — not bets">
-              {bookReading ? <span className="text-textMuted">—</span> : <>{num(rows.length - facts.pkg - facts.legs - facts.crosses)} <span className="text-textSecondary">bets · {facts.names} names{facts.pkg + facts.legs + facts.crosses ? ` · ${num(facts.pkg + facts.legs + facts.crosses)} apart` : ''}</span></>}
+              {bookReading ? <span className="text-textMuted">Reading…</span> : <>{num(rows.length - facts.pkg - facts.legs - facts.crosses)} <span className="text-textSecondary">bets · {facts.names} names{facts.pkg + facts.legs + facts.crosses ? ` · ${num(facts.pkg + facts.legs + facts.crosses)} apart` : ''}</span></>}
             </Fact>
             <Fact label="Vol ≥ 1.5× OI" testId="fresh" title={`Single-bet contracts on this cut (floor packages, spread legs and crosses left out) whose volume ${dayAdv()} is at least 1.5 times their open interest — positions likely built in the session (the one floor across Trace; a contract with no open interest before the session is new and not counted)`}>
-              {bookReading ? <span className="text-textMuted">—</span> : facts.fresh}
+              {bookReading ? <span className="text-textMuted">Reading…</span> : facts.fresh}
             </Fact>
             {champs.call && champs.call !== champs.all && (
               <Champion label="Top call" ink="plain" title="The biggest single bet among the calls: the most premium among contracts whose day was not mostly floor-traded packages, spread legs (half or more in multi-leg orders) or cross trades — those are set apart, not bets" onOpen={() => setOpenKey(champs.call!.key)} testId="top-call">
@@ -476,7 +490,9 @@ const OptionsScreener = () => {
               </Champion>
             )}
             {champs.all && (
-              <Champion label="Largest" ink="supreme" title="The biggest single bet by premium — the most premium among contracts whose day was not mostly floor-traded packages, spread legs (half or more in multi-leg orders) or cross trades. Not a side: the Lean column says which way it leaned" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
+              /* THE SCOPE IN THE PILL (retail, round 11: the tape's "Most premium" — every name, index included — and this
+                 "Largest" — single stocks on Most active — disagreed unless the fine print was read) */
+              <Champion label={`Largest · ${screen === 'active' ? 'single stocks' : unusual ? 'unusual list' : 'all names incl. index'}`} ink="supreme" title="The biggest single bet by premium — the most premium among contracts whose day was not mostly floor-traded packages, spread legs (half or more in multi-leg orders) or cross trades. Not a side: the Lean column says which way it leaned" onOpen={() => setOpenKey(champs.all!.key)} testId="largest">
                 {pill(champs.all)}
               </Champion>
             )}
@@ -517,12 +533,17 @@ const OptionsScreener = () => {
                 {cuts.said}
               </p>
             )}
+          </>
+        }
+        lead={leadLine}
+        detail={
+          <>
             <RichRead text={sentence} />
             <TermLine keys={['floor', 'spreadLegs', 'volOi', 'doi', 'stockLike', 'oiDay']} testId="screener" />
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(pack.older, 'contracts', "the vendor's list for the day is done", hold.paused, 'Load more ↓')} emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
         {pack.fault && rows.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
       <BookDrill list={rows} openKey={openKey} onOpen={setOpenKey} tick={tick} />

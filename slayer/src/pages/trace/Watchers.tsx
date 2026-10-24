@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import { buildCatches, floorPackaged, notABetHint, notABetLabel, FRESH_VOL_OI, notABet, spreadLegHint, stockLike, volOiText, reasonPhrase, WATCHERS, type WatcherKey, type Catch } from '../../data/flowBook';
-import { dayLean, indexRoot, INDEX_OTM_TITLE, standing, useLiveBook, usd as fmtUsd } from '../../data/traceLive';
+import { dayLean, indexRoot, INDEX_OTM_TITLE, standing, useSearchBook, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, dayPos, earnWords, shyPct } from '../../components/trace/dayWords';
 import { reasonSentence, useReasons } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
@@ -61,9 +61,9 @@ import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import ReasonDoor from '../../components/trace/ReasonDoor';
 import ReadDoor from '../../components/trace/ReadDoor';
-import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { WatchersGuide } from '../../components/trace/TraceGuide';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
@@ -121,6 +121,7 @@ const phoneRow = (a: Catch) => (
     lead={<WatchStar k={contractKey(a.row)} make={() => watchContract(a.row, 'watchers')} />}
     title={
       <>
+        <CompanyLogo ticker={a.row.ticker} size={15} />
         <span className="font-bold">{a.row.ticker}</span>
         <span className="font-bold tnum">{a.row.strike}</span>
         <span className={a.row.right === 'C' ? 'text-bull' : 'text-bear'}>{a.row.right === 'C' ? 'call' : 'put'}</span>
@@ -160,10 +161,14 @@ const Watchers = () => {
 
   /* THE MARKET'S BOOK ONLY (audit round 5: the shell's active ticker was silently added — the market's top 200 plus its
      top 80 — so changing the ticker elsewhere changed the "market" figures). A name is read with the search. */
-  const bookPack = useLiveBook(null);
+  /* ENDLESS (the owner, 2026-10-23): the screener's next pages by premium as the reader scrolls */
+  /* A NAME SEARCHED IS ASKED FOR (audit round 11, major 5): the watchers run over that name's own book, paged */
+  const askedName = useSearchedName(query);
+  const bookPack = useSearchBook(askedName);
+  const bookWord = bookPack.name ? `${bookPack.name}'s book` : "the market's book";
   const liveBook = bookPack.rows;
   /* NOT YET IS NOT NOTHING (audit round 8, major 5: "Contracts caught 0 … Nothing flagged today" while the book loaded) */
-  const reading = bookPack.waiting && liveBook.length === 0;
+  const reading = (bookPack.waiting && liveBook.length === 0) || searchedName(query) !== askedName;
   // The shared hold (see LiveHold): book and tick freeze together while paused.
   const hold = useHold(useMemo(() => ({ book: liveBook, tick: marketData }), [liveBook, marketData]), activeTicker, !reading);
   const { book: heldBook, tick } = hold.value;
@@ -234,7 +239,7 @@ const Watchers = () => {
 
   /* ReactNode, not a string: the newest contract is a DOOR, opening the same card (Noah, 2026-08-30). */
   const read = useMemo<ReactNode>(() => {
-    if (reading) return <RichRead text="Reading the market's book…" />;
+    if (reading) return <RichRead text={`Reading ${bookWord}…`} />;
     if (bookPack.fault && heldBook.length === 0) return <RichRead text="The book did not answer — the watchers run when it does." />;
     if (catches.length === 0) return <RichRead text={`Nothing flagged ${dayAdv()} — the desk is watching.`} />;
     const byRule = new Map<string, number>();
@@ -254,7 +259,7 @@ const Watchers = () => {
     const names = new Set(catches.map(a => a.row.ticker)).size;
     return (
       <>
-        <RichRead text={`${catches.length} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the ${num(bookSize)} standing contracts on the market's book (the vendor's 200 with ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}) — [[${loud[1]}]] because ${why}.${yours} Most recent print: `} />
+        <RichRead text={`${num(catches.length)} ${catches.length === 1 ? 'contract' : 'contracts'} caught on ${names} names among the ${num(bookSize)} standing contracts on ${bookWord} (the contracts loaded, ${dayPos()} heaviest premium${stand.expired ? `; ${num(stand.expired)} that expired at ${dayPos()} bell left out` : ''}) — [[${num(loud[1])}]] because ${why}.${yours} Most recent print: `} />
         <ReadDoor onOpen={() => setOpenKey(latest.row.key)}>
           {latest.row.ticker} {latest.row.strike}
           {latest.row.right}
@@ -262,7 +267,7 @@ const Watchers = () => {
         <RichRead text={`, last at $${latest.last.toFixed(2)} (${latest.time} ET), ${fmtUsd(latest.premium)} ${dayAdv()}.`} />
       </>
     );
-  }, [catches, reasonOf, bookSize, stand.expired, reading, bookPack.fault, heldBook.length]);
+  }, [catches, reasonOf, bookSize, stand.expired, reading, bookPack.fault, heldBook.length, bookWord]);
 
   const activeRule = rule === 'ALL' ? null : reasonOf(rule);
   /* The Reason card: every reason, the desk's then yours */
@@ -450,12 +455,12 @@ const Watchers = () => {
         facts={
           <>
             {/* the most frequent reason, named, its count after — never a reason read as a noun */}
-            <Fact label="Contracts caught" testId="caught" title={`Contracts on the market's book (the ${num(bookSize)} standing ones among the vendor's 200 with the most premium ${dayAdv()}, every name — the terminal's ticker is not added) that meet a reason — each counted once, whatever number of reasons it meets`}>
+            <Fact label="Contracts caught" testId="caught" title={`Contracts on ${bookWord} (the ${num(bookSize)} standing ones among the contracts loaded, most premium ${dayAdv()} first — more as you scroll, every name — the terminal's ticker is not added) that meet a reason — each counted once, whatever number of reasons it meets`}>
               {reading ? <span className="text-textMuted">—</span> : num(facts.total)}
               {!reading && facts.loudName && (
                 <span className="text-textSecondary">
                   {' '}
-                  · most often {facts.loudName} ({facts.loudCount})
+                  · most often {facts.loudName} ({num(facts.loudCount)})
                 </span>
               )}
             </Fact>
@@ -506,12 +511,17 @@ const Watchers = () => {
                 {cuts.said}
               </p>
             )}
+          </>
+        }
+        lead={reading ? `Reading ${bookWord}…` : catches.length === 0 ? `Nothing on ${bookWord} meets a reason ${dayAdv()}.` : `${num(facts.total)} contracts on ${bookWord} meet a reason ${dayAdv()}${facts.loudName ? ` — most often “${facts.loudName}”` : ''}${facts.mine ? `, ${num(facts.mine)} from yours` : ''}.`}
+        detail={
+          <>
             {read}
             <TermLine keys={['standing', 'floor', 'spreadLegs', 'volOi', 'stockLike']} testId="watchers" />
           </>
         }
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight emptyText={reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} flexes={FLEXES} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={selectedId} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts on the book', "the vendor's list for the day is done", hold.paused, 'Load more ↓')} emptyText={query.trim() && book.some(r => matchesContract(query, r)) ? `${query.trim()} is on ${bookWord} but meets no reason ${dayAdv()}` : query.trim() && catches.length > 0 ? searchMiss(query, 'catch') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the watchers run when the book answers' : 'Nothing on the book meets a reason yet — the desk is watching'} testId="watchers" />
       </TraceBox>
 
       <BookDrill list={drillList} openKey={openKey} onOpen={setOpenKey} tick={tick} />

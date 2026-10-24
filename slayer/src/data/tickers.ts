@@ -120,7 +120,7 @@ const BRAND_CASE: Record<string, string> = {
   datadog: 'Datadog', moneylion: 'MoneyLion', sofi: 'SoFi', robinhood: 'Robinhood', ipg: 'IPG', directv: 'DirecTV', duPont: 'DuPont', dupont: 'DuPont',
   'at&t': 'AT&T', 'p&g': 'P&G', 'h&r': 'H&R', 'l3harris': 'L3Harris', 'iheartmedia': 'iHeartMedia', 'irobot': 'iRobot', 'iqiyi': 'iQIYI', 'nextera': 'NextEra',
   'globalfoundries': 'GlobalFoundries', 'marketaxess': 'MarketAxess', 'firstenergy': 'FirstEnergy', 'centerpoint': 'CenterPoint', 'novocure': 'NovoCure',
-  nasdaq: 'Nasdaq', tsmc: 'TSMC', asml: 'ASML', xpeng: 'XPeng', unitedhealth: 'UnitedHealth', ge: 'GE',
+  nasdaq: 'Nasdaq', eni: 'Eni', tsmc: 'TSMC', asml: 'ASML', xpeng: 'XPeng', unitedhealth: 'UnitedHealth', ge: 'GE',
 };
 const CONNECTORS = new Set(['of', 'and', 'the', 'for', 'de', 'la', 'du', 'des', 'del', 'et', 'und', 'on', 'in', 'at', 'by', 'to']);
 const casedWord = (w: string): string => {
@@ -324,4 +324,67 @@ export function companiesInHeadline(headline: string): string[] {
     }
   }
   return out;
+}
+
+/* ---- PEOPLE AND PLACES IN THE VENDOR'S CAPITALS (round 11) ------------------------------------------------------------
+   Form 4 names come as the SEC files them, surname first in capitals ("COHEN RYAN", "HOYER JAMES", "SECHAN II ROBERT"):
+   printed as a reader says them, "Ryan Cohen", "Robert Sechan II". A filer that is an entity (a fund, an LLC, a trust)
+   goes through the company casing instead. A name already in mixed case is the filer's own and is kept. */
+const ENTITY_WORD = /\b(?:LLC|L\.?L\.?C|LP|L\.P|LTD|INC|CORP|CORPORATION|COMPANY|CO|FUND|FUNDS|TRUST|PARTNERS|PARTNERSHIP|CAPITAL|HOLDINGS?|GROUP|MANAGEMENT|ADVISORS?|INVESTMENTS?|ASSOCIATES|FOUNDATION|BANK|PLC|SA|AG|NV|LIMITED|VENTURES|ESTATE|MASTER|OPPORTUNIT(?:Y|IES)|STRATEGIES|EQUITY|LLP)\b\.?/i;
+const NAME_SUFFIX = new Set(['JR', 'SR', 'II', 'III', 'IV', 'V', 'MD', 'PHD', 'ESQ']);
+const SURNAME_PARTICLE = new Set(['ST', 'VAN', 'VON', 'DE', 'DEL', 'DELLA', 'DA', 'DI', 'LA', 'LE', 'DU', 'MAC', 'MC', 'O', 'DOS', 'DAS', 'TEN', 'TER']);
+const casePersonWord = (w: string): string => {
+  if (!w) return w;
+  const bare = w.replace(/[.,]+$/, '');
+  const tail = w.slice(bare.length);
+  const up = bare.toUpperCase();
+  if (NAME_SUFFIX.has(up)) return (up === 'JR' || up === 'SR' ? up.charAt(0) + up.slice(1).toLowerCase() + '.' : up) + (tail === '.' ? '' : tail);
+  if (up.length === 1) return up + tail;
+  const one = (part: string) => {
+    const lower = part.toLowerCase();
+    if (/^mc[a-z]{2,}/.test(lower)) return 'Mc' + lower.charAt(2).toUpperCase() + lower.slice(3);
+    if (/^o'[a-z]/.test(lower)) return "O'" + lower.charAt(2).toUpperCase() + lower.slice(3);
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  };
+  return bare.split('-').map(one).join('-') + tail;
+};
+/** A person or a filer as printed: "COHEN RYAN" → "Ryan Cohen"; an entity cased as a company; mixed case kept */
+export function personDisplay(raw: string | null | undefined): string {
+  const s = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  if (s !== s.toUpperCase()) return s;
+  if (ENTITY_WORD.test(s)) return displayName(s, 'legal');
+  /* "LAST, FIRST MIDDLE" or "LAST FIRST MIDDLE [SUFFIX]" */
+  const comma = s.indexOf(',');
+  let last: string[];
+  let rest: string[];
+  if (comma > 0) {
+    last = s.slice(0, comma).trim().split(' ');
+    rest = s.slice(comma + 1).trim().split(' ').filter(Boolean);
+  } else {
+    const words = s.split(' ');
+    if (words.length < 2) return casePersonWord(s);
+    let k = 1;
+    while (k < words.length - 1 && SURNAME_PARTICLE.has(words[k - 1].toUpperCase().replace(/\.$/, ''))) k += 1;
+    last = words.slice(0, k);
+    rest = words.slice(k);
+  }
+  const suffix = rest.filter(w => NAME_SUFFIX.has(w.toUpperCase().replace(/[.,]$/, '')));
+  const lastSuffix = last.filter(w => NAME_SUFFIX.has(w.toUpperCase().replace(/[.,]$/, '')));
+  const given = rest.filter(w => !suffix.includes(w));
+  const surname = last.filter(w => !lastSuffix.includes(w));
+  return [...given, ...surname, ...lastSuffix, ...suffix].map(casePersonWord).join(' ');
+}
+/** A place in the vendor's capitals ("UNITED STATES") as a reader writes it ("United States") */
+export function placeDisplay(raw: string | null | undefined): string {
+  const s = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!s || s !== s.toUpperCase()) return s;
+  const small = new Set(['of', 'and', 'the', 'da', 'de', 'la']);
+  return s
+    .toLowerCase()
+    .split(' ')
+    .map((w, i) => (i > 0 && small.has(w) ? w : w.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('-')))
+    .join(' ')
+    .replace(/\bUsa\b/, 'USA')
+    .replace(/\bUk\b/, 'UK');
 }

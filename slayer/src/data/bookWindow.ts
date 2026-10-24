@@ -2,7 +2,7 @@ import type { MarketSnapshot, StrikeNode } from '../types/market';
 import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday } from '../core/calendar';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
-import { bookCandles, bookRevision, peekEntry, peekSessionAll } from './uwBook';
+import { bookCandles, bookFixed, bookRevision, fixedAsOfWords, peekEntry, peekSessionAll } from './uwBook';
 
 /*
 ==================================================
@@ -140,7 +140,7 @@ export function levelsDate(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): str
 }
 
 /* ---- WHICH DAY A DATE IS, SAID THE WAY THE CLOCK STANDS (the second re-audit, 2026-10-22) ----------------------------
-   After the close the book's "today" is the next session's contracts (bookToday rolls at 16:15), and the pages printed
+   After the close the book's "today" is the next session's contracts (bookToday rolls at 16:00), and the pages printed
    "SUPREME · TODAY · OCT 23", "Expires today", "EXPIRES AT THE CLOSE 16%" next to "NOW after the close" — about Friday's
    contracts on Thursday evening. A date is "Today" only while today's session has not closed; after it (or on a day with
    no session) the first session ahead is "Next session"; anything later is its own date. */
@@ -287,6 +287,8 @@ export interface SessionBook {
   why: string | null;
   /** True after today's close (the report is a finished day) */
   after: boolean;
+  /** The book is a stand-in until the session's own book is in (its dates still landing) — nothing is frozen off it */
+  provisional?: boolean;
 }
 
 const sessionMemo = new WeakMap<MarketSnapshot, Map<string, SessionBook>>();
@@ -345,9 +347,16 @@ function sessionBookRaw(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): Sessio
     const e = peekEntry(snapshot.ticker);
     if (sameDay && e?.gammaLive && e.all.length) {
       /* one snapshot (the seventh audit's m9): the dates' own rows with the settled day's put back, once all are in */
-      const chain = (peekSessionAll(snapshot.ticker, s.today) ?? e.all).slice();
-      registerChainDates(chain, Object.keys(by).filter(d => d >= isoDate(bookToday()) && by[d]?.length));
+      /* UNTIL EVERY DATE IS IN, THE VENDOR'S WHOLE-BOOK ROWS STAND IN — AND SAY SO (the eleventh audit's M2, 2026-10-23: the
+         Board's "Flip crossed" read "no flip" on all 20 names in All expiries — its count was frozen off this stand-in,
+         read as final with only the front date re-priced and the rest carried flat, before the dates landed). The
+         stand-in is the whole book (the flip is final only once every listed date is in), and marked provisional so no
+         count is frozen off it. */
+      const one = peekSessionAll(snapshot.ticker, s.today);
+      const chain = (one ?? e.all).slice();
+      if (one) registerChainDates(chain, Object.keys(by).filter(d => d >= isoDate(bookToday()) && by[d]?.length));
       return {
+        provisional: !one || undefined,
         book: { ...snapshot, chain, uwChains: { ...snapshot.uwChains, '0DTE': chain, ALL: chain } },
         label: rec.isToday ? `All expiries · as live in today's session, today's ${expirySpan([s.today])} contracts included` : `${longDay(s.today)} · All expiries${then}, its ${expirySpan([s.today])} contracts included`,
         why: null,
@@ -385,4 +394,13 @@ function sessionBookRaw(snapshot: MarketSnapshot, scope: 'ALL' | '0DTE'): Sessio
     why: null,
     after,
   };
+}
+
+/** THE CADENCE A PAGE'S "UPDATED" LINE NAMES (the eleventh audit's M3: "updated … · every 10s" on a closed market whose
+    book and prices no longer move): `live` in the session; "as of the Oct 23 close" once the closed market's book is held
+    (uwBook bookFixed); between them (the pre-market, the minutes after the bell) the levels' own cadence */
+export function cadenceWords(live = 'every 10s'): string {
+  if (sessionDay().open) return live;
+  if (bookFixed()) return `as of ${fixedAsOfWords()}`;
+  return 'levels about once a minute';
 }

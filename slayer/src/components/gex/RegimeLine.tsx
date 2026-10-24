@@ -12,7 +12,7 @@
 ==================================================
 */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { useLevelsFor } from '../../data/levelsFor';
 import { FLIP_RULE } from '../../data/flipLevel';
@@ -20,7 +20,7 @@ import { peekGammaPriced } from '../../data/uwBook';
 import { nyClock } from '../../core/nyTime';
 import { useLevelsScope } from '../../data/levelsScope';
 import GuideFocus from '../ui/GuideFocus';
-import { FIRST_TIME, GLOSSARY } from './glossary';
+import { FIRST_TIME, FIRST_TIME_EVENT, GLOSSARY } from './glossary';
 import { LONG_GAMMA, SHORT_GAMMA } from './paletteInk';
 import type { TickerLevels } from '../../data/levelsFor';
 
@@ -56,6 +56,12 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
   const said = regimeSentence(lv);
   const priced = lv ? peekGammaPriced(lv.ticker, lv.date) ?? peekGammaPriced(lv.ticker, null) : null;
   const [open, setOpen] = useState(false);
+  /* any page can open the card (glossary.ts openFirstTime — the Map's colour note links here) */
+  useEffect(() => {
+    const on = () => setOpen(true);
+    window.addEventListener(FIRST_TIME_EVENT, on);
+    return () => window.removeEventListener(FIRST_TIME_EVENT, on);
+  }, []);
   return (
     <div className="flex items-start gap-3 min-w-0 -mt-1" data-regime-line={said?.tone ?? 'pending'}>
       <p className="min-w-0 flex-1 text-[12px] leading-snug text-textSecondary" title={`Read off ${lv?.scopeLabel ?? 'the Levels card'}: the regime is the sign of net gamma on those contracts, the flip where it changes. ${GLOSSARY.flip}`}>

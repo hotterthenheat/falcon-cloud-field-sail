@@ -13,7 +13,9 @@
     Borrow fee, % a year         ≥ 50% → 2    ≥ 10% → 1
     Shares left to borrow        under 500K → 1
     Shares short vs prior report up 20% or more → 1
-    Short volume, latest session ≥ 65% of volume → 1     (file page only)
+    Short volume, latest session ≥ 50% of the session's FULL volume → 1     (file page only; round 11: the 71% GME
+      scored on was FINRA's off-exchange figure, 2.83M of 4.01M — of the session's 8.37M it was 34%. The off-exchange
+      share is said for what it is, and the point stands on the full-volume share, or not at all)
     Fails to deliver, last 30d   a day of ≥ 0.1% of the float → 1   (file page only)
 
   THE WORD
@@ -51,8 +53,11 @@ export interface SqueezeRead {
 
 /** Extra facts only a name's own file carries */
 export interface SqueezeExtras {
-  /** Latest session's short volume as a percent of total volume */
+  /** Latest session's short volume as a percent of the OFF-EXCHANGE volume FINRA reports (its own ratio) */
   shortVolPct?: number | null;
+  /** The same short volume as a percent of the session's full volume (the screener's day volume, same session) — the
+      figure the point is scored on; null when it cannot be read, and then no point is given */
+  shortVolFullPct?: number | null;
   /** The largest single fail-to-deliver day in the last 30 days, in shares */
   maxFtdShares?: number | null;
 }
@@ -108,7 +113,10 @@ export function squeezeRead(row: ShortRow, extras: SqueezeExtras = {}): SqueezeR
   if (row.availableM != null) add(row.availableM < 0.5 ? 1 : 0, `only ${row.availableM >= 0.1 ? `${row.availableM.toFixed(2)}M` : `${Math.round(row.availableM * 1000)}K`} shares left to borrow`, row.availableM >= 10 - 1e-9 ? 'plenty of shares left to borrow (10M+)' : undefined);
   const change = row.changePct ?? shortChangePct(row);
   if (change != null) add(change >= 20 ? 1 : 0, `shares short up ${pct(change, 0)} since the prior report`, change <= -10 ? `shares short down ${pct(Math.abs(change), 0)} since the prior report` : undefined);
-  if (extras.shortVolPct != null) add(extras.shortVolPct >= 65 ? 1 : 0, `${pct(extras.shortVolPct, 0)} of the last session's volume was short sales`);
+  if (extras.shortVolFullPct != null) {
+    const off = extras.shortVolPct != null ? `${pct(extras.shortVolPct, 0)} of off-exchange volume was short sales, ` : '';
+    add(extras.shortVolFullPct >= 50 ? 1 : 0, `${off}${pct(extras.shortVolFullPct, 0)} of the session's full volume`, `${off}${pct(extras.shortVolFullPct, 0)} of the session's full volume — under the 50% rung`);
+  }
   if (extras.maxFtdShares != null && row.floatM > 0) {
     const ftdPct = (extras.maxFtdShares / (row.floatM * 1e6)) * 100;
     add(ftdPct >= 0.1 ? 1 : 0, `a day of ${Math.round(extras.maxFtdShares / 1000).toLocaleString('en-US')}K shares failed to deliver in the last 30 days`);
@@ -129,4 +137,4 @@ export function squeezeRead(row: ShortRow, extras: SqueezeExtras = {}): SqueezeR
 export const SQUEEZE_INK: Record<SqueezeWord, string> = { weak: 'text-textSecondary', building: 'text-warn', strong: 'text-bear', fund: 'text-textMuted' };
 
 export const SQUEEZE_TIP =
-  'A rule-based read, not a forecast. Points: short interest ≥40% of float 3 (≥30% 2, ≥20% 1) · days to cover ≥10 2 (≥5 1) · borrow fee ≥50%/yr 2 (≥10% 1) · under 500K shares left to borrow 1 · shares short up 20%+ since the prior report 1 (a name\'s file adds: short volume ≥65% of the last session 1, a fail-to-deliver day ≥0.1% of the float 1). Strong: 6+ points from three or more facts, 20%+ of the float short and a tight borrow (fee 10%+ or under 500K left). Building: 4+ points from two or more facts. Weak: the rest. A fund (an ETF) gets no read: its shorts are met by creating new shares.';
+  'A rule-based read, not a forecast. Points: short interest ≥40% of float 3 (≥30% 2, ≥20% 1) · days to cover ≥10 2 (≥5 1) · borrow fee ≥50%/yr 2 (≥10% 1) · under 500K shares left to borrow 1 · shares short up 20%+ since the prior report 1 (a name\'s file adds: short volume ≥50% of the last session\'s full volume — not FINRA\'s off-exchange share — 1, a fail-to-deliver day ≥0.1% of the float 1). Strong: 6+ points from three or more facts, 20%+ of the float short and a tight borrow (fee 10%+ or under 500K left). Building: 4+ points from two or more facts. Weak: the rest. A fund (an ETF) gets no read: its shorts are met by creating new shares.';
