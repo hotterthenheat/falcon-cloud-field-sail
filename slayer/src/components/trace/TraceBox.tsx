@@ -87,8 +87,12 @@ interface TraceBoxProps {
   facts: ReactNode;
   /** The one line of cards */
   controls: ReactNode;
-  /** The page's sentence (RichRead + doors) */
+  /** The page's sentence (RichRead + doors) — with `lead`, what always stands above the lead (the saved cuts) */
   sentence: ReactNode;
+  /** ONE PLAIN LINE FIRST (retail, round 11: each page opened on ~120 words of desk-speak): what happened, in a retail
+      trader's words; the page's full read (`detail`) waits behind "more" */
+  lead?: ReactNode;
+  detail?: ReactNode;
   guide?: { title: string; door: string; body: ReactNode; testId: string; open: boolean; onOpen: (v: boolean) => void };
   children: ReactNode;
   testId: string;
@@ -100,10 +104,11 @@ interface TraceBoxProps {
   foldOnPhone?: boolean;
 }
 
-export const TraceBox = ({ title, sub, facts, controls, sentence, guide, children, testId, className = '', data, foldOnPhone = false }: TraceBoxProps) => {
+export const TraceBox = ({ title, sub, facts, controls, sentence, lead, detail, guide, children, testId, className = '', data, foldOnPhone = false }: TraceBoxProps) => {
   const attrs = Object.fromEntries(Object.entries(data ?? {}).map(([k, v]) => [`data-${k}`, v]));
   const phone = useIsPhone();
   const [unfolded, setUnfolded] = useState(false);
+  const [more, setMore] = useState(false);
   const folded = foldOnPhone && phone && !unfolded;
   return (
     /* overflow-CLIP, not hidden: hidden makes the box a scroll container, and
@@ -164,10 +169,33 @@ export const TraceBox = ({ title, sub, facts, controls, sentence, guide, childre
       )}
       {/* a div, not a p: the saved cuts' chips and the status line stand inside the sentence (2026-10-13) */}
       {/* no sentence, no line — a page whose body already says it (the Tracker's empty desk) never says it twice */}
-      {sentence != null && sentence !== false && (
+      {lead != null ? (
         <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
           {sentence}
+          <p className="text-[13px] leading-snug text-textPrimary" data-trace-lead>
+            {lead}
+            {detail != null && detail !== false && (
+              <>
+                {' '}
+                <button type="button" onClick={() => setMore(v => !v)} aria-expanded={more} className="font-mono text-[11px] text-textSecondary underline decoration-dotted underline-offset-2 hover:text-textPrimary" data-trace-more>
+                  {more ? 'less' : 'more'}
+                </button>
+              </>
+            )}
+          </p>
+          {more && detail != null && detail !== false && (
+            <div className="mt-1.5" data-trace-detail>
+              {detail}
+            </div>
+          )}
         </div>
+      ) : (
+        sentence != null &&
+        sentence !== false && (
+          <div className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-trace-sentence>
+            {sentence}
+          </div>
+        )
       )}
       {children}
     </div>
@@ -182,7 +210,7 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
     <span className="flex items-center gap-2 min-w-0">
       {lead}
       {/* the title gives way to the time at its right — it clips, never runs under it */}
-      <span className="min-w-0 flex-1 overflow-hidden flex items-center gap-1.5 font-mono text-[12px] text-textPrimary whitespace-nowrap">{title}</span>
+      <span className="min-w-0 flex-1 overflow-hidden flex items-center gap-1.5 font-mono text-[12px] text-textPrimary whitespace-nowrap [&>*:first-child]:shrink-0">{title}</span>
       {aside && <span className="ml-auto shrink-0 font-mono text-[11px] tnum text-textSecondary">{aside}</span>}
     </span>
     <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap font-mono text-[11px] tnum text-textSecondary pl-5">
@@ -325,6 +353,10 @@ export interface EndlessFeed {
   state: 'more' | 'loading' | 'end' | 'cap' | 'idle';
   /** What the rows loaded are, and why it stopped — the foot's words */
   note?: ReactNode;
+  /** The button's word — "Load older ↓" for a list walked back in time; a list walked down by size says "Load more ↓" */
+  moreLabel?: string;
+  /** Anything else the foot carries (the tape's jump to a time) */
+  extra?: ReactNode;
 }
 
 export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
@@ -382,13 +414,20 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
   latest.current = rows;
   const landedAt = useRef(0);
   const [landN, setLandN] = useState(0);
-  const cutting = !calm && Math.abs(rows.length - landed.current.length) > Math.max(CUT_JUMP, landed.current.length * 0.15);
+  /* AN OLDER PAGE JOINING UNDER THE ROWS IS NOT A CUT (audit round 11, major 2): the same head, more rows below — it passes
+     straight through, so an endless list never holds its old rows while a page lands */
+  const sameHead = !!endless && rows.length > landed.current.length && landed.current.length > 0 && rowKey(rows[0]) === rowKey(landed.current[0]);
+  const cutting = !calm && !sameHead && Math.abs(rows.length - landed.current.length) > Math.max(CUT_JUMP, landed.current.length * 0.15);
   /* what the grid holds: the rows it had, while they step back; else the page's rows as they come */
   const gridRows = cutting ? landed.current : rows;
   useEffect(() => {
     if (!cutting) landed.current = rows;
   });
   const rowsBody = () => wrapRef.current?.querySelector<HTMLElement>('.ag-grid-scrolling-rows') ?? null;
+  /* A CUT ALWAYS LANDS (audit round 11, major 1: typed "NVDA 220C 11/20" + Enter, the head read "6 of 2,426" while the grid
+     kept SOXL, SPXW and SPY rows for 16s+): the held rows land after the step back, and when the rows moved again by then
+     — still a cut against what landed — the next step back is set, rather than the grid waiting on an effect that had
+     already run (the hold re-arms on every landing, `landN`) */
   useEffect(() => {
     if (!cutting) return;
     const body = rowsBody();
@@ -404,7 +443,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
       if (performance.now() - landedAt.current > 50) out?.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cutting]);
+  }, [cutting, landN]);
   /* THE COME-UP starts on the first frame AFTER the new rows are in — the grid mounts them in the tasks that follow the
      commit, so the moment is read off the rows themselves (a mutation, then a frame), with a floor so an empty list that
      never mutates still comes up */
@@ -514,8 +553,31 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
     nearEnd(e.api);
     tellVisible(e.api);
   };
-  /* ONLY ON DEMAND: a scroll near the bottom asks (onBodyScroll), or the foot's button — rows landing never chain another
-     page on their own (a cut that keeps few rows would otherwise walk the whole day unasked) */
+  /* ONLY ON DEMAND: a scroll near the bottom asks (onBodyScroll), or the foot's button. A page that LANDED under a reader
+     still at the bottom asks for the next one (audit round 11, major 2: "scrolled to the bottom, one page loaded, then it
+     stopped" — a page that added a few rows left the reader at the end with no scroll to come) — but only while each page
+     adds rows: a page that adds none stops there, so a cut that keeps few rows never walks the whole day unasked */
+  const shownN = gridRows.length;
+  const lastN = useRef(shownN);
+  useEffect(() => {
+    const grew = shownN > lastN.current;
+    lastN.current = shownN;
+    if (!grew || !windowed) return;
+    const api = gridRef.current?.api;
+    if (api) nearEnd(api);
+  }, [shownN, endless?.state]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* a short list (no window — the page scrolls) asks when its foot comes into view */
+  const footRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = footRef.current;
+    if (!el || windowed || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(es => {
+      const en = endlessRef.current;
+      if (es.some(e => e.isIntersecting) && en && en.state === 'more') en.onNear();
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [windowed, endless?.state, shownN]);
   useEffect(() => {
     if (topSignal) scrollToTop();
   }, [topSignal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -578,7 +640,10 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
        drawn, and the other 66 landed in a second task ~230ms later — the grid draws rows in animation frames by
        default, a scrolling grid's habit. Ours never scroll (autoHeight, 80 rows at rest), so suppressAnimationFrame
        puts every row in the first paint, and the whole box comes up over the table curve (index.css grid-in). */
-    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''}`} style={windowed ? { height: `min(${pageHeight}px, calc(100dvh - 72px))`, minHeight: 360 } : autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-grid={testId} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
+    /* THE FOOT STANDS UNDER THE WINDOW, NEVER INSIDE IT (audit round 11, major 2: the window is a fixed height and the foot
+       sat in it, under the grid — pushed out of the box, behind the page, its "Load older" unclickable at 1440 and 390) */
+    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
+     <div className="relative" style={windowed ? { height: `min(${pageHeight}px, calc(100dvh - 72px))`, minHeight: 360 } : autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-window>
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<T>
           ref={gridRef}
@@ -606,18 +671,6 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
           overlayNoRowsTemplate={`<span class="font-mono text-[11px] text-textSecondary">${emptyText}</span>`}
         />
       </AgGridProvider>
-      {paged && <PageBar page={pager.page} pages={Math.max(pager.pages, Math.ceil(gridRows.length / TRACE_PAGE))} onPage={n => gridRef.current?.api.paginationGoToPage(n)} testId={testId} />}
-      {endless && (gridRows.length > 0 || endless.state === 'loading') && (
-        <div className="px-5 py-2.5 border-t border-borderSubtle flex items-center gap-3 font-mono text-[11px] text-textSecondary" data-endless-foot={endless.state}>
-          <span className="min-w-0 break-words">{endless.note}</span>
-          {endless.state === 'more' && (
-            <button type="button" onClick={endless.onNear} className="ml-auto shrink-0 rounded-md border border-borderSubtle bg-chip px-2.5 py-1 text-textPrimary hover:border-borderMuted" data-endless-more>
-              Load older ↓
-            </button>
-          )}
-          {endless.state === 'loading' && <span className="ml-auto shrink-0 text-textMuted">Loading older…</span>}
-        </div>
-      )}
       {showTop && (!autoHeight || windowed) && (
         <button
           onClick={scrollToTop}
@@ -629,6 +682,20 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
           <ArrowUp className="w-4 h-4" />
         </button>
       )}
+     </div>
+      {paged && <PageBar page={pager.page} pages={Math.max(pager.pages, Math.ceil(gridRows.length / TRACE_PAGE))} onPage={n => gridRef.current?.api.paginationGoToPage(n)} testId={testId} />}
+      {endless && (gridRows.length > 0 || endless.state === 'loading') && (
+        <div ref={footRef} className="relative z-[1] bg-panel px-5 py-2.5 border-t border-borderSubtle flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] text-textSecondary" data-endless-foot={endless.state}>
+          <span className="min-w-0 flex-1 basis-[14rem] break-words">{endless.note}</span>
+          {endless.extra}
+          {endless.state === 'more' && (
+            <button type="button" onClick={endless.onNear} className="ml-auto shrink-0 rounded-md border border-borderSubtle bg-chip px-2.5 py-1 text-textPrimary hover:border-borderMuted" data-endless-more>
+              {endless.moreLabel ?? 'Load older ↓'}
+            </button>
+          )}
+          {endless.state === 'loading' && <span className="ml-auto shrink-0 text-textMuted">{endless.moreLabel ? 'Loading…' : 'Loading older…'}</span>}
+        </div>
+      )}
     </div>
   );
 };
@@ -636,13 +703,15 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
 export default TraceBox;
 
 /** An endless grid's foot from a list's older pages (traceLive useOlderPages): how many are loaded, and why it stopped */
-export function endlessOf(o: { state: EndlessFeed['state']; loaded: number; loadOlder: () => void } | undefined, noun: string, endWords: string, paused = false): EndlessFeed | undefined {
+/* `moreLabel`: a list walked down by size, not back in time, says "Load more ↓" (audit round 11, minor 3) */
+export function endlessOf(o: { state: EndlessFeed['state']; loaded: number; loadOlder: () => void } | undefined, noun: string, endWords: string, paused = false, moreLabel?: string): EndlessFeed | undefined {
   if (!o) return undefined;
   const n = `${o.loaded.toLocaleString('en-US')} ${noun} loaded`;
   const state = paused ? 'idle' : o.state;
   return {
     onNear: o.loadOlder,
     state,
+    moreLabel,
     note: state === 'end' ? `${n} — ${endWords}` : state === 'cap' ? `${n} — the most the page holds at once` : state === 'idle' ? `${n}${paused ? ' — paused' : ''}` : `${n} — scroll for more`,
   };
 }

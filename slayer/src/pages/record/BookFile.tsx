@@ -7,7 +7,8 @@
 */
 
 import { CoSub } from '../../components/record/CoName';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { whalesScreener } from '../../data/whales';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams } from 'ag-grid-community';
@@ -300,6 +301,22 @@ export const ShortFile = () => {
     return newest ? newest.slice(0, 10) : null;
   }, [reads.rebate]);
   const fileWaiting = reads.waiting;
+  /* THE SESSION'S FULL VOLUME (round 11), one screener row: the squeeze point is scored on short volume over it */
+  const [fullVol, setFullVol] = useState<{ date: string; vol: number } | null>(null);
+  useEffect(() => {
+    if (!ok) return;
+    let dead = false;
+    whalesScreener([t])
+      .then(rows => {
+        const r = (Array.isArray(rows) ? rows : []).find(x => String(x.ticker || '').toUpperCase() === t);
+        const v = Number(r?.stock_volume);
+        if (!dead) setFullVol(r && v > 0 ? { date: String(r.date ?? '').slice(0, 10), vol: v } : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      dead = true;
+    };
+  }, [ok, t]);
   const [guideOpen, setGuideOpen] = useState(false);
   const [heavy, setHeavy] = useState<'any' | 'heavy'>('any');
   const [picks, setPicks] = useState<string[]>([]);
@@ -319,11 +336,14 @@ export const ShortFile = () => {
     const since = nyIsoDaysBack(30);
     const fails = (Array.isArray(reads.ftd) ? reads.ftd : []) as { date?: string; quantity?: number | string }[];
     const recent = fails.filter(f => String(f.date ?? '') >= since).map(f => Number(f.quantity) || 0);
+    /* the short volume against the session's full volume — the screener's day volume, the same session only */
+    const full = fullVol && row.shortVolM != null && row.shortVolDate && fullVol.date === row.shortVolDate && fullVol.vol > 0 ? ((row.shortVolM * 1e6) / fullVol.vol) * 100 : null;
     return squeezeRead(row, {
       shortVolPct: row.shortVolRatio,
+      shortVolFullPct: full,
       maxFtdShares: reads.ftd != null ? (recent.length ? Math.max(...recent) : 0) : null,
     });
-  }, [row, reads]);
+  }, [row, reads, fullVol]);
   if (ok && !row && (shortLive.status === 'loading' || fileWaiting)) return <Reading to="/dossier/shorts" back="Shorts" what="the short print" />;
   if (!row) return <Missing to="/dossier/shorts" label="Shorts" />;
   const heavyBook = row.interestPct >= 8;

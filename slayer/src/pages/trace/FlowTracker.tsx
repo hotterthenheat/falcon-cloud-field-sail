@@ -721,7 +721,7 @@ const FlowTracker = () => {
         facts={
           <>
             <Fact label="Under watch" testId="watched">
-              {nq ? `${rows.length} of ${total}` : total}
+              {nq ? `${num(rows.length)} of ${total}` : total}
             </Fact>
             <Fact label="Contracts · prints · structures" testId="kinds">
               {counts.contracts} <span className="text-textSecondary">·</span> {counts.prints} <span className="text-textSecondary">·</span> {counts.structures}
@@ -773,7 +773,7 @@ const FlowTracker = () => {
           facts={
             <>
               <Fact label="Crosses" testId="crosses">
-                {crosses.length} <span className="text-textMuted">· {new Set(crosses.map(w => w.ticker)).size} names</span>
+                {num(crosses.length)} <span className="text-textMuted">· {new Set(crosses.map(w => w.ticker)).size} names</span>
               </Fact>
               <Fact label="Dark dollars" testId="dark-dollars">
                 {fmtUsd(crosses.reduce((a, w) => a + w.notional, 0))}
@@ -781,7 +781,7 @@ const FlowTracker = () => {
             </>
           }
           controls={<></>}
-          sentence={<RichRead text={`${crosses.length} ${crosses.length === 1 ? 'cross' : 'crosses'} kept from the dark pool — the mark on a row or on the cross's card lets it go.`} />}
+          sentence={<RichRead text={`${num(crosses.length)} ${crosses.length === 1 ? 'cross' : 'crosses'} kept from the dark pool — the mark on a row or on the cross's card lets it go.`} />}
         >
           <TraceGrid rows={crosses} columns={crossColumns} widths={CROSS_WIDTHS} flexes={{ says: 2 }} rowKey={crossRowKey} onRowClick={w => setOpenCross(crossOfWatch(w))} autoHeight emptyText="" testId="tracker-crosses" />
         </TraceBox>

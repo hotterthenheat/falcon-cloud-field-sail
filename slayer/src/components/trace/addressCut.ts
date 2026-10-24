@@ -42,7 +42,10 @@ export function useAddressCut<K extends string>(spec: CutSpec<K>): AddressCut<K>
     const out = {} as Record<K, string>;
     for (const k of keys) {
       const raw = params.get(k);
-      out[k] = raw !== null && spec[k].valid(raw) ? raw : spec[k].def;
+      /* A SHARED LINK IN ANY CASE (audit round 11, minor 6: "?q=NVDA 220 C Nov 20" was dropped — the search field writes
+         upper case and the check is upper case) — a value that passes only in upper case is read in upper case, as
+         useQParam reads it */
+      out[k] = raw === null ? spec[k].def : spec[k].valid(raw) ? raw : spec[k].valid(raw.toUpperCase()) ? raw.toUpperCase() : spec[k].def;
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps

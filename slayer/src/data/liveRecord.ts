@@ -11,6 +11,7 @@ import { geoFromItems, type EconEvent, type GeoNewsEvent } from './newsroom';
 import type { CongressFeed, CongressTrade, InsiderFlow, InsiderTrade, TxCode } from '../types/record';
 import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwInsider, type UwNews, type UwPolitician } from './whales';
 import { nyIsoDaysBack } from './nyDate';
+import { isTradingDay } from '../core/calendar';
 import { loadRegularCloses, peekRegularCloses } from './dayChange';
 import { congressFromWhales, econFromWhales, foreignSuspects, insidersFromWhales, markForeignIssuers, newsFromWhales, readInsiders, rollCongress, storyLeadTicker } from './whalesMap';
 
@@ -52,19 +53,50 @@ let newsPulling = false;
 export interface NewsCoverage {
   /** The earliest story read, epoch ms, or null before the first answer */
   fromMs: number | null;
-  /** True once the read reached back past New York's midnight */
+  /** True once the read reached back past the wire day's New York midnight */
   wholeDay: boolean;
   reading: boolean;
+  /** THE WIRE'S DAY (round 11: Saturday's wire read "Stories 0" — Friday's ~850 stories were before Saturday's midnight).
+      New York's today once a story has crossed on a trading day; on a weekend, a holiday, or a trading day before its
+      first story, the last session's day, with the newer stories since it kept and counted in `since` */
+  day: string;
+  /** True when `day` is New York's today */
+  today: boolean;
+  /** Stories after the wire day's own midnight-to-midnight (the weekend's, the holiday's) */
+  since: number;
 }
-let newsCoverage: NewsCoverage = { fromMs: null, wholeDay: false, reading: true };
 const newsKey = (r: UwNews) => `${r.created_at}|${r.headline}`;
-/** New York's midnight today as an instant: 04:00 UTC in daylight time, 05:00 in standard time */
-const nyMidnightMs = (): number => {
-  const day = nyIsoDaysBack(0);
+/** New York's midnight starting a calendar day as an instant: 04:00 UTC in daylight time, 05:00 in standard time */
+const nyMidnightOf = (day: string): number => {
   const at4 = Date.parse(`${day}T04:00:00Z`);
   const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date(at4)));
   return hour === 0 ? at4 : Date.parse(`${day}T05:00:00Z`);
 };
+const isTradingIso = (iso: string): boolean => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return isTradingDay(new Date(y, m - 1, d));
+};
+/** The trading day before `iso` on the exchange calendar */
+const sessionBefore = (iso: string): string => {
+  let day = iso;
+  for (let i = 0; i < 10; i++) {
+    day = nyIsoDaysBack(1, day);
+    if (isTradingIso(day)) return day;
+  }
+  return day;
+};
+/** The wire's day (NewsCoverage.day): today on a trading day once a story of today's has been read, else the last
+    session before today. Before the first page answers, a trading day is taken to be today's */
+function wireDay(rows: UwNews[]): string {
+  const today = nyIsoDaysBack(0);
+  if (isTradingIso(today)) {
+    const midnight = nyMidnightOf(today);
+    if (rows.length === 0 || rows.some(r => !(Date.parse(r.created_at) < midnight))) return today;
+  }
+  return sessionBefore(today);
+}
+const nyMidnightMs = (): number => nyMidnightOf(wireDay(newsRows));
+let newsCoverage: NewsCoverage = { fromMs: null, wholeDay: false, reading: true, day: nyIsoDaysBack(0), today: true, since: 0 };
 
 function paintNews() {
   const seen = new Set<string>();
@@ -76,12 +108,24 @@ function paintNews() {
   });
   newsRows = rows;
   /* TODAY IS NEW YORK'S DAY (the third audit, 2026-10-23): "every story on the wire today" counted 27 of 1,393 stories
-     from before midnight — the backfill's last page crosses it. The wire on the pages is the NY day's stories only. */
-  const midnight = nyMidnightMs();
+     from before midnight — the backfill's last page crosses it. The wire on the pages is the wire day's stories (and,
+     on a weekend or a holiday, the newer ones since it) only. */
+  const day = wireDay(rows);
+  const midnight = nyMidnightOf(day);
+  const dayEnd = nyMidnightOf(nyIsoDaysBack(-1, day));
   const todays = rows.filter(r => !(Date.parse(r.created_at) < midnight));
+  const since = todays.filter(r => !(Date.parse(r.created_at) < dayEnd)).length;
   const times = rows.map(r => Date.parse(r.created_at)).filter(Number.isFinite);
   const from = times.length ? Math.min(...times) : null;
-  newsCoverage = { ...newsCoverage, fromMs: from == null ? null : Math.max(from, midnight), wholeDay: newsCoverage.wholeDay || (from != null && from <= midnight) };
+  const sameDay = newsCoverage.day === day;
+  newsCoverage = {
+    ...newsCoverage,
+    day,
+    today: day === nyIsoDaysBack(0),
+    since,
+    fromMs: from == null ? null : Math.max(from, midnight),
+    wholeDay: (sameDay && newsCoverage.wholeDay) || (from != null && from <= midnight),
+  };
   const items = newsFromWhales(todays, priorClose);
   patch({ news: { status: 'live', events: geoFromItems(items) } });
   wantCloses(todays);
@@ -127,7 +171,6 @@ async function pullNews() {
   newsPulling = true;
   try {
     if (!newsBackfilled) {
-      const midnight = nyMidnightMs();
       for (let page = 0; page < NEWS_PAGE_CAP; page++) {
         const res = await uwCall(`/news/headlines?limit=${NEWS_LIMIT}&page=${page}`, page === 0);
         if (res.error || !Array.isArray(res.data)) {
@@ -138,7 +181,9 @@ async function pullNews() {
         newsRows = newsRows.concat(rows);
         paintNews();
         const oldest = Math.min(...rows.map(r => Date.parse(r.created_at)).filter(Number.isFinite));
-        if (rows.length < NEWS_LIMIT || !(oldest > midnight)) break;
+        /* the wire day is re-read with each page: a trading day's first page with no story of its own yet is the last
+           session's wire, read back to that session's midnight */
+        if (rows.length < NEWS_LIMIT || !(oldest > nyMidnightMs())) break;
       }
       newsBackfilled = true;
     } else {

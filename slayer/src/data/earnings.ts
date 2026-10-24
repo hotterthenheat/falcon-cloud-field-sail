@@ -33,7 +33,8 @@ export interface EarningsEvent {
   /** 1 = Monday … 5 = Friday (reports never land on weekends) */
   weekday: number;
   /** 0 = this calendar week, 1 = next — the calendar board's two pages */
-  weekIdx: 0 | 1;
+  /** -1 the week before the board's (read on ask), 0 the board's week, 1 the week after */
+  weekIdx: -1 | 0 | 1;
   /** true = company has officially set the date; false = still an analyst estimate */
   confirmed: boolean;
   /** A name the room would recognise — the board holds these; the list and the grid hold every report (Noah,
@@ -127,13 +128,13 @@ function labelFor(d: Date): string {
 /** The calendar date of a board cell — the week list needs the real day to
     seat the macro calendar beside the reports (2026-09-03). New York's calendar, from the same Monday the feed starts
     its fortnight on (nyDate.ts boardMondayIso) — never the browser's clock. The Date is local midnight of that day. */
-export function weekDayDate(weekIdx: 0 | 1, weekday: number): Date {
+export function weekDayDate(weekIdx: -1 | 0 | 1, weekday: number): Date {
   const [y, m, d] = boardMondayIso().split('-').map(Number);
   return new Date(y, m - 1, d + weekIdx * 7 + (weekday - 1));
 }
 
 /** Column header for the week board — date math stays in one module. "Today" is New York's today, never on a weekend. */
-export function weekDayLabel(weekIdx: 0 | 1, weekday: number): { label: string; isToday: boolean } {
+export function weekDayLabel(weekIdx: -1 | 0 | 1, weekday: number): { label: string; isToday: boolean } {
   const d = weekDayDate(weekIdx, weekday);
   const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return { label: labelFor(d), isToday: iso === nyTodayIso() };

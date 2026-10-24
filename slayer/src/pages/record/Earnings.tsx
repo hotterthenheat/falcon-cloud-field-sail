@@ -41,7 +41,7 @@
 */
 
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Moon, Search, Sunrise, X } from 'lucide-react';
@@ -57,7 +57,7 @@ import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { richText, stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
-import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useLiveReactions, useNextReport, useNextReportPending, historyMissed } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useLiveReactions, useNextReport, useNextReportPending, historyMissed, ensureLastWeek, useLastWeekStatus } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
 import { nyMinutes } from '../../core/nyTime';
 import { macroWindow, type MacroDate } from '../../data/events';
@@ -65,7 +65,7 @@ import { useBoardNames } from '../../data/boardNames';
 import { statHelp } from '../../components/record/statHelp';
 import { phonePin, usePagedGrid } from '../../components/record/pagedGrid';
 
-type WeekPick = '0' | '1' | 'both';
+type WeekPick = '-1' | '0' | '1' | 'both';
 type ShowPick = 'all' | VolState;
 type Layout = 'list' | 'board';
 
@@ -82,7 +82,8 @@ const nyWeekend = (): boolean => {
   return d === 0 || d === 6;
 };
 const WEEK_OPTIONS: DropdownOption<WeekPick>[] = [
-  { value: '0', label: 'This week', hint: nyWeekend() ? 'Monday to Friday of the coming week — on a weekend the board opens on the week ahead' : 'Monday to Friday of the current week' },
+  { value: '-1', label: 'Last week', hint: nyWeekend() ? 'Monday to Friday of the week just reported, with each name\'s move' : 'Monday to Friday of the week before this one, with each name\'s move' },
+  { value: '0', label: nyWeekend() ? 'Coming week' : 'This week', hint: nyWeekend() ? 'Monday to Friday of the coming week — on a weekend the board opens on the week ahead' : 'Monday to Friday of the current week' },
   { value: '1', label: 'Next week', hint: 'The week after' },
   { value: 'both', label: 'Both weeks', hint: 'The whole fortnight, one week under the other' },
 ];
@@ -170,8 +171,79 @@ const MacroChip = ({ m }: { m: MacroDate }) => (
 );
 
 /** The board's cell: the mark, the ticker, our move, whether the date is set */
-const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => void; asked?: boolean }) => (
+/* ON SCREEN, THEN READ (round 11: a cold visit read 284 /earnings/{T} histories, every known name in the week). A card or
+   a grid row asks for its name's past reports once it comes into the window — one observer for the page */
+const seenNames = new Set<string>();
+let seenRev = 0;
+let seenTimer: number | null = null;
+const seenListeners = new Set<() => void>();
+const markSeen = (t: string) => {
+  if (seenNames.has(t)) return;
+  seenNames.add(t);
+  if (seenTimer != null) return;
+  seenTimer = window.setTimeout(() => {
+    seenTimer = null;
+    seenRev += 1;
+    seenListeners.forEach(fn => fn());
+  }, 300);
+};
+let seenIo: IntersectionObserver | null = null;
+const seenObserver = (): IntersectionObserver | null => {
+  if (typeof IntersectionObserver === 'undefined') return null;
+  seenIo ??= new IntersectionObserver(
+    entries => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        const el = en.target as HTMLElement;
+        const t = el.dataset.seenName;
+        /* a card that stays — the first paint of a week the board turns away from at once (Friday's, before "opens
+           on next week") is not a card the reader saw */
+        if (t) window.setTimeout(() => {
+          if (el.isConnected) markSeen(t);
+        }, 600);
+        seenIo?.unobserve(el);
+      }
+    },
+    { rootMargin: '0px' }
+  );
+  return seenIo;
+};
+function useSeenRef<T extends HTMLElement>(ticker: string) {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || seenNames.has(ticker)) return;
+    const io = seenObserver();
+    if (!io) {
+      markSeen(ticker);
+      return;
+    }
+    el.dataset.seenName = ticker;
+    io.observe(el);
+    return () => io.unobserve(el);
+  }, [ticker]);
+  return ref;
+}
+function useSeenNames(): string[] {
+  const rev = useSyncExternalStore(
+    fn => {
+      seenListeners.add(fn);
+      return () => seenListeners.delete(fn);
+    },
+    () => seenRev,
+    () => seenRev
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => [...seenNames].sort(), [rev]);
+}
+/** The Priced tile's sample: the largest known names still to report, read whatever is on screen, said plainly */
+const PRICED_SAMPLE = 20;
+
+const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => void; asked?: boolean }) => {
+  const ref = useSeenRef<HTMLButtonElement>(e.ticker);
+  return (
   <button
+    ref={ref}
     type="button"
     onClick={() => onOpen(e.ticker)}
     title={`${e.name} — options price ${moveText(e)}, ${slotWord(e)} · open its page`}
@@ -184,7 +256,8 @@ const Card = ({ e, onOpen, asked }: { e: EarningsEvent; onOpen: (t: string) => v
     <span className={`font-mono text-[11px] tnum leading-none ${e.reported ? moveInk(e) : pricedKnown(e) ? priceInk(e) : 'text-textMuted'}`}>{/* the move the options charge is known before the history lands; only rich/cheap waits on it */}{moveText(e)}</span>
     <SetTag confirmed={e.confirmed} />
   </button>
-);
+  );
+};
 
 /* ---- the Name card -------------------------------------------------------------------- */
 
@@ -286,16 +359,19 @@ const Answer = ({ next, inWindow, onOpen, onClear }: { next: NextReport; inWindo
 
 /* ---- the grid's cells --------------------------------------------------------------- */
 
-const NameCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
-  data ? (
-    <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
+const NameCell = ({ data }: ICellRendererParams<EarningsEvent>) => (data ? <NameCellIn data={data} /> : null);
+const NameCellIn = ({ data }: { data: EarningsEvent }) => {
+  const ref = useSeenRef<HTMLSpanElement>(data.ticker);
+  return (
+    <span ref={ref} className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
         <span className="text-[10px] text-textMuted truncate">{data.name}</span>
       </span>
     </span>
-  ) : null;
+  );
+};
 
 const WhenCell = ({ data }: ICellRendererParams<EarningsEvent>) =>
   data ? (
@@ -415,6 +491,13 @@ const Earnings = () => {
     setWeekTouched(true);
     setWeekRaw(w);
   };
+  /* last week is read on the reader's ask — ten list calls, never on a cold visit */
+  const lastWeek = useLastWeekStatus();
+  useEffect(() => {
+    if (week === '-1') ensureLastWeek();
+  }, [week]);
+  const weekend = nyWeekend();
+  const weekPending = pending || (week === '-1' && lastWeek !== 'live' && lastWeek !== 'sim');
   const thisWeekLeft = useMemo(() => events.filter(e => e.weekIdx === 0 && !e.reported), [events]);
   const thisWeekKnownLeft = useMemo(() => thisWeekLeft.filter(e => e.known).length, [thisWeekLeft]);
   const nextWeekCount = useMemo(() => events.filter(e => e.weekIdx === 1).length, [events]);
@@ -445,7 +528,10 @@ const Earnings = () => {
     const named = askedIn ? cut.filter(e => e.ticker === asked) : cut;
     /* still to report first, soonest first; the reports already out follow, newest first */
     /* (round 9) within a day the known and the largest names first — page one opened on a run of obscure names with "—" */
-    return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut) || Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0) || b.impliedMovePct - a.impliedMovePct);
+    /* (round 11) within a day: before the open, then after the close, then time not set — CX and MMYT sat among the
+       after-close names */
+    const slotRank = (e: EarningsEvent) => (e.timeKnown === false ? 2 : e.slot === 'BMO' ? 0 : 1);
+    return [...named].sort((a, b) => Number(!!a.reported) - Number(!!b.reported) || (a.reported ? b.daysOut - a.daysOut : a.daysOut - b.daysOut) || slotRank(a) - slotRank(b) || Number(b.known) - Number(a.known) || (b.marketCap ?? 0) - (a.marketCap ?? 0) || b.impliedMovePct - a.impliedMovePct);
   }, [events, show, askedIn, asked, week]);
   /* THE GRID PAGES ITSELF (the third audit, 2026-10-23): it was handed a 40-row slice, so a header sort ordered only the
      page in view. Every row goes in and the grid's own pagination pages it, as on Insiders and Congress — a sort runs
@@ -476,19 +562,24 @@ const Earnings = () => {
   const ahead = weekKnown.filter(e => !e.reported);
   /* the week's known names whose past reports have not landed — the same names the head counts, so the figure is the
      progress of one stated set, never a fortnight-wide number that moved between loads (the retail test, 2026-10-23) */
-  const weekHistOut = ahead.filter(e => e.history === false && !historyMissed(e.ticker)).length;
-  const scored = ahead.filter(pricedKnown);
+  /* THE PRICED TILE OVER A STATED SAMPLE (round 11): the largest known names still to report, read whether or not on
+     screen; a Show pick for rich, fair or cheap reads every name it filters on */
+  const sample = useMemo(() => [...ahead].sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0)).slice(0, PRICED_SAMPLE), [ahead]);
+  const sampled = ahead.length > sample.length;
+  const weekHistOut = sample.filter(e => e.history === false && !historyMissed(e.ticker)).length;
+  const scored = sample.filter(pricedKnown);
   const cover = useEarningsCoverage();
   const rich = scored.filter(e => stateOf(e) === 'RICH').length;
   const cheap = scored.filter(e => stateOf(e) === 'CHEAP').length;
   const fair = scored.length - rich - cheap;
   const biggest = ahead.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
   const today = rankEvents(knownEvents.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
-  useEarningsHistories([...ahead.map(e => e.ticker), ...today.map(e => e.ticker), ...onPage]);
+  const seen = useSeenNames();
+  useEarningsHistories([...sample.map(e => e.ticker), ...seen, ...(show !== 'all' ? ahead.map(e => e.ticker) : [])]);
   const todayMore = events.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()).length - today.length;
 
-  const weeks: (0 | 1)[] = week === 'both' ? [0, 1] : [Number(week) as 0 | 1];
-  const weekWords = week === 'both' ? 'over two weeks' : week === '0' ? 'this week' : 'next week';
+  const weeks: (-1 | 0 | 1)[] = week === 'both' ? [0, 1] : [Number(week) as -1 | 0 | 1];
+  const weekWords = week === 'both' ? 'over two weeks' : week === '-1' ? 'last week' : week === '0' ? (weekend ? 'the coming week' : 'this week') : 'next week';
   const open = (t: string) => navigate(`/dossier/earnings/${t}`);
   /* a name asked for inside the fortnight: the week turns to its page, its card wears the ring */
   const ask = (t: string) => {
@@ -502,13 +593,13 @@ const Earnings = () => {
       `${weekEvents.length.toLocaleString('en-US')} reports ${weekWords}, ${weekKnown.length.toLocaleString('en-US')} of them known names, ${ahead.length.toLocaleString('en-US')} of those still to report`,
       ahead.length === 0
         ? 'nothing is left to price — a report that is out carries its move instead'
-        : `of the ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${ahead.length - weekHistOut} of ${ahead.length} read)` : ''}, ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
+        : `of ${sampled ? `the ${sample.length} largest of them` : 'those'}, ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${sample.length - weekHistOut} of ${sample.length} read so far)` : ''}: ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
     if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
     parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
     if (cover.missed) parts.push(`${cover.missed} of the ${cover.slots} day lists did not answer, so the count is short`);
     return parts.join(' · ') + '.';
-  }, [weekEvents.length, weekKnown.length, weekWords, ahead.length, scored.length, cover, rich, fair, cheap, biggest, today, todayMore]);
+  }, [weekEvents.length, weekKnown.length, weekWords, ahead.length, scored.length, sample.length, sampled, weekHistOut, cover, rich, fair, cheap, biggest, today, todayMore]);
 
   const columnDefs = useMemo<ColDef<EarningsEvent>[]>(
     () => [
@@ -550,25 +641,25 @@ const Earnings = () => {
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <Fact label="Reports" testId="reports">
-              {failed ? <span className="text-textMuted">—</span> : pending ? <span className="text-textMuted">reading the lists…</span> : <>{weekEvents.length.toLocaleString('en-US')} <span className="text-textMuted">· {weekWords} ·</span> {weekKnown.length.toLocaleString('en-US')} <span className="text-textMuted">known names</span>{cover.missed ? <span className="text-warn" title={`${cover.missed} of the ${cover.slots} day lists did not answer`}> · short</span> : null}</>}
+              {failed ? <span className="text-textMuted">—</span> : weekPending ? <span className="text-textMuted">reading the lists…</span> : <>{weekEvents.length.toLocaleString('en-US')} <span className="text-textMuted">· {weekWords} ·</span> {weekKnown.length.toLocaleString('en-US')} <span className="text-textMuted">known names</span>{cover.missed ? <span className="text-warn" title={`${cover.missed} of the ${cover.slots} day lists did not answer`}> · short</span> : null}</>}
             </Fact>
             <Fact label="Priced" testId="priced">
               {failed ? (
                 <span className="text-textMuted">—</span>
-              ) : pending ? (
+              ) : weekPending ? (
                 <span className="text-textMuted">reading the lists…</span>
               ) : ahead.length === 0 ? (
                 /* nothing left to price is not "reading" (round 8: Friday's "reading the usual moves" stood all day) */
                 <span className="text-textMuted" title={`Every known name ${weekWords} has reported — a report that is out is not priced any more`}>nothing left to price {weekWords}</span>
               ) : scored.length === 0 ? (
-                <span className="text-textMuted">{weekHistOut > 0 ? 'reading the usual moves' : `none with ${MIN_PRICED_PRINTS}+ past moves on file`}</span>
+                <span className="text-textMuted">{weekHistOut > 0 ? `reading the usual moves · ${sample.length - weekHistOut} of ${sample.length}` : `none with ${MIN_PRICED_PRINTS}+ past moves on file`}</span>
               ) : (
-                <span title={`Known names still to report ${weekWords} with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${ahead.length}. A name with fewer, or none, is not called rich or cheap. Rich: the options charge more than 1.3× the usual move; cheap: under 0.85×; fair between`}>
+                <span title={`${sampled ? `The ${sample.length} largest of the ${ahead.length} known names` : 'Known names'} still to report ${weekWords}, with at least ${MIN_PRICED_PRINTS} past moves on file: ${scored.length} of ${sample.length}. A name with fewer, or none, is not called rich or cheap. Rich: the options charge more than 1.3× the usual move; cheap: under 0.85×; fair between`}>
                   {/* THE COUNT SAYS IT IS STILL COUNTING (round 9: the counts ticked up with no cue) */}
-                  {weekHistOut > 0 && <span className="text-warn" title="The known names' past reports are read one by one (the feed allows three at a time); the counts grow as they land, and stop when every one is in" data-earnings-priced-reading>reading {ahead.length - weekHistOut} of {ahead.length} · so far </span>}
+                  {weekHistOut > 0 && <span className="text-warn" title="The known names' past reports are read one by one (the feed allows three at a time); the counts grow as they land, and stop when every one is in" data-earnings-priced-reading>reading {sample.length - weekHistOut} of {sample.length} · so far </span>}
                   <span className={weekHistOut > 0 ? 'opacity-60' : ''}>
                     <span className="text-warn">{rich} rich</span> <span className="text-textMuted">·</span> {fair} fair <span className="text-textMuted">·</span> <span className="text-bull">{cheap} cheap</span>
-                    <span className="text-textMuted"> · of {scored.length}</span>
+                    <span className="text-textMuted"> · of {scored.length}{sampled ? ` · the ${sample.length} largest of ${ahead.length}` : ''}</span>
                   </span>
                 </span>
               )}
@@ -624,7 +715,7 @@ const Earnings = () => {
           <FeedFallback />
         ) : (
           <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-earnings-sentence>
-            {pending ? 'Reading the fortnight.' : sentence}
+            {pending ? 'Reading the fortnight.' : weekPending ? "Reading last week's lists." : sentence}
           </p>
         )}
         {!pending && !failed && autoNext && week === '1' && (
@@ -635,7 +726,24 @@ const Earnings = () => {
             </button>
           </p>
         )}
-        {!pending && !failed && week === '0' && thisWeekKnownLeft === 0 && nextWeekCount > 0 && (
+        {/* THE WEEK JUST REPORTED, ON A WEEKEND (round 11): the board opens on the coming week; last week is a click away */}
+        {!pending && !failed && weekend && week === '0' && (
+          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note="weekend">
+            On a weekend the board opens on the coming week.{' '}
+            <button type="button" onClick={() => setWeek('-1')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors" data-earnings-last-week>
+              See last week's results
+            </button>
+          </p>
+        )}
+        {!pending && !failed && week === '-1' && (
+          <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note="last">
+            {lastWeek === 'live' || lastWeek === 'sim' ? (lastWeek === 'sim' ? "Last week's lists did not answer." : 'Last week — every report is out, each with the move the stock made the session after.') : "Reading last week's lists…"}{' '}
+            <button type="button" onClick={() => setWeek('0')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors">
+              {weekend ? 'Back to the coming week' : 'Back to this week'}
+            </button>
+          </p>
+        )}
+        {!pending && !failed && week === '0' && !weekend && thisWeekKnownLeft === 0 && nextWeekCount > 0 && (
           <p className="px-5 pb-3 -mt-1 text-[11px] text-textMuted" data-earnings-week-note>
             Every known name this week has reported{thisWeekLeft.length ? ` — ${thisWeekLeft.length} smaller ${thisWeekLeft.length === 1 ? 'name is' : 'names are'} still to come` : ''}; next week holds {nextWeekCount.toLocaleString('en-US')} reports.{' '}
             <button type="button" onClick={() => setWeek('1')} className="font-semibold text-textSecondary hover:text-textPrimary transition-colors" data-earnings-next-week>
@@ -645,7 +753,7 @@ const Earnings = () => {
         )}
 
         {/* THE WEEK — the board, or a list of days; a failed read shows no empty days */}
-        {failed ? null : pending ? (
+        {failed ? null : pending || (week === '-1' && (lastWeek === 'idle' || lastWeek === 'loading')) ? (
           <div className="border-t border-borderSubtle" data-earnings-pending>
             <TableSkeleton rows={6} />
           </div>
@@ -809,11 +917,11 @@ const Earnings = () => {
         <div className="px-5 pt-4 pb-3">
           <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Every report</h3>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {week === 'both' ? 'Both weeks' : week === '0' ? 'This week' : 'Next week'} · {show === 'all' ? 'every report, the known names and the rest' : `the reports still to come priced ${PRICED_WORD[show]}`} · still to report first, soonest first, then the ones already out with their move · click a row for the name's page
+            {week === 'both' ? 'Both weeks' : week === '-1' ? 'Last week' : week === '0' ? (weekend ? 'The coming week' : 'This week') : 'Next week'} · {show === 'all' ? 'every report, the known names and the rest' : `the reports still to come priced ${PRICED_WORD[show]}`} · still to report first, soonest first, then the ones already out with their move · click a row for the name's page
           </p>
         </div>
         <div className="slayer-board border-t border-borderSubtle">
-          {pending ? (
+          {pending || (week === '-1' && (lastWeek === 'idle' || lastWeek === 'loading')) ? (
             <TableSkeleton rows={8} />
           ) : (
           <AgGridProvider modules={GRID_MODULES}>

@@ -286,8 +286,11 @@ export async function refreshReactions(items: readonly { ticker: string; iso?: s
   if (afterBell) for (const [k, v] of liveMoves) if (v.live) liveMoves.set(k, { ...v, live: false });
   const want = items
     .filter(e => e.iso && e.reported && reactionIsoOf(e.iso, e.slot, e.timeKnown !== false) === today && now - (liveMoveAsked.get(e.ticker) ?? 0) > LIVE_MOVE_EVERY - 2000)
-    .filter(e => !afterBell || (e.known !== false && !liveMoves.has(`${e.ticker.toUpperCase()}|${e.iso}`)))
-    .slice(0, afterBell ? 30 : Infinity);
+    /* (round 11) and the smaller names on screen — ALV, RITM, GNTX read "reported" with no move after Friday's close */
+    /* (round 11) after the bell, the names on screen only — known or not (ALV, RITM, GNTX read "reported" with no move
+       after Friday's close; a known name off screen cost a daily-row read for nothing) */
+    .filter(e => !afterBell || (wanted.has(e.ticker.toUpperCase()) && !liveMoves.has(`${e.ticker.toUpperCase()}|${e.iso}`)))
+    .slice(0, afterBell ? 40 : Infinity);
   const byTicker = new Map<string, string>();
   for (const e of want) byTicker.set(e.ticker.toUpperCase(), e.iso!);
   const names = [...byTicker.keys()];
@@ -312,10 +315,10 @@ export async function refreshReactions(items: readonly { ticker: string; iso?: s
     }
   }
   if (changed && feed.status === 'live') {
-    feed = { status: 'live', events: feed.events.map(e => {
+    mapEvents(e => {
       const m = liveMoves.get(`${e.ticker}|${e.iso}`);
       return m && (m.pct !== e.actualMovePct || m.live !== e.moveLive) ? { ...e, actualMovePct: m.pct, moveLive: m.live, reported: true } : e;
-    }) };
+    });
   }
   if (changed) emit();
   return changed;
@@ -343,8 +346,11 @@ function baseEvent(row: SlotRow, today: string): EarningsEvent | null {
   if (day === 0 || day === 6) return null;
   const thisMonday = boardMondayIso(today);
   const nextMonday = addDays(thisMonday, 7);
+  const lastMonday = addDays(thisMonday, -7);
   const week = mondayOf(iso);
-  const weekIdx: 0 | 1 | null = week === thisMonday ? 0 : week === nextMonday ? 1 : null;
+  /* LAST WEEK TOO (round 11: on a weekend the board opened on the coming week and the week just reported — AXP, SLB,
+     WDC's reactions — was nowhere); read only when the reader asks for it (ensureLastWeek) */
+  const weekIdx: -1 | 0 | 1 | null = week === thisMonday ? 0 : week === nextMonday ? 1 : week === lastMonday ? -1 : null;
   if (weekIdx == null) return null;
   const implied = impliedPct(row.expected_move_perc);
   const price = Number(priceOf(row).toFixed(2));
@@ -760,6 +766,14 @@ const history = new Map<string, SlotRow[] | 'miss'>();
 const listeners = new Set<() => void>();
 let rev = 0;
 let started = false;
+/* THE WEEK BEFORE THE BOARD'S (round 11), read on the reader's ask — five days, two lists a day, ten calls */
+let pastWeek: Feed = { status: 'loading', events: [] };
+let pastStarted = false;
+/** Every event the board holds: the fortnight's and, once asked for, last week's */
+const mapEvents = (fn: (e: EarningsEvent) => EarningsEvent) => {
+  feed = { ...feed, events: feed.events.map(fn) };
+  if (pastWeek.events.length) pastWeek = { ...pastWeek, events: pastWeek.events.map(fn) };
+};
 
 const emit = () => {
   rev += 1;
@@ -830,16 +844,13 @@ async function enrich(events: EarningsEvent[]) {
   /* today's reports first, then the days ahead, then the days behind — the vendor's slots are taken in order, and the
      board read Thursday's names "—" while Monday's histories queued ahead of them (the ship pass, 2026-10-22) */
   const urgency = (e: EarningsEvent) => (e.daysOut >= 0 ? e.daysOut : 100 - e.daysOut);
-  const want = events.filter(e => e.known && e.history === false).sort((a, b) => urgency(a) - urgency(b)).map(e => e.ticker);
+  const want = events.filter(e => e.history === false).sort((a, b) => urgency(a) - urgency(b)).map(e => e.ticker);
   const unique = [...new Set(want)];
   void pullIvBatch(unique).then(() => {
-    feed = {
-      status: 'live',
-      events: feed.events.map(e => {
-        const rank = ivRankOf(e.ticker);
-        return rank > 0 && e.ivRank !== rank ? { ...e, ivRank: rank } : e;
-      }),
-    };
+    mapEvents(e => {
+      const rank = ivRankOf(e.ticker);
+      return rank > 0 && e.ivRank !== rank ? { ...e, ivRank: rank } : e;
+    });
     emit();
   });
   await Promise.all(
@@ -850,14 +861,11 @@ async function enrich(events: EarningsEvent[]) {
         return;
       }
       const rank = ivRankOf(ticker);
-      feed = {
-        status: 'live',
-        events: feed.events.map(e => {
-          if (e.ticker !== ticker || e.history !== false) return e;
-          const next = withHistory(e, rows.map(r => ({ ...r, symbol: r.symbol || ticker })));
-          return rank > 0 ? { ...next, ivRank: rank } : next;
-        }),
-      };
+      mapEvents(e => {
+        if (e.ticker !== ticker || e.history !== false) return e;
+        const next = withHistory(e, rows.map(r => ({ ...r, symbol: r.symbol || ticker })));
+        return rank > 0 ? { ...next, ivRank: rank } : next;
+      });
       emit();
     })
   );
@@ -872,7 +880,8 @@ const wanted = new Set<string>();
 const asked = new Set<string>();
 function startEnrich() {
   if (feed.status !== 'live') return;
-  const todo = feed.events.filter(e => e.known && e.history === false && wanted.has(e.ticker) && !asked.has(e.ticker));
+  /* (round 11) any name the board shows — a grid row that is not a known name (AMKR, RMBS) read "—" for its usual move */
+  const todo = [...feed.events, ...pastWeek.events].filter(e => e.history === false && wanted.has(e.ticker) && !asked.has(e.ticker));
   if (!todo.length) return;
   for (const e of todo) asked.add(e.ticker);
   void enrich(todo);
@@ -974,7 +983,50 @@ export function ensureEarnings(): void {
 
 export function useEveryReport(): EarningsEvent[] {
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);
-  return useMemo(() => (feed.status === 'live' ? feed.events : []), [version]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => (feed.status === 'live' ? (pastWeek.events.length ? feed.events.concat(pastWeek.events) : feed.events) : []), [version]);
+}
+
+/** LAST WEEK'S LISTS, read once on the reader's ask (round 11): the week before the board's Monday, both lists a day */
+export function ensureLastWeek(): void {
+  if (pastStarted || typeof window === 'undefined') return;
+  pastStarted = true;
+  void (async () => {
+    const today = nyToday();
+    const start = addDays(boardMondayIso(today), -7);
+    const days = [0, 1, 2, 3, 4].map(i => addDays(start, i)).filter(d => !MARKET_HOLIDAYS.has(d));
+    const lists = await Promise.all(
+      days.flatMap(date =>
+        (['premarket', 'afterhours'] as const).map(async slot => {
+          const got = await whalesEarningsSlot(slot, date, 0, SLOT_PAGE).catch(async () => {
+            await new Promise(r => setTimeout(r, 1200));
+            return whalesEarningsSlot(slot, date, 0, SLOT_PAGE).catch(() => null);
+          });
+          return Array.isArray(got) ? (got as SlotRow[]) : null;
+        })
+      )
+    );
+    const seen = new Set(feed.events.map(e => `${e.ticker}-${e.iso}`));
+    const events: EarningsEvent[] = [];
+    for (const rows of lists) {
+      for (const row of rows ?? []) {
+        const ev = baseEvent(row, today);
+        if (!ev || ev.weekIdx !== -1 || seen.has(`${ev.ticker}-${ev.iso}`)) continue;
+        seen.add(`${ev.ticker}-${ev.iso}`);
+        events.push(ev);
+      }
+    }
+    rememberCompanyNames(lists.flatMap(l => l ?? []).map(r => [String(r.symbol || ''), r.full_name] as const));
+    pastWeek = { status: lists.some(l => l != null) ? 'live' : 'sim', events };
+    emit();
+    startEnrich();
+  })();
+}
+/** Where last week's read stands: not asked, reading, read, or failed */
+export function useLastWeekStatus(): 'idle' | 'loading' | 'live' | 'sim' {
+  const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => (!pastStarted ? 'idle' : pastWeek.status), [version]);
 }
 
 /** True when the fortnight's read failed — an empty board then is a failure, not a quiet fortnight */

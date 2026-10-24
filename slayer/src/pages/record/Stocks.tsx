@@ -60,7 +60,8 @@ import { useBoardNames } from '../../data/boardNames';
 import { aboveFifty, buildSectorBoard, type SectorRow, type StockPick, type StockSleeves, type StockVerdict } from '../../data/stocks';
 import { batchMisses, peekBatchQuote, useBatchQuote, useLiveStocks, useScreenerQuotes, type BatchQuote } from '../../data/liveFiles';
 import { extendedLine, priceWords, peekQuote, useLiveQuote } from '../../data/liveQuote';
-import { nyClock } from '../../core/nyTime';
+import { nyClock, nyIsoDate, nyMinutes, nySessionPhase } from '../../core/nyTime';
+import { isTradingDay } from '../../core/calendar';
 import { shortDay as shortDayWord } from '../../data/nyDate';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
 import { SECTORS, UNIVERSE, type Sector } from '../../data/universe';
@@ -142,10 +143,20 @@ const batchWords = (b: BatchQuote): string => {
   if (b.live) return `${b.price.toFixed(2)}${b.tapeAt ? ` · ${nyClock(b.tapeAt)} ET` : ''}`;
   return b.ext != null ? `${b.price.toFixed(2)} close · ${b.ext.toFixed(2)} outside the session${b.tapeAt ? ` ${nyClock(b.tapeAt)} ET` : ''}` : `${b.price.toFixed(2)} close`;
 };
-const batchExt = (b: BatchQuote): string | null => (b.live || b.extPct == null ? null : `${sessionWord()} ${b.extPct >= 0 ? '+' : '−'}${Math.abs(b.extPct).toFixed(2)}%`);
-const sessionWord = () => {
-  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-  return h < 12 ? 'pre-market' : 'after hours';
+/* ONE RULE FOR A FLAT EXTENDED MOVE (round 11: LIN read "AH +0.00%", TSLA at 0.00 read nothing) — under 0.005% it is
+   not shown */
+const EXT_FLOOR = 0.005;
+const batchExt = (b: BatchQuote): string | null => (b.live || b.extPct == null || Math.abs(b.extPct) < EXT_FLOOR ? null : `${sessionWord(b.tapeAt)} ${b.extPct >= 0 ? '+' : '−'}${Math.abs(b.extPct).toFixed(2)}%`);
+/* THE EXTENDED SESSION BY THE PRINT, NOT THE WALL CLOCK (round 11: Saturday morning read Friday's after-hours move as
+   "pre −0.06%" — the word was picked by the hour, before noon). A print is pre-market only when it crossed on today's
+   trading day before the open (04:00–09:30); otherwise it is the last session's after hours */
+const sessionWord = (tapeAt: number | null): 'pre-market' | 'after hours' => {
+  const today = nyIsoDate();
+  const [y, m, d] = today.split('-').map(Number);
+  if (!isTradingDay(new Date(y, m - 1, d))) return 'after hours';
+  if (tapeAt == null || !Number.isFinite(tapeAt)) return nySessionPhase() === 'before' ? 'pre-market' : 'after hours';
+  const mins = nyMinutes(tapeAt);
+  return nyIsoDate(tapeAt) === today && mins >= 240 && mins < 570 ? 'pre-market' : 'after hours';
 };
 const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
   const b = useBatchQuote(data?.ticker);
@@ -165,7 +176,7 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const pre = b ? !b.live : q?.phase === 'pre' && q.lastSessionPct != null;
   const chg = b ? b.pct ?? data.changePct : pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
   /* the extended move kept apart — every row the same convention (audit round 5: META) */
-  const ext = b ? batchExt(b) : q ? extendedLine(q) : data.extPct != null ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
+  const ext = b ? batchExt(b) : q ? (q.extPct != null && Math.abs(q.extPct) < EXT_FLOOR ? null : extendedLine(q)) : data.extPct != null && Math.abs(data.extPct) >= EXT_FLOOR ? `after hours ${data.extPct >= 0 ? '+' : '−'}${Math.abs(data.extPct).toFixed(2)}%` : null;
   const day = b && !b.live ? ` (${b.date})` : q?.regDate ? ` (${q.regDate})` : '';
   return (
     <span className="flex flex-col items-end justify-center h-full leading-tight" title={`${pre ? `The last session's change${day}` : "The regular session's change"}${ext ? ` · ${ext}, kept apart` : ''}`}>
