@@ -46,8 +46,8 @@ import { sessionStarts } from './indicators';
 import { levelRoles, pickLegWalls, type LevelRole } from '../core/walls';
 import { DEFAULT_R } from '../core/carry';
 import { dollarGammaPerContract } from '../core/gammaFlip';
-import { bookToday, isoDate, isTradingDay } from '../core/calendar';
-import { nyIsoDate, nySessionPhase } from '../core/nyTime';
+import { bookToday, isoDate, isTradingDay, nextSession, today as nyTodayDate } from '../core/calendar';
+import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { recordDay } from './bookWindow';
 import { datesOf, smileOf, yearsTo } from './flipLevel';
 import { ownIvDates, peekEntry, type OiChange } from './uwBook';
@@ -187,15 +187,31 @@ export function oiWhen(dates: { from: string; to: string } | null | undefined): 
   const rec = recordDay();
   const finished = rec.done ? rec.date : lastSessionBefore(rec.date);
   /* WHEN THE NEXT ONE IS DUE, AND THAT IT IS WATCHED FOR (the seventh audit's retail finding): uwBook asks the vendor
-     every five minutes while the count is behind, and reads it the moment it lands */
-  const opened = nySessionPhase() !== 'before' && rec.date === nyIsoDate();
+     every five minutes on a trading day from 07:00 ET while the count is behind, and reads it the moment it lands */
+  /* …SAID FROM WHERE THE CLOCK STANDS (the eleventh audit's m1: "Oct 23's count is late today — the vendor usually has it
+     out before the 9:30 open" at 20:31 Friday — after the close it is not late, it is due before Monday's open) */
+  const phase = nySessionPhase();
+  const tradingToday = isTradingDay(nyTodayDate());
+  const late = tradingToday && phase === 'open' && rec.date === nyIsoDate();
+  const watching = tradingToday && phase === 'before' && nyMinutes() >= 7 * 60;
+  const nextOpen = tradingToday && phase === 'before' ? null : nextSessionWord();
   const pending =
     dates.from < finished
-      ? opened
+      ? late
         ? `${monDay(finished)}'s count is late today — the vendor usually has it out before the 9:30 open; checked every 5 minutes, used the moment it lands`
-        : `${monDay(finished)}'s count is not out yet — the vendor publishes it before the 9:30 open; checked every 5 minutes, used the moment it lands`
+        : watching
+          ? `${monDay(finished)}'s count is not out yet — the vendor publishes it before the 9:30 open; checked every 5 minutes, used the moment it lands`
+          : nextOpen
+            ? `${monDay(finished)}'s count is due before ${nextOpen}'s open; this is ${monDay(dates.from)}'s — looked for from 07:00 ET that morning`
+            : `${monDay(finished)}'s count is due before today's 9:30 open; this is ${monDay(dates.from)}'s — looked for from 07:00 ET`
       : null;
   return { trade, short: `in ${trade}`, long: `${trade} (open interest ${dates.from.slice(5)} → ${dates.to.slice(5)})`, day: monDay(dates.from), pending };
+}
+const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** The next session's weekday, from after today: "Monday" */
+function nextSessionWord(): string {
+  const t = nyTodayDate();
+  return DOW_LONG[nextSession(new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1)).getDay()];
 }
 function lastSessionBefore(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);

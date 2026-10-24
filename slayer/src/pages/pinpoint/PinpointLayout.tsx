@@ -12,7 +12,7 @@ import ScrollHome from '../../components/layout/ScrollHome';
 import type { DistanceUnit } from '../../data/atr';
 import { setDistanceUnit, useDistanceUnit } from '../../data/distanceUnits';
 import { LEVELS_OPTIONS, LEVELS_TITLE, setLevelsScope, useLevelsScope } from '../../data/levelsScope';
-import { todayScopeLabel } from '../../data/bookWindow';
+import { bellDay, todayScopeLabel } from '../../data/bookWindow';
 import { GLOSSARY } from '../../components/gex/glossary';
 
 /** The pages whose named levels follow the Levels card */
@@ -111,7 +111,10 @@ const PinpointLayout = () => {
   const PageIcon = page.icon;
   /* THE AGENDA'S TWO FACES (Noah, 2026-10-14): the line under the name is the face's own; the switch itself stands in
      the first box's head (Agenda.tsx AgendaSwitch), where Noah wanted it */
-  const line = page.path === '/pinpoint/agenda' ? AGENDA_LINES[agendaFaceOf(location.search)] : page.subtitle;
+  /* the session words follow the clock (the eleventh audit's m3: the Board's line said "what expires today" on Saturday) */
+  const bell = bellDay();
+  const expiresWords = bell.head === 'Expires today' ? 'what expires today' : `what expires ${bell.head.slice('Expires '.length)}, the next session`;
+  const line = page.path === '/pinpoint/agenda' ? AGENDA_LINES[agendaFaceOf(location.search)] : page.subtitle.replace('what expires today', expiresWords);
 
   return (
     <>

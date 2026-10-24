@@ -43,7 +43,7 @@ import { flipSidesWords } from '../../data/flipLevel';
 import { flipCrossings } from '../../data/flipGauge';
 import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev } from '../../data/uwBook';
 import { oiWhen, valueOiChange } from '../../data/building';
-import { longDay, recordDay } from '../../data/bookWindow';
+import { aheadWord, longDay, recordDay } from '../../data/bookWindow';
 import { fmtDollars as fmtUsdShort } from '../../data/ahead';
 import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
 import { nyClock, nyMinutes } from '../../core/nyTime';
@@ -347,8 +347,16 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
         {/* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23: "How the levels held today" over Thursday's bars at
             01:00 Friday) — "today" only while it is today's session */}
-        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary" data-report-day={rec.date}>How the levels held {rec.isToday ? 'today' : `· ${longDay(rec.date)}`}</h3>
+        {/* …AND ITS BOOK, ONCE THE SESSION HAS CLOSED (the eleventh audit's retail finding: the head read "Supreme · next
+            session 755" over this table's "SUPREME · PUT WALL 760" — two books, read as a contradiction): a finished
+            session is graded against its own book, said by its date beside the table */}
+        <h3 className="text-[16px] font-semibold leading-tight text-textPrimary" data-report-day={rec.date}>How the levels held {rec.isToday && !rec.done ? 'today' : `· ${longDay(rec.date)}`}</h3>
         {scope}
+        {rec.done && (
+          <span className="font-mono text-[11px] text-textSecondary whitespace-nowrap" title={`The levels in this table are the ones ${longDay(rec.date)}'s session ran on — the Levels card at the top of the page reads ${aheadWord() === 'today' ? "today's" : "the next session's"} contracts, so its walls and supreme can differ`} data-report-book>
+            {longDay(rec.date)}'s book · the head reads {aheadWord() === 'today' ? "today's" : "the next session's"}
+          </span>
+        )}
         {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The contracts these levels are read from — the Levels card at the top of the page, the same as the Board's" data-report-span>{span}</span>}
         <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the rows, the strips and the ticks mean" testId="report-guide" />
         <FoldDoor open={open} onToggle={toggleOpen} what="the report" testId="report" />

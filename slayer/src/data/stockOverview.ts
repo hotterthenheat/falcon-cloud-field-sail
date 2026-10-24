@@ -68,7 +68,7 @@ import { bookCandles, snapshotOf } from './uwBook';
 import { peekQuote, extendedLine, priceWords, screenerRead, screenerNeedsCloses } from './liveQuote';
 import { peekLive, peekTickerNews } from './liveRecord';
 import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
-import { nyTodayIso } from './nyDate';
+import { lastSessionIso, nyTodayIso } from './nyDate';
 import { nyClock, nyIsoDate, nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { peekRegularCloses, phaseOf } from './dayChange';
 import { epsResultOf, nextReportRow, reportDayLabel, reportDayLabelYear, tradingDaysUntil } from './earningsFeed';
@@ -584,7 +584,11 @@ export function readOfScreen(row: ScreenRow): ScreenRead {
   const w = scored.reduce((a, p) => a + PILLAR_WEIGHTS[p.key], 0);
   const composite = w > 0 ? Math.round(scored.reduce((a, p) => a + p.score * PILLAR_WEIGHTS[p.key], 0) / w) : 50;
   const screen = screenOf(composite);
-  return { pillars, composite, screen, grade: gradeOfComposite(composite), lean: leanOf(composite), thesis: thesisOf(scored.map(p => ({ key: p.key, score: p.score })), screen) };
+  const grade = gradeOfComposite(composite);
+  /* THE SENTENCE ON THE GRADE SHOWN (round 11: AAPL S/S/P and NEE S/G/P both read "good", yet one had the strong form
+     and the other the mixed one — the sentence took the engine's screen, cut at 68, not the displayed grade, cut at 60) */
+  const shownScreen: Screen = grade === 'strong' || grade === 'good' ? 'STRONG' : grade === 'poor' ? 'WEAK' : 'MIXED';
+  return { pillars, composite, screen, grade, lean: leanOf(composite), thesis: thesisOf(scored.map(p => ({ key: p.key, score: p.score })), shownScreen) };
 }
 
 const mmdd = (t: number): string => {
@@ -776,8 +780,16 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
      today's contracts, and a single stock with no same-day expiry (AAPL on a Thursday) then read an empty book — open
      interest 0, "50% calls", a $44M net GEX against the whole book's −$573M. The name's page reads the whole book. */
   const profile = buildExposureProfile(snapshot, 'ALL', LEVELS_WINDOW);
-  const netVanna = profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
-  const netCharm = profile.strikes.reduce((a, s) => a + (s.charm?.net ?? 0), 0);
+  /* THE TOTALS OVER EVERY STRIKE (round 11: Net DEX, vanna and charm summed the ±30-strike drawing window, so they sat
+     apart from the vendor's own /greek-exposure totals; VEX read "$1.10K" on AAPL and "$32" on GME — the vendor's
+     greek rows carry no vega, and what was left was rounding). On a live book the sums run over the whole book's
+     strikes; a vega total under $100K on a book is not a measured figure and reads "—" */
+  const wholeChain = snapshot.liveBook ? (snapshot.uwChains?.ALL ?? snapshot.chain) : null;
+  const sumOf = (pick: (n: (typeof snapshot.chain)[number]) => number): number => (wholeChain ?? []).reduce((a, n) => a + (Number.isFinite(pick(n)) ? pick(n) : 0), 0);
+  const netVanna = wholeChain ? sumOf(n => (n.callVanna ?? 0) + (n.putVanna ?? 0)) : profile.strikes.reduce((a, s) => a + (s.vanna?.net ?? 0), 0);
+  const netCharm = wholeChain ? sumOf(n => (n.callCharm ?? 0) + (n.putCharm ?? 0)) : profile.strikes.reduce((a, s) => a + (s.charm?.net ?? 0), 0);
+  const netDexAll = wholeChain ? sumOf(n => (n.callDex ?? 0) + (n.putDex ?? 0)) : profile.netDex;
+  const netVexAll = wholeChain ? sumOf(n => (n.callVex ?? 0) + (n.putVex ?? 0)) : profile.netVex;
   /* NET GEX AND THE REGIME FROM PINPOINT'S OWN READ (the re-audit, 2026-10-22): the profile's netGex sums a ±30-strike
      window (SPY −$11.6B against Pinpoint's −$14.69B on every strike). levelsFor is the one source both products read;
      it is in the retail sign, the money read keeps the house sign (the page flips it for print). */
@@ -892,8 +904,8 @@ const moneyFor = (ticker: string, snapshot: MarketSnapshot, blocks: Candle[][], 
   const today = (sessionMinutes.length > 1 ? sessionMinutes : lastBlock && lastBlock.length > 1 ? lastBlock : []).map(c => ({ time: c.time, close: c.close }));
   const read: MoneyRead = {
     netGex: houseNet,
-    netDex: profile.netDex,
-    netVex: profile.netVex !== 0 ? profile.netVex : null,
+    netDex: netDexAll,
+    netVex: Math.abs(netVexAll) >= 100_000 ? netVexAll : null,
     netVanna,
     netCharm,
     /* BOTH SCOPES FROM levelsFor (the third audit, 2026-10-23) — the walls, the flip, the supreme, net GEX and the regime,
@@ -1141,6 +1153,8 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
 /* ---- the words and the sums ------------------------------------------------------ */
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** A factor's label inside a sentence: lower-cased, its initialisms kept ("20-day EMA", "RSI", "ADX" — round 11) */
+const lowerLabel = (label: string): string => label.split(' ').map(w => (/^[A-Z0-9-]*[A-Z]{2,}[A-Z0-9-]*$/.test(w) ? w : w.toLowerCase())).join(' ');
 const whyNowOf = (pillars: Pillar[]): string => {
   const all = pillars.flatMap(p => p.factors.filter(f => !f.context).map(f => ({ ...f, pull: Math.abs(f.lean) * f.weight * PILLAR_WEIGHTS[p.key] })));
   const top = all.filter(f => f.pull > 0).sort((a, b) => b.pull - a.pull).slice(0, 3);
@@ -1172,7 +1186,10 @@ export function verdictSentence(ranked: readonly { score: number; name: string; 
   if (!goods.length && !bads.length) return 'Nothing on the name is decisive.';
   if (!goods.length) return cap(`${bads.slice(0, 2).map(p => p.bad).join(', ')}; ${help}.`);
   if (!bads.length) return cap(`${goods.slice(0, 2).map(p => p.good).join(', ')}; nothing against it, the rest in the middle.`);
-  return cap(`${goods[0].good} but ${bads[0].bad} — a catalyst decides.`);
+  /* every pillar against named (round 11: NIO and GOOGL, "1 pull for · 2 against", named the trend alone) */
+  const badWords = bads.length === 1 ? bads[0].bad : `${bads.slice(0, -1).map(p => p.bad).join(', ')} and ${bads[bads.length - 1].bad}`;
+  const goodWords = goods.length === 1 ? goods[0].good : `${goods.slice(0, -1).map(p => p.good).join(', ')} and ${goods[goods.length - 1].good}`;
+  return cap(`${goodWords} but ${badWords} — a catalyst decides.`);
 }
 const thesisOf = (pillars: readonly { key: PillarKey; score: number }[], screen: Screen): string => {
   const words: Record<PillarKey, { good: string; bad: string; name: string }> = {
@@ -1254,7 +1271,7 @@ const agreementOf = (pillars: Pillar[], composite: number, news: NewsRead): Agre
     if (against.length) {
       const p = against[0];
       const f = topFactor(p);
-      risk = `The case against the ${lean} read is ${lowerName(p)}${f ? ` — ${f.label.toLowerCase()} ${f.value}, ${f.note}` : ''}; if that strengthens, the read turns there first.`;
+      risk = `The case against the ${lean} read is ${lowerName(p)}${f ? ` — ${lowerLabel(f.label)} ${f.value}, ${f.note}` : ''}; if that strengthens, the read turns there first.`;
     } else {
       const all = rows.every(r => r.stance === 'agrees');
       const between = rows.filter(r => r.stance === 'middle').map(r => r.name.toLowerCase());
@@ -1270,7 +1287,7 @@ const explanationOf = (name: string, composite: number, pillars: Pillar[], numbe
   const strongest = (side: 'for' | 'against') => [...pillars].filter(p => sideOf(p.score) === side).sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50))[0];
   const why = (p: Pillar) => {
     const f = topFactor(p);
-    return f ? ` — ${f.label.toLowerCase()} ${f.value}, ${f.note}` : '';
+    return f ? ` — ${lowerLabel(f.label)} ${f.value}, ${f.note}` : '';
   };
   if (agreement.lean === 'neutral') {
     const up = strongest('for');
@@ -1297,14 +1314,19 @@ const explanationOf = (name: string, composite: number, pillars: Pillar[], numbe
    says plainly that no story on the wire explains it. */
 const todayWhyOf = (ticker: string, dayPct: number | null | undefined, news: NewsRead): string => {
   if (dayPct == null || !Number.isFinite(dayPct) || Math.abs(dayPct) < 0.5 || ticker === 'SPY') return '';
-  const today = nyIsoDate();
-  const story = news.stories.find(st => nyIsoDate(st.item.atMs) === today);
+  /* THE SESSION NAMED (round 11: on a Saturday GME read "No story on the wire today explains the −2.2% move" — the move
+     is Friday's) — today once today's session has opened, else the last session's day */
+  const session = lastSessionIso();
+  const isToday = session === nyIsoDate();
+  const [sy, sm, sd] = session.split('-').map(Number);
+  const dayWord = isToday ? 'today' : `on ${new Date(Date.UTC(sy, sm - 1, sd, 12)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).replace(',', '')}`;
+  const story = news.stories.find(st => nyIsoDate(st.item.atMs) >= session);
   const spy = peekQuote('SPY');
   const market = spy && spy.phase === 'regular' && Number.isFinite(spy.changePct) ? ` The market: SPY ${pct(spy.changePct)} today.` : '';
   const move = pct(dayPct);
   return story
-    ? ` Today's ${move}: on the wire, "${story.item.headline.length > 110 ? `${story.item.headline.slice(0, 107)}…` : story.item.headline}".${market}`
-    : ` No story on the wire today explains the ${move} move.${market}`;
+    ? ` ${isToday ? "Today's" : `${dayWord.slice(3)}'s`} ${move}: on the wire, "${story.item.headline.length > 110 ? `${story.item.headline.slice(0, 107)}…` : story.item.headline}".${market}`
+    : ` No story on the wire ${dayWord} explains the ${move} move.${market}`;
 };
 const methodOf = (trend: TrendRead, money: MoneyRead, news: NewsRead, pillars: Pillar[], composite: number, lean: Lean): Method => ({
   observed: [

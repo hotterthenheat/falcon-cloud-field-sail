@@ -287,9 +287,9 @@ export async function refreshReactions(items: readonly { ticker: string; iso?: s
   const want = items
     .filter(e => e.iso && e.reported && reactionIsoOf(e.iso, e.slot, e.timeKnown !== false) === today && now - (liveMoveAsked.get(e.ticker) ?? 0) > LIVE_MOVE_EVERY - 2000)
     /* (round 11) and the smaller names on screen — ALV, RITM, GNTX read "reported" with no move after Friday's close */
-    /* (round 11) after the bell, the names on screen only — known or not (ALV, RITM, GNTX read "reported" with no move
+    /* (round 11) after the bell, the names on screen only (a name's own page asks for its one report) — known or not (ALV, RITM, GNTX read "reported" with no move
        after Friday's close; a known name off screen cost a daily-row read for nothing) */
-    .filter(e => !afterBell || (wanted.has(e.ticker.toUpperCase()) && !liveMoves.has(`${e.ticker.toUpperCase()}|${e.iso}`)))
+    .filter(e => !afterBell || ((wanted.has(e.ticker.toUpperCase()) || (items.length <= 40 && e.known !== false)) && !liveMoves.has(`${e.ticker.toUpperCase()}|${e.iso}`)))
     .slice(0, afterBell ? 40 : Infinity);
   const byTicker = new Map<string, string>();
   for (const e of want) byTicker.set(e.ticker.toUpperCase(), e.iso!);

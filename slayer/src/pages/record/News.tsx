@@ -113,6 +113,23 @@ const SORT_OPTIONS: DropdownOption<Sort>[] = [
 const LIFESTYLE_RE = /\b(?:fc|football|soccer|bundesliga|premier league|la liga|serie a|champions league|world cup|nba|nfl|mlb|nhl|wnba|formula (?:1|one)|f1|grand prix|nascar|olympics?|tennis|golf|pga|ufc|esports?|stadium|jersey|kit sponsor|bayern|real madrid|barcelona|manchester united|fashion|runway|couture|apparel collection|capsule collection|handbags?|sneakers?|fragrance|cosmetics|skincare|beauty|lifestyle|wellness|recipes?|celebrity|red carpet|film festival|concert|album|music video|call of duty|modern warfare)\b/i;
 const ROUTINE_RE = /\bdeclares?\b(?:[^.]|\.(?=\d)){0,40}\bdividends?\b|\bdividends?\b(?:[^.]|\.(?=\d)){0,20}\bdeclared\b|\b(?:to (?:announce|report|release|host)|announces?|schedules?|sets?)\b(?:[^.]|\.(?=\d)){0,60}\b(?:results|earnings release|conference call|webcast)\b(?:[^.]|\.(?=\d)){0,40}\b(?:on|date|dates|for)\b|\b(?:to )?(?:participate|present) (?:in|at)\b(?:[^.]|\.(?=\d)){0,40}\bconferences?\b|\btokeni[sz]ed\b|\bbinance futures\b|\belected\b(?:[^.]|\.(?=\d)){0,40}\bdirector\b/i;
 
+/* NOT LIFTED, WHATEVER THE FLAG (round 11): a preview ("Microsoft Earnings Report To Focus On…") is not a result; a
+   marketplace or product release is not the wire's lead; on the Macro beat only the hard economy — the Fed, the data,
+   rates, the indexes — leads ("Canadian cheese tariffs", "China opposes using outer space…" did) */
+const PREVIEW_RE = /\b(?:to focus on|what to expect|preview|ahead of (?:its |the )?(?:earnings|results|report)|earnings (?:preview|report to)|expected to report|will report|set to report|things to watch|to watch)\b/i;
+const HARD_MACRO_RE = /\b(?:fed|fomc|powell|cpi|ppi|pce|inflation|gdp|payrolls?|jobs report|jobless claims|unemployment|rate (?:cut|hike|decision)s?|interest rates?|treasury yields?|central bank|ecb|boj|boe|recession|s&p 500|nasdaq|dow jones|stock futures|government shutdown|debt ceiling)\b/i;
+const LIFT_BEATS = new Set(['Earnings', 'M&A', 'Guidance', 'Analyst', 'Regulatory']);
+/* NEAR-DUPLICATES ARE ONE STORY (round 11: ~8 Canada-tariff headlines in a row): the significant words of two headlines
+   within six hours that overlap by 60% or more fold into the newest, which carries "+N similar" */
+const DUP_STOP = new Set(['that', 'with', 'from', 'this', 'have', 'will', 'over', 'into', 'after', 'about', 'says', 'said', 'amid', 'than', 'their', 'more', 'year', 'week', 'first', 'news', 'update', 'report', 'reports']);
+const dupWords = (h: string): Set<string> => new Set(h.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !DUP_STOP.has(w)));
+const dupClose = (a: Set<string>, b: Set<string>): boolean => {
+  if (a.size < 3 || b.size < 3) return false;
+  let both = 0;
+  for (const w of a) if (b.has(w)) both++;
+  return both / Math.min(a.size, b.size) >= 0.6 && both >= 3;
+};
+
 const ago = (m: number) => (m < 1 ? 'just now' : m < 60 ? `${Math.round(m)}m ago` : `${Math.floor(m / 60)}h ${Math.round(m % 60)}m ago`);
 const signed = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 
@@ -553,6 +570,7 @@ const News = () => {
       },
     ];
   }, [cut, picks]);
+  const similarRef = useRef<Map<string, number>>(new Map());
   const rows = useMemo(() => {
     const moveKey = (e: GeoNewsEvent): number => {
       const p = e.item.prediction;
@@ -568,7 +586,9 @@ const News = () => {
            a conference slot, a tokenized listing) is not lifted up the wire for it (the re-audit, 2026-10-22) */
         /* and a press release from a company the page does not list (no ticker, the Product beat — "MiniTool
            ShadowMaker 5.0 Introduces Cloud Sync") is never lifted to lead the wire (the third audit, 2026-10-23) */
-        const lifted = (e: GeoNewsEvent) => e.item.major && !ROUTINE_RE.test(e.item.headline) && !(e.item.ticker == null && e.item.category !== 'Macro');
+        const lifted = (e: GeoNewsEvent) =>
+          e.item.major && !ROUTINE_RE.test(e.item.headline) && !PREVIEW_RE.test(e.item.headline) && !(e.item.ticker == null && e.item.category !== 'Macro') &&
+          (LIFT_BEATS.has(e.item.category) || (e.item.category === 'Macro' && HARD_MACRO_RE.test(e.item.headline)));
         /* (round 9) a sport, fashion or lifestyle press release ranks last off the Board — a Bayern Munich deal and a
            fashion launch sat high on "What matters" */
         const rank = (e: GeoNewsEvent) => (onBoard(e) ? (lifted(e) ? 0 : 1) : LIFESTYLE_RE.test(e.item.headline) && e.item.category !== 'Earnings' && e.item.category !== 'M&A' ? 5 : lifted(e) ? 2 : e.item.ticker || e.item.category === 'Macro' ? 3 : 4);
@@ -579,7 +599,24 @@ const News = () => {
       move: (a, b) => moveKey(b) - moveKey(a) || a.item.minutesAgo - b.item.minutesAgo,
       loud: (a, b) => b.severity - a.severity,
     };
-    return [...kept].sort(by[sort]);
+ const sorted = [...kept].sort(by[sort]);
+    /* the near-duplicates fold into the first of them in this order */
+    const out: GeoNewsEvent[] = [];
+    const sigs: { words: Set<string>; at: number; idx: number }[] = [];
+    const folded = new Map<string, number>();
+    for (const e of sorted) {
+      const words = dupWords(e.item.headline);
+      const twin = sigs.find(g => Math.abs(g.at - e.item.minutesAgo) <= 360 && dupClose(g.words, words));
+      if (twin) {
+        const head = out[twin.idx];
+        folded.set(head.id, (folded.get(head.id) ?? 0) + 1);
+        continue;
+      }
+      sigs.push({ words, at: e.item.minutesAgo, idx: out.length });
+      out.push(e);
+    }
+    similarRef.current = folded;
+    return out;
   
   }, [cut, picks, sort]);
   const pins = useMemo(() => clusterByCity(rows), [rows]);
@@ -641,7 +678,8 @@ const News = () => {
   const [hoverCity, setHoverCity] = useState<CityPing | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* THE FACTS */
+  /* THE FACTS — the headline count keeps the folded near-duplicates */
+  const storyCount = rows.length + [...similarRef.current.values()].reduce((a, n) => a + n, 0);
   const positive = rows.filter(r => r.grade === 'ALLY').length;
   const negative = rows.filter(r => r.grade === 'THREAT').length;
   /* BIGGEST MOVE TODAY, OVER A COMPLETE, STATED SET (the fourth audit, 2026-10-23: "NVDA −4.4% · 3 of 86 read" while
@@ -743,7 +781,7 @@ const News = () => {
                 <span className="text-textMuted">—</span>
               ) : (
                 <>
-                  {rows.length.toLocaleString('en-US')}
+                  {storyCount.toLocaleString('en-US')}
                   {!unmarked && <span className="text-textMuted"> · {positive} positive · {negative} negative</span>}
                   {coverage.reading && <span className="text-[9px]"> · so far</span>}
                 </>
@@ -1004,7 +1042,7 @@ const News = () => {
                     <span className="mt-[5px] shrink-0">
                       <ImpactMark tier={tierOf(e.severity)} />
                     </span>
-                    <span className={`min-w-0 line-clamp-2 text-[12.5px] leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+                    <span className={`min-w-0 line-clamp-2 text-[12.5px] leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-[9px] text-textMuted" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
                   </span>
                   <span className="min-w-0 flex items-center gap-1.5 font-mono text-[10px] text-textMuted whitespace-nowrap overflow-hidden">
                     <span className="tnum text-textSecondary">{e.item.time}</span>
@@ -1052,7 +1090,7 @@ const News = () => {
                 <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} lean={leanOf(e.grade)} /></span>
                 <span className="min-w-0 flex items-center gap-2">
                   <ImpactMark tier={tierOf(e.severity)} />
-                  <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}</span>
+                  <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-[12px] ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-[9px] text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
                 </span>
                 <span className="h-5 flex items-center justify-end font-mono text-[11px] font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
                 <span className="h-5 flex items-center justify-end font-mono text-[10px] text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>

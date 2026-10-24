@@ -252,9 +252,9 @@ const SequenceStrip = ({
     const oldest = siblings[n - 1].time;
     const newest = siblings[0].time;
     const parts = [
-      `Part of a sequence — ${n} prints on this contract in the tape you were watching`,
+      `Part of a sequence — ${num(n)} prints on this contract in the tape you were watching`,
       `${fmtUsd(total)} total`,
-      `${ask.length} paid the offer (${lots(ask)} contracts) / ${bid.length} hit the bid (${lots(bid)})${mid.length ? ` / ${mid.length} mid (${lots(mid)})` : ''}`,
+      `${num(ask.length)} paid the offer (${lots(ask)} contracts) / ${num(bid.length)} hit the bid (${lots(bid)})${mid.length ? ` / ${num(mid.length)} mid (${lots(mid)})` : ''}`,
       `${oldest} → ${newest}`,
     ];
     return `${parts.join(' · ')}.`;
@@ -313,7 +313,7 @@ const SequenceStrip = ({
             );
           })}
           {n > SEQ_SHOWN && (
-            <span className="px-1.5 py-1 font-mono text-[11px] text-textMuted tnum">…and {n - SEQ_SHOWN} more {noun === 'alerts' ? 'alerts' : 'on the tape'}</span>
+            <span className="px-1.5 py-1 font-mono text-[11px] text-textMuted tnum">…and {num(n - SEQ_SHOWN)} more {noun === 'alerts' ? 'alerts' : 'on the tape'}</span>
           )}
         </div>
       )}

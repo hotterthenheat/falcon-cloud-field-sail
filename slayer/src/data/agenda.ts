@@ -220,7 +220,9 @@ export const reachWords = (t: Pick<Target, 'atPrice' | 'today' | 'reach'>, short
 /** Today's cash bars of the session on record — empty before today's open (the session on record is then a past one) */
 function todayCash(bars: readonly Candle[]): Candle[] {
   const rec = recordDay();
-  if (!rec.isToday) return [];
+  /* …and after today's close the targets are the next session's (the eleventh audit's m2: "reached today" on Friday
+     evening beside next-session odds) — the finished session's record is the Map's "How the levels held" */
+  if (!rec.isToday || rec.done) return [];
   return bars.filter(b => nyIsoDate(b.time * 1000) === rec.date && nyMinutes(b.time * 1000) >= 570 && nyMinutes(b.time * 1000) < 960);
 }
 

@@ -353,6 +353,8 @@ export interface EndlessFeed {
   state: 'more' | 'loading' | 'end' | 'cap' | 'idle';
   /** What the rows loaded are, and why it stopped — the foot's words */
   note?: ReactNode;
+  /** How many rows the list holds (all of them, before the page's cut) — an empty cut pages on only once some are in */
+  loaded?: number;
   /** The button's word — "Load older ↓" for a list walked back in time; a list walked down by size says "Load more ↓" */
   moreLabel?: string;
   /** Anything else the foot carries (the tape's jump to a time) */
@@ -549,6 +551,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
   const onBodyScroll = (e: BodyScrollEvent<T>) => {
     if (e.direction !== 'vertical') return;
     setShowTop(e.top > 600);
+    if (e.top > 0) scrolled.current = true;
     onDeepRef.current?.(e.top > 80);
     nearEnd(e.api);
     tellVisible(e.api);
@@ -558,26 +561,45 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
      stopped" — a page that added a few rows left the reader at the end with no scroll to come) — but only while each page
      adds rows: a page that adds none stops there, so a cut that keeps few rows never walks the whole day unasked */
   const shownN = gridRows.length;
+  const scrolled = useRef(false);
   const lastN = useRef(shownN);
   useEffect(() => {
     const grew = shownN > lastN.current;
     lastN.current = shownN;
-    if (!grew || !windowed) return;
+    /* only a reader who has scrolled the window — never the first rows landing */
+    if (!grew || !windowed || !scrolled.current) return;
     const api = gridRef.current?.api;
     if (api) nearEnd(api);
   }, [shownN, endless?.state]); // eslint-disable-line react-hooks/exhaustive-deps
   /* a short list (no window — the page scrolls) asks when its foot comes into view */
   const footRef = useRef<HTMLDivElement | null>(null);
+  /* one page per sighting, and on only while the pages add rows — or, for a cut that shows nothing yet (a search whose
+     rows are further down the list), up to ten pages, then the button */
+  const ioSeen = useRef({ shown: -1, empty: 0 });
   useEffect(() => {
     const el = footRef.current;
     if (!el || windowed || typeof IntersectionObserver === 'undefined') return;
     const io = new IntersectionObserver(es => {
       const en = endlessRef.current;
-      if (es.some(e => e.isIntersecting) && en && en.state === 'more') en.onNear();
+      if (!es.some(e => e.isIntersecting) || !en || en.state !== 'more') return;
+      const seen = ioSeen.current;
+      /* rows on their way in (the cut's step back) are not an empty cut */
+      if (rows.length > 0 && shownN === 0) return;
+      if (shownN === 0) {
+        if (!(en.loaded && en.loaded > 0)) return;
+        if (seen.empty >= 10) return;
+        seen.empty++;
+      } else {
+        if (shownN <= seen.shown) return;
+        seen.empty = 0;
+      }
+      seen.shown = shownN;
+      en.onNear();
     });
     io.observe(el);
     return () => io.disconnect();
-  }, [windowed, endless?.state, shownN]);
+    /* the note carries the count loaded: a page that lands under a cut that shows nothing re-arms the sighting */
+  }, [windowed, endless?.state, shownN, typeof endless?.note === 'string' ? endless.note : null]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (topSignal) scrollToTop();
   }, [topSignal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -684,7 +706,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
       )}
      </div>
       {paged && <PageBar page={pager.page} pages={Math.max(pager.pages, Math.ceil(gridRows.length / TRACE_PAGE))} onPage={n => gridRef.current?.api.paginationGoToPage(n)} testId={testId} />}
-      {endless && (gridRows.length > 0 || endless.state === 'loading') && (
+      {endless && (gridRows.length > 0 || endless.state === 'loading' || (endless.state === 'more' && (endless.loaded ?? 0) > 0)) && (
         <div ref={footRef} className="relative z-[1] bg-panel px-5 py-2.5 border-t border-borderSubtle flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] text-textSecondary" data-endless-foot={endless.state}>
           <span className="min-w-0 flex-1 basis-[14rem] break-words">{endless.note}</span>
           {endless.extra}
@@ -712,6 +734,7 @@ export function endlessOf(o: { state: EndlessFeed['state']; loaded: number; load
     onNear: o.loadOlder,
     state,
     moreLabel,
+    loaded: o.loaded,
     note: state === 'end' ? `${n} — ${endWords}` : state === 'cap' ? `${n} — the most the page holds at once` : state === 'idle' ? `${n}${paused ? ' — paused' : ''}` : `${n} — scroll for more`,
   };
 }

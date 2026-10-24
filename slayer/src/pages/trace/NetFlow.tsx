@@ -230,6 +230,14 @@ const NetFlow = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facts, leaders.length, market, boardReading, boardFault]);
 
+  /* ONE PLAIN LINE (retail, round 11): the market's lean and the two loudest names — the full read behind "more" */
+  const leadLine = boardReading
+    ? "Reading the board and the market's net…"
+    : !facts.top || !facts.bottom
+      ? boardFault
+        ? 'The board did not answer — it fills when the feed does.'
+        : 'The board is still waking up.'
+      : `${market && !market.none && session === 'regular' ? `The whole market ${market.day && !isLiveDay(market.day) ? `on ${shortDay(market.day)}` : 'today'} leans ${market.net >= 0 ? 'bullish' : 'bearish'} (${signed(market.net)} net). ` : ''}${facts.top.ticker} leads bullish at ${signed(facts.top.net)}; ${facts.bottom.ticker} leans most bearish at ${signed(facts.bottom.net)}.`;
   /* The search PICKS a name (it is a board, not a filter); the board scrolls the picked row into view */
   const boardRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -311,7 +319,9 @@ const NetFlow = () => {
           </span>
         </>
       }
-      sentence={read}
+      sentence={null}
+      lead={leadLine}
+      detail={read}
     >
       {/* ON A PHONE THE BOARD STANDS OVER THE PANE: side by side at 390px the pane was squeezed to a sliver beside the
           board — its chart and its menus cut off at the screen's edge */}

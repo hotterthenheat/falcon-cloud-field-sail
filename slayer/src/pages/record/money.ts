@@ -38,3 +38,11 @@ export const asOfDay = (iso: string | null | undefined): string => {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
+
+/** "Jan 22, 1993" for a "1993-01-22" — a date a year or more back carries its year (round 11: raw ISO dates on the
+    ETF's "since", the 13F's first buy); anything unreadable as it came */
+export const longDay = (iso: string | null | undefined): string => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso || '—';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+};

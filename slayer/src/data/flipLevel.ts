@@ -55,7 +55,7 @@ import { DEFAULT_R } from '../core/carry';
 import { cumulativeFlip, dollarGammaPerContract, netGammaAt, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
-import { ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
+import { bookCandles, ownIvDates, peekEntry, peekGammaPriced } from './uwBook';
 import { registeredDates } from './chainDates';
 import { callWallWords, putWallWords, wallPlace } from '../core/walls';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
@@ -188,6 +188,14 @@ function pricingClock(pricedAt: number | undefined, now: number): number {
   if (pricedAt && pricedAt > 0) return pricedAt;
   const [y, m, d] = nyIsoDate(now).split('-').map(Number);
   return nySessionPhase(now) === 'open' && isTradingDay(new Date(y, m - 1, d)) ? now : lastCloseAt(now);
+}
+
+/** The price at a minute off the name's cash bars: the open of the first bar at or after it (null without bars) */
+function priceAtMinute(ticker: string, at: number): number | null {
+  const bars = bookCandles(ticker) ?? [];
+  const sec = Math.floor(at / 1000);
+  const b = bars.find(x => x.time >= sec && x.time - sec < 3600);
+  return b && b.open > 0 ? b.open : null;
 }
 
 export interface LevelFlip extends FlipRead {
@@ -374,9 +382,10 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   /* …AND ONLY ONCE EVERY INPUT THAT MOVES THE ANSWER IS IN (the eleventh audit's B1): the own-vol dates' live rows with
      the price and minute the vendor priced them at (until then a date is re-priced from the wrong price and clock), and
      the term structure the other dates take their vol from */
+  const asOfPx = snapshot.asOf != null && at == null ? priceAtMinute(snapshot.ticker, snapshot.asOf) : null;
   const pricedIn = pinned != null || !entry.gammaLive || [...ownDates].every(d => !!peekGammaPriced(snapshot.ticker, d));
   const termIn = want.every(d => ownDates.has(d)) || !!entry.termIv;
-  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}`;
+  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}|${asOfPx ?? ''}`;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;
@@ -385,7 +394,11 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
     const atm = term[d] ?? (entry.iv > 0 ? entry.iv : 0);
     const p = pinned == null ? priced[i] : null;
     const now = pinned ?? pricingClock(p?.at, wall);
-    const ls = legsOfDate(by[d], d, atm, now, ownDates.has(d) || snapshot.asOf != null, p && p.price > 0 && p.price !== spot ? p.price : undefined, pinned == null, spot);
+    /* A SNAPSHOT IS RE-PRICED FROM ITS OWN PRICE AT ITS OWN TIME (the eleventh audit's m5): the session's morning rows
+       (asOf 9:30) were priced from the closing price the report's book carries — they are priced from the price at their
+       own minute (the first cash bar at or after it) */
+    const own0 = p && p.price > 0 && p.price !== spot ? p.price : asOfPx != null && asOfPx !== spot ? asOfPx : undefined;
+    const ls = legsOfDate(by[d], d, atm, now, ownDates.has(d) || snapshot.asOf != null, own0, pinned == null, spot);
     for (const l of ls) if (l.iv > 0) withVol++;
     legs.push(...ls);
   }
@@ -583,12 +596,4 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
     /* the one order (core/walls.ts LEVEL_ORDER): the call wall, then the put wall (the seventh audit's m2) */
     read: `Dealers are short gamma, so their hedging amplifies moves. ${cap(cw)}: ${callWallWords(callWall, spot, netAt?.(callWall))}; ${pw}: ${putWallWords(putWall, spot, netAt?.(putWall))}.${flipClause}`,
   };
-}
-
-/* _fix11-pp TEMP DEBUG — remove */
-export function __flipRaw(snapshot: MarketSnapshot, chain: readonly StrikeNode[] = snapshot.chain): unknown {
-  const set = legSet(snapshot, chain);
-  if (!set) return null;
-  const raw = repricedFlip(set.legs, snapshot.spot, DEFAULT_R);
-  return { key: set.key, complete: set.complete, flip: raw.flip, crossings: raw.crossings, spot: snapshot.spot };
 }

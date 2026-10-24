@@ -37,6 +37,7 @@
 
 import { useLiveQuote } from '../../data/liveQuote';
 import { lastSessionIso } from '../../data/nyDate';
+import { personDisplay } from '../../data/tickers';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, LayoutGrid } from 'lucide-react';
@@ -678,7 +679,7 @@ const EarningsName = () => {
                 <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]" data-name-insider={t.id}>
                   <When days={t.daysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
-                    <span className="text-[11px] font-semibold text-textPrimary truncate">{t.person}</span>
+                    <span className="text-[11px] font-semibold text-textPrimary truncate">{personDisplay(t.person)}</span>
                     <span className="text-[9px] text-textMuted truncate">{t.role}</span>
                   </span>
                   <span className={`font-mono text-[10px] ${t.kind === 'BUY' ? 'text-bull' : 'text-bear'}`}>{t.kind === 'BUY' ? 'Bought' : 'Sold'}</span>

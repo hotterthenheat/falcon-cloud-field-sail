@@ -264,7 +264,9 @@ const Odte = () => {
             <DropdownSelect label="Panes" value={store.count} options={PANE_OPTIONS} onChange={n => setStore(s => ({ ...s, count: n }))} title="How many charts on the desk" testId="odte-panes" />
           </>
         }
-        sentence={<RichRead text={read} />}
+        sentence={null}
+        lead={awake ? `Same-day options ${isLiveDay() ? 'today' : `on ${shortDay(tapeSessionIso())}`} lean ${bullish ? 'bullish' : 'bearish'}: net calls ${signed(ncp)}, net puts ${signed(npp)} (to ${asOf} ET).` : read}
+        detail={awake ? <RichRead text={read} /> : null}
       >
         <div className={`${gridClass} gap-2 flex-1 min-h-0 border-t border-borderSubtle p-2`} data-odte-desk>
           {Array.from({ length: store.count }, (_, i) =>
