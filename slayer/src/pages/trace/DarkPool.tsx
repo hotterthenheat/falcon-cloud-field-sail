@@ -31,14 +31,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { darkView, execWord, lastStockClose, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, usd as fmtUsd } from '../../data/traceLive';
+import { darkView, execWord, lastStockClose, nyIsoToday, olderDarkDay, olderNameDark, postureOf, quotePlace, useAccumTape, useDarkRegularDay, useLitRegularDay, useNameDark, useOlderPages, usd as fmtUsd } from '../../data/traceLive';
 import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
+import { useQParam } from '../../components/trace/addressCut';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { gradeOfPosture, POSTURE_WORD, type DarkTapeView } from '../../data/darkpool';
 import { crossKey, watchedCross } from '../../context/WatchContext';
 import CrossDrilldown from '../../components/trace/CrossDrilldown';
-import FlowSearch from '../../components/trace/FlowSearch';
+import FlowSearch, { parseContractQuery } from '../../components/trace/FlowSearch';
 import WatchStar from '../../components/trace/WatchStar';
 import GradeMeter from '../../components/ui/GradeMeter';
 import type { DarkLeaderRow, DarkLeadersView, DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../../types/darkpool';
@@ -51,7 +52,7 @@ import { earnMarks, weightInk } from '../../components/trace/earnedInk';
 import { LiveHold, useHold } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
 import TermLine from '../../components/trace/TermLine';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { nyClock } from '../../core/nyTime';
 import { DarkPoolGuide } from '../../components/trace/TraceGuide';
 import { DP_SHELF_H, DP_STRIP_HEAD_H, TracePageSkeleton } from './traceSkeletons';
@@ -119,7 +120,7 @@ const TOOLTIPS: Record<string, string> = {
   says: 'The read in a sentence',
 };
 /* The sector and the share flex — the table fills its box (Noah, 2026-09-13: his sat half-width beside empty space) */
-const LEADER_WIDTHS: Record<string, number> = { ticker: 140, price: 120, dark: 120, avg: 120, shares: 140 };
+const LEADER_WIDTHS: Record<string, number> = { ticker: 140, price: 120, dark: 120, avg: 120, shares: 140, share: 168 };
 const LEADER_TOOLTIPS: Record<string, string> = {
   dark: 'Off-exchange dollars in the dark prints in hand',
   share: 'Against the heaviest name in its sector',
@@ -134,15 +135,15 @@ type LeaderRow = DarkLeaderRow & { sector: string; sectorMax: number };
    the box opens on every name's crosses in one tape, the Live Tape's own grammar; the search cuts it to a name, and
    then the shelves stand and the facts are the name's. The scope chip that followed the frame is gone with it.
    Remembered across route changes within a session. */
-let queryMemory = '';
+const queryMemory = { q: '' };
+
+const darkIdOf = (p: DarkPoolPrint) => `${p.ticker}-${p.id}`;
+const NO_PRINTS: DarkPoolPrint[] = [];
 
 const DarkPool = () => {
   const { marketData } = useMarketData();
-  const [query, setQueryState] = useState(queryMemory);
-  const setQuery = (q: string) => {
-    queryMemory = q;
-    setQueryState(q);
-  };
+  /* the search is in the address (?q=), so a link carries it (the owner, 2026-10-23) */
+  const [query, setQuery] = useQParam(queryMemory);
   const [tapeKind, setTapeKind] = useState<'dark' | 'lit'>('dark');
   /* AFTER THE CLOSE, THE DAY'S SESSION FIRST (the third audit, 2026-10-22: after the bell every cross read "NO READ ·
      AFTER HRS"): once the stock session has ended the page opens on the day's regular-session crosses, and the
@@ -161,10 +162,20 @@ const DarkPool = () => {
   const traceSession = useTraceSession();
   const dpSession: 'regular' | 'after' = traceSession === 'extended' ? 'after' : 'regular';
   const regularView = !!closed && dpSession === 'regular';
-  const darkLive = useAccumTape('dark', 200);
-  const darkReg = useDarkRegularDay(regularView ? closed!.iso : null);
+  /* the market's live feeds are read only while they are the view (audit round 11, minor 2) — not after the close under
+     Regular, and not under a typed name */
+  const qLive = query.trim().toUpperCase();
+  const namedLive = /^[A-Z][A-Z0-9.]{0,5}$/.test(qLive);
+  const darkLive = useAccumTape('dark', 200, !regularView && !namedLive && tapeKind === 'dark');
+  const darkReg0 = useDarkRegularDay(regularView ? closed!.iso : null);
+  /* ENDLESS (the owner, 2026-10-23): the day's next-largest crosses page in as the reader scrolls (max_premium, walked
+     down); a typed name's crosses page back through its day (older_than). The market's live feed has no older cursor. */
+  const q0 = query.trim().toUpperCase();
+  const named0 = /^[A-Z][A-Z0-9.]{0,5}$/.test(q0) ? q0 : null;
+  const regOlder = useOlderPages(`dreg:${closed?.iso ?? ''}`, darkReg0.rows, darkIdOf, inHand => olderDarkDay(closed!.iso, inHand), regularView && !named0 && tapeKind === 'dark');
+  const darkReg = useMemo(() => ({ ...darkReg0, rows: regOlder.rows }), [darkReg0, regOlder.rows]);
   const dark = regularView ? darkReg : darkLive;
-  const litLive = useAccumTape('lit', 200);
+  const litLive = useAccumTape('lit', 200, !regularView && !namedLive && tapeKind === 'lit');
   /* OWN-TERMS PRINTS STAND APART (audit round 4: "SPY $773.13 126,437 $97.8M" five times and "QQQ $725.39" four inflated
      "$14.3B on this cut" — 84 of 198 crosses, $6.93B, were contingent or average-price prints): by default the page reads
      the crosses priced at the quote; the own-terms ones are a separate, labelled group, in no total and no leader */
@@ -189,7 +200,10 @@ const DarkPool = () => {
   const sector = 'all' as string;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const nameView = named && tapeKind !== 'lit' ? nameBook.rows.view : null;
+  const nameDayIso = regularView ? closed!.iso : nyIsoToday();
+  const nameOlder = useOlderPages(`dname:${named ?? ''}:${nameDayIso}`, nameBook.rows.view?.prints ?? NO_PRINTS, darkIdOf, inHand => olderNameDark(named!, inHand, nameDayIso), !!named && tapeKind !== 'lit');
+  const nameView0 = named && tapeKind !== 'lit' ? nameBook.rows.view : null;
+  const nameView = useMemo(() => (nameView0 && nameOlder.rows.length > nameView0.prints.length ? { ...nameView0, prints: nameOlder.rows } : nameView0), [nameView0, nameOlder.rows]);
   const liveView = useMemo(() => {
     if (!nameView) return null;
     const ps = nameView.prints.filter(p => (terms === 'own' ? !!p.special : !p.special));
@@ -282,12 +296,15 @@ const DarkPool = () => {
               dpSharePct: tape.dpSharePct,
               posture: tape.posture,
               netPosturePct: tape.netPosturePct,
-              postureNote: `${tape.lit ? 'On the lit tape' : tape.read === 0 ? 'Nothing to read' : POSTURE_WORD[tape.posture]} across ${tape.names.length} names — ${fmtUsd(tape.totalNotional)} ${tape.lit ? 'printed on the exchanges' : 'crossed off-exchange'} in ${terms === 'own' ? `${num(tape.crosses)} own-terms and auction prints (contingent, average-price, prior-reference, opening and closing crosses — priced by their terms or in the auction, never read)` : regularView && !tape.lit ? `${num(tape.crosses)} crosses priced at the quote, among the day's largest regular-session crosses (${fmtUsd(regFloor)} and up)` : regularView && tape.lit ? `the regular-session lit prints of $500K and up, before the close, of the ${litNames.length} names heaviest in the dark ${closed ? dayAdv(closed.iso) : dayAdv()}` : `the last ${num(tape.crosses)} prints`}${terms === 'quote' && tape.ownTerms ? ` — ${num(tape.ownTerms)} own-terms prints set apart` : ''}. ${tape.note}`,
+              postureNote: `${tape.lit ? 'On the lit tape' : tape.read === 0 ? 'Nothing to read' : POSTURE_WORD[tape.posture]} across ${num(tape.names.length)} names — ${fmtUsd(tape.totalNotional)} ${tape.lit ? 'printed on the exchanges' : 'crossed off-exchange'} in ${terms === 'own' ? `${num(tape.crosses)} own-terms and auction prints (contingent, average-price, prior-reference, opening and closing crosses — priced by their terms or in the auction, never read)` : regularView && !tape.lit ? `${num(tape.crosses)} crosses priced at the quote, among the day's largest regular-session crosses (${fmtUsd(regFloor)} and up)` : regularView && tape.lit ? `the regular-session lit prints of $500K and up, before the close, of the ${num(litNames.length)} names heaviest in the dark ${closed ? dayAdv(closed.iso) : dayAdv()}` : `the last ${num(tape.crosses)} prints`}${terms === 'quote' && tape.ownTerms ? ` — ${num(tape.ownTerms)} own-terms prints set apart` : ''}. ${tape.note}`,
               read: tape.read,
               totalNotional: tape.totalNotional,
             }
-          : null,
-    [view, tape]
+          : named && nameBook.rows.unknown
+            ? /* NO SUCH TICKER (audit round 11, minor 5) — the page stands and says so, never its skeleton */
+              { ticker: named, dpSharePct: 0, posture: 'BALANCED' as const, netPosturePct: 0, postureNote: `No ticker “${named}” — check the symbol.`, read: 0, totalNotional: 0 }
+            : null,
+    [view, tape, named, nameBook.rows.unknown]
   );
   /* THE FIELD KEEPS ITS CARET (the ship pass, 2026-10-22): a typed letter that is a ticker ("S") made the page wait on
      that name's book with no head, the whole page fell back to its skeleton, and the search field it was typed into
@@ -483,6 +500,8 @@ const DarkPool = () => {
           lead={<WatchStar k={crossKey(p)} make={() => watchedCross(p, spotOf(p), 'dark-pool')} noun="print" />}
           title={
             <>
+              {/* the name's mark on a phone too (audit round 11, minor 1) */}
+              <CompanyLogo ticker={p.ticker} size={15} />
               {!view && <span className="font-bold">{p.ticker}</span>}
               <span className="font-bold tnum">${p.price.toFixed(2)}</span>
             </>
@@ -610,6 +629,14 @@ const DarkPool = () => {
       )}
     </>
   );
+  /* ONE PLAIN LINE (retail, round 11): how much crossed in the dark and which way it leaned — the full read behind "more" */
+  const darkLead = srcReading
+    ? `Reading ${named ? `${named}'s crosses` : tapeKind === 'lit' ? 'the lit tape' : "the market's crosses"}…`
+    : named && nameBook.rows.unknown
+      ? `No ticker “${named}”.`
+      : !head || !(head.totalNotional > 0)
+        ? litLane ? 'No lit prints on this cut.' : `No crosses${named ? ` for ${named}` : ''} on this cut.`
+        : `${named ?? 'The market'}: ${fmtUsd(head.totalNotional)} ${litLane ? 'printed on the exchanges' : 'crossed off-exchange'}${tapeWindow ? ` (${tapeWindow})` : ''}${litLane || head.read === 0 ? '' : ` — reads ${POSTURE_WORD[head.posture].toLowerCase()}`}${largest ? `; largest ${fmtUsd(largest.notional)}${view ? '' : ` in ${largest.ticker}`}` : ''}.`;
   const lead = shownSector?.rows.slice(0, 3) ?? [];
   const leadersSentence: ReactNode = shownSector ? (
     <>
@@ -639,7 +666,7 @@ const DarkPool = () => {
           view
             ? `${view.ticker}'s off-exchange crosses with the read attached — who is most likely behind each print, and the liquidity shelves they left · a shelf cuts the grid to it`
             : tapeKind === 'lit' && regularView
-              ? `The regular session's lit prints of $500K and up (${shortDay(closed!.iso)}, before the 16:00 close) for the ${litNames.length} names heaviest in the dark ${dayAdv(closed!.iso)} — the market's lit feed cannot reach back past its newest print, so each name is read on its own · a row opens its card · a name typed cuts the tape to it`
+              ? `The regular session's lit prints of $500K and up (${shortDay(closed!.iso)}, before the 16:00 close) for the ${num(litNames.length)} names heaviest in the dark ${dayAdv(closed!.iso)} — the market's lit feed cannot reach back past its newest print, so each name is read on its own · a row opens its card · a name typed cuts the tape to it`
               : tapeKind === 'lit'
               ? "Every name's latest lit prints — trades on the exchanges, not off them — on one tape, newest first, each set against the quote · a row opens its card · a name typed cuts the tape to it"
               : regularView
@@ -676,7 +703,7 @@ const DarkPool = () => {
                 ) : (
                   <>
                     {/* not yet is not nothing (audit round 10, minor 6: "— · last 0 prints" before the first read) */}
-                    {cut.length === 0 && (srcReading || darkReg.waiting) ? <span className="text-textMuted">Reading…</span> : <>{tapeWindow ?? '—'} <span className="text-textMuted">· {regularView && tapeKind === 'lit' && !named ? `${litNames.length} names` : `last ${num(cut.length)} prints`}</span></>}
+                    {cut.length === 0 && (srcReading || darkReg.waiting) ? <span className="text-textMuted">Reading…</span> : <>{tapeWindow ?? '—'} <span className="text-textMuted">· {regularView && tapeKind === 'lit' && !named ? `${num(litNames.length)} names` : `last ${num(cut.length)} prints`}</span></>}
                   </>
                 )}
               </Fact>
@@ -701,7 +728,7 @@ const DarkPool = () => {
               )}
             </Fact>
             <Fact label="On this cut" testId="cut">
-              {srcReading ? <span className="text-textMuted">—</span> : <>{fmtUsd(facts.dollars)} <span className="text-textMuted">· {cut.length} {litLane ? 'prints' : 'crosses'}</span></>}
+              {srcReading ? <span className="text-textMuted">—</span> : <>{fmtUsd(facts.dollars)} <span className="text-textMuted">· {num(cut.length)} {litLane ? 'prints' : 'crosses'}</span></>}
             </Fact>
             <Fact label="Sized: over · under the mid" testId="sides" title={`Every sized print on this cut ($250K and up by its dollars, priced at the quote) by where it printed, any distance from the mid: over it (paid up — buyer-initiated) and under it (sold down — seller-initiated)${facts.atMid > 0 ? `; ${fmtUsd(facts.atMid)} crossed at the mid` : ''}${facts.afterHours ? `; ${facts.afterHours} of them after hours, against a post-market quote, so they are counted here but never read` : ''}`}>
               {srcReading ? (
@@ -770,7 +797,9 @@ const DarkPool = () => {
             </div>
           </>
         }
-        sentence={
+        sentence={null}
+        lead={darkLead}
+        detail={
           <>
             {sentence}
             <TermLine keys={['ownTerms']} testId="dark-pool" />
@@ -831,7 +860,7 @@ const DarkPool = () => {
         </div>
         )}
         {/* THE CROSSES — the grid grows with its rows, the page scrolls; a row opens the cross's card */}
-        <TraceGrid rows={cut} columns={columns} hidden={hidden} widths={WIDTHS} flexes={{ says: 2 }} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={selected} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} testId="dark-pool" />
+        <TraceGrid rows={cut} columns={columns} hidden={hidden} widths={WIDTHS} flexes={{ says: 2 }} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={p => setOpenCross(p)} selectedKey={selected} initialSort={{ key: 'time', dir: 'desc' }} phoneRow={crossPhoneRow} autoHeight emptyText={srcReading ? 'Reading the tape…' : named && nameBook.rows.unknown ? `No ticker “${named}” — check the symbol` : !named && parseContractQuery(query) ? 'Dark-pool crosses are stock prints, not options — search a ticker (NVDA), not a contract' : named ? `No ${litLane ? 'lit prints' : 'crosses'} for ${named} ${dayAdv(nameDayIso)}${terms === 'own' ? ' on own terms' : ''}` : litLane ? 'No lit prints on this cut' : 'No crosses on this cut'} endless={named && tapeKind !== 'lit' ? endlessOf(nameOlder, `${named} crosses`, `the start of ${named}'s day reached`, hold.paused) : regularView && tapeKind === 'dark' ? endlessOf(regOlder, 'crosses', "the day's crosses reached", hold.paused, 'Smaller crosses ↓') : { onNear: () => {}, state: 'end', note: `${num(cut.length)} ${tapeKind === 'lit' ? 'lit prints' : 'crosses'} in hand — the market's ${tapeKind === 'lit' ? 'lit' : 'dark'} feed has no older cursor, so it grows as prints arrive; type a name to page back through its day` }} testId="dark-pool" />
         {(named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault) && cut.length === 0 ? <FeedFallback fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} /> : null}
       </TraceBox>
 

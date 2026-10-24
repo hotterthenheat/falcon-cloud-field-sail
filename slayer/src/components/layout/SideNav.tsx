@@ -58,6 +58,7 @@ import MobileMenu from './MobileMenu';
 import { useCompassView } from '../../data/compassView';
 import { lookup } from '../../data/universe';
 import { readSessionClock } from '../../data/moc';
+import { marketPhase } from '../../data/traceLive';
 import { useAllAlerts, useUnseenAll } from '../gex/alertStore';
 import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
 import { toggleWatchlist, useNameWatch, useWatchlistOpen } from '../../data/nameWatch';
@@ -645,7 +646,8 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
               <Signature state={marketWord} rule={false} className="text-[10.5px]" />
               <span className="mt-1.5 flex items-center gap-2 font-mono text-[10px] tnum">
                 <span className="min-w-0 truncate text-textSecondary" title={clock.label} data-session-line>
-                  {open ? clock.label : clock.label.toLowerCase()}
+                  {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade (the tenth Trace audit) */}
+                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 16:15 ET' : open ? clock.label : clock.label.toLowerCase()}
                 </span>
                 <span className="ml-auto text-textMuted select-none">{time}</span>
               </span>

@@ -12,7 +12,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { peekSpot, subscribeBook } from './uwBook';
 import { whalesQuote, whalesScreener, whalesState } from './whales';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
-import { nyClock, nyIsoDate, nySessionPhase } from '../core/nyTime';
+import { nyClock, nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { isTradingDay, today as nyTodayDate } from '../core/calendar';
 
 export interface LiveQuote {
@@ -43,6 +43,17 @@ export interface LiveQuote {
 }
 
 const TTL = 15_000;
+/* HOW OFTEN A QUOTE IS RE-READ (the eleventh audit, 2026-10-23 evening: every page re-asked SPY's state and quote
+   four times a minute all night and all weekend, on a key every visitor shares three calls at a time): every 15s in
+   the regular session, every minute in the extended hours (04:00–09:30, 16:00–20:00), every 15 minutes when nothing
+   trades (overnight, weekends, holidays); and never while the tab is hidden */
+function ttlNow(): number {
+  if (!isTradingDay(nyTodayDate())) return 15 * 60_000;
+  const m = nyMinutes();
+  if (m >= 570 && m < 960) return TTL;
+  if (m >= 240 && m < 1200) return 60_000;
+  return 15 * 60_000;
+}
 /* the stock-state counts as stalled market-wide when a name's print is this old in the session (a thin name can go
    minutes without a trade; ten minutes on a name the page asks for is the vendor, not the tape) */
 const STALL_MARKET = 10 * 60_000;
@@ -113,7 +124,8 @@ export function ensureQuote(ticker: string): void {
   const t = ticker.toUpperCase();
   if (!t || inflight.has(t) || typeof window === 'undefined') return;
   const hit = raw.get(t);
-  if (hit && Date.now() - hit.at < TTL) return;
+  if (hit && Date.now() - hit.at < ttlNow()) return;
+  if (hit && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   inflight.add(t);
   /* while the stock-state is known to be stalled (seen on any name in the last five minutes), a name already read
      today asks the quote alone — one call, not two (the ninth audit: the Stocks index made ~170 calls a minute reading

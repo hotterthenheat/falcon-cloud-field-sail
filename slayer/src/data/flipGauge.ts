@@ -208,6 +208,8 @@ export function sessionFlipCrossings(snapshot: MarketSnapshot, scope: 'ALL' | '0
   const book = sb.book;
   const read = levelFlip(book, book.chain);
   let out: SessionCrossings;
+  /* a stand-in book (the session's own not in yet) is never final, and never frozen (the eleventh audit's M2) */
+  if (sb.provisional) return { crossings: null, flip: read.flip, label: sb.label, why: null, complete: false, early: tooEarly(candles) };
   if (read.flip === null) out = { crossings: !tooEarly(candles) ? 0 : null, flip: null, label: sb.label, why: null, complete: read.complete, early: tooEarly(candles) };
   else if (tooEarly(candles)) out = { crossings: null, flip: read.flip, label: sb.label, why: null, complete: read.complete, early: true };
   /* the side rule the Map's report uses (WallReportCard: flip ≥ spot is tested from below) */

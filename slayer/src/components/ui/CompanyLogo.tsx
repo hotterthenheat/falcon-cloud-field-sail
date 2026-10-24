@@ -164,12 +164,18 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
           className={`absolute inset-0 flex items-center justify-center rounded-[5px] font-mono font-bold leading-none ${fund ? 'bg-textPrimary text-canvas' : 'border border-borderMuted bg-ink/[0.05] text-textPrimary'}`}
           data-logo-mark={fund ? 'fund' : undefined}
           style={{
-            fontSize: Math.max(7, Math.round(size * (sym.length > 3 ? 0.26 : 0.34))),
+            fontSize: Math.max(6, Math.round(size * (sym.length > 4 ? 0.21 : sym.length > 3 ? 0.26 : 0.34))),
             letterSpacing: '-0.02em',
           }}
         >
-          {sym.slice(0, 4)}
+          {/* the whole symbol up to five letters (round 11: FWONK's tile read "FWON", another listed symbol) */}
+          {sym.length <= 5 ? sym : sym.slice(0, 4)}
         </span>
+      ) : probe === undefined ? (
+        /* NO <img> BEFORE THE FILE IS READ (round 11: /logos/HSBC.svg, SPCX, CEA, PUMP and the Congress ITT card drew the
+           browser's broken-image icon — the dev server answers a missing file with the app's HTML). The probe reads the
+           file off screen; until it answers the box is empty, then it is the mark or the letters, never a broken picture */
+        <span className="block h-full w-full" />
       ) : masked && probe === undefined ? (
         /* a mask waits for its file to be read — drawn early, an opaque file flashes as a solid square */
         <span className="block h-full w-full" />

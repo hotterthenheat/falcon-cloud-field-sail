@@ -27,7 +27,8 @@ import { useTraceSession } from '../../components/trace/traceSession';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
-import { indexRoot, lastRegularClose, plural, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
+import { indexRoot, lastRegularClose, plural, tapeSessionIso, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
+import { nyWallTime } from '../../core/nyTime';
 import { FLOW_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { markSplitOrders, spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
 import BookDrill from '../../components/trace/BookDrill';
@@ -38,7 +39,7 @@ import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import { useExpiryCut } from '../../components/trace/bookExpiry';
 import { isoDate } from '../../core/calendar';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
-import FlowSearch, { matchesContract, normSymbol } from '../../components/trace/FlowSearch';
+import FlowSearch, { searchMiss, matchesContract, normSymbol, searchedName, useSearchedName } from '../../components/trace/FlowSearch';
 import ReadDoor from '../../components/trace/ReadDoor';
 import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -46,7 +47,7 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import WatchStar from '../../components/trace/WatchStar';
 import { structureKey, watchStructure } from '../../context/WatchContext';
 import RichRead from '../../components/ui/RichRead';
-import TraceBox, { Champion, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
+import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
 import { createViewStore } from '../../data/savedViews';
@@ -301,6 +302,7 @@ const phoneRow = (t: SpreadTrade) => (
     lead={<span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_DOT[t.kind] }} />}
     title={
       <>
+        <CompanyLogo ticker={t.ticker} size={15} />
         <span className="font-bold">{t.ticker}</span>
         <span className="truncate">{shapeWord(t)}</span>
         {t.compression && <span className="text-[10px] uppercase text-warn shrink-0" title={COMPRESSION_HINT}>compression</span>}
@@ -359,10 +361,18 @@ const MultiLeg = () => {
     }), 30_000);
     return () => window.clearInterval(id);
   }, []);
-  const pack = useSpreads(SPREADS_N, { untilMs: session === 'regular' && closed ? closed.closeMs : null, session });
+  /* ENDLESS (the owner, 2026-10-23): older structures page in as the reader scrolls, back to the session's start */
+  const sinceMs = useMemo(() => {
+    const iso = closed?.iso ?? tapeSessionIso();
+    const [y, m, d] = iso.split('-').map(Number);
+    return session === 'regular' ? nyWallTime(y, m, d, 9, 30) : nyWallTime(y, m, d, 4, 0);
+  }, [closed?.iso, session]);
+  /* A NAME SEARCHED IS ASKED FOR (audit round 11, major 5): that name's own structures (ticker_symbol), paged back */
+  const askedName = useSearchedName(query);
+  const pack = useSpreads(SPREADS_N, { untilMs: session === 'regular' && closed ? closed.closeMs : null, session, sinceMs, ticker: askedName });
   /* NOT YET / NOT AT ALL is not "no structures": before the tape lands, and when it fails, the page had read "No
      multi-leg trades on the tape yet today" over 0 · 0 (the ship pass, 2026-10-22) */
-  const tapeState: 'reading' | 'down' | 'in' = pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
+  const tapeState: 'reading' | 'down' | 'in' = searchedName(query) !== askedName ? 'reading' : pack.rows.length ? 'in' : pack.fault ? 'down' : pack.waiting ? 'reading' : 'in';
   const liveTrades = pack.rows;
   // The shared hold (see LiveHold): structures and tick freeze together while paused.
   const hold = useHold(useMemo(() => ({ trades: liveTrades, tick: marketData }), [liveTrades, marketData]), activeTicker, tapeState !== 'reading');
@@ -397,7 +407,13 @@ const MultiLeg = () => {
   }, [trades, kind, money, cutQuery]);
   /* THE FIRST SCREENFUL'S LEGS, AND ONLY THOSE (audit round 10, major 4): the first rows of the cut in its order, read or
      not — a settled row is skipped by the reader, and the rows below never let themselves in as the top ones settle */
-  useLegsFirst(useMemo(() => rows.slice(0, FIRST_SCREEN).map(t => t.id), [rows]));
+  /* …and once the reader scrolls, the rows on screen in the grid's own order (TraceGrid onVisible) */
+  const [onScreen, setOnScreen] = useState<string[] | null>(null);
+  const onVisible = useCallback((vis: SpreadTrade[]) => setOnScreen(prev => {
+    const ids = vis.map(t => t.id);
+    return prev && prev.join(',') === ids.join(',') ? prev : ids;
+  }), []);
+  useLegsFirst(useMemo(() => onScreen ?? rows.slice(0, FIRST_SCREEN).map(t => t.id), [rows, onScreen]));
   /* every row — the grid draws only what is on screen */
   const shown = rows;
   const legRows = useMemo(() => (legTrade ? legTrade.legs.map((_, i) => spreadLegRow(legTrade, i)) : []), [legTrade]);
@@ -416,6 +432,17 @@ const MultiLeg = () => {
   );
 
   const activeKind = kind === 'ALL' ? null : KIND_META[kind];
+  /* ONE PLAIN LINE (retail, round 11): how many structures, paid or collected — the full read behind "more" */
+  const leadLine = useMemo(() => {
+    if (tapeState === 'reading') return askedName ? `Reading ${askedName}'s multi-leg trades…` : 'Reading the multi-leg trades…';
+    if (tapeState === 'down') return 'The multi-leg feed did not answer — it fills when it does.';
+    if (rows.length === 0) return askedName ? `No multi-leg trades for ${askedName} on this cut.` : 'No multi-leg trades on this cut.';
+    const bets = rows.filter(t => !t.compression);
+    const paid = bets.filter(t => t.netKnown !== false && t.netPremium > 0).length;
+    const collected = bets.filter(t => t.netKnown !== false && t.netPremium < 0).length;
+    const net = bets.reduce((a, t) => a + (t.netKnown !== false ? t.netPremium : 0), 0);
+    return `${askedName ? `${askedName}: ` : ''}${num(rows.length)} multi-leg trades (${windowSpan} ET) — ${num(paid)} paid for, ${num(collected)} sold for a credit; on balance ${fmtUsd(Math.abs(net))} ${net >= 0 ? 'paid' : 'collected'}.`;
+  }, [tapeState, rows, askedName, windowSpan]);
   /* ReactNode: the largest structure is a door into its own card, whether
      or not the current cut shows it. */
   /* THE SCREENER'S GRAMMAR (Noah, 2026-08-30: "i dont like confusing
@@ -432,7 +459,7 @@ const MultiLeg = () => {
     const cutBits = [activeKind ? `${activeKind.label.toLowerCase()}s` : '', money === 'DEBIT' ? 'paid' : money === 'CREDIT' ? 'collected' : '', cutQuery ? `matching "${cutQuery}"` : '', expiry ? `on the ${expiryLabel(expiry)} expiry` : ''].filter(Boolean);
     const cutOn = cutBits.length > 0;
     const pool = rows;
-    if (cutOn && pool.length === 0) return <RichRead text={`None of the ${trades.length} multi-leg trades in hand (${windowSpan} ET) is on this cut (${cutBits.join(', ')}).`} />;
+    if (cutOn && pool.length === 0) return <RichRead text={`None of the ${num(trades.length)} multi-leg trades in hand (${windowSpan} ET) is on this cut (${cutBits.join(', ')}).`} />;
     const byKind = new Map<SpreadKind, number>();
     const names = new Set<string>();
     let prem = 0;
@@ -443,7 +470,7 @@ const MultiLeg = () => {
     const packs = pool.filter(t => t.compression);
     const packMoney = packs.reduce((a, t) => a + Math.abs(t.netPremium), 0);
     const bets = pool.filter(t => !t.compression);
-    if (bets.length === 0) return <RichRead text={`The ${pool.length} multi-leg trades ${cutOn ? `on this cut (${cutBits.join(', ')}) ` : ''}in hand (${windowSpan} ET) are all compression packages — ${fmtUsd(packMoney)} in their nets, not bets.`} />;
+    if (bets.length === 0) return <RichRead text={`The ${num(pool.length)} multi-leg trades ${cutOn ? `on this cut (${cutBits.join(', ')}) ` : ''}in hand (${windowSpan} ET) are all compression packages — ${fmtUsd(packMoney)} in their nets, not bets.`} />;
     for (const t of bets) {
       byKind.set(t.kind, (byKind.get(t.kind) ?? 0) + 1);
       names.add(t.ticker);
@@ -458,10 +485,10 @@ const MultiLeg = () => {
     /* THE BIGGEST BY ITS NET (the audit, 2026-10-22: "$1.3M collected" was the gross of every leg; the net was ~$830K) */
     /* the biggest whose legs are read — never one the vendor alone has named (audit round 8) */
     const big = [...bets].filter(t => t.legsState === 'in' && !t.splitOf).sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium))[0];
-    if (!big) return <RichRead text={`In the ${trades.length} multi-leg trades in hand (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets — reading their legs before naming the biggest…`} />;
+    if (!big) return <RichRead text={`In the ${num(trades.length)} multi-leg trades in hand (${windowSpan} ET): ${fmtUsd(prem)} changed hands in their nets — reading their legs before naming the biggest…`} />;
     return (
       <>
-        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${trades.length} multi-leg trades, walked back from the 16:15 close` : `newest ${trades.length} regular-session multi-leg trades`) : `newest ${trades.length} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${names.size} names — ${loud[1]} ${KIND_META[loud[0]].label.toLowerCase()}s, ${paid} paid, ${collected} collected${unpriced ? `, ${unpriced} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest${bets.filter(t => t.legsState === 'in').length < bets.length ? ` among the ${num(bets.filter(t => t.legsState === 'in').length)} of ${num(bets.length)} whose legs are read` : ''}: `} />
+        <RichRead text={`In the ${session === 'regular' ? (closed ? `regular session's last ${num(trades.length)} multi-leg trades, walked back from the 16:15 close` : `newest ${num(trades.length)} regular-session multi-leg trades`) : `newest ${num(trades.length)} multi-leg trades outside the regular session, each marked after hours`} (${windowSpan} ET)${cutOn ? `, the ${num(pool.length)} on this cut (${cutBits.join(', ')})` : ''}: ${fmtUsd(prem)} changed hands in their nets (each structure's net, its sign dropped) — ${signed >= 0 ? 'paid' : 'collected'} on balance ${fmtUsd(Math.abs(signed))} — on ${num(names.size)} names — ${num(loud[1])} ${KIND_META[loud[0]].label.toLowerCase()}s, ${num(paid)} paid, ${num(collected)} collected${unpriced ? `, ${num(unpriced)} with no net printed` : ''}${packs.length ? ` — ${plural(packs.length, 'compression package')} (${fmtUsd(packMoney)} net, OPRA cbmo / mctp) set apart, not a bet` : ''}. Biggest${bets.filter(t => t.legsState === 'in').length < bets.length ? ` among the ${num(bets.filter(t => t.legsState === 'in').length)} of ${num(bets.length)} whose legs are read` : ''}: `} />
         {/* the door and its comma never part across a line (phone, round 7: an orphan ", 17 units") */}
         <span className="whitespace-nowrap">
           <ReadDoor onOpen={() => setDrill(big)}>
@@ -700,7 +727,7 @@ const MultiLeg = () => {
         guide={{ title: 'How to read the structures', door: 'What a shape, its strikes and its risk mean', body: <StructureGuide />, testId: 'multi-leg-guide', open: guideOpen, onOpen: setGuideOpen }}
         facts={
           <>
-            <Fact label="Structures" testId="structures" title={`The vendor's newest ${SPREADS_N} multi-leg trades${session === 'regular' ? (closed ? ' before the 16:15 close, regular-session ones only' : ', regular-session ones only') : ', the ones outside the regular session'}, repeats folded — not the whole day`}>
+            <Fact label="Structures" testId="structures" title={`The multi-leg trades loaded — the vendor's newest ${SPREADS_N} and older pages as you scroll${session === 'regular' ? (closed ? ' before the 16:15 close, regular-session ones only' : ', regular-session ones only') : ', the ones outside the regular session'}, repeats folded — not the whole day`}>
               {tapeState !== 'in' ? <span className="text-textMuted">—</span> : <>{num(trades.length)} <span className="text-textSecondary">· {windowSpan} ET</span></>}
               {tapeState === 'in' && facts.loudKind && (
                 <span className="text-textSecondary">
@@ -753,11 +780,12 @@ const MultiLeg = () => {
                 {cuts.said}
               </p>
             )}
-            {read}
           </>
         }
+        lead={leadLine}
+        detail={read}
       >
-        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight key={tapeState} emptyText={tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
+        <TraceGrid rows={shown} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={TOOLTIPS} rowKey={keyOf} onRowClick={openRow} selectedKey={drill ? (() => { const hit = shown.find(t => t.id === drill.id); return hit ? keyOf(hit) : null; })() : null} initialSort={{ key: 'time', dir: 'desc' }} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight onVisible={onVisible} endless={endlessOf(pack.older, 'structures', `the ${session === 'regular' ? 'session' : 'day'}'s start reached`, hold.paused)} key={tapeState} emptyText={cutQuery.trim() && trades.length > 0 ? searchMiss(cutQuery, 'structure') : tapeState === 'reading' ? 'Reading the tape' : tapeState === 'down' ? 'This read did not land' : `No structures on this cut — nothing printed as a spread, a fly or a condor under these cards ${dayAdv()}`} testId="multi-leg" />
         {/* the sentence and the grid already say a failed read; this mark is for a stale read under an empty cut */}
         {pack.fault && tapeState === 'in' && shown.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>

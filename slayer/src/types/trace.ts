@@ -76,6 +76,8 @@ export interface FlowPrint {
   compression?: boolean;
   /** A cross trade (report_flags "cross_trade") — pre-arranged between two parties, no side taken; out of every crown */
   cross?: boolean;
+  /** A flow alert's filing instant, ms (its created_at — the route's older_than cursor) */
+  createdMs?: number;
   /** The quote at the print gives no read: crossed (bid at or over the ask) or one side's quote minutes older than the
       fill — the side is MID, whatever the vendor tagged */
   quoteNoRead?: 'crossed' | 'stale';

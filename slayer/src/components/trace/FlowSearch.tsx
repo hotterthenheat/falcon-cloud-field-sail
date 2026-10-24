@@ -59,7 +59,7 @@
 ==================================================
 */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Layers, Search, X } from 'lucide-react';
 import { usd as fmtUsd } from '../../data/traceLive';
@@ -91,6 +91,8 @@ export interface ContractQuery {
 }
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 export const CONTRACT_FORMATS = 'NVDA 220C 11/20, NVDA 220 C Nov 20 or NVDA261120C00220000';
+/** A search that matched nothing, in one voice on every Trace page: what was asked and the forms the field takes */
+export const searchMiss = (q: string, noun: string) => `No ${noun} matches “${q.trim()}” — the search takes a name, or a contract written like ${CONTRACT_FORMATS}`;
 export function parseContractQuery(raw: string): ContractQuery | null {
   const q = raw.trim().toUpperCase();
   if (!q) return null;
@@ -121,6 +123,38 @@ export function parseContractQuery(raw: string): ContractQuery | null {
     else return null;
   }
   return { ticker: m[1], strike: m[2] ? Number(m[2]) : null, right, month, day, year };
+}
+/** THE NAME A SEARCH ASKS FOR (audit round 11, major 5): "NVDA", "nvda 220c 11/20" and an OCC symbol all name NVDA — the
+    pages read that name's own rows from the vendor rather than cutting the market's; anything else ("505C") names none */
+export function searchedName(raw: string): string | null {
+  const q = raw.trim().toUpperCase();
+  if (!q) return null;
+  const c = parseContractQuery(q);
+  if (c) return c.ticker;
+  return /^\$?[A-Z][A-Z0-9.]{0,5}$/.test(q) ? q.replace(/^\$/, '') : null;
+}
+/** …once the typing settles, so "N", "NV", "NVD" are not each asked of the vendor */
+export function useSearchedName(raw: string, settleMs = 350): string | null {
+  const want = searchedName(raw);
+  const [name, setName] = useState(want);
+  useEffect(() => {
+    if (want === name) return;
+    const t = window.setTimeout(() => setName(want), want ? settleMs : 0);
+    return () => window.clearTimeout(t);
+  }, [want, name, settleMs]);
+  return name;
+}
+/** A typed contract as the vendor's own symbol, when every part of it is typed (the year inferred: the first such date on
+    or after `fromIso`) */
+export function contractOcc(raw: string, fromIso: string): { occ: string; expiry: string } | null {
+  const c = parseContractQuery(raw);
+  if (!c || c.strike == null || !c.right || c.month == null || c.day == null) return null;
+  const from = fromIso.slice(0, 10);
+  let year = c.year ?? Number(from.slice(0, 4));
+  const iso = (y: number) => `${y}-${String(c.month).padStart(2, '0')}-${String(c.day).padStart(2, '0')}`;
+  if (c.year == null && iso(year) < from) year += 1;
+  const expiry = iso(year);
+  return { occ: `${c.ticker}${String(year).slice(2)}${expiry.slice(5, 7)}${expiry.slice(8, 10)}${c.right}${String(Math.round(c.strike * 1000)).padStart(8, '0')}`, expiry };
 }
 /** Does a row match what was typed: a parsed contract field by field, else the letters-and-digits match */
 export function matchesContract(raw: string, r: { ticker: string; strike: number; right: 'C' | 'P'; expiry?: string }): boolean {

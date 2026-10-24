@@ -41,7 +41,7 @@ import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWo
 import { useDistanceUnit } from '../../data/distanceUnits';
 import { fmtDistance, impliedDaySigma } from '../../data/atr';
 import { readLevelsScope } from '../../data/levelsScope';
-import { bellDay, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
+import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, sessionDay, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { strikeTag, todayWords } from '../../data/agenda';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
@@ -171,7 +171,7 @@ const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
       </span>
       {/* THE PRICE'S OWN TIME (the ninth audit's m2) — when the price was printed, not when the board was built */}
       {!ext && data.priceAt != null && (
-        <span className="text-[10px] text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true })} ET — the board refreshes prices every 10s and the levels every 90s`} data-price-at={data.priceAt}>
+        <span className="text-[10px] text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true })} ET — ${sessionDay().open ? 'the board refreshes prices every 10s and the levels every 90s' : `the levels and the prices are ${cadenceWords()}`}`} data-price-at={data.priceAt}>
           as of {nyClock(data.priceAt)}
         </span>
       )}
@@ -196,7 +196,9 @@ const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
 const ExpiryMark = ({ data }: { data: BoardRow }) => {
   if (readLevelsScope() === 'ALL' || !data.levelsDate || dayWordOf(data.levelsDate)) return null;
   return (
-    <span className="ml-1 font-mono text-[9px] text-textMuted whitespace-nowrap" title={`${data.ticker} has no contracts expiring ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — this column reads its nearest expiry, ${expirySpan([data.levelsDate]) ?? data.levelsDate}`} data-board-expiry={data.levelsDate}>
+    /* ON ITS OWN LINE UNDER THE FIGURE (the eleventh audit's m4: at 1440 the tag cut the cell — "amplifies…", "−$111.3…",
+       "150 Oc…" on SMCI, MSTR, NFLX) */
+    <span className="block font-mono text-[9px] leading-[11px] font-normal text-textMuted whitespace-nowrap" title={`${data.ticker} has no contracts expiring ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — this column reads its nearest expiry, ${expirySpan([data.levelsDate]) ?? data.levelsDate}`} data-board-expiry={data.levelsDate}>
       {expirySpan([data.levelsDate]) ?? data.levelsDate}
     </span>
   );
@@ -211,7 +213,7 @@ const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="font-mono text-[11px] text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
   /* The shell's words, not "LONG GAMMA" (2026-09-09): plain English on Pinpoint */
   return (
-    <span className="font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
+    <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-[11px] tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
       {data.regime === 'SHORT' ? 'amplifies' : 'absorbs'}
       <ExpiryMark data={data} />
     </span>
@@ -328,7 +330,7 @@ const SupremeCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data?.pending ? (
     <Pending data={data} />
   ) : data ? (
-    <span className="font-mono text-[11px] font-bold tnum tabular-nums" style={{ color: SUPREME }}>
+    <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-[11px] font-bold tnum tabular-nums" style={{ color: SUPREME }}>
       {fmtStrike(data.supreme)}
       <ExpiryMark data={data} />
     </span>
@@ -342,9 +344,11 @@ const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data?.pending ? (
     <Pending data={data} />
   ) : data ? (
-    <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`font-mono text-[11px] font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
-      {data.netGex > 0 ? '+' : ''}
-      {fmtUsd(data.netGex)}
+    <TickFigure value={data.netGex} title={netGexTitle(data.netGex, data.regime)} className={`inline-flex flex-col justify-center leading-[14px] font-mono text-[11px] font-semibold ${data.netGex > 0 ? 'text-bull' : data.netGex < 0 ? 'text-bear' : 'text-textMuted'}`}>
+      <span>
+        {data.netGex > 0 ? '+' : ''}
+        {fmtUsd(data.netGex)}
+      </span>
       <ExpiryMark data={data} />
     </TickFigure>
   ) : null;
@@ -359,7 +363,7 @@ const BellCell = ({ data }: ICellRendererParams<BoardRow>) =>
     </span>
   ) : (
     data.bellWhy === 'none' ? (
-      <span className="font-mono text-[10px] text-textMuted" title={BELL_NONE_TITLE(data.ticker)}>
+      <span className="inline-block whitespace-normal leading-[13px] font-mono text-[10px] text-textMuted" title={BELL_NONE_TITLE(data.ticker)}>
         {bellNone()}
       </span>
     ) : (
@@ -768,7 +772,7 @@ const Board = () => {
               document.body
             )}
         </span>
-        <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum tabular-nums">updated {scanAt} · every 10s</span>
+        <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum tabular-nums">updated {scanAt} · {cadenceWords()}</span>
       </div>
       {bookDown && rows.length === 0 ? (
         <FeedFallback fault="failed" />

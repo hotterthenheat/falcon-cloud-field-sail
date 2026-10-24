@@ -7,7 +7,8 @@
 */
 
 import { CoSub } from '../../components/record/CoName';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { whalesScreener } from '../../data/whales';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { type ColDef, type ICellRendererParams } from 'ag-grid-community';
@@ -28,15 +29,15 @@ import {
   type PositionStatus,
 } from '../../data/fileBooks';
 import { extendedLine, priceWords, useLiveQuote } from '../../data/liveQuote';
-import { shortDay as shortDayOf } from '../../data/nyDate';
+import { lastSessionIso, nyTodayIso, shortDay as shortDayOf } from '../../data/nyDate';
 import { FUND_TYPES, shortRowFromFile, useCompanyName, useEtfFile, useEtfWeights, useHouseBook, useShortRow, useStockCard } from '../../data/liveFiles';
 import { SQUEEZE_INK, SQUEEZE_TIP, squeezeRead } from '../../data/squeeze';
 import { useShortReads } from '../../data/shortFile';
-import { tickerName } from '../../data/tickers';
+import { displayName, tickerName } from '../../data/tickers';
 import { AssetCell, BillsSwitch, CongressCard, assetKey, assetLine } from './Congress';
 import { PhoneCards, usePhoneCards } from '../../components/record/PhoneCards';
 import { holdingAssetKey } from '../../data/fileBooks';
-import { asOfDay, borrowM, moneyB, signedM as moneyFlow } from './money';
+import { asOfDay, borrowM, longDay, moneyB, signedM as moneyFlow } from './money';
 import { usePagedGrid, phonePin } from '../../components/record/pagedGrid';
 import { STOCK_ACT_DEADLINE_DAYS, bracketLabel, isTreasuryBill, seatLabel } from '../../data/congress';
 import { memberFromRoster, useCongressCoverageQuiet, useCongressFeedIf, useCongressRoster, useCongressStatusQuiet, useMemberBook } from '../../data/liveRecord';
@@ -161,7 +162,7 @@ export const HouseFile = () => {
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "Unusual Whales' estimate of the average price the house paid — '—' where it rests on a first buy the filing contradicts" },
       { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales\' perc_of_share_value) — over the whole filing, not only the lines read here' },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
-      { headerName: 'First buy', field: 'firstBuy', width: 110, headerTooltip: "The first quarter this house reported owning the stock — '—' where the vendor's date is contradicted by the filing itself (units held in earlier quarters, or a first price far off the filing's own)" },
+      { headerName: 'First buy', field: 'firstBuy', width: 110, valueFormatter: p => (p.value && /^\d{4}-\d{2}-\d{2}/.test(String(p.value)) ? longDay(String(p.value)) : String(p.value ?? '—')), headerTooltip: "The first quarter this house reported owning the stock — '—' where the vendor's date is contradicted by the filing itself (units held in earlier quarters, or a first price far off the filing's own)" },
       { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "The close on the day of the first buy. Not a strike. '—' where the vendor's first buy cannot be trusted (see First buy)" },
     ],
     [],
@@ -181,7 +182,7 @@ export const HouseFile = () => {
       <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
         <div className="min-w-[min(18rem,100%)] flex-1">
           <div className="h-6 flex items-center gap-3">
-            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{house}</h3>
+            <h3 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-textPrimary">{house ? displayName(house) : house}</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a 13F line means" testId="house-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">This filing's {feed.length} largest lines by value. A call or a put is only the side.</p>
@@ -216,7 +217,7 @@ export const HouseFile = () => {
         <DropdownSelect label="Change" value={status} options={STATUS_OPTIONS} onChange={setStatus} title="What happened versus the prior 13F" testId="house-status" />
       </div>
       <p className="px-5 pb-3 text-[12px] leading-relaxed text-textSecondary" data-house-sentence>
-        {house} reported {bookLive.totalB != null ? moneyB(bookLive.totalB) : 'its book'} on its latest 13F. The {feed.length} largest lines, shown here, are {moneyB(value)}{bookLive.totalB ? ` (${Math.round((100 * value) / bookLive.totalB)}% of it)` : ''}{bookLive.optionsB ? <>; the whole filing holds {moneyB(bookLive.optionsB.calls)} of calls and {moneyB(bookLive.optionsB.puts)} of puts, {callValue + putValue > 0 ? `${moneyB(callValue)} and ${moneyB(putValue)} of them in these lines` : 'none of them among these lines'}</> : <>: calls {moneyB(callValue)}, puts {moneyB(putValue)}</>}; {changed.length} of them changed size by more than 2% versus the prior quarter.
+        {house ? displayName(house) : house} reported {bookLive.totalB != null ? moneyB(bookLive.totalB) : 'its book'} on its latest 13F. The {feed.length} largest lines, shown here, are {moneyB(value)}{bookLive.totalB ? ` (${Math.round((100 * value) / bookLive.totalB)}% of it)` : ''}{bookLive.optionsB ? <>; the whole filing holds {moneyB(bookLive.optionsB.calls)} of calls and {moneyB(bookLive.optionsB.puts)} of puts, {callValue + putValue > 0 ? `${moneyB(callValue)} and ${moneyB(putValue)} of them in these lines` : 'none of them among these lines'}</> : <>: calls {moneyB(callValue)}, puts {moneyB(putValue)}</>}; {changed.length} of them changed size by more than 2% versus the prior quarter.
         {line ? <> The line you opened is {line}.</> : null}
         {focused ? (focused.quarters.length > 1 ? <> {focused.quarters.length} quarters of {focused.ticker} sit under the grid, {focused.quarters[0]?.unitsM.toFixed(1)}M units in {focused.quarters[0]?.period} and {focused.quarters[focused.quarters.length - 1]?.unitsM.toFixed(1)}M now.</> : <> One quarter of {focused.ticker} is on file, {focused.quarters[0]?.unitsM.toFixed(1)}M units.</>) : null}
       </p>
@@ -300,6 +301,22 @@ export const ShortFile = () => {
     return newest ? newest.slice(0, 10) : null;
   }, [reads.rebate]);
   const fileWaiting = reads.waiting;
+  /* THE SESSION'S FULL VOLUME (round 11), one screener row: the squeeze point is scored on short volume over it */
+  const [fullVol, setFullVol] = useState<{ date: string; vol: number } | null>(null);
+  useEffect(() => {
+    if (!ok) return;
+    let dead = false;
+    whalesScreener([t])
+      .then(rows => {
+        const r = (Array.isArray(rows) ? rows : []).find(x => String(x.ticker || '').toUpperCase() === t);
+        const v = Number(r?.stock_volume);
+        if (!dead) setFullVol(r && v > 0 ? { date: String(r.date ?? '').slice(0, 10), vol: v } : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      dead = true;
+    };
+  }, [ok, t]);
   const [guideOpen, setGuideOpen] = useState(false);
   const [heavy, setHeavy] = useState<'any' | 'heavy'>('any');
   const [picks, setPicks] = useState<string[]>([]);
@@ -319,11 +336,14 @@ export const ShortFile = () => {
     const since = nyIsoDaysBack(30);
     const fails = (Array.isArray(reads.ftd) ? reads.ftd : []) as { date?: string; quantity?: number | string }[];
     const recent = fails.filter(f => String(f.date ?? '') >= since).map(f => Number(f.quantity) || 0);
+    /* the short volume against the session's full volume — the screener's day volume, the same session only */
+    const full = fullVol && row.shortVolM != null && row.shortVolDate && fullVol.date === row.shortVolDate && fullVol.vol > 0 ? ((row.shortVolM * 1e6) / fullVol.vol) * 100 : null;
     return squeezeRead(row, {
       shortVolPct: row.shortVolRatio,
+      shortVolFullPct: full,
       maxFtdShares: reads.ftd != null ? (recent.length ? Math.max(...recent) : 0) : null,
     });
-  }, [row, reads]);
+  }, [row, reads, fullVol]);
   if (ok && !row && (shortLive.status === 'loading' || fileWaiting)) return <Reading to="/dossier/shorts" back="Shorts" what="the short print" />;
   if (!row) return <Missing to="/dossier/shorts" label="Shorts" />;
   const heavyBook = row.interestPct >= 8;
@@ -583,7 +603,7 @@ export const FundFile = () => {
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a weight, a flow and a holding mean" testId="fund-guide" />
           </div>
           <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-            {fund.company} · {fund.domicile} · since {fund.inception}{fund.holdingsAsOf ? ` · weights as of ${asOfDay(fund.holdingsAsOf)}` : ''}{coverWords ? ` · ${coverWords}` : ''}
+            {fund.company} · {fund.domicile} · since {longDay(fund.inception)}{fund.holdingsAsOf ? ` · weights as of ${asOfDay(fund.holdingsAsOf)}` : ''}{coverWords ? ` · ${coverWords}` : ''}
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
@@ -600,7 +620,8 @@ export const FundFile = () => {
             <dd className={`mt-0.5 font-mono text-[12px] tnum whitespace-nowrap ${ink(fund.flow5dM)}`}>{moneyFlow(fund.flow5dM)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] text-textMuted" title="Option contracts traded today">Call · put volume</dt>
+            {/* dated by its session (round 11): outside the session it is the last session's, not "today" */}
+            <dt className="text-[10px] text-textMuted" title={`Option contracts traded on ${shortDayOf(lastSessionIso())}${lastSessionIso() === nyTodayIso() ? ', today' : ', the last session'}`}>Call · put volume · {shortDayOf(lastSessionIso())}</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum whitespace-nowrap">
               <span className="text-bull">{fund.callVol == null ? '—' : fund.callVol.toLocaleString('en-US')}</span>
               <span className="text-textMuted"> · </span>

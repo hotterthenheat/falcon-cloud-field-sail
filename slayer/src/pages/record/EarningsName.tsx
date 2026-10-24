@@ -37,6 +37,7 @@
 
 import { useLiveQuote } from '../../data/liveQuote';
 import { lastSessionIso } from '../../data/nyDate';
+import { personDisplay } from '../../data/tickers';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, LayoutGrid } from 'lucide-react';
@@ -119,8 +120,11 @@ const usualText = (e: EarningsDossier['event']) => {
   return `±${e.histAvgMovePct.toFixed(1)}%${n < 8 ? ` · from ${n} ${n === 1 ? 'print' : 'prints'}` : ''}`;
 };
 
-const PriceReplay = ({ d }: { d: EarningsDossier }) => {
+const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean }) => {
   const e = d.event;
+  /* ONCE THE PRINT IS OUT THE PRICE IS THE ONE BEFORE IT (round 11: WDC and AXP still read "Today's price for the move
+     $23.20" — the pre-report expected move, presented as live) */
+  const priceWord = reported ? 'that price' : "today's price";
   const isPriced = e.impliedMovePct > 0 && e.price > 0;
   const cost = (e.price * e.impliedMovePct) / 100;
   /* the replay runs on the latest eight reports with a move (the event's own), not the EPS table's quarters */
@@ -159,9 +163,15 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
   return (
     <div className="px-5 pb-4 flex flex-col gap-3" data-name-replay>
       <div className="flex items-baseline gap-2.5 flex-wrap font-mono tnum">
-        <span className="text-[10px] text-textMuted">Today's price for the move</span>
+        <span className="text-[10px] text-textMuted">{reported ? 'What the options priced before the report' : "Today's price for the move"}</span>
         <span className="text-[16px] font-bold text-textPrimary">${cost.toFixed(2)}</span>
-        <span className="text-[11px] text-textSecondary">per share · ±{e.impliedMovePct.toFixed(1)}%</span>
+        <span className="text-[11px] text-textSecondary">per share · ±{e.impliedMovePct.toFixed(2)}%</span>
+        {reported && e.actualMovePct != null && (
+          <span className="text-[11px] text-textSecondary" data-replay-moved>
+            · the stock {e.moveLive ? 'is moving' : 'moved'} <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span>
+            {e.moveLive ? ' so far' : ''} — {Math.abs(e.actualMovePct) > e.impliedMovePct ? 'more than priced' : 'inside the priced move'}
+          </span>
+        )}
       </div>
       <div className="mx-auto w-full max-w-[640px] select-none">
         <div className="relative" style={{ height: 2 * H }} onMouseLeave={() => setHover(null)}>
@@ -176,7 +186,7 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
                 onMouseEnter={ev => setHover({ r, x: ev.clientX, y: ev.clientY })}
                 onMouseMove={ev => setHover({ r, x: ev.clientX, y: ev.clientY })}
                 className="relative flex-1 min-w-0 rounded hover:bg-ink/[0.04] transition-colors cursor-default"
-                aria-label={`${r.label}: moved ${r.movePct >= 0 ? '+' : r.movePct < 0 ? '−' : ''}${Math.abs(r.movePct).toFixed(1)}%, ${r.pl >= 0 ? 'covered' : 'fell short of'} today's price by $${Math.abs(r.pl).toFixed(2)} per share`}
+                aria-label={`${r.label}: moved ${r.movePct >= 0 ? '+' : r.movePct < 0 ? '−' : ''}${Math.abs(r.movePct).toFixed(1)}%, ${r.pl >= 0 ? 'covered' : 'fell short of'} ${priceWord} by $${Math.abs(r.pl).toFixed(2)} per share`}
                 data-replay-bar={r.label}
               >
                 <span className={`absolute left-1/2 -translate-x-1/2 w-[22px] rounded-[2px] ${r.pl >= 0 ? 'bg-bull/90' : 'bg-bear/80'}`} style={r.pl >= 0 ? { bottom: '50%', height: Math.max(3, (Math.abs(r.pl) / maxAbs) * H) } : { top: '50%', height: Math.max(3, (Math.abs(r.pl) / maxAbs) * H) }} />
@@ -193,7 +203,7 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
         </div>
       </div>
       <div className="flex items-center gap-2.5 flex-wrap font-mono tnum">
-        <span className="text-[13px] font-bold text-textPrimary">covered today's price {winners} of {rows.length} times</span>
+        <span className="text-[13px] font-bold text-textPrimary">covered {priceWord} {winners} of {rows.length} times</span>
         <span className={`text-[11px] font-semibold ${avg >= 0 ? 'text-bull' : 'text-bear'}`}>
           avg {avg >= 0 ? '+' : '−'}${Math.abs(avg).toFixed(2)} per share
         </span>
@@ -241,10 +251,10 @@ const PriceReplay = ({ d }: { d: EarningsDossier }) => {
             {hover.r.movePct.toFixed(1)}%
           </div>
           <div className="font-mono text-[10px] text-textSecondary tnum">
-            that move was worth ${hover.r.moved.toFixed(2)} · today's price ${cost.toFixed(2)}
+            that move was worth ${hover.r.moved.toFixed(2)} · {priceWord} ${cost.toFixed(2)}
           </div>
           <div className={`font-mono text-[11px] font-bold tnum ${hover.r.pl >= 0 ? 'text-bull' : 'text-bear'}`}>
-            {hover.r.pl >= 0 ? '+' : '−'}${Math.abs(hover.r.pl).toFixed(2)} per share against today's price
+            {hover.r.pl >= 0 ? '+' : '−'}${Math.abs(hover.r.pl).toFixed(2)} per share against {priceWord}
           </div>
         </HoverReadout>
       )}
@@ -514,8 +524,8 @@ const EarningsName = () => {
       </div>
 
       {/* TODAY'S PRICE, REPLAYED */}
-      <Box title="Today's price, replayed" sub={`What the options charge now, tested against the last ${nMoves || 'few'} real ${nMoves === 1 ? 'print' : 'prints'} with a move — hover a bar`} testId="replay">
-        <PriceReplay d={dossier} />
+      <Box title={reported ? 'The price before the report, replayed' : "Today's price, replayed"} sub={`${reported ? 'What the options charged before the print' : 'What the options charge now'}, tested against the last ${nMoves || 'few'} real ${nMoves === 1 ? 'print' : 'prints'} with a move — hover a bar`} testId="replay">
+        <PriceReplay d={dossier} reported={reported} />
       </Box>
 
       {/* THE RECEIPTS */}
@@ -669,7 +679,7 @@ const EarningsName = () => {
                 <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]" data-name-insider={t.id}>
                   <When days={t.daysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
-                    <span className="text-[11px] font-semibold text-textPrimary truncate">{t.person}</span>
+                    <span className="text-[11px] font-semibold text-textPrimary truncate">{personDisplay(t.person)}</span>
                     <span className="text-[9px] text-textMuted truncate">{t.role}</span>
                   </span>
                   <span className={`font-mono text-[10px] ${t.kind === 'BUY' ? 'text-bull' : 'text-bear'}`}>{t.kind === 'BUY' ? 'Bought' : 'Sold'}</span>

@@ -52,7 +52,7 @@
 ==================================================
 */
 
-import { displayName } from '../../data/tickers';
+import { displayName, personDisplay } from '../../data/tickers';
 import { PublishMove } from '../../components/record/publishMove';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -71,7 +71,7 @@ import type { UTCTimestamp } from 'lightweight-charts';
 import { fmtClockLocal, fmtDayLocal } from '../../components/gex/chartTime';
 import { shownGamma } from '../../components/gex/retailSign';
 import { When } from '../../components/record/when';
-import { shortDay } from '../../data/nyDate';
+import { lastSessionIso, shortDay } from '../../data/nyDate';
 import { StockGuide } from '../../components/record/StockGuide';
 import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
@@ -540,6 +540,19 @@ const StockName = () => {
   const file = useStockFile(T);
   /* the quote carries the regular session's change and the extended-hours move apart (data/liveQuote.ts) */
   const quote = useLiveQuote(T);
+  /* the day the name's stories are from — the wire day (data/liveRecord.ts): today, or on a weekend the last session */
+  /* a headline that says the stock is up (or down) on a session that closed the other way */
+  const closedAgainst = (headline: string, atMs: number): string | null => {
+    if (!quote || quote.phase === 'regular') return null;
+    const up = /\b(up|rises?|rose|gains?|gained|jumps?|jumped|climbs?|climbed|higher|record high|surges?|surged|rall(?:y|ies|ied))\b/i.test(headline);
+    const down = /\b(down|falls?|fell|drops?|dropped|slides?|slid|slips?|slipped|lower|sinks?|sank|tumbles?|tumbled|plunges?|plunged)\b/i.test(headline);
+    if (up === down) return null;
+    const closed = quote.phase === 'pre' ? null : quote.changePct;
+    if (closed == null || !Number.isFinite(closed) || Math.abs(closed) < 0.01) return null;
+    if (quote.regDate && nyIsoDate(atMs) !== quote.regDate) return null;
+    if ((up && closed < 0) || (down && closed > 0)) return `intraday; closed ${closed >= 0 ? '+' : '−'}${Math.abs(closed).toFixed(2)}%`;
+    return null;
+  };
   const view = useMemo(() => buildStockOverview(T, file.flow, { allExpiries: allWanted }), [T, tick, recordNews, bookRev, file, quote, allWanted]);
   const viewReady = !!view;
   useEffect(() => {
@@ -623,6 +636,13 @@ const StockName = () => {
   const warm = () => {};
   const byKey = Object.fromEntries(view.pillars.map(p => [p.key, p])) as Record<Pillar['key'], Pillar>;
   const { money, trend, news, numbers, agreement } = view;
+  const storyDayWord = (() => {
+    const times = news.stories.map(st => st.item.atMs).filter(Number.isFinite);
+    const day = times.length ? nyIsoDate(Math.min(...times)) : lastSessionIso();
+    if (day === nyIsoDate()) return 'today';
+    const [y, m, d] = day.split('-').map(Number);
+    return `since ${new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })} ${shortDay(day)}`;
+  })();
   /* the read's word — the only form the engine's figure takes on this page */
   const grade = gradeOfComposite(view.composite);
   const maxVol = Math.max(1, ...money.busiest.calls.map(c => c.volume), ...money.busiest.puts.map(c => c.volume));
@@ -725,7 +745,7 @@ const StockName = () => {
     const n = entries.length;
     let grade: { words: string; tone: 'good' | 'bad' | 'quiet' };
     if (key === 'earnings') grade = n === 0 ? { words: 'no report on hand', tone: 'quiet' } : entries[0].text.startsWith('beat') ? { words: 'beat', tone: 'good' } : { words: 'missed', tone: 'bad' };
-    else if (key === 'news') grade = n === 0 ? { words: 'nothing today', tone: 'quiet' } : { words: `${n} today`, tone: 'quiet' };
+    else if (key === 'news') grade = n === 0 ? { words: `nothing ${storyDayWord}`, tone: 'quiet' } : { words: `${n} ${storyDayWord}`, tone: 'quiet' };
     else if (key === 'volume') grade = n === 0 ? { words: 'none on hand', tone: 'quiet' } : { words: `${n} ${n === 1 ? 'session' : 'sessions'}`, tone: 'quiet' };
     else grade = n === 0 ? { words: 'none on hand', tone: 'quiet' } : { words: `${ups} up · ${downs} down`, tone: ups > downs ? 'good' : downs > ups ? 'bad' : 'quiet' };
     const last = entries[0] ?? null;
@@ -985,16 +1005,16 @@ const StockName = () => {
             ))}
           </div>
         </Box>
-        <Box title="The money" sub="The live book · all expiries (every listed date) unless marked Today" aside={<PillarBarSmall p={byKey.money} held={held} />} testId="money">
+        <Box title="The money" sub="The live book · all expiries (every listed date) unless marked Today · DEX, vanna and charm summed over every strike, dealer side" aside={<PillarBarSmall p={byKey.money} held={held} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
-            <Fact label="Net DEX · VEX" testId="dex">
+            <Fact label="Net DEX · VEX" testId="dex" tip="Dealers' side, every strike of the live book. DEX in dollars of stock: the vendor's delta × open interest × 100 (share units, as /greek-exposure prints them) × the price. VEX is not on the vendor's greek rows — it reads — rather than a figure made of rounding">
               <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
               {/* one plain line (round 9: "Net DEX −$30.8B" with no word on what it is) */}
               <span className="block text-[9px] font-sans text-textMuted leading-snug" data-stock-fact="dex-says">
                 {money.netDex < 0 ? "dealers' options leave them short this much stock, before their hedge" : "dealers' options leave them long this much stock, before their hedge"}
               </span>
             </Fact>
-            <Fact label="Vanna · charm" testId="vanna">
+            <Fact label="Vanna · charm" testId="vanna" tip="Dealers' side, every strike of the live book, in dollars: vanna per volatility point (the vendor's vanna × open interest × 100 × 1% of the price), charm per session (× the price ÷ 252). The vendor's /greek-exposure totals are the same sums in share units, from its daily snapshot">
               <Money v={money.netVanna} /> <span className="text-textMuted">·</span> <Money v={money.netCharm} />
             </Fact>
             <Fact label="Open interest" testId="oi">
@@ -1155,13 +1175,14 @@ const StockName = () => {
           )}
           {money.dark.prints.length > 0 && (
           <div className="px-5 pb-3" data-stock-dark={money.darkWindow.read ? money.dark.posture : 'none'} title="Each print set against the NBBO mid at its own print time: paid over the mid is buyer-initiated (buying), sold under it seller-initiated (selling). Average-price, prior-reference, contingent and derivative-priced prints and every print outside 09:30–16:00 ET are shown on the tape but not read">
-            <div className="flex items-center justify-between font-mono text-[10px] tnum">
-              <span className={money.dark.netPosturePct < 0 ? 'text-bear font-semibold' : 'text-textSecondary'}>selling</span>
-              <span className="text-[9px] uppercase tracking-widest text-textMuted">
+            {/* THE CAPTION ON ITS OWN LINE (round 11: the long caption ran over "selling" and "buying" at the bar's ends) */}
+            <p className="font-mono text-[9px] uppercase tracking-widest text-textMuted leading-snug" data-stock-dark-caption>
                 {money.darkWindow.read
                   ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read.toLocaleString('en-US')} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.complete ? (money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : '') : `, from ${money.darkWindow.cover ?? money.darkWindow.from} ET to the close only — the tape in hand stops there`}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
                   : `dark pool · no read · none of the ${money.darkWindow.inHand} prints in hand is a sized regular-session print priced at the quote`}
-              </span>
+            </p>
+            <div className="mt-1 flex items-center justify-between font-mono text-[10px] tnum">
+              <span className={money.dark.netPosturePct < 0 ? 'text-bear font-semibold' : 'text-textSecondary'}>selling</span>
               <span className={money.dark.netPosturePct > 0 ? 'text-bull font-semibold' : 'text-textSecondary'}>buying</span>
             </div>
             <div className="mt-1.5">
@@ -1267,15 +1288,20 @@ const StockName = () => {
       <CompanyFile ticker={T} />
       <NameBooks ticker={T} />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
-        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} today`}${news.reports.length ? ` · the last ${news.reports.length} earnings ${news.reports.length === 1 ? "report" : "reports"}` : ''}`} aside={<PillarBarSmall p={byKey.news} held={held} />} testId="news">
+        <Box title="The news" sub={`The wire on ${T} · ${wireReading && news.stories.length === 0 ? 'reading' : `${news.stories.length} ${news.stories.length === 1 ? 'story' : 'stories'} ${storyDayWord}`}${news.reports.length ? ` · the last ${news.reports.length} earnings ${news.reports.length === 1 ? "report" : "reports"}` : ''}`} aside={<PillarBarSmall p={byKey.news} held={held} />} testId="news">
           {news.stories.length === 0 ? (
-            <div className="px-5 pb-4 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{wireReading ? 'Reading the wire' : recordNews.status === 'sim' ? 'This read did not land' : 'Nothing on the wire today'}</div>
+            <div className="px-5 pb-4 pt-1 font-mono text-[10px] uppercase tracking-widest text-textMuted">{wireReading ? 'Reading the wire' : recordNews.status === 'sim' ? 'This read did not land' : `Nothing on the wire ${storyDayWord}`}</div>
           ) : (
             <div>
               {news.stories.map(s => (
                 <button key={s.id} type="button" onClick={() => navigate('/dossier/news', { state: { selectedId: s.id, name: T } })} className="group w-full text-left px-5 h-[34px] grid items-center gap-x-3 border-t border-borderSubtle/40 hover:bg-ink/[0.03] transition-colors" style={{ gridTemplateColumns: '64px minmax(0, 1fr) 64px 56px' }} data-stock-story={s.id}>
                   <span className="font-mono text-[10px] tnum text-textMuted">{ago(s.item.minutesAgo)}</span>
-                  <span className="min-w-0 truncate text-[11.5px] text-textSecondary group-hover:text-textPrimary transition-colors">{s.item.headline}</span>
+                  <span className="min-w-0 truncate text-[11.5px] text-textSecondary group-hover:text-textPrimary transition-colors" title={closedAgainst(s.item.headline, s.item.atMs) ?? undefined}>
+                    {/* A HEADLINE'S MOVE THE CLOSE UNDID (round 11: "APPLE SHARES TOUCH RECORD HIGH, LAST UP 0.4%" while AAPL
+                        closed −0.14%) — said beside it */}
+                    {closedAgainst(s.item.headline, s.item.atMs) ? <span className="text-warn">{closedAgainst(s.item.headline, s.item.atMs)} · </span> : null}
+                    {s.item.headline}
+                  </span>
                   <NewsFlag major={s.item.major} lean={s.grade === 'ALLY' ? 'positive' : s.grade === 'THREAT' ? 'negative' : null} />
                   <span className="text-right font-mono text-[11px] font-semibold tnum whitespace-nowrap"><PublishMove p={s.item.prediction} short /></span>
                 </button>
@@ -1670,7 +1696,7 @@ const StockName = () => {
                 <div key={t.id} className="px-5 h-[38px] grid items-center gap-x-3 border-t border-borderSubtle/40 grid-cols-[96px_minmax(0,1fr)_44px_60px_60px_64px] max-xl:grid-cols-[96px_minmax(0,1fr)_44px_64px]" data-name-insider={t.id}>
                   <When days={t.daysAgo} size={10} />
                   <span className="min-w-0 flex flex-col leading-tight">
-                    <span className="text-[11px] font-semibold text-textPrimary truncate">{t.person}</span>
+                    <span className="text-[11px] font-semibold text-textPrimary truncate">{personDisplay(t.person)}</span>
                     <span className="text-[9px] text-textMuted truncate">
                       {t.role} · holds {count(t.heldAfter)} after
                     </span>
