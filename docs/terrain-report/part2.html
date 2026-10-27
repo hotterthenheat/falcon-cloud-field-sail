@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Terrain, part 2 — everything the first brief missed</title>
+<style>
+  :root {
+    --ink: #1c1915;
+    --muted: #5c564c;
+    --line: #d9d2c5;
+    --paper: #f7f4ee;
+    --green: #1f6b45;
+    --green-soft: #e7f2eb;
+    --warn: #8a3d12;
+    --warn-soft: #f8ebe3;
+    --code: #f3efe6;
+  }
+  @page { size: letter; margin: 0.62in 0.68in 0.68in; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+    color: var(--ink);
+    background: white;
+    font-size: 11.2pt;
+    line-height: 1.42;
+  }
+  h1, h2, h3, h4 { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.2; font-weight: 650; }
+  h1 { font-size: 26pt; margin: 0 0 8px; letter-spacing: -0.03em; }
+  h2 { font-size: 15.5pt; margin: 26px 0 8px; page-break-after: avoid; border-top: 2px solid var(--ink); padding-top: 10px; }
+  h3 { font-size: 12.5pt; margin: 16px 0 6px; page-break-after: avoid; color: var(--green); }
+  h4 { font-size: 11.2pt; margin: 12px 0 4px; page-break-after: avoid; }
+  p { margin: 0 0 8px; }
+  code, pre { font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace; }
+  code { font-size: 0.86em; background: var(--code); padding: 0 3px; }
+  pre {
+    background: var(--code);
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    font-size: 8.4pt;
+    line-height: 1.35;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 8.6pt; line-height: 1.32; }
+  th, td { border: 1px solid var(--line); padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #efeae1; font-weight: 650; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .cover { page-break-after: always; }
+  .kicker { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; letter-spacing: 0.16em; text-transform: uppercase; font-size: 9pt; color: var(--green); margin: 0 0 12px; }
+  .lede { font-size: 13pt; line-height: 1.4; }
+  .meta { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 9.5pt; color: var(--muted); }
+  .callout { background: var(--green-soft); border-left: 4px solid var(--green); padding: 8px 12px; margin: 10px 0 14px; page-break-inside: avoid; }
+  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); padding: 8px 12px; margin: 10px 0 14px; page-break-inside: avoid; }
+  figure { margin: 10px 0 14px; page-break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); }
+  figcaption { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 8.4pt; color: var(--muted); margin-top: 4px; }
+  .small { font-size: 9.5pt; color: var(--muted); }
+  .tag { font-family: "Avenir Next", Helvetica, sans-serif; font-size: 8pt; letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid var(--line); padding: 1px 5px; }
+  svg text { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <p class="kicker">Slayer terminal · Terrain · companion</p>
+  <h1>Everything the first brief missed</h1>
+  <p class="lede">Measured frame times, a contrast pass on the live desk, and the work that is not already on the first brief’s list. The first PDF stays as it is. If a topic is only a pointer here, the argument lives there.</p>
+  <p class="meta">Measured the evening of 27 Oct 2026, Chicago time, against a synthetic Unusual Whales book. The app source was not changed. Harness: <code>docs/terrain-report/perf-capture.mjs</code> and <code>perf-pass2.mjs</code>. Numbers: <code>perf/results.json</code>, <code>perf/pass2.json</code>.</p>
+</section>
+
+<h2>What this file will not repeat</h2>
+<p>The first brief already covers the two books in one header, the <code>ExposureField</code> hooks crash, the flip that does not match the Map, the empty state that says a tick is coming, and the roadmap: regime sentence, rung scope, max pain, the expected-move line and scorecard, and a line that follows the call wall. Those comparison tables are not redrawn. Where this file touches the same code, it adds a measurement or a different fix and says so in one line.</p>
+
+<h2>1. How smooth it actually is</h2>
+<p>The first brief described the chart code and quoted older notes inside it (a 182ms screener jolt, 52–82ms tasks while dragging). Nothing in that PDF was timed on this desk. This pass was.</p>
+<p>Setup. Playwright drove Chrome. <code>/api/uw</code> answered with one session of minute bars (390 bars in the first pass, 1,000 minutes of tape in the second) and a 29-strike chain. <code>spot-exposures</code> returned 404 on purpose so an empty live-gamma map could not wipe the chain. Each pane had trails, levels, the cone and volume on, and the studies off. The strike rail was off for the chart numbers, because mounting the GEX calendar is the crash in the first brief. Frame time is the gap between animation frames. A drop is a gap over 32.5ms (a missed 60Hz frame) or over 50ms. The production simulator still ticks every 1.5s. The burst tests call that same <code>processTick</code> faster, on purpose, and are labelled as a compressed feed.</p>
+
+<h3>Pan and zoom, 15-minute panes</h3>
+<p>One session folded to 15 minutes is a short series, on the order of 26 candles. Pan and zoom on that series are already at the display’s ceiling.</p>
+<table>
+  <tr><th>Desk</th><th>Gesture</th><th class="num">Frames</th><th class="num">p50</th><th class="num">p95</th><th class="num">Max</th><th class="num">&gt;32ms</th><th class="num">&gt;50ms</th></tr>
+  <tr><td>1 pane</td><td>Idle 2.2s</td><td class="num">130</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">33.3</td><td class="num">2</td><td class="num">0</td></tr>
+  <tr><td>1 pane</td><td>Pan</td><td class="num">38</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>1 pane</td><td>Zoom</td><td class="num">43</td><td class="num">16.7</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>2 panes</td><td>Pan</td><td class="num">39</td><td class="num">16.7</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>2 panes</td><td>Zoom</td><td class="num">54</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>4 panes</td><td>Idle 2.2s</td><td class="num">133</td><td class="num">16.7</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>4 panes</td><td>Pan</td><td class="num">31</td><td class="num">16.7</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td></tr>
+  <tr><td>4 panes</td><td>Zoom</td><td class="num">51</td><td class="num">16.7</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td></tr>
+</table>
+<p>Times are milliseconds. Idle on one pane missed two frames (max 33.3ms) and then held. A CPU profile of the four-pane pan put the chart renderer at about 3ms of self time across the gesture. The hold that skips a data rebuild while the pointer is down is already in <code>StrikeChart.tsx</code> around line 1017. There is nothing to “fix” in the pan path of a 15-minute session. OffscreenCanvas would move a cost this trace did not find.</p>
+
+<figure>
+  <svg viewBox="0 0 640 168" width="100%" height="168" role="img" aria-label="Frame p95 for pan and zoom">
+    <text x="0" y="14" font-size="12" fill="#1c1915">Frame p95 while panning and zooming, 15-minute book (ms)</text>
+    <text x="70" y="40" font-size="11" fill="#5c564c">1 pane</text>
+    <rect x="130" y="28" width="168" height="14" fill="#1f6b45"/><text x="304" y="39" font-size="11" fill="#1c1915">pan 16.8</text>
+    <rect x="130" y="46" width="167" height="14" fill="#8a3d12"/><text x="304" y="57" font-size="11" fill="#1c1915">zoom 16.7</text>
+    <text x="70" y="84" font-size="11" fill="#5c564c">2 panes</text>
+    <rect x="130" y="72" width="167" height="14" fill="#1f6b45"/><text x="304" y="83" font-size="11" fill="#1c1915">pan 16.7</text>
+    <rect x="130" y="90" width="168" height="14" fill="#8a3d12"/><text x="304" y="101" font-size="11" fill="#1c1915">zoom 16.8</text>
+    <text x="70" y="128" font-size="11" fill="#5c564c">4 panes</text>
+    <rect x="130" y="116" width="167" height="14" fill="#1f6b45"/><text x="304" y="127" font-size="11" fill="#1c1915">pan 16.7</text>
+    <rect x="130" y="134" width="167" height="14" fill="#8a3d12"/><text x="304" y="145" font-size="11" fill="#1c1915">zoom 16.7</text>
+    <text x="400" y="90" font-size="11" fill="#5c564c">60Hz is 16.7ms. Every bar is on it.</text>
+  </svg>
+  <figcaption>Green is pan, brown is zoom. The axis starts at zero; the bars are the same length because the frames are the same length.</figcaption>
+</figure>
+
+<h3>The same gestures on a 1-minute pane</h3>
+<p>The second pass stored <code>timeframe: "1m"</code> and served 1,000 minute bars (pre-market through the evening; the chart’s cash series is still one session, about 390 bars). The on-screen interval label was not in the document text — the toolbar is hidden until hover — so this is the config that was loaded, not a label that was read back. On the single large pane, pan was no longer free: p50 still 16.7ms, p95 33.4ms, max 50.1ms, 19 of 56 frames over 32ms, one over 50ms. Zoom on that pane: p95 16.7ms, one frame at 33.4ms. Four small 1-minute panes panned and zoomed at 16.7ms with no drops. The cost shows up when one canvas is holding the whole session and the pointer is dragging it, not when the desk is split.</p>
+
+<h3>Tick bursts</h3>
+<p><code>MarketDataContext.tsx</code> lines 119–146 run <code>Simulator.tick</code> and publish inside <code>startTransition</code>, on a 1,500ms interval. The harness kept that function and called it at 10, 50 and 200 times a second for about two seconds. The synchronous call is cheap (p50 0.2–0.4ms, max 9.2ms on the worst window). React commits later. The browser would not actually run the 200/s request: <code>setTimeout</code> clamped it, and the main thread clamped it further. “Achieved” is calls divided by elapsed time.</p>
+<table>
+  <tr><th>Desk</th><th class="num">Asked</th><th class="num">Achieved</th><th class="num">Call p50</th><th class="num">Frame p95</th><th class="num">Max frame</th><th class="num">&gt;32ms</th><th class="num">&gt;50ms</th><th class="num">DOM edits</th></tr>
+  <tr><td>1</td><td class="num">10</td><td class="num">10.5</td><td class="num">0.3</td><td class="num">16.8</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td><td class="num">230</td></tr>
+  <tr><td>1</td><td class="num">50</td><td class="num">48.6</td><td class="num">0.2</td><td class="num">16.7</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td><td class="num">650</td></tr>
+  <tr><td>1</td><td class="num">200</td><td class="num">71.7</td><td class="num">0.2</td><td class="num">16.8</td><td class="num">33.4</td><td class="num">16</td><td class="num">0</td><td class="num">835</td></tr>
+  <tr><td>2</td><td class="num">10</td><td class="num">10.2</td><td class="num">0.3</td><td class="num">33.3</td><td class="num">50.0</td><td class="num">16</td><td class="num">0</td><td class="num">298</td></tr>
+  <tr><td>2</td><td class="num">50</td><td class="num">25.2</td><td class="num">0.3</td><td class="num">50.0</td><td class="num">83.4</td><td class="num">99</td><td class="num">15</td><td class="num">367</td></tr>
+  <tr><td>2</td><td class="num">200</td><td class="num">61.4</td><td class="num">0.2</td><td class="num">16.8</td><td class="num">16.8</td><td class="num">0</td><td class="num">0</td><td class="num">812</td></tr>
+  <tr><td>4</td><td class="num">10</td><td class="num">10.5</td><td class="num">0.4</td><td class="num">16.7</td><td class="num">33.3</td><td class="num">2</td><td class="num">0</td><td class="num">381</td></tr>
+  <tr><td>4</td><td class="num">50</td><td class="num">29.5</td><td class="num">0.2</td><td class="num">16.8</td><td class="num">33.4</td><td class="num">9</td><td class="num">0</td><td class="num">729</td></tr>
+  <tr><td>4</td><td class="num">200</td><td class="num">51.3</td><td class="num">0.2</td><td class="num">33.3</td><td class="num">33.4</td><td class="num">32</td><td class="num">0</td><td class="num">893</td></tr>
+</table>
+<p>At the real 1.5s cadence the desk is the idle row: 60Hz. The burst is the stress test. One window was bad and the neighbours were not: two panes at a requested 50/s only achieved 25/s, with 15 frames over 50ms and a gap of 83ms. The same desk at a requested 200/s then ran clean. That 83ms gap did not repeat, so it is not a scaling law. It is one bad window, reported because it happened.</p>
+<p>A <code>PerformanceObserver</code> for <code>longtask</code> was installed and stayed empty on every window, including that one. The API was present (<code>ltErr</code> was null). A Chrome trace of a four-pane burst at about 50/s recorded 16,265 timeline events, 12 <code>RunTask</code> entries longer than 16ms, and a worst task of 21ms. Nothing in the trace was a 50ms task. The 83ms frame gap was slack between tasks, not one long task.</p>
+
+<figure>
+  <svg viewBox="0 0 640 150" width="100%" height="150" role="img" aria-label="Dropped frames during tick bursts">
+    <text x="0" y="14" font-size="12" fill="#1c1915">Frames slower than 32ms during a 2-second burst</text>
+    <text x="0" y="40" font-size="11" fill="#5c564c">1 pane</text>
+    <rect x="70" y="28" width="2" height="12" fill="#1f6b45"/>
+    <rect x="150" y="28" width="2" height="12" fill="#1f6b45"/>
+    <rect x="230" y="28" width="48" height="12" fill="#1f6b45"/><text x="282" y="38" font-size="10" fill="#1c1915">16 at 72/s</text>
+    <text x="0" y="64" font-size="11" fill="#5c564c">2 panes</text>
+    <rect x="70" y="52" width="48" height="12" fill="#8a3d12"/>
+    <rect x="150" y="52" width="297" height="12" fill="#8a3d12"/><text x="452" y="62" font-size="10" fill="#1c1915">99 at 25/s</text>
+    <rect x="230" y="70" width="2" height="12" fill="#8a3d12"/>
+    <text x="0" y="108" font-size="11" fill="#5c564c">4 panes</text>
+    <rect x="70" y="96" width="6" height="12" fill="#1c1915"/>
+    <rect x="150" y="96" width="27" height="12" fill="#1c1915"/>
+    <rect x="230" y="96" width="96" height="12" fill="#1c1915"/><text x="332" y="106" font-size="10" fill="#1c1915">32 at 51/s</text>
+    <text x="0" y="140" font-size="10" fill="#5c564c">Columns are 10/s, 50/s, 200/s requested. Bar width is the drop count (3px per drop).</text>
+  </svg>
+  <figcaption>The two-pane 50/s window is the outlier. Four panes at the fastest burst missed frames but never by more than one (max 33.4ms).</figcaption>
+</figure>
+
+<h3>Opening a four-pane desk</h3>
+<p>Cold means a new browser context. Warm means a reload of that same page. “Canvases” is the time until four canvases were each wider than 160px. Dev is the Vite server. Preview is <code>vite build</code> served as the production bundle, still with the synthetic book intercepted in the browser.</p>
+<table>
+  <tr><th></th><th class="num">DOM content loaded</th><th class="num">Four canvases</th><th>Notes</th></tr>
+  <tr><td>Dev, cold</td><td class="num">438ms</td><td class="num">3,107ms</td><td>Document itself was 15KB. The rest of the wait is the module graph plus the book.</td></tr>
+  <tr><td>Dev, warm</td><td class="num">—</td><td class="num">2,230ms</td><td>The module cache helped.</td></tr>
+  <tr><td>Production, cold</td><td class="num">151ms</td><td class="num">2,129ms</td><td>144 JS files, 2.27MB transferred, 7.19MB decoded.</td></tr>
+  <tr><td>Production, warm</td><td class="num">—</td><td class="num">2,698ms</td><td>The one reload was slower than the cold open. A warm cache is not assumed.</td></tr>
+</table>
+<p>Two seconds to candles, after the HTML has already arrived, is the open a trader feels. The chart code is not the first second of that. The shell is.</p>
+
+<h3>Crosshair</h3>
+<p><code>emitCrosshair</code> in <code>Terrain.tsx</code> around line 2731 walks the other panes and calls <code>apply</code> in the same turn. The visible delay is the paint. On a four-pane desk, time from <code>pointermove</code> to the next animation frame was p50 2.0ms, p95 2.4ms, max 16.3ms, over 25 moves. That is inside one frame at the 95th percentile. The sibling pane was not given its own timestamp — doing that cleanly means editing the chart — so the number is the pane under the cursor. The other panes are marked before that paint, because the call is synchronous.</p>
+
+<h3>The rail</h3>
+<p>The first brief’s crash is a race: the GEX view returns early, then calls more hooks once the book exists. This run’s one-up desk, rail on, did not fault in 6.4 seconds. That does not retire the bug. It is the “sometimes survives” case from the first brief, measured this time as a non-event. Switching to Ladder before the bad render, then pushing ticks at 10/s, kept the frame p95 at 16.7ms with no drops. The CPU profile of that window put <code>draw</code> in <code>ProfilePanel.tsx</code> (the frame loop at line 643) at 27ms of self time across about 1.5s. The loop asks for another frame on every frame, including when the ease has already settled. Four rails would be about four times that tax. It fits inside 16ms today. It is still work the desk does while the trader is only looking.</p>
+
+<h3>Memory and listeners</h3>
+<p>Four panes, rail off, the real <code>processTick</code> forced at 4 times a second for 36 seconds. That is about 54 seconds of simulator time squeezed into 36 seconds, not an eight-hour session. Chrome’s performance metrics:</p>
+<table>
+  <tr><th class="num">Second</th><th class="num">JS heap</th><th class="num">Listeners</th><th class="num">DOM nodes</th></tr>
+  <tr><td class="num">0</td><td class="num">720 MB</td><td class="num">1,618</td><td class="num">4,564</td></tr>
+  <tr><td class="num">9</td><td class="num">719 MB</td><td class="num">1,618</td><td class="num">5,225</td></tr>
+  <tr><td class="num">12</td><td class="num">291 MB</td><td class="num">477</td><td class="num">1,377</td></tr>
+  <tr><td class="num">36</td><td class="num">354 MB</td><td class="num">477</td><td class="num">3,114</td></tr>
+</table>
+<p>Listeners did not climb on either side of the cliff at 12 seconds. Nodes did: about 73 per second at 4 ticks a second, before the cliff and again after it. The cliff itself dropped roughly 3,800 nodes and 1,100 listeners in one sample. That is a subtree going away, not a garbage collection of detached objects (listeners went with the nodes). The cause of the cliff was not identified. The slope was. If that slope stayed linear at the real 1.5s tick, it would be about 12 nodes a second, on the order of 280,000 nodes over a 6.5-hour session. That extrapolation is a lead, not a proof: the run was 36 seconds and it contained one unexplained teardown.</p>
+<p>The tape appended on every tick is a suspect and not a conviction. <code>absorbTape</code> keeps up to 5,000 prints for four hours (<code>MarketDataContext.tsx</code> lines 20–21 and 104–116). <code>Terrain.tsx</code> reads <code>flowTape</code> and hands it to each pane (around lines 1006 and 1571). A 36-second run never reached the cap, so a list that renders prints would still have been growing. Listeners staying flat means this is elements, not <code>addEventListener</code>.</p>
+
+<figure>
+  <svg viewBox="0 0 640 150" width="100%" height="150" role="img" aria-label="DOM node count over 36 seconds">
+    <text x="0" y="14" font-size="12" fill="#1c1915">DOM nodes, four panes, 4 ticks/s</text>
+    <polyline fill="none" stroke="#1f6b45" stroke-width="2" points="40,40 80,28 120,18 160,118 200,112 280,100 360,82 440,70 520,55 600,48"/>
+    <text x="40" y="145" font-size="10" fill="#5c564c">0s</text>
+    <text x="150" y="145" font-size="10" fill="#5c564c">12s cliff</text>
+    <text x="560" y="145" font-size="10" fill="#5c564c">36s</text>
+    <text x="170" y="108" font-size="10" fill="#8a3d12">5,225 → 1,377, then climbed again</text>
+  </svg>
+  <figcaption>The line is schematic, scaled to the table above. The slope on both sides of the cliff is the finding. Listeners were flat on each side.</figcaption>
+</figure>
+
+<h3>The bundle</h3>
+<p><code>npx vite build</code> finished in 31 seconds. 234 JS files, 9.5MB raw. The routes are already <code>React.lazy</code> in <code>App.tsx</code>, including Terrain. That split is real and it is not enough, because opening Terrain still pulled 144 JS files.</p>
+<table>
+  <tr><th>Chunk</th><th class="num">Raw</th><th class="num">Gzip</th><th>What it means</th></tr>
+  <tr><td><code>index-*.js</code></td><td class="num">1,445 KB</td><td class="num">443 KB</td><td>The shell. Loaded before any route. Vite warned on it.</td></tr>
+  <tr><td><code>News-*.js</code></td><td class="num">2,091 KB</td><td class="num">617 KB</td><td>Not on the Terrain path. Still the largest file in the build.</td></tr>
+  <tr><td><code>houseGrid-*.js</code></td><td class="num">1,156 KB</td><td class="num">322 KB</td><td>Same warning. Not required to draw a candle.</td></tr>
+  <tr><td><code>Terrain-*.js</code></td><td class="num">96 KB</td><td class="num">32 KB</td><td>The route chunk. Small, because the chart and the field are shared or split further.</td></tr>
+  <tr><td><code>ExposureField-*.js</code></td><td class="num">101 KB</td><td class="num">33 KB</td><td>The rail’s calendar is its own file. Good.</td></tr>
+  <tr><td><code>lightweight-charts</code></td><td class="num">187 KB</td><td class="num">60 KB</td><td>The chart library, already split.</td></tr>
+  <tr><td><code>html2canvas</code></td><td class="num">201 KB</td><td class="num">48 KB</td><td>Loaded on the camera press, not on open. Already done right.</td></tr>
+  <tr><td>CSS entry</td><td class="num">182 KB</td><td class="num">—</td><td>Ships with the shell.</td></tr>
+</table>
+<p>The production open transferred 2.27MB of JS and decoded 7.19MB of it. A search of the entry chunk found no <code>UNUSUAL_WHALES_API_KEY</code>, no Theta key, and no <code>api.unusualwhales.com</code>. <code>vite.config.ts</code> sets <code>define['process.env']</code> to an empty object so a library can read it, and copies the whale key into the server process only. The key is not in the bundle that was built here. There was no <code>.env</code> in the tree, so this is “the build did not inline a key,” not “a key was present and stayed server-side.”</p>
+
+<h2>2. Where the time went, and the fixes that match it</h2>
+<p>Profiles are Chrome’s CPU sampler at 250µs, summarized by self time. Line numbers below are the TypeScript source, which is what a person edits. The sampler’s own line numbers are the transformed module and do not match.</p>
+
+<h3>Confluence rebuilds five timeframes on every revision</h3>
+<p>During the four-pane 50/s burst the hottest function was <code>vwapSeries</code> (<code>data/indicators.ts</code> line 86), about 68ms of self time in a window under two seconds, with <code>buildConfluence</code>’s caller right behind it. The studies were off. The VWAP line was not on the chart. <code>Terrain.tsx</code> lines 1069–1072 recompute the five-timeframe trend on every <code>revision</code>:</p>
+<pre>const confluence = useMemo(
+  () => buildConfluence(Simulator.getCandles(ticker) ?? []),
+  [ticker, revision]
+);</pre>
+<p>The comment above that memo already measured the cost: 1.45ms a call on 8,580 one-minute bars, and about 58ms per minute of wall clock if four panes recompute at ten scans a minute. That arithmetic is for the production tick. It becomes the frame when the tick is faster, which is what the burst showed: four panes at 29 achieved commits a second could not keep the requested 50. <code>buildConfluence</code> (<code>data/confluence.ts</code> line 73) aggregates the whole base and runs a full VWAP per timeframe, then reads the last point.</p>
+<p class="small">Fix. Keep the last bar’s time and close. If neither changed, return the previous rows. If only the forming bar’s close changed, patch the last VWAP and the last EMA instead of walking 8,580 bars. The glyph on the timeframe pill only needs the last comparison.</p>
+<pre>export function buildConfluence(base: readonly Candle[], prev?: Cache): { rows: ConfluenceRow[]; cache: Cache } {
+  const last = base[base.length - 1];
+  if (prev && prev.n === base.length && prev.t === last?.time && prev.c === last?.close) {
+    return { rows: prev.rows, cache: prev };
+  }
+  // existing fold, or a last-point patch when only `close` moved
+}</pre>
+<p>Expected gain, tied to this run: the 68ms of <code>vwapSeries</code> samples in that burst go to a handful of milliseconds, and a 50/s request on four panes stops falling behind to 29/s. At the real 1.5s tick the user-visible change is small. The comment’s 58ms per minute is the whole budget this buys back. Do this before a worker. Copying 8,580 candles to a worker costs more than an incremental last point.</p>
+
+<h3>Coalesce the publish to one frame</h3>
+<p><code>startTransition</code> batches work inside one event. Each <code>setTimeout</code> tick is its own event, so a burst is a burst of commits. The candle series already takes the cheap path on a quiet revision: <code>StrikeChart.tsx</code> around line 3131 calls <code>series.update</code> on the last bar, and <code>setData</code> only when the world changed. The waste is computing confluence, trails and the header once per tick instead of once per frame.</p>
+<pre>let pending = null;
+let scheduled = false;
+function publish(data) {
+  pending = data;
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    const next = pending;
+    startTransition(() => setMarketData(next));
+  });
+}</pre>
+<p>At 1.5s this changes nothing, and that should be said in the commit message so nobody expects a smoother open. On the measured 200/s request (51/s achieved, 32 missed frames, 893 DOM edits) it caps the desk at one commit per frame. That is the whole expected gain.</p>
+
+<h3>Stop the rail drawing when nothing is moving</h3>
+<p><code>ProfilePanel.tsx</code> line 643:</p>
+<pre>const draw = (ts: number) => {
+  raf = requestAnimationFrame(draw);
+  // ease toward the pointer, then paint every strike
+};</pre>
+<p>The profile recorded 27ms of self time in <code>draw</code> during a 1.5s, 10/s burst with the ladder up, and the frames still held 16.7ms. Virtualizing 29 strikes will not pay. Gating the loop will. Keep the frame loop only while the ease, the hover, or the data revision is in motion. When the key matches the previous frame, cancel the request. Expected: that 27ms per rail per 1.5s disappears while the trader is still, and four open ladders stop spending a slice of every frame on an ease that has already finished.</p>
+
+<h3>What the profiles say not to build</h3>
+<ul>
+  <li><strong>OffscreenCanvas for the candles.</strong> The pan profile’s chart-library time was about 3ms. The primitive that paints the beads (<code>gexNodesPrimitive.ts</code>, the visible-column walk around line 165) showed up, and it already binary-searches the visible range instead of walking the whole store. Moving it off the main thread is a project. It is not the top of this trace.</li>
+  <li><strong>A worker for the exposure fold.</strong> The first brief already describes the slice in <code>StrikeChart.tsx</code> around line 3154: the cold fold is chopped into batches of 400 so one frame does not pay for the store. This pass did not find that fold on the hot path of a tick. The hot path was confluence.</li>
+  <li><strong>Memoizing <code>railForCut</code> as the main win.</strong> It was not in the top of the tick profile. The header’s heaviest-strike read already depends on it. Leave it until a profile says otherwise.</li>
+</ul>
+
+<h2>3. The desk, as it reads</h2>
+<p>The first brief said OpenMarket’s expected-move rails are hard to tell apart, and it described Terrain’s rungs as green and red. Both of those sentences are about the wrong surface for this section. Terrain’s wall inks were changed on 23 Oct 2026. <code>palette.ts</code> lines 21–32:</p>
+<pre>export const CALL_WALL = '#7ABDD7'; // glacier
+export const PUT_WALL  = '#F5C542'; // ember
+export const FLIP      = '#9CA3AF';
+export const SUPREME   = '#EA00FF';</pre>
+<p><code>StrikeChart.tsx</code> <code>ladderOf</code> around line 904 paints with those constants. The comment twenty lines above, and the header of <code>keyLevelsPrimitive.ts</code>, still say “call wall green, put wall red.” The next edit that trusts the comment will put the walls back on the regime colours. Green and red are the sign (<code>LONG_GAMMA</code> <code>#30D158</code>, <code>SHORT_GAMMA</code> <code>#FF3B30</code>). The walls are not the sign.</p>
+<p>Contrast against the live page ground. The body computed to <code>rgb(5, 5, 5)</code>, which is <code>#050505</code>. Ratios are WCAG relative luminance. A 1px rule reads fainter than a block of the same ink. The ratio is the ceiling, not what the eye gets off a hairline.</p>
+<table>
+  <tr><th>Ink</th><th>Hex</th><th class="num">On #050505</th><th>Role</th></tr>
+  <tr><td>Spot, full opacity</td><td><code>#EDEDED</code></td><td class="num">17.4:1</td><td>The price, if the chrome were not faded.</td></tr>
+  <tr><td>Spot, at rest</td><td><code>#858585</code></td><td class="num">5.5:1</td><td><code>#EDEDED</code> drawn at opacity 0.55 over the page.</td></tr>
+  <tr><td>Up, full</td><td><code>#30D158</code></td><td class="num">10.1:1</td><td>The change, full strength.</td></tr>
+  <tr><td>Up, at rest</td><td><code>#1D7533</code></td><td class="num">3.5:1</td><td>Same green through opacity 0.55. Fails 4.5:1 for 11px text.</td></tr>
+  <tr><td>Call wall</td><td><code>#7ABDD7</code></td><td class="num">9.8:1</td><td>Glacier. Fine as a fill. Thin as a 1px rung.</td></tr>
+  <tr><td>Put wall</td><td><code>#F5C542</code></td><td class="num">12.6:1</td><td>Ember. The strongest wall ink. Still hue-only.</td></tr>
+  <tr><td>Flip</td><td><code>#9CA3AF</code></td><td class="num">8.0:1</td><td>Dashed, which is the right second cue. The dash is grey on near-black.</td></tr>
+  <tr><td>Supreme</td><td><code>#EA00FF</code></td><td class="num">5.8:1</td><td>The weakest wall. Passes for large text. A 2px line still disappears into a candle.</td></tr>
+  <tr><td>Amplify</td><td><code>#FF3B30</code></td><td class="num">5.7:1</td><td>Regime red. Same problem as the supreme.</td></tr>
+  <tr><td>Focus ring</td><td><code>#707682</code></td><td class="num">4.5:1</td><td><code>#C7D3E8</code> at 55% opacity. Passes the 3:1 non-text bar. It is 1px.</td></tr>
+</table>
+<p>Glacier against ember is a blue/yellow pair, which is the combination that survives the common colour-blindnesses better than green against red. The palette move on 23 Oct was the right move. What is missing is a cue that is not hue. The rung is 26px wide at rest (<code>keyLevelsPrimitive.ts</code>, <code>RUNG_W</code>) and grows to 44px under the pointer. There is no letter on it. The card that explains it (<code>StrikeChart.tsx</code> around line 5255, 204px wide, name, price, distance, one sentence) only exists once the pointer is already on that hairline.</p>
+
+<figure>
+  <img src="screenshots/part2-palette.png" alt="Current level inks beside a proposed set with letters" />
+  <figcaption>Left: the inks in <code>palette.ts</code> today, as 1px rules, with the measured ratio on #050505. Right: the same hues, a heavier rule, and a letter. Proposed ratios, same ground: call <code>#9ED4EA</code> 12.7:1, put unchanged 12.6:1, flip <code>#E4E7EE</code> 16.5:1, supreme <code>#FF5AF1</code> 7.8:1, amplify <code>#FF6B63</code> 7.3:1. The letter is what a colour-blind reader and a 1px line both need. Green and red stay the regime pair.</figcaption>
+</figure>
+
+<pre>// palette.ts — walls keep their hue, gain a mark
+export const CALL_WALL = '#9ED4EA';
+export const PUT_WALL = '#F5C542';
+export const FLIP = '#E4E7EE';
+export const SUPREME = '#FF5AF1';
+export const SHORT_GAMMA = '#FF6B63';
+
+// keyLevelsPrimitive.ts — one letter, drawn at the rung’s end
+const MARK = { callWall: 'C', putWall: 'P', flip: 'F', supreme: 'S' };</pre>
+<p>Update the comment in <code>ladderOf</code> in the same commit. A comment that says green and a constant that says glacier is how the next pass reintroduces the collision the palette was split to avoid.</p>
+
+<h3>The price is dim on purpose, and the green fails</h3>
+<p>The identity row floats over the candles so the tape keeps the pixel. <code>Terrain.tsx</code> line 1780 sets that row to <code>opacity-55</code> until the pane is hovered or focused. The expand chip at line 1672 uses the same classes. Measured in the live page: the first <code>.chrome-hover</code> computed to opacity <code>0.55</code> at rest and <code>1</code> under the pointer. The comment a few lines above says the symbol and the price stay on screen, “just quiet.” Quiet, for the 11px green change, is 3.5:1. That fails the 4.5:1 bar for text that small. The price itself, at 5.5:1, passes and is a long way from the 17.4:1 it has at full strength.</p>
+<p>The toolbar under it is not quiet. It is <code>opacity-0</code> until hover (around line 1947). That part is defensible: the controls appear when a hand is reaching. Fading the price is not the same decision. On a touch screen the media query in <code>index.css</code> around line 785 forces <code>.chrome-hover</code> to opacity 1, because there is no hover to bring it back. A phone already shows the full-strength price. A desktop, where the trader stares at four panes, shows the dim one.</p>
+
+<figure>
+  <img src="screenshots/part2-chrome.png" alt="Header at 55 percent opacity beside a full-strength price with a book-age chip" />
+  <figcaption>A mock, not a screenshot of the app. Left is the resting rule as written: the whole strip, including the green change, at 55%. Right keeps the float and the blur, holds the price at full opacity, and adds a book-age chip. The age is new; the first brief already asked for the words “practice book” and “delayed.”</figcaption>
+</figure>
+<pre>/* Terrain.tsx — fade the buttons, not the price */
+&lt;div className="chrome-price"&gt; {/* opacity 1 always */}
+  &lt;SpotPrice value={levels.spot} /&gt;
+  &lt;span className={up ? 'text-bull' : 'text-bear'}&gt;{changePct}&lt;/span&gt;
+  &lt;span className="age"&gt;{bookAge(ticker)}&lt;/span&gt;
+&lt;/div&gt;
+&lt;div className="chrome-hover opacity-0 group-hover:opacity-100"&gt;
+  {/* tools only */}
+&lt;/div&gt;</pre>
+<p>Expected change: the resting change figure goes from 3.5:1 to 10.1:1. Nothing else on the pane moves.</p>
+
+<figure>
+  <img src="screenshots/part2-chrome-rest.png" alt="Terrain at rest, chrome dim" />
+  <figcaption>The live desk at rest, 1440×900, no vendor key. The floating chrome is the 0.55 strip. The shell around it (the nav, the clock) is full strength, which makes the pane’s own price the dimmest number on the screen.</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/part2-chrome-hover.png" alt="Terrain with the pointer on the chrome" />
+  <figcaption>The same page with the pointer on the chrome. That strip computes to opacity 1. The toolbar, which was opacity 0, comes with it. A trader who is only watching does not get this state.</figcaption>
+</figure>
+
+<h3>Hierarchy, type, density</h3>
+<p>The desk already makes one good structural choice: the header floats, so four panes are four charts and not four charts under four toolbars. The cost is above. The type is the other cost. Replay badges and the “live only” chip are 9px uppercase (<code>StrikeChart.tsx</code> around line 5246, the replay badge around <code>Terrain.tsx</code> line 1811). Eleven pixels is the price. Ten pixels is the secondary row. Nine pixels with wide tracking is a label that has to be leaned toward. Nothing here needs a new typeface. The price at 13px, full opacity, and everything else allowed to be 11px, is the whole scale.</p>
+<p>Density is handled by shedding, and the code says so: the change percent is the first thing the identity row drops when the column is narrow (around line 1836), and the heaviest-strike read was moved off the row because it pushed the expand control onto the candles. That is the right failure. The row that remains should be the one number a glance needs, at full strength. The heaviest strikes can stay on the second line that already appears on hover (<code>data-heavy-line</code>, opacity 0 until then).</p>
+
+<h3>Hover cards</h3>
+<p>The rung card and the bead card are the house pattern: a title, a short aside, two or three figures, one sentence. The bead card was already fixed once when the words ran out of the box (the comment at line 5283, 15 Oct 2026). Width 252px, and a click keeps it. That is the quality bar. The event card a few lines later is a different widget: a 10px uppercase label in a hand-positioned box, max 260px. One card component, used by the rung, the bead and the event, is the polish. No new information. The rung card’s problem is discovery, not layout, and the letter on the rung is the discovery.</p>
+
+<h3>Loading, the skeleton, and errors</h3>
+<p><code>ChartSkeleton</code> (<code>Skeleton.tsx</code> line 46) is a real skeleton: a head row, a body, a foot, staggered by pane via <code>Deferred</code> so four charts do not build in one frame. The comment in the file says the desk used to pop. The skeleton is <code>aria-hidden</code>. A screen reader gets silence for the whole deferred mount. The empty-state sentence the first brief already covers (“Waiting for the first tick”) is a separate lie about the network. This is the loading state that is honest and still invisible. Take <code>aria-hidden</code> off the chart skeleton and give it <code>role="status"</code> with the text “Chart loading.” When the book fails, the same status should say why. That copy is the first brief’s empty-state item; the role is the new part.</p>
+<p>Errors. <code>ErrorBoundary</code> in <code>components/ui/ErrorBoundary.tsx</code> already renders a one-line fault and keeps <code>error.message</code>. <code>AppShell</code>’s <code>RouteBoundary</code> wraps the outlet, keyed on the path. A throw inside one Terrain pane replaces the desk. The first brief’s hooks crash is the demonstration. The boundary that should have caught it is the one that already exists, wrapped around each pane:</p>
+<pre>&lt;ErrorBoundary label={`Chart ${i + 1}`} resetKey={`${ticker}|${timeframe}`}&gt;
+  &lt;Pane … /&gt;
+&lt;/ErrorBoundary&gt;</pre>
+<p>Effort is the wrapper. Impact is that a bad rail leaves three candles on screen. The hooks still have to move above the early return; the boundary is the net under that fix, not a substitute. One line back to the first brief for the hook order itself.</p>
+
+<h3>Keyboard, focus, small screens</h3>
+<p>The keys are already good, and they are already announced. <code>Terrain.tsx</code> around line 2552 handles 1–4, brackets, minus and equals, arrows, and the rail keys, and line 3175 puts the result in an <code>aria-live="polite"</code> span. After seven Tabs on the four-pane desk, focus landed on the Fibonacci drawing tool. The ring computed to <code>1px solid rgba(199, 211, 232, 0.55)</code>. Blended onto <code>#050505</code> that is about 4.5:1, which clears 3:1 for a UI edge and is still a one-pixel grey line on a charcoal tool. A 2px solid <code>#C7D3E8</code> (13.5:1) on <code>:focus-visible</code> is the change. Do not show it on mouse click.</p>
+<p>Many icon buttons already have <code>aria-label</code>s (expand, link, collapse). That part is ahead of a typical chart page. The gap is that the key list is only in the live region after you have already pressed the key, and in <code>title</code> attributes on the chips. A first-time reader does not know to press L.</p>
+
+<figure>
+  <img src="screenshots/part2-focus.png" alt="Four-pane desk after tabbing to a drawing tool" />
+  <figcaption>Four panes, 1600×1000, after seven Tabs. Focus is on the Fibonacci tool in the drawing rail. The ring is the 1px silver measured above. The candles are the synthetic book.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/part2-768.png" alt="Terrain at 768 pixels wide" />
+  <figcaption>768×900. No horizontal overflow. The rail’s tab group was not in the document (the rail is <code>hidden</code> below the <code>xl</code> breakpoint, 1280px). The shell nav is the loudest thing in the text. Chart tools were not among the named buttons, which matches a toolbar at opacity 0. The phone shot in the first brief is the narrower case of the same rule.</figcaption>
+</figure>
+
+<h3>A first session</h3>
+<p>The first brief’s chips for Levels and Cone are how a person turns those overlays on once they know the names. They are not an introduction. The desk opens into panes, a dim price, and a drawing rail full of tools whose names assume a charting vocabulary. The keys that actually run the desk are undocumented on screen.</p>
+<figure>
+  <img src="screenshots/part2-onboard.png" alt="Three-step first-run strip" />
+  <figcaption>A mock of a strip that shows once, then sets <code>slayer_terrain_seen_v1</code>. It does not re-explain the two books. It points at them, names three keys that already work, and says what the rail tabs are. Dismiss is the whole interaction.</figcaption>
+</figure>
+<pre>if (!localStorage.getItem('slayer_terrain_seen_v1')) {
+  // render the three sentences; on dismiss:
+  localStorage.setItem('slayer_terrain_seen_v1', '1');
+}</pre>
+
+<figure>
+  <img src="screenshots/part2-desk-4.png" alt="Four-pane desk used for the performance pass" />
+  <figcaption>The four-pane desk the frame times were taken on. Rails off, so the hooks crash is not in those numbers. Trails, levels and the cone were on. 1600×1000.</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/part2-ladder.png" alt="One pane with the ladder rail" />
+  <figcaption>One pane after the Ladder tab was pressed. This is the rail redraw that held 60Hz at 10 ticks a second. The GEX calendar was not the view under test.</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/part2-rail-fault.png" alt="One pane with the rail’s default view" />
+  <figcaption>One-up, rail on, default view, after 6.4s. The page did not show the hooks fault on this run. The first brief still owns that bug; this shot is the race going the other way.</figcaption>
+</figure>
+
+<h2>4. Data, tests, storage, keys, logs</h2>
+
+<h3>How fresh the book is</h3>
+<p>The first brief asked for a chip that says practice, vendor, or delayed. The machinery under that chip was not listed.</p>
+<ul>
+  <li><code>ensureBook</code> (<code>uwBook.ts</code> around 2396) retries an error after 15s. A full book is stale after 45s (<code>FULL_MS</code>). A board book is stale after 90s (<code>BOARD_MS</code>). A settled book is held until the next pre-market (<code>bookFixedUntil</code>). Each entry stores <code>at</code>.</li>
+  <li>The proxy (<code>server/uwProxy.mjs</code>) keeps a hit for 3s, 15s or 300s depending on the path, dedupes identical in-flight GETs, and allowlists the path. The token is not written back.</li>
+  <li>The client (<code>whales.ts</code> <code>uwFetch</code>, around line 152) retries once, after 1.5s, on 429, 502, 503 and 504. A second failure is returned. There is no session backoff, so a dead vendor is a 1.5s retry on every call until the 15s error window inside <code>ensureBook</code> catches up.</li>
+  <li>Nothing on the pane reads <code>entry.at</code>. The chart can be a minute old and look live.</li>
+</ul>
+<pre>export function bookAge(ticker: string): string {
+  const e = peekEntry(ticker);
+  if (!e) return 'no book';
+  if (e.status === 'error') return `vendor ${e.statusCode ?? ''} · last try ${Math.round((Date.now() - e.at) / 1000)}s`;
+  const s = Math.round((Date.now() - e.at) / 1000);
+  return s &lt; 20 ? 'live' : `book ${s}s old`;
+}</pre>
+<p>Backoff belongs next to the single retry: after two failures, wait 2s, then 4, then 8, and stop at 30s, resetting on a 200. Files: <code>whales.ts</code> for the wait, <code>Terrain.tsx</code> for the chip. The words “delayed” and “practice book” stay the first brief’s item. The seconds are this one.</p>
+
+<h3>Theta is not a fallback</h3>
+<p><code>server/thetaProxy.mjs</code> forwards <code>/api/theta</code> to <code>127.0.0.1:25503</code> and will start the jar only when Java 21 and a credential file exist. Terrain never calls it. A search of the terrain and gex trees finds no Theta client. Wiring it in is a new reader that produces the same candle shape <code>displayBars</code> already consumes, used when <code>uwFetch</code> has failed twice. It is not a drop-in: Theta’s bars and the whale chain will disagree about the price, which is the two-book problem again if both are shown as one number. If Theta feeds candles, the header has to say “candles: Theta, chain: none” rather than silently mixing them. Effort is large. Impact is a desk that still draws a session when the whale proxy returns 503. Do it after the age chip, which is useful even with one vendor.</p>
+
+<h3>Tests</h3>
+<p><code>npm test</code> is <code>scripts/terrain-setups-proof.ts</code>. It covers pane keys and setups. It does not build a chain and compare Terrain’s rung with the Map’s flip. The first brief already asked for that one assertion; it is still absent, and it is not repeated here as a new item. What this pass adds:</p>
+<ul>
+  <li>A render test that <code>ExposureField</code> calls the same hooks with a null snapshot and with a live one. That is the crash, pinned, so the hook move cannot regress. The first brief has the fix. The test is new.</li>
+  <li><code>displayBars</code> returns an empty list when the book is missing, and the session bars when it is live. Today a regression toward the simulator’s candles would not fail a script.</li>
+  <li><code>buildConfluence</code> returns the cached rows when the last bar is unchanged, once that cache exists.</li>
+</ul>
+<p>The Python tests under <code>slayer/engine/tests/</code> cover greeks and exposure on the engine side. They do not import the React chart. Leaving them there is correct. The hole is the join between <code>levelsOf</code> and <code>gammaFlip</code>, which the first brief already named.</p>
+
+<h3>Storage</h3>
+<p><code>loadCfg</code> (<code>Terrain.tsx</code> line 468) parses <code>slayer_terrain_v1</code>, migrates the old flat shape, and returns defaults on any throw. That part is solid. There is no <code>version</code> field, so the next breaking change has to guess, the way the flat-shape migration already does. <code>setItem</code> around line 2222 is in a try/catch that swallows <code>QuotaExceededError</code> with no signal. The comment says storage can be full and that must not be fatal. Agreed. The trader should still see “layouts are not being saved” once, not a desk that forgets itself with no trace. There is no <code>storage</code> listener on this key. Other stores in the app have one (<code>paper/store.ts</code>, <code>savedViews.ts</code>). Two Terrain tabs write the whole config on every change, and the last write wins, including a write from a tab that was opened yesterday and is still mounted. Add <code>version: 1</code>, surface a full disk once, and reload when another tab writes the key.</p>
+
+<h3>Keys</h3>
+<p>Covered with the bundle. The allowlist in <code>uwProxy.mjs</code> is the control that matters: the browser can only ask for paths the proxy is willing to forward, and the bearer token stays in the server process. The billing blob in <code>localStorage</code> is client-trusted and is not a vendor secret. Do not put the whale key in a <code>VITE_</code> variable. The empty <code>process.env</code> define is a footgun only if someone later writes <code>define: { 'process.env': env }</code> and ships the whole env into the client. Leave a one-line comment on that define if it is not already obvious to the next editor.</p>
+
+<h3>Observability</h3>
+<p><code>StrikeChart.tsx</code> line 3384 logs <code>[events-debug]</code> with the event list, on the effect that builds the events overlay. It runs when that effect runs, in production as well as dev. Delete it. <code>ErrorBoundary</code> does <code>console.error</code> and nothing else. There is no <code>window.onerror</code> reporter, no metric for the long tasks this pass had to invent a harness to see, and no counter for book age. A small hook is enough:</p>
+<pre>window.addEventListener('error', (e) => {
+  navigator.sendBeacon?.('/api/log', JSON.stringify({
+    msg: String(e.message).slice(0, 300),
+    path: location.pathname,
+  }));
+});</pre>
+<p>Keep the body free of the chain, the key and the account. One route that appends a line, capped, is the whole system. Do not add a vendor SDK to the 1.4MB shell to learn that a pane threw.</p>
+
+<h2>5. Features that are not already on the list</h2>
+<p>Each one is absent from the first brief. Where the app already has a cousin of the idea, that is said in the first sentence so it does not get built twice.</p>
+
+<h3>Book age, as a number <span class="tag">S</span> <span class="tag">Impact: high</span></h3>
+<p>Reasoning and the snippet are in section 4. Files: <code>uwBook.ts</code> <code>peekEntry</code>, <code>Terrain.tsx</code> identity row. The first brief’s chip says which book. This says how old it is.</p>
+
+<h3>Per-pane fault <span class="tag">S</span> <span class="tag">Impact: high</span></h3>
+<p>Section 3. One wrapper. The hook move stays in the first brief.</p>
+
+<h3>Letters on the rungs <span class="tag">S</span> <span class="tag">Impact: medium</span></h3>
+<p>Section 3. <code>palette.ts</code>, <code>keyLevelsPrimitive.ts</code>, the comment in <code>ladderOf</code>.</p>
+
+<h3>Price at full strength <span class="tag">S</span> <span class="tag">Impact: high</span></h3>
+<p>Section 3. Split <code>chrome-hover</code> so opacity 0.55 applies to tools only.</p>
+
+<h3>First-run strip <span class="tag">S</span> <span class="tag">Impact: medium</span></h3>
+<p>Section 3. Three sentences, one localStorage flag.</p>
+
+<h3>Config version and a second tab <span class="tag">S</span> <span class="tag">Impact: medium</span></h3>
+<p>Section 4. <code>loadCfg</code>, the <code>setItem</code> effect, a <code>storage</code> listener.</p>
+
+<h3>Crosshair magnet <span class="tag">S</span> <span class="tag">Impact: medium</span></h3>
+<p>The crosshair already syncs in under a frame. It does not stick to a strike. When the pointer is within a few pixels of a rung, report that rung’s price instead of the free price, and let the synced panes mark the same strike. Files: the crosshair handler in <code>StrikeChart.tsx</code> (the <code>onCrosshairRef</code> call around line 2048) and <code>ladderOf</code>. A magnet that prefers the call wall over a random price is the interaction the rung letters are for.</p>
+<pre>const rung = nearestRung(price, levels, pxPerDollar);
+const snapped = rung && Math.abs(rung.price - price) &lt; 4 * pxPerDollar ? rung.price : price;
+onCrosshairRef.current?.(time, snapped);</pre>
+
+<h3>Stop rebuilding VWAP <span class="tag">S</span> <span class="tag">Impact: medium</span></h3>
+<p>Section 2. Hottest function in the burst. Small at 1.5s, which is why it is not at the top of the list.</p>
+
+<h3>One publish per frame <span class="tag">S</span> <span class="tag">Impact: low at 1.5s</span></h3>
+<p>Section 2. Write it when a faster feed is real. The snippet is ready.</p>
+
+<h3>Rail loop that sleeps <span class="tag">S</span> <span class="tag">Impact: low</span></h3>
+<p>Section 2. 27ms of self time per 1.5s per rail.</p>
+
+<h3>Delete the debug log, add a beacon <span class="tag">S</span> <span class="tag">Impact: low</span></h3>
+<p>Section 4. <code>StrikeChart.tsx</code> line 3384, plus the <code>error</code> listener.</p>
+
+<h3>A sound when price tags a wall <span class="tag">S</span> <span class="tag">Impact: low</span></h3>
+<p>The alert kinds for a flip, a new supreme and a wall that moves two strikes already exist (<code>WatchMenu.tsx</code> around lines 103–105). A price crossing the wall is the first brief’s rung-card alert. What is missing is a sound, off by default, on the alert that already fires. One <code>AudioContext</code> beep in the alert watcher, behind a desk toggle. Do not add a new alert kind to get a noise.</p>
+
+<h3>Yesterday’s book, as a list <span class="tag">M</span> <span class="tag">Impact: high</span></h3>
+<p>The first brief said to draw notches when a level was tested, and not to draw a second set of history lines. A list is neither. <code>levelRecord</code> can already say the call wall moved. A panel, one row per level: “call wall 455 → 460 since yesterday’s close, 1.1%.” Files: the record module, a small block under the identity row or on the rung card. No new series on the candles.</p>
+<pre>const rows = diffLevels(record.previous(ticker), levels);
+// [{ key: 'callWall', from: 455, to: 460, pct: 0.011 }]</pre>
+
+<h3>Charm into the close, and an OI jump <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
+<p>Not the alerts that already exist. Two kinds next to them in <code>alertStore.ts</code> and <code>WatchMenu.tsx</code>:</p>
+<ul>
+  <li><strong>Charm into the close.</strong> After 15:00 New York, the name’s net charm has been the same sign for N minutes and price is inside half a percent of the supreme. The trade is “dealers are pinning,” and the existing supreme alert does not say that.</li>
+  <li><strong>OI jump.</strong> A strike’s open interest doubled against the previous read. The chain refresh is already on a timer. Compare to the previous snapshot, do not poll faster.</li>
+</ul>
+<pre>if (nyMinutes(now) &gt;= 15 * 60 && Math.sign(charm) === Math.sign(prevCharm) && Math.abs(spot - supreme) / spot &lt; 0.005) {
+  fire('charmPin', ticker);
+}</pre>
+
+<h3>A link, not only a PNG <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
+<p>The camera already imports <code>html2canvas</code> on press (<code>Terrain.tsx</code> around line 1379) and that chunk is split. A PNG cannot be reopened as a desk. A share payload is the symbol, the interval, the overlay flags, and the level prices at the moment of the shot, encoded in the hash of a read-only route. The route draws one pane from that payload and does not start the simulator. Files: a <code>/terrain/s/:id</code> route, <code>localStorage</code> or a short unowned row if a database is already on for something else — it is not, for this app, so keep the payload in the hash and accept the length limit. Do not put the chain in the URL.</p>
+
+<h3>How many names are long gamma <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
+<p>The regime sentence for one name is the first brief. A strip on the desk bar is the count across the open panes, or across the watchlist the simulator already holds: “3 of 4 long gamma.” It uses the same sign the Map already computes. Files: a function next to the regime helper the first brief names, rendered once in <code>Terrain.tsx</code>, not once per pane. When the books disagree, the strip is hidden rather than averaged. One line back to the first brief for the per-name sentence.</p>
+
+<h3>Two names, one regime question <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
+<p>Compare today is a price overlay. The question a GEX desk is for is “is SPY long gamma while QQQ is short?” A two-column card: sign, distance to the flip in percent, distance to the supreme. Not a second chart. Files: the levels each pane already computes, a toggle on the link chip (panes that share a letter). Effort is the card. The levels have to be the same book, or the card is the two-book bug with a heading.</p>
+
+<h3>A 0DTE open list <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
+<p>Not a new indicator. A workspace that, before the open, shows for the active name: where the flip sits relative to the previous close, whether the supreme moved overnight (the list above), the expected-move high and low the first brief already wants on the chart, and the IV rank the header should already show. One column, four rows, dismissed at 9:45. Files: a component beside the desk, reading <code>uwBook</code> fields that are already fetched. It is worthless until those fields are the book the header uses. Build it after the first brief’s one-book item, not before.</p>
+
+<h3>Undo for a drawing <span class="tag">M</span> <span class="tag">Impact: low</span></h3>
+<p>There is an undo helper in the UI kit. The drawing tools do not call it. A stack of the last 20 drawing mutations per symbol, Cmd-Z, stored next to the drawings that already persist per ticker. Files: <code>drawingsPrimitive.ts</code>, the key handler in <code>Terrain.tsx</code>. Cap the stack so it cannot be the thing that fills <code>localStorage</code>.</p>
+
+<h3>A pane in its own window <span class="tag">M</span> <span class="tag">Impact: low</span></h3>
+<p><code>window.open</code> to <code>/terrain?pop=SPY&amp;tf=1m</code> with layout forced to 1. The config parser already accepts a layout. The only new work is reading the query once and not writing that back over the desk’s saved four-pane layout. Useful on two monitors. Easy to get wrong if the pop writes <code>slayer_terrain_v1</code>.</p>
+
+<h3>One sentence on a stall <span class="tag">M</span> <span class="tag">Impact: low</span></h3>
+<p>The app has no model client. No xAI import, no OpenAI import. A button on the rung card, “why here,” sends the symbol, the four level prices, the sign, and the distance, and asks for two sentences a trader could have written. User-initiated, one request per click, server-side key, a hard timeout. Do not send the chain. Do not run it on a timer. Files: a new route under the existing server, the card in <code>StrikeChart.tsx</code>. Until a key exists, the button stays off. Shipping a fake sentence is worse than no button.</p>
+
+<h3>The shell is why the open takes two seconds <span class="tag">L</span> <span class="tag">Impact: high</span></h3>
+<p>Section 1. Terrain’s own chunk is 96KB. The open still decoded 7.19MB across 144 files, and the entry chunk is 1.4MB raw. The work is finding what the shell imports eagerly (the map, the grid, the editor) and leaving it on the routes that use it. Expected gain: the production “four canvases” number, 2.1s cold, moves by whatever fraction of that 2.1s is script evaluation. This pass did not split that 2.1s into parse versus data versus chart mount, so the gain is “a large part of two seconds,” not a promised 400ms.</p>
+
+<h3>The book on a phone <span class="tag">L</span> <span class="tag">Impact: medium</span></h3>
+<p>Below <code>xl</code> the rail is not rendered, and the rail keys are unbound so they cannot announce a rail that is not there (<code>Terrain.tsx</code> around line 2628). That is correct. A bottom sheet, opened by the same key once the viewport is wide enough to mean it, or by a “Strikes” button that already exists in the comment, is the phone version: the ladder, not the GEX calendar, because the calendar is the crash and the ladder is the list. Pinch stays the chart library’s gesture. Do not mount <code>ExposureField</code> in the sheet until the hooks are fixed.</p>
+
+<h3>Theta under the candles <span class="tag">L</span> <span class="tag">Impact: medium</span></h3>
+<p>Section 4. A second reader, labelled, used only after the whale book has failed. Not a silent fallback.</p>
+
+<h2>6. What to do, in order</h2>
+<p>Only items that are not the first brief’s roadmap. Impact is 1–5. Effort is S = 1, M = 2, L = 3. The sort is impact divided by effort. Ties break toward the smaller change.</p>
+<table>
+  <tr><th class="num">#</th><th>Item</th><th class="num">Impact</th><th>Effort</th><th class="num">Ratio</th></tr>
+  <tr><td class="num">1</td><td>Error boundary around each pane</td><td class="num">5</td><td>S</td><td class="num">5.0</td></tr>
+  <tr><td class="num">2</td><td>Stop fading the price and the change</td><td class="num">4</td><td>S</td><td class="num">4.0</td></tr>
+  <tr><td class="num">3</td><td>Book age in seconds, plus backoff after the single retry</td><td class="num">4</td><td>S</td><td class="num">4.0</td></tr>
+  <tr><td class="num">4</td><td>Letters on the rungs, and the comment that still says green/red</td><td class="num">3</td><td>S</td><td class="num">3.0</td></tr>
+  <tr><td class="num">5</td><td>First-run strip for the keys that already exist</td><td class="num">3</td><td>S</td><td class="num">3.0</td></tr>
+  <tr><td class="num">6</td><td>Config version, a visible full-disk warning, storage sync</td><td class="num">3</td><td>S</td><td class="num">3.0</td></tr>
+  <tr><td class="num">7</td><td>Crosshair magnet to the nearest rung</td><td class="num">3</td><td>S</td><td class="num">3.0</td></tr>
+  <tr><td class="num">8</td><td>Incremental confluence, so VWAP is not folded every revision</td><td class="num">3</td><td>S</td><td class="num">3.0</td></tr>
+  <tr><td class="num">9</td><td>Yesterday’s levels as a list, not a second series</td><td class="num">4</td><td>M</td><td class="num">2.0</td></tr>
+  <tr><td class="num">10</td><td>One publish per frame, for a feed faster than 1.5s</td><td class="num">2</td><td>S</td><td class="num">2.0</td></tr>
+  <tr><td class="num">11</td><td>Rail draw loop sleeps when the ease has settled</td><td class="num">2</td><td>S</td><td class="num">2.0</td></tr>
+  <tr><td class="num">12</td><td>Remove <code>[events-debug]</code> and beacon a thrown error</td><td class="num">2</td><td>S</td><td class="num">2.0</td></tr>
+  <tr><td class="num">13</td><td>A sound on an alert that already fires</td><td class="num">2</td><td>S</td><td class="num">2.0</td></tr>
+  <tr><td class="num">14</td><td>Charm-into-the-close and OI-doubled alerts</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
+  <tr><td class="num">15</td><td>Share payload in the URL, beside the PNG</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
+  <tr><td class="num">16</td><td>Watchlist breadth: how many names are long gamma</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
+  <tr><td class="num">17</td><td>Two names compared on sign and distance, not on price</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
+  <tr><td class="num">18</td><td>0DTE open list, after the header is one book</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
+  <tr><td class="num">19</td><td>Find the DOM growth (the tape is the suspect)</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
+  <tr><td class="num">20</td><td>Split the 1.4MB shell so Terrain stops decoding 7MB</td><td class="num">4</td><td>L</td><td class="num">1.3</td></tr>
+  <tr><td class="num">21</td><td>Drawing undo, capped</td><td class="num">2</td><td>M</td><td class="num">1.0</td></tr>
+  <tr><td class="num">22</td><td>Pop a pane into its own window without clobbering the desk</td><td class="num">2</td><td>M</td><td class="num">1.0</td></tr>
+  <tr><td class="num">23</td><td>One sentence on a stall, when a server key exists</td><td class="num">2</td><td>M</td><td class="num">1.0</td></tr>
+  <tr><td class="num">24</td><td>Phone sheet for the ladder</td><td class="num">3</td><td>L</td><td class="num">1.0</td></tr>
+  <tr><td class="num">25</td><td>Theta candles, labelled, only after the whale book fails</td><td class="num">3</td><td>L</td><td class="num">1.0</td></tr>
+</table>
+<p>Items 1 through 8 are an afternoon of mechanical edits plus the confluence cache. Item 9 is the one medium change that belongs in the same release, because it is the sentence a trader asks in the morning and the data is already recorded. Item 20 is the open-time project. It ranks lower only because it is large, not because the two seconds are acceptable.</p>
+
+<h2>7. What was not measured</h2>
+<ul>
+  <li><strong>A live Unusual Whales book.</strong> No vendor key in this environment. Every chart number is the synthetic chain. A month of real one-minute history is not what <code>displayBars</code> shows anyway: the cash series is one session.</li>
+  <li><strong>The 1-minute label on screen.</strong> The second pass wrote <code>timeframe: "1m"</code>. The document text did not contain the interval label, because the toolbar is hidden until hover. The heavier pan (one frame at 50ms) is the evidence the series was longer. The label itself was not read back.</li>
+  <li><strong>A trace category that emits <code>BeginFrame</code>.</strong> The timeline trace counted <code>RunTask</code> only. Frame times came from <code>requestAnimationFrame</code>, which is the number that matches what a person sees.</li>
+  <li><strong>Sibling crosshair paint, separately.</strong> The cursor pane was timed. The other panes are updated in the same synchronous call.</li>
+  <li><strong>The GEX calendar’s redraw.</strong> The one-up default view did not crash this time, and the timed rail was the ladder. The calendar’s cost is still unknown. The first brief owns the crash that usually prevents the measurement.</li>
+  <li><strong>An eight-hour session.</strong> 36 seconds at 4 ticks a second, with one unexplained DOM drop in the middle.</li>
+  <li><strong>Production warm being faster.</strong> It was slower on the single reload that was run (2.7s versus 2.1s).</li>
+  <li><strong>Where inside the 2.1s the production open spends its time.</strong> Script parse versus the book versus the chart mount was not split.</li>
+  <li><strong>Colour appearance under a deuteranopia simulation.</strong> The ratios are computed. The blue/yellow pair is the reason glacier and ember are safer than green and red. A simulator was not run.</li>
+  <li><strong>The identity row’s opacity as a second element.</strong> The expand chip, which uses the same classes, measured 0.55 at rest and 1 on hover. The identity row was not hovered on its own in that check.</li>
+</ul>
+
+<p class="meta">Companion to <em>Make the terrain better than OpenMarket</em>. That file is unchanged.</p>
+
+</body>
+</html>

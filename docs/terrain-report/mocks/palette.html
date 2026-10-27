@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Level ink, before and after</title>
+<style>
+  html, body { margin: 0; background: #050505; color: #ededed; font-family: "Avenir Next", "Segoe UI", Helvetica, sans-serif; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 22px; }
+  h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: #9a9a9a; }
+  .card { background: #0c0c0c; border: 1px solid #222; padding: 14px 14px 16px; }
+  .row { display: grid; grid-template-columns: 92px 1fr 64px; gap: 10px; align-items: center; margin: 8px 0; font-size: 13px; }
+  .swatch { height: 28px; position: relative; background: #050505; border: 1px solid #1c1c1c; }
+  .line { position: absolute; left: 8px; right: 28px; top: 13px; height: 1px; }
+  .line.w2 { height: 2px; top: 12px; }
+  .dash { background: repeating-linear-gradient(90deg, currentColor 0 7px, transparent 7px 11px); height: 1px; }
+  .tag { font-variant-numeric: tabular-nums; font-size: 12px; color: #9a9a9a; text-align: right; }
+  .mark { position: absolute; right: 6px; top: 4px; font-size: 11px; font-weight: 700; }
+  p { margin: 8px 0 0; font-size: 12px; color: #bdbdbd; line-height: 1.35; }
+</style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h2>On the desk now</h2>
+    <div class="row"><span>Call wall</span><div class="swatch"><i class="line" style="background:#7ABDD7"></i></div><span class="tag">9.8:1</span></div>
+    <div class="row"><span>Put wall</span><div class="swatch"><i class="line" style="background:#F5C542"></i></div><span class="tag">12.6:1</span></div>
+    <div class="row"><span>Flip</span><div class="swatch"><i class="line dash" style="color:#9CA3AF"></i></div><span class="tag">8.0:1</span></div>
+    <div class="row"><span>Supreme</span><div class="swatch"><i class="line w2" style="background:#EA00FF"></i></div><span class="tag">5.8:1</span></div>
+    <div class="row"><span>Amplify</span><div class="swatch"><i class="line" style="background:#FF3B30"></i></div><span class="tag">5.7:1</span></div>
+    <p>Ratios are the ink against the live page ground #050505. A 1px rule reads fainter than the ratio of a text block. Nothing in the rung says which line it is until the pointer is already on it. The file headers still call the walls green and red.</p>
+  </section>
+  <section class="card">
+    <h2>Proposed</h2>
+    <div class="row"><span>Call wall</span><div class="swatch"><i class="line w2" style="background:#9ED4EA"></i><b class="mark" style="color:#9ED4EA">C</b></div><span class="tag">12.7:1</span></div>
+    <div class="row"><span>Put wall</span><div class="swatch"><i class="line w2" style="background:#F5C542"></i><b class="mark" style="color:#F5C542">P</b></div><span class="tag">12.6:1</span></div>
+    <div class="row"><span>Flip</span><div class="swatch"><i class="line dash" style="color:#E4E7EE"></i><b class="mark" style="color:#E4E7EE">F</b></div><span class="tag">16.5:1</span></div>
+    <div class="row"><span>Supreme</span><div class="swatch"><i class="line w2" style="background:#FF5AF1"></i><b class="mark" style="color:#FF5AF1">S</b></div><span class="tag">7.8:1</span></div>
+    <div class="row"><span>Amplify</span><div class="swatch"><i class="line w2" style="background:#FF6B63"></i></div><span class="tag">7.3:1</span></div>
+    <p>Same hues, so call stays glacier and put stays ember. The letter is the cue that survives colour-blindness and a 1px line. Green and red stay the regime pair and are not reused as wall names. Amplify red is lifted so a thin rule clears 7:1.</p>
+  </section>
+</main>
+</body>
+</html>

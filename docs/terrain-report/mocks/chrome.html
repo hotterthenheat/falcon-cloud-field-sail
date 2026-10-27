@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Header at rest</title>
+<style>
+  html, body { margin: 0; background: #12160f; color: #ededed; font-family: "Avenir Next", "Segoe UI", Helvetica, sans-serif; }
+  .stage { position: relative; height: 168px; margin: 16px; background:
+    linear-gradient(#1a1f16, #1a1f16) 0 0 / 100% 100%,
+    repeating-linear-gradient(90deg, transparent 0 46px, rgba(48,209,88,0.35) 46px 48px);
+    border: 1px solid #222; overflow: hidden; }
+  .candle { position: absolute; bottom: 36px; width: 7px; background: #30D158; }
+  .bar { position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 8px;
+    background: rgba(5,5,5,0.25); backdrop-filter: blur(3px); border-radius: 6px; padding: 4px 8px; font-variant-numeric: tabular-nums; }
+  .dim { opacity: 0.55; }
+  .full { opacity: 1; }
+  .badge { width: 16px; height: 16px; border-radius: 3px; background: #C7D3E8; color: #0a0a0a; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .sym { font-weight: 700; font-size: 13px; }
+  .px { font-family: ui-monospace, Menlo, monospace; font-size: 13px; font-weight: 650; }
+  .up { color: #30D158; font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700; }
+  .age { font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: #0a0a0a; background: #C7D3E8; border-radius: 3px; padding: 1px 5px; }
+  h2 { margin: 0 16px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #9a9a9a; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; }
+</style>
+</head>
+<body>
+<div class="pair">
+  <div>
+    <h2>At rest today · opacity 0.55</h2>
+    <div class="stage">
+      <i class="candle" style="left:40px;height:48px"></i>
+      <i class="candle" style="left:64px;height:70px;background:#FF3B30"></i>
+      <i class="candle" style="left:88px;height:62px"></i>
+      <i class="candle" style="left:112px;height:90px"></i>
+      <i class="candle" style="left:136px;height:54px;background:#FF3B30"></i>
+      <div class="bar dim">
+        <span class="badge">1</span>
+        <span class="sym">SPY</span>
+        <span class="px">497.18</span>
+        <span class="up">+1.81%</span>
+      </div>
+    </div>
+  </div>
+  <div>
+    <h2>Proposed · price stays at 1</h2>
+    <div class="stage">
+      <i class="candle" style="left:40px;height:48px"></i>
+      <i class="candle" style="left:64px;height:70px;background:#FF3B30"></i>
+      <i class="candle" style="left:88px;height:62px"></i>
+      <i class="candle" style="left:112px;height:90px"></i>
+      <i class="candle" style="left:136px;height:54px;background:#FF3B30"></i>
+      <div class="bar full">
+        <span class="badge">1</span>
+        <span class="sym">SPY</span>
+        <span class="px">497.18</span>
+        <span class="up">+1.81%</span>
+        <span class="age">book 12s</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

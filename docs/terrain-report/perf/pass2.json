@@ -1,0 +1,98 @@
+{
+  "oneMinute": [
+    {
+      "layout": 1,
+      "openMs": 6823,
+      "saw1m": false,
+      "pan": {
+        "n": 56,
+        "p50": 16.7,
+        "p95": 33.4,
+        "max": 50.1,
+        "over32": 19,
+        "over50": 1
+      },
+      "zoom": {
+        "n": 34,
+        "p50": 16.7,
+        "p95": 16.7,
+        "max": 33.4,
+        "over32": 1,
+        "over50": 0
+      }
+    },
+    {
+      "layout": 4,
+      "openMs": 6077,
+      "saw1m": false,
+      "pan": {
+        "n": 30,
+        "p50": 16.7,
+        "p95": 16.7,
+        "max": 16.8,
+        "over32": 0,
+        "over50": 0
+      },
+      "zoom": {
+        "n": 40,
+        "p50": 16.7,
+        "p95": 16.7,
+        "max": 16.8,
+        "over32": 0,
+        "over50": 0
+      }
+    }
+  ],
+  "trace": {
+    "events": 16265,
+    "runTasksOver16ms": 12,
+    "worst": [
+      {
+        "ms": 21,
+        "name": "RunTask"
+      },
+      {
+        "ms": 20,
+        "name": "RunTask"
+      },
+      {
+        "ms": 19,
+        "name": "RunTask"
+      },
+      {
+        "ms": 18,
+        "name": "RunTask"
+      },
+      {
+        "ms": 18,
+        "name": "RunTask"
+      },
+      {
+        "ms": 18,
+        "name": "RunTask"
+      },
+      {
+        "ms": 17,
+        "name": "RunTask"
+      },
+      {
+        "ms": 17,
+        "name": "RunTask"
+      }
+    ],
+    "beginFrames": 0
+  },
+  "preview": {
+    "up": 200,
+    "coldCanvasMs": 2129,
+    "coldDcl": 151,
+    "warmCanvasMs": 2698,
+    "nav": {
+      "dcl": 149,
+      "load": 149.7000000011176,
+      "jsFiles": 144,
+      "jsTransfer": 2268955,
+      "jsDecoded": 7188606
+    }
+  }
+}

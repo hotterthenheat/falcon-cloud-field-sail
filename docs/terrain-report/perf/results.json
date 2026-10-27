@@ -1,0 +1,1839 @@
+{
+  "measuredAt": "2026-10-27T23:46:28.707Z",
+  "note": "Synthetic UW book. Chart panes have ladder:false so ExposureField is not mounted. Tick bursts call the live 1500ms processTick (MarketDataContext) faster than production; production cadence is 1.5s. Frame time is rAF delta. A drop is a delta over 32.5ms (missed a 60Hz frame) or over 50ms.",
+  "gestures": [
+    {
+      "label": "1 pane",
+      "canvases": 7,
+      "intervals": {
+        "120": 1,
+        "1000": 1,
+        "1500": 1,
+        "2500": 1,
+        "30000": 4,
+        "60000": 2
+      },
+      "panInfo": {
+        "ok": true,
+        "box": {
+          "w": 1296,
+          "h": 898
+        }
+      },
+      "zoomInfo": {
+        "ok": true
+      },
+      "idle": {
+        "frames": {
+          "n": 130,
+          "min": 16.5,
+          "p50": 16.7,
+          "p95": 16.8,
+          "max": 33.3,
+          "mean": 16.92,
+          "spanMs": 2199.9,
+          "droppedOver32": 2,
+          "droppedOver50": 0,
+          "approxHz": 59.09
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "muts": 20,
+        "ltErr": null
+      },
+      "pan": {
+        "frames": {
+          "n": 38,
+          "min": 16.5,
+          "p50": 16.7,
+          "p95": 16.8,
+          "max": 16.8,
+          "mean": 16.67,
+          "spanMs": 633.3,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "worst": [],
+        "muts": 7
+      },
+      "zoom": {
+        "frames": {
+          "n": 43,
+          "min": 16.6,
+          "p50": 16.7,
+          "p95": 16.7,
+          "max": 16.8,
+          "mean": 16.67,
+          "spanMs": 716.7,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "worst": [],
+        "muts": 5
+      },
+      "errors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "open": {
+        "dcl": 497,
+        "canvasMs": 4218,
+        "settledMs": 6031,
+        "nav": {
+          "ttfb": 19.40000000037253,
+          "domContentLoaded": 490.09999999962747,
+          "load": 498.09999999962747,
+          "transfer": 15628,
+          "decodedBody": 15328
+        }
+      }
+    },
+    {
+      "label": "2 pane",
+      "canvases": 14,
+      "intervals": {
+        "120": 2,
+        "1000": 1,
+        "1500": 1,
+        "2500": 1,
+        "30000": 4,
+        "60000": 2
+      },
+      "panInfo": {
+        "ok": true,
+        "box": {
+          "w": 616,
+          "h": 898
+        }
+      },
+      "zoomInfo": {
+        "ok": true
+      },
+      "idle": {
+        "frames": {
+          "n": 132,
+          "min": 16.6,
+          "p50": 16.7,
+          "p95": 16.7,
+          "max": 16.8,
+          "mean": 16.67,
+          "spanMs": 2199.9,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "muts": 25,
+        "ltErr": null
+      },
+      "pan": {
+        "frames": {
+          "n": 39,
+          "min": 16.6,
+          "p50": 16.7,
+          "p95": 16.7,
+          "max": 16.8,
+          "mean": 16.67,
+          "spanMs": 650,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "worst": [],
+        "muts": 34
+      },
+      "zoom": {
+        "frames": {
+          "n": 54,
+          "min": 16.6,
+          "p50": 16.7,
+          "p95": 16.8,
+          "max": 16.8,
+          "mean": 16.66,
+          "spanMs": 899.9,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60.01
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "worst": [],
+        "muts": 32
+      },
+      "errors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "open": {
+        "dcl": 810,
+        "canvasMs": 3794,
+        "settledMs": 5598,
+        "nav": {
+          "ttfb": 50.69999999925494,
+          "domContentLoaded": 808.2999999988824,
+          "load": 813.7999999988824,
+          "transfer": 15628,
+          "decodedBody": 15328
+        }
+      }
+    },
+    {
+      "label": "4 pane",
+      "canvases": 28,
+      "intervals": {
+        "120": 4,
+        "1000": 1,
+        "1500": 1,
+        "2500": 1,
+        "30000": 4,
+        "60000": 2
+      },
+      "panInfo": {
+        "ok": true,
+        "box": {
+          "w": 618,
+          "h": 432
+        }
+      },
+      "zoomInfo": {
+        "ok": true
+      },
+      "idle": {
+        "frames": {
+          "n": 133,
+          "min": 16.6,
+          "p50": 16.7,
+          "p95": 16.7,
+          "max": 16.8,
+          "mean": 16.67,
+          "spanMs": 2216.5,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "muts": 52,
+        "ltErr": null
+      },
+      "pan": {
+        "frames": {
+          "n": 31,
+          "min": 16.6,
+          "p50": 16.7,
+          "p95": 16.7,
+          "max": 16.8,
+          "mean": 16.67,
+          "spanMs": 516.7,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "worst": [],
+        "muts": 90
+      },
+      "zoom": {
+        "frames": {
+          "n": 51,
+          "min": 16.6,
+          "p50": 16.7,
+          "p95": 16.7,
+          "max": 16.8,
+          "mean": 16.66,
+          "spanMs": 849.9,
+          "droppedOver32": 0,
+          "droppedOver50": 0,
+          "approxHz": 60.01
+        },
+        "longTasks": {
+          "n": 0
+        },
+        "longN": 0,
+        "worst": [],
+        "muts": 37
+      },
+      "errors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "open": {
+        "dcl": 439,
+        "canvasMs": 3107,
+        "settledMs": 4911,
+        "nav": {
+          "ttfb": 35.19999999925494,
+          "domContentLoaded": 438.09999999962747,
+          "load": 444.2999999988824,
+          "transfer": 15628,
+          "decodedBody": 15328
+        }
+      }
+    }
+  ],
+  "ticks": [
+    {
+      "panes": 1,
+      "requestedHz": 10,
+      "achievedHz": 10.52,
+      "calls": 22,
+      "call": {
+        "n": 22,
+        "min": 0.2,
+        "p50": 0.3,
+        "p95": 0.4,
+        "max": 0.7,
+        "mean": 0.34
+      },
+      "error": null,
+      "frames": {
+        "n": 299,
+        "min": 16.5,
+        "p50": 16.7,
+        "p95": 16.8,
+        "max": 16.8,
+        "mean": 16.67,
+        "spanMs": 4983.3,
+        "droppedOver32": 0,
+        "droppedOver50": 0,
+        "approxHz": 60
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 230
+    },
+    {
+      "panes": 1,
+      "requestedHz": 50,
+      "achievedHz": 48.62,
+      "calls": 98,
+      "call": {
+        "n": 98,
+        "min": 0.1,
+        "p50": 0.2,
+        "p95": 0.4,
+        "max": 0.8,
+        "mean": 0.24
+      },
+      "error": null,
+      "frames": {
+        "n": 434,
+        "min": 16.5,
+        "p50": 16.7,
+        "p95": 16.7,
+        "max": 16.8,
+        "mean": 16.67,
+        "spanMs": 7232.9,
+        "droppedOver32": 0,
+        "droppedOver50": 0,
+        "approxHz": 60
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 650
+    },
+    {
+      "panes": 1,
+      "requestedHz": 200,
+      "achievedHz": 71.67,
+      "calls": 144,
+      "call": {
+        "n": 144,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 0.3,
+        "max": 2.3,
+        "mean": 0.2
+      },
+      "error": null,
+      "frames": {
+        "n": 563,
+        "min": 16.5,
+        "p50": 16.7,
+        "p95": 16.8,
+        "max": 33.4,
+        "mean": 17.14,
+        "spanMs": 9649.7,
+        "droppedOver32": 16,
+        "droppedOver50": 0,
+        "approxHz": 58.34
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 835
+    },
+    {
+      "panes": 2,
+      "requestedHz": 10,
+      "achievedHz": 10.17,
+      "calls": 21,
+      "call": {
+        "n": 21,
+        "min": 0.2,
+        "p50": 0.3,
+        "p95": 0.4,
+        "max": 6.1,
+        "mean": 0.59
+      },
+      "error": null,
+      "frames": {
+        "n": 277,
+        "min": 16.5,
+        "p50": 16.7,
+        "p95": 33.3,
+        "max": 50,
+        "mean": 17.75,
+        "spanMs": 4916.5,
+        "droppedOver32": 16,
+        "droppedOver50": 0,
+        "approxHz": 56.34
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 298
+    },
+    {
+      "panes": 2,
+      "requestedHz": 50,
+      "achievedHz": 25.19,
+      "calls": 51,
+      "call": {
+        "n": 51,
+        "min": 0.1,
+        "p50": 0.3,
+        "p95": 0.7,
+        "max": 9.2,
+        "mean": 0.49
+      },
+      "error": null,
+      "frames": {
+        "n": 309,
+        "min": 16.6,
+        "p50": 16.7,
+        "p95": 50,
+        "max": 83.4,
+        "mean": 23.78,
+        "spanMs": 7349.4,
+        "droppedOver32": 99,
+        "droppedOver50": 15,
+        "approxHz": 42.04
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 367
+    },
+    {
+      "panes": 2,
+      "requestedHz": 200,
+      "achievedHz": 61.37,
+      "calls": 123,
+      "call": {
+        "n": 123,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 0.3,
+        "max": 0.4,
+        "mean": 0.18
+      },
+      "error": null,
+      "frames": {
+        "n": 579,
+        "min": 16.6,
+        "p50": 16.7,
+        "p95": 16.8,
+        "max": 16.8,
+        "mean": 16.67,
+        "spanMs": 9649.7,
+        "droppedOver32": 0,
+        "droppedOver50": 0,
+        "approxHz": 60
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 812
+    },
+    {
+      "panes": 4,
+      "requestedHz": 10,
+      "achievedHz": 10.49,
+      "calls": 21,
+      "call": {
+        "n": 21,
+        "min": 0.2,
+        "p50": 0.4,
+        "p95": 0.7,
+        "max": 4.1,
+        "mean": 0.57
+      },
+      "error": null,
+      "frames": {
+        "n": 287,
+        "min": 16.5,
+        "p50": 16.7,
+        "p95": 16.7,
+        "max": 33.3,
+        "mean": 16.78,
+        "spanMs": 4816.3,
+        "droppedOver32": 2,
+        "droppedOver50": 0,
+        "approxHz": 59.59
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 381
+    },
+    {
+      "panes": 4,
+      "requestedHz": 50,
+      "achievedHz": 29.5,
+      "calls": 59,
+      "call": {
+        "n": 59,
+        "min": 0.1,
+        "p50": 0.2,
+        "p95": 0.4,
+        "max": 0.7,
+        "mean": 0.25
+      },
+      "error": null,
+      "frames": {
+        "n": 425,
+        "min": 16.6,
+        "p50": 16.7,
+        "p95": 16.8,
+        "max": 33.4,
+        "mean": 17.02,
+        "spanMs": 7233.1,
+        "droppedOver32": 9,
+        "droppedOver50": 0,
+        "approxHz": 58.76
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 729
+    },
+    {
+      "panes": 4,
+      "requestedHz": 200,
+      "achievedHz": 51.27,
+      "calls": 103,
+      "call": {
+        "n": 103,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 0.3,
+        "max": 1,
+        "mean": 0.21
+      },
+      "error": null,
+      "frames": {
+        "n": 547,
+        "min": 16.5,
+        "p50": 16.7,
+        "p95": 33.3,
+        "max": 33.4,
+        "mean": 17.64,
+        "spanMs": 9649.3,
+        "droppedOver32": 32,
+        "droppedOver50": 0,
+        "approxHz": 56.69
+      },
+      "longTasks": {
+        "n": 0
+      },
+      "longN": 0,
+      "worst": [],
+      "domMutations": 893
+    }
+  ],
+  "open": {
+    "cold": {
+      "dcl": 439,
+      "canvasMs": 3107,
+      "settledMs": 4911,
+      "nav": {
+        "ttfb": 35.19999999925494,
+        "domContentLoaded": 438.09999999962747,
+        "load": 444.2999999988824,
+        "transfer": 15628,
+        "decodedBody": 15328
+      }
+    },
+    "warm": {
+      "canvasMs": 2230,
+      "settledMs": 4032
+    }
+  },
+  "crosshair": {
+    "frames": {
+      "n": 129,
+      "min": 16.6,
+      "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.8,
+      "mean": 16.67,
+      "spanMs": 2150.3,
+      "droppedOver32": 0,
+      "droppedOver50": 0,
+      "approxHz": 59.99
+    },
+    "pointerToNextFrame": {
+      "n": 25,
+      "min": 1.5,
+      "p50": 2,
+      "p95": 2.4,
+      "max": 16.3,
+      "mean": 2.58
+    },
+    "longN": 0,
+    "worst": [],
+    "note": "pointermove to the next animation frame, measured on the pane under the cursor. emitCrosshair itself is synchronous; this is the visible delay."
+  },
+  "rail": {
+    "defaultView": {
+      "waitedMs": 6371,
+      "faults": [],
+      "textHasFault": false
+    },
+    "ladderView": {
+      "clicked": true,
+      "clickDelayMs": 6985,
+      "faults": [],
+      "frames": {
+        "n": 101,
+        "min": 16.6,
+        "p50": 16.7,
+        "p95": 16.7,
+        "max": 16.8,
+        "mean": 16.67,
+        "spanMs": 1683.3,
+        "droppedOver32": 0,
+        "droppedOver50": 0,
+        "approxHz": 60
+      },
+      "longN": 0,
+      "worst": []
+    }
+  },
+  "memory": {
+    "note": "4 ticks/s for 36s. Production ticks every 1.5s, so this is about 54s of simulator time squeezed into 36s, not an 8-hour soak.",
+    "samples": [
+      {
+        "t": 0,
+        "JSEventListeners": 1618,
+        "Nodes": 4564,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 1,
+        "JSHeapUsedSize": 720155184,
+        "JSHeapTotalSize": 757317632
+      },
+      {
+        "t": 3,
+        "JSEventListeners": 1618,
+        "Nodes": 4802,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 710460508,
+        "JSHeapTotalSize": 767541248
+      },
+      {
+        "t": 6,
+        "JSEventListeners": 1618,
+        "Nodes": 5013,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 1,
+        "JSHeapUsedSize": 710287472,
+        "JSHeapTotalSize": 776978432
+      },
+      {
+        "t": 9,
+        "JSEventListeners": 1618,
+        "Nodes": 5225,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 1,
+        "JSHeapUsedSize": 718815488,
+        "JSHeapTotalSize": 785367040
+      },
+      {
+        "t": 12,
+        "JSEventListeners": 477,
+        "Nodes": 1377,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 290820100,
+        "JSHeapTotalSize": 618356736
+      },
+      {
+        "t": 15,
+        "JSEventListeners": 477,
+        "Nodes": 1587,
+        "LayoutCount": 1,
+        "RecalcStyleCount": 1,
+        "JSHeapUsedSize": 289726744,
+        "JSHeapTotalSize": 618356736
+      },
+      {
+        "t": 18,
+        "JSEventListeners": 477,
+        "Nodes": 1812,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 299620560,
+        "JSHeapTotalSize": 618356736
+      },
+      {
+        "t": 21,
+        "JSEventListeners": 477,
+        "Nodes": 2049,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 326621304,
+        "JSHeapTotalSize": 618881024
+      },
+      {
+        "t": 24,
+        "JSEventListeners": 477,
+        "Nodes": 2278,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 337181872,
+        "JSHeapTotalSize": 618881024
+      },
+      {
+        "t": 27,
+        "JSEventListeners": 477,
+        "Nodes": 2495,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 338805948,
+        "JSHeapTotalSize": 618881024
+      },
+      {
+        "t": 30,
+        "JSEventListeners": 477,
+        "Nodes": 2718,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 349192956,
+        "JSHeapTotalSize": 618881024
+      },
+      {
+        "t": 33,
+        "JSEventListeners": 477,
+        "Nodes": 2920,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 364751024,
+        "JSHeapTotalSize": 618881024
+      },
+      {
+        "t": 36,
+        "JSEventListeners": 477,
+        "Nodes": 3114,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "JSHeapUsedSize": 354394888,
+        "JSHeapTotalSize": 618881024
+      }
+    ]
+  },
+  "profiles": {
+    "pan4": {
+      "sampleCount": 1723,
+      "selfMs": 2054.14,
+      "top": [
+        {
+          "functionName": "(program)",
+          "url": "",
+          "line": 0,
+          "selfMs": 1903.48
+        },
+        {
+          "functionName": "drawImage",
+          "url": "",
+          "line": 0,
+          "selfMs": 20.69
+        },
+        {
+          "functionName": "getBoundingClientRect",
+          "url": "",
+          "line": 0,
+          "selfMs": 8.19
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/ui/AnimatedNumber.tsx",
+          "line": 42,
+          "selfMs": 3.5
+        },
+        {
+          "functionName": "validateProperty$1",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 3361,
+          "selfMs": 3.46
+        },
+        {
+          "functionName": "jsxDEV",
+          "url": "/node_modules/.vite/deps/react_jsx-dev-runtime.js",
+          "line": 605,
+          "selfMs": 3.19
+        },
+        {
+          "functionName": "_internal_renderer",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 2005,
+          "selfMs": 3.05
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 83,
+          "selfMs": 2.77
+        },
+        {
+          "functionName": "frame",
+          "url": "/src/components/gex/StrikeChart.tsx",
+          "line": 1887,
+          "selfMs": 2.75
+        },
+        {
+          "functionName": "renderRootSync",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 19093,
+          "selfMs": 2.59
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 2.49
+        },
+        {
+          "functionName": "fillText",
+          "url": "",
+          "line": 0,
+          "selfMs": 2.38
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/layout/SideNav.tsx",
+          "line": 92,
+          "selfMs": 1.88
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "",
+          "line": 0,
+          "selfMs": 1.8
+        },
+        {
+          "functionName": "diffProperties",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 7618,
+          "selfMs": 1.62
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 1.55
+        },
+        {
+          "functionName": "fillText",
+          "url": "",
+          "line": 0,
+          "selfMs": 1.54
+        },
+        {
+          "functionName": "getCurrentEventPriority",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 8381,
+          "selfMs": 1.44
+        }
+      ],
+      "topApp": [
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/ui/AnimatedNumber.tsx",
+          "line": 42,
+          "selfMs": 3.5
+        },
+        {
+          "functionName": "_internal_renderer",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 2005,
+          "selfMs": 3.05
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 83,
+          "selfMs": 2.77
+        },
+        {
+          "functionName": "frame",
+          "url": "/src/components/gex/StrikeChart.tsx",
+          "line": 1887,
+          "selfMs": 2.75
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 2.49
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/layout/SideNav.tsx",
+          "line": 92,
+          "selfMs": 1.88
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 1.55
+        },
+        {
+          "functionName": "paint",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 185,
+          "selfMs": 1.26
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 10280,
+          "selfMs": 1.12
+        },
+        {
+          "functionName": "pathFor",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 104,
+          "selfMs": 1.11
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 9176,
+          "selfMs": 1
+        },
+        {
+          "functionName": "clearRect",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 982,
+          "selfMs": 0.94
+        },
+        {
+          "functionName": "_private__formatAsDecimal",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 1862,
+          "selfMs": 0.94
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/confluence.ts",
+          "line": 6,
+          "selfMs": 0.92
+        }
+      ]
+    },
+    "zoom4": {
+      "sampleCount": 2640,
+      "selfMs": 1276.79,
+      "top": [
+        {
+          "functionName": "(program)",
+          "url": "",
+          "line": 0,
+          "selfMs": 1185.06
+        },
+        {
+          "functionName": "drawImage",
+          "url": "",
+          "line": 0,
+          "selfMs": 16.04
+        },
+        {
+          "functionName": "getBoundingClientRect",
+          "url": "",
+          "line": 0,
+          "selfMs": 5.86
+        },
+        {
+          "functionName": "completeWork",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 16211,
+          "selfMs": 3.89
+        },
+        {
+          "functionName": "SignatureDot",
+          "url": "/src/brand/Signature.tsx",
+          "line": 40,
+          "selfMs": 3.26
+        },
+        {
+          "functionName": "diffProperties",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 7618,
+          "selfMs": 2.82
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/pages/terrain/Terrain.tsx",
+          "line": 426,
+          "selfMs": 2.79
+        },
+        {
+          "functionName": "_internal_optimalWidth",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 8939,
+          "selfMs": 2.31
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 2.3
+        },
+        {
+          "functionName": "ellipse",
+          "url": "",
+          "line": 0,
+          "selfMs": 2.18
+        },
+        {
+          "functionName": "now",
+          "url": "",
+          "line": 0,
+          "selfMs": 1.63
+        },
+        {
+          "functionName": "validatePropertiesInDevelopment",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 7343,
+          "selfMs": 1.59
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 9176,
+          "selfMs": 1.52
+        },
+        {
+          "functionName": "validateProperty$1",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 3361,
+          "selfMs": 1.45
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/layout/SideNav.tsx",
+          "line": 92,
+          "selfMs": 1.29
+        },
+        {
+          "functionName": "validatePropertiesInDevelopment",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 7343,
+          "selfMs": 1.23
+        },
+        {
+          "functionName": "fillText",
+          "url": "",
+          "line": 0,
+          "selfMs": 1.12
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 83,
+          "selfMs": 0.95
+        }
+      ],
+      "topApp": [
+        {
+          "functionName": "SignatureDot",
+          "url": "/src/brand/Signature.tsx",
+          "line": 40,
+          "selfMs": 3.26
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/pages/terrain/Terrain.tsx",
+          "line": 426,
+          "selfMs": 2.79
+        },
+        {
+          "functionName": "_internal_optimalWidth",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 8939,
+          "selfMs": 2.31
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 2.3
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 9176,
+          "selfMs": 1.52
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/layout/SideNav.tsx",
+          "line": 92,
+          "selfMs": 1.29
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 83,
+          "selfMs": 0.95
+        },
+        {
+          "functionName": "nyDate",
+          "url": "/src/data/marketState.ts",
+          "line": 5,
+          "selfMs": 0.78
+        },
+        {
+          "functionName": "futuresPhaseAt",
+          "url": "/src/core/calendar.ts",
+          "line": 234,
+          "selfMs": 0.63
+        },
+        {
+          "functionName": "buildFlowFromRows",
+          "url": "/src/data/hedgeFlow.ts",
+          "line": 17,
+          "selfMs": 0.63
+        },
+        {
+          "functionName": "_private__getMetrics",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 1950,
+          "selfMs": 0.63
+        },
+        {
+          "functionName": "drawLabel",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 252,
+          "selfMs": 0.63
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 3192,
+          "selfMs": 0.47
+        },
+        {
+          "functionName": "_internal_firstValue",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 3735,
+          "selfMs": 0.37
+        }
+      ]
+    },
+    "tick50": {
+      "sampleCount": 5459,
+      "selfMs": 3221.09,
+      "top": [
+        {
+          "functionName": "(program)",
+          "url": "",
+          "line": 0,
+          "selfMs": 1865.08
+        },
+        {
+          "functionName": "drawImage",
+          "url": "",
+          "line": 0,
+          "selfMs": 368.52
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 49.36
+        },
+        {
+          "functionName": "ellipse",
+          "url": "",
+          "line": 0,
+          "selfMs": 42.37
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 83,
+          "selfMs": 28.95
+        },
+        {
+          "functionName": "validatePropertiesInDevelopment",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 7343,
+          "selfMs": 28.05
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 27.08
+        },
+        {
+          "functionName": "validateProperty$1",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 3361,
+          "selfMs": 25.77
+        },
+        {
+          "functionName": "diffProperties",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 7618,
+          "selfMs": 23.49
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 19.4
+        },
+        {
+          "functionName": "getBoundingClientRect",
+          "url": "",
+          "line": 0,
+          "selfMs": 18.5
+        },
+        {
+          "functionName": "fill",
+          "url": "",
+          "line": 0,
+          "selfMs": 16.83
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/confluence.ts",
+          "line": 6,
+          "selfMs": 15.83
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 14.77
+        },
+        {
+          "functionName": "futuresPhaseAt",
+          "url": "/src/core/calendar.ts",
+          "line": 234,
+          "selfMs": 13.61
+        },
+        {
+          "functionName": "getBoundingClientRect",
+          "url": "",
+          "line": 0,
+          "selfMs": 11.71
+        },
+        {
+          "functionName": "_internal_optimalWidth",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 8939,
+          "selfMs": 10.8
+        },
+        {
+          "functionName": "fillText",
+          "url": "",
+          "line": 0,
+          "selfMs": 10.63
+        }
+      ],
+      "topApp": [
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 49.36
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 83,
+          "selfMs": 28.95
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 27.08
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 19.4
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/confluence.ts",
+          "line": 6,
+          "selfMs": 15.83
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 14.77
+        },
+        {
+          "functionName": "futuresPhaseAt",
+          "url": "/src/core/calendar.ts",
+          "line": 234,
+          "selfMs": 13.61
+        },
+        {
+          "functionName": "_internal_optimalWidth",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 8939,
+          "selfMs": 10.8
+        },
+        {
+          "functionName": "pathFor",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 104,
+          "selfMs": 9.84
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/confluence.ts",
+          "line": 6,
+          "selfMs": 9.29
+        },
+        {
+          "functionName": "nyDate",
+          "url": "/src/data/marketState.ts",
+          "line": 5,
+          "selfMs": 6.4
+        },
+        {
+          "functionName": "buildFlowFromRows",
+          "url": "/src/data/hedgeFlow.ts",
+          "line": 17,
+          "selfMs": 5.59
+        },
+        {
+          "functionName": "CanvasRenderingTarget2D2.useBitmapCoordinateSpace",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 351,
+          "selfMs": 5.54
+        },
+        {
+          "functionName": "aggregateCandles",
+          "url": "/src/data/timeframe.ts",
+          "line": 16,
+          "selfMs": 4.86
+        }
+      ]
+    },
+    "railTick": {
+      "sampleCount": 5090,
+      "selfMs": 1330.53,
+      "top": [
+        {
+          "functionName": "(program)",
+          "url": "",
+          "line": 0,
+          "selfMs": 973.01
+        },
+        {
+          "functionName": "drawImage",
+          "url": "",
+          "line": 0,
+          "selfMs": 39.65
+        },
+        {
+          "functionName": "draw",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 366,
+          "selfMs": 27.45
+        },
+        {
+          "functionName": "diffProperties",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 7618,
+          "selfMs": 18.95
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 11.44
+        },
+        {
+          "functionName": "fillText",
+          "url": "",
+          "line": 0,
+          "selfMs": 11.41
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 10.37
+        },
+        {
+          "functionName": "fill",
+          "url": "",
+          "line": 0,
+          "selfMs": 9.27
+        },
+        {
+          "functionName": "fillText",
+          "url": "",
+          "line": 0,
+          "selfMs": 7.1
+        },
+        {
+          "functionName": "addColorStop",
+          "url": "",
+          "line": 0,
+          "selfMs": 6.41
+        },
+        {
+          "functionName": "ease",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 434,
+          "selfMs": 6.07
+        },
+        {
+          "functionName": "validateProperty$1",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 3361,
+          "selfMs": 5.86
+        },
+        {
+          "functionName": "updateHostComponent$1",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 16040,
+          "selfMs": 5.55
+        },
+        {
+          "functionName": "ellipse",
+          "url": "",
+          "line": 0,
+          "selfMs": 4.62
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 956,
+          "selfMs": 4.32
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/node_modules/.vite/deps/lucide-react.js",
+          "line": 1542,
+          "selfMs": 4.07
+        },
+        {
+          "functionName": "frame",
+          "url": "/src/components/gex/StrikeChart.tsx",
+          "line": 1887,
+          "selfMs": 3.99
+        },
+        {
+          "functionName": "validateProperty",
+          "url": "/node_modules/.vite/deps/chunk-FQHYCYVK.js",
+          "line": 3277,
+          "selfMs": 3.38
+        }
+      ],
+      "topApp": [
+        {
+          "functionName": "draw",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 366,
+          "selfMs": 27.45
+        },
+        {
+          "functionName": "vwapSeries",
+          "url": "/src/data/indicators.ts",
+          "line": 20,
+          "selfMs": 11.44
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/data/indicators.ts",
+          "line": 6,
+          "selfMs": 10.37
+        },
+        {
+          "functionName": "ease",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 434,
+          "selfMs": 6.07
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 956,
+          "selfMs": 4.32
+        },
+        {
+          "functionName": "frame",
+          "url": "/src/components/gex/StrikeChart.tsx",
+          "line": 1887,
+          "selfMs": 3.99
+        },
+        {
+          "functionName": "nyDate",
+          "url": "/src/data/marketState.ts",
+          "line": 5,
+          "selfMs": 2.96
+        },
+        {
+          "functionName": "futuresPhaseAt",
+          "url": "/src/core/calendar.ts",
+          "line": 234,
+          "selfMs": 2.78
+        },
+        {
+          "functionName": "(anonymous)",
+          "url": "/src/components/gex/gexNodesPrimitive.ts",
+          "line": 83,
+          "selfMs": 2.49
+        },
+        {
+          "functionName": "leg",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 803,
+          "selfMs": 2.48
+        },
+        {
+          "functionName": "fmtPrice",
+          "url": "/src/components/gex/TickerTabStrip.tsx",
+          "line": 29,
+          "selfMs": 2.47
+        },
+        {
+          "functionName": "CanvasRenderingTarget2D2.useBitmapCoordinateSpace",
+          "url": "/node_modules/.vite/deps/lightweight-charts.js",
+          "line": 351,
+          "selfMs": 2.45
+        },
+        {
+          "functionName": "sessionsBetween",
+          "url": "/src/core/calendar.ts",
+          "line": 170,
+          "selfMs": 2.19
+        },
+        {
+          "functionName": "word",
+          "url": "/src/components/gex/ProfilePanel.tsx",
+          "line": 548,
+          "selfMs": 1.99
+        }
+      ]
+    }
+  },
+  "colors": {
+    "bodyBg": "rgb(5, 5, 5)",
+    "bodyColor": "rgb(237, 237, 237)",
+    "bodyFont": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "focusTag": "BUTTON",
+    "focusName": "Fibonacci",
+    "focusOutline": "1px solid rgba(199, 211, 232, 0.55)",
+    "buttons": [
+      {
+        "name": "Collapse the sidebar to icons",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgb(18, 18, 18)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "9999px"
+      },
+      {
+        "name": "Watching SPY — switch",
+        "color": "rgb(237, 237, 237)",
+        "bg": "rgba(255, 255, 255, 0.03)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "8px"
+      },
+      {
+        "name": "Alerts",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "13px",
+        "outline": "none",
+        "radius": "8px"
+      },
+      {
+        "name": "Watchlist",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "13px",
+        "outline": "none",
+        "radius": "8px"
+      },
+      {
+        "name": "Menu",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "6px"
+      },
+      {
+        "name": "SPYSPY$459.93−8.01%",
+        "color": "rgb(237, 237, 237)",
+        "bg": "rgb(12, 12, 12)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "6px"
+      },
+      {
+        "name": "Search or jump to…",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "6px"
+      },
+      {
+        "name": "AAPL 193.24 +0.00%",
+        "color": "rgb(237, 237, 237)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "0px"
+      },
+      {
+        "name": "Close the AAPL tab",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "Add a tab — another name on this pane",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "0px"
+      },
+      {
+        "name": "1 chart",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "11px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "2 charts",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "11px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "3 charts",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "11px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "4 charts",
+        "color": "rgb(237, 237, 237)",
+        "bg": "rgba(255, 255, 255, 0.16)",
+        "font": "11px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "STRIKES",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(5, 5, 5, 0.4)",
+        "font": "10px",
+        "outline": "none",
+        "radius": "6px"
+      },
+      {
+        "name": "$",
+        "color": "rgb(237, 237, 237)",
+        "bg": "rgba(255, 255, 255, 0.1)",
+        "font": "10px",
+        "outline": "none",
+        "radius": "0px"
+      },
+      {
+        "name": "%",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "10px",
+        "outline": "none",
+        "radius": "0px"
+      },
+      {
+        "name": "ATR",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "10px",
+        "outline": "none",
+        "radius": "0px"
+      },
+      {
+        "name": "σ",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "10px",
+        "outline": "none",
+        "radius": "0px"
+      },
+      {
+        "name": "LAYOUTS",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(5, 5, 5, 0.4)",
+        "font": "10px",
+        "outline": "none",
+        "radius": "6px"
+      },
+      {
+        "name": "RESET",
+        "color": "rgb(125, 125, 125)",
+        "bg": "rgba(10, 10, 10, 0.7)",
+        "font": "9px",
+        "outline": "none",
+        "radius": "9999px"
+      },
+      {
+        "name": "Select",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "Trendline",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "14px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "Trend tools",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "0px 4px 4px 0px"
+      },
+      {
+        "name": "Fib retracement",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "14px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "Fibonacci",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "0px 4px 4px 0px"
+      },
+      {
+        "name": "Long position",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "14px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "Forecasting and measurement",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "0px 4px 4px 0px"
+      },
+      {
+        "name": "Brush",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "14px",
+        "outline": "none",
+        "radius": "4px"
+      },
+      {
+        "name": "Geometric shapes",
+        "color": "rgb(163, 163, 163)",
+        "bg": "rgba(0, 0, 0, 0)",
+        "font": "16px",
+        "outline": "none",
+        "radius": "0px 4px 4px 0px"
+      }
+    ]
+  }
+}
