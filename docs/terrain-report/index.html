@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Terrain vs OpenMarket — a developer brief</title>
+<style>
+  :root {
+    --ink: #1c1915;
+    --muted: #5c564c;
+    --line: #d9d2c5;
+    --paper: #f7f4ee;
+    --card: #fffdf8;
+    --green: #1f6b45;
+    --green-soft: #e7f2eb;
+    --warn: #8a3d12;
+    --warn-soft: #f8ebe3;
+    --code: #f3efe6;
+  }
+  @page { size: letter; margin: 0.65in 0.7in 0.7in; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+    color: var(--ink);
+    background: white;
+    font-size: 11.5pt;
+    line-height: 1.45;
+  }
+  h1, h2, h3, h4 { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.2; font-weight: 650; }
+  h1 { font-size: 28pt; margin: 0 0 8px; letter-spacing: -0.03em; }
+  h2 { font-size: 16pt; margin: 28px 0 8px; page-break-after: avoid; border-top: 2px solid var(--ink); padding-top: 10px; }
+  h3 { font-size: 13pt; margin: 18px 0 6px; page-break-after: avoid; color: var(--green); }
+  h4 { font-size: 11.5pt; margin: 14px 0 4px; page-break-after: avoid; }
+  p { margin: 0 0 8px; }
+  a { color: var(--green); }
+  code, pre { font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace; }
+  code { font-size: 0.86em; background: var(--code); padding: 0 3px; }
+  pre {
+    background: var(--code);
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    font-size: 8.6pt;
+    line-height: 1.35;
+    overflow-x: auto;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 9pt; line-height: 1.35; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 5px 6px; vertical-align: top; text-align: left; }
+  th { background: #efeae1; font-weight: 650; }
+  .cover { page-break-after: always; min-height: 9.2in; display: flex; flex-direction: column; justify-content: space-between; }
+  .kicker { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; letter-spacing: 0.16em; text-transform: uppercase; font-size: 9pt; color: var(--green); margin: 0 0 12px; }
+  .lede { font-size: 13.5pt; line-height: 1.4; max-width: 40em; }
+  .meta { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 9.5pt; color: var(--muted); }
+  .callout { background: var(--green-soft); border-left: 4px solid var(--green); padding: 8px 12px; margin: 10px 0 14px; page-break-inside: avoid; }
+  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); padding: 8px 12px; margin: 10px 0 14px; page-break-inside: avoid; }
+  .findings { counter-reset: f; padding: 0; margin: 0 0 12px; }
+  .findings li { list-style: none; margin: 0 0 8px; padding-left: 28px; position: relative; }
+  .findings li::before { counter-increment: f; content: counter(f); position: absolute; left: 0; top: 0; width: 18px; height: 18px; border-radius: 50%; background: var(--ink); color: white; font-family: "Avenir Next", Helvetica, sans-serif; font-size: 9pt; line-height: 18px; text-align: center; }
+  figure { margin: 10px 0 16px; page-break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); }
+  figcaption { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 8.5pt; color: var(--muted); margin-top: 4px; }
+  ol.toc { font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11pt; }
+  ol.toc a { color: var(--ink); text-decoration: none; }
+  .small { font-size: 9.5pt; color: var(--muted); }
+  .tag { font-family: "Avenir Next", Helvetica, sans-serif; font-size: 8pt; letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid var(--line); padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div>
+    <p class="kicker">Slayer terminal · Terrain</p>
+    <h1>Make the terrain better than OpenMarket</h1>
+    <p class="lede">A developer brief on how <code>/terrain</code> actually draws, where it already beats a full options charting terminal, and the concrete changes that would make the gap obvious to a trader.</p>
+  </div>
+  <div class="meta">
+    <p>For Zak. Comparison baseline: the OpenMarket functional guide (openmarket.xyz), used as a description of behavior only. No OpenMarket source and no guide prose are copied here.</p>
+    <p>App under review: Slayer terminal, route <code>/terrain</code>, chart host <code>slayer/src/components/gex/StrikeChart.tsx</code>. Written 27 Oct 2026 from the repo and a local render. The app’s source was not modified.</p>
+  </div>
+</section>
+
+<h2>How to read this</h2>
+<p>Terrain is the chart desk: one to four panes, each with its own symbol, interval, overlays, studies and an optional strike rail. It is not a separate “gamma surface” page. The strike-by-expiry book lives on Pinpoint’s map and is pulled into the rail’s GEX tab. Both are in this brief, because a trader comparing the product to OpenMarket will judge them as one terminal.</p>
+<p>OpenMarket, from the guide, is a browser chart with a large options dock: six header numbers, four tabs (Levels, Flow, Volatility, Chain), a GEX heat behind candles, an expected-move cone, and 241 gallery indicators. Free accounts get three “data” indicator slots for the whole layout. Classic studies (RSI, moving averages) are unlimited.</p>
+<div class="warn">
+  <strong>What was actually on screen.</strong> There is no Unusual Whales key in this environment, and Terrain’s candles do not fall back to the built-in simulator. Two renders were captured. The first is the real page: header and “heaviest” line from the simulator, strike field stuck on “Waiting for the first tick,” vendor proxy answering 503. The second intercepts <code>/api/uw</code> with a synthetic book shaped like the client’s parser (one-minute bars, greek-exposure by strike, IV, a term row). Prices in that book are invented. The simulator keeps ticking underneath, which is why the screenshots show two different SPY prices at once. That disagreement is the product bug, not a caption error.
+</div>
+
+<h2>The five things that matter</h2>
+<ol class="findings">
+  <li><strong>Two books, one pane.</strong> The candles, the exposure trails, IV and the cone read the Unusual Whales book (<code>uwBook.ts</code>). The header price, the heaviest-strike line, the call wall, put wall, flip and supreme read the in-browser simulator (<code>buildLevelsFor</code> / <code>buildLadderFor</code>). On the synthetic render the chart printed <strong>463.22, +1.81%</strong> while the header printed <strong>about $497</strong> with that same +1.81%. The percent came from the live book. The dollars came from the simulator.</li>
+  <li><strong>The strike rail crashes when the book arrives.</strong> <code>ExposureField</code> returns early while <code>snapshot</code> is null, then calls more hooks once the book is live. React throws “Rendered more hooks than during the previous render” and the route boundary replaces Terrain with “This page stopped.” A three-up desk with rails did this every time the synthetic book landed. A one-up desk sometimes survived if the book was ready before the field’s first paint.</li>
+  <li><strong>The flip on Terrain is not the flip on the Map.</strong> Terrain’s <code>levelsOf</code> picks the nearest sign-change midpoint. Pinpoint uses <code>core/gammaFlip.ts</code>. On the same synthetic book the Map said “no flip within 10%” and “pin near 455.” Terrain’s heaviest line was naming simulator strikes around 495–520.</li>
+  <li><strong>The empty state lies.</strong> With no vendor key the field says “Waiting for the first tick.” The proxy is unconfigured. There is no first tick coming. The header still shows a confident simulator price and dollar gamma, with no label that it is a practice book.</li>
+  <li><strong>The lead is already there, and it is not “more indicators.”</strong> Terrain has no slot tax, panes that remember a symbol’s setup, a strike rail locked to the chart’s own price scale, exposure trails through time, a cone that shrinks into the close, and Pine that can read <code>slayer.callWall</code>. OpenMarket’s own guide complains that its flip, top node and heats disagree with each other, and that the expected-move card covers the chart. Fix the one-book bug and Terrain is the cleaner GEX chart. Chasing all 241 indicators would copy the weakness.</li>
+</ol>
+
+<h2 id="arch">1. Architecture</h2>
+<p>Route: <code>slayer/src/App.tsx</code> mounts <code>Terrain</code> at <code>/terrain</code> inside the app shell. The page file is <code>slayer/src/pages/terrain/Terrain.tsx</code> (about 3,260 lines). Three siblings hold the bits that can be tested without the chart library:</p>
+<table>
+  <tr><th>File</th><th>Job</th></tr>
+  <tr><td><code>pages/terrain/Terrain.tsx</code></td><td>Desk state, persistence, the pane, the rail cut, crosshair sync, keyboard.</td></tr>
+  <tr><td><code>pages/terrain/setups.ts</code></td><td>Which fields follow the symbol (interval, overlays, studies, style, compares, price scale) and which follow the slot (ticker, rail, theme, link group).</td></tr>
+  <tr><td><code>pages/terrain/layouts.ts</code></td><td>Named layouts in <code>slayer_terrain_layouts_v1</code>, cap 12.</td></tr>
+  <tr><td><code>pages/terrain/paneKeys.ts</code></td><td>Timeframe step and the symbol ring. Covered by <code>npm test</code>.</td></tr>
+  <tr><td><code>components/gex/StrikeChart.tsx</code></td><td>lightweight-charts host. Candles, studies, compare, and every overlay primitive.</td></tr>
+  <tr><td><code>components/gex/ChartToolbar.tsx</code></td><td>Interval, overlays, studies, style, scale, replay, alerts, snapshot.</td></tr>
+  <tr><td><code>components/gex/ProfilePanel.tsx</code></td><td>The strike rail: Ladder / Net / GEX. GEX and Net mount <code>ExposureField</code>.</td></tr>
+  <tr><td><code>data/uwBook.ts</code></td><td>The live book. Candles, chain, IV, history. Null until status is <code>live</code>.</td></tr>
+  <tr><td><code>core/simulator.ts</code></td><td>Seeded tape and OI book. SPY starts at 500 and then drifts. This is what the header still trusts.</td></tr>
+  <tr><td><code>data/indicators.ts</code></td><td>EMA, VWAP, RSI, MACD, Bollinger, ATR. Plain numbers, no chart types.</td></tr>
+  <tr><td><code>core/pine/</code></td><td>Pine v6 subset. Built-ins in <code>data/builtinScripts.ts</code>.</td></tr>
+  <tr><td><code>core/walls.ts</code>, <code>core/gammaFlip.ts</code></td><td>The wall rule and the repriced flip. Used by the Map. Not used by Terrain’s rung prices.</td></tr>
+</table>
+
+<h3>What a pane remembers</h3>
+<p>Stored under <code>slayer_terrain_v1</code>. Layout is 1–4. Four pane slots are always kept; only <code>layout</code> of them are shown. Default layout is 3. Default overlays: exposure trails and volume on, key levels off, cone off, session levels off. Default studies: all off.</p>
+<p>Symbol memory (<code>SETUP_KEYS</code>) is earned by touch and capped at 60 names. Linking (groups A and B) copies the symbol only. It does not copy the interval. That was a deliberate reversal: panes are different instruments, not four copies of one chart.</p>
+
+<h3>How a frame is drawn</h3>
+<ol>
+  <li>The market context ticks the simulator about every 1.5s and bumps <code>revision</code>. Terrain passes that into each <code>StrikeChart</code> so overlays refresh without remounting.</li>
+  <li><code>displayBars</code> asks <code>uwBook</code> for one-minute candles and aggregates them. Sub-minute and range/volume bars do not invent history; they stay empty until a seconds tape exists.</li>
+  <li>If <code>overlays.trails</code> and the interval is intraday, <code>GexTrailsPrimitive</code> paints strike×time beads from <code>bookHistory()</code>. The cold fold is sliced so the first paint can be candles alone. Trails hide in replay and on non-time bars.</li>
+  <li><code>railForCut</code> builds the header levels. On the default cut (<code>'book'</code>) that is the simulator snapshot, not <code>snapshotOf</code>.</li>
+  <li>If <code>overlays.levels</code>, <code>KeyLevelsPrimitive</code> draws short rungs at the right edge: call wall green, put wall red, flip dashed, supreme heavier. The hover card explains the level in one sentence.</li>
+  <li>The cone (<code>buildExpectedMoveCone</code>) is two objects: a band grown from the open, and a forward cone from now to the bell, both from the book’s IV in trading minutes. It is white, not dealer-colored. It is off until asked, and off in replay.</li>
+  <li>Studies come from <code>data/indicators.ts</code>. At most two sub-panes (RSI, MACD, ATR). A third is refused.</li>
+  <li>The rail’s GEX tab calls <code>snapshotOf(ticker)</code>. Until that returns a live chain, <code>ExposureField</code> shows “Waiting for the first tick.” When it later returns a chain, the component crashes (section 3).</li>
+</ol>
+
+<pre>// slayer/src/components/gex/StrikeChart.tsx
+export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | null): Candle[] {
+  if (alt || mins &lt; 1) return [];
+  ensureBook(ticker, 'board');
+  return aggregateCandles(bookCandles(ticker) ?? dayBars(ticker) ?? [], mins);
+}</pre>
+
+<pre>// slayer/src/pages/terrain/Terrain.tsx — the rail's default cut
+function railForCut(ticker: string, cut: RailCut): RailData {
+  if (cut === 'book') {
+    const base = buildLadderFor(ticker);          // simulator GEX history
+    // ... legs from Simulator.snapshotFor(ticker)
+    return { ...base, levels: buildLevelsFor(ticker), legs };
+  }
+  const spot = Simulator.TICKERS[Simulator.ensureTicker(ticker)].currentPrice;
+  // a calendar DTE uses buildExposureSurface off that same simulator spot
+}</pre>
+
+<pre>// slayer/src/data/gex.ts — header percent prefers the live book, dollars do not
+export function spotChangePct(ticker: string): number {
+  const live = peekChange(ticker);
+  if (live != null) return live;
+  const cfg = Simulator.TICKERS[Simulator.ensureTicker(ticker)];
+  return ((cfg.currentPrice - cfg.basePrice) / cfg.basePrice) * 100;
+}</pre>
+
+<p>The header then prints <code>levels.spot</code> (simulator) next to <code>changePct</code> (live, when the book has a change). That is the $497 beside +1.81% in the screenshots. <code>ProfilePanel</code>’s comment still says the GEX tab “is the simulator’s read.” The code calls <code>snapshotOf</code>.</p>
+
+<h2 id="inventory">2. What Terrain can show</h2>
+
+<h3>Overlays (the chart menu)</h3>
+<table>
+  <tr><th>Switch</th><th>What the trader sees</th><th>Where it is computed</th><th>Default</th></tr>
+  <tr><td>Exposure trails</td><td>Beads of dealer exposure by strike across the session. Heaviest strikes labelled at the right edge.</td><td><code>gexNodesPrimitive.ts</code> from <code>bookHistory()</code></td><td>On</td></tr>
+  <tr><td>Key levels</td><td>Call wall, put wall, flip, supreme as short rungs.</td><td>Prices from <code>buildLevelsFor</code> today. Paint in <code>keyLevelsPrimitive.ts</code>.</td><td>Off</td></tr>
+  <tr><td>Volume</td><td>Histogram under the candles.</td><td>Same bars as the tape.</td><td>On</td></tr>
+  <tr><td>Expected move</td><td>±1σ and ±2σ from the open, plus the cone still left until the bell.</td><td><code>data/expectedMove.ts</code>, drawn with the thermal field.</td><td>Off</td></tr>
+  <tr><td>Session levels</td><td>Prior high, low, close, opening range, initial balance. Dash pattern tells them apart.</td><td><code>data/sessionLevels.ts</code></td><td>Off</td></tr>
+  <tr><td>Flow</td><td>Call premium up, put premium down, in its own pane.</td><td><code>data/flowBars.ts</code> from the simulator tape (<code>flowTape</code>), not OPRA.</td><td>Off</td></tr>
+  <tr><td>Net drift</td><td>Running call total vs put total.</td><td><code>data/driftSeries.ts</code>, same tape.</td><td>Off</td></tr>
+  <tr><td>Vol drift</td><td>Realised vol of these bars against the feed’s implied.</td><td><code>data/volDrift.ts</code>. Implied is flat in the simulator.</td><td>Off</td></tr>
+  <tr><td>Dark pool</td><td>Dashed lines at off-exchange prints.</td><td><code>buildPrints</code> in <code>data/gex.ts</code>, seeded from the simulator spot.</td><td>Off</td></tr>
+  <tr><td>Events</td><td>Earnings, FOMC / CPI / NFP, large prints, in a lane above the time axis.</td><td><code>data/events.ts</code></td><td>Off</td></tr>
+  <tr><td>Alert lines</td><td>Dotted line where a price alert sits.</td><td>Alert store. Off unless asked.</td><td>Off</td></tr>
+</table>
+<p><code>dexStrike</code> (“exposure by strike” docked under the tape) is on the overlay type but Terrain’s toolbar removes it. The rail is supposed to be that view. Pulse’s chart tile still draws <code>StrikeExposureBand</code>.</p>
+<p>Range bars and volume bars turn off trails, flow, net drift, vol drift, session levels, the cone and events. The menu knows this (<code>CLOCK_HELD_OVERLAYS</code>). That honesty is worth keeping.</p>
+
+<h3>Studies built into the chart</h3>
+<p>Ten, all periods fixed in <code>StrikeChart</code>’s series builder. The Pine copies of the same studies take inputs. The native ones do not.</p>
+<table>
+  <tr><th>Study</th><th>Plain meaning</th><th>Where</th></tr>
+  <tr><td>EMA 9 / 21 / 50</td><td>Seeded exponential average of the close. The seed is the first close, on purpose, so the left edge does not jump.</td><td>On the candles</td></tr>
+  <tr><td>SMA 200</td><td>Mean of the last 200 closes. Blank until the window exists.</td><td>On the candles</td></tr>
+  <tr><td>VWAP</td><td>Session typical-price × volume, reset when a bar gap looks like a new session.</td><td>On the candles. Off on range bars.</td></tr>
+  <tr><td>VWAP bands</td><td>±1σ and ±2σ around that VWAP, volume-weighted.</td><td>On the candles</td></tr>
+  <tr><td>Bollinger</td><td>20-bar average ± 2 standard deviations.</td><td>On the candles</td></tr>
+  <tr><td>RSI 14</td><td>Wilder RSI. 30 and 70 rails.</td><td>Own pane</td></tr>
+  <tr><td>MACD 12/26/9</td><td>Difference of two EMAs, a signal line, a histogram.</td><td>Own pane</td></tr>
+  <tr><td>ATR 14</td><td>Wilder average true range of the bars on this pane.</td><td>Own pane</td></tr>
+</table>
+<p>Sub-pane cap is 2 (<code>MAX_SUB_PANES</code>). The value row under the crosshair only prints the single-line overlays (the three EMAs, VWAP, SMA).</p>
+
+<h3>Pine that ships with the terminal</h3>
+<p>24 scripts in <code>data/builtinScripts.ts</code>. Five are Slayer-specific and read <code>slayer.callWall</code>, <code>slayer.putWall</code>, <code>slayer.flip</code>, <code>slayer.supreme</code>. The runner is not passed <code>slayer.netGex</code> even though the type allows it. The other 19 are ordinary trend, band, momentum and volume studies (ribbon, supertrend, Ichimoku, Keltner, Donchian, stochastic, ADX, CCI, Williams %R, MFI, OBV) with inputs, which is how a reader changes a period today.</p>
+<p>The walls script fills the corridor between call and put wall and defines alerts for a close through either wall. Those alerts only mean something once the scalars are the live book.</p>
+
+<h3>Levels vocabulary</h3>
+<table>
+  <tr><th>Name</th><th>Intended meaning in this codebase</th><th>What Terrain’s rungs use today</th></tr>
+  <tr><td>Call wall</td><td>Heaviest call-dominant shelf. Above price a rally tends to slow; below, it can act as support. Sign matters: a shelf keeps its side when price walks through it (<code>core/walls.ts</code>).</td><td>Largest |GEX| above the simulator spot. Side of spot, not option side.</td></tr>
+  <tr><td>Put wall</td><td>Heaviest put-dominant shelf. A put wall above price is overhead hedging, not a floor. The rung card already says this.</td><td>Largest |GEX| below the simulator spot.</td></tr>
+  <tr><td>Flip</td><td>Where dealer hedging changes side, from a chain repriced with each contract’s vol (<code>core/gammaFlip.ts</code>).</td><td>Midpoint between the nearest sign change on the simulator snapshot.</td></tr>
+  <tr><td>Supreme</td><td>The strike with the most hedging in the book. Price is drawn toward it into expiry.</td><td>Max |GEX| on the simulator snapshot.</td></tr>
+  <tr><td>Pin</td><td>Strike with the most open interest. Separate from the supreme.</td><td>On the profile / Map, not a Terrain rung.</td></tr>
+  <tr><td>Max pain</td><td>The strike that hurts the most open premium. <code>data/pins.ts</code>.</td><td>Not on Terrain. Shown on the vendor desk.</td></tr>
+</table>
+
+<h3>Elsewhere in the terminal, sharing the same words</h3>
+<ul>
+  <li><strong>Pinpoint map</strong> (<code>/pinpoint/map</code>). Strike × expiry book, a regime sentence, the day’s clock, how levels held. This is the page that uses the real flip. It rendered on the synthetic book (screenshot 9).</li>
+  <li><strong>Pulse.</strong> A desk of tiles. The chart tile is a smaller StrikeChart. The book tile embeds the same exposure field.</li>
+  <li><strong>Trace.</strong> Option tape. Terrain’s flow overlay is fed by the simulator’s <code>flowTape</code>, which is the same idea as Trace and not the Unusual Whales greek-flow route.</li>
+  <li><strong>Weigher and Compass.</strong> Same chart component. Compass is where the short level-rungs came from. Neither is linked from Terrain.</li>
+  <li><strong>Vanna / charm, hedge-flow ladder, air pockets, close-odds</strong> exist as data (<code>vannacharm.ts</code>, <code>hedgeFlow.ts</code>, <code>airPockets.ts</code>, <code>ahead.ts</code>). The rail can show the hedge-flow lane. Close-odds are not a chart overlay.</li>
+</ul>
+<p>Not built as a chart product: a named skew chart, IV-rank history on the tape, variance-risk premium, a 25-delta risk reversal, NOPE as an overlay, an odds cloud, exposure history across sessions, a GEX-versus-hypothetical-spot curve. Several of the inputs already arrive in <code>uwBook</code> (IV rank, term structure, interpolated one-day move) and are dropped on the floor.</p>
+
+<h3>Chart chrome</h3>
+<p>Styles: candles, hollow candles, bars, line, step, area, baseline. Price scale: linear, log, percent, indexed to 100. A percent compare locks the axis and the toolbar says why. Compare modes: same pane in percent, same pane with a left scale, or its own pane. Up to four symbols. Compare is removed from the UI on a 3- and 4-up desk. Timeframes: 15s, 1m, 5m, 15m, 30m, 1h, 1D, 1W. No 1s. No Renko. 15s stays empty until a live seconds tape exists, and the code says so.</p>
+<p>Drawing tools: 34 kinds across trend, fib, measure (including long/short position and anchored VWAP), shapes and notes. They persist per ticker. None of them stick to a live level. Keyboard on the desk: 1–4 layout, brackets to change pane, minus/equals for timeframe, arrows for symbol, R rail, P replay, D draw, F fullscreen, S symbol, C compare, Esc leaves fullscreen.</p>
+<p>Replay is per pane and not saved. It hides the live overlays (levels, cone, session, events, trails) so a scrub does not pretend yesterday’s book is still the book.</p>
+
+<h2 id="shots">3. What rendered</h2>
+<p class="small">Shots are from the dev server. Synthetic shots are labelled. Dollar gamma in them is not a market print.</p>
+
+<figure>
+  <img src="screenshots/01-no-key-default.png" alt="Terrain with no data key" />
+  <figcaption>1. No vendor key. Default three-up. The header still quotes the simulator (SPY near $489, heaviest strikes 490 and 485 with dollar gamma). Each rail says “WAITING FOR THE FIRST TICK.” The chart area has no candles. The only console error is the proxy’s 503, “unusual whales is not configured.”</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/02-three-up-rail-fault.png" alt="Terrain fault after the book arrives" />
+  <figcaption>2. Same layout, synthetic book. The page faulted: “Rendered more hooks than during the previous render” inside ExposureField, reached from ProfilePanel, from the Terrain pane. The route boundary replaces the desk with “This page stopped.” This happened on every three-up load with rails.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/03-levels-cone-indicators.png" alt="Single Terrain pane with levels and studies" />
+  <figcaption>3. One pane, rails on, trails, key levels, expected-move cone, session levels, events, volume, EMA 21, VWAP, RSI. This load survived. Chart last price 463.22 (+1.81%, the synthetic tape). Header price about $497 (simulator) carrying the synthetic +1.81%. Heaviest strikes 495 / 500 / 497 are the simulator’s. The trail legend “full size = $36.6M per 1% move” is the synthetic book. Drawing rail is on the left of the pane.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/07-four-up.png" alt="Four Terrain panes" />
+  <figcaption>4. Four-up with rails off so the field would not crash. Trails on, key levels on the first pane. Chart price still 463.22; header had already drifted to about $517. Pane toolbars collapse to “Tools.” The desk legend still reports the trail’s full size.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/08-flow-panes.png" alt="Flow and net drift panes" />
+  <figcaption>5. Flow and net-drift panes under SPY, levels on, trails off, rail off. The panes are labelled FLOW and NET DRIFT. They read the simulator’s option tape, which had been ticking since the server started, not the synthetic chain. Header and candles still disagree.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/05-indicators-library.png" alt="Indicator and script library" />
+  <figcaption>6. Indicators and scripts. The library covers the chart (the candle pixels disappear under the dialog). This is the door to the ten native studies and the Pine shelves, including the Slayer walls, flip and supreme scripts.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/06-draw-mode.png" alt="Draw mode" />
+  <figcaption>7. Draw mode (D). The rail already shows trend line, fib, long position, brush and text, plus “every drawing tool.” Tools persist per symbol. Nothing on the rail is bound to the call wall or the cone.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/09-pinpoint-map.png" alt="Pinpoint map on the synthetic book" />
+  <figcaption>8. Pinpoint map, same synthetic book. Spot is the book’s $463.22, not the simulator. The regime line read: dealers long gamma, price tends to pin near 455 (the supreme), no flip within 10%, scoped to SPY, 30 Oct, next expiry. This is the flip Terrain’s rungs do not use.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/10-phone.png" alt="Terrain on a phone width" />
+  <figcaption>9. 390×844. The desk stacks. The strike rail is hidden below the xl breakpoint (<code>hidden xl:block</code> in Terrain). Chart price 463.22, header about $510. Usable as a tape. Not usable as a book.</figcaption>
+</figure>
+
+<figure>
+  <img src="screenshots/04-overlays-menu.png" alt="Toolbar after opening Tools" />
+  <figcaption>10. The pane’s Tools control opened. On a wide one-up desk the overlay and study buttons sit in the pane strip; on three- and four-up they collapse, which is why a trader can miss that key levels and the cone exist. Both default off.</figcaption>
+</figure>
+
+<h3>The crash, precisely</h3>
+<p><code>ExposureField</code> does a large amount of hook setup, then returns early when there is no snapshot. The next hook, <code>useState</code> for the phone band, sits after that return, around line 1179. More effects follow. Rules of hooks: every render must call the same hooks. The waiting render does not call <code>phoneBand</code>. The live render does. React aborts the tree.</p>
+<pre>// slayer/src/components/gex/ExposureField.tsx
+if (!snapshot || !surface) {
+  return (
+    &lt;div className="h-full min-h-[300px] ..."&gt;
+      Waiting for the first tick
+    &lt;/div&gt;
+  );
+}
+// ... later, still inside the function ...
+const [phoneBand, setPhoneBand] = useState(false);</pre>
+<p>Move every hook above the return. The empty state can stay; it just cannot skip hooks. Until that lands, a trader who turns the rail on and has a working data key can lose the whole desk the moment the book resolves. The one-up shot survived only because the book was sometimes ready before the field’s first commit.</p>
+
+<h2 id="compare">4. Feature comparison</h2>
+<p>OpenMarket column is behavior from the functional guide (sections on the options dock, GEX tools, the cone, the 241-indicator gallery, and the guide’s own “better version” notes). It is not a second session of that product.</p>
+
+<h3>Levels</h3>
+<table>
+  <tr><th></th><th>Terrain</th><th>OpenMarket</th><th>Who is stronger</th></tr>
+  <tr><td>Call wall, put wall</td><td>Drawn, with a sentence that a put wall above spot is not support. Prices currently come from the simulator and from “which side of spot,” which <code>core/walls.ts</code> was written to stop doing.</td><td>On Options GEX, Spot Exposures, Strike Lanes, the matrix. The guide says the colours and the flip disagree across those tools.</td><td>Terrain’s words are better. Terrain’s numbers are not yet the book’s numbers. After one source of truth, Terrain wins.</td></tr>
+  <tr><td>Gamma flip</td><td>Real implementation exists (<code>gammaFlip.ts</code>) and the Map uses it. The chart rungs use a midpoint.</td><td>Shown in the header, on the heat, and on the dashboard. The guide’s main complaint is that those three disagree, and the UI never says why.</td><td>Neither, today. Terrain can win by showing one flip and naming the scope. OpenMarket already lost this argument in its own guide.</td></tr>
+  <tr><td>Top node / supreme</td><td>Supreme is a first-class rung and a Pine series.</td><td>“Top node” in the header, with an “alert at this strike” action.</td><td>OpenMarket’s alert is the missing piece. Terrain’s naming is clearer.</td></tr>
+  <tr><td>Max pain</td><td>Computed in <code>pins.ts</code>. Not on the chart.</td><td>A line on Options GEX and in exposure history.</td><td>OpenMarket, until Terrain adds it as a quiet extra rung.</td></tr>
+  <tr><td>Dealer regime</td><td>A sentence on the Map (“long gamma, pin near the supreme”). Not in the Terrain header.</td><td>Header chip: long gamma means calmer, short gamma means moves get chased. Click opens a plain-language card.</td><td>OpenMarket on the chart. Terrain already has the sentence one route away. Put that sentence on the pane. Do not build their nine-tile dashboard.</td></tr>
+  <tr><td>Scope (which expiries)</td><td>Desk-wide rail cut: one calendar date or “every expiry.” The chart rungs do not say which cut they used, and the default cut is the simulator.</td><td>Most tools take an expiry preset. The guide says the header, the heat and the dashboard still disagree.</td><td>OpenMarket has the control. Terrain has a better place to put the answer: on the rung card, one scope, same function as the Map.</td></tr>
+</table>
+
+<h3>GEX on the chart</h3>
+<table>
+  <tr><th></th><th>Terrain</th><th>OpenMarket</th><th>Who is stronger</th></tr>
+  <tr><td>Strike × time</td><td>Exposure trails. One layer, beads, intraday only, 5-minute texture, hidden in replay.</td><td>Spot Exposures and Options Heatmap both paint a strike×time field, and the matrix paints another. The guide says they cover each other and fight the candle colours.</td><td>Terrain. One field is the point. Keep it off the candle colours (the rungs were already pulled out of the heat for that reason).</td></tr>
+  <tr><td>Strike × expiry</td><td>The rail’s GEX tab, and the Map. Right idea: the book is beside the tape, on the tape’s price scale (<code>PriceProjection</code>).</td><td>Strike Matrix on the chart, plus the heat, plus Spot Exposures. 28 settings on the matrix. Defaults called too busy.</td><td>Terrain’s layout is better. It currently crashes, and it reads a different book from the candles.</td></tr>
+  <tr><td>GEX by strike, horizontal bars</td><td>Not a second axis. The rail’s size lane is the bar chart, aligned to price.</td><td>Options GEX docks bars on the price axis. The guide: thin bars, axis clutter, 60-second refresh, one instance per chart, colours that don’t match the other tools.</td><td>Terrain, once the rail and the candles share a spot.</td></tr>
+  <tr><td>Curve of GEX vs a hypothetical spot</td><td>Not drawn. <code>spotScenario.ts</code> and the exposure profile are the raw material.</td><td>Options GEX Curve, its own pane, its own strike axis. The guide says that axis is not linked to price, and the flip on it doesn’t match Spot Exposures.</td><td>OpenMarket has it. If Terrain adds it, put it in the rail under the same scale, not a new pane with a new flip.</td></tr>
+  <tr><td>Greek lens (vanna, charm, delta, vega)</td><td>Data exists. The Map and the rail’s field can switch greek. Trails default to GEX and Terrain does not expose the switch.</td><td>Greek Exposure: one greek, bars by strike, a by-expiry pane. No alerts, and the card stacks on the GEX card.</td><td>Roughly even, and both are easy to over-build. A greek toggle on the trail is enough.</td></tr>
+  <tr><td>History of the levels</td><td><code>levelRecord.ts</code> can say “call wall moved 765 → 762.” Not drawn on the tape.</td><td>Exposure History: walls, flip and max pain as step lines, plus a percentile. Needs about 20 sessions or it is blank. Looks like hand-drawn lines.</td><td>OpenMarket has the chart. Terrain has the event (“it moved”) which is the more useful sentence. Draw notches, not a second set of lines.</td></tr>
+</table>
+
+<h3>Expected move</h3>
+<table>
+  <tr><th></th><th>Terrain</th><th>OpenMarket</th></tr>
+  <tr><td>What is drawn</td><td>One session. Band from the open, cone from now to the bell, ±1σ and ±2σ, from the feed’s IV, in trading minutes. Crossings of the 1σ edge are returned. The cone collapses into the close on a 0DTE afternoon, which is the correct picture.</td><td>Move high/low and 1σ rails from the prior close, plus forward cones for the close, next day, week, OpEx and 30 days. About 30 settings. A hover card the guide describes as ~30 rows.</td></tr>
+  <tr><td>When it fails quietly</td><td>Off by default. Hidden in replay and on range bars. If IV is missing the cone is empty. The toolbar does not say which of those happened.</td><td>Cones vanish past a bar-count rule without an explanation. Rail colours are hard to tell apart. No hit-rate history.</td></tr>
+  <tr><td>Verdict</td><td colspan="2">Terrain’s geometry is the better intraday object. OpenMarket covers more horizons and then hides them under a card. Add week and next-expiry as a mode, using the term structure <code>uwBook</code> already stores. Keep the readout to one line: high, low, and whether price is outside. A local scorecard (“closed inside ±1σ on N of the last 20 sessions”) is something their guide says they do not have.</td></tr>
+</table>
+
+<h3>Indicators</h3>
+<table>
+  <tr><th></th><th>Terrain</th><th>OpenMarket</th></tr>
+  <tr><td>Count</td><td>10 native studies, 24 Pine scripts (5 of them dealer levels), 12 overlays.</td><td>241 in the gallery. About 68 are “market data” (options, GEX, flow, vol, plus crypto series). Order-flow tools are mostly crypto-only.</td></tr>
+  <tr><td>Settings</td><td>Native periods are hardcoded. Pine inputs work. No per-timeframe visibility, no templates.</td><td>Every indicator has General, Style, Plot, Visibility, Price marker. Visibility can differ by interval. Templates exist.</td></tr>
+  <tr><td>Cost</td><td>None. Turning on trails does not spend a slot.</td><td>Classics are free. Options, heatmaps, footprint, TPO and community scripts spend slots. Free plan: 3 slots for the whole layout. Plus: 10 per chart. The “show levels” preset costs 2, so a free account has one slot left.</td></tr>
+  <tr><td>Options-specific studies they have and Terrain does not chart</td><td colspan="2">Net flow, premium tide, flow tape, premium by strike, greek flow, NOPE, OI changes, estimated dealer positioning, IV rank as a plot, variance risk premium, vol regime, risk-reversal skew, skew history, IV smile, term structure, vol surface, odds cloud, contract odds, day type, market HUD.</td></tr>
+  <tr><td>Verdict</td><td colspan="2">Do not try to match 241. Match the ten a GEX trader opens before the open: regime, walls, flip, supreme, max pain, expected move, IV rank, term structure, a flow tape that is real, and a P/C or 25-delta skew number. Most of those are already fetched or already computed. The native RSI can stay hardcoded for another release; the missing input is not “RSI length.”</td></tr>
+</table>
+
+<h3>Chart UI, tools, layout</h3>
+<table>
+  <tr><th></th><th>Terrain</th><th>OpenMarket</th><th>Call</th></tr>
+  <tr><td>Layout</td><td>1–4 panes. Each pane is its own workspace. Named layouts, 12. Crosshair syncs in time, and only between panes that are both live or both replaying.</td><td>Up to 16, plus a 4×4 custom grid. Sync toggles for symbol, interval, crosshair, time. Crosshair defaults on. Tabs don’t show the symbol.</td><td>Keep 4. Sixteen charts plus three data slots is how their free plan becomes unusable. Terrain’s per-symbol memory is the feature to protect.</td></tr>
+  <tr><td>Toolbar</td><td>Per pane. Collapses to “Tools” when the pane is narrow, so overlays hide.</td><td>One toolbar, mostly icons. The guide calls that hard to learn. Indicators button shows the slot badge.</td><td>Terrain is better when the pane is wide. On three-up, surface “Levels” and “Cone” as chips, not inside Tools.</td></tr>
+  <tr><td>Chart types</td><td>7.</td><td>15, including Heikin Ashi, volume footprint, TPO.</td><td>Add Heikin Ashi if traders ask. Leave footprint and TPO. On stocks those are a different product, and theirs is aimed at crypto books.</td></tr>
+  <tr><td>Timeframes</td><td>15s through weekly. 15s is honestly empty. Range and volume bars exist, and they disable overlays that would lie.</td><td>1s (Plus) through yearly. No Renko, no range bars. 1s fails silently on Free.</td><td>Terrain. The empty 15s is a feature.</td></tr>
+  <tr><td>Drawings</td><td>34. Per ticker. No magnet-to-level.</td><td>99, in nine groups, with an objects list and alerts on lines. The guide notes there is still no line bound to the call wall or the expected-move rail.</td><td>Do not chase 99. Ship one horizontal line that follows <code>slayer.callWall</code> (and the cone high/low). That is the drawing neither product has.</td></tr>
+  <tr><td>Right dock</td><td>No dock. The rail is the book, and it hides on a phone.</td><td>A wide right panel (options, watchlist, news, alerts, editor). The guide says it is fixed around 577px with no resize, about 30% of the chart.</td><td>Terrain’s choice is right. Don’t add a dock to look like them.</td></tr>
+  <tr><td>Search</td><td>Command palette (⌘K) for navigation and tickers.</td><td>Super search also finds indicators, tools, themes and commands.</td><td>OpenMarket. Adding overlay names to the existing palette is a small change with a large “I can find the cone” payoff.</td></tr>
+  <tr><td>Scripting</td><td>Pine subset. Four dealer scalars. No strategy tester in the chart. No marketplace.</td><td>wrun, TypeScript-like, with the chain, flow and stats in scope, plus an editor assistant and a marketplace.</td><td>OpenMarket for power users. Terrain’s <code>slayer.*</code> is the right shape. Pass <code>netGex</code> through before writing a new language.</td></tr>
+  <tr><td>Alerts</td><td>Price alerts, optional lines. Pine scripts can declare level crosses. Not obvious from the rung card.</td><td>Price, indicator, drawing and watchlist alerts. Toast, email, webhook. Many GEX tools cannot alert. No packaged “regime flipped” or “wall moved.”</td><td>Both are weak on the alert a GEX trader wants. Terrain can wire the rung card to the alert store in one place because there is one set of rungs.</td></tr>
+  <tr><td>Replay, journal, news</td><td>Per-pane replay that refuses to show live levels. Journal and news are other rooms (Practice, Dossier), not panels on the chart.</td><td>Bar replay. Journal is notes from text drawings, not P&amp;L. News is a topic feed, not symbol-scoped in the captured build.</td><td>Terrain’s split is cleaner. Don’t pull the journal onto the chart.</td></tr>
+  <tr><td>Data delay</td><td>Not shown, because the chart doesn’t say which book it is on.</td><td>OPRA delay is a small line. The guide says it is too easy to miss, especially for 0DTE.</td><td>Both fail. A chip — “practice book”, “vendor book”, “delayed” — is the fix, and Terrain needs it more, because two books are already live in one header.</td></tr>
+</table>
+
+<h3>Performance and feel</h3>
+<p>Terrain’s chart is lightweight-charts on canvas, not WebGL. The code already treats the open as a budget: candle and GEX folds are incremental, a pointer-down holds the revision so ticks don’t rebuild mid-drag, four panes mount across frames, and the trail’s cold fold is sliced. Comments in <code>timeframe.ts</code> record a Terrain open that was spending ~250ms folding before that cache existed. That work is the right kind of performance work. It is currently wasted if the rail throws and the route boundary unmounts the desk.</p>
+<p>OpenMarket renders with WebGL and refreshes options tools on a timer (the guide cites a 60-second default and calls it slow against a fast tape). This brief did not benchmark that product. Don’t claim a frame-time win. The win to aim at is: the book, the rungs and the candles update together, and a stale book says so.</p>
+<p>UX in one line: Terrain is a keyboard desk for someone who already knows the walls. OpenMarket is a gallery that explains itself and then contradicts itself. The missing Terrain explanations are short (the empty state, the scope on the rung, the chips for Levels and Cone). The missing OpenMarket explanations are structural (why three flips differ), and that is not worth copying.</p>
+
+<h2 id="plan">5. What to build, in order</h2>
+<p>Effort is the size of the change, not a schedule. <span class="tag">S</span> one module, no new data contract. <span class="tag">M</span> a few files and a fixture so the chart and the Map can’t drift again. <span class="tag">L</span> a new surface or a new feed. Impact is what a trader notices on Monday.</p>
+
+<h3>P0 — the desk has to be one book, and it has to stay up</h3>
+
+<h4>0.1 Stop the rail from taking the page down <span class="tag">S</span> <span class="tag">Impact: blocking</span></h4>
+<p><strong>Why.</strong> A live key makes this bug certain: the field paints “waiting,” the book resolves, React sees a new hook, the boundary eats Terrain. Verified three times with a synthetic book.</p>
+<p><strong>Files.</strong> <code>slayer/src/components/gex/ExposureField.tsx</code> only. Every <code>useState</code>, <code>useEffect</code>, <code>useMemo</code>, <code>useRef</code> and <code>useLayoutEffect</code> that currently sits below the <code>if (!snapshot || !surface) return</code> moves above it. The early return stays, with the copy change in 0.3.</p>
+<pre>function ExposureField(props) {
+  // all hooks, unconditionally, including phoneBand
+  const [phoneBand, setPhoneBand] = useState(false);
+  // ...
+  if (!snapshot || !surface) {
+    return &lt;Empty reason={props.reason} /&gt;;
+  }
+  return &lt;Field ... /&gt;;
+}</pre>
+<p><strong>Check.</strong> Load Terrain with rails on, three panes, against a book that arrives after first paint. The desk stays. Then load with no book. The empty state still shows, and the hook count does not change between those two renders.</p>
+
+<h4>0.2 One spot, one flip, one set of walls <span class="tag">M</span> <span class="tag">Impact: the product</span></h4>
+<p><strong>Why.</strong> The screenshot is the spec. Chart at 463.22, header near $497, heaviest strikes following the header, Map on the same payload pinning 455 with no flip inside 10%. A trader cannot hedge off that. OpenMarket’s guide is a long complaint about this exact failure. Shipping it on purpose would be copying their worst bug.</p>
+<p><strong>Files.</strong></p>
+<ul>
+  <li><code>pages/terrain/Terrain.tsx</code> — <code>railForCut</code>, <code>levelsOf</code>, the header’s <code>SpotPrice</code>.</li>
+  <li><code>data/levelsFor.ts</code> and <code>data/flipLevel.ts</code> — already the Map’s readers. Call them.</li>
+  <li><code>core/walls.ts</code> <code>pickWalls</code> / <code>pickLegWalls</code>, <code>core/gammaFlip.ts</code>.</li>
+  <li><code>data/gex.ts</code> <code>buildLevelsFor</code> — stop using it for anything a person trades against. Leave it for the simulator demo if Practice needs it, behind a label.</li>
+  <li><code>components/gex/ProfilePanel.tsx</code> — delete the comment that says the snapshot is the simulator. It isn’t.</li>
+</ul>
+<pre>function railForCut(ticker: string, cut: RailCut): RailData {
+  const book = snapshotOf(ticker);          // null until uwBook is live
+  if (!book) return emptyRail(ticker);      // no simulator spot, no fake walls
+  const spot = book.spot;
+  const chain = chainForCut(book, cut);     // front, one date, or all — same helper as the Map
+  const walls = pickLegWalls(chain, n =&gt; n.callGex, n =&gt; n.putGex);
+  const flip = levelFlip(chain, spot);      // gammaFlip, not a midpoint
+  const supreme = heaviest(chain);
+  return { spot, rows: rowsFrom(chain), levels: { spot, ...walls, flip, supreme } };
+}</pre>
+<p>Header price and percent both come from that <code>spot</code> and from <code>peekChange</code> only when it describes the same print. If the change isn’t known, omit the percent. Do not fill it from <code>Simulator.TICKERS</code>.</p>
+<p><strong>Check.</strong> A fixture with a known chain. Map supreme, Terrain rung, and Pine <code>slayer.supreme</code> are the same strike. Move spot across a shelf and the call wall does not rename itself a put wall. <code>npm test</code> already covers the wall rule; add one assertion that Terrain’s reader and <code>levelsFor</code> share it.</p>
+
+<h4>0.3 Say what the empty desk is <span class="tag">S</span> <span class="tag">Impact: trust</span></h4>
+<p><strong>Why.</strong> “Waiting for the first tick” is false when the proxy returns 503. The header quoting a simulator SPY next to that sentence is worse: it looks like a market.</p>
+<p><strong>Files.</strong> <code>ExposureField.tsx</code> empty copy, a small overlay in <code>StrikeChart.tsx</code> when <code>displayBars</code> is empty, <code>Terrain.tsx</code> header.</p>
+<pre>if (!book) {
+  return "No options book. Price history, walls and the strike field appear when the data feed is connected.";
+}</pre>
+<p>If a practice mode is still wanted, it has to be a switch that says “practice book” on the pane, and then the candles must come from the simulator too. A practice header on a blank tape is the current bug.</p>
+
+<h3>P1 — what a trader looks at before the open</h3>
+
+<h4>1.1 Regime line on the pane <span class="tag">S</span> <span class="tag">Impact: high</span></h4>
+<p><strong>Why.</strong> The Map already says the useful sentence. OpenMarket puts a version of it in the header and then repeats it, conflicting, in a dashboard that the guide says eats 60% of the price pane. One line is the whole feature.</p>
+<p><strong>Files.</strong> <code>data/flipGauge.ts</code>, <code>data/atr.ts</code>, the pane header in <code>Terrain.tsx</code>.</p>
+<pre>// "Long gamma · 0.4 ATR under the flip · inside today's move"
+// "Short gamma · through the flip · outside the 1σ cone"
+const line = regimeLine({
+  side: gauge.side,                 // long | short
+  distanceAtr: (spot - flip) / sessionAtr,
+  outsideCone: Math.abs(spot - open) &gt; oneSigma,
+});</pre>
+<p>No tile grid. If the book is not live, the line is absent, not a simulator guess.</p>
+
+<h4>1.2 Name the scope on the rung <span class="tag">M</span> <span class="tag">Impact: high</span></h4>
+<p><strong>Why.</strong> “The flip” without “0DTE” or “all expiries” is how OpenMarket’s header and heat diverged. Terrain already has <code>railCut</code> and <code>levelsScope.ts</code>. The card in <code>keyLevelsPrimitive.ts</code> (<code>KEY_LEVEL_WORDS</code>) has one line of room. Use it.</p>
+<p><strong>Files.</strong> <code>keyLevelsPrimitive.ts</code>, the hover card in <code>StrikeChart.tsx</code>, <code>levelsScope.ts</code>.</p>
+<pre>flip: {
+  name: "Flip",
+  aside: scope.label,              // "0DTE" | "Oct 30" | "All expiries"
+  line: "Dealer hedging changes side here, on this set of contracts. The Map uses the same read.",
+}</pre>
+<p>Add a per-pane control, not only the desk-wide cut, so a 0DTE SPY pane can sit beside an all-expiry SPY pane. That is a legal thing to want and it is impossible if the cut is global and silent.</p>
+
+<h4>1.3 Max pain and the pin, as quiet rungs <span class="tag">M</span> <span class="tag">Impact: medium</span></h4>
+<p><strong>Why.</strong> Traders ask for max pain because every other terminal draws it. The code is in <code>data/pins.ts</code>. The pin (most open interest) is already on the profile and is a different strike from the supreme. Drawing both in the wall colours would recreate the palette mess the rungs were extracted to avoid.</p>
+<p><strong>Files.</strong> <code>keyLevelsPrimitive.ts</code> (two new keys, hairline, no fill), <code>pins.ts</code>, the levels object on the pane.</p>
+<p>Default them off inside the levels switch, or behind a second tick “also show pain and pin.” The card must say they are not walls.</p>
+
+<h4>1.4 Expected move: one line, two extra horizons, a scorecard <span class="tag">M</span> <span class="tag">Impact: high</span></h4>
+<p><strong>Why.</strong> The cone is the best options object on the chart and it is off, easy to miss, and silent when it can’t draw. OpenMarket’s version covers more dates and then covers the chart with the explanation. Take the dates, refuse the card.</p>
+<p><strong>Files.</strong> <code>data/expectedMove.ts</code>, <code>expectedMovePrimitive.ts</code>, <code>ChartToolbar.tsx</code>, a few lines of legend in <code>Terrain.tsx</code> next to the trail’s “full size” line. Term structure is already on the book (<code>termMove</code>, <code>dayMoveFrac</code>).</p>
+<pre>type Horizon = "session" | "week" | "next-expiry";
+
+function coneFor(horizon: Horizon, book, sessionBars) {
+  const iv = horizon === "session" ? book.dayIv : book.termIv[horizon];
+  const minutes = horizon === "session" ? minutesToBell : minutesUntil(horizon);
+  return buildExpectedMoveCone(sessionBars, iv, minutes);
+}
+
+// legend, one line, never a hover essay:
+// "Today ±4.10 (461.2–469.4) · inside · week ±11.2 · closed inside on 14 of the last 20"
+</pre>
+<p>Store the scorecard in <code>localStorage</code> per symbol. It does not need an account. When the cone is hidden, the legend says why: replay, range bars, or no IV. That sentence is the whole fix for the “it vanished” failure their guide describes.</p>
+
+<h4>1.5 Put IV rank and the front move where the eye already is <span class="tag">S</span> <span class="tag">Impact: medium</span></h4>
+<p><strong>Why.</strong> <code>loadCore</code> already requests <code>/iv-rank</code> and the term structure, then the pane ignores them. OpenMarket spends a slot and a tab on IV rank, VRP and skew. A GEX trader’s question is smaller: is premium rich, and what did the front expiry charge?</p>
+<p><strong>Files.</strong> <code>uwBook.ts</code> already has <code>peekIv</code> and the term fields. Surface two numbers in the pane header: IV rank (the stored <code>iv_rank_1y</code>) and the front implied move in dollars. A skew number (25-delta risk reversal) is the next one, and only if the book’s term or interpolated rows actually carry it. Do not invent a smile chart to have one.</p>
+
+<h4>1.6 Levels and Cone as chips, not a buried menu <span class="tag">S</span> <span class="tag">Impact: medium</span></h4>
+<p><strong>Why.</strong> Both default off. On a three-up desk the overlay menu is behind “Tools.” The screenshots’ button list on the wide pane shows the drawing rail and “Tools,” not the word “cone.” A trader who never opens the menu never sees the thing this desk is for.</p>
+<p><strong>Files.</strong> <code>ChartToolbar.tsx</code>, the collapsed pane in <code>Terrain.tsx</code>.</p>
+<p>Two chips on every pane, even when the rest collapses: Levels, Cone. On means the overlay is on. That is also the moment to add those names to the ⌘K palette.</p>
+
+<h3>P2 — alerts, scripts, flow that tells the truth</h3>
+
+<h4>2.1 Alert from the rung card <span class="tag">M</span> <span class="tag">Impact: high</span></h4>
+<p><strong>Why.</strong> The useful alerts are “price crossed the flip,” “price tagged the call wall,” “price left the cone.” OpenMarket’s form is a price alert with percent chips, and the guide notes that many GEX tools cannot alert at all. The walls Pine script already declares <code>alertcondition</code> for a close through the wall. The card is the right door because the level is a moving price: storing “alert at 455” goes stale when the wall moves to 460, storing “alert at the call wall” does not.</p>
+<p><strong>Files.</strong> The hover card host in <code>StrikeChart.tsx</code>, <code>components/gex/alertStore.ts</code>, <code>data/builtinScripts.ts</code>.</p>
+<pre>type LevelAlert = {
+  kind: "callWall" | "putWall" | "flip" | "coneHigh" | "coneLow";
+  fire: "touch" | "close";
+};
+// each revision, resolve the level from the SAME railForCut result the rung uses
+// fire if spot crossed it since the previous revision
+</pre>
+<p>Show the line only if alert lines are on. The bell can stay. Don’t build email and webhooks in this pass.</p>
+
+<h4>2.2 Pass the book into Pine <span class="tag">S</span> <span class="tag">Impact: medium</span></h4>
+<p><strong>Why.</strong> <code>slayer.netGex</code> is on the feed type and is not passed from <code>StrikeChart</code>. A script that plots the book would let a reader build the one custom study they actually want, which is most of what a 241-item gallery is for.</p>
+<p><strong>Files.</strong> The <code>runScript</code> call in <code>StrikeChart.tsx</code>, <code>core/pine</code> <code>SlayerFeed</code>.</p>
+<pre>runScript(source, bars, {
+  slayer: {
+    callWall, putWall, flip, supreme,
+    netGex: historyAlignedTo(bars),   // one number per bar, null where the book has no snapshot
+  },
+});</pre>
+<p>Document the sign in the script library blurb: negative is call-dominant, matching <code>core/walls.ts</code>. A script that assumes the other sign will draw the walls backwards.</p>
+
+<h4>2.3 Label the flow tape <span class="tag">S</span> <span class="tag">Impact: medium</span></h4>
+<p><strong>Why.</strong> Flow and net drift look like an OPRA tape. They are the simulator’s <code>flowTape</code>. Vol drift compares realised vol to an implied that the simulator holds flat. On a real book, point vol drift at <code>peekIv</code>. Until Trace is a real tape, the pane title should say “practice tape.”</p>
+<p><strong>Files.</strong> <code>ChartToolbar.tsx</code> hints, the flow pane title in <code>StrikeChart.tsx</code>, <code>data/volDrift.ts</code>.</p>
+
+<h4>2.4 A greek toggle on the trails <span class="tag">S</span> <span class="tag">Impact: low until the book is unified</span></h4>
+<p>The primitive already takes a greek. Terrain always passes GEX. A segmented control — GEX / DEX / VEX — is the Greek Exposure product without a second pane and a second card. Vanna and charm stay on the Map; they are a different question (how the book decays) and the Map already has a clock for them.</p>
+
+<h3>P3 — ideas worth building because OpenMarket is weak there</h3>
+
+<h4>3.1 A line that sticks to a level <span class="tag">M</span> <span class="tag">Impact: high, and theirs doesn’t have it</span></h4>
+<p>Their drawing guide calls out the absence of a line bound to the call wall, the flip, or the expected-move rail. Add a mode on the horizontal line: free price, or follow call wall / put wall / flip / cone high / cone low. When the level moves, the line moves, and the label says “call wall” rather than a stale price. <code>drawingsPrimitive.ts</code>, <code>drawingKinds.ts</code>. Do not add the other 65 tools.</p>
+
+<h4>3.2 “Tested today” notches <span class="tag">M</span> <span class="tag">Impact: medium</span></h4>
+<p><code>levelRecord.ts</code> already knows a wall changed strike. <code>sessionLevels</code> knows the day’s high and low. A notch on the rung each time the candle range touched it, and a small “moved 495 → 500 at 14:10” on the card, is more useful than Exposure History’s session-long step lines, which the guide says look like drawings and fail intraday. Stay off the candle body. The rung is the right place; it was designed not to cross the tape.</p>
+
+<h4>3.3 Corridor only while long gamma <span class="tag">S</span> <span class="tag">Impact: medium</span></h4>
+<p>The walls Pine script fills the space between the walls all day. That fill means “dealers absorb in here” only while the book is long gamma. When the book is short, the fill is a lie. Gate it:</p>
+<pre>fill(callPlot, putPlot, close &gt; flip ? absorbed : na)
+bgcolor(close &lt; flip ? shortGammaWash : na)</pre>
+<p>Same idea can drive the regime line’s colour. One rule, so the wash and the sentence cannot disagree.</p>
+
+<h4>3.4 Distance in ATR and in today’s move <span class="tag">S</span> <span class="tag">Impact: medium</span></h4>
+<p><code>data/atr.ts</code> already says a point distance is meaningless across names. The desk has a unit picker ($, %, ATR, σ). The rung card should use the active unit: “1.2 ATR above” or “0.4 of today’s move,” not only dollars. <code>keyLevelsPrimitive</code> hover host. The picker already exists; the card just doesn’t read it.</p>
+
+<h4>3.5 Close odds, one expiry, on the right edge <span class="tag">M</span> <span class="tag">Impact: medium</span></h4>
+<p><code>data/ahead.ts</code> <code>buildCloseOdds</code> is the odds cloud, without the 17 style settings. Draw it as a thin hump in the price gutter, one expiry, the expiry’s date in the label. Their cloud’s failure, per the guide, is no alerts, a “days” control instead of a date, and a single expiry pretending to be the distribution. Keep the single expiry and name it. Alerting the 1σ edge is 2.1, not a second tool.</p>
+
+<h4>3.6 A disagreement badge, then delete it <span class="tag">S</span> <span class="tag">temporary</span></h4>
+<p>While 0.2 is in review, if the midpoint flip and <code>levelFlip</code> differ by more than one strike, show both and say which is on the chart. The moment they share a function, remove the badge. Leaving two numbers “for safety” is how the OpenMarket header and the heat diverged and stayed diverged.</p>
+
+<h3>P4 — do not build</h3>
+<ul>
+  <li><strong>A second and third GEX heat on the candles.</strong> Spot Exposures, the heatmap and the matrix are three products that do one job. Trails plus the rail is the set.</li>
+  <li><strong>The nine-tile options dashboard.</strong> It repeats the header and, in their guide, squeezes the tape. The regime line replaces it.</li>
+  <li><strong>Sixteen charts.</strong> Four is the cap for a reason written in <code>Terrain.tsx</code>: a fifth pane is too narrow to read. Their slot budget makes a 16-chart options layout worse, not better.</li>
+  <li><strong>Ninety-nine drawing tools, footprint, TPO, order-book heat.</strong> Footprint and the book heat are aimed at crypto venues. A stock-options desk doesn’t get a better SPY read out of them.</li>
+  <li><strong>A new scripting language.</strong> Pine plus <code>slayer.*</code> is the interface. Feed it the book.</li>
+  <li><strong>Matching all 241 names.</strong> The options list that matters is in P1 and P2. The rest of the gallery is oscillators with settings. Expose period inputs on the native ten when someone asks; it is an <span class="tag">M</span> in <code>indicatorItems.ts</code>, <code>StrikeChart.tsx</code> and <code>setups.ts</code>, and it is not the bottleneck.</li>
+</ul>
+
+<h2 id="gaps">6. What this brief could not verify</h2>
+<ul>
+  <li><strong>A real Unusual Whales book.</strong> No <code>UNUSUAL_WHALES_API_KEY</code>. Candles, trails and the Map were rendered from a synthetic <code>/api/uw</code> payload (SPY/QQQ/AAPL/NVDA, one session of one-minute bars, a smooth GEX smile, a made-up IV). Dollar figures in the shots are not the market. The harness is <code>docs/terrain-report/capture.mjs</code>.</li>
+  <li><strong>ThetaData.</strong> Not wired into Terrain or the gex components. Not exercised.</li>
+  <li><strong>The strike rail’s GEX calendar on a healthy live book.</strong> The three-up case crashed before it could be read. The one-up case showed the trail legend and the heaviest line, but the heaviest line was still the simulator. The Map did render the synthetic chain, including the regime sentence.</li>
+  <li><strong>Replay scrub, drawing persistence, alert delivery, Pine execution on the canvas.</strong> The controls are in the UI and the code. They were not clicked through to a fired alert or a saved drawing reloaded in a second session.</li>
+  <li><strong>OpenMarket itself.</strong> Not opened. Every OpenMarket claim is the functional guide’s description of a Free-plan MSFT session, including that guide’s own list of weaknesses. Paid features (real-time OPRA, Plus slots, live trading, starting a replay) were not exercised by that guide either.</li>
+  <li><strong>Production build of Slayer.</strong> The shots are the Vite dev server. This brief does not claim the production bundle paints differently; it also does not prove it doesn’t.</li>
+  <li><strong>Phone landscape and a signed-in plan gate.</strong> One 390×844 shot. Billing gates are off when Stripe isn’t configured and, in dev, when the browser is automated. A locked Terrain was not what rendered.</li>
+</ul>
+
+<h2>File index</h2>
+<table>
+  <tr><th>Concern</th><th>Path</th></tr>
+  <tr><td>Desk</td><td><code>slayer/src/pages/terrain/Terrain.tsx</code>, <code>setups.ts</code>, <code>layouts.ts</code>, <code>paneKeys.ts</code></td></tr>
+  <tr><td>Chart</td><td><code>slayer/src/components/gex/StrikeChart.tsx</code>, <code>ChartToolbar.tsx</code></td></tr>
+  <tr><td>Trails</td><td><code>slayer/src/components/gex/gexNodesPrimitive.ts</code></td></tr>
+  <tr><td>Rungs</td><td><code>slayer/src/components/gex/keyLevelsPrimitive.ts</code></td></tr>
+  <tr><td>Cone</td><td><code>slayer/src/data/expectedMove.ts</code>, <code>expectedMovePrimitive.ts</code>, <code>thermalFieldPrimitive.ts</code></td></tr>
+  <tr><td>Rail</td><td><code>slayer/src/components/gex/ProfilePanel.tsx</code>, <code>ExposureField.tsx</code></td></tr>
+  <tr><td>Live book</td><td><code>slayer/src/data/uwBook.ts</code>, <code>data/whales.ts</code>, <code>server/uwProxy.mjs</code></td></tr>
+  <tr><td>Simulator book</td><td><code>slayer/src/core/simulator.ts</code>, <code>data/gex.ts</code> (<code>buildLevelsFor</code>, <code>spotChangePct</code>)</td></tr>
+  <tr><td>The flip that should be used</td><td><code>slayer/src/core/gammaFlip.ts</code>, <code>data/flipLevel.ts</code>, <code>data/levelsFor.ts</code></td></tr>
+  <tr><td>Walls</td><td><code>slayer/src/core/walls.ts</code></td></tr>
+  <tr><td>Studies</td><td><code>slayer/src/data/indicators.ts</code>, <code>components/gex/indicatorItems.ts</code></td></tr>
+  <tr><td>Pine</td><td><code>slayer/src/data/builtinScripts.ts</code>, <code>slayer/src/core/pine/</code></td></tr>
+  <tr><td>Map</td><td><code>slayer/src/pages/pinpoint/MapDesk.tsx</code></td></tr>
+</table>
+
+<p class="small">Screenshots and this source live in <code>docs/terrain-report/</code>. The page was not changed to produce them.</p>
+
+</body>
+</html>
