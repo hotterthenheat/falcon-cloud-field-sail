@@ -83,7 +83,7 @@ const LeanCell = ({ askPct: raw, split, unit = 'contracts', legsPct, crossPct }:
       </span>
     );
   }
-  /* no side figure (a flow alert, a row the vendor sent no side volume for): a dash, never "ASK 100%" */
+  /* no side figure (a flow alert, a row the feed sent no side volume for): a dash, never "ASK 100%" */
   if (!Number.isFinite(raw)) {
     return (
       <span className="inline-flex flex-col items-end gap-[3px] w-20" title="No side volume on this row">

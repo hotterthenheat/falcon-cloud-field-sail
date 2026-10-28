@@ -58,6 +58,7 @@ import MobileMenu from './MobileMenu';
 import { useCompassView } from '../../data/compassView';
 import { lookup } from '../../data/universe';
 import { readSessionClock } from '../../data/moc';
+import { nyClock } from '../../core/nyTime';
 import { marketPhase } from '../../data/traceLive';
 import { useAllAlerts, useUnseenAll } from '../gex/alertStore';
 import { toggleAlertsDrawer, useAlertsDrawer } from '../../data/alertsDrawer';
@@ -120,7 +121,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [clock, setClock] = useState(() => readSessionClock());
-  const [time, setTime] = useState(() => `${new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' })} ET`);
+  const [time, setTime] = useState(() => nyClock(undefined, { seconds: true, zone: true }));
   const asideRef = useRef<HTMLElement | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
   const [bar, setBar] = useState<{ top: number } | null>(null);
@@ -136,7 +137,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
   useEffect(() => {
     const id = window.setInterval(() => {
       setClock(readSessionClock());
-      setTime(`${new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' })} ET`);
+      setTime(nyClock(undefined, { seconds: true, zone: true }));
     }, 1000);
     return () => window.clearInterval(id);
   }, []);
@@ -214,7 +215,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
 
   const name = lookup(activeTicker)?.name ?? null;
   /* Trace reads the live tape too — the simulated quote never belongs beside a live print */
-  const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier') || pathname.startsWith('/trace');
+  const onLiveDesk = pathname.startsWith('/pinpoint') || pathname.startsWith('/dossier') || pathname.startsWith('/trace') || pathname.startsWith('/terrain');
   const live = usePinpointFeed(pathname.startsWith('/pinpoint') ? activeTicker : null);
   const quoted = useLiveQuote(onLiveDesk ? activeTicker : null);
   const spot = onLiveDesk ? (live?.spot ?? quoted?.regularPrice ?? null) : (live?.spot ?? marketData?.spot ?? null);
@@ -647,7 +648,7 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
               <span className="mt-1.5 flex items-center gap-2 font-mono text-[10px] tnum">
                 <span className="min-w-0 truncate text-textSecondary" title={clock.label} data-session-line>
                   {/* 16:00–16:15 on Trace: stock options are shut, index and ETF options still trade (the tenth Trace audit) */}
-                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 16:15 ET' : open ? clock.label : clock.label.toLowerCase()}
+                  {pathname.startsWith('/trace') && marketPhase() === 'late' ? 'stocks closed · index & ETF options trade to 3:15 PM CT' : open ? clock.label : clock.label.toLowerCase()}
                 </span>
                 <span className="ml-auto text-textMuted select-none">{time}</span>
               </span>

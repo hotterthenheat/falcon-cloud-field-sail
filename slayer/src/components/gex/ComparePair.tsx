@@ -82,7 +82,7 @@ interface Day {
 
 const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Props) => {
   const paper = useResolvedTheme() === 'light';
-  /* the months of sessions behind the range — the vendor's daily bars, regular session only */
+  /* the months of sessions behind the range — the feed's daily bars, regular session only */
   const [daily, setDaily] = useState<{ a: string; b: string; da: DailyClose[]; db: DailyClose[] } | null>(null);
   useEffect(() => {
     let live = true;

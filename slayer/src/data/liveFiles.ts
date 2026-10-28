@@ -5,6 +5,7 @@
 */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { setDividend } from '../core/carry';
 import { houseSector, houseSlug, type EtfHolding, type EtfKind, type EtfRow, type InstitutionRow, type PositionStatus, type ShortRow } from './fileBooks';
 import { pickFromLive, type StockPick } from './stocks';
 import { UNIVERSE, type Sector } from './universe';
@@ -924,6 +925,9 @@ export function ensureStockCard(ticker: string): void {
       }
       const row = info as Record<string, unknown>;
       rememberCompanyName(t, String(row.full_name || row.short_name || ''));
+      if (row.has_dividend === false) setDividend(t, 0);
+      const yieldRaw = numOr(row.dividend_yield);
+      if (yieldRaw != null && yieldRaw >= 0) setDividend(t, yieldRaw > 1.5 ? yieldRaw / 100 : yieldRaw);
       emit({
         cards: {
           ...snap.cards,

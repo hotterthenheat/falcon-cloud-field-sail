@@ -24,7 +24,8 @@ import { scriptStore } from '../../data/scriptStore';
 import type { ChartScript, PaneId, Script, ScriptInput, ScriptInputValue } from '../../types/scripts';
 import Modal from '../ui/Modal';
 import { INDICATOR_ITEMS } from '../gex/indicatorItems';
-import { MAX_SUB_PANES, SUB_PANE_ORDER, type ChartIndicators } from '../gex/StrikeChart';
+import { MAX_SUB_PANES, SUB_PANE_ORDER, type ChartIndicators, type ChartOverlays } from '../gex/StrikeChart';
+import { OPENING_RANGES, type OpeningRange } from '../../data/sessionLevels';
 
 type Shelf = 'recent' | 'favourites' | 'mine' | 'slayer' | 'technicals' | 'chart';
 type Kind = 'slayer' | 'pine' | 'chart';
@@ -165,11 +166,53 @@ interface ScriptLibraryProps {
   onIndicators?: (next: ChartIndicators) => void;
   /** The editor sits beside a FULL-SCREEN chart only (Noah, 2026-09-10) — off, the doors to it stay shut and say why */
   fullscreen?: boolean;
+  overlays?: ChartOverlays;
+  onOverlays?: (next: ChartOverlays) => void;
+  coneHorizon?: 'session' | 'week' | 'next';
+  onConeHorizon?: (h: 'session' | 'week' | 'next') => void;
+  trailGreek?: 'gex' | 'dex' | 'vex';
+  onTrailGreek?: (g: 'gex' | 'dex' | 'vex') => void;
+  sessionOr?: OpeningRange;
+  onSessionOr?: (m: OpeningRange) => void;
+  barClock?: string;
 }
 
 const EDITOR_SHUT = 'Open the chart full screen first — the editor sits beside it';
 
-const ScriptLibrary = ({ open, onClose, paneId, indicators, onIndicators, fullscreen = false }: ScriptLibraryProps) => {
+const OVERLAY_ROWS: { key: keyof ChartOverlays; label: string; hint: string; pane: string }[] = [
+  { key: 'trails', label: 'Exposure trails', hint: 'Peak nodes on the tape. Size is the greek at that strike.', pane: 'on the tape' },
+  { key: 'levels', label: 'Key levels', hint: 'Call wall, put wall, flip, supreme.', pane: 'on the tape' },
+  { key: 'darkpool', label: 'Dark pool', hint: 'Off-exchange prints, when the feed has them.', pane: 'on the tape' },
+  { key: 'volume', label: 'Volume', hint: 'Share volume along the floor.', pane: 'on the tape' },
+  { key: 'flow', label: 'Flow', hint: 'Call premium up, put premium down, on this chart’s minutes.', pane: 'own pane' },
+  { key: 'netDrift', label: 'Net drift', hint: 'Running call and put premium.', pane: 'own pane' },
+  { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol of these bars against the book’s IV.', pane: 'own pane' },
+  { key: 'session', label: 'Session levels', hint: 'Previous high, low and close, the opening range, the first hour.', pane: 'on the tape' },
+  { key: 'cone', label: 'Expected move', hint: 'The wedge the options priced from here to the horizon.', pane: 'on the tape' },
+  { key: 'events', label: 'Events', hint: 'Earnings, FOMC, CPI, NFP, and the largest prints.', pane: 'on the tape' },
+  { key: 'alerts', label: 'Alert lines', hint: 'A line where a price alert is waiting.', pane: 'on the tape' },
+  { key: 'dexStrike', label: 'Exposure by strike', hint: 'The chain, docked under the tape.', pane: 'own pane' },
+];
+
+const CLOCK_HELD = new Set<keyof ChartOverlays>(['trails', 'flow', 'netDrift', 'volDrift', 'session', 'cone', 'events']);
+
+const ScriptLibrary = ({
+  open,
+  onClose,
+  paneId,
+  indicators,
+  onIndicators,
+  fullscreen = false,
+  overlays,
+  onOverlays,
+  coneHorizon = 'session',
+  onConeHorizon,
+  trailGreek = 'gex',
+  onTrailGreek,
+  sessionOr = 15,
+  onSessionOr,
+  barClock,
+}: ScriptLibraryProps) => {
   const [shelf, setShelf] = useState<Shelf>('slayer');
   const [query, setQuery] = useState('');
   const [mine, setMine] = useState<Script[]>([]);
@@ -219,7 +262,7 @@ const ScriptLibrary = ({ open, onClose, paneId, indicators, onIndicators, fullsc
     const builtins = builtinScripts();
     const slayer = builtins.filter(s => s.tags[0] === 'Slayer').map(rowFor);
     const technicals = builtins.filter(s => s.tags[0] !== 'Slayer').map(rowFor);
-    const chart: Row[] = INDICATOR_ITEMS.map(i => ({ key: `chart:${i.key}`, kind: 'chart', title: i.label, description: i.hint, pane: i.sub ? 'own' : 'overlay', group: 'Chart built-ins', chartKey: i.key, on: !!indicators?.[i.key], inputs: [] }));
+    const chart: Row[] = INDICATOR_ITEMS.map(i => ({ key: `chart:${i.key}`, kind: 'chart', title: i.label, description: i.hint, pane: i.sub ? 'own' : 'overlay', group: i.group === 'book' ? 'From the book' : 'Chart built-ins', chartKey: i.key, on: !!indicators?.[i.key], inputs: [] }));
     const myRows = mine.map(rowFor).map(r => ({ ...r, group: 'My scripts' }));
     const everything = [...slayer, ...technicals, ...chart, ...myRows];
     const favs = everything.filter(r => favourites.has(r.key)).map(r => ({ ...r, group: 'Favourites' }));
@@ -311,7 +354,8 @@ const ScriptLibrary = ({ open, onClose, paneId, indicators, onIndicators, fullsc
   }, [open, rows, highlight, toggle]);
 
   const shipped = allRows.slayer.length + allRows.technicals.length + allRows.chart.length;
-  const onThisPane = placed.filter(p => p.chart.visible).length + (indicators ? INDICATOR_ITEMS.filter(i => indicators[i.key]).length : 0);
+  const overlayOn = overlays ? OVERLAY_ROWS.filter(r => !!overlays[r.key]).length : 0;
+  const onThisPane = placed.filter(p => p.chart.visible).length + (indicators ? INDICATOR_ITEMS.filter(i => indicators[i.key]).length : 0) + overlayOn;
   const counts: Record<Shelf, number> = { recent: allRows.recent.length, favourites: allRows.favourites.length, mine: allRows.mine.length, slayer: allRows.slayer.length, technicals: allRows.technicals.length, chart: allRows.chart.length };
 
   /* the rows, grouped by their heading in order of first appearance */
@@ -416,7 +460,69 @@ const ScriptLibrary = ({ open, onClose, paneId, indicators, onIndicators, fullsc
               <span className="text-right">On</span>
             </div>
             <div key={`${q ? 'search' : shelf}|${q}`} className="flex-1 min-h-0 overflow-y-auto animate-soft-in" data-library-rows>
-            {rows.length === 0 && (
+            {overlays && onOverlays && (shelf === 'chart' || !!q) && (
+              <div>
+                <div className="px-2 pt-3 pb-1 font-mono text-[8px] uppercase tracking-widest text-textSecondary">On the chart</div>
+                {OVERLAY_ROWS.filter(r => !q || `${r.label} ${r.hint}`.toLowerCase().includes(q)).map(r => {
+                  const on = !!overlays[r.key];
+                  const held = (barClock ?? 'time') !== 'time' && CLOCK_HELD.has(r.key);
+                  return (
+                    <div key={r.key}>
+                      <div role="row" className={`grid grid-cols-[60px_minmax(0,1fr)_96px_28px_28px_40px] items-center h-[38px] px-2 rounded-md ${on ? 'shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : ''}`}>
+                        <span className="inline-flex w-fit items-center font-mono text-[8px] font-semibold uppercase tracking-widest rounded px-1.5 py-0.5 border bg-ink/[0.1] border-borderMuted text-textPrimary">chart</span>
+                        <span className="min-w-0 flex items-baseline gap-2">
+                          <span className="font-semibold text-[12px] text-textPrimary whitespace-nowrap">{r.label}</span>
+                          <span className="text-[10.5px] text-textPrimary truncate">{held ? 'Needs time bars' : r.hint}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-textPrimary whitespace-nowrap">{r.pane}</span>
+                        <span />
+                        <span />
+                        <span className="flex justify-end">
+                          <button
+                            role="checkbox"
+                            aria-checked={on}
+                            disabled={held}
+                            onClick={() => !held && onOverlays({ ...overlays, [r.key]: !on })}
+                            className={`inline-flex w-[14px] h-[14px] items-center justify-center rounded-[3px] border transition-colors ${on && !held ? 'bg-silverFill border-silverFill' : 'border-textPrimary/60 hover:border-textPrimary'} ${held ? 'opacity-40 cursor-default' : ''}`}
+                          >
+                            {on && !held && (
+                              <svg viewBox="0 0 10 10" className="w-2.5 h-2.5" aria-hidden>
+                                <path d="M2 5.2 4.2 7.4 8 3" fill="none" stroke="#0a0a0a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </button>
+                        </span>
+                      </div>
+                      {on && r.key === 'trails' && onTrailGreek && (
+                        <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
+                          <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">Greek</span>
+                          {(['gex', 'dex', 'vex'] as const).map(g => (
+                            <button key={g} type="button" onClick={() => onTrailGreek(g)} aria-pressed={trailGreek === g} className={`px-1.5 py-0.5 rounded font-mono text-[10px] uppercase ${trailGreek === g ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{g}</button>
+                          ))}
+                        </div>
+                      )}
+                      {on && r.key === 'cone' && onConeHorizon && (
+                        <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
+                          <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">Horizon</span>
+                          {(['session', 'week', 'next'] as const).map(h => (
+                            <button key={h} type="button" onClick={() => onConeHorizon(h)} aria-pressed={coneHorizon === h} className={`px-1.5 py-0.5 rounded font-mono text-[10px] ${coneHorizon === h ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{h === 'session' ? 'Session' : h === 'week' ? 'Week' : 'Next'}</button>
+                          ))}
+                        </div>
+                      )}
+                      {on && r.key === 'session' && onSessionOr && (
+                        <div className="flex items-center gap-2 pl-16 pr-2 pb-1">
+                          <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">Opening range</span>
+                          {OPENING_RANGES.map(m => (
+                            <button key={m} type="button" onClick={() => onSessionOr(m)} aria-pressed={sessionOr === m} className={`px-1.5 py-0.5 rounded font-mono text-[10px] tnum ${sessionOr === m ? 'bg-ink/[0.16] text-textPrimary' : 'text-textSecondary hover:text-textPrimary'}`}>{m}m</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {rows.length === 0 && !(overlays && onOverlays && (shelf === 'chart' || !!q)) && (
               <div className="h-[200px] flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-textMuted">
                 {q ? 'Nothing on any shelf matches' : shelf === 'mine' ? 'Nothing of your own yet — Write your own, or copy a built-in' : shelf === 'favourites' ? 'No favourites yet — the star on any row keeps it here' : shelf === 'recent' ? 'Nothing used yet — what you add to a chart or open lands here, newest first' : 'Nothing here'}
               </div>
@@ -424,6 +530,9 @@ const ScriptLibrary = ({ open, onClose, paneId, indicators, onIndicators, fullsc
             {groups.map(g => (
               <div key={g.title}>
                 <div className="px-2 pt-3 pb-1 font-mono text-[8px] uppercase tracking-widest text-textSecondary">{g.title}</div>
+                {g.title === 'Slayer' && (
+                  <p className="px-2 pb-1 font-mono text-[10px] text-textSecondary leading-snug">slayer.netGex is the minute net on the house sign. Negative is call-dominant. A bar with no snapshot is na.</p>
+                )}
                 {g.rows.map(r => {
                   const idx = rows.indexOf(r);
                   const hi = idx === highlight;

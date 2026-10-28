@@ -88,7 +88,7 @@ const SPAN_OPTIONS: TileControl['options'] = [
   { value: 'next', label: 'The next seven', hint: 'The nearest seven expiries' },
 ];
 /** How many expiries the calendar draws at most, by how many greeks stand side by side (the Map's own ceiling) */
-const CEILING: Record<number, number> = { 1: 8, 2: 8, 3: 8, 4: 8, 5: 7 };
+const CEILING: Record<number, number> = { 1: 8, 2: 8, 3: 8, 4: 8, 5: 7, 6: 6, 7: 5, 8: 4, 9: 4, 10: 3 };
 
 export const bookControls = ({ state }: { ctx: WorkspaceCtx; state: TileState }): TileControl[] => [
   { id: 'view', label: 'View', options: VIEW_OPTIONS, title: 'How the book is drawn' },
@@ -118,7 +118,7 @@ export const BookTile = ({ ctx, state, set }: TileProps) => {
     if (view === 'calendar') {
       const weekEnd = surface.expiries.reduce((last, e, i) => (e.dte <= 5 ? i : last), 0);
       const through = span === 'week' ? weekEnd : Math.min(6, all.length - 1);
-      return all.slice(0, Math.min(through + 1, CEILING[Math.min(5, Math.max(1, greeks.length))] ?? 7));
+      return all.slice(0, Math.min(through + 1, CEILING[Math.min(10, Math.max(1, greeks.length))] ?? 3));
     }
     if (expiry === 'ALL') return all;
     const want = ladderExpiryOptions().find(o => o.value === expiry)?.date?.getTime();

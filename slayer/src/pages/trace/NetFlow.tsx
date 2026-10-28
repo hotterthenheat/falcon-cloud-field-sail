@@ -93,8 +93,8 @@ const NetFlow = () => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   const top = useTopNet(40);
-  /* THE MARKET'S OWN NET (the audit, 2026-10-22): the board is the vendor's 20 most bullish and 20 most bearish names,
-     and their sum was headed "Net across the board" as if it were the market. The market's net is the vendor's market
+  /* THE MARKET'S OWN NET (the audit, 2026-10-22): the board is the feed's 20 most bullish and 20 most bearish names,
+     and their sum was headed "Net across the board" as if it were the market. The market's net is the feed's market
      tide — every name's net call premium less net put premium, running from the open. */
   const tide = useTide('market', '');
   /* the picked name's book only (the suggestions) — not the shell's ticker, which this page does not show */
@@ -160,7 +160,7 @@ const NetFlow = () => {
     const bottom = leaders.length ? leaders[leaders.length - 1] : null;
     const topIsChamp = !!top && !!bottom && Math.abs(top.net) >= Math.abs(bottom.net);
     const busiest = leaders.reduce<(typeof leaders)[number] | null>((a, l) => (a === null || l.volume > a.volume ? l : a), null);
-    /* the vendor's ranking sends a name and its net premium only — no volume, no count, no call/put split — so the
+    /* the feed's ranking sends a name and its net premium only — no volume, no count, no call/put split — so the
        board never prints "P $0 · 0 vol · 1 cons" for figures it was never given */
     const hasVol = leaders.some(l => l.volume > 0);
     return { total, volume, calls, puts, contracts, gross, bullish, bearish: leaders.length - bullish, top, bottom, topIsChamp, busiest: hasVol ? busiest : null, hasVol };
@@ -190,13 +190,13 @@ const NetFlow = () => {
     return { net: calls - puts, calls, puts, at: (post ?? pre)!.last ? nyClock((post ?? pre)!.last * 1000) : '', from: pre ? nyClock(pre.first * 1000) : post ? nyClock(post.first * 1000) : null, none: false, span, day: nyDateOf((post ?? pre)!.last * 1000) as string | null };
   }, [tide.rows, session]);
   const read = useMemo<ReactNode>(() => {
-    if (boardReading) return <RichRead text="Reading the vendor's board and the market tide…" />;
+    if (boardReading) return <RichRead text="Reading the board and the market tide…" />;
     if (!facts.top || !facts.bottom) return <RichRead text={boardFault ? 'The board did not answer — it fills when the feed does.' : 'The book is still waking up.'} />;
     const { top, bottom, topIsChamp } = facts;
     const crown = (v: number, champ: boolean) => (champ ? <span className="font-semibold tnum text-supreme">{signed(v)}</span> : <Lean v={v} />);
     return (
       <>
-        {market && market.none && <RichRead text={`The vendor's market tide holds no minutes outside the regular session${isLiveDay(tapeSessionIso()) ? '' : ` on ${shortDay(tapeSessionIso())}`} — nothing before 09:30 or after the 16:15 close to add up. `} />}
+        {market && market.none && <RichRead text={`The market tide holds no minutes outside the regular session${isLiveDay(tapeSessionIso()) ? '' : ` on ${shortDay(tapeSessionIso())}`} — nothing before 09:30 or after the 16:15 close to add up. `} />}
         {/* EVERY WINDOW DATED, EXTENDED MONEY UNREAD (audit round 7: "Outside the regular session, the whole market's money
             leans bearish — −$1.5M net over 07:30–09:24 ET" in bearish ink was Oct 22's pre-open, read at 07:25 on Oct 23 as
             today's). Regular reads its lean with its day; outside the session the figure stands in plain ink, no lean
@@ -213,7 +213,7 @@ const NetFlow = () => {
             <span className="font-semibold tnum text-textPrimary">{signed(market.net)}</span> (net calls <span className="tnum text-textPrimary">{signed(market.calls)}</span> less net puts <span className="tnum text-textPrimary">{signed(market.puts)}</span>) — extended-hours money trades against thin quotes and is shown, not read.{' '}
           </>
         )}
-        <RichRead text={`On the board — the vendor's ${facts.bullish} most bullish and ${facts.bearish} most bearish names ${dayAdv()}, vendor totals with spread legs and floor packages in them — `} />
+        <RichRead text={`On the board — the ${facts.bullish} most bullish and ${facts.bearish} most bearish names ${dayAdv()}, summed totals with spread legs and floor packages in them — `} />
         the bullish names sum to <Lean v={facts.calls} /> and the bearish to <Lean v={facts.puts} />.{' '}
         <ReadDoor onOpen={() => onQuery(top.ticker)} title={`Put ${top.ticker} on the pane`}>
           {top.ticker}
@@ -250,14 +250,14 @@ const NetFlow = () => {
   return (
     <TraceBox
       title="Which way the money leans"
-      sub={`The vendor's most bullish and most bearish names, ranked by ${dayPos()} net premium — net calls less net puts, a vendor total with spread legs and floor packages in it · click a name and its session goes on the pane`}
+      sub={`The most bullish and most bearish names, ranked by ${dayPos()} net premium — net calls less net puts, a summed total with spread legs and floor packages in it · click a name and its session goes on the pane`}
       testId="net-flow"
       className="md:flex-1 md:min-h-0"
       data={{ picked: sel, names: leaders.length }}
       guide={{ title: 'How to read the board', door: 'What the board, the lines and the floor mean', body: <NetFlowGuide />, testId: 'net-flow-guide', open: guideOpen, onOpen: setGuideOpen }}
       facts={
         <>
-          <Fact label="Market net · every name" testId="net" title={session === 'regular' ? "The vendor's market tide: every name's net call premium less its net put premium over the regular session, 09:30–16:15 ET (the tide's running figure at the close less its figure before the bell). A vendor total: it includes spread legs and floor packages" : "The vendor's market tide, outside the regular session only (Extended hours on the Session card): every name's net call premium less its net put premium over the tide's minutes before 09:30 plus its minutes from the 16:15 close — the session itself is not in it. A vendor total: it includes spread legs and floor packages"}>
+          <Fact label="Market net · every name" testId="net" title={session === 'regular' ? "The market tide: every name's net call premium less its net put premium over the regular session, 09:30–16:15 ET (the tide's running figure at the close less its figure before the bell). A summed total: it includes spread legs and floor packages" : "The market tide, outside the regular session only (Extended hours on the Session card): every name's net call premium less its net put premium over the tide's minutes before 09:30 plus its minutes from the 16:15 close — the session itself is not in it. A summed total: it includes spread legs and floor packages"}>
             {market && market.none ? (
               <span className="text-textMuted">none outside the session</span>
             ) : market ? (
@@ -268,7 +268,7 @@ const NetFlow = () => {
               <span className="text-textMuted">{tide.waiting ? '…' : '—'}</span>
             )}
           </Fact>
-          <Fact label="The board · bullish · bearish · whole day" testId="sides" title={`The board is the vendor's most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market. ${VENDOR_TOTAL_NOTE}`}>
+          <Fact label="The board · bullish · bearish · whole day" testId="sides" title={`The board is the most bullish and most bearish names by net premium (net calls less net puts). These are the two ends summed — not the whole market. ${VENDOR_TOTAL_NOTE}`}>
             {/* the bearish names' sum is a sum of names' NET premium, below zero — bearish, red (audit round 5: it wore the
                 put-premium ink and read bullish green) */}
             {leaders.length === 0 ? <span className="text-textMuted">—</span> : <><Lean v={facts.calls} className="font-normal" /> <span className="text-textSecondary">·</span> <Lean v={facts.puts} className="font-normal" /></>}
@@ -303,7 +303,7 @@ const NetFlow = () => {
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
           {/* the board is a per-minute series read every 15s; paused is held, not stale */}
-          {!hold.paused && <StaleMark at={top.at} ttlMs={45_000} fault={top.fault} />}
+          <span className={hold.paused ? 'invisible' : undefined} aria-hidden={hold.paused || undefined}><StaleMark at={top.at} ttlMs={45_000} fault={top.fault} /></span>
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={book} countNoun="contracts" tickersOnly />
             {(unknown || (want && wantKnown === false)) && (
@@ -333,7 +333,7 @@ const NetFlow = () => {
             <div className="sticky top-0 z-10 bg-panel flex items-center gap-2 px-3 py-1.5 border-b border-borderSubtle font-mono text-[10px] uppercase tracking-wider text-textMuted" data-net-board-head>
               <span className="w-5">#</span>
               <span className="flex-1">Name · share of the board's lean</span>
-              <span title={`The vendor's own ranking (top net impact) — each name's whole day, pre-market included; the pane beside it, Compare's net and Intervals read the regular session only (09:30 on), so a name's figure there can differ. ${VENDOR_TOTAL_NOTE}`}>Day net · pre-mkt in</span>
+              <span title={`The day's own ranking — each name's whole day, pre-market included; the pane beside it, Compare's net and Intervals read the regular session only (09:30 on), so a name's figure there can differ. ${VENDOR_TOTAL_NOTE}`}>Day net · pre-mkt in</span>
             </div>
           )}
           {leaders.length === 0 && (

@@ -14,6 +14,14 @@ const whalesProxy = (): Plugin => ({
     server.middlewares.use('/api/theta', (req, res) => {
       void proxyTheta(req, res);
     });
+    server.middlewares.use('/api/log', (_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    server.middlewares.use('/api/stall', (_req, res) => {
+      res.statusCode = process.env.STALL_KEY ? 501 : 404;
+      res.end();
+    });
   },
   /* the built site, served by `vite preview`, reads the same proxy — so the production bundle can be checked live */
   configurePreviewServer(server) {
@@ -68,6 +76,8 @@ export default defineConfig(({ mode }) => {
   define: {
     // react-draggable 4.7 (via react-grid-layout) reads process.env in the
     // browser and throws ReferenceError on every drag without this shim.
+    // Empty on purpose. Do not replace this with the process env. A library
+    // reads process.env; shipping the real env would put the whale key in the bundle.
     'process.env': {},
   },
   };

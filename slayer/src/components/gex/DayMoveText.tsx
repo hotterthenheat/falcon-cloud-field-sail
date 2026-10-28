@@ -3,7 +3,7 @@
   SLAYER TERMINAL - THE DAY'S CHANGE, ONE WAY
   (components/gex/DayMoveText.tsx)
 
-  The second re-audit (2026-10-22): after the close the vendor's stock-state is the post-market bar and its prev_close
+  The second re-audit (2026-10-22): after the close the feed's stock-state is the post-market bar and its prev_close
   is today's regular close, so the Map head, the sidebar chip, the Board and Compare printed the after-hours move as
   the day's (SPY −0.00% on a −1.18% day, AAPL −0.06% on +1.23%). This prints the regular session's change, the move
   outside the session beside it in its own words ("after hours +0.05%", "pre-market −0.4%"), and a zero change in the

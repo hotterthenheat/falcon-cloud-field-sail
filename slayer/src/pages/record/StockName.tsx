@@ -58,7 +58,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { ensureBook, peekEntry, useBookRev } from '../../data/uwBook';
+import { ensureBook, bookStatus, peekEntry, useBookRev } from '../../data/uwBook';
 import GradeMeter, { GRADE_FILL, GRADE_INK } from '../../components/ui/GradeMeter';
 import { gradeOfConviction, postureRead } from '../../data/darkpool';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -68,7 +68,7 @@ import Fold from '../../components/ui/Fold';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import SessionsChart, { type ChartMark, type ChartPoint } from '../../components/record/SessionsChart';
 import type { UTCTimestamp } from 'lightweight-charts';
-import { fmtClockLocal, fmtDayLocal } from '../../components/gex/chartTime';
+import { fmtDayLocal } from '../../components/gex/chartTime';
 import { shownGamma } from '../../components/gex/retailSign';
 import { When } from '../../components/record/when';
 import { lastSessionIso, shortDay } from '../../data/nyDate';
@@ -77,7 +77,7 @@ import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordina
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress, useTickerNews } from '../../data/liveRecord';
-import { useStockFile } from '../../data/stockFile';
+import { useStockFile, quarterFacts, type StockFile } from '../../data/stockFile';
 import type { BookContract, FlowPrint } from '../../types/trace';
 import { StockNameSkeleton } from './recordSkeletons';
 import CompanyFile from '../../components/record/CompanyFile';
@@ -86,12 +86,13 @@ import { untilWords } from '../../data/earningsFeed';
 import NameBooks from '../../components/record/NameBooks';
 import { StockFacts } from '../../components/vendor/LiveDesk';
 import { stockBookKey, useVendorRow } from '../../data/vendorFeed';
+import { useCompanyName } from '../../data/liveFiles';
+import { useLiveQuote, type LiveQuote } from '../../data/liveQuote';
 import { nyClock, nyIsoDate, nySessionPhase, nyWallTime } from '../../core/nyTime';
 import { isTradingDay, today as nyTodayDate } from '../../core/calendar';
 import { LEVEL_ORDER, type LevelRole } from '../../core/walls';
 import type { TickerLevels } from '../../data/levelsFor';
 import { statHelp } from '../../components/record/statHelp';
-import { useLiveQuote } from '../../data/liveQuote';
 
 const SILVER = 'rgb(var(--silver))';
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
@@ -187,9 +188,8 @@ const JUMPS: [string, string][] = [
 const pct = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 /** A chart point's seconds, said as the reader's day or minute */
 const dayOf = (t: number) => fmtDayLocal(t as UTCTimestamp);
-/* THE PRINTS SPEAK NEW YORK'S CLOCK (audit round 7: "19:20 122K" under a heading of "09:30–15:59 ET" was the reader's
-   own zone — the print crossed at 15:20 ET). The session's tape and its prints are the market's day. */
-const clockOf = (t: number) => `${fmtClockLocal(t as UTCTimestamp, 'ny')} ET`;
+/* THE PRINTS SPEAK CENTRAL TIME (the desk's clock — 7:55 AM CT). The session they belong to is still New York's day. */
+const clockOf = (t: number) => nyClock(t * 1000, { zone: true });
 const ago = (m: number) => (m < 1 ? 'just now' : m < 60 ? `${Math.round(m)}m ago` : `${Math.floor(m / 60)}h ${Math.round(m % 60)}m ago`);
 const count = (v: number) => (v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${Math.round(v)}`);
 /** "09/18/2026" → "2026-09-18", the Weigher's date key */
@@ -597,7 +597,6 @@ const StockName = () => {
   const congress = useMemo(() => congressAll.slice(0, 5), [congressAll]);
   const [guideOpen, setGuideOpen] = useState(false);
   const [methodOpen, setMethodOpen] = useState(false);
-  /* THE KEPT PRINT on today's tape — a click on a bar keeps it; another name lets it go */
   const [printFocus, setPrintFocus] = useState<number | null>(null);
   useEffect(() => setPrintFocus(null), [T]);
 
@@ -620,10 +619,18 @@ const StockName = () => {
     </div>
   );
   if (!view) {
+    if (file.status === 'loading' && bookStatus(T) !== 'error') {
+      return (
+        <>
+          {back}
+          <StockNameSkeleton />
+        </>
+      );
+    }
     return (
       <>
         {back}
-        <StockNameSkeleton />
+        <NameWithoutBook ticker={T} file={file} quote={quote} />
       </>
     );
   }
@@ -636,6 +643,7 @@ const StockName = () => {
   const warm = () => {};
   const byKey = Object.fromEntries(view.pillars.map(p => [p.key, p])) as Record<Pillar['key'], Pillar>;
   const { money, trend, news, numbers, agreement } = view;
+  const filed = quarterFacts(file.quarters);
   const storyDayWord = (() => {
     const times = news.stories.map(st => st.item.atMs).filter(Number.isFinite);
     const day = times.length ? nyIsoDate(Math.min(...times)) : lastSessionIso();
@@ -1007,14 +1015,14 @@ const StockName = () => {
         </Box>
         <Box title="The money" sub="The live book · all expiries (every listed date) unless marked Today · DEX, vanna and charm summed over every strike, dealer side" aside={<PillarBarSmall p={byKey.money} held={held} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
-            <Fact label="Net DEX · VEX" testId="dex" tip="Dealers' side, every strike of the live book. DEX in dollars of stock: the vendor's delta × open interest × 100 (share units, as /greek-exposure prints them) × the price. VEX is not on the vendor's greek rows — it reads — rather than a figure made of rounding">
+            <Fact label="Net DEX · VEX" testId="dex" tip="Dealers' side, every strike of the live book. DEX in dollars of stock: delta × open interest × 100 (share units) × the price. VEX is not on the greek rows — it reads — rather than a figure made of rounding">
               <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
               {/* one plain line (round 9: "Net DEX −$30.8B" with no word on what it is) */}
               <span className="block text-[9px] font-sans text-textMuted leading-snug" data-stock-fact="dex-says">
                 {money.netDex < 0 ? "dealers' options leave them short this much stock, before their hedge" : "dealers' options leave them long this much stock, before their hedge"}
               </span>
             </Fact>
-            <Fact label="Vanna · charm" testId="vanna" tip="Dealers' side, every strike of the live book, in dollars: vanna per volatility point (the vendor's vanna × open interest × 100 × 1% of the price), charm per session (× the price ÷ 252). The vendor's /greek-exposure totals are the same sums in share units, from its daily snapshot">
+            <Fact label="Vanna · charm" testId="vanna" tip="Dealers' side, every strike of the live book, in dollars: vanna per volatility point (vanna × open interest × 100 × 1% of the price), charm per session (× the price ÷ 252). The greek totals are the same sums in share units, from the daily snapshot">
               <Money v={money.netVanna} /> <span className="text-textMuted">·</span> <Money v={money.netCharm} />
             </Fact>
             <Fact label="Open interest" testId="oi">
@@ -1322,7 +1330,7 @@ const StockName = () => {
                 <div key={r.label} className="px-5 h-[26px] grid items-center gap-x-3 border-t border-borderSubtle/40" style={{ gridTemplateColumns: '78px 52px minmax(0, 1fr) 96px' }} data-stock-report={r.label}>
                   <span className="font-mono text-[10px] tnum text-textSecondary whitespace-nowrap">{r.label}</span>
                   <span className={`font-mono text-[11px] tnum ${r.epsActual == null ? 'text-textMuted' : 'text-textPrimary'}`}>{r.epsActual == null ? '—' : r.epsActual.toFixed(2)}</span>
-                  <span className={`min-w-0 truncate font-mono text-[10px] tnum ${r.result === 'beat' ? 'text-bull' : r.result === 'miss' ? 'text-bear' : 'text-textSecondary'}`} title={r.estOff && r.epsEst != null ? `The vendor's estimate, ${r.epsEst.toFixed(2)}, is far off this name's other estimates — likely a vendor error, so no beat or miss size is read from it` : r.result == null ? 'The vendor has no street estimate for this report, so it is not called a beat or a miss' : undefined}>
+                  <span className={`min-w-0 truncate font-mono text-[10px] tnum ${r.result === 'beat' ? 'text-bull' : r.result === 'miss' ? 'text-bear' : 'text-textSecondary'}`} title={r.estOff && r.epsEst != null ? `The street estimate, ${r.epsEst.toFixed(2)}, is far off this name's other estimates — likely a bad figure, so no beat or miss size is read from it` : r.result == null ? 'No street estimate for this report, so it is not called a beat or a miss' : undefined}>
                     {r.result == null || r.epsActual == null || r.epsEst == null ? (
                       <span className="text-textMuted">{r.epsActual == null ? 'no EPS on file' : 'no estimate on file'}</span>
                     ) : r.estOff ? (
@@ -1373,7 +1381,7 @@ const StockName = () => {
         </Box>
         <Box
           title="The numbers"
-          sub={numbers.sample ? (file.status === 'loading' ? 'Reading the last print' : 'No print on this feed yet') : 'The last print, earnings growth, the dividend and the market cap'}
+          sub={numbers.revenueActualB != null ? 'Revenue, margins, the last print and the dividend' : numbers.sample ? (file.status === 'loading' ? 'Reading the last print' : 'No print on this feed yet') : 'The last print, earnings growth, the dividend and the market cap'}
           aside={
             <div className="flex items-center gap-3">
               {numbers.sample ? null : <PillarBarSmall p={byKey.numbers} held={held} />}
@@ -1407,6 +1415,38 @@ const StockName = () => {
             {numbers.dividendYieldPct != null && (
             <Fact label="Dividend yield" testId="div">
               {numbers.dividendYieldPct.toFixed(2)}%
+            </Fact>
+            )}
+            {numbers.revenueActualB != null && (
+            <Fact label="Revenue · last quarter" testId="revenue" tip="Total revenue on the latest quarterly income statement">
+              {fmtMoney(numbers.revenueActualB * 1e9)}
+              {numbers.revenueGrowthPct != null && <span className={numbers.revenueGrowthPct >= 0 ? 'text-bull' : 'text-bear'}> {numbers.revenueGrowthPct >= 0 ? '+' : '−'}{Math.abs(numbers.revenueGrowthPct).toFixed(1)}% y/y</span>}
+            </Fact>
+            )}
+            {numbers.operatingMarginPct != null && (
+            <Fact label="Operating margin" testId="op-margin" tip="Operating income divided by revenue, latest quarter">
+              {numbers.operatingMarginPct.toFixed(1)}%
+            </Fact>
+            )}
+            {filed.grossMarginPct != null && (
+            <Fact label="Gross margin" testId="gross-margin" tip="Gross profit divided by revenue, latest quarter">
+              {filed.grossMarginPct.toFixed(1)}%
+            </Fact>
+            )}
+            {numbers.freeCashFlowMarginPct != null && (
+            <Fact label="Free cash flow margin" testId="fcf-margin" tip="Operating cash flow minus capital expenditure, divided by revenue, latest quarter">
+              {numbers.freeCashFlowMarginPct.toFixed(1)}%
+            </Fact>
+            )}
+            {file.street && (
+            <Fact label="Analyst target" testId="target" tip={`Median of the latest target from each firm in the last 180 days. ${file.street.firms} ${file.street.firms === 1 ? 'firm' : 'firms'}, as of ${shortDay(file.street.asOf)}. Low ${fmtMoney(file.street.low)} · high ${fmtMoney(file.street.high)}.`}>
+              {fmtMoney(file.street.median)} <span className="text-textMuted">{file.street.firms} {file.street.firms === 1 ? 'firm' : 'firms'} · {fmtMoney(file.street.low)}–{fmtMoney(file.street.high)}</span>
+            </Fact>
+            )}
+            {numbers.fairValue != null && (
+            <Fact label="Fair value" testId="fair" tip="The street's fair value is that same median target. The gap is the last price against it. This feed has no separate model.">
+              {fmtMoney(numbers.fairValue)}
+              {numbers.vsFairValuePct != null && <span className={numbers.vsFairValuePct <= 0 ? 'text-bull' : 'text-bear'}> {numbers.vsFairValuePct <= 0 ? '' : '+'}{numbers.vsFairValuePct.toFixed(1)}% vs last</span>}
             </Fact>
             )}
             {/* no market cap here: "The company" carries it from the name's own card, and the screener's figure beside it
@@ -1785,7 +1825,7 @@ const PillarBarSmall = ({ p, held = false }: { p: Pillar; held?: boolean }) => (
   </div>
 );
 
-/* THE NAME'S WHOLE OPEN INTEREST, from the vendor's per-expiry rows (the ship pass, 2026-10-22): the snapshot's chain
+/* THE NAME'S WHOLE OPEN INTEREST, from the feed's per-expiry rows (the ship pass, 2026-10-22): the snapshot's chain
    carries only the front expiry, so AAPL read "120K" — one expired date — against 4.7M across the 23 still listed.
    Expired dates are dropped; with no rows yet the chain's own figure stands; with nothing at all, a dash — never
    "0 · 50% calls". */
@@ -1815,14 +1855,59 @@ function OpenInterest({ ticker, fallbackCall, fallbackPut }: { ticker: string; f
   );
 }
 
-/* THE COMPANY'S NAME, never the ticker twice (the ship pass: SOUN read "SOUN SOUN") — names outside the built-in lists
-   come from the vendor's info row, set in title case with the short acronyms kept ("SOUNDHOUND AI" → "Soundhound AI") */
-const titleCase = (raw: string) => displayName(raw);
+/* THE COMPANY'S NAME, never the ticker twice — the vendor's stock info, then the name the page already has */
 function CompanyTitle({ ticker, name }: { ticker: string; name: string }) {
-  const info = useVendorRow(stockBookKey(ticker), 'info');
+  const n = useCompanyName(ticker, true, true);
+  if (n === '') return <span className="opacity-60">…</span>;
+  if (n.toUpperCase() !== ticker.toUpperCase()) return <>{displayName(n)}</>;
   if (name && name.toUpperCase() !== ticker.toUpperCase()) return <>{displayName(name)}</>;
-  const full = info?.state === 'live' ? String((info.data as { full_name?: string } | null)?.full_name ?? '') : '';
-  return <>{full ? titleCase(full) : name}</>;
+  return <>{ticker}</>;
+}
+
+/** A name whose options book has not landed. The file still shows the print, the next report and the statements. */
+function NameWithoutBook({ ticker, file, quote }: { ticker: string; file: StockFile; quote: LiveQuote | null }) {
+  const dates = file.earnings
+    .map(e => String(e.report_date ?? '').slice(0, 10))
+    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  const today = nyIsoDate();
+  const next = dates.find(d => d >= today) ?? null;
+  const px = quote && quote.regularPrice > 0 ? quote.regularPrice : null;
+  const pct = quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
+  const filed = quarterFacts(file.quarters);
+  const book = bookStatus(ticker);
+  return (
+    <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4" data-stock-empty={ticker}>
+      <div className="flex items-center gap-3 min-w-0">
+        <CompanyLogo ticker={ticker} size={28} />
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-semibold leading-tight text-textPrimary truncate"><CompanyTitle ticker={ticker} name="" /></h3>
+          <p className="font-mono text-[11px] text-textMuted">{ticker}</p>
+        </div>
+        <div className="ml-auto text-right font-mono tnum">
+          {px != null ? (
+            <>
+              <div className="text-[15px] font-semibold text-textPrimary">{px.toFixed(2)}</div>
+              {pct != null && <div className={`text-[11px] ${pct >= 0 ? 'text-bull' : 'text-bear'}`}>{pct >= 0 ? '+' : '−'}{Math.abs(pct).toFixed(2)}%</div>}
+            </>
+          ) : (
+            <div className="text-[11px] text-textMuted">No print yet</div>
+          )}
+        </div>
+      </div>
+      <p className="mt-3 text-[12px] text-textSecondary">
+        {book === 'error' ? 'No options book came back for this name. The map, the walls and the greeks stay empty.' : file.status === 'loading' ? 'The stock file is still being read.' : 'The options book is still being read. The map fills in when it lands.'}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-textSecondary">
+        <span>{next ? `Next report · ${shortDay(next)}` : file.status === 'error' ? 'The stock file did not load.' : 'No earnings date on this file.'}</span>
+        {filed.revenue != null && <span>Revenue · {fmtMoney(filed.revenue)}{filed.revenueGrowthPct != null ? ` · ${filed.revenueGrowthPct >= 0 ? '+' : '−'}${Math.abs(filed.revenueGrowthPct).toFixed(1)}% y/y` : ''}</span>}
+        {filed.grossMarginPct != null && <span>Gross margin · {filed.grossMarginPct.toFixed(1)}%</span>}
+        {filed.operatingMarginPct != null && <span>Operating margin · {filed.operatingMarginPct.toFixed(1)}%</span>}
+        {file.street && <span>Analyst target · {fmtMoney(file.street.median)} · {file.street.firms} {file.street.firms === 1 ? 'firm' : 'firms'}</span>}
+        {file.street && <span>Fair value · {fmtMoney(file.street.median)}</span>}
+      </div>
+    </div>
+  );
 }
 
 export default StockName;

@@ -36,9 +36,11 @@ const LedgerFact = ({ label, value, sub, ink = 'text-textPrimary' }: { label: st
   <div className="flex items-start justify-between gap-4 py-2 first:pt-0 last:pb-0">
     <span className="flex flex-col gap-0.5 min-w-0">
       <span className="font-mono text-[9px] uppercase tracking-wider text-silver">{label}</span>
-      <span className="font-mono text-[10px] text-textSecondary leading-snug">
-        <RichRead text={sub} />
-      </span>
+      {sub ? (
+        <span className="font-mono text-[10px] text-textSecondary leading-snug">
+          <RichRead text={sub} />
+        </span>
+      ) : null}
     </span>
     <span className={`font-mono text-[13px] font-bold tnum text-right shrink-0 ${ink}`}>{value}</span>
   </div>
@@ -50,12 +52,14 @@ interface ContractFactsProps {
   spot: number;
   /** Grid shape — the campaign rail stacks 2-up, the monitor ran 6-up. */
   className?: string;
-  /** Render as a hairline ledger (label+sentence left, value right) instead
-      of stacked cells — the campaign card's contract tab uses this. */
+  /** Hairline ledger. `brief` drops the sentence under each label. */
   ledger?: boolean;
+  brief?: boolean;
+  /** The contract as three sentences — cost, time, what a dollar of stock does. */
+  story?: boolean;
 }
 
-const ContractFacts = ({ setup, spot, className = 'grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-4', ledger = false }: ContractFactsProps) => {
+const ContractFacts = ({ setup, spot, className = 'grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-4', ledger = false, brief = false, story = false }: ContractFactsProps) => {
   /* Decay comes from THE pricer (one session less, same spot), not the
      ad-hoc theta field — one model mints every number on this surface. */
   const iv = setup.greeks.iv / 100;
@@ -65,13 +69,36 @@ const ContractFacts = ({ setup, spot, className = 'grid grid-cols-2 sm:grid-cols
   const cost = setup.mid * 100;
   const breakeven = setup.right === 'C' ? setup.strike + setup.mid : setup.strike - setup.mid;
   const travelPct = spot > 0 ? ((breakeven - spot) / spot) * 100 : 0;
-  const decayPerSession = Math.max(0, priceAt(spot, sessions) - priceAt(spot, sessions - 1)) * 100;
+  const decayPerSession = Math.abs(setup.greeks.theta) > 0
+    ? Math.abs(setup.greeks.theta) * 100
+    : Math.max(0, priceAt(spot, sessions) - priceAt(spot, sessions - 1)) * 100;
   const deltaUsd = Math.abs(setup.greeks.delta) * 100;
   const spreadUsd = (setup.ask - setup.bid) * 100;
   const spreadPct = setup.mid > 0 ? ((setup.ask - setup.bid) / setup.mid) * 100 : 0;
   const intrinsic =
     setup.right === 'C' ? Math.max(spot - setup.strike, 0) : Math.max(setup.strike - spot, 0);
   const timeValuePct = setup.mid > 0 ? Math.max(0, 1 - intrinsic / setup.mid) * 100 : 100;
+
+  if (story) {
+    const side = setup.right === 'C' ? 'rise' : 'fall';
+    return (
+      <div className="flex flex-col gap-2.5 text-[13px] leading-snug text-textSecondary" data-contract-read>
+        <p>
+          <RichRead
+            text={`One contract costs $${cost.toFixed(0)}. Breakeven is $${breakeven.toFixed(2)} — ${setup.ticker} has to move ${Math.abs(travelPct).toFixed(2)}% to get there.`}
+          />
+        </p>
+        <p>
+          <RichRead text={`${Math.round(timeValuePct)}% of the premium is time value. A session at this spot costs about $${decayPerSession.toFixed(0)}.`} />
+        </p>
+        <p>
+          <RichRead
+            text={`A $1 ${side} in ${setup.ticker} is about $${deltaUsd.toFixed(0)} on the contract. The spread is $${spreadUsd.toFixed(0)}, ${spreadPct.toFixed(1)}% of the premium.`}
+          />
+        </p>
+      </div>
+    );
+  }
 
   const facts = [
     { label: 'Cost', value: `$${cost.toFixed(0)}`, sub: `$${setup.mid.toFixed(2)} mid × 100 · the whole of it is at risk` },
@@ -95,7 +122,7 @@ const ContractFacts = ({ setup, spot, className = 'grid grid-cols-2 sm:grid-cols
     {
       label: 'Delta',
       value: `$${deltaUsd.toFixed(0)}`,
-      sub: `per $1 ${setup.right === 'C' ? 'rise' : 'fall'} in ${setup.ticker} · ≈ the market's ITM odds`,
+      sub: `what one contract gains on a $1 ${setup.right === 'C' ? 'rise' : 'fall'} in ${setup.ticker}`,
       ink: setup.right === 'C' ? 'text-bull' : 'text-bear',
     },
     {
@@ -109,7 +136,7 @@ const ContractFacts = ({ setup, spot, className = 'grid grid-cols-2 sm:grid-cols
     return (
       <div className="divide-y divide-borderSubtle">
         {facts.map(f => (
-          <LedgerFact key={f.label} {...f} />
+          <LedgerFact key={f.label} {...f} sub={brief ? '' : f.sub} />
         ))}
       </div>
     );

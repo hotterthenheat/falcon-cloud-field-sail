@@ -30,7 +30,7 @@ import { todayColumn, buildExposureSurface, CALENDAR_DTES, type ExposureSurface 
 import { buildFlipGauge, sessionFlipCrossings } from './flipGauge';
 import { getBoardNames } from './boardNames';
 import { peekDayMove, type DayMove, bookCandles, bookHistory, peekIv, snapshotOf, ensureOiChange, peekOiChange, peekBellShare, peekEntry, peekPriceAt, ensureScopeDates, scopeDatesPending, peekRecordAsked } from './uwBook';
-import { readLevelsScope } from './levelsScope';
+import { levelsForName, type LevelsScope } from './levelsScope';
 import { levelsBook, recordDay } from './bookWindow';
 import { LEVELS_WINDOW } from './roomLevels';
 import { levelsFor } from './levelsFor';
@@ -51,6 +51,8 @@ export interface BoardRow {
   day: DayMove | null;
   /** Why "flip crossed today" has no count (today's book is no longer available), else null */
   crossWhy: string | null;
+  /** This name's own levels. Not the desk's. */
+  scope: LevelsScope;
   /** The book "flip crossed today" was counted against ("Today · Oct 22 · this morning's book") */
   crossLabel: string;
   /** The flip today's session ran against (may differ from `flip` after the close, which is the next session's) */
@@ -206,7 +208,8 @@ export function buildBoardRow(ticker: string): BoardRow | null {
   const snapshot = snapshotOf(ticker, 'board');
   if (!snapshot || !snapshot.chain.length) return null;
   const t = ticker.toUpperCase();
-  const key = `${readLevelsScope()}|${Math.floor(Date.now() / 10_000)}|${getPositions(t).length}|${scopeDatesPending(t)}|${JSON.stringify(peekBellShare(t))}`;
+  const scope = levelsForName(t);
+  const key = `${scope}|${Math.floor(Date.now() / 10_000)}|${getPositions(t).length}|${scopeDatesPending(t)}|${JSON.stringify(peekBellShare(t))}`;
   const oi = peekOiChange(t);
   const hit = rowMemo.get(t);
   if (hit && hit.snap === snapshot && hit.key === key && hit.oi === oi) return hit.row;
@@ -215,9 +218,10 @@ export function buildBoardRow(ticker: string): BoardRow | null {
   return row;
 }
 function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | null {
+  const scope = levelsForName(ticker);
   let today;
   try {
-    today = buildExposureProfile(snapshot, readLevelsScope(), LEVELS_WINDOW);
+    today = buildExposureProfile(snapshot, scope, LEVELS_WINDOW);
   } catch {
     return null;
   }
@@ -225,7 +229,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
   const spot = snapshot.spot;
   /* THE ONE SOURCE (data/levelsFor.ts — the Dossier's too, the fourth audit's m10): the supreme, the walls, the flip and
      net GEX the Board prints are levelsFor's, and the row waits ("…") until it says they are final */
-  const lv = levelsFor(ticker, readLevelsScope());
+  const lv = levelsFor(ticker, scope);
   const callWall = lv?.callWall ?? today.levels.callWall;
   const putWall = lv?.putWall ?? today.levels.putWall;
   const supreme = lv?.supreme ?? today.levels.supreme;
@@ -250,15 +254,14 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
 
   /* WHAT TO WATCH FIRST — the agenda's #1 for this name, so the board is the
      morning list across every name (2026-09-08). ~2ms a name. */
-  const watch = watchOf(snapshot, readLevelsScope(), aheadClock(readSessionClock()));
-  const cross = sessionFlipCrossings(snapshot, readLevelsScope());
+  const watch = watchOf(snapshot, scope, aheadClock(readSessionClock()));
+  const cross = sessionFlipCrossings(snapshot, scope);
   /* "not available" only once the session's own book has been asked for and is not there; until then, and while the
      count's flip is still provisional, the cell waits */
   const crossPending = (!!cross.why && !peekRecordAsked(ticker, recordDay().date)) || (!cross.why && !cross.complete);
 
   /* PENDING UNTIL THE SCOPE'S CONTRACTS ARE IN: "Today" needs the front date's strikes and its contract rows (the flip
      re-prices each with its own vol); "All expiries" needs every live date's strikes */
-  const scope = readLevelsScope();
   if (scope === 'ALL') ensureScopeDates(ticker);
   /* ONE READINESS SIGNAL (the tenth audit's B3: SPY's row sat on "…" for 38 minutes while levelsFor said complete — the
      active name is read in full, so it never carried the Board's `frontFacts` flag): a row is final exactly when
@@ -269,6 +272,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
 
   return {
     pending,
+    scope,
     watch,
     levelsDate: lv?.date ?? null,
     yours: { positions: mine.length, contracts: mine.reduce((s, p) => s + p.contracts, 0) },
@@ -291,7 +295,7 @@ function buildBoardRowNow(ticker: string, snapshot: MarketSnapshot): BoardRow | 
     nearest,
     nearestNet: lv ? lv.netAt(nearest.strike) : null,
     supreme,
-    netGex: lv ? lv.netGex : snapshot.liveBook ? netGexOf(levelsBook(snapshot, readLevelsScope()).chain) : retailNet(today.netGex),
+    netGex: lv ? lv.netGex : snapshot.liveBook ? netGexOf(levelsBook(snapshot, scope).chain) : retailNet(today.netGex),
     bellShare: bell.share,
     bellWhy: bell.share == null ? bell.why : null,
     spark: thin(bars.map(b => b.close), SPARK_POINTS),

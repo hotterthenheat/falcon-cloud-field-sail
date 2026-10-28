@@ -3,3 +3,7 @@ node_modules/
 .github_repo
 .env
 .env.*
+
+slayer/theta/creds.txt
+slayer/theta/terminal.log
+slayer/.env

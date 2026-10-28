@@ -53,6 +53,8 @@ export interface StockPick {
   /** Each scored sleeve's measures in words, with their figures ("RSI, 14 sessions 39 · ADX … 18 · down on the week") —
       the bar's hover, so a bar is never a shape alone */
   sleeveNotes?: Partial<Record<keyof StockSleeves, string>>;
+  /** Listed, and not on the screener. No sleeve is invented. */
+  listedOnly?: boolean;
 }
 
 export interface SectorRow {

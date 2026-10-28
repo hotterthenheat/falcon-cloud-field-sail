@@ -248,13 +248,19 @@ interface ControlsProps {
   /** Across every pane: how many strikes moved, of how many */
   moved: number | null;
   total: number;
+  /** False when each pane carries its own Show, Order and Strikes */
+  lenses?: boolean;
 }
 
-export const BuildingControls = ({ clock, order, onOrder, window, onWindow, show, onShow, names, updatedAt, moved, total }: ControlsProps) => (
+export const BuildingControls = ({ clock, order, onOrder, window, onWindow, show, onShow, names, updatedAt, moved, total, lenses = true }: ControlsProps) => (
   <div className="px-5 pb-2 flex items-center gap-2 flex-wrap" data-build-controls>
-    <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={onShow} title="The movers alone, or every strike" testId="build-show" />
-    <DropdownSelect label="Order" value={order} options={ORDER_OPTIONS} onChange={onOrder} title="How the strikes are listed" testId="build-order" />
-    <DropdownSelect label="Strikes" value={window} options={WINDOW_OPTIONS} onChange={onWindow} title="How many strikes each side of spot" testId="build-window" />
+    {lenses && (
+      <>
+        <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={onShow} title="The movers alone, or every strike" testId="build-show" />
+        <DropdownSelect label="Order" value={order} options={ORDER_OPTIONS} onChange={onOrder} title="How the strikes are listed" testId="build-order" />
+        <DropdownSelect label="Strikes" value={window} options={WINDOW_OPTIONS} onChange={onWindow} title="How many strikes each side of spot" testId="build-window" />
+      </>
+    )}
     {names}
     {/* THE KEY — three capsules saying what the bars' colours mean (Noah, 2026-09-13: "the three different
         colored capsules up top") — on this line, where a 1440 screen still has room for it */}

@@ -11,6 +11,7 @@ import { TX_CODES } from './insiders';
 import { UNIVERSE } from './universe';
 import { companiesInHeadline, displayName, tickerName } from './tickers';
 import { daysBetween, nyDayOf, nyDaysAgo } from './nyDate';
+import { nyClock } from '../core/nyTime';
 import { econImpact } from './econImpact';
 
 /* a bare vendor date is a New York calendar day; the distance is counted in calendar days (data/nyDate.ts) */
@@ -344,7 +345,7 @@ export function newsFromWhales(rows: UwNews[], priorClose: PriorClose = noPrior)
     const stamp = Number.isFinite(at) ? at : 0;
     return {
       id: `uw-${stamp}-${ticker ?? 'macro'}-${headline.slice(0, 48)}`,
-      time: Number.isFinite(at) ? new Date(at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' }) : '',
+      time: Number.isFinite(at) ? nyClock(at, { zone: true }) : '',
       minutesAgo: Number.isFinite(at) ? Math.max(0, Math.round((Date.now() - at) / 60_000)) : 0,
       atMs: Number.isFinite(at) ? at : Date.now(),
       source: r.source || 'Wire',
@@ -413,7 +414,7 @@ export function econFromWhales(rows: UwEcon[]): EconEvent[] {
       region,
       impact: impactOf(r.event),
       dayLabel: dt.toLocaleDateString('en-US', { weekday: 'short', month: '2-digit', day: '2-digit', timeZone: 'America/New_York' }).replace(',', ''),
-      timeLabel: dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' }),
+      timeLabel: nyClock(dt, { zone: true }),
       inMinutes,
       forecast: r.forecast ?? undefined,
       previous: r.prev ?? undefined,

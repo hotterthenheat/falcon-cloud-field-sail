@@ -65,7 +65,7 @@
 ==================================================
 */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useMarketData } from '../../context/MarketDataContext';
 import type { ChartOverlays } from '../../components/gex/StrikeChart';
@@ -92,6 +92,8 @@ import PositionBar from '../../components/paper/PositionBar';
 import type { TradeMark } from '../../components/gex/StrikeChart';
 import { chartMenu, planOfMark, positionLines, type Hands } from './deskHands';
 import { buildLevelsFor, spotChangePct } from '../../data/gex';
+import { isOptionRoot } from '../../data/listedNames';
+import { wantSpotGex } from '../../data/spotGexBook';
 import { nameGoesUp } from '../../data/review/engine';
 import { contractKey, contractWords, type ContractId, type Right } from '../../data/review/quotes';
 import { REVIEW_NAMES } from '../../data/review/tape';
@@ -214,6 +216,9 @@ const PaperDesk = () => {
   });
   const active = Math.min(desk.active, panes.length - 1);
   const name = panes[active].name;
+  useEffect(() => {
+    if (!isPaperFuture(name) && isOptionRoot(name)) wantSpotGex(name);
+  }, [name]);
   const fut = isPaperFuture(name);
   const setName = (n: string, contract: ContractId | null = null) => {
     if (n !== name) {

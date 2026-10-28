@@ -29,13 +29,15 @@
 ==================================================
 */
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Search } from 'lucide-react';
 import CompanyLogo from '../ui/CompanyLogo';
 import { CARD } from '../ui/DropdownSelect';
 import { PAPER_FUTURES, frontOn, type PaperIndex } from '../../data/paper/products';
 import { REVIEW_NAMES } from '../../data/review/tape';
+import { ensureListed, isOptionRoot, optionSymbols, useListedRev } from '../../data/listedNames';
+import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 
 const SILVER = 'rgb(var(--silver))';
 /** The exchange's own names — what a futures trader reads on every platform (ours stay searchable) */
@@ -78,12 +80,54 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
+  const [stockWindow, setStockWindow] = useState(80);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const listedRev = useListedRev();
+  const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  useEffect(() => { ensureListed(); }, []);
 
   const futures: Row[] = PAPER_FUTURES.map(p => ({ value: p.symbol, code: frontOn(p.symbol, day), name: CME_NAMES[p.symbol] ?? p.name, keywords: `${p.symbol} ${p.name} ${p.fund} futures`, price: open ? futPrice(p.symbol) : null, decimals: p.decimals }));
   const indexRows: Row[] = indexes.map(x => ({ value: x.symbol, code: x.symbol, name: `${x.name} options`, keywords: `${x.symbol} ${x.name} index options ${x.fund}`, price: open ? indexPrice(x.symbol) : null, decimals: 2 }));
-  const stocks: Row[] = useMemo(() => REVIEW_NAMES.map(n => ({ value: n.ticker, code: n.ticker, name: n.name, keywords: n.ticker, price: null, decimals: 2 })), []);
+  const stocks: Row[] = useMemo(() => {
+    const known = new Map(REVIEW_NAMES.map(n => [n.ticker, n.name]));
+    const roots = optionSymbols();
+    const skip = new Set(indexes.map(x => x.symbol));
+    const label = (ticker: string) => {
+      const named = companyName(ticker);
+      return named.toUpperCase() !== ticker ? named : (known.get(ticker) ?? named);
+    };
+    const toRow = (ticker: string): Row => ({ value: ticker, code: ticker, name: label(ticker), keywords: `${ticker} ${label(ticker)}`, price: null, decimals: 2 });
+    const q = query.trim().toUpperCase();
+    if (!roots.length) return REVIEW_NAMES.filter(n => isOptionRoot(n.ticker)).map(n => toRow(n.ticker));
+    if (!q) {
+      const pinned = ['SPY', 'QQQ', 'IWM', 'SPX', 'NDX', 'RUT', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'AMD'];
+      const out: string[] = [];
+      const seen = new Set<string>();
+      for (const symbol of pinned) {
+        if (!isOptionRoot(symbol) || skip.has(symbol) || seen.has(symbol)) continue;
+        seen.add(symbol);
+        out.push(symbol);
+      }
+      for (const symbol of roots) {
+        if (out.length >= stockWindow) break;
+        if (seen.has(symbol) || skip.has(symbol)) continue;
+        seen.add(symbol);
+        out.push(symbol);
+      }
+      return out.map(toRow);
+    }
+    const prefix: string[] = [];
+    const contains: string[] = [];
+    for (const symbol of roots) {
+      if (skip.has(symbol)) continue;
+      const name = label(symbol);
+      if (symbol.startsWith(q) || name.toUpperCase().startsWith(q)) prefix.push(symbol);
+      else if (symbol.includes(q) || name.toUpperCase().includes(q)) contains.push(symbol);
+      if (prefix.length >= 80) break;
+    }
+    return [...prefix, ...contains].slice(0, 80).map(toRow);
+  }, [query, listedRev, nameRev, stockWindow, indexes]);
   const q = query.trim().toLowerCase();
   const hit = (r: Row) => !q || r.code.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || r.keywords.toLowerCase().includes(q);
   const groups = [
@@ -96,7 +140,11 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
   const current = [...futures, ...indexRows, ...stocks].find(r => r.value === value);
 
   useEffect(() => {
+    if (stocks.length) askCompanyNames(stocks.map(s => s.value));
+  }, [stocks]);
+  useEffect(() => {
     setHighlight(0);
+    setStockWindow(80);
     listRef.current?.scrollTo({ top: 0 });
   }, [query]);
   useEffect(() => {
@@ -167,7 +215,17 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
               />
             </div>
           </div>
-          <div ref={listRef} className="max-h-[420px] overflow-y-auto overscroll-contain py-1.5" role="listbox" aria-label="What to put on the chart">
+          <div
+            ref={listRef}
+            className="max-h-[420px] overflow-y-auto overscroll-contain py-1.5"
+            role="listbox"
+            aria-label="What to put on the chart"
+            onScroll={() => {
+              const el = listRef.current;
+              if (!el || query.trim()) return;
+              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) setStockWindow(n => n + 160);
+            }}
+          >
             {flat.length === 0 && !(futuresOnly && !q) ? (
               <div className="px-4 py-6 text-center font-mono text-[10px] text-textMuted" data-paper-ticker-none>
                 Nothing matches — try a ticker, a company or a future

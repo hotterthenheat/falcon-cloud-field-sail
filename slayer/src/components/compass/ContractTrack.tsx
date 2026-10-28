@@ -1,95 +1,89 @@
 /*
-==================================================
-  SLAYER TERMINAL - CONTRACT TRACK (ContractTrack.tsx)
-  The setup page's PREMIUM chart: where this contract's
-  premium has been (repriced on real bars), what standing
-  still costs (theta forward, spot held), what it's worth
-  parked at the stop, and every level on the chart in
-  premium. Math in trackModel.ts; this file only draws.
-
-  THE HOUSE CHART, round 4 (both Noah, 2026-08-29): the
-  tape runs edge to edge and ONE transparent strip rides
-  it. Round 5 (the Compass walk, 2026-09-11 — Noah: "i
-  dont like the premium chart look and notice how the
-  stock → premium button layout changes from being on
-  the left side to the right side. it messes the user
-  up"): the SAME strip as the stock view, slot for slot —
-  the capsule, the Stock/Premium door second, the
-  timeframes (the toolbar's own strip), the live mark
-  and its change, the expand door at the far right — in
-  the same house box, the caller's. The old panel frame,
-  its level table (the card beside carries the targets)
-  and its footnote are gone; the note rides the whisper.
-==================================================
+  The contract's premium chart.
+  One pane. High, low, and last are the candles on this chart, not a second book.
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
-import SpotPrice from '../gex/SpotPrice';
+import type { UTCTimestamp } from 'lightweight-charts';
 import { TimeframeStrip } from '../gex/ChartToolbar';
-import type { Setup } from '../../types/compass';
-import Simulator from '../../core/simulator';
-import { tfMinutes, type Timeframe } from '../../data/timeframe';
-import { buildSetupTrack, barsToSpan, type TrackLevel } from './trackModel';
-import ContractPremiumPane, { type PremiumLevel, type PremiumProjection } from '../gex/ContractPremiumPane';
+import { chartGround, chartSurface, getCandleTheme, useCandleThemeKey } from '../gex/candleTheme';
+import { resolveInk } from '../gex/paletteInk';
+import ContractPremiumPane from '../gex/ContractPremiumPane';
 import ContractPick, { type ConPickRow } from './ContractPick';
-import { BULL } from '../gex/paletteInk';
-
-const MUTED_INK = 'rgb(var(--text-muted))'; // matches textMuted (the lifted AA value)
-const WARN_INK = 'rgb(var(--warn))';
-const REF_INK = 'rgb(var(--text-primary))';
-
-/* Targets are ONE family — the stock chart's green (hits bright, the rest
-   dimmed), never neon (Noah, 2026-08-29: "tps should not be neon. even on
-   the premium chart"). The status distinction rides the label words. */
-const LEVEL_INK: Record<TrackLevel['status'], string> = {
-  HIT: BULL,
-  'IN PROGRESS': BULL,
-  PENDING: 'rgb(var(--bull) / 0.55)', /* the token's green dimmed, not the dark literal (2026-09-16) */
-  STOP: WARN_INK,
-  REF: REF_INK,
-};
+import { quoteContract, type ContractQuote } from '../../data/contractQuote';
+import { underWord } from '../../data/compassSession';
+import type { Timeframe } from '../../data/timeframe';
+import type { OptionRight, Setup } from '../../types/compass';
+import type { SetupMarks } from './setupMarksPrimitive';
 
 interface ContractTrackProps {
   setup: Setup;
-  /** Tick pulse — recomputes the series so the NOW pin follows the live mid. */
   revision: number;
-  /** Setup retired (floor broken): the past stays, the future doesn't —
-      no theta-forward, no stop curve, no "time left" for a dead case. */
   retired?: boolean;
-  /** The Stock/Premium door — mounted in the strip's SECOND slot, where the
-      stock view keeps it, so the way back never moves. */
-  actions?: React.ReactNode;
-  /** Fullscreen takeover — state owned by the setup page (it shares the
-      stock view's chartFull, so Esc and the scroll lock come for free). */
+  tracked?: boolean;
+  spot?: number;
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  /** Every con this name has on the board (all tenors, sleeve-tagged) —
-      with the loader, the capsule becomes a dropdown that steps between
-      them, carrying each pick's sleeve through the door. */
   loadPickRows?: () => ConPickRow[];
-  onOpenContract?: (
-    strike: number,
-    right: import('../../types/compass').OptionRight,
-    sleeve?: import('../../types/compass').SleeveKey
-  ) => void;
+  onOpenContract?: (strike: number, right: OptionRight, sleeve?: Setup['sleeve']) => void;
+  quotedAt?: number;
+  volume?: number;
+  part?: 'chart' | 'stats';
+  timeframe?: Timeframe;
+  onTimeframe?: (tf: Timeframe) => void;
+  quote?: ContractQuote;
+  traded?: { time: number; open: number; high: number; low: number; close: number }[] | null;
+  /** Why the session's chart is empty. Blank when the tape itself has not loaded. */
+  emptyNote?: string;
+  /** Set when the candles are the premium off the stock, not prints. */
+  pathNote?: string;
 }
 
-const ContractTrack = ({ setup, revision, retired = false, actions, fullscreen = false, onToggleFullscreen, loadPickRows, onOpenContract }: ContractTrackProps) => {
-  const [timeframe, setTimeframe] = useState<Timeframe>('1m');
+const px2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const count = (n: number) => Math.round(n).toLocaleString('en-US');
 
-  /* The chrome's real height, handed to the pane as reserved headroom —
-     the strip WRAPS at narrow widths and a target near the top of scale was
-     running its label into the timeframe row (Noah, 2026-08-29). Measured,
-     not guessed, so the plot starts below the chrome at every size. */
+/** The index under a weekly root. A stock keeps its own name. Nasdaq is not stamped on until that feed is the price. */
+const SPOT_NAME: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'SPX', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX' };
+
+const ReadoutCell = ({ k, v }: { k: string; v: string }) => (
+  <span className="shrink-0 whitespace-nowrap">
+    <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted">{k}</span>
+    <span className="ml-1 font-mono text-[10px] tnum text-textPrimary">{v}</span>
+  </span>
+);
+
+const ContractTrack = ({
+  setup,
+  revision,
+  spot = 0,
+  fullscreen = false,
+  onToggleFullscreen,
+  loadPickRows,
+  onOpenContract,
+  quotedAt = 0,
+  volume = 0,
+  timeframe: timeframeProp,
+  onTimeframe,
+  quote: cardQuote,
+  traded,
+  emptyNote = '',
+  pathNote = '',
+}: ContractTrackProps) => {
+  const [localTf, setLocalTf] = useState<Timeframe>('1m');
+  const timeframe = timeframeProp ?? localTf;
+  const setTimeframe = onTimeframe ?? setLocalTf;
+  const themeKey = useCandleThemeKey();
   const tapeRef = useRef<HTMLDivElement | null>(null);
   const chromeRef = useRef<HTMLDivElement | null>(null);
-  const [topMargin, setTopMargin] = useState(0.2);
+  const [topMargin, setTopMargin] = useState(0.18);
+  const [bar, setBar] = useState<{ open: number; high: number; low: number; close: number } | null>(null);
+
   useEffect(() => {
     const measure = () => {
       const tape = tapeRef.current?.clientHeight ?? 0;
       const chrome = chromeRef.current?.clientHeight ?? 0;
-      if (tape > 0 && chrome > 0) setTopMargin(Math.min(0.4, Math.max(0.1, (chrome + 16) / tape)));
+      if (tape > 0 && chrome > 0) setTopMargin(Math.min(0.28, Math.max(0.1, (chrome + 8) / tape)));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -98,113 +92,130 @@ const ContractTrack = ({ setup, revision, retired = false, actions, fullscreen =
     return () => ro.disconnect();
   }, []);
 
-  const { track, projections } = useMemo(() => {
-    void revision;
-    const bars = Simulator.getCandles(setup.ticker) ?? [];
-    const built = buildSetupTrack(setup, bars);
-    /* The modeled futures, restated on the clock: trackModel speaks in
-       1-minute bar offsets from NOW; the engine wants timestamps. Thinned to
-       the shown timeframe so the projected region keeps the tape's own bar
-       spacing — minute points between 5m candles would stretch it 5×. */
-    const lastT = bars.length ? bars[bars.length - 1].time : 0;
-    const step = Math.max(1, Math.round(tfMinutes(timeframe)));
-    const toPts = (pts: { bar: number; premium: number }[]) => {
-      const lastBar = pts.length ? pts[pts.length - 1].bar : 0;
-      return pts
-        .filter(q => q.bar >= 0 && (q.bar % step === 0 || q.bar === lastBar))
-        .map(q => ({ time: lastT + q.bar * 60, value: q.premium }));
-    };
-    const projs: PremiumProjection[] = [];
-    if (!retired && lastT) {
-      const fwd = toPts(built.forward);
-      if (fwd.length >= 2) projs.push({ key: 'forward', color: MUTED_INK, points: fwd });
-      if (built.stopCurve) {
-        const st = toPts(built.stopCurve);
-        if (st.length >= 2) projs.push({ key: 'stop', color: WARN_INK, points: st });
-      }
+  const iv = setup.greeks.iv / 100;
+  const sessions = Math.max(setup.sessionsLeft, 0.5);
+  const book = cardQuote ?? quoteContract({
+    ticker: setup.ticker,
+    contract: setup.contract,
+    strike: setup.strike,
+    right: setup.right,
+    spot,
+    bid: setup.bid,
+    ask: setup.ask > 0 ? setup.ask : setup.mid,
+    ivPct: setup.greeks.iv,
+    quotedAt,
+    source: 'theta',
+  });
+  const series = useMemo(() => {
+    if (!traded?.length) return null;
+    let high = traded[0].high;
+    let low = traded[0].low;
+    for (const b of traded) {
+      if (b.high > high) high = b.high;
+      if (b.low < low) low = b.low;
     }
-    return { track: built, projections: projs };
+    return { high, low, last: traded[traded.length - 1].close };
+  }, [traded]);
+  const shown = bar;
+  const markWord = shown ? 'C' : 'Last';
+  const markPx = shown ? shown.close : (series?.last ?? book.mark);
+  const spotName = SPOT_NAME[setup.ticker] ?? setup.ticker;
+  const tps = [1.5, 2, 3].map((mult, i) => ({ level: i + 1, price: Number((book.entryPremium * mult).toFixed(2)) }));
+
+  const framePrices = useMemo(
+    () => [book.entryPremium, book.stopPremium, ...tps.map(t => t.price)].filter(p => p > 0 && p <= book.entryPremium * 1.7),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setup.id, setup.mid, revision, retired, timeframe]);
+    [book.entryPremium, book.stopPremium],
+  );
 
-  const up = track.sessionChangePct >= 0;
-  const undocked = track.levels.filter(l => !l.docked);
-  const docked = track.levels.filter(l => l.docked);
-  const changeAbs = Math.abs((setup.mid * track.sessionChangePct) / 100);
-
-  /* Every rule the model prices, labeled ON the tape — the docked ones stay
-     off the plot (their premiums are beyond the shown scale) and keep their
-     whisper note. Reference is dotted: it is where you got in, not a target.
-     The ink IS the status, and the word rides the label so two greens read
-     as states, not a rendering bug (Noah, 2026-08-29). */
-  const paneLevels: PremiumLevel[] = undocked.map(l => ({
-    price: l.premium,
-    label: `${l.label.replace(/^TP(\d)/, 'TARGET $1')} $${l.premium.toFixed(2)}${l.status === 'HIT' ? ' · hit' : l.status === 'IN PROGRESS' ? ' · in progress' : ''}`,
-    color: LEVEL_INK[l.status],
-    style: l.status === 'REF' ? 'dotted' : 'dashed',
-  }));
+  const marks = useMemo<SetupMarks>(() => {
+    const surface = chartSurface(getCandleTheme());
+    const host = tapeRef.current;
+    const lastT = (traded && traded.length ? traded[traded.length - 1].time : Math.floor(Date.now() / 1000)) as UTCTimestamp;
+    return {
+      entry: { time: lastT, price: book.entryPremium, mid: book.mark },
+      entryWord: 'ASK',
+      floor: { price: book.stopPremium, brokeAt: null },
+      targets: tps.map(t => ({ level: t.level, price: t.price, won: false })),
+      silver: resolveInk('rgb(var(--silver))', host),
+      bg: surface.bg,
+      bull: resolveInk('rgb(var(--bull))', host),
+      bear: resolveInk('rgb(var(--bear))', host),
+      ink: resolveInk('rgb(var(--text-primary))', host),
+      hot: null,
+      insetTop: 48,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setup.ticker, book.entryPremium, book.stopPremium, book.mark, themeKey, traded]);
 
   return (
-    /* The tape region — edge to edge inside the caller's box, chrome floating over it */
-    <div ref={tapeRef} className="relative flex-1 min-h-0 overflow-hidden" data-premium-track>
+    <div
+      ref={tapeRef}
+      className="relative h-full min-h-[280px] overflow-hidden border border-borderSubtle rounded-md bg-panel"
+      data-premium-track
+      data-setup-chart="premium"
+      data-stock-pane="off"
+      data-option-entry={book.entryPremium}
+      data-option-stop={book.stopPremium}
+      data-stat-bid={book.bid}
+      data-stat-ask={book.ask}
+      data-stat-mark={book.mark}
+      data-theme="dark"
+      data-chart-ground={chartGround(themeKey)}
+    >
       <ContractPremiumPane
         ticker={setup.ticker}
         strike={setup.strike}
         right={setup.right}
-        tYears={Math.max(setup.sessionsLeft, 0.5) / 252}
-        iv={setup.greeks.iv / 100}
+        tYears={sessions / 252}
+        iv={iv}
         timeframe={timeframe}
         revision={revision}
-        levels={paneLevels}
-        projections={projections}
+        rules={false}
+        marks={marks}
+        spot={spot}
+        framePrices={framePrices}
         topMargin={topMargin}
+        bound
+        traded={traded}
+        onBar={setBar}
       />
-
-      {/* ONE strip + its whisper — the stock view's slots: the capsule, the
-          Stock/Premium door, the timeframes, then the live mark; the expand
-          door at the far right. pr-14/pr-16 keep the right edge off the
-          price axis. Transparent — each control carries its own pill. */}
       <div ref={chromeRef} className="absolute top-0 inset-x-0 z-20" data-chart-chrome>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-2 pr-14 py-1 select-none">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-2 pr-3 py-1.5 select-none">
           {loadPickRows && onOpenContract ? (
-            <ContractPick label={`${setup.contract} · ${setup.expiry}`} current={{ strike: setup.strike, right: setup.right, sleeve: setup.sleeve }} loadRows={loadPickRows} onPick={onOpenContract} />
+            <ContractPick
+              label={`${setup.contract} · ${setup.expiry}`}
+              current={{ strike: setup.strike, right: setup.right, sleeve: setup.sleeve }}
+              loadRows={loadPickRows}
+              onPick={onOpenContract}
+            />
           ) : (
             <span className="inline-flex items-center h-7 px-3 rounded-full bg-ink/[0.06] font-mono text-[11px] font-bold text-textPrimary shrink-0">
               {setup.contract} · {setup.expiry}
             </span>
           )}
-          {actions}
-          <TimeframeStrip value={timeframe} onChange={setTimeframe} />
-          <span className="inline-flex items-center gap-2 pl-1">
-            <SpotPrice value={setup.mid} />
-            <span className={`font-mono text-[11px] font-semibold tnum ${up ? 'text-bull' : 'text-bear'}`}>
-              {up ? '▲' : '▼'} ${changeAbs.toFixed(2)} ({up ? '+' : '−'}
-              {Math.abs(track.sessionChangePct).toFixed(1)}%)
-            </span>
-          </span>
+          <TimeframeStrip value={timeframe} onChange={setTimeframe} only={['1m', '5m', '15m', '30m', '1h', '1D', '1W']} />
           {onToggleFullscreen && (
-            <button
-              onClick={onToggleFullscreen}
-              title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen chart'}
-              className="ml-auto inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[10px] uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.03] transition-colors"
-              data-premium-full
-            >
+            <button type="button" onClick={onToggleFullscreen} className="slayer-chip px-2 ml-auto" data-premium-full>
               {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
           )}
         </div>
-
-        {/* The whispers — the clock left, the off-scale rules and the modeled note right */}
-        <div className="pl-3 pr-16 flex items-baseline justify-between gap-3 pointer-events-none">
-          <span className="font-mono text-[10px] text-textMuted">
-            the contract's premium over {barsToSpan(track.pastMinutes)} · reference ${track.ref.toFixed(2)} · {retired ? 'setup retired' : `${barsToSpan(track.forwardMinutes)} left`} · modeled from {setup.ticker}
-            's bars, not a traded tape
+        <div className="h-[23px] flex items-center gap-2.5 px-3 pointer-events-none overflow-hidden" data-readout-line>
+          <ReadoutCell k="O" v={shown ? px2(shown.open) : '—'} />
+          <ReadoutCell k="H" v={shown ? px2(shown.high) : '—'} />
+          <ReadoutCell k="L" v={shown ? px2(shown.low) : '—'} />
+          <ReadoutCell k={markWord} v={px2(markPx)} />
+          {traded && traded.length === 0 && <span className="font-mono text-[10px] text-textMuted">{emptyNote || 'No print on the tape'}</span>}
+          {traded == null && !pathNote && <span className="font-mono text-[10px] text-textMuted">Not on the tape</span>}
+          {pathNote && <span className="font-mono text-[10px] text-textMuted">{pathNote}</span>}
+          <span className="ml-auto flex items-center gap-2.5 min-w-0">
+            <ReadoutCell k="High" v={series ? px2(series.high) : '—'} />
+            <ReadoutCell k="Low" v={series ? px2(series.low) : '—'} />
+            <ReadoutCell k="Vol" v={volume > 0 ? count(volume) : '—'} />
+            <ReadoutCell k={spotName} v={spot > 0 ? px2(spot) : '—'} />
+            <ReadoutCell k="Tape" v={underWord(setup.ticker)} />
           </span>
-          {docked.length > 0 && (
-            <span className="font-mono text-[10px] text-textMuted tnum text-right">
-              Off scale ↑ {docked.map(l => `${l.label.replace(/^TP(\d)/, 'Target $1')} $${l.premium.toFixed(2)}`).join(' · ')}
-            </span>
-          )}
         </div>
       </div>
     </div>

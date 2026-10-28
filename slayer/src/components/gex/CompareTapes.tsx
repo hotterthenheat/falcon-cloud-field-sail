@@ -22,10 +22,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { sessionBars } from '../../data/levelview';
-import { deskBars } from '../../data/uwBook';
+import { deskBars, useResolvedSession } from '../../data/uwBook';
 import { DayRef } from '../../data/bookWindow';
 import { nyIsoDate } from '../../core/nyTime';
-import { useDeskSession } from '../../data/deskSession';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
 import { readToken, useResolvedTheme } from '../../theme/theme';
 import { alpha, resolveInk } from './paletteInk';
@@ -96,8 +95,10 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
      under the pointer, both prices and both percents, and the gap — beside the
      pointer, flipping to its other side near the right edge, never off the plot */
   const [hover, setHover] = useState<{ point: Point; left: number; top: number } | null>(null);
-  const desk = useDeskSession();
-  const today = useMemo(() => buildToday(a, b, desk !== 'rth'), [a, b, revision, desk]);
+  const aRead = useResolvedSession(a);
+  const bRead = useResolvedSession(b);
+  const session = aRead.session !== 'rth' && aRead.session === bRead.session ? aRead.session : 'rth';
+  const today = useMemo(() => buildToday(a, b, session !== 'rth'), [a, b, revision, session]);
   /* THE BARS' OWN DAY (the fifth audit, 2026-10-23: "Since the open … Today" over Thursday's session at 01:00 Friday) */
   const lastT = today.points[today.points.length - 1]?.time;
   const barDay = lastT != null ? nyIsoDate(lastT * 1000) : null;

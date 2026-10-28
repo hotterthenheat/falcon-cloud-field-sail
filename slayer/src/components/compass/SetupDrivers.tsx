@@ -1,131 +1,171 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE CONTRACTS AROUND A SETUP
-  (components/compass/SetupDrivers.tsx)
-
-  "Top contracts driving the setup" (Mo,
-  2026-08-19), placed where the phrase is TRUE —
-  one setup, one name. Each row is a contract and
-  the PART it plays; the four facts say why it
-  carries weight. Walked (2026-09-11): the house
-  box with the grid in a window that grows with
-  its rows; the setup's own row selected in the
-  where-you-are ink; any other row opens that
-  contract's page.
-==================================================
+  The book the 0DTE scan reads. ATM ± 4, calls and puts.
+  Ordered by the checks we can calculate — eligible, then the
+  tighter spread — not by strike. The model rank is not here.
 */
 
 import { useMemo } from 'react';
-import { ArrowUpRight } from 'lucide-react';
 import ContractLabel from '../ui/ContractLabel';
-import Term from '../ui/Term';
 import type { Column } from '../ui/DataTable';
-import { TraceGrid } from '../trace/TraceBox';
-import { fmtUsd } from '../../data/gex';
-import type { DriverRow, OptionRight } from '../../types/compass';
+import { PhoneRow, TraceGrid } from '../trace/TraceBox';
+import type { OptionRight } from '../../types/compass';
+
+export interface NeighborRow {
+  strike: number;
+  right: OptionRight;
+  contract: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  /** (ask − bid) / mid, a fraction. */
+  spreadPct: number;
+  /** Strikes from the at-the-money strike. */
+  steps: number;
+  /** Out of the money, percent of spot. Negative is in the money. */
+  otmPct: number;
+  /** First failed check, or empty when the quote passes. */
+  reason: string;
+  /** Bid, ask, and spread pass. Session is not part of this. */
+  eligible: boolean;
+  /** Quote passes and the session can take an entry. Still not a fill. */
+  entryQualified: boolean;
+  here: boolean;
+  /** Stock price where the 0DTE stop bid is hit. Null off 0DTE. */
+  breakSpot: number | null;
+  /** Strike sits outside the name's 1σ band. */
+  wing: boolean;
+}
 
 interface SetupDriversProps {
   ticker: string;
-  rows: DriverRow[];
-  /** Open another contract on the same name. Absent = rows are facts only. */
+  rows: NeighborRow[];
   onOpen?: (strike: number, right: OptionRight) => void;
+  /** 0DTE: the stock price that hits this row’s stop bid. */
+  breaks?: boolean;
+  /** Side label when the book is split. */
+  label?: string;
+  /** The line under the title. */
+  sub?: string;
 }
 
-/** Signed distance; at the money reads 0.0%, never "-0.0%". */
-const fmtDist = (v: number) => {
-  const d = Math.abs(v) < 0.05 ? 0 : v;
-  return `${d > 0 ? '+' : ''}${d.toFixed(1)}%`;
-};
-
-const WIDTHS: Record<string, number> = { role: 150, gamma: 110, voloi: 100, dist: 110, exposure: 120, open: 72 };
-const TOOLTIPS: Record<string, string> = {
-  role: 'The part the contract plays in the hedging around this setup',
-  gamma: "Its share of the whole book's gamma",
-  voloi: "Today's volume over open interest — above 1×, more traded today than existed this morning",
-  dist: 'How far the strike sits from spot, + above and − below',
-  exposure: 'Its dealer gamma in dollars — negative absorbs moves, positive amplifies them',
-};
-
-const keyOf = (r: DriverRow) => `${r.strike}${r.right}`;
-
-const SetupDrivers = ({ ticker, rows, onOpen }: SetupDriversProps) => {
-  const current = rows.find(r => r.role === 'This contract');
-  const columns = useMemo<Column<DriverRow>[]>(() => {
-    const cols: Column<DriverRow>[] = [
-      {
-        key: 'role',
-        header: 'Role',
-        render: r =>
-          r.role === 'This contract' ? (
-            <span className="font-mono text-[10px] uppercase tracking-wider font-semibold text-silver">{r.role}</span>
-          ) : (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-textSecondary">
-              <Term k={r.role}>{r.role}</Term>
-            </span>
-          ),
-      },
+const SetupDrivers = ({ ticker, rows, onOpen, breaks = false, label, sub }: SetupDriversProps) => {
+  const here = rows.find(r => r.here);
+  const columns = useMemo<Column<NeighborRow>[]>(() => {
+    const cols: Column<NeighborRow>[] = [
       {
         key: 'contract',
         header: 'Contract',
-        sortValue: r => r.strike,
+        sortValue: r => r.strike * (r.right === 'P' ? -1 : 1),
+        render: r => <ContractLabel contract={r.contract} right={r.right} logo={ticker} size="sm" />,
+      },
+      {
+        key: 'bid',
+        header: 'Bid',
+        align: 'right',
+        sortValue: r => r.bid,
+        render: r => <span className={`font-mono text-[11px] tnum ${r.bid > 0.15 ? 'text-textPrimary' : 'text-bear'}`}>${r.bid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>,
+      },
+      {
+        key: 'ask',
+        header: 'Ask',
+        align: 'right',
+        sortValue: r => r.ask,
+        render: r => <span className="font-mono text-[11px] tnum text-textPrimary">${r.ask.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>,
+      },
+      {
+        key: 'spread',
+        header: 'Spread',
+        align: 'right',
+        sortValue: r => r.spreadPct,
         render: r => (
-          <span className="inline-flex items-center gap-2 min-w-0">
-            <ContractLabel contract={r.contract} right={r.right} logo={r.contract.split(' ')[0]} size="sm" />
-            <span className="font-mono text-[9px] text-textMuted">{r.expiry}</span>
+          <span className={`font-mono text-[11px] tnum ${r.spreadPct > 0.08 ? 'text-bear' : 'text-textSecondary'}`}>
+            {(r.spreadPct * 100).toFixed(1)}%
           </span>
         ),
       },
-      { key: 'gamma', header: 'Gamma', align: 'right', sortValue: r => r.gamma, render: r => <span className="font-mono text-[11px] tnum text-textPrimary">{r.gamma.toFixed(1)}%</span> },
-      { key: 'voloi', header: 'Vol/OI', align: 'right', sortValue: r => r.volOi, render: r => <span className="font-mono text-[11px] tnum text-textFigure">{r.volOi.toFixed(2)}×</span> },
-      { key: 'dist', header: 'From spot', align: 'right', sortValue: r => r.distPct, render: r => <span className="font-mono text-[11px] tnum text-textFigure">{fmtDist(r.distPct)}</span> },
-      {
-        key: 'exposure',
-        header: 'Exposure',
-        align: 'right',
-        sortValue: r => r.exposureUsd,
-        /* Sim side-coding: negative = dealers absorb (bull), positive = amplify (bear) */
-        render: r => <span className={`font-mono text-[11px] font-semibold tnum ${r.exposureUsd < 0 ? 'text-bull' : 'text-bear'}`}>{fmtUsd(r.exposureUsd)}</span>,
-      },
     ];
-    if (onOpen) {
+    if (breaks) {
       cols.push({
-        key: 'open',
-        header: '',
+        key: 'breaks',
+        header: 'Modeled',
         align: 'right',
-        render: r =>
-          r.role === 'This contract' ? null : (
-            <button type="button" onClick={() => onOpen(r.strike, r.right)} title={`Open ${r.contract} ${r.expiry}`} className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors">
-              Open <ArrowUpRight className="w-3 h-3" />
-            </button>
-          ),
+        sortValue: r => r.breakSpot ?? 0,
+        render: r => (
+          <span className="font-mono text-[11px] tnum text-bear">
+            {r.breakSpot == null ? '—' : `${r.right === 'P' ? '≥' : '≤'} $${r.breakSpot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          </span>
+        ),
+      });
+    } else {
+      cols.push({
+        key: 'away',
+        header: 'From ATM',
+        align: 'right',
+        sortValue: r => Math.abs(r.steps),
+        render: r => (
+          <span className="font-mono text-[11px] tnum text-textSecondary">
+            {r.steps === 0 ? 'ATM' : `${r.steps > 0 ? '+' : '−'}${Math.abs(r.steps)}`}
+          </span>
+        ),
       });
     }
+    cols.push({
+      key: 'pick',
+      header: 'Status',
+      align: 'right',
+      sortValue: r => (r.here ? 0 : r.eligible ? 1 : 2),
+      render: r => {
+        const word = r.here ? 'Selected' : r.entryQualified ? 'Entry qualified' : r.eligible ? 'Market eligible' : 'Rejected';
+        const ink = r.here ? 'text-textPrimary' : r.eligible ? 'text-textSecondary' : 'text-bear';
+        const why = r.reason || (r.here ? 'This contract' : 'No model');
+        return (
+          <span className="inline-flex flex-col items-end leading-tight">
+            <span className={`font-mono text-[11px] whitespace-nowrap ${ink}`}>{word}</span>
+            <span className="font-mono text-[9px] text-textMuted whitespace-nowrap">{why}</span>
+          </span>
+        );
+      },
+    });
     return cols;
-  }, [onOpen]);
+  }, [ticker, breaks]);
+
+  const widths: Record<string, number> = breaks
+    ? { contract: 188, bid: 72, ask: 72, spread: 72, breaks: 120, pick: 128 }
+    : { contract: 200, bid: 72, ask: 72, spread: 80, away: 88, pick: 128 };
 
   if (!rows.length) return null;
-  const expiry = rows[0].expiry;
   return (
-    <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden" data-setup-drivers={ticker}>
+    <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden" data-setup-drivers={ticker} data-setup-book>
       <div className="px-5 pt-4 pb-3">
         <div className="h-6 flex items-center gap-3">
-          <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">The contracts around it</h3>
+          <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">{label ?? 'The book it scans'}</h3>
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-          on {ticker} · {expiry} · the hedging this setup trades through{onOpen ? ' · a row opens that contract' : ''}
-        </p>
+        {sub ? <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">{sub}</p> : null}
       </div>
       <TraceGrid
         rows={rows}
         columns={columns}
-        widths={WIDTHS}
-        tooltips={TOOLTIPS}
-        rowKey={keyOf}
-        onRowClick={onOpen ? r => (r.role === 'This contract' ? undefined : onOpen(r.strike, r.right)) : undefined}
-        selectedKey={current ? keyOf(current) : null}
+        widths={widths}
+        lockColumns
+        rowKey={r => `${r.strike}${r.right}`}
+        onRowClick={onOpen ? r => (r.here ? undefined : onOpen(r.strike, r.right)) : undefined}
+        selectedKey={here ? `${here.strike}${here.right}` : null}
         autoHeight
         animate={false}
         testId="setup-drivers"
+        phoneRow={r => (
+          <PhoneRow
+            title={<ContractLabel contract={r.contract} right={r.right} logo={ticker} size="sm" />}
+            aside={r.here ? 'Selected' : r.entryQualified ? 'Entry qualified' : r.eligible ? 'Market eligible' : 'Rejected'}
+            figures={[
+              `bid $${r.bid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              `ask $${r.ask.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              `${(r.spreadPct * 100).toFixed(1)}%`,
+              breaks && r.breakSpot != null ? `${r.right === 'P' ? '≥' : '≤'} $${r.breakSpot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : r.steps === 0 ? 'ATM' : `${r.steps > 0 ? '+' : '−'}${Math.abs(r.steps)}`,
+              r.reason,
+            ].filter(Boolean)}
+          />
+        )}
       />
     </div>
   );

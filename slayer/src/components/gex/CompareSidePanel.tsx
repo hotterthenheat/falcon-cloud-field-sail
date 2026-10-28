@@ -44,7 +44,6 @@
 */
 
 import { bellDay, longDay, recordDay, todayScopeLabel } from '../../data/bookWindow';
-import { useLevelsScope } from '../../data/levelsScope';
 import { GLOSSARY, kindTip } from './glossary';
 import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { bookDatesIn } from '../../data/uwBook';
@@ -129,9 +128,8 @@ const HEAVY_COLS = 'grid grid-cols-[14px_minmax(0,1fr)_68px_60px] items-center g
 const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPick, open, onToggle, stacked = false, full = false }: Props) => {
   const U = sharedUnit(unit);
   const L = GREEK_LABEL[greek];
-  const levelsScope = useLevelsScope();
   const rec = recordDay();
-  const scopeWords = levelsScope === 'ALL' ? 'All expiries' : todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts";
+  const scopeWords = s.expiry === 'ALL' ? 'All expiries' : s.expiry === '0DTE' ? (todayScopeLabel() === 'Today' ? "Today's contracts" : "Next session's contracts") : s.expiry;
   const [win, setWin] = useState('15m');
   const winIdx = Math.max(0, READ_WINDOWS.findIndex(w => w.key === win));
 
@@ -161,7 +159,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const rowOf = (strike: number): StrikeExposure | undefined => s.strikes.find(r => r.strike === strike);
   /* A LEVEL OUTSIDE THE DRAWN WINDOW STILL HAS ITS VALUE (the audit: SPY's 800 call wall read "—" in All expiries) —
      read off the side's whole chain when the window does not reach it */
-  const NODE_KEY: Record<Greek, 'netGex' | 'netDex' | 'netVex' | 'netVanna' | 'netCharm'> = { gex: 'netGex', dex: 'netDex', vex: 'netVex', vanna: 'netVanna', charm: 'netCharm' };
+  const NODE_KEY = { gex: 'netGex', dex: 'netDex', vex: 'netVex', vanna: 'netVanna', charm: 'netCharm' } as const;
   const sideChain = (s.snapshot.liveBook && s.snapshot.uwChains?.[s.expiry]?.length ? s.snapshot.uwChains[s.expiry] : s.snapshot.chain) ?? [];
   /* THE LEG THAT DEFINES THE LEVEL (the third audit, 2026-10-23: CALL WALL 770 printed +$32.7M — the strike's NET —
      when the wall is the most CALL gamma, +$222.7M; TSLA's put wall 375 −$1.6M over −$34.9M of put gamma). A wall
@@ -174,6 +172,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     const n = sideChain.find(x => Math.abs(x.strike - strike) < 1e-9);
     if (!n) return null;
     if (leg !== 'net' && g === 'gex') return n[LEG_KEY[leg].gex] ?? null;
+    if (g !== 'gex' && g !== 'dex' && g !== 'vex' && g !== 'vanna' && g !== 'charm') return null;
     return leg === 'net' ? (n[NODE_KEY[g]] ?? null) : null;
   };
   /* EVERY ROLE A STRIKE HAS, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" with its put
@@ -210,7 +209,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
      amplifies, red — the Board's net GEX convention, strike by strike. The other greeks stay in the primary ink. */
   const Money = ({ v, bold = false, size = 11, g: mg = greek }: { v: number | null; bold?: boolean; size?: number; g?: Greek }) => {
     /* NEVER A FALSE $0 (the fourth audit: "VEX $0" beside "VANNA −$19.4M"): vega comes off the contract rows alone (the
-       vendor's exposure rows carry none), so a strike whose contracts carry none says so instead */
+       feed's exposure rows carry none), so a strike whose contracts carry none says so instead */
     const noVega = mg === 'vex' && (v == null || v === 0);
     const shown = v == null || noVega ? null : shownGreek(mg, v);
     const ink = shown == null ? 'text-textMuted' : mg === 'gex' && shown > 0 ? 'text-bull' : mg === 'gex' && shown < 0 ? 'text-bear' : 'text-textPrimary';

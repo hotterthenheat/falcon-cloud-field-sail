@@ -20,6 +20,10 @@ export interface KeyLevels {
   flip: number;
   /** Strike holding the largest absolute exposure */
   supreme: number;
+  /** Strike with the most open interest. Absent when that figure was not computed. */
+  pin?: number;
+  /** Settlement that pays the least intrinsic on the open interest. Not a wall. Absent without open interest. */
+  maxPain?: number;
 }
 
 /** The heat field read as ONE regime — the engine names the configuration
@@ -113,6 +117,16 @@ export interface StrikeExposure {
   vanna: GreekSplit;
   /** Dollars of dealer delta the clock takes per session — negative: they buy there as it runs */
   charm: GreekSplit;
+  /** Dollars of gamma-per-1% the clock adds per session. Absent until that expiry's contract vol is in — then 0 is a real zero. */
+  color: GreekSplit;
+  /** Dollars of vega gained or lost per vol point. */
+  vomma: GreekSplit;
+  /** Dollars of gamma-per-1% added when the underlying moves one dollar. */
+  speed: GreekSplit;
+  /** Dollars of vega the clock adds per session. */
+  veta: GreekSplit;
+  /** Dollars of gamma-per-1% added when vol moves one point. */
+  zomma: GreekSplit;
   /** Contracts outstanding at the strike, both sides */
   oi: number;
   /** Session volume at the strike — the same figure Ranked Targets ranks by */

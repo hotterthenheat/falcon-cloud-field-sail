@@ -221,7 +221,7 @@ const numOf = (v: unknown): number | null => {
 
 function people(data: unknown): { name: string; units: string; value: string; weight: string; etf: string }[] {
   if (!Array.isArray(data)) return [];
-  /* most shares of the name first — the order the head says, whatever order the vendor sent */
+  /* most shares of the name first — the order the head says, whatever order the feed sent */
   const held = (r: unknown) => (r && typeof r === 'object' ? numOf((r as Record<string, unknown>).units ?? (r as Record<string, unknown>).shares) ?? 0 : 0);
   return [...data].sort((a, b) => held(b) - held(a)).slice(0, 5).map(r => {
     if (!r || typeof r !== 'object') return { name: '—', units: '—', value: '—', weight: '—', etf: '' };
@@ -234,7 +234,7 @@ function people(data: unknown): { name: string; units: string; value: string; we
       name,
       units: u != null && u > 0 ? shares(u) : '—',
       value: v != null && v > 0 ? dollars(v) : '—',
-      /* the vendor's weight is a percent with up to six places ("5.803098") — two, everywhere */
+      /* the weight is a percent with up to six places ("5.803098") — two, everywhere */
       weight: w != null ? `${w.toFixed(2)}%` : '—',
       etf: quietText(String(o.etf || '')),
     };

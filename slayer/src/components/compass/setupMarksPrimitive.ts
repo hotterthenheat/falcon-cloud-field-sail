@@ -12,20 +12,24 @@
   with another capsule. Now one short ladder on the
   tape's right edge, drawn on the chart's own canvas:
 
-    THE ENTRY    a thin silver rule from the entry
-                 candle to the right edge at the price
-                 it was entered, the premium as a small
-                 silver figure at its end
-    THE FLOOR    a thin red rule from the entry candle
-                 to the right edge, its figure at the
-                 end in red; a broken floor stops at the
-                 candle that broke it
-    THE TARGETS  short green ticks at the right edge,
-                 one a rung, a small numeral beside each;
-                 a won rung is filled in
+    THE ENTRY    a full amber line across the tape at the
+                 fill, ENTRY and the price at the right.
+                 Same bar as the stop and the targets.
+                 Off the canvas it docks. Not a chip
+                 sitting on the entry candle.
+    THE FLOOR    a full line across the tape at the
+                 stop premium, STOP and the price at
+                 the right. A broken stop stays the line.
+    THE TARGETS  a full line across the tape, named
+                 TP1, TP2, TP3 with the premium. A hit
+                 says so. Off the canvas, a tick — a
+                 line at a fake y would be a lie.
 
-  No full-width line, no capsule on the axis, no words
-  over the candles. The host draws the pointer card.
+  No capsule on the axis, no words over the
+  candles. The host draws the pointer card. The
+  targets are the exception: they cross the tape,
+  so a reader can see 1, 2 and 3 without hunting
+  a tick at the edge.
 
   2026-10-04: the rule and the figure moved to a pen
   the house chart's key levels share (gex/ladderPaint),
@@ -43,6 +47,8 @@ export interface SetupMarks {
   /** The floor, and where it stops if it broke */
   floor: { price: number; brokeAt: UTCTimestamp | null } | null;
   targets: { level: number; price: number; won: boolean }[];
+  /** Planned ask on the premium chart. Omitted marks stay unlabeled as a fill. */
+  entryWord?: string;
   /** The inks — literals, the chart is its own island */
   silver: string;
   /** The tape's ground — the entry chip's fill */
@@ -52,6 +58,8 @@ export interface SetupMarks {
   ink: string;
   /** The rung under the pointer, if any */
   hot: string | null;
+  /** CSS px the page's chrome covers — a level that doesn't fit docks under this, not under the buttons. */
+  insetTop?: number;
 }
 
 class MarksRenderer {
@@ -62,11 +70,6 @@ class MarksRenderer {
     target.useBitmapCoordinateSpace(scope => {
       const pen = ladderPen(scope);
       const { ctx, hr, vr, H, right } = pen;
-      const ts = chart.timeScale();
-      const xOf = (t: UTCTimestamp): number | null => {
-        const x = ts.timeToCoordinate(t as Time);
-        return x == null ? null : x * hr;
-      };
       const yOf = (p: number): number | null => {
         const y = series.priceToCoordinate(p);
         return y == null ? null : y * vr;
@@ -77,67 +80,110 @@ class MarksRenderer {
       const figure = (text: string, y: number, rgb: string, above = true) => pen.figure(text, y, rgb, above);
       ctx.save();
 
-      /* the entry's x — the rules start here */
-      const xEntry = data.entry ? xOf(data.entry.time) : null;
-
-      /* THE FLOOR */
-      if (data.floor) {
-        const y = yOf(data.floor.price);
-        if (y != null && y > 0 && y < H) {
-          const xEnd = data.floor.brokeAt ? xOf(data.floor.brokeAt) ?? right : right;
-          rule(xEntry, y, xEnd, data.bear, data.hot === 'floor' ? 1 : 0.75);
-          figure(`${data.floor.price.toFixed(2)}${data.floor.brokeAt ? ' broke' : ''}`, y, data.bear, false);
+      const topLimit = ((data.insetTop ?? 36) + 8) * vr;
+      const botLimit = H - 10 * vr;
+      const slot = 15 * vr;
+      let dockTop = 0;
+      let dockBot = 0;
+      const dockY = (raw: number | null) => {
+        if (raw != null && raw >= H - 2 * vr) {
+          const y = botLimit - dockBot * slot;
+          dockBot += 1;
+          return y;
         }
-      }
+        const y = topLimit + dockTop * slot;
+        dockTop += 1;
+        return y;
+      };
 
-      /* THE ENTRY — the paper desk's grammar (Noah, 2026-09-26: the position chip in the silver ring): a thin silver rule
-         from the entry candle to a CHIP at the right edge, "ENTRY 0.75" in a silver ring on the tape's ground; no trace to
-         the left — an entry is an event, not a level */
-      if (data.entry) {
-        const y = yOf(data.entry.price);
-        if (y != null && y > 0 && y < H) {
-          const word = `ENTRY ${data.entry.mid.toFixed(2)}`;
-          ctx.font = `700 ${8.5 * vr}px ${MONO}`;
-          const tw = ctx.measureText(word).width;
-          const chipW = tw + 12 * hr;
-          const chipH = 16 * vr;
-          const chipX = right - chipW;
-          rule(xEntry, y, chipX, data.silver, data.hot === 'entry' ? 1 : 0.75, false);
-          ctx.fillStyle = data.bg;
-          ctx.strokeStyle = data.silver;
-          ctx.lineWidth = Math.max(1, Math.round(vr));
-          ctx.globalAlpha = data.hot === 'entry' ? 1 : 0.92;
-          ctx.beginPath();
-          ctx.roundRect(chipX, y - chipH / 2, chipW, chipH, 3 * vr);
-          ctx.fill();
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = data.silver;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(word, chipX + chipW / 2, y + 0.5 * vr);
-        }
-      }
+      /* A line at its real premium. Off the canvas it docks — a line at a fake y is a lie.
+         Sitting under the toolbar is still on the tape; the toolbar is clear. */
+      const onScale = (raw: number | null): raw is number => raw != null && raw > 2 * vr && raw < H - 2 * vr;
 
-      /* THE TARGETS — the ladder at the edge */
-      for (const t of data.targets) {
-        const y = yOf(t.price);
-        if (y == null || y < 4 * vr || y > H - 4 * vr) continue;
-        const hot = data.hot === `target-${t.level}`;
-        const tickW = (t.won ? 14 : 10) * hr;
-        ctx.fillStyle = data.bull;
-        ctx.globalAlpha = hot ? 1 : t.won ? 0.95 : 0.8;
-        ctx.fillRect(right - tickW, y - (t.won ? 2 : 1) * vr, tickW, (t.won ? 4 : 2) * vr);
+      const ENTRY = '#FF9500';
+      const fromEntry = (price: number) => {
+        const base = data.entry?.mid ?? 0;
+        if (!(base > 0)) return '';
+        const p = (price / base - 1) * 100;
+        if (Math.abs(p) < 0.5) return '';
+        return `  ${p > 0 ? '+' : '−'}${Math.abs(p).toFixed(0)}%`;
+      };
+      const chip = (text: string, y: number, rgb: string, strong: boolean) => {
+        ctx.font = `700 ${(strong ? 11 : 9) * vr}px ${MONO}`;
+        const tw = ctx.measureText(text).width;
+        const padX = 5 * hr;
+        const chipH = (strong ? 16 : 13) * vr;
+        const chipW = tw + padX * 2;
+        const chipX = right - chipW;
+        ctx.beginPath();
+        ctx.roundRect(chipX, y - chipH / 2, chipW, chipH, 2 * vr);
+        ctx.fillStyle = data.bg;
+        ctx.globalAlpha = 0.94;
+        ctx.fill();
         ctx.globalAlpha = 1;
-        ctx.font = `700 ${8.5 * vr}px ${MONO}`;
-        ctx.textAlign = 'right';
+        ctx.strokeStyle = rgb;
+        ctx.lineWidth = Math.max(1, Math.round((strong ? 1.75 : 1) * vr));
+        ctx.stroke();
+        ctx.fillStyle = rgb;
+        ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = data.bull;
-        ctx.fillText(String(t.level), right - tickW - 4 * hr, y);
-        if (hot) {
-          ctx.font = `600 ${9 * vr}px ${MONO}`;
-          ctx.fillText(t.price.toFixed(2), right - tickW - 14 * hr, y);
+        ctx.fillText(text, chipX + chipW / 2, y + 0.5 * vr);
+      };
+
+      /* THE STOP — a line across the tape at the real premium. */
+      if (data.floor) {
+        const raw = yOf(data.floor.price);
+        const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const word = `STOP  ${px(data.floor.price)}${fromEntry(data.floor.price)}${data.floor.brokeAt ? '  broke' : ''}`;
+        const alpha = data.hot === 'floor' ? 1 : 0.9;
+        if (onScale(raw)) {
+          rule(0, raw, right, data.bear, alpha, false);
+          figure(word, raw, data.bear, raw > topLimit);
+        } else {
+          const y = dockY(raw);
+          const tickW = 14 * hr;
+          ctx.fillStyle = data.bear;
+          ctx.globalAlpha = 0.9;
+          ctx.fillRect(right - tickW, y - vr, tickW, 2 * vr);
+          ctx.globalAlpha = 1;
+          ctx.font = `600 ${8.5 * vr}px ${MONO}`;
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = data.bear;
+          ctx.fillText(word, right - tickW - 4 * hr, y);
         }
+      }
+
+      /* THE ENTRY — a full line across the tape at the fill, amber, the price
+         at the right. Same bar as the stop and the targets. Not a chip on a candle. */
+      if (data.entry) {
+        const raw = yOf(data.entry.price);
+        const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const word = `${data.entryWord || 'ASK'}  ${px(data.entry.mid)}`;
+        if (onScale(raw)) {
+          rule(0, raw, right, ENTRY, 0.95, false);
+          figure(word, raw, ENTRY, raw > topLimit);
+        } else {
+          const y = dockY(raw);
+          chip(word, y, ENTRY, false);
+        }
+      }
+
+      /* THE TAKE PROFITS — a full line with a dark chip, so a green candle
+         cannot swallow the label. A hit is thicker and says so. */
+      for (const t of data.targets) {
+        const raw = yOf(t.price);
+        const px = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const word = t.won ? `TP${t.level} HIT  ${px(t.price)}${fromEntry(t.price)}` : `TP${t.level}  ${px(t.price)}${fromEntry(t.price)}`;
+        const ink = t.won ? '#D6FFE2' : data.bull;
+        if (onScale(raw)) {
+          pen.rule(0, raw, right, '#04140A', t.won ? 0.95 : 0.75, { trace: false, width: t.won ? 5 : 3 });
+          pen.rule(0, raw, right, ink, 1, { trace: false, width: t.won ? 2.4 : 1.35 });
+          chip(word, raw, ink, t.won);
+          continue;
+        }
+        const y = dockY(raw);
+        chip(word, y, ink, t.won);
       }
       ctx.restore();
     });

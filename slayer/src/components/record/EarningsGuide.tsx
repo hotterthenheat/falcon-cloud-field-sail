@@ -230,7 +230,7 @@ const RecordFigure = () => (
 export const EarningsGuide = () => (
   <div data-earnings-guide>
     <Section title="A day on the board">
-      <p>Five days across, today's head in silver; every name is a card with the move its options charge, on the shelf for before the open, after the close, or "time not set" when the vendor has no time for it. "Date estimated" marks a date the company has not set. The Fed's FOMC decision days and the payrolls Friday sit under the day's head. Click a card for the name's page.</p>
+      <p>Five days across, today's head in silver; every name is a card with the move its options charge, on the shelf for before the open, after the close, or "time not set" when no time is on file. "Date estimated" marks a date the company has not set. The Fed's FOMC decision days and the payrolls Friday sit under the day's head. Click a card for the name's page.</p>
       <BoardDayFigure />
     </Section>
     <Section title="The same day as a list">

@@ -22,4 +22,14 @@ export interface TrackedSetup {
   trackedAt: number;         // Date.now() timestamp
   scoreAtTrack: number;      // score when user clicked "Track"
   verdictAtTrack: Verdict;   // verdict when tracked
+  /** The mark on the card at the click. Absent on rows kept before this field. */
+  markAtTrack?: number;
+  /** The option-price stop on the card at the click. */
+  stopAtTrack?: number;
+  /** The ask paid, if this were a paper fill. Absent on older rows. */
+  askAtTrack?: number;
+  /** Bid, ask and mid at the signal. The fill is a later quote. */
+  signalBid?: number;
+  signalAsk?: number;
+  signalMid?: number;
 }

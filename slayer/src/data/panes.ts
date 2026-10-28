@@ -17,16 +17,21 @@
 
 import { useEffect, useRef } from 'react';
 import type { ExposureExpiry } from '../types/gex';
-import { readLevelsScope, useLevelsScope } from './levelsScope';
+import { useTicker } from '../context/MarketDataContext';
+import { useNameLevels } from './levelsScope';
 
 /** Four names at most — the Map's rule, and a quarter of the screen is the least a pane can read in */
 export const MAX_PANES = 4;
 
-/** A pane: its own name, or none — the first pane follows the frame — and its expiry */
+/** A pane: its own name, or none — the first pane follows the frame — and its expiry.
+    strikes / order / show are this pane's list, not the row's. Absent: the page default. */
 export interface Pane {
   key: string;
   ticker?: string;
   expiry: ExposureExpiry;
+  strikes?: number;
+  order?: string;
+  show?: string;
 }
 
 const EXPIRIES = new Set<ExposureExpiry>(['0DTE', '1D', '2D', '5D', '7D', 'OPEX', 'ALL']);
@@ -40,37 +45,45 @@ export function readPanes(storageKey: string): Pane[] {
     const raw = JSON.parse(localStorage.getItem(storageKey) || 'null') as unknown;
     if (Array.isArray(raw)) {
       const panes = raw
-        .filter((p): p is { key?: unknown; ticker?: unknown; expiry?: unknown } => !!p && typeof p === 'object')
-        .map((p, i) => ({ key: typeof p.key === 'string' ? p.key : `p${i}`, ticker: typeof p.ticker === 'string' && p.ticker ? p.ticker.toUpperCase() : undefined, expiry: EXPIRIES.has(p.expiry as ExposureExpiry) ? (p.expiry as ExposureExpiry) : '0DTE' }))
+        .filter((p): p is { key?: unknown; ticker?: unknown; expiry?: unknown; strikes?: unknown; order?: unknown; show?: unknown } => !!p && typeof p === 'object')
+        .map((p, i) => ({
+          key: typeof p.key === 'string' ? p.key : `p${i}`,
+          ticker: typeof p.ticker === 'string' && p.ticker ? p.ticker.toUpperCase() : undefined,
+          expiry: EXPIRIES.has(p.expiry as ExposureExpiry) ? (p.expiry as ExposureExpiry) : '0DTE',
+          ...(typeof p.strikes === 'number' ? { strikes: p.strikes } : null),
+          ...(typeof p.order === 'string' ? { order: p.order } : null),
+          ...(typeof p.show === 'string' ? { show: p.show } : null),
+        }))
         .slice(0, MAX_PANES);
       if (panes.length) return panes;
     }
   } catch {
     /* nothing kept, or storage off */
   }
-  return [{ key: 'p0', expiry: readLevelsScope() }];
+  return [{ key: 'p0', expiry: '0DTE' }];
 }
 
 /**
- * PANES FOLLOW THE LEVELS CARD (the ship pass, 2026-10-22): a pane on the card's contracts moves with the card, so the
- * Agenda's walls and supreme stay the Board's and the Map's for the same name. A pane the reader put on another expiry
- * keeps it (and wears the "own expiry" mark — `offScope`).
+ * A pane that is still on its name's levels moves when that name's levels change.
+ * A pane the reader put on another expiry keeps it (`offScope`).
  */
 export function usePanesFollowScope(panes: Pane[], setPanes: (next: Pane[]) => void): ExposureExpiry {
-  const scope = useLevelsScope();
-  const was = useRef(scope);
+  const { activeTicker } = useTicker();
+  const scope = useNameLevels(activeTicker);
+  const was = useRef<{ ticker: string; scope: ExposureExpiry }>({ ticker: activeTicker, scope });
   useEffect(() => {
     const prev = was.current;
-    was.current = scope;
-    if (prev === scope) return;
-    if (panes.some(p => p.expiry === prev)) setPanes(panes.map(p => (p.expiry === prev ? { ...p, expiry: scope } : p)));
+    was.current = { ticker: activeTicker, scope };
+    if (prev.ticker !== activeTicker || prev.scope === scope) return;
+    const follows = (p: Pane) => (p.ticker ?? activeTicker) === activeTicker && p.expiry === prev.scope;
+    if (panes.some(follows)) setPanes(panes.map(p => (follows(p) ? { ...p, expiry: scope } : p)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope]);
+  }, [scope, activeTicker]);
   return scope;
 }
 
-/** The words for a pane that reads another expiry than the Levels card */
-export const OFF_SCOPE_TITLE = 'This pane reads a different expiry from the Levels card at the top of the page, so its walls, flip and supreme can differ from the Board and the Map';
+/** A pane that reads another expiry than this name's levels */
+export const OFF_SCOPE_TITLE = "This pane reads a different expiry from this name's levels, so its walls, flip and supreme can differ from the Board and the Map";
 
 export function writePanes(storageKey: string, panes: Pane[]): void {
   try {

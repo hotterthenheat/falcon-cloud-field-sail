@@ -1,22 +1,27 @@
 import DropdownSelect from './DropdownSelect';
-import { DESK_SESSIONS, setDeskSession, useDeskSession, type DeskSession } from '../../data/deskSession';
+import { DESK_SESSIONS, followDeskClock, sessionMeta, setDeskSession, useDeskFollowsClock, useDeskSession, type DeskSession } from '../../data/deskSession';
 
 /*
-  Which session the book is being read in. One control, the house dropdown,
-  so it sits in a shell head beside the other cards (Ruler, Levels) and
-  every desk that mounts it reads the same session.
+  Which session the book is being read in. Follow the clock unless the
+  reader pins one. The pin is the other rows; Follow gives the pin back.
 */
-const OPTIONS = DESK_SESSIONS.map(s => ({ value: s.value, label: s.label, hint: `${s.window} · ${s.hint}` }));
+type Choice = DeskSession | 'clock';
 
 const SessionBook = () => {
   const session = useDeskSession();
+  const follows = useDeskFollowsClock();
+  const live = sessionMeta(session);
+  const options = [
+    { value: 'clock' as const, label: `Follow · ${live.label}`, hint: `Moves on its own. Right now ${live.window}.` },
+    ...DESK_SESSIONS.map(s => ({ value: s.value, label: s.label, hint: `${s.window} · ${s.hint}. Stays until you follow the clock.` })),
+  ];
   return (
-    <DropdownSelect<DeskSession>
+    <DropdownSelect<Choice>
       label="Session"
-      value={session}
-      options={OPTIONS}
-      onChange={setDeskSession}
-      title="Which hours the day's price is read in. The book of strikes stays the cash session."
+      value={follows ? 'clock' : session}
+      options={options}
+      onChange={next => (next === 'clock' ? followDeskClock() : setDeskSession(next))}
+      title={follows ? `Following the clock. ${live.label}, ${live.window}. Pick a session to hold it.` : `Held on ${live.label}. Follow the clock to let it move.`}
       testId="desk-session"
       align="end"
     />

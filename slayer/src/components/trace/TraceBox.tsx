@@ -226,7 +226,7 @@ export const PhoneRow = ({ lead, title, aside, figures }: { lead?: ReactNode; ti
 /* ---- the grid in its window ------------------------------------------------------ */
 
 /** A page's Column<T> definitions as AG Grid columns — the cells, inks and doors untouched */
-export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}): ColDef<T>[] {
+export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, widths: Record<string, number> = {}, tooltips: Record<string, string> = {}, flexes: Record<string, number> = {}, lock = false): ColDef<T>[] {
   return columns.map(c => {
     const fixed = widths[c.key] ?? (c.width ? parseInt(c.width, 10) : undefined);
     const def: ColDef<T> = {
@@ -247,8 +247,11 @@ export function columnsToColDefs<T>(columns: Column<T>[], hidden: Set<string>, w
        clipped ellipsis), growing to fill a wide box; the pages keep their widths inside a laptop's box. */
     if (fixed) {
       def.width = fixed;
-      def.flex = fixed;
       def.minWidth = fixed;
+      def.flex = fixed;
+      /* Locked: same shares as before, so the row stays full, but the reader
+         cannot drag a column to a new width or a new place. */
+      if (lock) def.resizable = false;
     } else {
       def.flex = flexes[c.key] ?? 1;
       /* 92, not 84: the house's widest standard cell (the Lean bar) is 64px and the grid's own padding is 24, so 84
@@ -313,6 +316,8 @@ interface TraceGridProps<T> {
   widths?: Record<string, number>;
   /** A wide text column's share of the room (the default is 1) */
   flexes?: Record<string, number>;
+  /** Widths are walls, not shares — the columns do not grow, shrink, or slide */
+  lockColumns?: boolean;
   tooltips?: Record<string, string>;
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
@@ -361,7 +366,7 @@ export interface EndlessFeed {
   extra?: ReactNode;
 }
 
-export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
+export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColumns = false, tooltips, rowKey, onRowClick, selectedKey, height, autoHeight = false, initialSort, rowClass, animate = true, emptyText = 'Nothing on this cut', pinLeft, pinRight, phoneRow, endless, onDeep, topSignal, onVisible, testId }: TraceGridProps<T>) => {
   const gridRef = useRef<AgGridReact<T>>(null);
   const phone = useIsPhone() && !!phoneRow;
   const hiddenSet = hidden ?? new Set<string>();
@@ -371,7 +376,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
       /* one column, the row in two lines */
       return [{ colId: 'phone', headerName: '', flex: 1, sortable: false, resizable: false, suppressMovable: true, cellRenderer: (p: ICellRendererParams<T>) => (p.data ? phoneRow(p.data) : null) } as ColDef<T>];
     }
-    const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes);
+    const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns);
     for (const d of defs) {
       if (pinLeft?.includes(d.colId ?? '')) d.pinned = 'left';
       else if (pinRight?.includes(d.colId ?? '')) {
@@ -391,7 +396,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
     }
     return defs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, hiddenSet, widths, tooltips, flexes, phone, phoneRow, pinLeft, pinRight, endlessOn]);
+  }, [columns, hiddenSet, widths, tooltips, flexes, lockColumns, phone, phoneRow, pinLeft, pinRight, endlessOn]);
   const defaultColDef = useMemo<ColDef<T>>(() => ({ sortable: true, resizable: true, suppressMovable: true }), []);
   /* A CUT — the search cleared, a card turned, "Show all" — IS A CROSSFADE, NEVER A SLIDE AND NEVER A SWAP (2026-09-20).
      Two complaints from Noah, the same afternoon, on the book:
@@ -514,10 +519,11 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
   onDeepRef.current = onDeep;
   const rowPx = phone ? 58 : 39;
   const headPx = phone ? 0 : 32;
-  /* One page in the window, the numbers under it. autoHeight on a paged book
-     drew every row and hid the numbers under a scroll you never finish. */
-  const pageHeight = headPx + TRACE_PAGE * rowPx + 2;
   const [pager, setPager] = useState({ page: 0, pages: 1 });
+  /* A short page keeps the height of its rows. A fixed 40 left a black band
+     under the last page, and under any cut that did not fill one. */
+  const onPage = paged ? Math.min(TRACE_PAGE, Math.max(1, gridRows.length - pager.page * TRACE_PAGE)) : TRACE_PAGE;
+  const pageHeight = headPx + onPage * rowPx + 2;
   const onPaginationChanged = (e: PaginationChangedEvent) => {
     const page = e.api.paginationGetCurrentPage();
     const pages = Math.max(1, e.api.paginationGetTotalPages() || 1);
@@ -664,7 +670,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
        puts every row in the first paint, and the whole box comes up over the table curve (index.css grid-in). */
     /* THE FOOT STANDS UNDER THE WINDOW, NEVER INSIDE IT (audit round 11, major 2: the window is a fixed height and the foot
        sat in it, under the grid — pushed out of the box, behind the page, its "Load older" unclickable at 1440 and 390) */
-    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
+    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-lock={lockColumns || undefined} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
      <div className="relative" style={windowed ? { height: `min(${pageHeight}px, calc(100dvh - 72px))`, minHeight: 360 } : autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-window>
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<T>
@@ -683,6 +689,8 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
           suppressAnimationFrame
           rowBuffer={windowed ? 40 : 200}
           animateRows={glide}
+          suppressMovableColumns={lockColumns}
+          suppressColumnMoveAnimation={lockColumns}
           pagination={paged}
           paginationPageSize={TRACE_PAGE}
           paginationPageSizeSelector={false}
@@ -707,15 +715,15 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, tooltips,
      </div>
       {paged && <PageBar page={pager.page} pages={Math.max(pager.pages, Math.ceil(gridRows.length / TRACE_PAGE))} onPage={n => gridRef.current?.api.paginationGoToPage(n)} testId={testId} />}
       {endless && (gridRows.length > 0 || endless.state === 'loading' || (endless.state === 'more' && (endless.loaded ?? 0) > 0)) && (
-        <div ref={footRef} className="relative z-[1] bg-panel px-5 py-2.5 border-t border-borderSubtle flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] text-textSecondary" data-endless-foot={endless.state}>
-          <span className="min-w-0 flex-1 basis-[14rem] break-words">{endless.note}</span>
+        <div ref={footRef} className="relative z-[1] bg-panel px-3 min-h-10 border-t border-borderSubtle/50 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px]" data-endless-foot={endless.state}>
+          <span className="min-w-0 flex-1 basis-[12rem] truncate text-textMuted">{endless.note}</span>
           {endless.extra}
           {endless.state === 'more' && (
-            <button type="button" onClick={endless.onNear} className="ml-auto shrink-0 rounded-md border border-borderSubtle bg-chip px-2.5 py-1 text-textPrimary hover:border-borderMuted" data-endless-more>
-              {endless.moreLabel ?? 'Load older ↓'}
+            <button type="button" onClick={endless.onNear} className="slayer-chip shrink-0" data-endless-more>
+              {(endless.moreLabel ?? 'Load older').replace(' ↓', '')}
             </button>
           )}
-          {endless.state === 'loading' && <span className="ml-auto shrink-0 text-textMuted">{endless.moreLabel ? 'Loading…' : 'Loading older…'}</span>}
+          {endless.state === 'loading' && <span className="shrink-0 text-textMuted">{endless.moreLabel ? 'Loading…' : 'Loading older…'}</span>}
         </div>
       )}
     </div>
@@ -735,6 +743,6 @@ export function endlessOf(o: { state: EndlessFeed['state']; loaded: number; load
     state,
     moreLabel,
     loaded: o.loaded,
-    note: state === 'end' ? `${n} — ${endWords}` : state === 'cap' ? `${n} — the most the page holds at once` : state === 'idle' ? `${n}${paused ? ' — paused' : ''}` : `${n} — scroll for more`,
+    note: state === 'end' ? `${n} · ${endWords}` : state === 'cap' ? `${n} · the most the page holds at once` : state === 'idle' ? `${n}${paused ? ' · paused' : ''}` : n,
   };
 }

@@ -18,18 +18,11 @@ export const CHART_MINT = '#CFFFB1';
 /* THE ACCENT (2026-10-13): the holo silver — the lime it was is gone from the desk (tokens.css --select) */
 export const LIME = '#C7D3E8';
 
-export const CALL_WALL = '#7ABDD7'; // glacier — the call side's ink; green and red are the sign (absorbs / amplifies), 2026-10-23
-export const PUT_WALL = '#F5C542'; // ember — the put side's ink, not the amplify red (2026-10-23)
-/* INDECISION GRAY (Noah, 2026-08-29): the flip is the price where the book
-   is on the verge of two sides — neither's color belongs to it. Gray IS the
-   read. (The old baby blue moved up: it is the supreme's now.) */
-export const FLIP = '#9CA3AF';
-// The `supreme` token — one supreme color everywhere: MAGENTA, restored (Noah,
-// 2026-08-29, after a full odyssey magenta → silver → baby blue → neon:
-// "i reveried and skylit doesnt have those colors"). Nothing else on any
-// chart is magenta, so the supreme marker is unmistakable — and FOCUS lime
-// gets its selection voice back to itself. Mirrors tailwind's `supreme`.
-export const SUPREME = '#EA00FF';
+export const CALL_WALL = '#9ED4EA'; // glacier, heavier so a 1px rung holds contrast. Green is the long-gamma sign, not the wall.
+export const PUT_WALL = '#F5C542'; // ember. Red is the short-gamma sign, not the wall.
+/* The flip is a dashed rule. A light grey holds on #050505; it is not a side. */
+export const FLIP = '#E4E7EE';
+export const SUPREME = '#FF5AF1';
 export const DARK_POOL = '#2dd4bf'; // teal — institutional reference prints
 export const SPOT = '#ededed'; // white — where the market is
 export const FOCUS = LIME; // the silver accent — what the user clicked (selection language)
@@ -40,7 +33,7 @@ export const FOCUS = LIME; // the silver accent — what the user clicked (selec
 // (dealer hedging amplifies the move), green = LONG gamma (dips absorbed).
 // Same values as bull/bear — named by regime so a dealer-inventory surface
 // doesn't import "BULL" to paint an absorbing book.
-export const SHORT_GAMMA = '#FF3B30'; // red — amplifying regime
+export const SHORT_GAMMA = '#FF6B63'; // amplifying regime. Not the put wall.
 export const LONG_GAMMA = BULL; // green — absorbing regime
 
 // The alert ink — the one ORANGE on the desk, reserved for "something you

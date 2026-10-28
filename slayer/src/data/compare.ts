@@ -52,9 +52,14 @@ export type { Greek };
 export const GREEK_OPTIONS: { value: Greek; label: string; hint: string }[] = [
   { value: 'gex', label: 'GEX', hint: 'Gamma — how hard dealers must hedge a move' },
   { value: 'dex', label: 'DEX', hint: 'Delta — which way dealers are leaning' },
-  { value: 'vex', label: 'VEX', hint: 'Vega — how a change in volatility moves them' },
+  { value: 'vex', label: 'vega $', hint: 'Dollar vega — what the book gains or loses if vol moves one point. Not vanna.' },
   { value: 'vanna', label: 'VANNA', hint: 'How their hedges re-price when vol moves — the stock a vol drop makes them buy or sell' },
   { value: 'charm', label: 'CHARM', hint: "The clock's pull on their hedges — the stock the passing day makes them buy or sell" },
+  { value: 'color', label: 'COLOR', hint: 'How gamma-per-1% itself changes as the session runs' },
+  { value: 'vomma', label: 'VOMMA', hint: 'How vega changes when vol moves one point' },
+  { value: 'speed', label: 'SPEED', hint: 'How gamma-per-1% changes when the underlying moves one dollar' },
+  { value: 'veta', label: 'VETA', hint: 'How vega changes as the session runs' },
+  { value: 'zomma', label: 'ZOMMA', hint: 'How gamma-per-1% changes when vol moves one point' },
 ];
 export interface GreekWords {
   pos: string;
@@ -71,17 +76,27 @@ export const GREEK_WORDS: Record<Greek, GreekWords> = {
   vex: { pos: 'gains if vol rises', neg: 'gains if vol falls', posBoth: 'both gain if vol rises', negBoth: 'both gain if vol falls', posWhy: 'dealers are long volatility there', negWhy: 'dealers are short volatility there' },
   vanna: { pos: 'buys on a vol drop', neg: 'sells on a vol drop', posBoth: 'both buy on a vol drop', negBoth: 'both sell on a vol drop', posWhy: 'a one-point vol drop makes dealers buy stock there', negWhy: 'a one-point vol drop makes dealers sell stock there' },
   charm: { pos: 'sells as the clock runs', neg: 'buys as the clock runs', posBoth: 'both sell as the clock runs', negBoth: 'both buy as the clock runs', posWhy: 'each passing day makes dealers sell stock there', negWhy: 'each passing day makes dealers buy stock there' },
+  color: { pos: 'gamma builds', neg: 'gamma fades', posBoth: 'both build gamma', negBoth: 'both fade gamma', posWhy: 'the gamma-per-1% book is steepening as the session runs', negWhy: 'the gamma-per-1% book is flattening as the session runs' },
+  vomma: { pos: 'vega rises with vol', neg: 'vega falls with vol', posBoth: 'both gain vega as vol rises', negBoth: 'both lose vega as vol rises', posWhy: 'a vol rise adds vega there', negWhy: 'a vol rise takes vega off there' },
+  speed: { pos: 'gamma rises with price', neg: 'gamma falls with price', posBoth: 'both add gamma as price rises', negBoth: 'both lose gamma as price rises', posWhy: 'a one-dollar rise adds gamma-per-1% there', negWhy: 'a one-dollar rise takes gamma-per-1% off there' },
+  veta: { pos: 'vega builds', neg: 'vega fades', posBoth: 'both build vega', negBoth: 'both fade vega', posWhy: 'vega is steepening as the session runs', negWhy: 'vega is flattening as the session runs' },
+  zomma: { pos: 'gamma rises with vol', neg: 'gamma falls with vol', posBoth: 'both add gamma as vol rises', negBoth: 'both lose gamma as vol rises', posWhy: 'a one-point vol rise adds gamma-per-1% there', negWhy: 'a one-point vol rise takes gamma-per-1% off there' },
 };
-export const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'VEX', vanna: 'VANNA', charm: 'CHARM' };
+export const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
 
 /** EACH GREEK IN ONE PLAIN SENTENCE (the retail test, 2026-10-22: "VEX −$14.6K next to VANNA $3.9M with no explanation") —
     the hover on every label that prints them side by side */
 export const GREEK_EXPLAIN: Record<Greek, string> = {
   gex: 'GEX (gamma): the stock dealers must trade for a 1% move — positive, they absorb moves; negative, they amplify them',
   dex: 'DEX (delta): the stock dealers already hold against their options — which way their hedging leans',
-  vex: "VEX (vega): the dollars dealers' option book gains or loses if implied volatility moves one point — their volatility risk, not stock they must trade",
-  vanna: 'VANNA: the stock dealers must buy or sell if implied volatility moves one point — their hedges shifting with vol. Not VEX: VEX is the dollars their book gains or loses; VANNA is the stock it makes them trade',
+  vex: 'Dollar vega: what the dealers’ option book gains or loses if implied volatility moves one point. Not vanna — vanna is the stock that vol makes them trade.',
+  vanna: 'Vanna: the stock dealers must buy or sell if implied volatility moves one point. Not dollar vega.',
   charm: 'CHARM: the stock dealers must buy or sell as a day passes, with price and vol unchanged — the clock pulling on their hedges',
+  color: 'COLOR: how the gamma-per-1% book changes as this session runs, from each contract’s own vol — the slope right now, not a forecast of tomorrow’s gamma',
+  vomma: 'VOMMA: how much vega the book gains or loses when implied volatility moves one point, from each contract’s own vol',
+  speed: 'SPEED: how much the gamma-per-1% book changes when the underlying moves one dollar',
+  veta: 'VETA: how vega changes as this session runs, from each contract’s own vol — the slope right now, not a forecast of tomorrow’s vega',
+  zomma: 'ZOMMA: how much the gamma-per-1% book changes when implied volatility moves one point',
 };
 
 export interface CompareLevel {
@@ -215,10 +230,15 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   const moveWords = snapshot.liveBook ? ss.words : 'the 30-day implied vol over one session';
   const scales: DistanceScales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: sigmaDay };
 
-  const rows: Record<Greek, GexLevel[]> = { gex: [], dex: [], vex: [], vanna: [], charm: [] };
-  const heaviest: Record<Greek, number> = { gex: 1, dex: 1, vex: 1, vanna: 1, charm: 1 };
+  const rows = {} as Record<Greek, GexLevel[]>;
+  const heaviest = {} as Record<Greek, number>;
   const none = (): CompareLevel => ({ strike: spot, distPct: 0, weight: 0 });
-  const supreme: Record<Greek, CompareLevel> = { gex: none(), dex: none(), vex: none(), vanna: none(), charm: none() };
+  const supreme = {} as Record<Greek, CompareLevel>;
+  for (const g of GREEKS) {
+    rows[g] = [];
+    heaviest[g] = 1;
+    supreme[g] = none();
+  }
   for (const s of [...profile.strikes].reverse()) {
     for (const g of GREEKS) {
       const value = s[g].net;

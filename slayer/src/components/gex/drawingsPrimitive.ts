@@ -188,6 +188,8 @@ export interface Drawing {
   locked?: boolean;
   /** The points of a run, in order (pts[0] === p1) — the path, the polyline, the brush, the highlighter (see usesPts). */
   pts?: DrawingPoint[];
+  /** A horizontal line that follows a live level instead of a frozen price. */
+  bind?: 'callWall' | 'putWall' | 'flip' | 'coneHigh' | 'coneLow';
 }
 
 /** '#rrggbb' → 'r,g,b' for the rgba templates; null on anything else. */
@@ -499,6 +501,13 @@ class DrawingsPaneRenderer {
           ctx.moveTo(0, y1);
           ctx.lineTo(w, y1);
           ctx.stroke();
+          if (d.bind) {
+            const word = d.bind === 'callWall' ? 'call wall' : d.bind === 'putWall' ? 'put wall' : d.bind === 'flip' ? 'flip' : d.bind === 'coneHigh' ? 'cone high' : 'cone low';
+            ctx.font = `${10 * vr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+            ctx.textBaseline = 'bottom';
+            ctx.fillStyle = `rgba(${MARK},0.8)`;
+            ctx.fillText(word, 8 * hr, y1 - 3 * vr);
+          }
           return;
         }
 
@@ -1317,8 +1326,28 @@ export function loadDrawings(ticker: string): Drawing[] {
   }
 }
 
+const undoStacks = new Map<string, Drawing[][]>();
+let applyingUndo = false;
+
+export function popDrawings(ticker: string): Drawing[] | null {
+  const stack = undoStacks.get(ticker);
+  const prev = stack?.pop() ?? null;
+  if (!prev) return null;
+  applyingUndo = true;
+  saveDrawings(ticker, prev);
+  applyingUndo = false;
+  return prev;
+}
+
 export function saveDrawings(ticker: string, drawings: Drawing[]): void {
   try {
+    if (!applyingUndo) {
+      const prev = loadDrawings(ticker);
+      const stack = undoStacks.get(ticker) ?? [];
+      stack.push(prev);
+      if (stack.length > 20) stack.shift();
+      undoStacks.set(ticker, stack);
+    }
     if (drawings.length === 0) localStorage.removeItem(storageKey(ticker));
     else localStorage.setItem(storageKey(ticker), JSON.stringify(drawings));
   } catch {

@@ -52,6 +52,7 @@ import { ABSORB, AMPLIFY, CALL_WALL, EMBER, FLIP, GLACIER, PUT_WALL, SUPREME } f
 import { strikeRole, underlineClass } from './strikeRole';
 import StrikeNum, { hasCents } from './StrikeNum';
 import { useResolvedTheme } from '../../theme/theme';
+import { nearestStrikes, strikeGap } from '../../data/chartMoves';
 import type { SurfaceCell } from './exposureView';
 
 interface ExposureMatrixProps {
@@ -88,6 +89,8 @@ interface ExposureMatrixProps {
   levelsWords?: string | null;
   /** The rows are coloured by the window's own levels (not the Levels card's) — the head says so */
   windowLevels?: boolean;
+  /** The prices the chart's biggest swings turned at. Absent, the whole book. Snapped onto the rows this window actually draws. */
+  movePrices?: number[];
   onNatural?: (px: number) => void;
 }
 
@@ -97,7 +100,7 @@ type Leg = 'put' | 'call' | 'net';
    it, its bar the whole lane; the put and call legs live on the pointer card. SINCE 2026-10-13 the band's Legs card can
    draw one leg alone, or BOTH — two columns a greek, the put's bar growing left and the call's right from the seam. */
 const legsOf = (pick: 'net' | 'call' | 'put' | 'both' | 'all'): Leg[] => (pick === 'all' ? ['put', 'call', 'net'] : pick === 'both' ? ['put', 'call'] : [pick]);
-const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'VEX', vanna: 'VANNA', charm: 'CHARM' };
+const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
 const SILVER = 'rgb(var(--silver))';
 /* THE LEGS IN THE CAPSULES' OWN INKS (the paying-user audit's H8, 2026-10-13): the card said Put in the put wall's red
    and Call in the call wall's green while the calendar's card said them in ember and glacier — one book, two codes. The
@@ -141,8 +144,9 @@ const groupSkin = (gi: number, first: boolean, last: boolean, paper: boolean) =>
   `${first ? `border-l ${paper ? 'border-borderSubtle' : 'border-borderMuted'} pl-3` : ''} ${last ? 'pr-3' : ''} ${gi % 2 === 1 ? (paper ? 'bg-ink/[0.02]' : 'bg-ink/[0.045]') : ''}`;
 
 const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW_H, heavy = true, level = null }: { value: number; /** the figure printed — the kept value in the reader's sign (retailSign.ts); the ink reads the kept value */ shown: number; leg: Leg; cap: number; mode: HeatMode; paper: boolean; gi: number; first: boolean; last: boolean; /** the row's height — the figure and its track centred in it */ rowH?: number; /** one of the column's three heaviest bars: full ink; the rest a step quieter, so the walls pop */ heavy?: boolean; /** the cell prints the Levels card's figure, not the window's — the ink it is marked in and the hover */ level?: { ink: string; title: string } | null }) => {
-  const pct = Math.min(100, (Math.abs(value) / Math.max(1, cap)) * 100);
-  const ink = value === 0 ? 'transparent' : heatLadderColor(value, cap, mode, paper);
+  const pending = !Number.isFinite(value);
+  const pct = pending ? 0 : Math.min(100, (Math.abs(value) / Math.max(1, cap)) * 100);
+  const ink = pending || value === 0 ? 'transparent' : heatLadderColor(value, cap, mode, paper);
   return (
     <td className={`px-2.5 py-0 align-middle ${groupSkin(gi, first, last, paper)}`} data-matrix-leg={leg} data-matrix-level-cell={level ? '' : undefined} title={level?.title}>
       <div className="flex flex-col justify-center" style={{ height: Math.max(ROW_MIN, rowH) - 1 }}>
@@ -151,7 +155,7 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
               just be the color of the strike and show on the hover card but not on the actual matrix view") — the words
               that stood here since 2026-10-14 are the strike's ink and the card's; the spacer keeps the figure at the right */}
           <span aria-hidden />
-          <span className={`font-mono text-[12px] tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{fmtUsd(shown)}</span>
+          <span className={`font-mono text-[12px] tnum leading-none whitespace-nowrap ${leg === 'net' ? 'font-bold text-textPrimary' : 'font-medium text-textPrimary'} ${level ? 'underline decoration-dotted underline-offset-2' : ''}`} style={level ? { textDecorationColor: level.ink } : undefined}>{pending ? '—' : fmtUsd(shown)}</span>
         </div>
         {/* the track under every figure, the bar on it — the width with the data, the ink with the Colours switch */}
         <span className={`relative block w-full h-[3px] mt-[5px] rounded-full ${paper ? 'bg-ink/[0.1]' : 'bg-ink/[0.08]'}`} data-matrix-track>
@@ -162,7 +166,7 @@ const Cell = ({ value, shown, leg, cap, mode, paper, gi, first, last, rowH = ROW
   );
 };
 
-const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural, windowLabel = null, levelLegsAt = null, levelsWords = null, windowLevels = false }: ExposureMatrixProps) => {
+const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, rings, hoverStrike, palette = 'house', selectedStrike, marks, onPointer, onSelectStrike, lead: leadProp, legs: legsPick = 'net', onNatural, windowLabel = null, levelLegsAt = null, levelsWords = null, windowLevels = false, movePrices }: ExposureMatrixProps) => {
   const mode: HeatMode = palette === 'thermal' ? 'thermal-yellow' : HEAT_MODE;
   const paper = useResolvedTheme() === 'light';
   const shownGreeks = useMemo(() => GREEKS.filter(g => greeks.includes(g)), [greeks]);
@@ -199,13 +203,15 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     const legs = {} as Row['legs'];
     for (const g of GREEKS) {
       let put = 0, call = 0, net = 0;
-      if (si >= 0)
+      const waiting = !!surface.priced?.[g]?.length && !shownIdx.some(e => surface.priced[g][e] !== false);
+      if (si >= 0 && !waiting)
         for (const e of shownIdx) {
+          if (surface.priced?.[g]?.[e] === false) continue;
           put += surface.put[g][e]?.[si] ?? 0;
           call += surface.call[g][e]?.[si] ?? 0;
           net += surface.net[g][e]?.[si] ?? 0;
         }
-      legs[g] = { put, call, net };
+      legs[g] = waiting ? { put: Number.NaN, call: Number.NaN, net: Number.NaN } : { put, call, net };
     }
     return { strike, legs };
   };
@@ -215,7 +221,14 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   /* THE SCALES — each column against its own heaviest among the rows shown: a bar's length and its ink read the same */
   const caps = useMemo(() => {
     const m = {} as Record<Greek, Record<Leg, number>>;
-    for (const g of GREEKS) m[g] = { put: Math.max(1, ...rows.map(r => Math.abs(r.legs[g].put))), call: Math.max(1, ...rows.map(r => Math.abs(r.legs[g].call))), net: Math.max(1, ...rows.map(r => Math.abs(r.legs[g].net))) };
+    for (const g of GREEKS) {
+      const fin = (leg: Leg) => rows.map(r => r.legs[g][leg]).filter(n => Number.isFinite(n));
+      m[g] = {
+        put: Math.max(1, ...fin('put')),
+        call: Math.max(1, ...fin('call')),
+        net: Math.max(1, ...fin('net')),
+      };
+    }
     return m;
   }, [rows]);
 
@@ -508,6 +521,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     return () => ro.disconnect();
   }, [rows.length]);
 
+  const moveSet = movePrices ? new Set(nearestStrikes(movePrices, rows.map(r => r.strike), strikeGap(rows.map(r => r.strike)))) : null;
   const renderRow = (r: Row) => {
     const at = rows.indexOf(r);
     const plus = rowExtra > 0 && Math.floor(((at + 1) * rowExtra) / rows.length) > Math.floor((at * rowExtra) / rows.length) ? 1 : 0;
@@ -517,11 +531,12 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
     const role = strikeRole(r.strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? Number.NaN : levels.flip, pin: pinStrike, owned: !!marks?.has(r.strike) });
     const tag = tagFor(r.strike);
     const you = marks?.get(r.strike);
+    const moved = !!moveSet?.has(r.strike);
     return (
       <tr
         key={r.strike}
         id={rowId(r.strike)}
-        aria-label={`${fmtStrike(r.strike)}${tag ? ` · ${tag.word}` : ''}${you ? ' · you own' : ''} · net ${GREEK_LABEL[lead]} ${fmtUsd(shownGreek(lead, r.legs[lead].net))}`}
+        aria-label={`${fmtStrike(r.strike)}${tag ? ` · ${tag.word}` : ''}${you ? ' · you own' : ''}${moved ? ' · a chart move turned here' : ''} · net ${GREEK_LABEL[lead]} ${fmtUsd(shownGreek(lead, r.legs[lead].net))}`}
         onPointerEnter={ev => {
           if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
           leaveTimer.current = 0;
@@ -543,9 +558,10 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
           setKeptAt({ strike: r.strike, dx: ev.clientX - b.left, dy: ev.clientY - b.top });
           onSelectStrike?.(r.strike);
         }}
-        className={`relative border-b border-borderSubtle/30 transition-colors ${onSelectStrike ? 'cursor-pointer' : ''} ${on ? 'bg-ink/[0.05]' : lit ? 'bg-ink/[0.04]' : ''} ${pinned && !on ? 'opacity-60' : ''}`}
-        style={{ height: rowH + plus, ...(on ? { boxShadow: `inset 2px 0 0 0 ${SILVER}` } : walked ? { boxShadow: 'inset 0 0 0 2px rgb(var(--silver) / var(--ring-a))' } : {}) }}
+        className={`relative border-b border-borderSubtle/30 transition-colors ${onSelectStrike ? 'cursor-pointer' : ''} ${on ? 'bg-ink/[0.05]' : lit ? 'bg-ink/[0.04]' : ''} ${moved ? 'bg-silver/[0.1]' : ''} ${pinned && !on ? 'opacity-60' : ''} ${moveSet && moveSet.size > 0 && !moved && !on ? 'opacity-40' : ''}`}
+        style={{ height: rowH + plus, ...(moved ? { boxShadow: 'inset 2px 0 0 0 rgb(var(--silver))' } : on ? { boxShadow: `inset 2px 0 0 0 ${SILVER}` } : walked ? { boxShadow: 'inset 0 0 0 2px rgb(var(--silver) / var(--ring-a))' } : {}) }}
         data-matrix-row={r.strike}
+        data-chart-move={moved || undefined}
         data-kept={on || undefined}
         data-walked={walked || undefined}
         title={you}
@@ -599,9 +615,16 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
   };
 
   return (
+    <div className="h-full min-h-0 flex flex-col">
+      {moveSet && (
+        <div className="shrink-0 h-7 flex items-center gap-2 px-3 border-b border-borderSubtle font-mono text-[11px] text-textSecondary whitespace-nowrap overflow-x-auto" data-matrix-moves={movePrices?.length ?? 0}>
+          {movePrices && movePrices.length > 0 ? `${movePrices.length} biggest ${movePrices.length === 1 ? 'move' : 'moves'} on the chart` : 'No swing on the chart yet'}
+          {movePrices && movePrices.length > 0 && <span className="text-textMuted">· {movePrices.map(s => s.toFixed(2)).join(' · ')}</span>}
+        </div>
+      )}
     <div
       ref={scrollRef}
-      className="overflow-auto h-full min-h-0"
+      className="overflow-auto flex-1 min-h-0"
       tabIndex={0}
       role="group"
       aria-label="The book by strike — the arrow keys walk the strikes, Enter keeps one"
@@ -701,6 +724,7 @@ const ExposureMatrix = ({ surface, liveSpot, live = true, greeks, expiries, ring
       </table>
       {cardRow && card && <Fragment key="card">{rowCard(cardRow, card)}</Fragment>}
       {keptRow && keptPos && !cardRow && <Fragment key="kept">{rowCard(keptRow, keptPos, true)}</Fragment>}
+    </div>
     </div>
   );
 };

@@ -12,7 +12,7 @@
   contract's real last trade off the vendor — and
   ↑/↓ steps through the host page's table order.
   No simulator snapshot and no seeded grade: the
-  card reads the vendor's rows only.
+  card reads the feed's rows only.
 ==================================================
 */
 
@@ -47,7 +47,7 @@ const BookDrill = ({ list, openKey, onOpen, clipFor }: BookDrillProps) => {
   const row = idx >= 0 ? list[idx] : null;
 
   /* The anchor is a REAL print: the host's exact clip (a flow alert's), else the contract's own last trade off the
-     vendor — never an invented one (data/tape bookRowToPrint) */
+     feed — never an invented one (data/tape bookRowToPrint) */
   const last = useContractLast(row && !clipFor?.(row) ? row.optionSymbol : null).rows;
   /* A DAY-BOOK ROW OPENS THE CONTRACT'S DAY (audit round 4: the Screener's NVDA 220C opened as one after-hours $18 print):
      the day's premium, volume and lean, anchored on its latest regular-session print — the fill, the quote and the time

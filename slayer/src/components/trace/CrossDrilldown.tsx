@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Check, ChevronDown, ChevronUp, Copy, Crosshair, Scale } from 'lucide-react';
-import { AreaSeries, LineStyle, createChart, createSeriesMarkers, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
+import { LineSeries, LineStyle, createChart, createSeriesMarkers, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type Time, type UTCTimestamp } from 'lightweight-charts';
 import Modal from '../ui/Modal';
 import Fact from '../ui/Fact';
 import RichRead from '../ui/RichRead';
@@ -25,7 +25,7 @@ import { usd as fmtUsd } from '../../data/traceLive';
 import { gradeOfConviction, gradeOfPosture, POSTURE_WORD } from '../../data/darkpool';
 import { crossKey, useWatch, watchedCross } from '../../context/WatchContext';
 import { readToken, useResolvedTheme } from '../../theme/theme';
-import { dayChartOptions, syncDayScale, type DaySurface } from '../gex/dayChart';
+import { dayChartOptions, type DaySurface } from '../gex/dayChart';
 import type { DarkPoolIntent, DarkPoolPrint, DarkPoolView, LevelRole } from '../../types/darkpool';
 
 const num = (v: number) => v.toLocaleString('en-US');
@@ -67,14 +67,29 @@ const fillFrac = (p: DarkPoolPrint): number | null => {
   return null;
 };
 
-/* The card's own ground. The day chart's figure surface is a grey slab and
-   does not belong in this sheet — the print card sits on the inset. */
+/* The card's own ground. The day chart's figure surface is a grey slab
+   (#7d7d7d on a grey chip) and does not belong on this sheet. Axis figures
+   are the page ink, the crosshair is silver, the ground is the inset. */
 const cardSurface = (host: HTMLElement, paper: boolean): DaySurface => {
   const bg = readToken('--inset', undefined, host);
   const ink = readToken('--text-primary', undefined, host);
-  const text = readToken('--text-secondary', undefined, host);
-  if (paper) return { bg, text, line: readToken('--ink', 0.16, host), crosshair: readToken('--ink', 0.45, host), label: ink, ink, zero: readToken('--ink', 0.28, host) };
-  return { bg, text, line: readToken('--border-subtle', undefined, host), crosshair: readToken('--text-primary', 0.35, host), label: readToken('--chip', undefined, host), ink, zero: readToken('--border-muted', undefined, host) };
+  const silver = readToken('--silver', undefined, host);
+  if (paper) return { bg, text: ink, line: readToken('--ink', 0.14, host), crosshair: readToken('--silver', 0.7, host), label: readToken('--panel', undefined, host), ink, zero: silver };
+  return { bg, text: ink, line: readToken('--border-subtle', undefined, host), crosshair: readToken('--silver', 0.72, host), label: readToken('--panel', undefined, host), ink, zero: silver };
+};
+
+type TapeHold = {
+  price: IChartApi;
+  dark: IChartApi;
+  stock: ISeriesApi<'Line'>;
+  flow: ISeriesApi<'Line'>;
+  lines: IPriceLine[];
+  marks: ISeriesMarkersPluginApi<Time>;
+  levelKey: string;
+  dataKey: string;
+  fitted: boolean;
+  n: number;
+  aligned: number;
 };
 
 /** The New York day a cross printed on — its own date, never the clock's */
@@ -83,6 +98,7 @@ const crossIsoOf = (p: DarkPoolPrint): string => p.dateIso || (p.epochMs && p.ep
 const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView | null }) => {
   const priceRef = useRef<HTMLDivElement | null>(null);
   const darkRef = useRef<HTMLDivElement | null>(null);
+  const holdRef = useRef<TapeHold | null>(null);
   const paper = useResolvedTheme() === 'light';
   /* THE STOCK'S WHOLE DAY, EXTENDED HOURS IN (the re-audit, 2026-10-22: the stock line ended at the 16:00 close while
      the cross was at 17:04): the name's own one-minute bars for the session's date, pre-market to after hours */
@@ -111,25 +127,67 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
     const priceHost = priceRef.current;
     const darkHost = darkRef.current;
     if (!priceHost || !darkHost) return;
-    const day = bars;
-    if (day.length === 0) return;
-    /* the price strip carries its own clock now — the cross is read against a time */
-    const priceChart: IChartApi = createChart(priceHost, { ...dayChartOptions(cardSurface(priceHost, paper), { clock: true, logo: false }), autoSize: true });
-    const darkChart: IChartApi = createChart(darkHost, { ...dayChartOptions(cardSurface(darkHost, paper), { clock: true, logo: false }), autoSize: true });
-    const dropPrice = syncDayScale(priceChart, `cross-${print.ticker}`, 'price');
-    const dropDark = syncDayScale(darkChart, `cross-${print.ticker}`, 'dark');
-    const sInk = readToken('--text-primary', undefined, priceHost);
-    const series = priceChart.addSeries(AreaSeries, {
-      lineColor: sInk,
-      topColor: readToken('--text-primary', paper ? 0.12 : 0.16, priceHost),
-      bottomColor: readToken('--text-primary', 0.01, priceHost),
+    const surface = cardSurface(priceHost, paper);
+    const silver = readToken('--silver', undefined, priceHost);
+    const priceChart = createChart(priceHost, { ...dayChartOptions(surface, { clock: true, logo: false }), autoSize: false });
+    const darkChart = createChart(darkHost, { ...dayChartOptions(cardSurface(darkHost, paper), { clock: true, logo: false }), autoSize: false });
+    const stock = priceChart.addSeries(LineSeries, {
+      color: surface.ink,
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: true,
-      crosshairMarkerVisible: false,
+      crosshairMarkerRadius: 3,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     });
-    series.setData(day.map(c => ({ time: c.time as UTCTimestamp, value: c.close })));
+    const flow = darkChart.addSeries(LineSeries, {
+      color: silver,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      crosshairMarkerRadius: 3,
+      priceFormat: { type: 'custom', formatter: (v: number) => fmtUsd(Math.abs(v)), minMove: 1 },
+    });
+    const hold: TapeHold = {
+      price: priceChart, dark: darkChart, stock, flow, lines: [],
+      marks: createSeriesMarkers(flow, []), levelKey: '', dataKey: '', fitted: false, n: 0, aligned: 0,
+    };
+    holdRef.current = hold;
+    let dead = false;
+    const size = () => {
+      if (dead) return;
+      const w = priceHost.clientWidth;
+      const h = priceHost.clientHeight;
+      const w2 = darkHost.clientWidth;
+      const h2 = darkHost.clientHeight;
+      if (w > 2 && h > 2) priceChart.resize(Math.floor(w), Math.floor(h));
+      if (w2 > 2 && h2 > 2) darkChart.resize(Math.floor(w2), Math.floor(h2));
+    };
+    let lastW = 0;
+    const ro = new ResizeObserver(() => {
+      const w = priceHost.clientWidth;
+      if (Math.abs(w - lastW) < 2) return;
+      lastW = w;
+      size();
+    });
+    ro.observe(priceHost);
+    ro.observe(darkHost);
+    size();
+    return () => {
+      dead = true;
+      ro.disconnect();
+      holdRef.current = null;
+      priceChart.remove();
+      darkChart.remove();
+    };
+  }, [print.ticker, crossIsoOf(print), paper, hasDay]);
+
+  useEffect(() => {
+    const hold = holdRef.current;
+    const priceHost = priceRef.current;
+    if (!hold || !priceHost) return;
+    const day = bars;
+    if (day.length === 0) return;
+    const stockData = day.map(c => ({ time: c.time as UTCTimestamp, value: c.close }));
     const ordered: { clock: string; time: number }[] = [];
     const atClock = new Map<string, number>();
     let lo = Infinity;
@@ -148,13 +206,6 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
       for (const o of ordered) if (o.clock <= hhmm) best = o.time;
       return best;
     };
-    const pad = Math.max((hi - lo) * 0.15, print.price * 0.004);
-    for (const l of view?.levels ?? []) {
-      if (l.price < lo - pad || l.price > hi + pad) continue;
-      series.createPriceLine({ price: l.price, color: readToken(ROLE_TOKEN[l.role], 0.75, priceHost), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: ROLE_WORD[l.role] });
-    }
-    series.createPriceLine({ price: print.price, color: readToken('--silver', 0.95, priceHost), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'this cross' });
-    const at = place(print.time);
     const added = new Map<number, number>();
     for (const p of crosses) {
       if (!p.time || p.time === '—') continue;
@@ -166,37 +217,49 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
       cum += added.get(c.time) ?? 0;
       return { time: c.time as UTCTimestamp, value: cum };
     });
-    const flow = darkChart.addSeries(AreaSeries, {
-      lineColor: readToken('--text-primary', 0.9, darkHost),
-      topColor: readToken('--text-primary', paper ? 0.1 : 0.14, darkHost),
-      bottomColor: readToken('--text-primary', 0.01, darkHost),
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: true,
-      crosshairMarkerVisible: false,
-      priceFormat: { type: 'custom', formatter: (v: number) => fmtUsd(Math.abs(v)), minMove: 1 },
+    const dataKey = `${day.length}:${day[day.length - 1]?.time}:${day[day.length - 1]?.close}:${cum}:${print.id}:${print.time}`;
+    if (dataKey !== hold.dataKey) {
+      const range = hold.fitted ? hold.price.timeScale().getVisibleLogicalRange() : null;
+      const prevN = hold.n;
+      hold.stock.setData(stockData);
+      hold.flow.setData(run);
+      if (!hold.fitted) {
+        hold.price.timeScale().fitContent();
+        hold.fitted = true;
+      } else if (range) {
+        const grow = stockData.length - prevN;
+        hold.price.timeScale().setVisibleLogicalRange({ from: range.from, to: range.to + (grow > 0 ? grow : 0) });
+      }
+      const synced = hold.price.timeScale().getVisibleLogicalRange();
+      if (synced) hold.dark.timeScale().setVisibleLogicalRange(synced);
+      hold.n = stockData.length;
+      hold.marks.setMarkers([{ time: place(print.time) as UTCTimestamp, position: 'inBar', color: readToken('--silver', 1, priceHost), shape: 'circle' }]);
+      hold.dataKey = dataKey;
+    }
+    const pad = Math.max((hi - lo) * 0.15, print.price * 0.004);
+    const levelKey = `${(view?.levels ?? []).map(l => `${l.role}:${l.price}`).join('|')}|${print.price}`;
+    if (levelKey !== hold.levelKey) {
+      for (const line of hold.lines) hold.stock.removePriceLine(line);
+      const next: IPriceLine[] = [];
+      for (const l of view?.levels ?? []) {
+        if (l.price < lo - pad || l.price > hi + pad) continue;
+        next.push(hold.stock.createPriceLine({ price: l.price, color: readToken(ROLE_TOKEN[l.role], 0.9, priceHost), lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: ROLE_WORD[l.role] }));
+      }
+      next.push(hold.stock.createPriceLine({ price: print.price, color: readToken('--silver', 1, priceHost), lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: 'this cross' }));
+      hold.lines = next;
+      hold.levelKey = levelKey;
+    }
+    const align = requestAnimationFrame(() => {
+      if (holdRef.current !== hold) return;
+      const w = Math.max(hold.price.priceScale('right').width(), hold.dark.priceScale('right').width());
+      if (w > hold.aligned) {
+        hold.aligned = w;
+        hold.price.priceScale('right').applyOptions({ minimumWidth: w });
+        hold.dark.priceScale('right').applyOptions({ minimumWidth: w });
+      }
     });
-    flow.setData(run);
-    createSeriesMarkers(flow, [{ time: at as UTCTimestamp, position: 'inBar', color: readToken('--silver', 1, darkHost), shape: 'circle' }]);
-    let lock = false;
-    const link = (from: IChartApi, to: IChartApi) => {
-      from.timeScale().subscribeVisibleLogicalRangeChange(range => {
-        if (!range || lock) return;
-        lock = true;
-        to.timeScale().setVisibleLogicalRange(range);
-        lock = false;
-      });
-    };
-    link(priceChart, darkChart);
-    link(darkChart, priceChart);
-    priceChart.timeScale().fitContent();
-    return () => {
-      dropPrice();
-      dropDark();
-      priceChart.remove();
-      darkChart.remove();
-    };
-  }, [print, view, paper, bars, crosses]);
+    return () => cancelAnimationFrame(align);
+  }, [print, view, paper, bars, crosses, hasDay]);
 
   return (
     <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-cross-tape={print.ticker}>
@@ -208,7 +271,7 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
         <div className="flex items-baseline gap-2.5 flex-wrap">
           <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The stock</span>
           <span className="font-mono text-[11px] text-textMuted tnum">
-            <RichRead text={`${print.ticker}${stockPx ? ` $${stockPx.toFixed(2)}${last?.at ? ` (last trade ${nyClock(last.at)} ET)` : ''}` : ''}${view ? ` · ${fmtUsd(view.totalNotional)} dark · ${crosses.length} crosses in hand` : ''}`} />
+            <RichRead text={`${print.ticker}${stockPx ? ` $${stockPx.toFixed(2)}${last?.at ? ` (last trade ${nyClock(last.at, { zone: true })})` : ''}` : ''}${view ? ` · ${fmtUsd(view.totalNotional)} dark · ${crosses.length} crosses in hand` : ''}`} />
           </span>
         </div>
         {sided > 0 ? (
@@ -241,8 +304,9 @@ const CrossTape = ({ print, view }: { print: DarkPoolPrint; view: DarkPoolView |
         </>
       )}
       <div className="px-3 pb-2.5 flex items-center gap-3 flex-wrap">
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> Running dark dollars · prints in hand</span>
-        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-silver" /> This cross</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-textPrimary" /> The stock</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-3 h-[2px] bg-silver" /> Dark dollars</span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-textSecondary"><span className="w-1.5 h-1.5 rounded-full bg-silver" /> This cross</span>
       </div>
     </div>
   );
@@ -312,7 +376,7 @@ interface CrossDrilldownProps {
 const th = 'px-2 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-widest text-textMuted border-b border-borderSubtle';
 const td = 'px-2 py-1.5 font-mono text-[11px] tnum';
 const linkBtn =
-  'inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded border border-borderSubtle bg-ink/[0.02] font-mono text-[11px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors';
+  'slayer-chip uppercase tracking-wider justify-center';
 
 const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext = false, onOpen }: CrossDrilldownProps) => {
   const navigate = useNavigate();
@@ -454,14 +518,14 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
                   /darkpool/{t}/price-levels, every dark and lit share by price */}
               <Fact label={`Off-exchange ${dayAdv(crossIso ?? undefined)}`} value={day.rows && Number.isFinite(day.rows.sharePct) ? `${day.rows.sharePct.toFixed(0)}% of the day's shares` : day.waiting ? '…' : '—'} />
               <Fact label={`Dark dollars ${dayAdv(crossIso ?? undefined)}`} value={day.rows ? (
-                /* THE METHOD SAID (audit round 7: "≈$488.9M" priced every share at its $35 bucket): the vendor sends dark
+                /* THE METHOD SAID (audit round 7: "≈$488.9M" priced every share at its $35 bucket): the feed sends dark
                    shares by price bucket, no VWAP — each bucket's shares at the bucket's price */
                 Number.isFinite(vwap) ? (
-                  <span title={`${num(day.rows.darkShares)} dark shares at ${print?.ticker}'s regular-session VWAP, $${vwap.toFixed(2)} (from its one-minute bars, close × volume) — the vendor sends dark shares by coarse price bucket and no average price, so the dollars are approximate; at the buckets' own prices they read ≈${fmtUsd(day.rows.darkDollars)}`}>
+                  <span title={`${num(day.rows.darkShares)} dark shares at ${print?.ticker}'s regular-session VWAP, $${vwap.toFixed(2)} (from its one-minute bars, close × volume) — the feed sends dark shares by coarse price bucket and no average price, so the dollars are approximate; at the buckets' own prices they read ≈${fmtUsd(day.rows.darkDollars)}`}>
                     ≈{fmtUsd(day.rows.darkShares * vwap)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at the day's VWAP ${vwap.toFixed(2)}</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
                   </span>
                 ) : (
-                  <span title={`Each of the vendor's price buckets' dark shares at the bucket's own price (/darkpool/{t}/price-levels groups shares into coarse price buckets — often whole dollars — and sends no average price), so the dollars are approximate`}>
+                  <span title={`Each price bucket's dark shares at the bucket's own price (shares are grouped into coarse price buckets — often whole dollars — and no average price is sent), so the dollars are approximate`}>
                     ≈{fmtUsd(day.rows.darkDollars)} · {num(day.rows.darkShares)} sh <span className="text-textMuted">· at bucket prices</span>{day.rows.offShares > 0 ? ` · ≈${fmtUsd(day.rows.offDollars)} own terms apart` : ''}
                   </span>
                 )
@@ -542,9 +606,7 @@ const CrossDrilldown = ({ print, view, onClose, onStep, hasPrev = false, hasNext
               type="button"
               onClick={() => toggle(watchedCross(print, view && view.spot > 0 ? view.spot : print.price, 'dark-pool'))}
               aria-pressed={marked}
-              className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded border font-mono text-[11px] uppercase tracking-wider transition-colors ${
-                marked ? 'border-select/40 bg-select/[0.08] text-select' : 'border-borderSubtle bg-ink/[0.02] text-textSecondary hover:text-textPrimary hover:border-borderMuted'
-              }`}
+              className={`slayer-chip uppercase tracking-wider justify-center ${marked ? 'border-select/40 bg-select/[0.08] text-select hover:text-select' : ''}`}
             >
               <Bookmark className="w-3.5 h-3.5" fill={marked ? 'currentColor' : 'none'} />
               {marked ? 'Tracking' : 'Track cross'}

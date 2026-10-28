@@ -8,12 +8,12 @@
   market is open, closed otherwise — and one plain sentence a
   page can say about it:
 
-    Pre-market     "Pre-market. The market opens at 9:30 ET."
+    Pre-market     "Pre-market. The market opens at 8:30 AM CT."
     Open           "The market is open."
-    After hours    "After hours. The market opens tomorrow at 9:30 ET."
-    Closed         "The market is closed. It opens Monday at 9:30 ET."
-    Early close    "Early close today at 1:00 ET."
-    Holiday        "Closed for Thanksgiving. The market opens Friday at 9:30 ET and closes early at 1:00 ET."
+    After hours    "After hours. The market opens tomorrow at 8:30 AM CT."
+    Closed         "The market is closed. It opens Monday at 8:30 AM CT."
+    Early close    "Early close today at 12:00 PM CT."
+    Holiday        "Closed for Thanksgiving. The market opens Friday at 8:30 AM CT and closes early at 12:00 PM CT."
 
   The New York clock is data/moc.ts's session clock; the holidays
   are core/calendar.ts's. The early closes are the exchange's
@@ -75,8 +75,8 @@ export function holidayName(d: Date): string {
 const opensWhen = (today: Date, next: Date): string => {
   const days = Math.round((next.getTime() - today.getTime()) / 86_400_000);
   const when = days <= 1 ? 'tomorrow ' : `${WEEKDAY[next.getDay()]} `;
-  const early = EARLY_CLOSES.has(isoDate(next)) ? ' and closes early at 1:00 ET' : '';
-  return `It opens ${when}at 9:30 ET${early}.`;
+  const early = EARLY_CLOSES.has(isoDate(next)) ? ' and closes early at 12:00 PM CT' : '';
+  return `It opens ${when}at 8:30 AM CT${early}.`;
 };
 
 /** Where the market is right now, as the brand says it */
@@ -94,14 +94,14 @@ export function readMarketState(now: Date = new Date()): MarketState {
     return { kind: 'closed', word: 'closed', short: 'closed for the weekend', line: `The market is closed. ${opensWhen(today, next)}` };
   }
   if (clock.phase === 'PREMARKET') {
-    const early = EARLY_CLOSES.has(key) ? ' Early close today at 1:00 ET.' : '';
-    return { kind: 'pre-market', word: 'closed', short: 'pre-market', line: `Pre-market. The market opens at 9:30 ET.${early}` };
+    const early = EARLY_CLOSES.has(key) ? ' Early close today at 12:00 PM CT.' : '';
+    return { kind: 'pre-market', word: 'closed', short: 'pre-market', line: `Pre-market. The market opens at 8:30 AM CT.${early}` };
   }
   if (clock.phase === 'OPEN' || clock.phase === 'AUCTION') {
     if (EARLY_CLOSES.has(key)) {
       /* the session clock runs to 16:00; an early close stops at 13:00 */
-      if (Number(clock.etTime.slice(0, 2)) >= 13) return { kind: 'closed', word: 'closed', short: 'closed early', line: `The market closed early at 1:00 ET. ${opensWhen(today, nextTradingDay(today))}` };
-      return { kind: 'early-close', word: 'live', short: 'market open', line: 'Early close today at 1:00 ET.' };
+      if (Number(clock.etTime.slice(0, 2)) >= 13) return { kind: 'closed', word: 'closed', short: 'closed early', line: `The market closed early at 12:00 PM CT. ${opensWhen(today, nextTradingDay(today))}` };
+      return { kind: 'early-close', word: 'live', short: 'market open', line: 'Early close today at 12:00 PM CT.' };
     }
     return { kind: 'open', word: 'live', short: 'market open', line: 'The market is open.' };
   }

@@ -9,7 +9,7 @@
 */
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { peekSpot, subscribeBook } from './uwBook';
+import { peekSpot, subscribeBook, tapeQuote } from './uwBook';
 import { whalesQuote, whalesScreener, whalesState } from './whales';
 import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
 import { nyClock, nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
@@ -146,7 +146,10 @@ export function ensureQuote(ticker: string): void {
     .then(async s => {
       const close = Number(s?.close);
       const prev = Number(s?.prev_close);
-      if (!(close > 0)) return;
+      if (!(close > 0)) {
+        await fillTapeQuote(t);
+        return;
+      }
       let mt = typeof s?.market_time === 'string' ? s.market_time : undefined;
       let tape = Date.parse(String((s as { tape_time?: string } | null)?.tape_time ?? ''));
       let px = close;
@@ -188,8 +191,19 @@ export function ensureQuote(ticker: string): void {
         emit();
       }
     })
-    .catch(() => {})
+    .catch(async () => {
+      await fillTapeQuote(t);
+    })
     .finally(() => inflight.delete(t));
+}
+
+/** The vendor's stock-state did not answer. The terminal's own print is the price — never a bid, never a made-up close. */
+async function fillTapeQuote(t: string): Promise<void> {
+  const q = await tapeQuote(t).catch(() => null);
+  if (!q || !(q.close > 0)) return;
+  const tape = Date.parse(q.tape_time);
+  raw.set(t, { close: q.close, prev_close: q.prev_close > 0 ? q.prev_close : 0, market_time: q.market_time, tapeAt: Number.isFinite(tape) ? tape : Date.now(), at: Date.now() });
+  emit();
 }
 
 /** THE PRICE, SAID AS WHICH PRICE IT IS (the retail test, 2026-10-23: AAPL read $348.20 / $348.30 / $348.34 on three
@@ -197,7 +211,7 @@ export function ensureQuote(ticker: string): void {
     outside it: "348.22 close · 348.34 after hours 19:25 ET". */
 export function priceWords(q: LiveQuote | null | undefined): { lead: number; line: string } | null {
   if (!q) return null;
-  const clock = `${nyClock(q.tapeAt)} ET`;
+  const clock = `${nyClock(q.tapeAt, { zone: true })}`;
   if (q.phase === 'regular' || q.regClose == null) return { lead: q.spot, line: `${q.spot.toFixed(2)} · ${clock}` };
   const word = q.phase === 'pre' ? 'pre-market' : 'after hours';
   if (Math.abs(q.spot - q.regClose) < 0.005) return { lead: q.regClose, line: `${q.regClose.toFixed(2)} close` };

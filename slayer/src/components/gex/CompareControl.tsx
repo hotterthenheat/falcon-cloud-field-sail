@@ -10,10 +10,12 @@
 ==================================================
 */
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Search, X } from 'lucide-react';
-import type { TickerListing } from '../../data/tickers';
+import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames, type TickerListing } from '../../data/tickers';
+import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
+import CompanyLogo from '../ui/CompanyLogo';
 import type { CompareEntry, CompareMode } from './StrikeChart';
 import useFocusTrap from '../ui/useFocusTrap';
 
@@ -50,6 +52,9 @@ const CompareControl = ({
   };
   const [query, setQuery] = useState('');
   const [mod, setMod] = useState<TickerModule | null>(null);
+  const listedRev = useListedRev();
+  const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  const room = roomOf();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -108,6 +113,7 @@ const CompareControl = ({
   useEffect(() => {
     if (!open) return;
     import('../../data/tickers').then(setMod);
+    if (room !== 'listed') ensureListed();
     requestAnimationFrame(() => inputRef.current?.focus());
     setHighlight(0);
     setModeIdx(0);
@@ -123,10 +129,15 @@ const CompareControl = ({
   useFocusTrap(open, menuRef);
 
   const taken = useMemo(() => new Set(compares.map(c => c.ticker)), [compares]);
-  const results: TickerListing[] = useMemo(
-    () => (mod ? mod.searchTickers(query, 24).filter(t => t.symbol !== current && !taken.has(t.symbol)) : []),
-    [mod, query, current, taken]
-  );
+  const results: TickerListing[] = useMemo(() => {
+    if (!mod) return [];
+    const rows = room === 'listed' ? mod.searchTickers(query, 24) : searchRoom(room, query, 24, mod.searchTickers('', 40), companyName);
+    return rows.filter(t => t.symbol !== current && !taken.has(t.symbol));
+  }, [mod, query, current, taken, room, listedRev, nameRev]);
+
+  useEffect(() => {
+    if (open && results.length) askCompanyNames(results.map(r => r.symbol));
+  }, [open, results]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); return; }
@@ -161,7 +172,7 @@ const CompareControl = ({
         onClick={() => setOpen(!open)}
         title={full ? `Compare (${max} max — remove one first)` : 'Compare symbol'}
         aria-label="Compare symbol"
-        className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-ink/[0.06] hover:bg-ink/[0.10] text-textSecondary hover:text-textPrimary transition-colors"
+        className="inline-flex items-center justify-center w-7 h-7 max-sm:w-10 max-sm:h-10 rounded-md border border-borderSubtle bg-chip text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors"
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
@@ -183,7 +194,7 @@ const CompareControl = ({
               aria-controls={`${uid}-list`}
               aria-autocomplete="list"
               aria-activedescendant={results[highlight] ? `${uid}-opt-${highlight}` : undefined}
-              placeholder="Compare symbols…"
+              placeholder={room === 'compass' ? 'Compare one of the 456…' : room === 'option' ? 'Compare a name with options…' : 'Compare symbols…'}
               title="Up and down to choose a symbol, left and right for the scale, Enter to add"
               className="w-full bg-transparent py-1.5 font-mono text-[11px] text-textPrimary placeholder:text-textMuted focus:outline-none"
             />
@@ -232,8 +243,9 @@ const CompareControl = ({
                     i === highlight ? 'bg-ink/[0.05]' : ''
                   }`}
                 >
+                  <CompanyLogo ticker={t.symbol} size={16} />
                   <span className="font-mono text-[11px] font-semibold text-textPrimary w-14 shrink-0">{t.symbol}</span>
-                  <span className="text-[10px] text-textSecondary truncate">{t.name === t.symbol ? '' : t.name}</span>
+                  <span className="text-[10px] text-textSecondary truncate" title={companyName(t.symbol) !== t.symbol ? companyName(t.symbol) : undefined}>{companyName(t.symbol).toUpperCase() === t.symbol ? '' : companyName(t.symbol)}</span>
                   {/* The TV move: the row's right side becomes the three
                       scale choices on hover — how the line joins the chart */}
                   {!full && (

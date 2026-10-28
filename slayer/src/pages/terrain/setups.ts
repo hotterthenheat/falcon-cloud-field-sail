@@ -79,7 +79,7 @@ const OVERLAY_KEYS = Object.keys({
 } satisfies Record<keyof ChartOverlays, number>) as (keyof ChartOverlays)[];
 
 const INDICATOR_KEYS = Object.keys({
-  ema9: 0, ema21: 0, ema50: 0, vwap: 0, bb: 0, vwapBands: 0, sma: 0, rsi: 0, macd: 0, atrPane: 0,
+  ema9: 0, ema21: 0, ema50: 0, vwap: 0, bb: 0, vwapBands: 0, sma: 0, flowVwap: 0, sideVwap: 0, gammaEma: 0, gammaVwap: 0, rsi: 0, macd: 0, atrPane: 0,
 } satisfies Record<keyof ChartIndicators, number>) as (keyof ChartIndicators)[];
 
 const STYLE_KEYS = Object.keys({

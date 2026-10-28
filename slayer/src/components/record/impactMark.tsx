@@ -55,7 +55,7 @@ export const ImpactLegend = ({ className = '' }: { className?: string }) => (
 
 /* THE FLAG (the retail pass, 2026-10-22). Unusual Whales sends every headline with sentiment "neutral" — 200 of 200 on
    the day this was written — so a sentiment word on every row said nothing. A row now says what the feed really knows:
-   the vendor's MAJOR flag, and whether it names a stock on your Board. A real positive / negative from the vendor would
+   the vendor's MAJOR flag, and whether it names a stock on your Board. A real positive / negative from the feed would
    still show (the `lean` argument), never an invented one. */
 export const NEWS_FLAG_TIP = 'MAJOR: Unusual Whales flags the headline as major, and it is about a named listed company or the economy — not a call date or a routine dividend. BOARD: it names a stock on your Board. The feed sends no positive or negative read, so none is shown.';
 

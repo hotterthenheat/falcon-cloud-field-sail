@@ -332,7 +332,7 @@ const MatrixWords = ({ surface, greek, mode }: { surface: ExposureSurface; greek
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The matrix · one strike per row, a column per greek</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), blue the call wall, gold the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
+          Each row is a strike, with the dates on the Expiries card added together. The figure is how much dealer hedging sits there, and the bar beside it is that figure drawn: the longer, the more. {w.absorb} pushes back against a move through the strike, {w.amplify} pushes it along. A strike's ink names its level, read off this name's levels — the same levels the Board, the Agenda and Compare show: magenta the supreme (the strike with the most hedging), blue the call wall, gold the put wall; a dotted underline marks the gamma pin, a silver one a strike you own. Spot is a row of its own, where price stands.
         </p>
         <FigureBox>
           <MatrixFigure />
@@ -362,7 +362,7 @@ const ProfileWords = ({ surface, mode }: { surface: ExposureSurface; mode?: Heat
       <div>
         <p className="text-[12px] font-semibold text-textPrimary">The profile · the book's gamma at every price</p>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-textSecondary">
-          Price runs left to right. The line is the dealers' total gamma if price stood at that level, every drawn expiry added together; the quiet lines are the expiries one by one. Above the zero line dealers are long gamma and their hedging absorbs a move; below it, it amplifies one. Where the line crosses zero is the zero-gamma level: the price where the book changes character. The flip on the band is the same idea read off the Levels card's contracts (its scope), each re-priced from the minute the vendor priced it — so it can sit a little apart from this line, which adds up the drawn expiries.
+          Price runs left to right. The line is the dealers' total gamma if price stood at that level, every drawn expiry added together; the quiet lines are the expiries one by one. Above the zero line dealers are long gamma and their hedging absorbs a move; below it, it amplifies one. Where the line crosses zero is the zero-gamma level: the price where the book changes character. The flip on the band is the same idea read off the Levels card's contracts (its scope), each re-priced from the minute the feed priced it — so it can sit a little apart from this line, which adds up the drawn expiries.
         </p>
         <FigureBox>
           <ProfileFigure />

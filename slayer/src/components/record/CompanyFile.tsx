@@ -7,7 +7,7 @@ import { statHelp } from './statHelp';
 
 /*
   The company, under a name. Only what the vendor file actually carries.
-  A street target, forward estimates and the last call are not on this feed.
+  The street target is the median of the firms that printed one in the last 180 days.
 */
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -92,8 +92,10 @@ const CompanyFile = ({ ticker }: { ticker: string }) => {
             <Fact label="EPS growth · YoY">
               {growth != null ? <TickFigure value={growth} className={growth >= 0 ? 'text-bull' : 'text-bear'}>{growth >= 0 ? '+' : growth < 0 ? '−' : ''}{Math.abs(growth).toFixed(2)}%</TickFigure> : file.status === 'loading' ? '…' : '—'}
             </Fact>
+            <Fact label="Street target">{file.street ? <TickFigure value={file.street.median}>{`$${file.street.median.toFixed(2)}`}</TickFigure> : file.status === 'loading' ? '…' : '—'}</Fact>
+            <Fact label="Target range">{file.street ? `$${file.street.low.toFixed(0)}–$${file.street.high.toFixed(0)} · ${file.street.firms}` : file.status === 'loading' ? '…' : '—'}</Fact>
           </dl>
-          <p className="px-5 pb-4 text-[11px] text-textMuted">A street target, the forward estimates and the last call are not on this feed.</p>
+          <p className="px-5 pb-4 text-[11px] text-textMuted">{file.street ? `Fair value is the median of ${file.street.firms} street targets since ${file.street.asOf}.` : 'No street target in the last 180 days.'}</p>
         </>
       )}
     </section>

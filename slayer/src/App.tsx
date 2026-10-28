@@ -44,10 +44,12 @@ const JournalProduct = lazy(() => import('./pages/landing/products/PracticePages
 const Pulse = lazy(() => import('./pages/workspace/Pulse'));
 const PulseBoard = lazy(() => import('./pages/PulseBoard'));
 const Terrain = lazy(() => import('./pages/terrain/Terrain'));
+const TerrainShare = lazy(() => import('./pages/terrain/TerrainShare'));
 /* Compass walked (2026-09-11): one shell over the board and a setup's own page */
 const CompassLayout = lazy(() => import('./pages/compass/CompassLayout'));
 const CompassBoard = lazy(() => import('./pages/compass/Board'));
 const CompassSetup = lazy(() => import('./pages/compass/SetupPage'));
+const Blotter = lazy(() => import('./pages/compass/Blotter'));
 const Weigher = lazy(() => import('./pages/Weigher'));
 /* Stocks walked into the Record (2026-09-10): the screens beside the name's news and filings */
 const Stocks = lazy(() => import('./pages/record/Stocks'));
@@ -168,12 +170,14 @@ const App = () => {
             <Route path="/pulse" element={<Pulse />} />
             <Route path="/pulse/board" element={<PulseBoard />} />
             <Route path="/terrain" element={<Terrain />} />
+            <Route path="/terrain/s" element={<TerrainShare />} />
             <Route path="/live-terminal" element={<Navigate to="/pulse" replace />} />
             {/* Workspace merged INTO Pulse (2026-08-17) — old links land there */}
             <Route path="/workspace" element={<Navigate to="/pulse" replace />} />
             <Route path="/compass" element={<CompassLayout />}>
               <Route index element={<CompassBoard />} />
-              {/* THE TRACKER rides under Compass as its second page, the way the partner laid it out (Noah, 2026-09-13) */}
+              {/* The blotter is every fill the desk recorded. The Tracker is last. */}
+              <Route path="blotter" element={<Blotter />} />
               <Route path="tracker" element={<Tracker embedded />} />
               {/* A setup's address: TICKER-strike-R-kind-tenor (data/compass.ts setupIdOf) */}
               <Route path=":id" element={<CompassSetup />} />

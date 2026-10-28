@@ -60,7 +60,12 @@ const inflight = new Map();
 const MAX_CACHE = 200;
 let booting = false;
 
-const ttlFor = (p) => (/^\/(calendar|interest_rate)\//.test(p.split('?')[0]) ? 300_000 : 15_000);
+const ttlFor = (p) => {
+  const path = p.split('?')[0];
+  if (/^\/(calendar|interest_rate)\//.test(path)) return 300_000;
+  if (/\/history\//.test(path)) return 15_000;
+  return 1_000;
+};
 const allowed = (p) => p.length < 500 && !p.includes('..') && ALLOWED.some((re) => re.test(p));
 
 const send = (res, status, body, type = 'application/json') => {
@@ -69,6 +74,43 @@ const send = (res, status, body, type = 'application/json') => {
   res.setHeader('cache-control', 'no-store');
   res.end(typeof body === 'string' ? body : body);
 };
+
+function readKeyFile(file) {
+  try {
+    const text = fs.readFileSync(file, 'utf8');
+    for (const line of text.split('\n')) {
+      const m = line.match(/^\s*THETADATA_API_KEY\s*=\s*"?([^"\s#]+)"?/);
+      if (m) return m[1];
+    }
+    const one = text.trim();
+    if (/^td1_[A-Za-z0-9]+$/.test(one)) return one;
+  } catch {
+    /* no file */
+  }
+  return '';
+}
+
+/** The key on disk beats the process env. Vite loads .env.local over .env, and that file can hold a dead key. */
+function apiKey() {
+  const dir = path.dirname(JAR);
+  return readKeyFile(path.join(dir, '.env'))
+    || readKeyFile(path.join(HERE, '..', '.env'))
+    || process.env.THETADATA_API_KEY
+    || readKeyFile(CREDS)
+    || '';
+}
+
+/** The bootstrap jar rejects a good key. The current terminal jar in lib/ accepts --api-key. */
+function terminalJar() {
+  const lib = path.join(path.dirname(JAR), 'lib');
+  try {
+    const jars = fs.readdirSync(lib).filter((n) => n.endsWith('.jar')).sort();
+    if (jars.length) return path.join(lib, jars[jars.length - 1]);
+  } catch {
+    /* bootstrap */
+  }
+  return JAR;
+}
 
 function javaMajor() {
   const out = spawnSync(javaBin(), ['-version'], { encoding: 'utf8' });
@@ -80,36 +122,28 @@ function javaMajor() {
 function downReason() {
   const major = javaMajor();
   const jar = fs.existsSync(JAR);
-  const key = Boolean(process.env.THETADATA_API_KEY);
-  const creds = fs.existsSync(CREDS);
+  const key = Boolean(apiKey());
   const java = major >= 21 ? `Java ${major}` : `Java ${major || 'missing'} (the terminal needs 21)`;
-  if (!jar && !key && !creds) {
+  if (!jar && !key) {
     return `${java}. ThetaTerminalv3.jar is not installed and THETADATA_API_KEY is not set, so nothing is listening on port 25503.`;
   }
   if (!jar) return `${java}. The Theta terminal jar is not on this machine, so port 25503 is closed.`;
   if (major < 21) {
-    const auth = key || creds ? '' : ' THETADATA_API_KEY is not set either, so there is nothing to log in with once Java is 21.';
+    const auth = key ? '' : ' THETADATA_API_KEY is not set either, so there is nothing to log in with once Java is 21.';
     return `${java}. The jar is on disk, but it cannot start on this runtime.${auth}`;
   }
-  if (!key && !creds) return `${java}. The jar is here, but THETADATA_API_KEY is not set and there is no creds.txt, so the terminal was not started.`;
+  if (!key) return `${java}. The jar is here, but THETADATA_API_KEY is not set, so the terminal was not started.`;
   return 'The Theta terminal was started and has not opened port 25503 yet.';
 }
 
 function tryStart() {
   if (booting) return;
-  if (javaMajor() < 21 || !fs.existsSync(JAR)) return;
-  const key = process.env.THETADATA_API_KEY;
-  if (!key && !fs.existsSync(CREDS)) return;
   booting = true;
-  const logFd = fs.openSync(LOG, 'a');
-  const child = spawn(javaBin(), ['-jar', path.basename(JAR)], {
-    cwd: path.dirname(JAR),
-    env: childEnv(key),
+  const child = spawn('sh', [path.join(path.dirname(JAR), 'keep-up.sh')], {
     detached: true,
-    stdio: ['ignore', logFd, logFd],
+    stdio: 'ignore',
   });
   child.unref();
-  try { fs.closeSync(logFd); } catch { /* child owns the copy */ }
   child.on('exit', () => {
     booting = false;
   });

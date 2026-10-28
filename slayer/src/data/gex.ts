@@ -43,6 +43,7 @@ function h01(seed: string): number {
 
 // ---- formatting -------------------------------------------------------------
 export function fmtUsd(v: number): string {
+  if (!Number.isFinite(v)) return '—';
   const a = Math.abs(v);
   /* a figure that rounds to nothing is nothing — never "-$0" (the matrix's near-zero vannas, 2026-10-18) */
   const sign = v < 0 && a >= 0.5 ? '-' : '';

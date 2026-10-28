@@ -50,12 +50,13 @@ import { CompareAxisInner, ComparePageSkeleton, ComparePairInner, CompareSideInn
 import { BookOrSkeleton } from './BookDown';
 import { aheadClock } from '../../data/ahead';
 import { buildCompare, buildCompareSide, partnerFor, type Greek, type Reach } from '../../data/compare';
-import { useDistanceUnit } from '../../data/distanceUnits';
+import { contractsReady, isContractGreek } from '../../data/exposureSurface';
+import { useNameUnit } from '../../data/distanceUnits';
 import { readSessionClock } from '../../data/moc';
 import type { MarketSnapshot } from '../../types/market';
 import type { ExposureExpiry } from '../../types/gex';
-import { LEVELS_OPTIONS, useLevelsScope } from '../../data/levelsScope';
-import { cadenceWords, todayScopeLabel } from '../../data/bookWindow';
+import { useNameLevels } from '../../data/levelsScope';
+import { cadenceWords } from '../../data/bookWindow';
 import { BOOK_TTL_MS, StaleMark } from '../../components/ui/liveRead';
 
 /** The reads sweep on their own cadence — a comparison must not vibrate with every tick */
@@ -89,13 +90,13 @@ const Compare = () => {
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
   const { focus, toggleFocus } = useFocus();
-  const unit = useDistanceUnit();
   const [aScope, setAScopeState] = useState<string | undefined>(aMemory);
   const setAScope = (t: string | undefined) => {
     aMemory = t;
     setAScopeState(t);
   };
   const aTicker = aScope ?? activeTicker;
+  const unit = useNameUnit(aTicker);
   /* a door that names the second name (Pulse's Head to head tile) opens the page on that pair */
   const location = useLocation();
   const [bState, setBState] = useState<string | null>(() => {
@@ -153,26 +154,23 @@ const Compare = () => {
       return null;
     }
   };
-  /* Which contracts both books weigh — the Map's Expiry card, on the ruler's
-     head (Noah, 2026-09-10: "missing some top buttons"). IT FOLLOWS THE LEVELS CARD (the ship pass, 2026-10-22: the
-     card said "Today" or "All expiries" while this page sat on its own pick, so QQQ's net GEX here was not the Board's)
-     until the reader picks another expiry here; a change of the Levels card brings it back. Off the card, the page
-     says so under the ruler. */
-  const levelsScope = useLevelsScope();
-  const [expiryPick, setExpiryPick] = useState<ExposureExpiry | null>(null);
-  useEffect(() => setExpiryPick(null), [levelsScope]);
-  const expiry: ExposureExpiry = expiryPick ?? levelsScope;
-  const setExpiry = (e: ExposureExpiry) => setExpiryPick(e === levelsScope ? null : e);
+  /* Each name weighs its own levels. An expiry picked here stays on that name. */
+  const scopeA = useNameLevels(aTicker);
+  const scopeB = useNameLevels(bTicker);
+  const [pickA, setPickA] = useState<ExposureExpiry | null>(null);
+  const [pickB, setPickB] = useState<ExposureExpiry | null>(null);
+  const expiryA: ExposureExpiry = pickA ?? scopeA;
+  const expiryB: ExposureExpiry = pickB ?? scopeB;
   /* NOTHING PROVISIONAL (the fourth audit's M1: QQQ read "−$12.1B · put wall 700 · call wall 740 · flip none nearby ·
      ±$11.25" under "Next session · Oct 23" for 8–15 seconds — the whole book standing in for the front date). A side whose
      levels are not final is not built: the page keeps its loading state until both are */
-  const finalSide = (s: MarketSnapshot | null) => {
+  const finalSide = (s: MarketSnapshot | null, expiry: ExposureExpiry) => {
     if (!s) return null;
     const side = buildCompareSide(s, clock, expiry);
     return side && side.levels.complete === false ? null : side;
   };
-  const sideA = useMemo(() => finalSide(snapOf(aTicker)), [aTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sideB = useMemo(() => finalSide(snapOf(bTicker)), [bTicker, clock, nonce, expiry, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideA = useMemo(() => finalSide(snapOf(aTicker), expiryA), [aTicker, clock, nonce, expiryA, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sideB = useMemo(() => finalSide(snapOf(bTicker), expiryB), [bTicker, clock, nonce, expiryB, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const cmp = useMemo(() => (sideA && sideB ? buildCompare(sideA, sideB, clock) : null), [sideA, sideB, clock]);
 
   const [guideOpen, setGuideOpen] = useState(false);
@@ -204,9 +202,12 @@ const Compare = () => {
   const [greekPick, setGreekPick] = useState<string[]>(['gex']);
   /* the vendor's books carry no vega — never a $0 VEX lane */
   const greeks = useMemo(() => {
-    const g = pickGreeks(greekPick).filter(x => x !== 'vex');
-    return g.length ? g : pickGreeks(['gex']);
-  }, [greekPick]);
+    const g = pickGreeks(greekPick);
+    const ready = contractsReady(snapOf(aTicker)) || contractsReady(snapOf(bTicker));
+    if (ready) return g;
+    const kept = g.filter(x => !isContractGreek(x));
+    return kept.length ? kept : pickGreeks(['gex']);
+  }, [greekPick, aTicker, bTicker, nonce, bookRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const greek: Greek = greeks[0] ?? 'gex';
   /* THE RULER FULLSCREEN (Noah, 2026-09-09): the same box moved to the whole
      viewport, the Map's way — one body, one drawing, nothing remounts. Esc
@@ -322,21 +323,11 @@ const Compare = () => {
           {!belowLg && <CompareSidePanel side="a" s={cmp.a} cmp={cmp} unit={unit} greek={greek} greeks={greeks} chip={chipA} focus={focusA} onPick={onPick} open={sides.a} onToggle={() => toggleSide('a')} full={rulerFull} />}
           <div className={`flex-1 min-w-0 ${rulerFull ? 'min-h-0 flex flex-col' : ''}`} data-compare-middle>
             <Deferred index={0} fallback={<CompareAxisInner />} className={rulerFull ? 'flex-1 min-h-0 flex flex-col' : 'animate-fade-in'}>
-              <CompareAxis cmp={cmp} unit={unit} reach={reach} onReach={setReach} greeks={greeks} greekPick={greekPick} onGreekPick={v => setGreekPick(nextGreekPick(greekPick, v))} expiry={expiry} onExpiry={setExpiry} palette={palette} onPalette={setPalette} focusA={focusA} focusB={focusB} onPick={onPick} onGuide={() => setGuideOpen(v => !v)} guideOpen={guideOpen} full={rulerFull} onFull={setRulerFull} />
+              <CompareAxis cmp={cmp} unit={unit} reach={reach} onReach={setReach} greeks={greeks} greekPick={greekPick} onGreekPick={v => setGreekPick(nextGreekPick(greekPick, v))} expiryA={expiryA} expiryB={expiryB} onExpiryA={setPickA} onExpiryB={setPickB} palette={palette} onPalette={setPalette} focusA={focusA} focusB={focusB} onPick={onPick} onGuide={() => setGuideOpen(v => !v)} guideOpen={guideOpen} full={rulerFull} onFull={setRulerFull} />
             </Deferred>
           </div>
           {!belowLg && <CompareSidePanel side="b" s={cmp.b} cmp={cmp} unit={unit} greek={greek} greeks={greeks} chip={chipB} focus={focusB} onPick={onPick} open={sides.b} onToggle={() => toggleSide('b')} full={rulerFull} />}
         </div>
-        {expiry !== levelsScope && (
-          <div className="shrink-0 px-5 py-2 border-t border-borderSubtle/60 flex items-center gap-3 flex-wrap text-[11px] text-textSecondary" data-compare-off-scope>
-            <span>
-              This page is reading a different expiry from the Levels card ({levelsScope === '0DTE' ? todayScopeLabel() : LEVELS_OPTIONS.find(o => o.value === levelsScope)?.label}), so its walls, flip, supreme and net GEX can differ from the Board and the Map.
-            </span>
-            <button type="button" onClick={() => setExpiryPick(null)} className="min-h-10 px-2 font-mono text-[10px] uppercase tracking-widest text-textMuted hover:text-textPrimary transition-colors">
-              Back to the Levels card
-            </button>
-          </div>
-        )}
         {/* THE SENTENCE — what the two say against each other, once, under the ruler (the old table's verdicts) */}
         <div className="shrink-0 px-5 py-2.5 border-t border-borderSubtle/60 flex items-baseline gap-4 flex-wrap" data-compare-sentence>
           {/* a floor, so on a phone the doors wrap under the sentence instead of squeezing it to two words a line */}

@@ -2,21 +2,14 @@ import { Suspense } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { PinpointPageSkeleton } from './pinpointSkeletons';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowUpRight, Layers, X } from 'lucide-react';
+import { ArrowUpRight, X } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { usePinpointFeed } from '../../data/uwBook';
+import { usePinpointFeed, useResolvedSession } from '../../data/uwBook';
 import { useFocus } from '../../context/FocusContext';
-import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import { AGENDA_LINES, agendaFaceOf } from './Agenda';
 import ScrollHome from '../../components/layout/ScrollHome';
-import type { DistanceUnit } from '../../data/atr';
-import { setDistanceUnit, useDistanceUnit } from '../../data/distanceUnits';
-import { LEVELS_OPTIONS, LEVELS_TITLE, setLevelsScope, useLevelsScope } from '../../data/levelsScope';
-import { bellDay, todayScopeLabel } from '../../data/bookWindow';
+import { bellDay } from '../../data/bookWindow';
 import { GLOSSARY } from '../../components/gex/glossary';
-
-/** The pages whose named levels follow the Levels card */
-const LEVELS_PAGES = new Set(['/pinpoint/map', '/pinpoint/agenda', '/pinpoint/board', '/pinpoint/compare']);
 import { GEX_SUBPAGES } from './subnav';
 import { useReplayLabel } from './replayState';
 import SessionBook from '../../components/ui/SessionBook';
@@ -77,17 +70,10 @@ import { SayPage } from '../../components/layout/PageMeta';
 
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
-/** The desk's ruler: the unit every distance on Pinpoint is read in */
-const RULER_OPTIONS: DropdownOption<DistanceUnit>[] = [
-  { value: '$', label: '$', hint: 'Dollars from spot' },
-  { value: '%', label: '%', hint: 'Percent of spot' },
-  { value: 'ATR', label: 'ATR', hint: 'Average true ranges — the same distance on SPY and on NVDA' },
-  { value: 'σ', label: 'σ', hint: 'Expected one-day moves — how many the options price in' },
-];
-
 const PinpointLayout = () => {
   const { activeTicker } = useTicker();
   const marketData = usePinpointFeed(activeTicker);
+  const sessionRead = useResolvedSession(activeTicker);
   const { focus, clearFocus } = useFocus();
   /* Alerts are watched by the app shell on every page now (components/alerts/AlertWatcher.tsx, 2026-09-10) */
   const location = useLocation();
@@ -100,10 +86,6 @@ const PinpointLayout = () => {
   const spot = focusTicker === activeTicker ? marketData?.spot : undefined;
   const dist = focused != null && spot ? ((focused - spot) / spot) * 100 : null;
 
-  /* THE RULER: the unit every distance on Pinpoint is read in */
-  const unit = useDistanceUnit();
-  /* WHICH CONTRACTS THE LEVELS ARE READ OFF (data/levelsScope.ts): today's alone, or every listed date */
-  const levelsScope = useLevelsScope();
   /* THE REPLAY, SAID HERE TOO: the Map's boxes are rewound, the head is not */
   const replaying = useReplayLabel();
   /* Which page this is — its name, its icon and one line, from the registry the sidebar reads */
@@ -176,20 +158,17 @@ const PinpointLayout = () => {
             never asked for room, so on a phone held sideways, a small laptop or a portrait monitor it was handed 10 to
             165px and the two cards ran off the screen's edge — the only sideways scroll on the site. A floor of the
             cards' own width makes `flex-wrap` carry the side to its own line instead. */}
-        <div className="flex-[3_1_0%] min-w-[400px] max-sm:min-w-0 max-sm:basis-full flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
+        <div className="flex-[3_1_0%] min-w-0 flex items-center gap-x-4 gap-y-2 flex-wrap" data-shell-side>
           <div id="pinpoint-head-band" className="empty:hidden min-w-0 flex-1 [&>[data-ledger-toolbar]]:border-0 [&>[data-ledger-toolbar]]:bg-transparent [&>[data-ledger-toolbar]]:p-0" data-shell-band />
           <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 max-sm:ml-0 max-sm:w-full max-sm:justify-start max-sm:gap-1.5 [&_:where(button)]:hit" data-shell-cards>
             <SessionBook />
-            {/* ONE LEVELS CARD FOR THE WHOLE DESK (the ship pass, 2026-10-22): the Map, the Agenda, the Board and Compare all
-                read their supreme, walls, flip and net GEX off the contracts it picks, so one ticker shows one set of
-                levels on every page. A page's own Expiry card can still look at other dates, and says so when it does. */}
-            {LEVELS_PAGES.has(page.path) && <DropdownSelect label="Levels" icon={Layers} value={levelsScope} options={LEVELS_OPTIONS.map(o => (o.value === '0DTE' && todayScopeLabel() !== 'Today' ? { ...o, label: todayScopeLabel(), hint: "Today's contracts expired at the close — the next session's contracts (the next expiry if none expire then): the next day's walls and flip" } : o))} onChange={setLevelsScope} title={LEVELS_TITLE} testId="levels-scope" align="end" />}
-            <DropdownSelect label="Ruler" value={unit} options={RULER_OPTIONS} onChange={setDistanceUnit} title="The unit every distance on Pinpoint is read in" testId="ruler" align="end" />
           </div>
         </div>
       </header>
-      {/* PINNED OR TRENDING, IN ONE SENTENCE (the eighth audit's retail finding) — the Levels pages, for the desk's name */}
-      {LEVELS_PAGES.has(page.path) && <RegimeLine ticker={activeTicker} />}
+      {sessionRead.note && (
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-textMuted" data-session-note>{sessionRead.note}</p>
+      )}
+      <RegimeLine ticker={activeTicker} />
       {/* the Agenda's Building face names itself in the tab (the eighth audit: /pinpoint/building read "Agenda") */}
       <SayPage words={page.path === '/pinpoint/agenda' && agendaFaceOf(location.search) === 'building' ? 'Building · Agenda' : null} />
 

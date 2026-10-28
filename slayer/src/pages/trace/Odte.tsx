@@ -72,7 +72,7 @@ interface OdteStore {
 
 /* THE DEFAULT DESK IS SAME-DAY MONEY ON EVERY PANE (the audit, 2026-10-22): the SPY and QQQ panes drew each name's money
    across ALL expiries (the vendor has no same-day minute series for one name), and "Stocks only" drew nothing (the
-   vendor's equity_only same-day series is empty). The four faces are now the vendor's same-day cuts — everything, the
+   vendor's equity_only same-day series is empty). The four faces are now the feed's same-day cuts — everything, the
    index funds, the index options — and SPY, labelled on its pane as every expiry. */
 const DEFAULT_STORE: OdteStore = {
   count: 4,
@@ -81,7 +81,7 @@ const DEFAULT_STORE: OdteStore = {
     { seg: 'index-funds', mny: 'all', ticker: null },
     { seg: 'indexes', mny: 'all', ticker: null },
     /* NOT SPY ACROSS EVERY EXPIRY (the retail pass, 2026-10-22: the same-day desk's fourth pane was "SPY · EVERY EXPIRY"):
-       the vendor has no same-day minute series for one name, so every pane is a same-day cut — the fourth, the whole
+       the feed has no same-day minute series for one name, so every pane is a same-day cut — the fourth, the whole
        market's out-of-the-money same-day money */
     { seg: 'all', mny: 'otm', ticker: null },
   ],
@@ -165,14 +165,14 @@ const Odte = () => {
   const { book, tick } = hold.value;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  /* THE HEAD READS THE SAME SERIES AS THE "EVERYTHING" PANE (2026-10-22): the panes draw the vendor's same-day minutes
+  /* THE HEAD READS THE SAME SERIES AS THE "EVERYTHING" PANE (2026-10-22): the panes draw the feed's same-day minutes
      (/net-flow/expiry, zero_dte); a head summed off the book read −$68.2M of net calls over a pane reading +$3.9M. The
-     book still counts the contracts — today's expiry only, the same day the vendor's minutes cover. */
+     book still counts the contracts — today's expiry only, the same day the feed's minutes cover. */
   const flow = usePaneFlow({ ticker: null, seg: 'all', mny: 'all', zeroDte: true, enabled: true });
   const last = flow.rows.length ? flow.rows[flow.rows.length - 1] : null;
   const ncp = last?.callPrem ?? 0;
   const npp = last?.putPrem ?? 0;
-  /* the head's instant — the last minute the vendor has a figure for */
+  /* the head's instant — the last minute the feed has a figure for */
   const asOf = last ? nyClock(last.time * 1000) : null;
   /* awake on MONEY, not on a timeline: a session of empty minutes read "leans bullish" on $0 against "+$0" */
   const awake = !!last && (ncp !== 0 || npp !== 0);
@@ -253,7 +253,7 @@ const Odte = () => {
               {/* net puts bought lean bearish and wear red; sold, bullish and green (Lean's `put`) */}
               {awake ? <Lean v={npp} put /> : <span className="text-textMuted">—</span>}
             </Fact>
-            <Fact label="As of" testId="as-of" title={`The last minute the vendor's same-day series (/net-flow/expiry, zero_dte) has a figure for. ${VENDOR_TOTAL_NOTE}`}>
+            <Fact label="As of" testId="as-of" title={`The last minute the same-day series (/net-flow/expiry, zero_dte) has a figure for. ${VENDOR_TOTAL_NOTE}`}>
               {asOf ? `${asOf} ET` : '—'} <span className="text-textSecondary">· every contract {sameDayWords()}</span>
             </Fact>
           </>
@@ -265,7 +265,7 @@ const Odte = () => {
           </>
         }
         sentence={null}
-        lead={awake ? `Same-day options ${isLiveDay() ? 'today' : `on ${shortDay(tapeSessionIso())}`} lean ${bullish ? 'bullish' : 'bearish'}: net calls ${signed(ncp)}, net puts ${signed(npp)} (to ${asOf} ET).` : read}
+        lead={awake ? `Same-day options ${isLiveDay() ? 'today' : `on ${shortDay(tapeSessionIso())}`} lean ${bullish ? 'bullish' : 'bearish'} — ${ncp >= 0 ? `calls bought ${fmtUsd(ncp)}` : `calls sold ${fmtUsd(Math.abs(ncp))}`}, ${npp >= 0 ? `puts bought ${fmtUsd(npp)}` : `puts sold ${fmtUsd(Math.abs(npp))}`} (to ${asOf} ET).` : read}
         detail={awake ? <RichRead text={read} /> : null}
       >
         <div className={`${gridClass} gap-2 flex-1 min-h-0 border-t border-borderSubtle p-2`} data-odte-desk>

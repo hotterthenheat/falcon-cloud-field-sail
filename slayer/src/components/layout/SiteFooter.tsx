@@ -39,16 +39,17 @@
 ==================================================
 */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLaunch } from './LaunchTransition';
 import Wordmark from '../../brand/Wordmark';
 import Signature from '../../brand/Signature';
 import { readMarketState } from '../../data/marketState';
-import { nyMinutes } from '../../core/nyTime';
+import { nyClock, nyMinutes } from '../../core/nyTime';
 import { useAlertsDrawer } from '../../data/alertsDrawer';
-import FooterArt from './FooterArt';
 import { sceneFor } from './footer/registry';
+
+const FooterArt = lazy(() => import('./FooterArt'));
 
 /* THE LINKS, WALKED (2026-09-19). What was wrong: "Launch Terminal" and "Log in / Sign up" both went to "/", the front page
    — on the front page itself they did nothing, and there is no sign-in to go to yet; "Pulse" was listed twice; Terrain, a
@@ -186,15 +187,14 @@ const FooterLink = ({ to, home, gate, className, children }: { to: string; home:
 
 /* THE MARKET'S STATE, in New York, on the real clock (the status line): the brand's own reading (data/marketState.ts —
    the signature's word comes from the same place, so the dot and the words never disagree) and the clock */
-const NY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
-/* THE SESSION WORD ON THE REAL CLOCK (the fifth audit, 2026-10-23: "pre-market · 01:06" while the page head said "before the
-   open"): pre-market trading starts at 04:00 ET — before it, and from 20:00 on, it is the overnight */
+/* THE SESSION WORD ON THE REAL CLOCK: pre-market trading starts at 04:00 ET — before it, and from 20:00 on, it is the overnight.
+   The clock beside it is Central, 12-hour, the same instant. */
 const sessionWordAt = (d: Date, short: string): string => {
   if (short !== 'pre-market' && short !== 'after hours') return short;
   const m = nyMinutes(d);
   return m < 4 * 60 || m >= 20 * 60 ? 'overnight' : short;
 };
-const marketNow = (d = new Date()): { words: string; clock: string } => ({ words: sessionWordAt(d, readMarketState(d).short), clock: NY.format(d).replace(/^24/, '00') });
+const marketNow = (d = new Date()): { words: string; clock: string } => ({ words: sessionWordAt(d, readMarketState(d).short), clock: nyClock(d, { zone: true }) });
 const useMarketNow = () => {
   const [state, setState] = useState(marketNow);
   useEffect(() => {
@@ -217,6 +217,7 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
        with a full-viewport desk — left shrinkable, flexbox would absorb the
        whole deficit HERE and silently collapse the footer to nothing. */
     <footer className="shrink-0 border-t border-borderSubtle overflow-hidden bg-canvas" data-site-footer={scene}>
+      <Suspense fallback={<div className="min-h-[120px]" />}>
       <FooterArt scene={scene} live={scene === 'landing'}>
         {/* the column is the layout's query (index.css .footer-sheet): a page with the rail open lays its footer by the
             room it has, not the screen's */}
@@ -277,6 +278,7 @@ const SiteFooter = ({ home = false }: { home?: boolean }) => {
           </div>
         </div>
       </FooterArt>
+      </Suspense>
     </footer>
   );
 };

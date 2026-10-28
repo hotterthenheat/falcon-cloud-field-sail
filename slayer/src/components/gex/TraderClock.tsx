@@ -55,7 +55,7 @@
 
 import { GLOSSARY } from './glossary';
 import { levelsFor } from '../../data/levelsFor';
-import { readLevelsScope } from '../../data/levelsScope';
+import { levelsForName } from '../../data/levelsScope';
 import { bellNone as bellNoneWords, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import FoldDoor from './FoldDoor';
@@ -64,8 +64,8 @@ import { todayColumn, buildExposureSurface, CALENDAR_DTES } from '../../data/exp
 import { roomLevels } from '../../data/roomLevels';
 import { buildVannaCharm } from '../../data/vannacharm';
 import { readSessionClock } from '../../data/moc';
-import { sessionMeta, sessionOfMinute, useDeskSession, minuteInSession, type DeskSession } from '../../data/deskSession';
-import { deskBars, peekBellShare } from '../../data/uwBook';
+import { sessionMeta, sessionOfMinute, minuteInSession, type DeskSession } from '../../data/deskSession';
+import { deskBars, peekBellShare, useResolvedSession } from '../../data/uwBook';
 import { bellDay } from '../../data/bookWindow';
 import { nyMinutes } from '../../core/nyTime';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
@@ -302,8 +302,8 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
   /* the phase names on two rows, short, when the strip is under 760px — measured off the strip, not the window, so the
      clock laid beside the report on a wide desk (idea 4) reads as it does on a phone */
   const twoRows = stripW > 0 && stripW < 760;
-  const desk = useDeskSession();
-  const shown: DeskSession = at != null ? sessionOfMinute(at) : desk;
+  const read = useResolvedSession(snapshot.ticker);
+  const shown: DeskSession = at != null ? sessionOfMinute(at) : read.session;
   const cash = shown === 'rth';
   const win = useMemo(() => windowOf(shown), [shown]);
   const tape = useMemo(() => {
@@ -385,7 +385,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
         flip = levels.flipFound === false ? null : levels.flip;
       }
       /* THE NAMED LEVELS ARE levelsFor's, in the Levels card's scope (the sixth audit's B1) — the pin stays today's */
-      const lv = snapshot.liveBook ? levelsFor(snapshot.ticker, readLevelsScope()) : null;
+      const lv = snapshot.liveBook ? levelsFor(snapshot.ticker, levelsForName(snapshot.ticker)) : null;
       if (lv) {
         supreme = lv.supreme;
         flip = lv.flip;
@@ -403,11 +403,11 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       /* no chain yet */
     }
     try {
-      /* THE BOARD'S SHARE (the ship pass, 2026-10-22): the vendor's gamma per expiry, today's date against every live
+      /* THE BOARD'S SHARE (the ship pass, 2026-10-22): the feed's gamma per expiry, today's date against every live
          date — one figure on the Board, Compare and here. The older reads below stand in until that list is in. */
-      const vendor = peekBellShare(snapshot.ticker);
-      if (vendor.share != null || vendor.why === 'none') {
-        bellShare = vendor.share;
+      const feed = peekBellShare(snapshot.ticker);
+      if (feed.share != null || feed.why === 'none') {
+        bellShare = feed.share;
       } else {
         const surface = buildExposureSurface(snapshot, 20, CALENDAR_DTES);
         const todayCol = todayColumn(surface);

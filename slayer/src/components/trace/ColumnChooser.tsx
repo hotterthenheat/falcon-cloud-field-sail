@@ -80,8 +80,9 @@ const ColumnChooser = ({
     return () => window.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  const shownCount = columns.filter(c => !hidden.has(c.key)).length;
-  const groups = groupOrder ?? [...new Set(columns.map(c => c.group ?? ''))];
+  const listed = columns.filter(c => c.label.trim().length > 0);
+  const shownCount = listed.filter(c => !hidden.has(c.key)).length;
+  const groups = groupOrder ?? [...new Set(listed.map(c => c.group ?? ''))];
 
   const row = (c: ChooserColumn) => {
     const checked = !hidden.has(c.key);
@@ -107,14 +108,12 @@ const ColumnChooser = ({
     <div ref={rootRef} className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border font-mono text-[11px] uppercase tracking-wider transition-colors ${
-          open ? 'border-borderMuted bg-ink/[0.05] text-textPrimary' : 'border-borderSubtle bg-ink/[0.02] text-textSecondary hover:text-textPrimary'
-        }`}
+        className={`slayer-chip uppercase tracking-wider ${open ? 'border-borderMuted text-textPrimary' : ''}`}
       >
         <SlidersHorizontal className="w-3 h-3" />
         Columns
         <span className="tnum text-textMuted">
-          {shownCount}/{columns.length}
+          {shownCount}/{listed.length}
         </span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -134,7 +133,7 @@ const ColumnChooser = ({
           </div>
           <div className="max-h-[340px] overflow-y-auto py-1">
             {groups.map(group => {
-              const cols = columns.filter(c => (c.group ?? '') === group);
+              const cols = listed.filter(c => (c.group ?? '') === group);
               if (cols.length === 0) return null;
               return (
                 <div key={group || '_'} className="px-1 py-0.5">

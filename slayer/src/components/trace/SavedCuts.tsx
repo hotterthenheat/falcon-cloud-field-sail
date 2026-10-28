@@ -1,8 +1,6 @@
 /*
-  SAVED CUTS — the Link / Save / N-saved control, and the chips that open
-  them. Every Trace surface whose cut can be written as a query string wears
-  this same one. Taken from the partner's build at Noah's word (2026-10-13,
-  "add his link and save buttons to our tape").
+  SAVED CUTS — Save, and the chips that open a saved cut. Every Trace
+  surface whose cut can be written as a query string wears this same one.
 
   The control owns the words and the wiring; the page owns only the two
   things that are actually its own — what its cut says as a query string, and
@@ -10,12 +8,12 @@
 */
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Link2, MoreHorizontal, Save, Trash2, X } from 'lucide-react';
+import { Check, MoreHorizontal, Save, Trash2, X } from 'lucide-react';
 import type { ViewStore } from '../../data/savedViews';
 import { undoable } from '../ui/undo';
 
 const BTN =
-  'h-7 px-2 inline-flex items-center gap-1 rounded-md border border-borderSubtle text-[11px] text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors';
+  'slayer-chip px-2';
 
 export interface SavedCutsProps {
   store: ViewStore;
@@ -68,29 +66,16 @@ export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onTo
     onSay(saved ? `Saved as "${saved.name}".` : 'That needs a name.');
     setNaming(false);
   };
-  const share = async () => {
-    const url = `${window.location.origin}${window.location.pathname}${query ? `?${query}` : ''}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      onSay('Link copied. It opens on this exact view.');
-    } catch {
-      /* A blocked clipboard is not a failure worth a dialog — say where it is. */
-      onSay(url);
-    }
-  };
   const ITEM = 'w-full h-8 px-2.5 inline-flex items-center gap-2 rounded text-left text-[11px] text-textSecondary hover:text-textPrimary hover:bg-ink/[0.05] transition-colors';
   if (compact && !naming) {
     return (
       <span ref={menuRef} className="relative inline-flex" data-cut-doors data-cut-doors-compact>
-        <button type="button" onClick={() => setMenu(v => !v)} aria-haspopup="menu" aria-expanded={menu} title={`Link, save or open a saved ${noun}`} aria-label={`Link or save this ${noun}`} className={BTN} data-cuts-menu={testId}>
+        <button type="button" onClick={() => setMenu(v => !v)} aria-haspopup="menu" aria-expanded={menu} title={`Save or open a saved ${noun}`} aria-label={`Save this ${noun}`} className={BTN} data-cuts-menu={testId}>
           <MoreHorizontal className="w-3.5 h-3.5" aria-hidden />
           {views.length > 0 && <span className="font-mono tnum">{views.length}</span>}
         </button>
         {menu && (
           <span role="menu" className="absolute left-0 top-full mt-1 z-40 w-[176px] p-1 flex flex-col rounded-md border border-borderSubtle bg-panel shadow-lg shadow-black/30">
-            <button type="button" role="menuitem" onClick={() => { setMenu(false); void share(); }} className={ITEM} data-cuts-share={testId}>
-              <Link2 className="w-3 h-3" aria-hidden /> Copy link
-            </button>
             <button type="button" role="menuitem" onClick={() => { setMenu(false); setName(''); setNaming(true); }} className={ITEM} data-cuts-save={testId}>
               <Save className="w-3 h-3" aria-hidden /> Save as…
             </button>
@@ -106,9 +91,6 @@ export const SavedCutsControl = ({ store, query, noun, testId, onSay, open, onTo
   }
   return (
     <span className="inline-flex items-center gap-1" data-cut-doors>
-      {!compact && <button type="button" onClick={share} title={`Copy a link that opens this exact ${noun}`} aria-label={`Copy a link to this ${noun}`} className={BTN} data-cuts-share={testId}>
-        <Link2 className="w-3 h-3" aria-hidden /> Link
-      </button>}
       {/* AN INLINE NAME, NOT THE BROWSER'S PROMPT: Save opens a field in its place — Enter keeps the cut under that
           name, Esc or the × lets it go */}
       {naming ? (

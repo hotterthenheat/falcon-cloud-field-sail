@@ -85,11 +85,33 @@ export const nyMinutes = (at?: At): number => {
   return p.hour * 60 + p.minute;
 };
 
-/** "14:03", "14:03:42" with seconds, "14:03 ET" with the zone — 24-hour, as the tape and the cards speak */
+const CT_TZ = 'America/Chicago';
+let ctFmt: Intl.DateTimeFormat | null = null;
+const ctByMinute = new Map<number, NyParts>();
+/** The same instant, read in Central time. Display only — the session is still New York's. */
+export function ctParts(at?: At): NyParts {
+  const t = ms(at);
+  const minute = Math.floor(t / 60_000);
+  let p = ctByMinute.get(minute);
+  if (!p) {
+    ctFmt ??= new Intl.DateTimeFormat('en-US', { timeZone: CT_TZ, hourCycle: 'h23', weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
+    const r: Record<string, string> = {};
+    for (const x of ctFmt.formatToParts(new Date(minute * 60_000))) if (x.type !== 'literal') r[x.type] = x.value;
+    p = { year: Number(r.year), month: Number(r.month), day: Number(r.day), hour: Number(r.hour) % 24, minute: Number(r.minute), second: 0, weekday: WEEKDAYS.indexOf(r.weekday) };
+    if (ctByMinute.size > 5000) ctByMinute.clear();
+    ctByMinute.set(minute, p);
+  }
+  const second = Math.floor((t - minute * 60_000) / 1000);
+  return second === 0 ? p : { ...p, second };
+}
+
+/** "7:55 AM", "7:55:03 AM" with seconds, "7:55 AM CT" with the zone. Central time — the desk's clock. Session math stays on New York. */
 export function nyClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {
-  const p = nyParts(at);
-  const s = `${two(p.hour)}:${two(p.minute)}${opts.seconds ? `:${two(p.second)}` : ''}`;
-  return opts.zone ? `${s} ET` : s;
+  const p = ctParts(at);
+  const h = p.hour % 12 || 12;
+  const ap = p.hour < 12 ? 'AM' : 'PM';
+  const s = `${h}:${two(p.minute)}${opts.seconds ? `:${two(p.second)}` : ''} ${ap}`;
+  return opts.zone ? `${s} CT` : s;
 }
 
 /** "Oct 9", or "Fri Oct 9" with the weekday — the one date style */
@@ -128,6 +150,18 @@ export function nyWallTime(year: number, month: number, day: number, hour = 0, m
   return t;
 }
 
+/** A Theta stamp with no zone is New York wall time, on every machine. */
+export function nyWallStamp(stamp: unknown): number {
+  if (typeof stamp === 'number' && Number.isFinite(stamp)) return stamp > 1e12 ? stamp : stamp * 1000;
+  if (typeof stamp !== 'string' || !stamp) return 0;
+  const m = stamp.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) {
+    const parsed = Date.parse(stamp);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return nyWallTime(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])) + Number(m[6] || 0) * 1000;
+}
+
 /** That New York day's cash session, as instants (epoch ms): 09:30 and 16:00 New York */
 export function nySession(at?: At): { open: number; close: number } {
   const p = nyParts(at);
@@ -149,10 +183,12 @@ export const nySessionPhase = (at?: At): 'before' | 'open' | 'after' => {
    TickMarkType is the library's enum: 0 year, 1 month, 2 day of the month, 3 time, 4 time with seconds (written as
    numbers so this module does not pull the chart library into every page that reads the clock). */
 const timeParts = (t: Time): NyParts => {
-  if (typeof t === 'number') return nyParts(t * 1000);
+  if (typeof t === 'number') return ctParts(t * 1000);
   const [y, m, d] = typeof t === 'string' ? t.split('-').map(Number) : [t.year, t.month, t.day];
   return { year: y, month: m || 1, day: d || 1, hour: 0, minute: 0, second: 0, weekday: new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay() };
 };
+
+const h12 = (p: NyParts) => `${p.hour % 12 || 12}:${two(p.minute)} ${p.hour < 12 ? 'AM' : 'PM'}`;
 
 export const nyTickMarks: TickMarkFormatter = (time, type) => {
   const p = timeParts(time);
@@ -164,17 +200,17 @@ export const nyTickMarks: TickMarkFormatter = (time, type) => {
     case 2:
       return String(p.day);
     case 4:
-      return `${two(p.hour)}:${two(p.minute)}:${two(p.second)}`;
+      return typeof time === 'number' ? `${h12(p).replace(' ', `:${two(p.second)} `)}` : String(p.day);
     default:
-      return `${two(p.hour)}:${two(p.minute)}`;
+      return typeof time === 'number' ? h12(p) : `${two(p.hour)}:${two(p.minute)}`;
   }
 };
 
-/** The crosshair's label: "Oct 9, 14:03" for an instant, "Oct 9" for a business day */
+/** The crosshair's label: "Oct 9, 7:55 AM" for an instant, "Oct 9" for a business day */
 export const nyTimeFormatter = (time: Time): string => {
   const p = timeParts(time);
   const day = `${MONTHS[p.month - 1]} ${p.day}`;
-  return typeof time === 'number' ? `${day}, ${two(p.hour)}:${two(p.minute)}` : day;
+  return typeof time === 'number' ? `${day}, ${h12(p)}` : day;
 };
 
 /** Spread into createChart's options (or applyOptions): `createChart(el, { ...NY_CHART_TIME, ... })`. A chart that sets

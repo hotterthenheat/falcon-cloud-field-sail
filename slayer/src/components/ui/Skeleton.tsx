@@ -44,7 +44,8 @@ export const Skeleton = ({ className = '', style, line = false }: SkeletonProps)
 
 /** A box the shape of a chart: a thin head line, a tall body, a foot line */
 export const ChartSkeleton = ({ className = '', style }: SkeletonProps) => (
-  <div aria-hidden className={`flex flex-col gap-2 p-3 ${className}`} style={style} data-skeleton="chart">
+  <div role="status" aria-label="Chart loading" className={`flex flex-col gap-2 p-3 ${className}`} style={style} data-skeleton="chart">
+    <span className="sr-only">Chart loading</span>
     <div className="flex items-center gap-2">
       <Skeleton className="h-4 w-20" line />
       <Skeleton className="h-4 w-12" line />

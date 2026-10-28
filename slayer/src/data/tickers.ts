@@ -41,6 +41,15 @@ const FALLBACK_NAMES: Record<string, string> = {
   SMCI: 'Super Micro Computer, Inc.',
   HOOD: 'Robinhood Markets, Inc.',
   SOFI: 'SoFi Technologies, Inc.',
+  SPX: 'S&P 500 Index',
+  SPXW: 'S&P 500 Index',
+  NDX: 'Nasdaq-100 Index',
+  NDXP: 'Nasdaq-100 Index',
+  RUT: 'Russell 2000 Index',
+  RUTW: 'Russell 2000 Index',
+  VIX: 'Cboe Volatility Index',
+  VIXW: 'Cboe Volatility Index',
+  XSP: 'S&P 500 Mini Index',
 };
 
 const featuredRank = new Map(FEATURED.map((s, i) => [s, i]));
@@ -201,7 +210,7 @@ export function rememberCompanyName(symbol: string, name: string | null | undefi
   if (uwNames.get(sym) === v) return;
   uwNames.set(sym, v);
   saveNames();
-  nameListeners.forEach(fn => fn());
+  bumpNames();
 }
 
 /** Names another vendor read already carries (the earnings calendar's, a screener row's) — kept only where the stock's own
@@ -217,8 +226,24 @@ export function rememberCompanyNames(pairs: readonly (readonly [string, string |
   }
   if (!changed) return;
   saveNames();
-  nameListeners.forEach(fn => fn());
+  bumpNames();
 }
+
+const INDEX_NAMES: Record<string, string> = {
+  SPX: 'S&P 500',
+  SPXW: 'S&P 500 Weeklys',
+  NDX: 'Nasdaq 100',
+  NDXP: 'Nasdaq 100 Weeklys',
+  RUT: 'Russell 2000',
+  RUTW: 'Russell 2000 Weeklys',
+  VIX: 'CBOE Volatility Index',
+  VIXW: 'VIX Weeklys',
+  XSP: 'Mini-S&P 500',
+  DJX: 'Dow Jones',
+  OEX: 'S&P 100',
+  XEO: 'S&P 100 European',
+  MRUT: 'Mini Russell 2000',
+};
 
 /** The vendor's name if known, then the bundled listing's, then the symbol */
 /* names remembered by an earlier visit were cased by the old rule ("Cme Group") — re-cased once, from their capitals */
@@ -231,7 +256,8 @@ const recaseStored = () => {
 export function companyName(symbol: string): string {
   recaseStored();
   const sym = symbol.toUpperCase();
-  const n = uwNames.get(sym) ?? tickerName(sym);
+  const known = INDEX_NAMES[sym];
+  const n = uwNames.get(sym) ?? known ?? tickerName(sym);
   return n.toUpperCase() === sym ? n : displayName(n);
 }
 /** The legal form of the company's name — for a line that quotes the filing */
@@ -251,6 +277,49 @@ export const hasVendorName = (symbol: string): boolean => uwNames.has(symbol.toU
 export function subscribeCompanyNames(fn: () => void): () => void {
   nameListeners.add(fn);
   return () => nameListeners.delete(fn);
+}
+
+const nameAsked = new Set<string>();
+const nameQueue: string[] = [];
+let nameBusy = 0;
+let namesRev = 0;
+/** Bumps when a company name is remembered or an ask finishes. Search menus subscribe to this. */
+export const companyNamesRev = (): number => namesRev;
+const bumpNames = () => {
+  namesRev += 1;
+  nameListeners.forEach(fn => fn());
+};
+function pumpCompanyNames(): void {
+  while (nameBusy < 3 && nameQueue.length) {
+    const sym = nameQueue.shift()!;
+    nameBusy += 1;
+    void import('./whales')
+      .then(m => m.whalesStock(sym))
+      .then(info => {
+        const row = info && typeof info === 'object' ? (info as { full_name?: string; short_name?: string }) : null;
+        const full = row ? String(row.full_name || row.short_name || '') : '';
+        if (full) rememberCompanyName(sym, full);
+      })
+      .catch(() => {
+        nameAsked.delete(sym);
+      })
+      .finally(() => {
+        nameBusy -= 1;
+        bumpNames();
+        pumpCompanyNames();
+      });
+  }
+}
+/** Ask /stock/{symbol}/info for names the listing does not have. The screener's full_name comes back empty. */
+export function askCompanyNames(symbols: readonly string[]): void {
+  for (const raw of symbols) {
+    const sym = raw.toUpperCase();
+    if (!/^[A-Z0-9.]{1,6}$/.test(sym) || nameAsked.has(sym) || hasVendorName(sym) || INDEX_NAMES[sym]) continue;
+    if (tickerName(sym).toUpperCase() !== sym) continue;
+    nameAsked.add(sym);
+    nameQueue.push(sym);
+  }
+  pumpCompanyNames();
 }
 
 /* ---- A COMPANY NAMED IN A HEADLINE (the re-audit, 2026-10-22) -----------------------------------------------------

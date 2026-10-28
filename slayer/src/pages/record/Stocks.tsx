@@ -41,7 +41,7 @@
 ==================================================
 */
 
-import { displayName } from '../../data/tickers';
+import { companyName, displayName, searchTickers } from '../../data/tickers';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -52,6 +52,7 @@ import { FeedFallback } from '../../components/ui/liveRead';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
+import { CoSub } from '../../components/record/CoName';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import Sparkline from '../../components/compass/Sparkline';
 import { SectorMark } from '../../components/trace/SectorMark';
@@ -64,7 +65,8 @@ import { nyClock, nyIsoDate, nyMinutes, nySessionPhase } from '../../core/nyTime
 import { isTradingDay } from '../../core/calendar';
 import { shortDay as shortDayWord } from '../../data/nyDate';
 import { gradeOfComposite, type Grade } from '../../data/stockOverview';
-import { SECTORS, UNIVERSE, type Sector } from '../../data/universe';
+import { lookup, SECTORS, UNIVERSE, type Sector } from '../../data/universe';
+import { ensureListed, equitySymbols, listedCount, searchListed, useListedRev } from '../../data/listedNames';
 import { ROTATION_SECTORS } from './recordSkeletons';
 import { statHelp } from '../../components/record/statHelp';
 import { phonePin } from '../../components/record/pagedGrid';
@@ -113,24 +115,38 @@ const listPhrase = (items: string[]) => (items.length <= 1 ? (items[0] ?? '') : 
 
 /* ---- cells --------------------------------------------------------------------- */
 
+/** A company name we actually have. The ticker itself is not a name. */
+const filedName = (ticker: string, raw?: string | null): string => {
+  const booked = companyName(ticker);
+  if (booked && booked.toUpperCase() !== ticker.toUpperCase()) return booked;
+  const row = displayName(raw);
+  return row && row.toUpperCase() !== ticker.toUpperCase() ? row : '';
+};
+
 const NameCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
     <span className="flex items-center gap-2 min-w-0 w-full h-full overflow-hidden">
       <CompanyLogo ticker={data.ticker} size={16} />
       <span className="flex flex-col leading-tight min-w-0">
         <span className="font-mono text-[12px] font-bold text-textPrimary">{data.ticker}</span>
-        <span className="text-[10px] text-textMuted truncate">{displayName(data.name)}</span>
+        <CoSub ticker={data.ticker} fallback={filedName(data.ticker, data.name)} />
       </span>
     </span>
   ) : null;
 
-const SectorCell = ({ data }: ICellRendererParams<StockPick>) =>
-  data ? (
-    <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-textSecondary" title={data.sector}>
-      <SectorMark sector={data.sector} />
-      <span className="min-w-0 truncate">{data.sector}</span>
+const SectorCell = ({ data }: ICellRendererParams<StockPick>) => {
+  if (!data) return null;
+  const house = lookup(data.ticker);
+  const sector = house?.sector ?? (data.listedOnly ? null : data.sector);
+  return sector ? (
+    <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-textSecondary" title={sector}>
+      <SectorMark sector={sector} />
+      <span className="min-w-0 truncate">{sector}</span>
     </span>
-  ) : null;
+  ) : (
+    <span className="font-mono text-[10px] text-textMuted" title="Sector is not filed for this name">—</span>
+  );
+};
 
 /* THE PRICE AND THE DAY FROM THE QUOTE (the ship pass, 2026-10-22): the screener's prev_close lags a session — NVDA read
    +1.29% here (against 216.47) while the quote, the name's own page and Pinpoint's Board read −1.22% (against 221.97).
@@ -140,8 +156,8 @@ const SectorCell = ({ data }: ICellRendererParams<StockPick>) =>
    in the session (liveFiles.useScreenerQuotes, on liveQuote's screenerRead rule). A name the screener has no row for
    reads its own quote. */
 const batchWords = (b: BatchQuote): string => {
-  if (b.live) return `${b.price.toFixed(2)}${b.tapeAt ? ` · ${nyClock(b.tapeAt)} ET` : ''}`;
-  return b.ext != null ? `${b.price.toFixed(2)} close · ${b.ext.toFixed(2)} outside the session${b.tapeAt ? ` ${nyClock(b.tapeAt)} ET` : ''}` : `${b.price.toFixed(2)} close`;
+  if (b.live) return `${b.price.toFixed(2)}${b.tapeAt ? ` · ${nyClock(b.tapeAt, { zone: true })}` : ''}`;
+  return b.ext != null ? `${b.price.toFixed(2)} close · ${b.ext.toFixed(2)} outside the session${b.tapeAt ? ` ${nyClock(b.tapeAt, { zone: true })}` : ''}` : `${b.price.toFixed(2)} close`;
 };
 /* ONE RULE FOR A FLAT EXTENDED MOVE (round 11: LIN read "AH +0.00%", TSLA at 0.00 read nothing) — under 0.005% it is
    not shown */
@@ -163,8 +179,10 @@ const LastCell = ({ data }: ICellRendererParams<StockPick>) => {
   const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
   if (!data) return null;
   const words = b ? { lead: b.price, line: batchWords(b) } : priceWords(q);
-  /* until the read lands, the screener's REGULAR price from the list's own read — its after-hours print apart */
-  const px = words?.lead ?? data.price;
+  /* until the read lands, the screener's REGULAR price from the list's own read — its after-hours print apart.
+     A listed name with no price yet is a dash, not $0.00. */
+  const px = words?.lead ?? (data.price > 0 ? data.price : 0);
+  if (!(px > 0)) return <span className="font-mono text-[11px] text-textMuted" title="No price on the feed">—</span>;
   const fallbackTitle = data.extPrice != null ? `${data.price.toFixed(2)} close · ${data.extPrice.toFixed(2)} outside the session (the screener's)` : 'the screener’s price';
   return <span className="font-mono text-[11px] tnum text-textPrimary" title={words?.line ?? fallbackTitle}>${px.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 };
@@ -172,6 +190,7 @@ const TodayCell = ({ data }: ICellRendererParams<StockPick>) => {
   const b = useBatchQuote(data?.ticker);
   const q = useLiveQuote(data && !b && batchMisses(data.ticker) ? data.ticker : null);
   if (!data) return null;
+  if (data.listedOnly && !b && !q) return <span className="font-mono text-[11px] text-textMuted" title="No session change on the feed">—</span>;
   /* before the open the session has not moved: the last session's change, dated */
   const pre = b ? !b.live : q?.phase === 'pre' && q.lastSessionPct != null;
   const chg = b ? b.pct ?? data.changePct : pre ? q!.lastSessionPct! : q?.spot && q.spot > 0 ? q.changePct : data.changePct;
@@ -221,10 +240,14 @@ const sleeveCell =
 
 const ScreenCell = ({ data }: ICellRendererParams<StockPick>) =>
   data ? (
+    data.listedOnly ? (
+      <span className="font-mono text-[10px] text-textMuted" title="Listed. No screen — the sleeves were not scored">No screen</span>
+    ) : (
     <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-textPrimary">
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SCREEN_DOT[gradeOfPick(data)]}`} />
       {gradeOfPick(data).toUpperCase()}
     </span>
+    )
   ) : null;
 
 const WhyCell = ({ data }: ICellRendererParams<StockPick>) =>
@@ -250,7 +273,7 @@ const StockCard = (p: StockPick) => {
           <span className="inline-flex items-center gap-2 min-w-0">
             <CompanyLogo ticker={p.ticker} size={16} />
             <span className="font-mono font-bold">{p.ticker}</span>
-            <span className="text-[10.5px] text-textMuted truncate">{displayName(p.name)}</span>
+            <span className="text-[10.5px] text-textMuted truncate"><CoSub ticker={p.ticker} fallback={filedName(p.ticker, p.name)} className="text-[10.5px] text-textMuted truncate" /></span>
           </span>
         }
         right={
@@ -274,7 +297,7 @@ const StockCard = (p: StockPick) => {
           </span>
         }
       />
-      <CardLine muted left={<span className="text-[10.5px]">{p.sector} · {p.thesis}</span>} />
+      <CardLine muted left={<span className="text-[10.5px]">{(lookup(p.ticker)?.sector ?? (p.listedOnly ? null : p.sector)) ?? '—'} · {p.thesis}</span>} />
     </>
   );
 };
@@ -348,6 +371,15 @@ const Stocks = () => {
      only — the sectors are the Sector card's and the rotation's (Noah, 2026-09-10:
      a Filter holding Technology contradicted every other sector he clicked) */
   const [filter, setFilter] = useState<string[]>([]);
+  const [find, setFind] = useState('');
+  const [depth, setDepth] = useState(160);
+  const listedRev = useListedRev();
+  useEffect(() => {
+    ensureListed();
+  }, []);
+  useEffect(() => {
+    setDepth(160);
+  }, [find, screen, sector, names, filter]);
   const filterGroups = useMemo<MultiGroup[]>(() => {
     const byName = new Map(cut.map(p => [p.ticker, p.name]));
     filter.forEach(f => {
@@ -357,20 +389,65 @@ const Stocks = () => {
     return [{ title: 'Names on the page', options: [...byName.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([t, n]) => ({ value: `name:${t}`, label: t, hint: n, count: cut.some(p => p.ticker === t) ? 1 : 0 })) }];
   }, [cut, filter, picks]);
   const rows = useMemo(() => {
+    const query = find.trim();
+    const blankOf = (symbol: string, known: string): StockPick => ({
+      ticker: symbol,
+      name: known || symbol,
+      sector: lookup(symbol)?.sector ?? 'Technology',
+      price: 0,
+      changePct: 0,
+      sleeves: { momentum: 0, quality: 0, flow: 0, news: 0 },
+      quiet: ['momentum', 'quality', 'flow', 'news'],
+      composite: 0,
+      verdict: 'HOLD',
+      thesis: known
+        ? 'Listed. No screen on this name — the sleeves are not scored.'
+        : 'Listed. No company name on the book yet, and the sleeves are not scored.',
+      trend: [],
+      listedOnly: true,
+    });
+    if (query) {
+      const hits = searchListed('equity', query, depth, searchTickers(query, depth), companyName);
+      return hits.map(hit => {
+        const scored = picks.find(p => p.ticker === hit.symbol);
+        if (scored) return scored;
+        const known = filedName(hit.symbol, hit.name);
+        return blankOf(hit.symbol, known);
+      });
+    }
+    if (filter.length === 0 && screen === 'all' && sector === 'all' && names === 'all') {
+      const seen = new Set<string>();
+      const out: StockPick[] = [];
+      for (const p of cut) {
+        if (seen.has(p.ticker)) continue;
+        seen.add(p.ticker);
+        out.push(p);
+      }
+      for (const symbol of equitySymbols()) {
+        if (out.length >= depth) break;
+        if (seen.has(symbol)) continue;
+        seen.add(symbol);
+        const known = filedName(symbol);
+        out.push(blankOf(symbol, known));
+      }
+      return out;
+    }
     if (filter.length === 0) return cut;
     const on = new Set(filter);
     return cut.filter(p => on.has(`name:${p.ticker}`));
-  }, [cut, filter]);
+  }, [cut, filter, find, picks, listedRev, depth, screen, sector, names]);
 
   const facts = useMemo(() => {
-    const count = (g: Grade) => rows.filter(p => gradeOfPick(p) === g).length;
+    const scored = rows.filter(p => !p.listedOnly);
+    const count = (g: Grade) => scored.filter(p => gradeOfPick(p) === g).length;
     const strong = count('strong');
     const good = count('good');
     const weak = count('poor');
     /* price above its 50-day average, not RSI over 50 (the re-audit, 2026-10-22) */
-    const placed = rows.map(aboveFifty).filter((v): v is boolean => v != null);
+    const placed = scored.map(aboveFifty).filter((v): v is boolean => v != null);
     const breadth = placed.length ? Math.round((placed.filter(Boolean).length / placed.length) * 100) : 0;
-    return { names: rows.length, strong, good, mixed: rows.length - strong - good - weak, weak, breadth };
+    /* A search hit with no screen is not caution. The counts are the scored rows only. */
+    return { names: scored.length, strong, good, mixed: scored.length - strong - good - weak, weak, breadth };
   }, [rows]);
 
   /* The leader is never called a laggard in the same breath: rank and direction are different axes */
@@ -399,7 +476,13 @@ const Stocks = () => {
   const newsQuiet = picks.length > 0 && picks.every(p => p.quiet.includes('news'));
   /* THE DAY COLUMN NAMES ITS DAY (audit round 7: "Today" held Oct 22's change before the open) — in the session it is
      today; outside it, the last session's date, off the market's own quote */
-  useScreenerQuotes(useMemo(() => picks.map(p => p.ticker), [picks]));
+  /* the scored names, plus the newest page of the unscreened list — never the whole 26k in one quote */
+  const quoteTickers = useMemo(() => {
+    const scored = rows.filter(p => !p.listedOnly).map(p => p.ticker);
+    const tail = rows.filter(p => p.listedOnly).slice(-80).map(p => p.ticker);
+    return [...new Set([...scored, ...tail])];
+  }, [rows]);
+  useScreenerQuotes(quoteTickers);
   /* a house name the screener has no row for (BYDDY) is said, never silently dropped */
   const unscreened = useMemo(() => (liveBoard.status === 'live' && picks.length ? UNIVERSE.filter(u => !picks.some(p => p.ticker === u.ticker)).map(u => u.ticker) : []), [liveBoard.status, picks]);
   /* the day the rows' change belongs to, off the rows' own bulk read */
@@ -433,6 +516,7 @@ const Stocks = () => {
      stays mounted here, so its window replays the house soft-in on every new
      cut instead — the rows land in place under it, nothing shuffles. */
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const moreRef = useRef<HTMLDivElement | null>(null);
   const cutKey = `${screen}|${sector}|${names}|${filter.join(',')}`;
   useEffect(() => {
     const el = gridRef.current;
@@ -441,6 +525,18 @@ const Stocks = () => {
     void el.offsetWidth; // the reflow that lets the animation start again
     el.classList.add('animate-soft-in');
   }, [cutKey]);
+
+  const universe = listedCount('equity');
+  const canGrow = rows.length > 0 && rows.length < universe && (find.trim().length > 0 || (screen === 'all' && sector === 'all' && names === 'all' && filter.length === 0));
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !canGrow) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) setDepth(d => Math.min(d + 180, universe || d + 180));
+    }, { rootMargin: '480px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [canGrow, rows.length, universe]);
 
   /* A row opens the name's own page (the partner's review, 2026-09-13: "stop
      sending me to the pinpoint page") — the Map is a door on that page */
@@ -461,8 +557,8 @@ const Stocks = () => {
             <h3 className="text-[15px] font-semibold leading-tight text-textPrimary whitespace-nowrap">How every name screens</h3>
             <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the measures, the screen and the rotation mean" testId="stocks-guide" />
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list but the vendor's screener has no row for ${unscreened.length === 1 ? 'it' : 'them'}, so ${unscreened.length === 1 ? 'it is' : 'they are'} not screened here` : undefined}>
-            The {picks.length || 'house list’s'} names the terminal files{unscreened.length ? ` (${unscreened.join(', ')}: no row on the vendor's screener, so not screened)` : ''} — not the whole market — each read on the trend, the numbers and the money from the screener and rolled into one screen. The wire does not mark a lean, so news stays out · the best first · a row opens the name
+          <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate" title={unscreened.length ? `${unscreened.join(', ')} ${unscreened.length === 1 ? 'is' : 'are'} on the house list and ${unscreened.length === 1 ? 'has' : 'have'} no row on this screen` : undefined}>
+            The {picks.length || 'house list’s'} names with a screen. The list under the rotation keeps going through every listed stock — scroll and it grows. Search finds a name that is not on the screen. A row opens the name.
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
@@ -504,6 +600,13 @@ const Stocks = () => {
         <DropdownSelect label="Screen" value={screen} options={SCREEN_OPTIONS} onChange={setScreen} title="Which screens" testId="stocks-screen" />
         <DropdownSelect label="Sector" value={sector} options={SECTOR_OPTIONS} onChange={setSector} title="Which sector" testId="stocks-sector" />
         <DropdownSelect label="Names" value={names} options={NAMES_OPTIONS} onChange={setNames} title="Which companies" testId="stocks-names" />
+        <input
+          value={find}
+          onChange={e => setFind(e.target.value)}
+          placeholder="Find any listed stock"
+          aria-label="Find any listed stock"
+          className="h-7 w-44 rounded border border-borderMuted bg-transparent px-2 font-mono text-[11px] text-textPrimary placeholder:text-textMuted"
+        />
         <DropdownMulti label="Filter" values={filter} groups={filterGroups} onChange={setFilter} title="The names on the page right now — tick any number; only those stay" testId="stocks-filter" />
       </div>
       {failed ? (
@@ -560,6 +663,12 @@ const Stocks = () => {
         </AgGridProvider>
         )}
       </div>
+      {rows.length > 0 && (
+        <div ref={moreRef} className="px-5 py-2 border-t border-borderSubtle/60 font-mono text-[10px] text-textMuted" data-stocks-more>
+          {rows.length.toLocaleString()} on this page
+          {listedCount('equity') > rows.length ? ` · ${listedCount('equity').toLocaleString()} listed stocks · scroll for more` : ''}
+        </div>
+      )}
     </div>
   );
 };

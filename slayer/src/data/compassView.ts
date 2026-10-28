@@ -14,7 +14,7 @@
 */
 
 import { useSyncExternalStore } from 'react';
-import type { ScannerKey, SleeveKey } from '../types/compass';
+import type { OptionRight, ScannerKey, SleeveKey } from '../types/compass';
 
 export type BoardLayout = 'cards' | 'table';
 
@@ -29,9 +29,11 @@ export interface CompassView {
       "Inside the contract" points at it and keeps it across the board and the Tracker until another
       contract takes its place (Noah: "it should stay there until another con takes its place") */
   chosenId: string | null;
+  /** Board side. BOTH is the whole book. Call or Put narrows it. */
+  right: OptionRight | 'BOTH';
 }
 
-let view: CompassView = { sleeve: 'odte', scanner: 'top-setups', layout: 'cards', tickerFilter: null, selectedId: null, chosenId: null };
+let view: CompassView = { sleeve: 'odte', scanner: 'top-setups', layout: 'cards', tickerFilter: null, selectedId: null, chosenId: null, right: 'BOTH' };
 const subs = new Set<() => void>();
 
 export const setCompassView = (patch: Partial<CompassView>): void => {

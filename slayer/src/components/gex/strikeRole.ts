@@ -8,7 +8,7 @@
   wide as its widest label, "455 PUT WALL PIN", so every plain strike
   carried ~75px of empty column before its first cell). The inks are the
   ones the tape, the profile and the report already print the levels in:
-  the supreme magenta, the call wall green, the put wall red, the flip
+  the supreme magenta, the call wall glacier, the put wall ember, the flip
   its own; the gamma pin a dotted underline, a strike you own a silver
   one. The words stay on the strike's title and in the cards.
 ==================================================

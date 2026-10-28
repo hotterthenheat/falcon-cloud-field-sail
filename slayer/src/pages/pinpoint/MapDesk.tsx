@@ -58,7 +58,9 @@ import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, use
 import { Play } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { snapshotOf, useBookRev, usePinpointFeed } from '../../data/uwBook';
+import { snapshotOf, useBookRev, usePinpointFeed, ensureBook } from '../../data/uwBook';
+import { isOptionRoot, useListedRev } from '../../data/listedNames';
+import { sameName, wantSpotGex } from '../../data/spotGexBook';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -79,7 +81,7 @@ import { setReplayLabel } from './replayState';
 import { readPosition, usePositions } from '../../data/positions';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { levelsBook, levelsDate, levelsWords, sessionBook } from '../../data/bookWindow';
-import { useLevelsScope } from '../../data/levelsScope';
+import { levelsForName, useLevelsRev } from '../../data/levelsScope';
 import type { ExposureExpiry } from '../../types/gex';
 import type { Candle, MarketSnapshot } from '../../types/market';
 import { useOnScreen } from '../../components/ui/useOnScreen';
@@ -175,10 +177,14 @@ const MapJumps = () => {
 
 const MapDesk = () => {
   const { activeTicker, changeTicker } = useTicker();
+  const listedRev = useListedRev();
+  useEffect(() => {
+    if (isOptionRoot(activeTicker)) wantSpotGex(activeTicker);
+  }, [activeTicker, listedRev]);
   const marketData = usePinpointFeed(activeTicker);
   const bookRev = useBookRev();
   const { focus, toggleFocus, focusOn } = useFocus();
-  const levelsScope = useLevelsScope();
+  useLevelsRev();
   const phone = useIsPhone();
 
   /* TYPE A STRIKE TO KEEP IT (idea 8, 2026-10-13): `/` opens a small prompt; Enter keeps the nearest strike the chain
@@ -216,10 +222,9 @@ const MapDesk = () => {
      pinpoint map page should be the 5 box setup always") — the ladder with a
      pane a greek, the net bar in each; the pick is the page's for the visit,
      never stored, so every visit opens the same way. */
-  /* GEX ALONE BY REST (the owner, 2026-10-14, after a walk through the page as a retail user: five greeks by forty
-     strikes was two hundred figures before the price chart, a thousand pixels down). One greek, so the book packs to
-     its one column and the day stands beside it on a desk; the band's Greek card opens the rest. */
-  const [greekPick, setGreekPick] = useState<string[]>(['gex']);
+  /* Spot GEX, DEX, vanna and charm are on the book immediately. VEX, color, vomma, speed, veta and zomma
+     are in the same greek control and draw once each expiry's contract vol is in — never as a separate card, never as $0. */
+  const [greekPick, setGreekPick] = useState<string[]>(['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma']);
 
   /* REPLAY (2026-09-08): one position on today's session — seconds from the
      open — and every box reads the book as it stood then (data/replay.ts).
@@ -237,7 +242,13 @@ const MapDesk = () => {
   const scanRef = useRef<MarketSnapshot | null>(null);
   const scanAtRef = useRef(0);
   useEffect(() => {
-    if (!marketData) return;
+    if (!marketData || sameName(marketData.ticker) !== sameName(activeTicker)) {
+      if (scanRef.current && sameName(scanRef.current.ticker) !== sameName(activeTicker)) {
+        scanRef.current = null;
+        setScan(null);
+      }
+      return;
+    }
     const now = Date.now();
     /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
        so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
@@ -251,7 +262,7 @@ const MapDesk = () => {
       scanAtRef.current = now;
       setScan(marketData);
     }
-  }, [marketData]);
+  }, [marketData, activeTicker]);
 
   /* THE OWN-NAME SNAPSHOTS — one per name a box has stepped onto, rebuilt on
      the scan cadence like the frame's own. A pure read of the simulator. */
@@ -359,7 +370,10 @@ const MapDesk = () => {
       className={`${FLAT_DOOR} ${replay ? FLAT_ON : ''}`}
       data-map-replay
     >
-      <Play className="w-3 h-3" /> {replay ? 'Replaying' : 'Replay'}
+      <span className="inline-grid place-items-center">
+        <span className="invisible col-start-1 row-start-1 inline-flex items-center gap-1" aria-hidden><Play className="w-3 h-3" /> Replaying</span>
+        <span className="col-start-1 row-start-1 inline-flex items-center gap-1"><Play className="w-3 h-3" /> {replay ? 'Replaying' : 'Replay'}</span>
+      </span>
     </button>
   );
 
@@ -400,7 +414,7 @@ const MapDesk = () => {
     if (!scan) return null;
     const t = scopes[key];
     if (!t || t === scan.ticker) return replaySnapMinute ?? scan;
-    return ownSnaps.get(t) ?? scan;
+    return ownSnaps.get(t) ?? null;
   };
   /* A BOX NOBODY SEES HOLDS STILL while the replay runs (2026-09-11): off
      screen, a box keeps the moment it last showed; scrolled into view, it
@@ -491,7 +505,12 @@ const MapDesk = () => {
       linked={scopes[key] === undefined}
       quote
       onToggleLink={() => setScope(key, scopes[key] === undefined ? t : undefined)}
-      onPick={next => (scopes[key] === undefined ? changeTicker(next) : setScope(key, next))}
+      onPick={next => {
+        const name = sameName(next);
+        ensureBook(name, 'full', true);
+        if (scopes[key] === undefined) changeTicker(next);
+        else setScope(key, next);
+      }}
     />
   );
 
@@ -508,10 +527,15 @@ const MapDesk = () => {
 
   const ticker = frameSnap?.ticker ?? activeTicker;
   const focusPrice = focusFor(ticker);
-  const calTicker = calSnap?.ticker ?? ticker;
-  const tapeTicker = tapeSnap?.ticker ?? ticker;
-  const dayTicker = daySnap?.ticker ?? ticker;
-  const reportTicker = reportSnap?.ticker ?? ticker;
+  const calTicker = scopes.calendar ?? calSnap?.ticker ?? ticker;
+  const tapeTicker = scopes.tape ?? tapeSnap?.ticker ?? ticker;
+  const dayTicker = scopes.day ?? daySnap?.ticker ?? ticker;
+  const reportTicker = scopes.report ?? reportSnap?.ticker ?? ticker;
+  const pinnedBook = (key: BoxKey, snap: MarketSnapshot | null): MarketSnapshot | null => {
+    const pinned = scopes[key];
+    if (pinned && scan && pinned !== scan.ticker) return snap;
+    return snap ?? scan;
+  };
 
   /* YOUR POSITIONS on this name (roadmap step 6): read against the 0DTE book,
      once per scan; the ledger's marks and the box read the same map */
@@ -531,6 +555,10 @@ const MapDesk = () => {
      container") — the same shapes the route's fallback and the deferred
      mounts use, so nothing on the page moves when the book lands. */
   if (!scan || !data) return <BookOrSkeleton tickers={[ticker]}><MapPageSkeleton /></BookOrSkeleton>;
+  const calBook = pinnedBook('calendar', calSnap);
+  const tapeBook = pinnedBook('tape', tapeSnap);
+  const dayBook = pinnedBook('day', daySnap);
+  const reportBook = pinnedBook('report', reportSnap);
 
   const keepTyped = (raw: string) => {
     const want = Number.parseFloat(raw.replace(/[^0-9.]/g, ''));
@@ -553,15 +581,14 @@ const MapDesk = () => {
   const bookStyleW = bookW > 0 ? (bookFits ? bookW : topRowW || bookW) : undefined;
   const dayBeside = !split && !!bookStyleW && topRowW > 0 && topRowW - bookStyleW - 16 >= DAY_MIN;
   const datesFor = (t: string): string[] | null => (nameDates[t]?.length ? nameDates[t] : bookDates);
-  /* THE LEVELS ARE THE LEVELS CARD'S, NOT THE MATRIX'S WINDOW (the ship pass, 2026-10-22): the tape's lines, the clock,
-     the report and the hedging path read their supreme, walls, flip and net off the Levels card's contracts — the same
-     book the Board, the Agenda and Compare read — while the matrix above may show more dates. */
-  const lv = (snap: MarketSnapshot): MarketSnapshot => levelsBook(snap, levelsScope);
+  /* THE LEVELS ARE THAT NAME'S, not the frame's. Changing SPY's Levels card does not move QQQ's tape, clock or report. */
+  const scopeOf = (snap: MarketSnapshot) => levelsForName(snap.ticker);
+  const lv = (snap: MarketSnapshot): MarketSnapshot => levelsBook(snap, scopeOf(snap));
   const lvDates = (snap: MarketSnapshot): string[] | null => {
-    const d = levelsDate(snap, levelsScope);
+    const d = levelsDate(snap, scopeOf(snap));
     return d ? [d] : null;
   };
-  const lvWords = (snap: MarketSnapshot): string => levelsWords(snap, levelsScope);
+  const lvWords = (snap: MarketSnapshot): string => levelsWords(snap, scopeOf(snap));
 
   return (
     <>
@@ -583,7 +610,7 @@ const MapDesk = () => {
               autoFocus
               inputMode="decimal"
               placeholder={scan.spot.toFixed(0)}
-              className="w-20 bg-transparent font-mono text-[12px] tnum text-textPrimary outline-none border-b border-borderMuted focus:border-silver placeholder:text-textMuted/60"
+              className="w-24 slayer-field"
               onKeyDown={e => {
                 if (e.key === 'Escape') {
                   e.preventDefault();
@@ -622,8 +649,9 @@ const MapDesk = () => {
       <div ref={setTopRow} className="flex flex-wrap items-stretch gap-4" data-map-top-row data-day-beside={dayBeside || undefined} data-band-need={bandNeed || undefined} data-head-room={headRoom || undefined} data-band-up={bandUp || undefined}>
       <div ref={calRef} className={`shrink-0 grow-0 max-w-full border border-borderSubtle rounded-md overflow-hidden flex flex-col`} style={{ width: split || !dayBeside ? '100%' : (bookStyleW ?? '100%'), height: bookH }} data-book-w={bookW || undefined} data-calendar data-scope-ticker={calTicker} data-on-screen={calOn}>
         <Deferred index={0} frames={0} fallback={<CalendarInner />} className="h-full min-h-0 flex flex-col animate-fade-in">
+          {calBook ? (
           <ExposureField
-            snapshot={calSnap ?? scan}
+            snapshot={calBook}
             toolbar="band"
             lead={chipFor('calendar', calTicker)}
             greeks={greekPick}
@@ -649,6 +677,9 @@ const MapDesk = () => {
             onBandNeed={setBandNeed}
             pack={!split && bookW > 0}
           />
+          ) : (
+            <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.calendar}</div>
+          )}
         </Deferred>
       </div>
       {/* THE TAPE (the competitive audit, 2026-10-13): today's price with the book's levels on it, a bell on each level,
@@ -662,8 +693,14 @@ const MapDesk = () => {
       {!dayNames && (
       <div ref={tapeRef} id="map-session" className={`flex-[1_1_420px] min-w-0 flex flex-col border border-borderSubtle rounded-md bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12`} style={dayBeside ? { height: bookH } : { minHeight: 520 }} data-session data-scope-ticker={tapeTicker} data-on-screen={tapeOn}>
         <DayBox scope={chipFor('tape', tapeTicker)}>
-          <TapeBox part snapshot={lv(tapeSnap ?? scan)} bars={playing && tapeTicker === ticker ? reportBars : undefined} focus={focusFor(tapeTicker)} onPick={price => toggleFocus(price, tapeTicker)} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} />
-          <BookThroughDay part snapshot={lv(tapeSnap ?? scan)} bars={playing && tapeTicker === ticker ? reportBars : undefined} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} dates={lvDates(tapeSnap ?? scan)} bookLabel={lvWords(tapeSnap ?? scan)} />
+          {tapeBook ? (
+            <>
+          <TapeBox part snapshot={lv(tapeBook)} bars={playing && tapeTicker === ticker ? reportBars : undefined} focus={focusFor(tapeTicker)} onPick={price => toggleFocus(price, tapeTicker)} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} />
+          <BookThroughDay part snapshot={lv(tapeBook)} bars={playing && tapeTicker === ticker ? reportBars : undefined} at={playing && tapeTicker === ticker ? replayMinute(framePos, range) : undefined} dates={lvDates(tapeBook)} bookLabel={lvWords(tapeBook)} />
+            </>
+          ) : (
+            <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.tape}</div>
+          )}
         </DayBox>
       </div>
       )}
@@ -672,7 +709,7 @@ const MapDesk = () => {
         <div ref={tapeRef} id="map-session" className={`grid w-full grid-cols-1 gap-4 ${DAY_COLS[dayNames.length] ?? 'lg:grid-cols-2'} max-sm:scroll-mt-24 sm:scroll-mt-12`} data-session data-session-split={dayNames.length} data-on-screen={tapeOn}>
           {dayNames.map((t, i) => {
             const host = i === 0;
-            const raw = host ? tapeSnap ?? scan : columnSnap(t);
+            const raw = host ? tapeBook : columnSnap(t);
             const snap = raw ? lv(raw) : null;
             if (!snap) {
               return (
@@ -734,7 +771,7 @@ const MapDesk = () => {
               if (!base) return null;
               return (
                 <div key={t} ref={host ? reportRef : undefined} id={host ? 'map-report' : undefined} className="min-w-0 border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={t} data-on-screen={host ? reportOn : undefined}>
-                  <WallReportCard tight snapshot={sessionBook(base, levelsScope).book ?? lv(base)} unavailable={sessionBook(base, levelsScope).why} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} span={sessionBook(base, levelsScope).label} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
+                  <WallReportCard tight snapshot={sessionBook(base, scopeOf(base)).book ?? lv(base)} unavailable={sessionBook(base, scopeOf(base)).why} focus={focusFor(t)} onPick={price => toggleFocus(price, t)} scope={<NameMark t={t} />} span={sessionBook(base, scopeOf(base)).label} bars={playing ? (host ? reportBars : extraBars.get(t)) : undefined} />
                 </div>
               );
             })}
@@ -743,10 +780,18 @@ const MapDesk = () => {
       ) : (
       <div className="contents min-[1880px]:grid min-[1880px]:grid-cols-[580px_minmax(0,1fr)] min-[1880px]:gap-4 min-[1880px]:items-stretch" data-map-wide-row>
       <div ref={dayRef} id="map-clock" className="flex flex-col border border-borderSubtle rounded-md bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-day data-scope-ticker={dayTicker} data-on-screen={dayOn}>
-        <TraderClock snapshot={lv(daySnap ?? scan)} scope={chipFor('day', dayTicker)} dates={lvDates(daySnap ?? scan)} at={playing && dayTicker === ticker ? replayMinute(framePos, range) : undefined} onSeek={playing && range && dayTicker === ticker ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
+        {dayBook ? (
+        <TraderClock snapshot={lv(dayBook)} scope={chipFor('day', dayTicker)} dates={lvDates(dayBook)} at={playing && dayTicker === ticker ? replayMinute(framePos, range) : undefined} onSeek={playing && range && dayTicker === ticker ? (min) => setReplay(r => (r ? { ...r, playing: false, pos: posAtMinute(r.range, min) } : r)) : undefined} />
+        ) : (
+          <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.day}</div>
+        )}
       </div>
       <div ref={reportRef} id="map-report" className="border border-borderSubtle rounded-md overflow-hidden bg-panel max-sm:scroll-mt-24 sm:scroll-mt-12" data-report data-scope-ticker={reportTicker} data-on-screen={reportOn}>
-        <WallReportCard snapshot={sessionBook(reportSnap ?? scan, levelsScope).book ?? lv(reportSnap ?? scan)} unavailable={sessionBook(reportSnap ?? scan, levelsScope).why} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={sessionBook(reportSnap ?? scan, levelsScope).label} bars={playing && reportTicker === ticker ? reportBars : undefined} />
+        {reportBook ? (
+        <WallReportCard snapshot={sessionBook(reportBook, scopeOf(reportBook)).book ?? lv(reportBook)} unavailable={sessionBook(reportBook, scopeOf(reportBook)).why} focus={focusFor(reportTicker)} onPick={price => toggleFocus(price, reportTicker)} scope={chipFor('report', reportTicker)} span={sessionBook(reportBook, scopeOf(reportBook)).label} bars={playing && reportTicker === ticker ? reportBars : undefined} />
+        ) : (
+          <div className="px-4 py-6 font-mono text-[11px] text-textMuted">Still reading {scopes.report}</div>
+        )}
       </div>
       </div>
       )}

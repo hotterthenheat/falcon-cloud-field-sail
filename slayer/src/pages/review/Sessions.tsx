@@ -37,7 +37,7 @@
 ==================================================
 */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Play, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import RenameDoor from '../../components/review/RenameDoor';
@@ -52,6 +52,8 @@ import { futAccountOf } from '../../data/review/futuresEngine';
 import { FUT_PRODUCTS, futMomentWords, futProduct } from '../../data/review/futuresTape';
 import { createFutSession, createSession, deleteSession, isFutures, renameSession, runAgain, useSessions, type AnySession } from '../../data/review/store';
 import { REVIEW_NAMES, dayWords, reviewName, tapeDays } from '../../data/review/tape';
+import { ensureListed, isOptionRoot, optionSymbols, useListedRev } from '../../data/listedNames';
+import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 import { dirInk, momentWords, pct, usd, usdSigned } from '../../components/review/words';
 
 const SILVER_FILL = 'rgb(var(--silver-fill))';
@@ -108,10 +110,33 @@ const Sessions = () => {
   const [futA, setFutA] = useState('ES');
   const [futB, setFutB] = useState('');
   const [futFee, setFutFee] = useState(-1);
+  const listedRev = useListedRev();
+  const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  useEffect(() => { ensureListed(); }, []);
+  const optionNames = useMemo(() => {
+    const roots = optionSymbols();
+    const known = new Map(REVIEW_NAMES.map(n => [n.ticker, n.name]));
+    const company = (t: string) => {
+      const named = companyName(t);
+      if (named.toUpperCase() !== t) return named;
+      return known.get(t);
+    };
+    if (!roots.length) return NAME_OPTIONS.filter(o => isOptionRoot(o.value));
+    return roots.map(t => {
+      const hint = company(t);
+      return {
+        value: t,
+        label: t,
+        hint: hint && hint !== t ? hint : undefined,
+        logo: t,
+        keywords: hint ?? '',
+      };
+    });
+  }, [listedRev, nameRev]);
   const fut = kind === 'futures';
   /* the two Name cards hold whichever kind is in hand */
   const [ticker, setTicker, second, setSecond] = fut ? ([futA, setFutA, futB, setFutB] as const) : ([optA, setOptA, optB, setOptB] as const);
-  const nameOptions = fut ? FUT_OPTIONS : NAME_OPTIONS;
+  const nameOptions = fut ? FUT_OPTIONS : optionNames;
   /** The "second name" card has been asked for (it may still be empty) */
   const [adding, setAdding] = useState(false);
   const [maxOpen, setMaxOpen] = useState(0);

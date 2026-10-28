@@ -9,6 +9,7 @@
 */
 
 import { fmtUsd } from './gex';
+import { higherForStrikes } from './liveHigher';
 import { pickLegWalls } from '../core/walls';
 import { levelFlip } from './flipLevel';
 import { airPocketZones, findAirPockets } from './airPockets';
@@ -146,6 +147,9 @@ export function buildExposureProfile(
     }
   }
 
+  const higherAt = higherForStrikes(snapshot, expiry, window.map(n => n.strike));
+  const zeroGreek = () => ({ put: 0, call: 0, net: 0 });
+
   const maxAbs = { gex: 1, dex: 1, vex: 1, vanna: 1, charm: 1 };
   const strikes: StrikeExposure[] = window.map((n: StrikeNode) => {
     const jitter = snapshot.liveBook ? 0.5 : legJitter(ticker, n.strike, expiry);
@@ -160,6 +164,12 @@ export function buildExposureProfile(
     /* Vanna and charm ride the same expiry lens (2026-09-09) */
     const vanna = scaleSplit(n.putVanna ?? 0, n.callVanna ?? 0, factor, jitter);
     const charm = scaleSplit(n.putCharm ?? 0, n.callCharm ?? 0, factor, jitter);
+    const h = higherAt.get(n.strike);
+    const color = h?.color ?? zeroGreek();
+    const vomma = h?.vomma ?? zeroGreek();
+    const speed = h?.speed ?? zeroGreek();
+    const veta = h?.veta ?? zeroGreek();
+    const zomma = h?.zomma ?? zeroGreek();
     maxAbs.gex = Math.max(maxAbs.gex, Math.abs(gex.put), Math.abs(gex.call), Math.abs(gex.net));
     maxAbs.dex = Math.max(maxAbs.dex, Math.abs(dex.put), Math.abs(dex.call), Math.abs(dex.net));
     maxAbs.vex = Math.max(maxAbs.vex, Math.abs(vex.put), Math.abs(vex.call), Math.abs(vex.net));
@@ -168,7 +178,7 @@ export function buildExposureProfile(
     const oi = n.callOI + n.putOI;
     const traded = flowVol.get(n.strike);
     const volume = traded != null ? traded : snapshot.liveBook ? 0 : strikeVolume(ticker, n.strike, oi);
-    return { strike: n.strike, pin: pinFound && n.strike === pinStrike, gex, dex, vex, vanna, charm, oi, volume };
+    return { strike: n.strike, pin: pinFound && n.strike === pinStrike, gex, dex, vex, vanna, charm, color, vomma, speed, veta, zomma, oi, volume };
   });
 
   // Aggregates

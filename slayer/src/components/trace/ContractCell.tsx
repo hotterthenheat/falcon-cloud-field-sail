@@ -52,7 +52,7 @@ const ContractCell = ({
   /** Signed distance of the strike from that spot, percent */
   otmPct?: number;
 }) => {
-  /* No underlying on the print (the vendor sends none for index options — SPXW, XSP): no spot and no distance, never
+  /* No underlying on the print (the feed sends none for index options — SPXW, XSP): no spot and no distance, never
      "spot $0.00 · 0.0%". The sub-line goes whole: left with only the days, it repeated the DTE column beside it. */
   if (spot !== undefined && !(spot > 0)) {
     spot = undefined;

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { ChevronUp, Code2, Link2, Maximize2, Minimize2, Rows3, SlidersHorizontal, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DOCK_ROOM, openEditor } from '../../data/editorDock';
+import { chainForDate, expiryLabel } from '../../data/uwBook';
 import Simulator from '../../core/simulator';
 import { useMarketData } from '../../context/MarketDataContext';
 import DistanceUnitPicker from '../../components/ui/DistanceUnitPicker';
@@ -14,6 +15,7 @@ import {
 import { buildLadderFor, buildLevelsFor, buildPrints, fmtUsd, spotChangePct } from '../../data/gex';
 import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { expiryFor } from '../../core/calendar';
+import { expiryOpen } from '../../core/tradingYear';
 import ExpiryCard, { type ExpiryChoice } from '../../components/ui/ExpiryCard';
 import StrikeChart, {
   PRICE_SCALE_MIN_WIDTH,
@@ -1081,7 +1083,38 @@ const Pane = ({
      set the rail draws. `rows` now reaches the whole maintained book so the
      column can fill the price scale; pointing the header at it would have it
      naming strikes $30 away from the market. */
-  const heavy = useMemo(() => heaviest(rail.core, heavyCount), [rail, heavyCount]);
+  const bookPick = railCut === 'book' || railCut === 0
+    ? null
+    : (() => {
+        const d = expiryFor(railCut).date;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })();
+  const shownBook = useMemo(
+    () => chainForDate(ticker, bookPick),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ticker, revision, bookPick],
+  );
+  const [rollNote, setRollNote] = useState<string | null>(null);
+  const drawnDate = useRef<{ ticker: string; date: string } | null>(null);
+  useEffect(() => {
+    const date = shownBook?.date;
+    if (!date || date === 'book') return;
+    const was = drawnDate.current;
+    drawnDate.current = { ticker, date };
+    if (!was || was.ticker !== ticker) {
+      if (was && was.ticker !== ticker) setRollNote(null);
+      return;
+    }
+    if (was.date !== date && !expiryOpen(was.date)) setRollNote(`${expiryLabel(was.date)} settled, now on ${shownBook.label}`);
+    else if (was.date !== date) setRollNote(null);
+  }, [ticker, shownBook?.date, shownBook?.label]);
+  const heavy = useMemo(() => {
+    const nodes = shownBook?.nodes;
+    if (!nodes?.length) return heaviest(rail.core, heavyCount);
+    const rows = nodes.map(n => ({ strike: n.strike, value: n.netGex })).sort((a, b) => b.strike - a.strike);
+    const i = Math.max(0, rows.findIndex(s => s.strike <= rail.spot));
+    return heaviest(rows.slice(Math.max(0, i - 12), i + 13), heavyCount);
+  }, [shownBook, rail, heavyCount]);
 
   /* What the reader clicked in the rail, flashed on the chart. Clicking the
      same strike again clears it, so the rail is a toggle rather than a thing
@@ -1566,6 +1599,7 @@ const Pane = ({
               ticker={ticker}
               paneId={`terrain:${index + 1}`}
               revision={revision}
+              bookDate={bookPick}
               levels={levels}
               timeframe={timeframe}
               flowPrints={flowTape}
@@ -1833,6 +1867,19 @@ const Pane = ({
                 <span className="shrink-0">
                   <SpotPrice value={levels.spot} />
                 </span>
+                {shownBook?.movedFrom ? (
+                  <span className="shrink-0 font-mono text-[10px] text-textSecondary" data-book-roll title="The expiry you had open has settled">
+                    {shownBook.movedFrom} settled, now on {shownBook.label}
+                  </span>
+                ) : rollNote ? (
+                  <span className="shrink-0 font-mono text-[10px] text-textSecondary" data-book-roll title="The expiry on this chart has settled">
+                    {rollNote}
+                  </span>
+                ) : shownBook ? (
+                  <span className="shrink-0 font-mono text-[10px] text-textMuted" title="The expiry and the book the nodes and Heaviest are drawn from">
+                    {shownBook.label} · {shownBook.kind}
+                  </span>
+                ) : null}
                 {/* First thing the row gives up when the column is narrow
                     (ID_ROW_FULL_PX) — the price it is a delta of is directly
                     to its left, and the chart draws the same move. */}

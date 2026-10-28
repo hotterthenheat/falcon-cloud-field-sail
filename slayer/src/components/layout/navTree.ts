@@ -37,9 +37,15 @@ const SUBPAGES: Record<string, NavLeaf[]> = {
 export const subpagesFor = (path: string, pathname: string, chosenId: string | null): NavLeaf[] | undefined => {
   if (path === '/compass') {
     const m = pathname.match(/^\/compass\/([^/?#]+)/);
-    const here = m && m[1] !== 'tracker' ? m[1] : null;
+    const reserved = m != null && (m[1] === 'tracker' || m[1] === 'blotter');
+    const here = m && !reserved ? m[1] : null;
     const id = here ?? chosenId;
-    return [{ path: '/compass', label: 'The board' }, ...(id ? [{ path: `/compass/${id}`, label: 'Inside the contract' }] : []), { path: '/compass/tracker', label: 'Tracker' }];
+    return [
+      { path: '/compass', label: 'The scan' },
+      ...(id ? [{ path: `/compass/${id}`, label: 'Inside the contract' }] : []),
+      { path: '/compass/blotter', label: 'Blotter' },
+      { path: '/compass/tracker', label: 'Tracker' },
+    ];
   }
   return SUBPAGES[path];
 };

@@ -69,7 +69,11 @@ export const REVIEW_NAMES: ReviewName[] = [
   ...UNIVERSE.map(u => ({ ticker: u.ticker, name: u.name, px: u.px, iv: Math.min(0.85, Math.max(0.14, 0.1 + 0.16 * u.beta)), step: stepFor(u.px) })),
 ];
 const BY_TICKER = new Map(REVIEW_NAMES.map(n => [n.ticker, n]));
-export const reviewName = (ticker: string): ReviewName => BY_TICKER.get(ticker.toUpperCase()) ?? FUNDS[0];
+/** A name the tape already knows. Anything else keeps its own ticker and a plain walk — no vendor pull. */
+export const reviewName = (ticker: string): ReviewName => {
+  const t = ticker.toUpperCase();
+  return BY_TICKER.get(t) ?? { ticker: t, name: t, px: 100, iv: 0.35, step: t.length > 3 ? 1 : 1 };
+};
 
 /* ---- a seeded generator: the same draws for the same key, in order ---- */
 function seedOf(key: string): number {

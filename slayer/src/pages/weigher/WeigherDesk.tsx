@@ -54,6 +54,7 @@ import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useMarketData } from '../../context/MarketDataContext';
 import { buildLevelsFor, buildPrints, fmtUsd, spotChangePct } from '../../data/gex';
+import { wantSpotGex } from '../../data/spotGexBook';
 import { estimatePremium } from '../../data/compass';
 import {
   SCAN_PRESETS,
@@ -572,6 +573,9 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [desk]);
 
   const { ticker, dte, lens, right, preset, depth, cols } = desk;
+  useEffect(() => {
+    wantSpotGex(ticker);
+  }, [ticker]);
   const patch = (p: Partial<DeskState>) => setDesk(d => ({ ...d, ...p }));
 
   const mood = useMemo(() => marketMood(), [tick]);

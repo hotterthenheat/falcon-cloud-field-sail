@@ -100,7 +100,7 @@ const tickMarks = (time: Time, type: TickMarkType, clock: ChartClock): string =>
     case TickMarkType.Month:
       return MONTHS[d.getMonth()];
     case TickMarkType.DayOfMonth:
-      return String(d.getDate());
+      return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
     case TickMarkType.TimeWithSeconds:
       return `${fmtClockLocal(time, clock)}:${two(d.getSeconds())}`;
     default:

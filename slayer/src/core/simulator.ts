@@ -675,28 +675,43 @@ const Simulator = (() => {
     }
   }
 
-  /** The config for a symbol never seen: its roster quote, or a hash price. */
-  function registerTicker(sym: string): void {
-    /* A roster name seeds FROM its roster quote — the scan board priced its
-       cards off that quote, and a click that re-rolled the name to a hash
-       price would grade a different market than the card the user clicked
-       (the exact board-vs-panel schism documented in the partner's build). */
+  /** Indexes a hash would price like a $40 stock. Sim anchors, not a live feed. */
+  const INDEX_ANCHOR: Record<string, { px: number; iv: number }> = {
+    SPX: { px: 5800, iv: 0.15 },
+    SPXW: { px: 5800, iv: 0.16 },
+    XSP: { px: 580, iv: 0.15 },
+    NDX: { px: 21000, iv: 0.18 },
+    RUT: { px: 2200, iv: 0.2 },
+    RUTW: { px: 2200, iv: 0.2 },
+    VIX: { px: 16, iv: 0.9 },
+  };
+
+  /** A quote for a name that is not registered yet. Same number a later click seeds. */
+  function quoteLight(symbolRaw: string): UniverseQuote {
+    const sym = symbolRaw.trim().toUpperCase();
+    const live = TICKERS[sym];
+    if (live) return { ticker: sym, price: live.currentPrice, iv: live.iv, step: live.step };
     const roster = SCAN_ROSTER.find(r => r.ticker === sym);
-    if (roster) {
-      const q = scanQuote(roster);
-      TICKERS[sym] = { basePrice: q.price, currentPrice: q.price, iv: q.iv, step: q.step };
-    } else {
+    if (roster) return scanQuote(roster);
+    const known = universeLookup(sym);
+    if (known) {
       const h = symbolHash(sym);
-      /* A UNIVERSE name seeds from the universe's own quote (2026-09-12): the
-         Record priced Linde's busiest contracts off the universe's $452 while
-         a hash here made the Weigher's chain a $77 stock — the same schism as
-         the roster's, one page's contract graded on another page's market. */
-      const known = universeLookup(sym);
-      const basePrice = known ? known.px : Number((15 + (h % 58500) / 100).toFixed(2)); // ~15..600
-      const iv = 0.15 + ((h >>> 5) % 45) / 100; // ~0.15..0.60
-      const step = basePrice >= 100 ? 1 : 0.5;
-      TICKERS[sym] = { basePrice, currentPrice: basePrice, iv, step };
+      const iv = 0.15 + ((h >>> 5) % 45) / 100;
+      const step = known.px >= 100 ? 1 : 0.5;
+      return { ticker: sym, price: known.px, iv, step };
     }
+    const anchor = INDEX_ANCHOR[sym];
+    if (anchor) return scanQuote({ ticker: sym, px: anchor.px, iv: anchor.iv });
+    const h = symbolHash(`${sym}-book`);
+    const price = Number((12 + (h % 480) + ((h >>> 10) % 100) / 100).toFixed(2));
+    const iv = Number((0.2 + ((h >>> 4) % 500) / 1000).toFixed(2));
+    return { ticker: sym, price, iv, step: stepFor(price) };
+  }
+
+  /** The config for a symbol never seen: the same quote the board already showed. */
+  function registerTicker(sym: string): void {
+    const q = quoteLight(sym);
+    TICKERS[sym] = { basePrice: q.price, currentPrice: q.price, iv: q.iv, step: q.step };
   }
 
   /** Register a config for any symbol on demand (synthesized for non-core tickers). */
@@ -1015,8 +1030,10 @@ const Simulator = (() => {
             ? Math.floor(Math.random() * 2) + 1
             : 0;
       for (let i = 0; i < count; i++) {
-        const offset = (Math.floor(Math.random() * 7) - 3) * cfg.step;
+        const steps = Math.floor(Math.random() * 21) - 10;
+        const offset = steps * cfg.step;
         const strike = Math.round(cfg.currentPrice / cfg.step) * cfg.step + offset;
+        const dte = Math.random() < 0.5 ? 0 : 1 + Math.floor(Math.random() * 7);
         tape.push({
           time: new Date().toLocaleTimeString(),
           ticker: sym,
@@ -1024,7 +1041,8 @@ const Simulator = (() => {
           type: Math.random() > 0.5 ? 'C' : 'P',
           size: Math.floor(Math.random() * 250) + 10,
           orderType: Math.random() > 0.65 ? 'SWEEP' : 'BLOCK',
-          side: Math.random() > 0.48 ? 'ASK' : 'BID'
+          side: Math.random() > 0.48 ? 'ASK' : 'BID',
+          dte,
         });
       }
     }
@@ -1135,6 +1153,7 @@ const Simulator = (() => {
         lightweight day-stable quote instead; the first CLICK on one of their
         cards is what seeds them, one name at a time, the Dark Pool Leaders
         precedent. */
+    quoteLight,
     universeQuotes: (active: string): UniverseQuote[] => {
       const names = Array.from(new Set([active, ...WATCHLIST, ...SCAN_ROSTER.map(r => r.ticker)]));
       return names.map(t => {

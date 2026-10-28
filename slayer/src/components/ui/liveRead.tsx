@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { useTicker } from '../../context/MarketDataContext';
 
 /*
   Live figures. Digits keep one width, a print that moves flashes once,
@@ -84,12 +86,31 @@ export function StaleMark({ at, ttlMs, fault = null }: { at?: number | null; ttl
   );
 }
 
+/** The name that was on the desk before this one. Stays on the page. */
+export const LeaveRead = () => {
+  const { previousTicker, revertTicker } = useTicker();
+  if (!previousTicker) return null;
+  return (
+    <button
+      type="button"
+      onClick={revertTicker}
+      className="slayer-chip uppercase tracking-widest text-[10px]"
+      data-read-back={previousTicker}
+    >
+      <ArrowLeft className="w-3 h-3" /> {previousTicker}
+    </button>
+  );
+};
+
 /** The block a panel shows instead of a vendor sentence. */
 export function FeedFallback({ fault = 'failed' }: { fault?: FeedFault | null }) {
   const down = fault === 'down';
   return (
-    <p className="px-5 py-4 font-mono text-[10px] uppercase tracking-widest text-textMuted" role="status" data-feed-fallback={down ? 'down' : 'empty'}>
-      {down ? 'Quote desk is down' : 'This read did not land'}
-    </p>
+    <div className="px-5 py-4 flex flex-col items-start gap-3" role="status" data-feed-fallback={down ? 'down' : 'empty'}>
+      <p className="font-mono text-[10px] uppercase tracking-widest text-textMuted">
+        {down ? 'Quote desk is down' : 'This read did not land'}
+      </p>
+      <LeaveRead />
+    </div>
   );
 }

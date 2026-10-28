@@ -39,6 +39,25 @@ export const TRACE_SUBPAGES: TraceSubpage[] = [
     icon: Scale,
   },
   {
+    path: '/trace/odte',
+    label: '0DTE',
+    subtitle: 'The same-day money — net call & put premium flowing through the session',
+    icon: Zap,
+  },
+  {
+    path: '/trace/multi-leg',
+    label: 'Multi-Leg',
+    subtitle: 'The tape reconstructed into structures — spreads, their legs & their defined risk',
+    icon: Layers,
+  },
+  {
+    /* "Intervals" since 2026-09-19 (Noah: "call the windows page Intervals"); /trace/windows redirects (App.tsx) */
+    path: '/trace/intervals',
+    label: 'Intervals',
+    subtitle: 'The day cut into quarter-hour intervals — where the volume actually landed',
+    icon: Clock,
+  },
+  {
     path: '/trace/footprints',
     label: 'Footprints',
     subtitle: 'What the flow left standing — overnight position builds & unwinds, contract by contract',
@@ -51,25 +70,6 @@ export const TRACE_SUBPAGES: TraceSubpage[] = [
     /* the eye, not the bell — the bell is the reader's alerts (2026-09-11) */
     icon: Eye,
   },
-  {
-    /* "Intervals" since 2026-09-19 (Noah: "call the windows page Intervals"); /trace/windows redirects (App.tsx) */
-    path: '/trace/intervals',
-    label: 'Intervals',
-    subtitle: 'The day cut into quarter-hour intervals — where the volume actually landed',
-    icon: Clock,
-  },
-  {
-    path: '/trace/odte',
-    label: '0DTE',
-    subtitle: 'The same-day money — net call & put premium flowing through the session',
-    icon: Zap,
-  },
-  {
-    path: '/trace/multi-leg',
-    label: 'Multi-Leg',
-    subtitle: 'The tape reconstructed into structures — spreads, their legs & their defined risk',
-    icon: Layers,
-  },
   /* Two names side by side (2026-09-13, from the partner's page, in our grammar):
      the same facts every other Trace page prints, for two names on one cut */
   {
@@ -78,9 +78,7 @@ export const TRACE_SUBPAGES: TraceSubpage[] = [
     subtitle: 'Two names side by side — net flow, the same-day money, the book, the footprints, the structures & the tape, on one cut',
     icon: Columns2,
   },
-  // Launch trim (Noah, 2026-08-17): Dark Pool + Scanner pulled from the
-  // first launch — pages kept on disk, routes redirect to the tape (which
-  // still carries the dark-pool feed).
+  // The Tracker is always last — a bookmark of what you already marked, not a place you start.
   {
     path: '/trace/tracker',
     label: 'Tracker',

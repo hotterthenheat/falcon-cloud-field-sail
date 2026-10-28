@@ -15,14 +15,23 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
 import { bookToday, expiryFor, isoDate, isTradingDay, nextSession } from '../core/calendar';
-import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
+import { nyIsoDate, nyMinutes, nySessionPhase, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { pickLegWalls } from '../core/walls';
 import { registerChainDates } from './chainDates';
-import { dayChangeOf, loadRegularCloses, peekRegularCloses, type MarketPhase } from './dayChange';
+import { dayChangeOf, loadRegularCloses, noteBarCloses, peekRegularCloses, type MarketPhase } from './dayChange';
 import { levelFlip } from './flipLevel';
 import type { Candle, GexSnapshot, Indicators, MarketSnapshot, StrikeNode, TradePlan } from '../types/market';
-import { getDeskSession, minuteInSession, type DeskSession } from './deskSession';
-import { readLevelsScope, useLevelsScope, type LevelsScope } from './levelsScope';
+import { getDeskSession, minuteInSession, sessionMeta, useDeskSession, type DeskSession } from './deskSession';
+import { resolveDeskSession, type SessionRead } from './compassSession';
+import { levelsForName, readLevelsScope, useNameLevels, type LevelsScope } from './levelsScope';
+import { awaitSpotGex, sameName } from './spotGexBook';
+import { thetaCall } from './theta';
+import { spxRead } from './spxBook';
+import { blackScholesGreeks } from '../core/greeks';
+import { expiryOpen, tradingYears } from '../core/tradingYear';
+import { carryFor } from '../core/carry';
+import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, markGap, quoteMaxAge, smoothSmile, unsignedShare } from '../core/volClock';
+import { noteClose, noteNodes, peakStrikes, type CloseRow } from './nodeScore';
 import {
   uwCall,
   whalesBars,
@@ -34,6 +43,7 @@ import {
   whalesInterpIv,
   whalesOiStrike,
   whalesOptionContractsPaged,
+  whalesScreener,
   whalesState,
   whalesTermStructure,
   type UwBar,
@@ -48,6 +58,188 @@ import {
 
 const OPEN_MIN = 9 * 60 + 30;
 const CLOSE_MIN = 16 * 60;
+/** The cash index's closing print lands after 16:00. SPX on 2026-10-27 was 16:04; VIX prints through 16:15. That is the close, not after hours. */
+const INDEX_CASH_TO = 16 * 60 + 15;
+/** CBOE indexes. /stock/SPX/ohlc and stock-state answer 422 (cboe_index_access_missing). The day's price is the index tape. */
+const INDEX_TAPE = new Set(['SPX', 'RUT', 'NDX', 'VIX', 'XSP']);
+
+function ymdNY(ms: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)).replace(/-/g, '');
+}
+
+/** How far the cash chart runs. A stock's 16:00 bar is the closing print. An index's close can print until 16:15. */
+function cashToOf(symbol: string): number {
+  return INDEX_TAPE.has(symbol.toUpperCase()) ? INDEX_CASH_TO : CLOSE_MIN;
+}
+
+/** Regular, pre, or post off the clock. The 16:00 minute is the close. Anything later is after hours, except an index through 16:15. */
+function tapeMark(symbol: string, minute: number): 'r' | 'pr' | 'po' {
+  if (minute >= OPEN_MIN && minute <= cashToOf(symbol)) return 'r';
+  if (minute < OPEN_MIN) return 'pr';
+  return 'po';
+}
+
+function pushPrint(out: UwBar[], px: number, at: number, symbol: string): void {
+  if (!(px > 0) || !at) return;
+  const barStart = Math.floor(at / 60000) * 60000;
+  const iso = new Date(at).toISOString();
+  const minute = nyMinutes(at);
+  const mt = tapeMark(symbol, minute);
+  const last = out[out.length - 1];
+  const lastAt = last ? Date.parse(last.start_time || '') : 0;
+  if (last && Math.floor(lastAt / 60000) * 60000 === barStart) {
+    last.close = px;
+    last.high = Math.max(num(last.high), px);
+    last.low = Math.min(num(last.low) || px, px);
+    last.end_time = iso;
+    last.market_time = mt;
+  } else if (!last || barStart > lastAt) {
+    out.push({ open: px, high: px, low: px, close: px, volume: 0, start_time: new Date(barStart).toISOString(), end_time: iso, market_time: mt });
+  }
+}
+
+/** A bar with no price is missing. All-zero open, high, low and close is not a print at $0. */
+export function barPriced(open: number, high: number, low: number, close: number): boolean {
+  if (!(close > 0)) return false;
+  if (open === 0 && high === 0 && low === 0 && close === 0) return false;
+  return true;
+}
+
+/** A day the tape returned only empty bars, so the chart must not pretend that day printed. */
+const blankTapeDay = new Map<string, string>();
+
+function noteBlankDays(symbol: string, rows: readonly { at: number; priced: boolean }[]): void {
+  const by = new Map<string, { n: number; good: number }>();
+  for (const row of rows) {
+    if (!row.at) continue;
+    const day = nyIsoDate(row.at);
+    const cur = by.get(day) ?? { n: 0, good: 0 };
+    cur.n += 1;
+    if (row.priced) cur.good += 1;
+    by.set(day, cur);
+  }
+  let blank = '';
+  for (const [day, v] of by) if (v.n > 0 && v.good === 0 && day > blank) blank = day;
+  if (blank) blankTapeDay.set(symbol.toUpperCase(), blank);
+}
+async function thetaTape(symbol: string, index: boolean): Promise<UwBar[]> {
+  const end = ymdNY(Date.now());
+  const back = symbol.toUpperCase() === 'SPX' ? 8 : 4;
+  const start = ymdNY(Date.now() - back * 86400000);
+  const histPath = index
+    ? `/index/history/ohlc?symbol=${symbol}&start_date=${start}&end_date=${end}&interval=1m&format=json`
+    : `/stock/history/ohlc?symbol=${symbol}&start_date=${start}&end_date=${end}&interval=1m&format=json`;
+  const snapPath = index
+    ? `/index/snapshot/price?symbol=${symbol}&format=json`
+    : `/stock/snapshot/trade?symbol=${symbol}&format=json`;
+  const [hist, snap] = await Promise.all([thetaCall(histPath), thetaCall(snapPath)]);
+  const rows = Array.isArray(hist.data) ? hist.data as Record<string, unknown>[] : [];
+  const out: UwBar[] = [];
+  const seen: { at: number; priced: boolean }[] = [];
+  for (const b of rows) {
+    const at = nyWallStamp(b.timestamp);
+    const open = num(b.open);
+    const high = num(b.high);
+    const low = num(b.low);
+    const close = num(b.close);
+    const priced = barPriced(open, high, low, close);
+    if (at) seen.push({ at, priced });
+    if (!at || !priced) continue;
+    const iso = new Date(at).toISOString();
+    const minute = nyMinutes(at);
+    out.push({
+      open: open || close,
+      high: high || close,
+      low: low || close,
+      close,
+      volume: num(b.volume),
+      start_time: iso,
+      end_time: iso,
+      market_time: tapeMark(symbol, minute),
+    });
+  }
+  noteBlankDays(symbol, seen);
+  out.sort((a, b) => Date.parse(a.start_time || '') - Date.parse(b.start_time || ''));
+  const row = Array.isArray(snap.data) ? snap.data[0] as Record<string, unknown> | undefined : undefined;
+  const px = row ? num(row.price ?? row.close) : 0;
+  const at = row ? nyWallStamp(row.timestamp) : 0;
+  pushPrint(out, px, at, symbol);
+  return out;
+}
+
+/** VIX prints from 03:15. That print is the price, not a pre-market stock. */
+function vixLive(symbol: string, minute: number): boolean {
+  return symbol.toUpperCase() === 'VIX' && minute >= 3 * 60 + 15 && minute <= INDEX_CASH_TO;
+}
+
+/**
+ * Price off the tape when the vendor has no stock-state.
+ * A regular print (including the closing auction) keeps yesterday as prev_close, so the spot stays today's print.
+ * After hours, prev_close is today's regular close — the same way the vendor's stock-state is read.
+ */
+function quoteFromBars(symbol: string, bars: readonly UwBar[]): { close: number; prev_close: number; market_time: string; tape_time: string } | null {
+  if (!bars.length) return null;
+  const last = bars[bars.length - 1];
+  const lastAt = Date.parse(last.end_time || last.start_time || '');
+  const close = num(last.close);
+  if (!Number.isFinite(lastAt) || !(close > 0)) return null;
+  const minute = nyMinutes(lastAt);
+  const day = nyIsoDate(lastAt);
+  let prior = 0;
+  let todayReg = 0;
+  for (let i = bars.length - 1; i >= 0; i--) {
+    if (bars[i].market_time !== 'r') continue;
+    const at = Date.parse(bars[i].end_time || bars[i].start_time || '');
+    if (!Number.isFinite(at)) continue;
+    const d = nyIsoDate(at);
+    const c = num(bars[i].close);
+    if (!(c > 0)) continue;
+    if (d === day) {
+      if (!todayReg) todayReg = c;
+    } else if (d < day) {
+      prior = c;
+      break;
+    }
+  }
+  const tape_time = last.end_time || last.start_time || '';
+  if (vixLive(symbol, minute) && minute < OPEN_MIN) return { close, prev_close: prior || close, market_time: 'regular', tape_time };
+  if (last.market_time === 'r') return { close, prev_close: prior || close, market_time: 'regular', tape_time };
+  if (last.market_time === 'pr') return { close, prev_close: prior || todayReg || close, market_time: 'premarket', tape_time };
+  return { close, prev_close: todayReg || prior || close, market_time: 'postmarket', tape_time };
+}
+
+/** Last regular close of each finished session on the tape. Today is included only after the index close window, so a mid-session print is not cached as the close. */
+function closesFromTape(bars: readonly UwBar[]): { date: string; close: number }[] {
+  const by = new Map<string, { t: number; close: number }>();
+  for (const b of bars) {
+    if (b.market_time !== 'r') continue;
+    const t = Date.parse(b.end_time || b.start_time || '');
+    const c = num(b.close);
+    if (!Number.isFinite(t) || !(c > 0)) continue;
+    const day = nyIsoDate(t);
+    const cur = by.get(day);
+    if (!cur || t >= cur.t) by.set(day, { t, close: c });
+  }
+  const today = nyIsoDate();
+  const includeToday = nyMinutes() > INDEX_CASH_TO;
+  return [...by.entries()]
+    .filter(([date]) => date < today || (date === today && includeToday))
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .slice(0, 5)
+    .map(([date, v]) => ({ date, close: v.close }));
+}
+
+/** The price when the vendor's stock-state is missing. Indexes use the index print. Stocks use the last trade, not the bid. */
+export async function tapeQuote(symbol: string): Promise<{ close: number; prev_close: number; market_time: string; tape_time: string } | null> {
+  const name = symbol.trim().toUpperCase();
+  if (!name) return null;
+  const index = INDEX_TAPE.has(name);
+  const bars = await thetaTape(name, index);
+  const quoted = quoteFromBars(name, bars);
+  if (!quoted) return null;
+  noteBarCloses(name, closesFromTape(bars), index);
+  return quoted;
+}
 const BOARD_MS = 90_000;
 const FULL_MS = 45_000;
 
@@ -55,7 +247,10 @@ export type BookMode = 'board' | 'full';
 
 interface Entry {
   ticker: string;
-  status: 'loading' | 'live' | 'error';
+  /** How the failed read answered, when the message named a status. */
+  http?: number;
+  /** loading until the book lands, live once it has, error after the read threw. */
+  status?: 'loading' | 'live' | 'error';
   at: number;
   full: boolean;
   wantFull: boolean;
@@ -89,6 +284,11 @@ interface Entry {
   /** Every bar the vendor sent, including premarket and after hours. */
   tape: Candle[];
   history: GexSnapshot[];
+  /** Prior sessions' close-of-day strike books. One snapshot each, stamped on that session's last bar. Not a walk of today's chain. */
+  closes?: GexSnapshot[];
+  /** Same-day expiry, and everything after it. Absent until both books exist. */
+  history0?: GexSnapshot[];
+  historyRest?: GexSnapshot[];
   /** When the per-expiry chains last landed. The aggregate refreshes without them. */
   expiriesAt?: number;
   /** The vendor's gamma per expiry (greek-exposure/expiry): gross dollars a date, for the share that expires today */
@@ -228,6 +428,8 @@ function oiMap(rows: UwGreekStrike[]): Map<number, { c: number; p: number }> {
 }
 
 function flowMap(rows: UwFlowStrike[]): Map<number, { call: number; put: number }> {
+  /* This row is every expiry at the strike, calls and puts already split. It is not one expiry's volume,
+     and it is not the flow inventory. The inventory reads option-contracts for that expiry only. */
   const m = new Map<number, { call: number; put: number }>();
   for (const r of rows) {
     const k = num(r.strike);
@@ -245,10 +447,27 @@ function flowMap(rows: UwFlowStrike[]): Map<number, { call: number; put: number 
   difference flat and printed "none nearby" over a crossing at 213. The vendor's spot-exposures rows are the same open
   interest priced at the current price, once a minute (call_gamma_oi / put_gamma_oi: dollars per 1% move) — checked
   strike by strike against OI × Γ × 100 × S² × 1% off option-contracts: equal to the cent. The book's gamma is read off
-  them: spot-exposures/strike for every expiry, spot-exposures/expiry-strike for one date. Delta, vanna and charm stay on
-  the greek-exposure rows (spot-exposures prints them in another unit). If the live rows fail, the snapshot is kept.
+  them: spot-exposures/strike for every expiry, spot-exposures/expiry-strike for one date. The same rows carry vanna and
+  charm (call_vanna_oi / put_vanna_oi, call_charm_oi / put_charm_oi). Those are not yet dollars: fitted against the
+  greek-exposure share rows where gamma agreed, call vanna equals the share vanna (vanna × OI × 100) and call charm
+  equals that share × spot × 1% × 365; the put legs are printed with the opposite sign. Dollars are the house units
+  already on the map — vanna × spot × 1% per vol point, charm × spot / 252 per session — with the put sign undone.
+  Delta stays on the greek-exposure rows. If the live rows fail, the snapshot is kept.
 */
-type LiveGamma = Map<number, { c: number; p: number; px?: number; at?: number }>;
+type LiveLeg = {
+  c: number;
+  p: number;
+  px?: number;
+  at?: number;
+  cv: number;
+  pv: number;
+  cc: number;
+  pc: number;
+  /** The vendor row included its vanna fields, so a zero is a real zero */
+  vanna: boolean;
+  charm: boolean;
+};
+type LiveGamma = Map<number, LiveLeg>;
 /** A settled date's live rows (ticker|date), kept only to come off the whole book's live total */
 const settledLive = new Map<string, LiveGamma>();
 const liveGammaCache = new Map<string, { at: number; rows: LiveGamma }>();
@@ -267,6 +486,8 @@ const gammaPriced = new Map<string, { price: number; at: number }>();
 export const peekGammaPriced = (ticker: string, date: string | null): { price: number; at: number } | null =>
   gammaPriced.get(`${ticker.toUpperCase()}|${date ?? 'ALL'}`) ?? null;
 
+const blankLeg = (): LiveLeg => ({ c: 0, p: 0, cv: 0, pv: 0, cc: 0, pc: 0, vanna: false, charm: false });
+
 function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: number; at: number }): number {
   if (!Array.isArray(rows)) return 0;
   for (const r of rows as Record<string, unknown>[]) {
@@ -280,9 +501,19 @@ function liveGammaRows(rows: unknown, into: LiveGamma, stamp?: { price: number; 
       stamp.at = at;
       stamp.price = px;
     }
-    const cur = into.get(k) ?? { c: 0, p: 0 };
+    const cur = into.get(k) ?? blankLeg();
     cur.c += num(r.call_gamma_oi);
     cur.p += num(r.put_gamma_oi);
+    if ('call_vanna_oi' in r || 'put_vanna_oi' in r) {
+      cur.cv += num(r.call_vanna_oi);
+      cur.pv += num(r.put_vanna_oi);
+      cur.vanna = true;
+    }
+    if ('call_charm_oi' in r || 'put_charm_oi' in r) {
+      cur.cc += num(r.call_charm_oi);
+      cur.pc += num(r.put_charm_oi);
+      cur.charm = true;
+    }
     if (own && (cur.at == null || at >= cur.at)) {
       cur.at = at;
       cur.px = px;
@@ -311,7 +542,10 @@ export function liveGamma(ticker: string, date: string | null, priority = false)
     } else {
       for (let page = 0; page < 6; page++) {
         const res = await uwCall(`/stock/${t}/spot-exposures/strike?limit=500&page=${page}`, priority);
-        if (res.error) return hit?.rows ?? null;
+        if (res.error) {
+          if (out.size) break;
+          return hit?.rows ?? null;
+        }
         if (liveGammaRows(res.data, out, stamp) < 500) break;
       }
     }
@@ -341,20 +575,39 @@ export function peekSettledNet(ticker: string): number | null {
 }
 
 /** A chain with its gamma replaced by the live open-interest book (house sign) — strikes the live book holds that the
-    chain lacks are added, strikes it lacks carry no gamma */
+    chain lacks are added, strikes it lacks carry no gamma. Vanna and charm on those rows are the same minute's book,
+    scaled into the house's dollars (see the note above liveGammaRows): per vol point, and per session. */
+const CHARM_SESSION = 0.01 * 365 * 252;
 function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma): StrikeNode[] {
   const seen = new Set<number>();
-  const out: StrikeNode[] = chain.map(n => {
-    seen.add(n.strike);
-    const l = live.get(n.strike);
+  const paint = (n: StrikeNode, l: LiveLeg | undefined): StrikeNode => {
     const callGex = l ? -l.c : 0;
     const putGex = l ? -l.p : 0;
-    return { ...n, callGex, putGex, netGex: callGex + putGex, gexPx: l?.px, gexAt: l?.at };
+    const next: StrikeNode = { ...n, callGex, putGex, netGex: callGex + putGex, gexPx: l?.px, gexAt: l?.at };
+    if (l?.vanna && l.px != null && l.px > 0) {
+      const callVanna = -l.cv * l.px * 0.01;
+      const putVanna = l.pv * l.px * 0.01;
+      next.callVanna = callVanna;
+      next.putVanna = putVanna;
+      next.netVanna = callVanna + putVanna;
+    }
+    if (l?.charm) {
+      const callCharm = -l.cc / CHARM_SESSION;
+      const putCharm = l.pc / CHARM_SESSION;
+      next.callCharm = callCharm;
+      next.putCharm = putCharm;
+      next.netCharm = callCharm + putCharm;
+    }
+    return next;
+  };
+  const out: StrikeNode[] = chain.map(n => {
+    seen.add(n.strike);
+    return paint(n, live.get(n.strike));
   });
   for (const [k, l] of live) {
     /* zero-gamma strikes are kept too: a new listing with no open interest yet is a date that IS in, not one missing */
     if (seen.has(k)) continue;
-    out.push({ ...emptyNode(k), callGex: -l.c, putGex: -l.p, netGex: -l.c - l.p, gexPx: l.px, gexAt: l.at });
+    out.push(paint(emptyNode(k), l));
   }
   out.sort((a, b) => a.strike - b.strike);
   return out;
@@ -498,13 +751,13 @@ async function dateChain(ticker: string, date: string, spot: number, withGreeks:
   return base;
 }
 
-function candlesFrom(bars: UwBar[]): { cash: Candle[]; tape: Candle[] } {
+function candlesFrom(bars: UwBar[], cashTo = CLOSE_MIN): { cash: Candle[]; tape: Candle[] } {
   const parsed: Candle[] = [];
   for (const b of bars) {
     const time = Math.floor(Date.parse(b.start_time || b.end_time || '') / 1000);
     if (!time) continue;
     const close = num(b.close);
-    if (!(close > 0)) continue;
+    if (!barPriced(num(b.open), num(b.high), num(b.low), close)) continue;
     parsed.push({
       time,
       open: num(b.open) || close,
@@ -518,11 +771,12 @@ function candlesFrom(bars: UwBar[]): { cash: Candle[]; tape: Candle[] } {
   if (!parsed.length) return { cash: [], tape: [] };
   const day = nyIsoDate(parsed[parsed.length - 1].time * 1000);
   const tape = parsed.filter(b => nyIsoDate(b.time * 1000) === day || nyMinutes(b.time * 1000) >= 20 * 60);
-  const session = tape.filter(b => nyMinutes(b.time * 1000) >= OPEN_MIN && nyMinutes(b.time * 1000) < CLOSE_MIN);
-  /* BEFORE TODAY'S OPEN THE CASH BARS ARE THE LAST SESSION'S (the fifth audit, 2026-10-23): with pre-market prints on the
-     tape the newest day had no cash bars, and its pre-market stood in as "the session" — the last day that has cash
-     bars is the session on record (data/bookWindow.ts recordDay) */
-  const inCash = (b: Candle) => nyMinutes(b.time * 1000) >= OPEN_MIN && nyMinutes(b.time * 1000) < CLOSE_MIN;
+  /* The 16:00 bar is the closing print. An index keeps the auction through 16:15 (`cashTo`). A later bar is after hours. */
+  const inCash = (b: Candle) => {
+    const m = nyMinutes(b.time * 1000);
+    return m >= OPEN_MIN && m <= cashTo;
+  };
+  const session = tape.filter(inCash);
   const lastCash = [...parsed].reverse().find(inCash);
   const lastDay = lastCash ? nyIsoDate(lastCash.time * 1000) : null;
   const prior = lastDay && lastDay !== day ? parsed.filter(b => inCash(b) && nyIsoDate(b.time * 1000) === lastDay) : [];
@@ -532,6 +786,124 @@ function candlesFrom(bars: UwBar[]): { cash: Candle[]; tape: Candle[] } {
   if (session.length >= 1 && day === nyIsoDate()) return { cash: session, tape: tape.length ? tape : parsed };
   const cash = session.length >= 2 ? session : prior.length >= 2 ? prior : tape.filter(b => nyIsoDate(b.time * 1000) === day);
   return { cash: cash.length >= 2 ? cash : parsed, tape: tape.length ? tape : parsed };
+}
+
+/** Last two regular sessions, for the chart only. SPX keeps three so the prior closes can carry their own books. The book itself stays on today's cash bars. */
+const chartSpan = new Map<string, Candle[]>();
+/** Every bar the feed sent, all sessions. A session filter reads this. It never borrows another session. */
+const chartAll = new Map<string, Candle[]>();
+
+function twoCashSessions(bars: UwBar[], cashTo: number, keepDays = 2): Candle[] {
+  const parsed: Candle[] = [];
+  for (const b of bars) {
+    const time = Math.floor(Date.parse(b.start_time || b.end_time || '') / 1000);
+    if (!time) continue;
+    const close = num(b.close);
+    if (!barPriced(num(b.open), num(b.high), num(b.low), close)) continue;
+    const m = nyMinutes(time * 1000);
+    if (m < OPEN_MIN || m > cashTo) continue;
+    parsed.push({
+      time,
+      open: num(b.open) || close,
+      high: num(b.high) || close,
+      low: num(b.low) || close,
+      close,
+      volume: num(b.volume) || num(b.total_volume),
+    });
+  }
+  parsed.sort((a, b) => a.time - b.time);
+  const days: string[] = [];
+  for (const c of parsed) {
+    const d = nyIsoDate(c.time * 1000);
+    if (days[days.length - 1] !== d) days.push(d);
+  }
+  const keep = new Set(days.slice(-keepDays));
+  return parsed.filter(c => keep.has(nyIsoDate(c.time * 1000)));
+}
+
+/** The last two cash sessions once the book has landed. Null until then. */
+export function chartBars(ticker: string): Candle[] | null {
+  const rows = chartSpan.get(sameName(ticker));
+  return rows && rows.length >= 2 ? rows : null;
+}
+
+function parseTape(bars: UwBar[]): Candle[] {
+  const parsed: Candle[] = [];
+  for (const b of bars) {
+    const time = Math.floor(Date.parse(b.start_time || b.end_time || '') / 1000);
+    if (!time) continue;
+    const close = num(b.close);
+    if (!barPriced(num(b.open), num(b.high), num(b.low), close)) continue;
+    parsed.push({
+      time,
+      open: num(b.open) || close,
+      high: num(b.high) || close,
+      low: num(b.low) || close,
+      close,
+      volume: num(b.volume) || num(b.total_volume),
+    });
+  }
+  parsed.sort((a, b) => a.time - b.time);
+  return parsed;
+}
+
+/** Bars in one session only. Null means that session has no prints. */
+export function sessionChartBars(ticker: string, session: DeskSession = getDeskSession()): Candle[] | null {
+  if (session === 'rth') {
+    const span = chartBars(ticker);
+    if (span && span.length >= 1) return span;
+    const cash = bookCandles(ticker);
+    return cash && cash.length >= 1 ? cash : null;
+  }
+  const all = chartAll.get(sameName(ticker)) ?? peekEntry(ticker)?.tape ?? [];
+  if (!all.length) return null;
+  const rows = all.filter(c => minuteInSession(nyMinutes(c.time * 1000), session));
+  if (rows.length < 1) return null;
+  const days: string[] = [];
+  for (const c of rows) {
+    const d = nyIsoDate(c.time * 1000);
+    if (days[days.length - 1] !== d) days.push(d);
+  }
+  const keep = new Set(days.slice(-2));
+  return rows.filter(c => keep.has(nyIsoDate(c.time * 1000)));
+}
+
+const TAPE_FALLBACK: readonly DeskSession[] = ['rth', 'post', 'pre', 'overnight'];
+
+/** The bars the chart should draw. The asked session wins. If it has no prints, the last session that does is used and named — never a silent swap.
+    A strike book priced on a different day, or more than 1.5% away from the last candle, is named too. The nodes and the candles are not two prices. */
+export function deskTape(ticker: string, session: DeskSession = getDeskSession()): { bars: Candle[]; drawn: DeskSession; note: string | null } {
+  const own = sessionChartBars(ticker, session);
+  let drawn = session;
+  let note: string | null = null;
+  let bars: Candle[] = own ?? [];
+  if (!own || own.length < 1) {
+    for (const next of TAPE_FALLBACK) {
+      if (next === session) continue;
+      const rows = sessionChartBars(ticker, next);
+      if (rows && rows.length >= 1) {
+        bars = rows;
+        drawn = next;
+        note = `${sessionMeta(session).label} has no prints. Showing ${sessionMeta(next).label}.`;
+        break;
+      }
+    }
+  }
+  const last = bars[bars.length - 1];
+  const priced = peekGammaPriced(ticker, null);
+  const blank = blankTapeDay.get(sameName(ticker));
+  if (blank && (!last || nyIsoDate(last.time * 1000) < blank)) {
+    note = `${blank} minute bars were empty. Showing ${last ? nyIsoDate(last.time * 1000) : 'nothing'}.`;
+  } else if (last && priced && priced.price > 0) {
+    const candleDay = nyIsoDate(last.time * 1000);
+    const bookDay = nyIsoDate(priced.at);
+    if (bookDay && candleDay && bookDay !== candleDay) {
+      note = `Candles are ${candleDay}. The strike book is ${bookDay}, priced at ${priced.price.toFixed(2)}.`;
+    } else if (Math.abs(priced.price - last.close) / priced.price > 0.015) {
+      note = `Candles end at ${last.close.toFixed(2)}. The strike book is priced at ${priced.price.toFixed(2)}.`;
+    }
+  }
+  return { bars, drawn, note };
 }
 
 /** OCC tail is YYMMDD + C/P + strike×1000. The root is whatever sits in front. */
@@ -545,10 +917,30 @@ function parseOcc(symbol: string): { expiry: string; right: 'CALL' | 'PUT'; stri
   return { expiry: `20${m[1]}-${m[2]}-${m[3]}`, right: m[4] === 'C' ? 'CALL' : 'PUT', strike };
 }
 
-/* The simulator's dealer side (core/simulator.ts). Call vega negative, put vega
-   negative — dealers are short both. Magnitudes are dollar vega: OI × vega × 100. */
-const CALL_VEGA = -0.55;
-const PUT_VEGA = -0.53;
+/* The vendor's vega stays on the leg until paintLegs replaces it. The node is Black-Scholes vega at the live spot,
+   on the trading clock, times the same signed count as gamma. Both legs take −1. A count that has crossed zero
+   flips the sign with the rest of the book. */
+const LONG_QUOTE_MS = 15 * 60_000;
+
+function quoteUsable(row: UwContract, expiry: string, now = Date.now()): boolean {
+  const bid = num(row.nbbo_bid);
+  const ask = num(row.nbbo_ask);
+  if (bid > 0 && ask > 0 && bid > ask + 1e-6) return false;
+  if (bid === 0 && ask === 0 && (row.nbbo_bid != null || row.nbbo_ask != null)) return false;
+  const stamp = Date.parse(String(row.last_tape_time || row.updated_at || ''));
+  const limit = expiry ? quoteMaxAge(expiry, now) : LONG_QUOTE_MS;
+  if (Number.isFinite(stamp) && now - stamp > limit) return false;
+  return true;
+}
+
+/** The vendor's implied vol. A stale quote after the close is not a reason to throw it away: the mid is not solved, and this number is the fallback the higher greeks use. */
+function contractIv(row: UwContract, _expiry: string, _now = Date.now()): number {
+  const iv = num(row.implied_volatility);
+  if (!(iv > 0) || iv >= 10) return 0;
+  return iv;
+}
+
+const DEALER_SHORT = -1;
 
 interface LegBook {
   callOI: number;
@@ -562,10 +954,24 @@ interface LegBook {
   putIv: number;
   callGamma: number;
   putGamma: number;
+  callAsk: number;
+  callBid: number;
+  putAsk: number;
+  putBid: number;
+  callMulti: number;
+  putMulti: number;
+  callMid: number;
+  putMid: number;
+  callNone: number;
+  putNone: number;
+  callBidPx: number;
+  callAskPx: number;
+  putBidPx: number;
+  putAskPx: number;
 }
 
 function emptyLeg(): LegBook {
-  return { callOI: 0, putOI: 0, callVex: 0, putVex: 0, callVol: 0, putVol: 0, callIv: 0, putIv: 0, callGamma: 0, putGamma: 0 };
+  return { callOI: 0, putOI: 0, callVex: 0, putVex: 0, callVol: 0, putVol: 0, callIv: 0, putIv: 0, callGamma: 0, putGamma: 0, callAsk: 0, callBid: 0, putAsk: 0, putBid: 0, callMulti: 0, putMulti: 0, callMid: 0, putMid: 0, callNone: 0, putNone: 0, callBidPx: 0, callAskPx: 0, putBidPx: 0, putAskPx: 0 };
 }
 
 function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook> {
@@ -578,19 +984,41 @@ function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook>
     const vega = num(row.vega);
     const leg = by.get(parsed.strike) ?? emptyLeg();
     const dollar = oi * 100 * vega;
-    const iv = num(row.implied_volatility);
+    const quoteOk = quoteUsable(row, expiry);
+    const iv = contractIv(row, expiry);
     const gamma = num(row.gamma);
+    const askVol = num(row.ask_volume);
+    const bidVol = num(row.bid_volume);
+    const multi = num(row.multi_leg_volume);
+    const midVol = num(row.mid_volume);
+    const none = num(row.no_side_volume);
+    const bidPx = num(row.nbbo_bid);
+    const askPx = num(row.nbbo_ask);
     if (parsed.right === 'CALL') {
       leg.callOI += oi;
       leg.callVol += vol;
-      leg.callVex += dollar * CALL_VEGA;
-      if (iv > 0 && iv < 10) leg.callIv = iv;
+      leg.callAsk += askVol;
+      leg.callBid += bidVol;
+      leg.callMulti += multi;
+      leg.callMid += midVol;
+      leg.callNone += none;
+      if (quoteOk && bidPx > 0) leg.callBidPx = bidPx;
+      if (quoteOk && askPx > 0) leg.callAskPx = askPx;
+      leg.callVex += dollar * DEALER_SHORT;
+      if (iv > 0) leg.callIv = iv;
       if (gamma > 0) leg.callGamma = gamma;
     } else {
       leg.putOI += oi;
       leg.putVol += vol;
-      leg.putVex += dollar * PUT_VEGA;
-      if (iv > 0 && iv < 10) leg.putIv = iv;
+      leg.putAsk += askVol;
+      leg.putBid += bidVol;
+      leg.putMulti += multi;
+      leg.putMid += midVol;
+      leg.putNone += none;
+      if (quoteOk && bidPx > 0) leg.putBidPx = bidPx;
+      if (quoteOk && askPx > 0) leg.putAskPx = askPx;
+      leg.putVex += dollar * DEALER_SHORT;
+      if (iv > 0) leg.putIv = iv;
       if (gamma > 0) leg.putGamma = gamma;
     }
     by.set(parsed.strike, leg);
@@ -602,8 +1030,11 @@ function foldContracts(rows: UwContract[], expiry: string): Map<number, LegBook>
    Compare and levelsFor — the Map's levels were cached on the snapshot object, and the contract vols the flip re-prices
    with were then painted INTO that same snapshot's nodes, so the cache never saw them land). A chain that gains its
    contract facts is a new chain; whatever is keyed on the old one recomputes. */
-function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi: boolean): StrikeNode[] {
-  return nodes.map(n0 => {
+function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi: boolean, spot = 0, expiry = '', ticker = ''): StrikeNode[] {
+  const t = expiry ? tradingYears(expiry) : 0;
+  const near = !!expiry && flowWindow(expiry);
+  const carry = ticker ? carryFor(ticker) : null;
+  const painted = nodes.map(n0 => {
     const leg = book.get(n0.strike);
     if (!leg) return n0;
     const n: StrikeNode = { ...n0 };
@@ -611,9 +1042,6 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
       n.callOI = leg.callOI;
       n.putOI = leg.putOI;
     }
-    n.callVex = leg.callVex;
-    n.putVex = leg.putVex;
-    n.netVex = leg.callVex + leg.putVex;
     if (leg.callIv > 0) n.callIv = leg.callIv;
     if (leg.putIv > 0) n.putIv = leg.putIv;
     if (leg.callGamma > 0) n.callGamma = leg.callGamma;
@@ -624,6 +1052,104 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
     }
     return n;
   });
+  if (expiry && spot > 0) {
+    for (const n of painted) {
+      const leg = book.get(n.strike);
+      if (!leg) continue;
+      if (leg.callIv > 0 || (leg.callBidPx > 0 && leg.callAskPx > 0)) n.callIv = ivOnTradingClock(leg.callBidPx, leg.callAskPx, leg.callIv, spot, n.strike, expiry, 'C', Date.now(), carry?.r, carry?.q);
+      if (leg.putIv > 0 || (leg.putBidPx > 0 && leg.putAskPx > 0)) n.putIv = ivOnTradingClock(leg.putBidPx, leg.putAskPx, leg.putIv, spot, n.strike, expiry, 'P', Date.now(), carry?.r, carry?.q);
+    }
+  }
+  smoothSide(painted, 'callIv');
+  smoothSide(painted, 'putIv');
+  if (!(spot > 0) || !(t > 0)) return painted;
+  let volSum = 0;
+  let bareSum = 0;
+  let biggest = 0;
+  const closes: CloseRow[] = [];
+  for (const n of painted) {
+    const leg = book.get(n.strike);
+    if (!leg) continue;
+    /* One expiry's own contracts. Ask minus bid is what gets added to open interest.
+       The gross million on an SPY 0DTE strike is not the inventory, and the all-expiry flow row is not this number. */
+    const callN = near ? dealerInventory(leg.callOI, leg.callAsk, leg.callBid, leg.callMulti, leg.callVol) : leg.callOI;
+    const putN = near ? dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol) : leg.putOI;
+    /* A negative count is dealers long that side. It is kept, and the minus below flips the greek. */
+    const callNet = flowImbalance(leg.callAsk, leg.callBid, leg.callMulti, leg.callVol);
+    const putNet = flowImbalance(leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
+    const gross = leg.callVol + leg.putVol;
+    const bare = leg.callMid + leg.callNone + leg.putMid + leg.putNone;
+    const firm = !near || flowFirm(Math.abs(callNet) + Math.abs(putNet), gross, unsignedShare(bare, 0, gross));
+    n.flowFirm = firm;
+    if (near) {
+      closes.push({ expiry, strike: n.strike, right: 'C', flow: callN, oi: leg.callOI });
+      closes.push({ expiry, strike: n.strike, right: 'P', flow: putN, oi: leg.putOI });
+    }
+    volSum += leg.callVol + leg.putVol;
+    bareSum += leg.callMid + leg.callNone + leg.putMid + leg.putNone;
+    const call = n.callIv && n.callIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.callIv, carry?.r, carry?.q) : null;
+    const put = n.putIv && n.putIv > 0 ? blackScholesGreeks(spot, n.strike, t, n.putIv, carry?.r, carry?.q) : null;
+    /* One count for every greek. callN / putN is the flow inventory inside five sessions and open interest after that.
+       Vega is repriced here, on this clock and this vol — not the vendor's calendar-time vega. */
+    n.callBook = callN;
+    n.putBook = putN;
+    if (call && callN !== 0) {
+      n.callDex = -call.deltaCall * callN * 100 * spot;
+      n.callVanna = -call.vanna * callN * spot;
+      n.callCharm = -(call.charmCall / 252) * callN * 100 * spot;
+      n.callVex = -call.vega * callN * 100;
+    } else {
+      n.callVex = 0;
+    }
+    if (put && putN !== 0) {
+      n.putDex = -put.deltaPut * putN * 100 * spot;
+      n.putVanna = -put.vanna * putN * spot;
+      n.putCharm = -(put.charmPut / 252) * putN * 100 * spot;
+      n.putVex = -put.vega * putN * 100;
+    } else {
+      n.putVex = 0;
+    }
+    n.netVex = n.callVex + n.putVex;
+    n.netDex = n.callDex + n.putDex;
+    n.netVanna = n.callVanna + n.putVanna;
+    n.netCharm = n.callCharm + n.putCharm;
+    const signed = near && (leg.callAsk > 0 || leg.callBid > 0 || leg.putAsk > 0 || leg.putBid > 0);
+    if (signed && (call || put)) {
+      const flowCall = call ? -call.gamma * spot * spot * 0.01 * callN * 100 : n.callGex;
+      const flowPut = put ? -put.gamma * spot * spot * 0.01 * putN * 100 : n.putGex;
+      if (n.oiNetGex == null) {
+        n.oiNetGex = n.netGex;
+        n.oiCallGex = n.callGex;
+        n.oiPutGex = n.putGex;
+      }
+      n.callGex = flowCall;
+      n.putGex = flowPut;
+      n.netGex = flowCall + flowPut;
+      biggest = Math.max(biggest, Math.abs(n.netGex), Math.abs(n.oiNetGex ?? 0));
+    }
+  }
+  if (biggest > 0) {
+    for (const n of painted) {
+      if (n.oiNetGex == null) continue;
+      n.bookGap = markGap(n.netGex, n.oiNetGex, biggest);
+    }
+  }
+  if (ticker && spot > 0 && near) {
+    const flow = peakStrikes(painted.map(n => ({ strike: n.strike, value: n.netGex })));
+    const oi = peakStrikes(painted.filter(n => n.oiNetGex != null).map(n => ({ strike: n.strike, value: n.oiNetGex ?? 0 })));
+    noteNodes(ticker, spot, flow, oi, volSum > 0 ? unsignedShare(bareSum, 0, volSum) : null);
+  }
+  if (ticker && near && closes.length) noteClose(ticker, nyIsoDate(), closes);
+  return painted;
+}
+
+function smoothSide(nodes: StrikeNode[], key: 'callIv' | 'putIv'): void {
+  const next = smoothSmile(nodes.map(n => ({ strike: n.strike, iv: n[key] ?? 0 })));
+  const by = new Map(next.map(p => [p.strike, p.iv]));
+  for (const n of nodes) {
+    const iv = by.get(n.strike);
+    if (iv != null && iv !== n[key]) n[key] = iv;
+  }
 }
 
 /** A date's chain read again keeps the contract facts its last read was painted with (vols, per-contract gamma, open
@@ -644,9 +1170,11 @@ function carryFacts(next: StrikeNode[], prev: readonly StrikeNode[] | undefined)
          interest is another count, and Building values each contract against it (the seventh audit's M3) */
       callOI: o.callOI || n.callOI,
       putOI: o.putOI || n.putOI,
-      callVex: o.callVex || n.callVex,
-      putVex: o.putVex || n.putVex,
-      netVex: (o.callVex || n.callVex) + (o.putVex || n.putVex),
+      callBook: n.callBook ?? o.callBook,
+      putBook: n.putBook ?? o.putBook,
+      callVex: n.callBook != null || n.putBook != null ? n.callVex : o.callVex || n.callVex,
+      putVex: n.callBook != null || n.putBook != null ? n.putVex : o.putVex || n.putVex,
+      netVex: n.callBook != null || n.putBook != null ? n.callVex + n.putVex : (o.callVex || n.callVex) + (o.putVex || n.putVex),
     };
   });
 }
@@ -721,7 +1249,7 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
   for (const [date, book] of books) {
     if (!book) continue;
     const chain = byDate[date];
-    if (chain && book.size) byDate[date] = paintLegs(chain, book, true);
+    if (chain && book.size) byDate[date] = paintLegs(chain, book, true, current.spot, date, current.ticker);
     facts.add(date);
   }
   current.byDate = byDate;
@@ -732,48 +1260,67 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
   emit();
 }
 
-/** One book at every bar of the tape, cash and the hours around it. Open interest walks from an
-    overnight estimate (today's volume taken back off the current print) across the cash session only —
-    that volume did not print before the open or after the close. The net scales with that open interest.
-    Volume is not new open interest, so this is the feed's own ceiling, not a second book. */
-function historyFrom(chain: StrikeNode[], candles: Candle[], flow: Map<number, { call: number; put: number }>): GexSnapshot[] {
-  if (!chain.length || candles.length < 2) return [];
-  const cash = candles.filter(c => {
-    const m = nyMinutes(c.time * 1000);
-    return m >= OPEN_MIN && m < CLOSE_MIN;
-  });
-  const cashFirst = cash[0]?.time;
-  const cashLast = cash[cash.length - 1]?.time;
-  const span = cashFirst != null && cashLast != null ? cashLast - cashFirst : 0;
-  return candles.map(c => {
-    let k = 0;
-    if (span > 0 && cashFirst != null && cashLast != null) {
-      if (c.time <= cashFirst) k = 0;
-      else if (c.time >= cashLast) k = 1;
-      else k = (c.time - cashFirst) / span;
+/** One book at every bar of the tape. The dollars are the chain's own net gamma, the same figure the strike rail
+    shows. Today's volume is not a second multiplier: on a 0DTE name it is many times the open interest, and scaling
+    by it turned a $50M strike into tens of billions. */
+function historyFrom(chain: StrikeNode[], candles: Candle[], _flow: Map<number, { call: number; put: number }>): GexSnapshot[] {
+  if (!chain.length || !candles.length) return [];
+  return candles.map(c => ({
+    time: c.time,
+    levels: chain.map(n => ({
+      strike: n.strike,
+      value: n.netGex,
+      dex: n.netDex ?? 0,
+      vex: n.netVex ?? 0,
+      callOI: n.callOI,
+      putOI: n.putOI,
+      firm: n.flowFirm !== false,
+    })),
+  }));
+}
+
+function mergeChains(parts: StrikeNode[][]): StrikeNode[] {
+  const by = new Map<number, StrikeNode>();
+  for (const chain of parts) {
+    for (const n of chain) {
+      const prev = by.get(n.strike);
+      if (!prev) {
+        by.set(n.strike, { ...n });
+        continue;
+      }
+      prev.callOI += n.callOI;
+      prev.putOI += n.putOI;
+      prev.callGex += n.callGex;
+      prev.putGex += n.putGex;
+      prev.netGex += n.netGex;
+      prev.callDex += n.callDex;
+      prev.putDex += n.putDex;
+      prev.netDex += n.netDex;
+      prev.callVex += n.callVex;
+      prev.putVex += n.putVex;
+      prev.netVex += n.netVex;
+      prev.netVanna += n.netVanna;
+      prev.netCharm += n.netCharm;
     }
-    const levels = chain.map(n => {
-      const f = flow.get(n.strike);
-      const callVol = f?.call ?? n.callVol ?? 0;
-      const putVol = f?.put ?? n.putVol ?? 0;
-      const openC = Math.max(0, n.callOI - callVol);
-      const openP = Math.max(0, n.putOI - putVol);
-      const callOI = openC + callVol * k;
-      const putOI = openP + putVol * k;
-      const now = (n.callOI ?? 0) + (n.putOI ?? 0);
-      const then = callOI + putOI;
-      const scale = now > 0 ? then / now : 1;
-      return {
-        strike: n.strike,
-        value: n.netGex * scale,
-        dex: (n.netDex ?? 0) * scale,
-        vex: (n.netVex ?? 0) * scale,
-        callOI,
-        putOI,
-      };
-    });
-    return { time: c.time, levels };
-  });
+  }
+  return [...by.values()];
+}
+
+/** Two scales once a same-day expiry and a later one are both in. The front date is the first expiry still open, never the vendor's dte 0 after that day has settled. */
+function noteSplit(entry: Entry): void {
+  const floor = isoDate(bookToday());
+  const dates = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length).sort();
+  const zeroDate = dates[0];
+  const restDates = zeroDate ? dates.filter(d => d !== zeroDate) : [];
+  if (!zeroDate || !restDates.length) {
+    entry.history0 = undefined;
+    entry.historyRest = undefined;
+    return;
+  }
+  const histAll = entry.tape.length >= 2 ? entry.tape : entry.candles;
+  const candles = entry.wantFull ? histAll : histAll.filter((c, i) => i === histAll.length - 1 || Math.floor(c.time / 60) % 5 === 0);
+  entry.history0 = historyFrom(entry.byDate[zeroDate], candles, entry.flow);
+  entry.historyRest = historyFrom(mergeChains(restDates.map(d => entry.byDate[d])), candles, entry.flow);
 }
 
 function indicatorsOf(closes: number[]): Indicators {
@@ -985,7 +1532,7 @@ function liveAllOld(entry: Entry): StrikeNode[] {
 }
 
 function chainsFor(entry: Entry): Partial<Record<string, StrikeNode[]>> {
-  const dates = Object.keys(entry.byDate).filter(d => d >= isoDate(bookToday()));
+  const dates = Object.keys(entry.byDate).filter(d => d >= isoDate(bookToday()) && expiryOpen(d));
   const all = liveAll(entry);
   registerChainDates(all, 'ALL');
   const out: Partial<Record<string, StrikeNode[]>> = { ALL: all };
@@ -1015,8 +1562,8 @@ function liveListing(expiries: Entry['expiries']): Entry['expiries'] {
   const settledFront = expiries.find(e => e.dte === 0 && e.date < floor);
   /* the vendor's dte counts calendar days (Oct 21 → Oct 26 is 5), so the shift does too — a Friday's settled front is three days behind Monday */
   const shift = settledFront ? Math.round((Date.parse(`${floor}T00:00:00Z`) - Date.parse(`${settledFront.date}T00:00:00Z`)) / 86_400_000) : 0;
-  const live = expiries.filter(e => e.date >= floor).map(e => (shift ? { ...e, dte: Math.max(0, e.dte - shift) } : e));
-  return live.length ? live : expiries;
+  const live = expiries.filter(e => e.date >= floor && expiryOpen(e.date)).map(e => (shift ? { ...e, dte: Math.max(0, e.dte - shift) } : e));
+  return live;
 }
 
 /*
@@ -1060,6 +1607,7 @@ function materializeNow(entry: Entry, scope: LevelsScope): MarketSnapshot {
     uwChains,
     uwByDate: entry.byDate,
     uwExpiries: liveListing(entry.expiries),
+    uwFacts: entry.factsDates,
   };
   /* the plan's flip zone is the one flip (data/flipLevel.ts), read off the snapshot's own levels chain */
   const flip = levelFlip(snap, chain).flip;
@@ -1069,6 +1617,16 @@ function materializeNow(entry: Entry, scope: LevelsScope): MarketSnapshot {
 
 export function peekEntry(ticker: string): Entry | undefined {
   return cache.get(ticker.toUpperCase());
+}
+
+/** How old the live book is. Under 20s it is live. An error names the vendor and the seconds since the last try. */
+export function bookAgeLabel(ticker: string): string | null {
+  const e = peekEntry(ticker);
+  if (!e?.at) return null;
+  const s = Math.max(0, Math.round((Date.now() - e.at) / 1000));
+  if (e.status === 'error') return e.http ? `vendor ${e.http} · last try ${s}s` : `vendor · last try ${s}s`;
+  if (e.status !== 'live') return null;
+  return s < 20 ? 'live' : `book ${s}s old`;
 }
 
 /** Every listed date of a full book has landed once — the Map's matrix window is final */
@@ -1175,7 +1733,7 @@ function applyDay(entry: Entry): void {
   const closes = peekRegularCloses(entry.ticker);
   const ch = dayChangeOf(st, closes);
   entry.phase = ch.phase;
-  entry.dayKnown = !needsCloses || !!closes?.length;
+  entry.dayKnown = Number.isFinite(ch.dayPct) && (!needsCloses || !!closes?.length);
   entry.changePct = entry.dayKnown ? ch.dayPct : 0;
   entry.extPct = ch.extPct;
 }
@@ -1469,6 +2027,62 @@ export function bookHistory(ticker: string): GexSnapshot[] | null {
   return e?.status === 'live' ? e.history : null;
 }
 
+/** Close-of-day strike books already fetched for sessions before today. Empty until they land. */
+export function bookCloses(ticker: string): GexSnapshot[] {
+  const e = peekEntry(ticker);
+  return e?.status === 'live' && e.closes?.length ? e.closes : [];
+}
+
+/** Same-day expiry in front, the rest of the book behind it. Null until both exist. */
+export function bookHistorySplit(ticker: string): { front: GexSnapshot[]; rest: GexSnapshot[] } | null {
+  const e = peekEntry(ticker);
+  if (!e || e.status !== 'live' || !e.history0?.length || !e.historyRest?.length) return null;
+  return { front: e.history0, rest: e.historyRest };
+}
+
+const BOOK_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function expiryLabel(iso: string): string {
+  const parts = iso.split('-').map(Number);
+  const month = BOOK_MONTHS[(parts[1] ?? 1) - 1] ?? iso;
+  return `${month} ${parts[2] ?? ''}`.trim();
+}
+
+/** The chain the chart, the header and the calendar column share. A date is that expiry. Null is the first expiry still open. `'book'` is every expiry added together.
+    `movedFrom` is set when the date asked for has settled and the chain drawn is the next one still open. */
+export function chainForDate(ticker: string, date: string | 'book' | null): { nodes: StrikeNode[]; label: string; kind: 'Flow' | 'OI'; date: string; movedFrom: string | null } | null {
+  const entry = peekEntry(ticker);
+  if (!entry || entry.status !== 'live') return null;
+  const kindOf = (nodes: StrikeNode[]): 'Flow' | 'OI' => (nodes.some(n => n.oiNetGex != null) ? 'Flow' : 'OI');
+  if (date === 'book') {
+    return entry.all.length ? { nodes: entry.all, label: 'Every expiry', kind: kindOf(entry.all), date: 'book', movedFrom: null } : null;
+  }
+  const floor = isoDate(bookToday());
+  const dates = Object.keys(entry.byDate).filter(d => d >= floor && expiryOpen(d) && entry.byDate[d]?.length).sort();
+  const asked = date && date !== 'book' ? date : null;
+  const hit = asked && asked >= floor && expiryOpen(asked) && entry.byDate[asked]?.length ? asked : dates[0];
+  if (!hit) return null;
+  const nodes = entry.byDate[hit];
+  const label = expiryLabel(hit);
+  const movedFrom = asked && asked !== hit && !expiryOpen(asked) ? expiryLabel(asked) : null;
+  return { nodes, label, kind: kindOf(nodes), date: hit, movedFrom };
+}
+
+/** One book, stamped on the tape. The dollars are that chain's own net gamma. */
+export function historyForDate(ticker: string, date: string | 'book' | null): GexSnapshot[] | null {
+  const entry = peekEntry(ticker);
+  const picked = chainForDate(ticker, date);
+  if (!entry || entry.status !== 'live' || !picked) return null;
+  const histAll = entry.tape.length >= 2 ? entry.tape : entry.candles;
+  const candles = entry.wantFull ? histAll : histAll.filter((c, i) => i === histAll.length - 1 || Math.floor(c.time / 60) % 5 === 0);
+  return historyFrom(picked.nodes, candles, entry.flow);
+}
+
+export function railBookWords(ticker: string, date: string | 'book' | null): string | null {
+  const picked = chainForDate(ticker, date);
+  return picked ? `${picked.label} · ${picked.kind}` : null;
+}
+
 /** Session bars once the book is live. Empty until then — never a made-up chain. */
 export function liveBars(ticker: string): Candle[] {
   const t = ticker?.toUpperCase();
@@ -1586,10 +2200,11 @@ export function bookStatus(ticker: string): Entry['status'] | 'idle' {
 }
 
 export function snapshotOf(ticker: string, mode: BookMode = 'board'): MarketSnapshot | null {
-  ensureBook(ticker, mode);
-  const e = peekEntry(ticker);
+  const name = sameName(ticker);
+  ensureBook(name, mode);
+  const e = peekEntry(name);
   if (!e || e.status !== 'live' || !e.all.length || !(e.spot > 0)) return null;
-  return materialize(e, readLevelsScope());
+  return materialize(e, levelsForName(ticker));
 }
 
 export function subscribeBook(fn: () => void): () => void {
@@ -1611,32 +2226,43 @@ export function useBookRev(): number {
   );
 }
 
+/** The session the charts should draw for this name. The clock still moves. A name that does not trade that window stays on the cash session. */
+export function useResolvedSession(ticker: string): SessionRead {
+  const asked = useDeskSession();
+  const rev = useBookRev();
+  return useMemo(() => {
+    const bars = dayBars(ticker);
+    const mins = bars ? bars.map(b => nyMinutes(b.time * 1000)) : null;
+    return resolveDeskSession(ticker, mins, asked);
+  }, [ticker, asked, rev]);
+}
+
 /** The name on screen. Full book: every expiry column, the session's minutes. Null until the first live print — never the simulator's price. */
 export function usePinpointFeed(ticker: string | null | undefined): MarketSnapshot | null {
-  const scope = useLevelsScope();
+  const name = ticker ? sameName(ticker) : ticker;
+  const scope = useNameLevels(name);
   const version = useBookRev();
   useEffect(() => {
-    if (!ticker) return;
-    markHotName(ticker);
-    ensureBook(ticker, 'full');
-    startPinpoint(ticker);
-    const id = window.setInterval(() => ensureBook(ticker, 'full'), 30_000);
-    /* the name on screen's price every ten seconds too, as the Board's (refreshBoardPrices) — so "at price" and every
-       distance agree between the Board and the page the name is open on */
-    const px = window.setInterval(() => refreshBoardPrices([ticker]), PRICES_MS);
+    if (!name) return;
+    markHotName(name);
+    const had = peekEntry(name);
+    ensureBook(name, 'full', had?.status === 'error');
+    startPinpoint(name);
+    const id = window.setInterval(() => ensureBook(name, 'full'), 30_000);
+    const px = window.setInterval(() => refreshBoardPrices([name]), PRICES_MS);
     return () => {
       window.clearInterval(id);
       window.clearInterval(px);
     };
-  }, [ticker]);
+  }, [name]);
   return useMemo(() => {
-    if (!ticker) return null;
-    const e = peekEntry(ticker);
+    if (!name) return null;
+    const e = peekEntry(name);
     if (!e || e.status !== 'live' || !e.all.length) return null;
     return materialize(e, scope);
     // version bumps when a book lands or refreshes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, scope, version]);
+  }, [name, scope, version]);
 }
 
 /*
@@ -1695,13 +2321,77 @@ function regularCloseOf(ticker: string, bars: readonly UwBar[]): { close: number
   };
 }
 
+/** One close-of-day strike book. A past date is the session's close, not a minute trail. Rows whose stamp is not that date are refused. */
+async function spxCloseGamma(date: string): Promise<LiveGamma | null> {
+  const out: LiveGamma = new Map();
+  const seen = new Set<number>();
+  for (let page = 0; page < 8; page++) {
+    const res = await uwCall(`/stock/SPX/spot-exposures/strike?date=${encodeURIComponent(date)}&limit=500&page=${page}`);
+    if (res.error) return out.size ? out : null;
+    const rows = Array.isArray(res.data) ? res.data as Record<string, unknown>[] : [];
+    const fresh = rows.filter(r => {
+      const k = num(r.strike);
+      if (!(k > 0) || seen.has(k)) return false;
+      const stamp = String(r.time ?? '');
+      if (stamp) {
+        const at = Date.parse(stamp);
+        const same = stamp.startsWith(date) || (Number.isFinite(at) && nyIsoDate(at) === date);
+        if (!same) return false;
+      }
+      seen.add(k);
+      return true;
+    });
+    if (!fresh.length) break;
+    liveGammaRows(fresh, out);
+    if (rows.length < 500) break;
+  }
+  return out.size ? out : null;
+}
+
+function snapOfClose(time: number, live: LiveGamma): GexSnapshot {
+  const levels: GexSnapshot['levels'] = [];
+  for (const [strike, leg] of live) {
+    const value = -(leg.c + leg.p);
+    if (!value) continue;
+    levels.push({ strike, value });
+  }
+  levels.sort((a, b) => a.strike - b.strike);
+  return { time, levels };
+}
+
+/** The two sessions before today, each as the vendor's close book on that session's last bar. */
+async function attachSpxCloses(ticker: string, token: number): Promise<void> {
+  if (sameName(ticker) !== 'SPX') return;
+  const span = chartSpan.get('SPX');
+  if (!span?.length) return;
+  const days: string[] = [];
+  for (const c of span) {
+    const d = nyIsoDate(c.time * 1000);
+    if (days[days.length - 1] !== d) days.push(d);
+  }
+  const prior = days.filter(d => d < nyIsoDate()).slice(-2);
+  const snaps: GexSnapshot[] = [];
+  for (const date of prior) {
+    if (gen.get(ticker) !== token) return;
+    const live = await spxCloseGamma(date);
+    if (!live) continue;
+    const last = span.filter(c => nyIsoDate(c.time * 1000) === date).pop();
+    if (!last) continue;
+    snaps.push(snapOfClose(last.time, live));
+  }
+  const cur = cache.get(ticker);
+  if (!cur || gen.get(ticker) !== token || !snaps.length) return;
+  cur.closes = snaps;
+  emit();
+}
+
 async function loadCore(ticker: string, mode: BookMode, token: number): Promise<void> {
   const still = () => gen.get(ticker) === token;
   const hot = isHot(ticker);
   const t = encodeURIComponent(ticker);
-  const [state, strikes, oiRows, flowRows, ivRows, termRows, interpRows, bars, live] = await Promise.all([
-    hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker),
-    hot ? hotGet<UwGreekStrike[]>(`/stock/${t}/greek-exposure/strike`, true) : whalesGreekStrike(ticker),
+  const [stateRaw, strikeRaw, oiRows, flowRows, ivRows, termRows, interpRows, stockBars, live] = await Promise.all([
+    (hot ? hotGet<UwState>(`/stock/${t}/stock-state`, true) : whalesState(ticker)).catch(() => null),
+    (hot ? hotGet<UwGreekStrike[]>(`/stock/${t}/greek-exposure/strike`, true) : whalesGreekStrike(ticker)).catch(() => [] as UwGreekStrike[]),
     whalesOiStrike(ticker).catch(() => [] as UwGreekStrike[]),
     whalesFlowStrike(ticker).catch(() => [] as UwFlowStrike[]),
     whalesIvRank(ticker, hot).catch(() => []),
@@ -1714,11 +2404,76 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
        "Times price crossed the flip" and the Map's "How the levels held" — opened from the Board, or after a Board refresh
        re-read a full name in board mode — counted 5-minute bars (SPY 9/7/2 against 14/10/4) where one-minute counts are
        promised. One /ohlc/1m call a name a refresh, the same URL the full book and the Dossier read (one proxy copy). */
-    whalesBars(ticker, '1m', 1000).catch(() => [] as UwBar[]),
+    /* Two cash sessions for the chart (yesterday and today). 1800 one-minute bars
+       reach the prior open; the book's own candles stay today's session. */
+    whalesBars(ticker, '1m', 1800).catch(() => [] as UwBar[]),
     liveGamma(ticker, null, hot).catch(() => null),
   ]);
   if (!still()) return;
-  if (!state || !Array.isArray(strikes) || strikes.length === 0) throw new Error('shape');
+  /* An index has no stock bars on this key (SPX /ohlc/1m is 422). A stock whose bars did not come back is read off the same terminal — the last trade, not a bid. */
+  let bars: UwBar[] = Array.isArray(stockBars) ? stockBars : [];
+  let tapeKind: 'vendor' | 'index' | 'stock' = 'vendor';
+  if (bars.length === 0 && INDEX_TAPE.has(ticker)) {
+    bars = await thetaTape(ticker, true);
+    if (bars.length) tapeKind = 'index';
+    if (!still()) return;
+  } else if (bars.length === 0) {
+    bars = await thetaTape(ticker, false);
+    if (bars.length) tapeKind = 'stock';
+    if (!still()) return;
+  }
+  let state = stateRaw;
+  let strikes = Array.isArray(strikeRaw) ? strikeRaw : [];
+  /* An index has no stock-state (the vendor answers 422) and no quote. The live
+     gamma rows already carry the price they were marked at, and greek-exposure
+     has the strikes. Use that first — do not wait on the Theta chain, which is
+     a second source and is often down. */
+  if ((!state || strikes.length === 0) && live && live.size) {
+    if (strikes.length === 0) {
+      strikes = [...live.keys()].filter(k => k > 0).map(strike => ({ strike }));
+    }
+    if (!state) {
+      const px = peekGammaPriced(ticker, null)?.price ?? 0;
+      if (px > 0) {
+        const phase = nySessionPhase();
+        state = { close: px, prev_close: px, market_time: phase === 'open' ? 'regular' : phase === 'before' ? 'premarket' : 'postmarket' };
+      }
+    }
+  }
+  /* Still no price: the screener's close. Indexes often have one when stock-state does not. */
+  if (!state && strikes.length > 0) {
+    const rows = await whalesScreener([ticker], true).catch(() => [] as Record<string, unknown>[]);
+    const row = Array.isArray(rows) ? rows.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? rows[0] : null;
+    const px = num(row?.close) || num(row?.prev_close);
+    if (px > 0) state = { close: px, prev_close: num(row?.prev_close) || px, market_time: 'postmarket' };
+  }
+  /* A name the vendor does not price any other way is read off the local chain.
+     SPX and SPXW are one book. Do not wait on a dead terminal — four seconds, then the book fails and can be asked again. */
+  if (!state || strikes.length === 0) {
+    const local = await Promise.race([
+      awaitSpotGex(ticker),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 4000)),
+    ]);
+    if (still() && local && local.used > 0 && local.spot > 0) {
+      const g = local.spot * local.spot * 0.01;
+      if (strikes.length === 0) {
+        strikes = local.strikes
+          .filter(s => s.callOi > 0 || s.putOi > 0)
+          .map(s => ({ strike: s.strike, call_gex: s.callOi / g, put_gex: -(s.putOi / g) }));
+      }
+      if (!state) {
+        const book = sameName(ticker) === 'SPX' ? spxRead() : null;
+        const prev = book && book.prevClose > 0 ? book.prevClose : local.spot;
+        state = { close: book?.spot || local.spot, prev_close: prev, market_time: 'postmarket' };
+      }
+    }
+  }
+  /* No stock-state. The tape's own print is the price: today's close stays today's close, and yesterday is only the change. */
+  if (tapeKind !== 'vendor' && !stateRaw && bars.length) {
+    const quoted = quoteFromBars(ticker, bars);
+    if (quoted) state = quoted;
+  }
+  if (!state || strikes.length === 0) throw new Error('shape');
   /* OUTSIDE THE SESSION THE PRICE IS THE REGULAR CLOSE (the fourth audit, 2026-10-23: the Board printed AAPL's after-hours
      $348.60 beside the regular session's change, measured every distance from it, and the Dossier said 348.22). The
      levels were priced at the 4:00 close (the vendor's rows carry that price), so the price on Pinpoint, and every
@@ -1728,7 +2483,10 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
      its 10:35 print — SPY 759.68, tape_time 14:35Z — on every name for 40 minutes while the one-minute bars and the quote
      ran on at 762.8; every distance and "at price" on Pinpoint was read off the stalled print). In the regular session a
      bar newer than the state's tape time by more than two minutes is the price. */
-  const barsSplit = candlesFrom(Array.isArray(bars) ? bars : []);
+  const barsSplit = candlesFrom(Array.isArray(bars) ? bars : [], cashToOf(ticker));
+  const name = sameName(ticker);
+  chartSpan.set(name, twoCashSessions(Array.isArray(bars) ? bars : [], cashToOf(ticker), name === 'SPX' ? 3 : 2));
+  chartAll.set(name, parseTape(Array.isArray(bars) ? bars : []));
   const tapeMs = Date.parse(String((state as { tape_time?: string }).tape_time ?? ''));
   const newest = barsSplit.tape[barsSplit.tape.length - 1] ?? barsSplit.cash[barsSplit.cash.length - 1];
   /* …ONLY INSIDE THE SESSION (the eleventh audit's M1, 2026-10-23 20:31 ET: the state was still stuck on its 10:35 print
@@ -1740,7 +2498,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   /* OUTSIDE THE SESSION A STATE STILL SAYING "REGULAR" IS NOT BELIEVED: the price is the last regular session's close — its
      last regular one-minute bar (market_time "r"), the vendor's daily close for that date where it is in hand — and the
      newest after-hours or pre-market bar is kept apart as the extended print (data/liveQuote.ts's convention) */
-  const offRegular = !sessionOpen && state.market_time === 'regular' ? regularCloseOf(ticker, Array.isArray(bars) ? bars : []) : null;
+  const offRegular = tapeKind === 'vendor' && !sessionOpen && state.market_time === 'regular' ? regularCloseOf(ticker, Array.isArray(bars) ? bars : []) : null;
   const barOrState = stateStalled ? newest!.close : offRegular ? offRegular.last : num(state.close);
   const readAt = stateStalled ? newest!.time * 1000 + 60_000 : offRegular ? offRegular.at : Number.isFinite(tapeMs) ? tapeMs : Date.now();
   /* a newer price already in hand (the Board's ten-second refresh, refreshBoardPrices) is not stepped back by a reload */
@@ -1803,6 +2561,7 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
     history: [],
   };
   entry.history = prevEntry?.history?.length ? prevEntry.history : [];
+  if (tapeKind !== 'vendor') noteBarCloses(ticker, closesFromTape(bars), tapeKind === 'index');
   applyDay(entry);
   needDay(entry);
   vexOntoAll(entry);
@@ -1826,8 +2585,11 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   };
   if (typeof requestIdleCallback === 'function') requestIdleCallback(buildHist, { timeout: 700 });
   else window.setTimeout(buildHist, 32);
-  if (entry.wantFull) await loadExpiries(entry, token);
-  else await loadFront(entry, token);
+  void attachSpxCloses(ticker, token);
+  if (entry.wantFull) {
+    void loadFront(entry, token);
+    await loadExpiries(entry, token);
+  } else await loadFront(entry, token);
 }
 
 /** The vendor's expiry listing, nearest first */
@@ -1882,7 +2644,7 @@ export function ownIvDates(byDate: Readonly<Record<string, readonly StrikeNode[]
 async function loadFront(entry: Entry, token: number): Promise<void> {
   const still = () => gen.get(entry.ticker) === token;
   const today = isoDate(bookToday());
-  const allScope = readLevelsScope() === 'ALL';
+  const allScope = levelsForName(entry.ticker) === 'ALL';
   const haveFront = Object.keys(entry.byDate).some(d => d >= today && entry.byDate[d]?.length);
   const fresh = !!entry.totalsAt && Date.now() - entry.totalsAt < FRONT_MS;
   if (fresh && haveFront && !!entry.frontFacts && (!allScope || datesComplete(entry))) {
@@ -1932,7 +2694,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
       current.factsDates = new Set([...(current.factsDates ?? []), front]);
       const book = foldContracts(rows, front);
       const have = current.byDate[front] ?? chain;
-      if (book.size && have.length) current.byDate = { ...current.byDate, [front]: paintLegs(have, book, true) };
+      if (book.size && have.length) current.byDate = { ...current.byDate, [front]: paintLegs(have, book, true, current.spot, front, current.ticker) };
       current.frontFacts = true;
       current.at = Date.now();
       cache.set(entry.ticker, current);
@@ -1968,7 +2730,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
       if (after && rows) {
         const book = foldContracts(rows, ny);
         const have = after.byDate[ny];
-        if (book.size && have?.length) after.byDate = { ...after.byDate, [ny]: paintLegs(have, book, true) };
+        if (book.size && have?.length) after.byDate = { ...after.byDate, [ny]: paintLegs(have, book, true, after.spot, ny, after.ticker) };
         after.factsDates = new Set([...(after.factsDates ?? []), ny]);
         after.at = Date.now();
         emit();
@@ -1976,7 +2738,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
     }
   }
   /* "All expiries" on the Board: every live date's strikes, so the flip can re-price each date at its own clock */
-  if (readLevelsScope() === 'ALL') await loadBoardDates(entry.ticker, token, listed);
+  if (levelsForName(entry.ticker) === 'ALL') await loadBoardDates(entry.ticker, token, listed);
 }
 
 /** The session on record's own date has been asked for (its chain landed, or the ask came back) — until then a page
@@ -2245,6 +3007,7 @@ async function loadExpiriesNow(entry: Entry, token: number): Promise<void> {
     }
     current.at = Date.now();
     vexOntoAll(current);
+    if (done) noteSplit(current);
     cache.set(entry.ticker, current);
     emit();
   };
@@ -2321,14 +3084,17 @@ function load(ticker: string, mode: BookMode) {
     });
     queueMicrotask(emit);
   } else if (mode === 'full') prev.wantFull = true;
-  void loadCore(ticker, mode, token).catch(() => {
+  void loadCore(ticker, mode, token).catch((err: unknown) => {
     if (gen.get(ticker) !== token) return;
     const cur = cache.get(ticker);
     if (cur?.status === 'live') return;
+    const msg = err instanceof Error ? err.message : '';
+    const http = /not configured/i.test(msg) ? 503 : Number(msg.match(/\b([45]\d{2})\b/)?.[1] ?? 0) || undefined;
     cache.set(ticker, {
       ticker,
       status: 'error',
       at: Date.now(),
+      http,
       full: false,
       wantFull: false,
       spot: 0,
@@ -2389,13 +3155,13 @@ export function fixedAsOfWords(now: number = Date.now()): string {
 function bookSettled(e: Entry): boolean {
   if (e.status !== 'live' || !e.gammaLive || !e.termIv || !e.all.length) return false;
   if (e.wantFull ? !e.everFull : !e.frontFacts) return false;
-  if ((e.wantFull || readLevelsScope() === 'ALL') && horizonFactsMissing(e).length) return false;
+  if ((e.wantFull || levelsForName(e.ticker) === 'ALL') && horizonFactsMissing(e).length) return false;
   return true;
 }
 
-export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
+export function ensureBook(ticker: string, mode: BookMode = 'board', force = false): void {
   if (typeof window === 'undefined') return;
-  const t = ticker.trim().toUpperCase();
+  const t = sameName(ticker);
   if (!t) return;
   const e = cache.get(t);
   if (e?.status === 'loading') {
@@ -2414,7 +3180,7 @@ export function ensureBook(ticker: string, mode: BookMode = 'board'): void {
   const limit = e?.status === 'error' ? 15_000 : e?.full ? FULL_MS : BOARD_MS;
   const stale = !e || age > limit;
   const upgrade = mode === 'full' && !!e && e.status === 'live' && !e.full && !e.wantFull;
-  if (!stale && !upgrade) return;
+  if (!force && !stale && !upgrade) return;
   if (upgrade && e) {
     e.wantFull = true;
     const token = (gen.get(t) ?? 0) + 1;
