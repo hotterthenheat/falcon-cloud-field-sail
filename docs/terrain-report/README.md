@@ -5,7 +5,8 @@ Developer brief for the `/terrain` chart desk: how it is built, how it compares 
 - `Terrain-vs-OpenMarket.pdf` — the brief
 - `index.html` — source of that PDF
 - `Terrain-Part2-Everything-Missed.pdf` — measured performance, the contrast pass, and work that is not in the first brief
-- `Terrain-Part3-Exposure-Nodes.pdf` — how the exposure beads work, against QuantData’s Interval Map
+- `Terrain-Part3-Exposure-Nodes.pdf` — how the exposure beads work, against QuantData’s Interval Map, including signed flow
+- `Terrain-FINAL-Master.pdf` — one read of all three briefs plus the institutional research, with the ranked roadmap
 - `part2.html` — source of the companion
 - `screenshots/` — renders from the dev server, plus the companion’s mocks
 - `capture.mjs` — the Playwright harness that took the first shots
