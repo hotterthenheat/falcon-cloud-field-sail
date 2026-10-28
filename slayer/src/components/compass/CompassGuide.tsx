@@ -39,7 +39,7 @@ const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: stri
 
 /* A card: the rank, the contract in its side's ink, the expiry, the crown, the state; the move, the spark, the premium; what kills it */
 const CardFigure = () => (
-  <Figure label="One card: #1, NVDA 120P in red, the expiry chip, Top pick in magenta, a Moving chip; the one-sigma move, the session's line, the premium; Breaks above $121.26 in amber and the Open door" h={104}>
+  <Figure label="One card: #1, NVDA 120P in red, the expiry chip, Top pick in magenta, a Moving chip; the one-sigma move, the session's line, the premium; Stop bid ≤ $0.53 in amber and the Open door" h={104}>
     <rect x={4} y={4} width={412} height={96} rx={5} fill="#ffffff" fillOpacity={0.015} stroke={SILVER} strokeOpacity={0.6} />
     <text x={16} y={24} fontSize={7} fill={MUTED} fontFamily={MONO}>
       #1
@@ -77,7 +77,7 @@ const CardFigure = () => (
     </text>
     <path d="M 18 86 l 4 -7 l 4 7 z" fill="none" stroke={WARN} strokeWidth={1} />
     <text x={30} y={87} fontSize={8} fill={WARN} fontFamily={MONO}>
-      Breaks above <tspan fontWeight={700}>$121.26</tspan>
+      Stop bid ≤ <tspan fontWeight={700}>$0.53</tspan>
     </text>
     <rect x={352} y={77} width={52} height={15} rx={3} fill="none" stroke="#2a2a2a" />
     <text x={378} y={87.5} textAnchor="middle" fontSize={6.5} letterSpacing={0.6} fill={SECOND} fontFamily={MONO}>
@@ -159,20 +159,11 @@ const RailFigure = () => (
 
 export const CompassGuide = () => (
   <div data-compass-guide>
-    <Section title="A card">
-      <p>One setup: its rank, the contract in its side's ink, the expiry, and its state. Under them the one-sigma move to expiry, the stock's line today, and the premium. The amber line is the stock price that retires it. One click selects a card, a second opens its page.</p>
-      <CardFigure />
+    <Section title="The book">
+      <p>Calls and puts, two across. 0DTE carries the stop and the targets, and it stays up until that contract's own close, not 15:00. 1–7 DTE is the same book one week out. Nothing further out. The session card is the hours on the chart: regular, pre-market, after hours, overnight.</p>
     </Section>
-    <Section title="The states">
-      <p>Watch is on the board but not proven. Active means the level structure is in place. Moving means the contract now trades like its trade. Fading means it is retiring.</p>
-      <StatesFigure />
-    </Section>
-    <Section title="Expiry and kind">
-      <p>The Expiry card picks how long the trade lives, from today's contracts to a year out. The Kind card picks what found it: the strongest by trend and hedging, a quick scalp, a discount, a rebound, or big orders. Not every kind sells on every expiry: a scalp has no business a year out.</p>
-    </Section>
-    <Section title="The heaviest contracts">
-      <p>Beside the board, the contracts that carry the most weight on the selected card's name. Click a column head to rank by it; the ranked column lights up with a bar. A row opens that contract's page.</p>
-      <RailFigure />
+    <Section title="The window">
+      <p>The scan runs 09:30–15:00 ET. The first look is the first valid quote after the open. Outside that it names the next open. Bid over $0.15, spread at or under 8%, ATM ± 4. One name a session, five open. The fill is the next ask. The 0DTE stop is that ask times (1 − 0.5322). A stop, a target, the close, a broken level, or a failed check leaves the board and lands on the blotter as a win or a loss. If the book flips to the other side, even at +20%, it leaves as a caution. That is the choice, not an order, and it is not a loss. SPX and RUT are on 0DTE every session. VIX is on 0DTE only on Tuesday. Nasdaq is not on this book.</p>
     </Section>
   </div>
 );

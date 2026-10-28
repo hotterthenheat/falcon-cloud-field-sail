@@ -61,7 +61,7 @@ export function sessionEndMin(ticker?: string | null): number {
   return ticker && LATE_CLOSE.has(ticker.toUpperCase()) ? 975 : 960;
 }
 /** "16:15" or "16:00" */
-export const sessionEndLabel = (ticker?: string | null) => (sessionEndMin(ticker) === 975 ? '16:15' : '16:00');
+export const sessionEndLabel = (ticker?: string | null) => (sessionEndMin(ticker) === 975 ? '3:15 PM CT' : '3:00 PM CT');
 export type SessionPhase = 'pre' | 'regular' | 'after' | 'closed';
 /** Where New York's clock stands against the stock session (09:30–16:00; after hours to 20:00, pre-market from 04:00) */
 export function sessionPhase(at: Date = new Date()): SessionPhase {
@@ -493,6 +493,7 @@ export const liveTrades = (rows: Record<string, unknown>[]) => rows.filter(r => 
    (SPXW → SPX). Asked at most every 30s per index, and only for an index that is on the screen. */
 const INDEX_ROOT: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', NDX: 'NDX', NDXP: 'NDX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', VIXW: 'VIX', XND: 'XND', DJX: 'DJX', MRUT: 'MRUT' };
 const indexLevels = new Map<string, { at: number; level: number }>();
+const indexFrom = new Map<string, 'quote' | 'book'>();
 const indexAsks = new Map<string, Promise<void>>();
 export function indexRoot(ticker: string): string | null {
   return INDEX_ROOT[ticker.toUpperCase()] ?? null;
@@ -505,6 +506,15 @@ export function indexLevel(ticker: string): number {
   const root = indexRoot(ticker);
   return root ? (indexLevels.get(root)?.level ?? 0) : 0;
 }
+/** A live index print. The quote wins over the book's last minute while it is fresh. */
+export function noteIndex(ticker: string, level: number, at = Date.now()): void {
+  const root = indexRoot(ticker) ?? ticker.toUpperCase();
+  if (!INDEX_ROOT[root] || !(level > 0) || !(at > 0)) return;
+  const had = indexLevels.get(root);
+  if (had && indexFrom.get(root) === 'quote' && had.at > at) return;
+  indexLevels.set(root, { at, level });
+  indexFrom.set(root, 'quote');
+}
 /** Fetch the index levels the rows need (cached 30s); never throws */
 async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
   const roots = new Set<string>();
@@ -515,6 +525,7 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
   const jobs: Promise<void>[] = [];
   for (const root of roots) {
     const hit = indexLevels.get(root);
+    if (hit && indexFrom.get(root) === 'quote' && Date.now() - hit.at < 60_000) continue;
     if (hit && (Date.now() - hit.at < 30_000 || heldFresh(hit.at))) continue;
     /* STALE WHILE IT REFRESHES (audit round 8, load time): a level in hand is used while the new one is asked for — only a
        root with no level at all holds the rows back (every 30s the book's poll waited on /spot-exposures behind it) */
@@ -531,7 +542,10 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
             const p = num(r.price);
             if (p > 0 && Number.isFinite(t) && (!best || t > best.t)) best = { t, p };
           }
-          if (best) indexLevels.set(root, { at: Date.now(), level: best.p });
+          if (best && !(indexFrom.get(root) === 'quote' && Date.now() - (indexLevels.get(root)?.at ?? 0) < 60_000)) {
+            indexLevels.set(root, { at: Date.now(), level: best.p });
+            indexFrom.set(root, 'book');
+          }
         } catch {
           /* no level: the moneyness reads "—" */
         } finally {
@@ -844,7 +858,11 @@ export function useOptionTape(limit = 200): LivePack<FlowPrint[]> {
    ticker_symbol filter on the same routes. */
 export function useNameTape(ticker: string | null, limit = 200): LivePack<FlowPrint[]> {
   const name = (ticker || '').trim().toUpperCase();
-  return useLive(name ? `tape:${name}:${limit}` : 'tape:name:off', async () => mapWithIndex(liveTrades(await getRows(`/option-trades?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)), tradeToPrint), [], !!name);
+  const pack = useLive(name ? `tape:${name}:${limit}` : 'tape:name:off', async () => mapWithIndex(liveTrades(await getRows(`/option-trades?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)), tradeToPrint), [], !!name);
+  useEffect(() => {
+    if (pack.rows.length) publishPrints(pack.rows);
+  }, [pack.rows]);
+  return pack;
 }
 
 /** ONE NAME'S STRUCTURES ON THE SESSION (audit round 6: Compare's "Structures 80 · the same" was the fetch cap over a
@@ -1065,6 +1083,49 @@ function newestMs(batch: FlowPrint[]): number {
 }
 
 const EMPTY_PRINTS: FlowPrint[] = [];
+
+/* Prints Trace has already read, by name. Compass reads this. It does not ask the vendor. */
+const tapeShelf = new Map<string, FlowPrint[]>();
+const shelfListeners = new Set<() => void>();
+const SHELF_CAP = 2_000;
+
+export function publishPrints(rows: readonly FlowPrint[]): void {
+  if (!rows.length) return;
+  const by = new Map<string, FlowPrint[]>();
+  for (const p of rows) {
+    const name = p.ticker?.toUpperCase();
+    if (!name) continue;
+    const list = by.get(name);
+    if (list) list.push(p);
+    else by.set(name, [p]);
+  }
+  let changed = false;
+  for (const [name, incoming] of by) {
+    const prev = tapeShelf.get(name) ?? [];
+    const seen = new Set(prev.map(p => p.vendorId || String(p.id)));
+    const fresh = incoming.filter(p => !seen.has(p.vendorId || String(p.id)));
+    if (!fresh.length) continue;
+    const next = fresh.concat(prev);
+    next.sort((a, b) => (b.epochMs ?? 0) - (a.epochMs ?? 0));
+    tapeShelf.set(name, next.length > SHELF_CAP ? next.slice(0, SHELF_CAP) : next);
+    changed = true;
+  }
+  if (changed) shelfListeners.forEach(fn => fn());
+}
+
+/** The prints Trace already has for this name. Empty until Trace has read it. No request. */
+export function useShelfPrints(ticker: string | null | undefined): FlowPrint[] {
+  const name = (ticker || '').trim().toUpperCase();
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const fn = () => bump(n => n + 1);
+    shelfListeners.add(fn);
+    return () => {
+      shelfListeners.delete(fn);
+    };
+  }, []);
+  return (name && tapeShelf.get(name)) || EMPTY_PRINTS;
+}
 export interface PrintStream extends LivePack<FlowPrint[]> {
   pending: number;
   loadingOlder: boolean;
@@ -1325,8 +1386,12 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
 
   const reset = useCallback(() => setNonce(n => n + 1), []);
   const fresh = rowsFor === key;
+  const shown = fresh ? rows : EMPTY_PRINTS;
+  useEffect(() => {
+    if (shown.length) publishPrints(shown);
+  }, [shown]);
   return {
-    rows: fresh ? rows : EMPTY_PRINTS,
+    rows: shown,
     at: fresh ? at : null,
     fault: fresh ? fault : null,
     waiting: !fresh || (waiting && rows.length === 0),

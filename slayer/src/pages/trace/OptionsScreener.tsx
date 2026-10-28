@@ -155,7 +155,7 @@ const TOOLTIPS: Record<string, string> = {
   floor: 'The share that printed on the floor — worked orders',
   multi: 'The share that was a leg of a multi-leg structure',
   lean: "The day's lean: the side's share of the contracts that traded on a side. In bold (\"bid 60%\") the side held 55% or more — a lean is called; \"even · bid 51%\" fell short of 55%, no lean. \"legs\" and \"cross\" days get no lean. The hover gives each side's share of the whole day",
-  iv: "The contract's implied volatility, and the vendor's IV change on the day (iv_change, ×100) — a change in IV, not the delta",
+  iv: "The contract's implied volatility, and the IV change on the day (iv_change, ×100) — a change in IV, not the delta",
 };
 
 const OptionsScreener = () => {
@@ -205,12 +205,12 @@ const OptionsScreener = () => {
     }
   }, [screenQuery]);
 
-  /* MIRROR SCREENS READ ONE POOL (audit round 9, major 2: "Unusually bullish" read the vendor's unusual list and "Unusually
+  /* MIRROR SCREENS READ ONE POOL (audit round 9, major 2: "Unusually bullish" read the feed's unusual list and "Unusually
      bearish" the plain top 200 by premium; "Conviction puts" read 0 from the other pool than its calls): every question
      about unusual flow — bullish, bearish, new positioning, conviction calls and puts — reads the vendor's unusual list,
      and the sub-line says so */
   const unusual = screen === 'bullish' || screen === 'bearish' || screen === 'fresh' || screen === 'conviction-calls' || screen === 'conviction-puts';
-  /* MOST ACTIVE IS ASKED BY VOLUME (the audit, 2026-10-22: it asked the vendor for premium order under "heaviest volume first") */
+  /* MOST ACTIVE IS ASKED BY VOLUME (the audit, 2026-10-22: it asked the feed for premium order under "heaviest volume first") */
   /* A NAME SEARCHED IS ASKED FOR (audit round 11, major 5): the name's own contracts, in the screen's order, paged */
   const askedName = useSearchedName(query);
   const hottest = useContracts(false, screen === 'active' ? 'stock' : null, screen === 'active' ? 'volume' : 'premium', askedName, !unusual);
@@ -405,7 +405,7 @@ const OptionsScreener = () => {
         header: 'IV · IV chg',
         align: 'right',
         sortValue: r => r.iv,
-        /* a contract the vendor sends no volatility for reads "—", never "0% +0.0" */
+        /* a contract the feed sends no volatility for reads "—", never "0% +0.0" */
         render: r =>
           r.iv > 0 ? (
             <span className="text-textPrimary">
@@ -432,12 +432,12 @@ const OptionsScreener = () => {
   /* SEVENTEEN COLUMNS DID NOT FIT AT 1440 (the audit, 2026-10-22): the floor share, the multi-leg share and the sector open
      folded — one click away in Columns */
   const { hidden, toggle, showAll, hideAll } = useHiddenColumns('slayer_screener_cols_v3', ['floor', 'multi', 'sector', 'dte', 'oi']);
-  /* WHAT THE BOOK IS (the audit: "every contract that traded today" headed the vendor's top 200) */
+  /* WHAT THE BOOK IS (the audit: "every contract that traded today" headed the feed's top 200) */
   /* NOT YET IS NOT NOTHING (retail, round 11: "the 0 single-stock contracts loaded" while the book read) */
   const pool = bookReading
     ? 'reading the book…'
     : unusual
-    ? `from the vendor's unusual list — the ${num(liveBook.length)} unusual contracts loaded, most premium ${dayAdv()} first (more as you scroll), the pool every unusual screen (bullish, bearish, new positioning, conviction calls and puts) reads`
+    ? `from the unusual list — the ${num(liveBook.length)} unusual contracts loaded, most premium ${dayAdv()} first (more as you scroll), the pool every unusual screen (bullish, bearish, new positioning, conviction calls and puts) reads`
     : screen === 'active'
       ? `the ${num(liveBook.length)} single-stock contracts loaded, most volume ${dayAdv()} first — more as you scroll`
       : `the ${num(liveBook.length)} contracts loaded, most premium ${dayAdv()} first — more as you scroll`;
@@ -506,7 +506,7 @@ const OptionsScreener = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            {!hold.paused && <StaleMark at={pack.at} ttlMs={FLOW_TTL_MS} fault={pack.fault} />}
+            <span className={hold.paused ? 'invisible' : undefined} aria-hidden={hold.paused || undefined}><StaleMark at={pack.at} ttlMs={FLOW_TTL_MS} fault={pack.fault} /></span>
             <FlowSearch value={query} onChange={setQuery} rows={book} countNoun="contracts" span />
             <DropdownSelect label="Screen" value={screen} options={screenOptions} onChange={setScreen} title="The question asked of the book" testId="screener-screen" />
             <DropdownSelect label="Side" value={filters.side} options={SIDE_OPTIONS} onChange={v => setFilters(f => ({ ...f, side: v }))} title="Calls, puts or both" testId="screener-side" />
@@ -543,7 +543,7 @@ const OptionsScreener = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(pack.older, 'contracts', "the vendor's list for the day is done", hold.paused, 'Load more ↓')} emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(pack.older, 'contracts', "the feed's list for the day is done", hold.paused, 'Load more ↓')} emptyText={bookReading ? 'Reading the book…' : pack.fault && liveBook.length === 0 ? 'This read did not land — the book fills when the feed answers' : emptyText} testId="screener" />
         {pack.fault && rows.length === 0 ? <FeedFallback fault={pack.fault} /> : null}
       </TraceBox>
       <BookDrill list={rows} openKey={openKey} onOpen={setOpenKey} tick={tick} />

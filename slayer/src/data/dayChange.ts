@@ -94,15 +94,16 @@ export function dayChangeOf(state: StateLike, closes: readonly { date: string; c
     const lastSession = todayMissing ? undefined : sessions[0];
     const before = todayMissing ? sessions[0] : sessions[1];
     const regClose = lastSession?.close ?? prevClose;
-    if (before && before.close > 0 && regClose > 0) {
+    if (!(before && before.close > 0 && regClose > 0)) {
+      return { dayPct: Number.NaN, extPct: null, phase, base: prevClose };
+    }
       return {
         dayPct: ((regClose - before.close) / before.close) * 100,
         /* a stale regular bar is the session's last print, not an after-hours one */
-        extPct: raw !== 'regular' && regClose > 0 && last > 0 ? ((last - regClose) / regClose) * 100 : null,
+        extPct: raw !== 'regular' && regClose > 0 && last > 0 && Math.abs(last - regClose) >= 0.005 ? ((last - regClose) / regClose) * 100 : null,
         phase,
         base: before.close,
       };
-    }
   }
   if (phase === 'pre') {
     /* BEFORE THE OPEN THE DAY'S CHANGE IS THE LAST SESSION'S (the sixth audit, 2026-10-23: "SPY $763.96 0.00% · pre
@@ -113,13 +114,13 @@ export function dayChangeOf(state: StateLike, closes: readonly { date: string; c
     const lastClose = sessions[0]?.close ?? prevClose;
     const before = sessions[1];
     return {
-      dayPct: before && before.close > 0 && lastClose > 0 ? ((lastClose - before.close) / before.close) * 100 : 0,
-      extPct: lastClose > 0 && last > 0 ? ((last - lastClose) / lastClose) * 100 : null,
+      dayPct: before && before.close > 0 && lastClose > 0 ? ((lastClose - before.close) / before.close) * 100 : Number.NaN,
+      extPct: lastClose > 0 && last > 0 && Math.abs(last - lastClose) >= 0.005 ? ((last - lastClose) / lastClose) * 100 : null,
       phase,
       base: before?.close ?? prevClose,
     };
   }
-  return { dayPct: prevClose > 0 && last > 0 ? ((last - prevClose) / prevClose) * 100 : 0, extPct: null, phase, base: prevClose };
+  return { dayPct: prevClose > 0 && last > 0 ? ((last - prevClose) / prevClose) * 100 : Number.NaN, extPct: null, phase, base: prevClose };
 }
 
 /* The regular closes per name, read once a New York day (they only change at the close) */
@@ -131,6 +132,18 @@ export function peekRegularCloses(ticker: string): { date: string; close: number
   return hit && hit.day === nyIsoDate() ? hit.closes : null;
 }
 
+/** Regular closes read off a tape the vendor's daily rows do not cover (an index, or a stock while that daily is empty). A vendor daily already in the cache is left alone unless `force`. */
+export function noteBarCloses(ticker: string, closes: readonly { date: string; close: number }[], force = false): void {
+  if (!closes.length) return;
+  const t = ticker.toUpperCase();
+  if (!force && peekRegularCloses(t)?.length) return;
+  const next = closes.slice(0, 5).map(c => ({ date: c.date, close: c.close }));
+  const cur = closesCache.get(t);
+  const day = nyIsoDate();
+  if (cur && cur.day === day && cur.closes.length === next.length && cur.closes.every((c, i) => c.date === next[i].date && c.close === next[i].close)) return;
+  closesCache.set(t, { day, closes: next });
+}
+
 export function loadRegularCloses(ticker: string): Promise<{ date: string; close: number }[]> {
   const t = ticker.toUpperCase();
   const hit = peekRegularCloses(t);
@@ -140,7 +153,8 @@ export function loadRegularCloses(ticker: string): Promise<{ date: string; close
   const p = whalesDaily(t)
     .then(rows => {
       const closes = regularCloses(Array.isArray(rows) ? rows : []).slice(0, 5);
-      closesCache.set(t, { day: nyIsoDate(), closes });
+      /* an empty daily is not a close — caching it blocked the tape's own closes for the rest of the day */
+      if (closes.length) closesCache.set(t, { day: nyIsoDate(), closes });
       return closes;
     })
     .finally(() => closesInflight.delete(t));

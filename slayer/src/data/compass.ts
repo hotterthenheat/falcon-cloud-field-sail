@@ -9,9 +9,11 @@
 
 import { blackScholesGreeks } from '../core/greeks';
 import { expiryFor } from '../core/calendar';
+import { now } from '../core/clock';
 import { isoDay } from '../core/journal';
+import { nyParts } from '../core/nyTime';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
-import { SLEEVE_BY_KEY, isScannerEligible, scannerEligibility } from '../types/compass';
+import { SLEEVE_BY_KEY, SCANNERS, isScannerEligible, scannerEligibility } from '../types/compass';
 import type { Grade } from './stockOverview';
 import type {
   ChainAction,
@@ -41,6 +43,11 @@ function hash(seed: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+/** Today's contracts at a strike, from its open interest. The same figure the impact rail uses. */
+export function contractVolume(openInterest: number, strike: number, right: string): number {
+  return Math.round(openInterest * (0.2 + (hash(`${strike}${right}`) % 140) / 100));
 }
 
 function mulberry(seedNum: number): () => number {
@@ -206,6 +213,24 @@ export function estimatePremium(
   return Math.max(PREMIUM_FLOOR, intrinsic + timeValue);
 }
 
+/** Stock price where this pricer prints `premium`. Null if it never gets there. */
+export function stockAtPremium(spot: number, strike: number, right: OptionRight, iv: number, tYears: number, premium: number): number | null {
+  if (!(spot > 0) || !(strike > 0) || !(premium > 0.05)) return null;
+  let lo = spot * 0.35;
+  let hi = spot * 2.2;
+  for (let i = 0; i < 32; i++) {
+    const mid = (lo + hi) / 2;
+    const got = estimatePremium(mid, strike, right, iv, tYears);
+    const tooRich = right === 'C' ? got > premium : got < premium;
+    if (tooRich) hi = mid;
+    else lo = mid;
+  }
+  const at = (lo + hi) / 2;
+  const got = estimatePremium(at, strike, right, iv, tYears);
+  if (Math.abs(got - premium) / premium > 0.2) return null;
+  return at;
+}
+
 function healthFor(spot: number, strike: number, right: OptionRight): number {
   // Calls: healthier ITM (low strike). Puts: healthier ITM (high strike).
   const moneyness = (strike - spot) / spot; // + above spot
@@ -273,6 +298,13 @@ export interface SetupAddress {
   right: OptionRight;
   scanner: ScannerKey;
   sleeve: SleeveKey;
+}
+
+/** Dollars of time, per contract, gone by expiry if the stock is still here. */
+export function timeIfSits(spot: number, strike: number, right: OptionRight, premium: number): number {
+  if (!(premium > 0)) return 0;
+  const intrinsic = spot > 0 ? Math.max(0, right === 'C' ? spot - strike : strike - spot) : 0;
+  return Math.max(0, premium - intrinsic) * 100;
 }
 
 export function setupIdOf(a: SetupAddress): string {
@@ -427,7 +459,7 @@ export function makeSetup(
     greeks: {
       delta: Number(delta.toFixed(2)),
       gamma: Number(greeks.gamma.toFixed(4)),
-      theta: Number((-Math.abs(greeks.vega) * 0.4 - rng() * 4).toFixed(2)),
+      theta: Number((estimatePremium(spot, strike, right, iv, Math.max(sessionsLeft - 1, 0.05) / 252) - mid).toFixed(2)),
       vega: Number(greeks.vega.toFixed(2)),
       iv: Number((iv * 100).toFixed(1)),
     },
@@ -466,6 +498,35 @@ function tickerLean(ticker: string, scanner: ScannerKey): boolean {
   return mulberry(hash(`${ticker}-${scanner}-group`))() > 0.42;
 }
 
+/** The side the scan starts on, before the session has moved. */
+export function scanCalls(ticker: string, scanner: ScannerKey): boolean {
+  return tickerLean(ticker, scanner);
+}
+
+/**
+ * The side Compass would take now.
+ * A call book flips to puts once the session is down 0.35%. A put book flips to calls once it is up 0.35%.
+ * The open trade leaves on that flip even if it is only up 20%.
+ */
+export function choiceRight(calls: boolean, spot: number, open: number): OptionRight {
+  const base: OptionRight = calls ? 'C' : 'P';
+  if (!(spot > 0) || !(open > 0)) return base;
+  const ret = spot / open - 1;
+  if (base === 'C' && ret <= -0.0035) return 'P';
+  if (base === 'P' && ret >= 0.0035) return 'C';
+  return base;
+}
+
+const NEVER_NAME = new Set(['NDX', 'NDXP', 'XND', 'IDX']);
+
+/** SPX and RUT stay on 0DTE every session. VIX only on Tuesday, the last day that contract trades. Nasdaq never. */
+export function onCompassBook(ticker: string, sleeve: SleeveKey): boolean {
+  const t = ticker.toUpperCase();
+  if (!t || NEVER_NAME.has(t)) return false;
+  if (t === 'VIX' && sleeve === 'odte') return nyParts(now()).weekday === 2;
+  return true;
+}
+
 /** Strike rungs as a PERCENT of spot, snapped to the name's own grid and
     never finer than it — a $1,000 name and a $20 name get comparable ladders,
     and longer sleeves physically widen them (SleeveDef.rungPct). */
@@ -485,14 +546,16 @@ function buildGroup(
   iv: number,
   step: number,
   scanner: ScannerKey,
-  sleeve: SleeveKey
+  sleeve: SleeveKey,
+  sessionOpen = 0
 ): SetupGroup | null {
-  const bullish = tickerLean(ticker, scanner);
+  if (!onCompassBook(ticker, sleeve)) return null;
+  const right = choiceRight(tickerLean(ticker, scanner), spot, sessionOpen);
   const candidates: Setup[] = [];
 
   const rungPct = (SLEEVE_BY_KEY[sleeve] ?? SLEEVE_BY_KEY.weekly).rungPct;
-  const right: OptionRight = bullish ? 'C' : 'P';
-  for (const strike of strikeLadder(spot, step, rungPct, 3, bullish)) {
+  const up = right === 'C';
+  for (const strike of strikeLadder(spot, step, rungPct, 3, up)) {
     const setup = makeSetup(ticker, spot, strike, right, scanner, iv, sleeve);
     if (setup.score >= scannerFloor(scanner, sleeve)) candidates.push(setup);
   }
@@ -504,6 +567,36 @@ function buildGroup(
   const changePct = ((sparkline[sparkline.length - 1] - sparkline[0]) / sparkline[0]) * 100;
 
   return { ticker, spot, sparkline, changePct: Number(changePct.toFixed(2)), found: setups.length, setups };
+}
+
+/** The same score makeSetup prints, without building the setup. Two burns match the liveMid and health draws, so the third is the score. */
+function scoreOnly(ticker: string, spot: number, strike: number, right: OptionRight, scanner: ScannerKey): number {
+  const rng = mulberry(hash(`${ticker}-${strike}-${right}-${scanner}`));
+  rng();
+  rng();
+  const aligned = tickerLean(ticker, scanner) ? right === 'C' : right === 'P';
+  const proximity = 1 - Math.min(1, Math.abs(strike - spot) / (spot * 0.03));
+  return Math.round(clamp(96 * (0.4 + 0.6 * proximity) * (aligned ? 1 : 0.55) + (rng() - 0.5) * 8, 8, 99));
+}
+
+/** How many setups a kind would show. The board paints one kind; the other counts must not each rebuild the whole book. */
+export function countCompass(quotes: UniverseQuote[], scanner: ScannerKey, sleeve: SleeveKey, opens?: ReadonlyMap<string, number>): number {
+  if (!isScannerEligible(scanner, sleeve)) return 0;
+  const rungPct = (SLEEVE_BY_KEY[sleeve] ?? SLEEVE_BY_KEY.weekly).rungPct;
+  const floor = scannerFloor(scanner, sleeve);
+  const seen = new Set<string>();
+  let total = 0;
+  for (const q of quotes) {
+    if (!(q.price > 0) || seen.has(q.ticker) || !onCompassBook(q.ticker, sleeve)) continue;
+    seen.add(q.ticker);
+    const right = choiceRight(tickerLean(q.ticker, scanner), q.price, opens?.get(q.ticker) ?? 0);
+    let n = 0;
+    for (const strike of strikeLadder(q.price, q.step, rungPct, 3, right === 'C')) {
+      if (scoreOnly(q.ticker, q.price, strike, right, scanner) >= floor) n++;
+    }
+    if (n) total += Math.min(n, 2);
+  }
+  return total;
 }
 
 // ---- contract chain -------------------------------------------------------
@@ -562,7 +655,7 @@ function buildContractFacts(snapshot: MarketSnapshot, sleeve: SleeveKey): Omit<I
   return chain.flatMap(node => {
     const mk = (right: OptionRight, oi: number, exposureUsd: number): Omit<ImpactRow, 'rank'> => {
       // Deterministic per contract so the rail holds still between sweeps
-      const volume = Math.round(oi * (0.2 + (hash(`${node.strike}${right}`) % 140) / 100));
+      const volume = contractVolume(oi, node.strike, right);
       return {
         contract: `${ticker} ${node.strike % 1 === 0 ? node.strike.toFixed(0) : node.strike.toFixed(2)}${right}`,
         strike: node.strike,
@@ -592,6 +685,50 @@ function buildContractFacts(snapshot: MarketSnapshot, sleeve: SleeveKey): Omit<I
 export function buildImpact(snapshot: MarketSnapshot, sleeve: SleeveKey): ImpactRow[] {
   return buildContractFacts(snapshot, sleeve)
     .sort((a, b) => b.gamma - a.gamma)
+    .slice(0, 24)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
+/**
+ * The heaviest contracts across the whole Compass book, not one name.
+ * Gamma is that contract's share of every name measured. The rail keeps 24.
+ */
+export function buildMarketImpact(quotes: UniverseQuote[], sleeve: SleeveKey): ImpactRow[] {
+  const exp = expiryFor((SLEEVE_BY_KEY[sleeve] ?? SLEEVE_BY_KEY.weekly).dte);
+  const expiry = exp.dte === 0 ? '0DTE' : `${exp.dte}DTE`;
+  const t = Math.max(exp.sessions, 0.5) / 252;
+  const rows: Omit<ImpactRow, 'rank'>[] = [];
+  for (const q of quotes) {
+    if (!(q.price > 0) || !(q.step > 0)) continue;
+    const base = Math.round(q.price / q.step) * q.step;
+    for (let i = -4; i <= 4; i++) {
+      const strike = Number((base + i * q.step).toFixed(2));
+      if (strike <= 0) continue;
+      const greeks = blackScholesGreeks(q.price, strike, t, q.iv);
+      for (const right of ['C', 'P'] as const) {
+        const oi = 400 + (hash(`${q.ticker}|${strike}|${right}|${sleeve}`) % 12000);
+        const dir = right === 'C' ? -0.55 : 0.53;
+        const exposure = Math.round(oi * 100 * greeks.gamma * q.price * q.price * 0.01 * dir);
+        const volume = contractVolume(oi, strike, right);
+        rows.push({
+          contract: `${q.ticker} ${strike % 1 === 0 ? strike.toFixed(0) : strike.toFixed(2)}${right}`,
+          strike,
+          right,
+          expiry,
+          openInterest: oi,
+          volume,
+          volOi: Number((volume / oi).toFixed(2)),
+          distPct: Number((((strike - q.price) / q.price) * 100).toFixed(2)),
+          exposureUsd: exposure,
+          gamma: 0,
+        });
+      }
+    }
+  }
+  const total = rows.reduce((a, r) => a + Math.abs(r.exposureUsd), 0) || 1;
+  for (const r of rows) r.gamma = Number(((Math.abs(r.exposureUsd) / total) * 100).toFixed(2));
+  return rows
+    .sort((a, b) => Math.abs(b.exposureUsd) - Math.abs(a.exposureUsd))
     .slice(0, 24)
     .map((r, i) => ({ ...r, rank: i + 1 }));
 }
@@ -673,7 +810,8 @@ export function buildCompassView(
   snapshot: MarketSnapshot,
   scanner: ScannerKey,
   universe: UniverseQuote[],
-  sleeve: SleeveKey = 'weekly'
+  sleeve: SleeveKey = 'weekly',
+  opens?: ReadonlyMap<string, number>
 ): CompassView {
   // The eligibility gate lives in the ENGINE, not just the tabs: an
   // ineligible lens×tenor combination yields an EMPTY scan, honestly — the
@@ -704,7 +842,8 @@ export function buildCompassView(
 
   const groups: SetupGroup[] = [];
   for (const q of feed) {
-    const group = buildGroup(q.ticker, q.price, q.iv, q.step, scanner, sleeve);
+    if (!onCompassBook(q.ticker, sleeve)) continue;
+    const group = buildGroup(q.ticker, q.price, q.iv, q.step, scanner, sleeve, opens?.get(q.ticker) ?? 0);
     if (group) groups.push(group);
   }
   groups.sort((a, b) => (b.setups[0]?.score ?? 0) - (a.setups[0]?.score ?? 0));
@@ -716,6 +855,43 @@ export function buildCompassView(
 
   return {
     scanner,
+    groups,
+    totalFound,
+    shown: totalFound,
+    chain: buildChain(snapshot, activeIv, sleeveT),
+  };
+}
+
+/**
+ * "All setups" is every kind this expiry sells, not a thirteenth score.
+ * Same contract can show up twice when two kinds both cleared it — those
+ * are two setups. The board's count is this list's length.
+ */
+export function buildCompassUnion(snapshot: MarketSnapshot, universe: UniverseQuote[], sleeve: SleeveKey, opens?: ReadonlyMap<string, number>): CompassView {
+  const activeIv = universe.find(q => q.ticker === snapshot.ticker)?.iv ?? 0.2;
+  const sleeveT = Math.max(expiryFor((SLEEVE_BY_KEY[sleeve] ?? SLEEVE_BY_KEY.weekly).dte).sessions, 0.5) / 252;
+  const keys = SCANNERS.map(s => s.key).filter(k => k !== 'all' && isScannerEligible(k, sleeve));
+  const seen = new Set<string>();
+  const feed = universe.filter(q => (seen.has(q.ticker) ? false : (seen.add(q.ticker), true)));
+  const byTicker = new Map<string, SetupGroup>();
+  for (const key of keys) {
+    for (const q of feed) {
+      const group = buildGroup(q.ticker, q.price, q.iv, q.step, key, sleeve, opens?.get(q.ticker) ?? 0);
+      if (!group) continue;
+      const prev = byTicker.get(q.ticker);
+      if (!prev) byTicker.set(q.ticker, { ...group, setups: group.setups.slice() });
+      else {
+        prev.setups.push(...group.setups);
+        prev.found += group.found;
+      }
+    }
+  }
+  const groups = [...byTicker.values()];
+  for (const g of groups) g.setups.sort((a, b) => b.score - a.score);
+  groups.sort((a, b) => (b.setups[0]?.score ?? 0) - (a.setups[0]?.score ?? 0));
+  const totalFound = groups.reduce((a, g) => a + g.found, 0);
+  return {
+    scanner: 'all',
     groups,
     totalFound,
     shown: totalFound,

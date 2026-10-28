@@ -29,13 +29,13 @@
 ==================================================
 */
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DayHeadSlot } from './DayBox';
-import { AreaSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type IPriceLine, type ISeriesApi, type LineData, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
+import { AreaSeries, createChart, createSeriesMarkers, LineSeries, LineStyle, LineType, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type LineData, type SeriesMarker, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
 import { Bell, BellRing, ChevronDown } from 'lucide-react';
 import { roomLevels } from '../../data/roomLevels';
-import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev } from '../../data/uwBook';
+import { bookHistory, deskBars, liveBars, peekDaySigma, peekIv, peekMoveToClose, peekScopeMove, useBookRev, useResolvedSession } from '../../data/uwBook';
 import { scopeDateOf } from '../../data/wall';
 import { pickFlip } from '../../core/walls';
 import { readSessionClock } from '../../data/moc';
@@ -54,6 +54,7 @@ import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
 import { undoable } from '../ui/undo';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM, alpha, resolveInk } from './paletteInk';
 import { CLOCK_SCALE, DAY_SCALE_W, dayChartOptions, dayClock, daySurface, dayStartOf, feedSeries, syncDayScale } from './dayChart';
+import { biggestSwings, publishSwings, useChartFocus } from '../../data/chartMoves';
 import { KeyLevelsPrimitive, KEY_LEVEL_WORDS, type KeyLevelRung } from './keyLevelsPrimitive';
 import type { Candle, GexSnapshot, MarketSnapshot } from '../../types/market';
 
@@ -144,7 +145,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
      so the bars are read again on it and the line ends on the head's figure; a replay's bars are handed in and stand */
   const roomSpot = useRoomSpot(snapshot.ticker);
   const bookRev = useBookRev();
-  const bars = useMemo(() => barsProp ?? deskBars(snapshot.ticker) ?? liveBars(snapshot.ticker), [snapshot.ticker, barsProp, bookRev]);
+  const markMoves = useChartFocus(snapshot.ticker);
+  const read = useResolvedSession(snapshot.ticker);
+  const bars = useMemo(() => barsProp ?? deskBars(snapshot.ticker, read.session) ?? liveBars(snapshot.ticker), [snapshot.ticker, barsProp, bookRev, read.session]);
   /* THE BOOK HANDED IN IS ALREADY THE MAP'S WINDOW (bookForDates) — read as it stands, the band's own rule
      (ExposureField: a dated book is read '0DTE'). The desk's Levels card lives on the Board; read here it re-cut the
      window to the whole book under a head that still named the window (the ship pass, 2026-10-22). */
@@ -233,22 +236,23 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   /* what "Last" prints: the room's price — the replay's last bar when rewound */
   const last = barsProp != null ? spot : roomSpot ?? spot;
   /* ONE EXPECTED MOVE ON EVERY PAGE (the fourth audit's B2): the vendor's implied move into the levels' expiry (uwBook
-     peekDaySigma — Compare's and the reach odds'), over the minutes left; the name's vol only when the vendor has none */
+     peekDaySigma — Compare's and the reach odds'), over the minutes left; the name's vol only when the feed has none */
   const iv = peekIv(snapshot.ticker) ?? 0.2;
   const minLeft = Math.max(0, CLOSE_MIN - nowMin);
   /* …and no expected move off it either (the same blocker: "ONE MOVE today ±4.12" read off the 30-day vol, later ±4.74 —
-     the vendor's own implied move): "…" until the levels' scope is final and the vendor's term structure is in */
+     the feed's own implied move): "…" until the levels' scope is final and the feed's term structure is in */
   const movePending = !!snapshot.liveBook && (!!snapshot.levelsPending || roomLevels(snapshot, '0DTE')?.complete === false || peekScopeMove(snapshot.ticker, scopeDateOf(snapshot))?.source === 'iv30');
   const daySigma = snapshot.liveBook && !movePending ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
   /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2: "One move ±0.48" was the
-     vendor's move LEFT to the close, scaled again); a replay's minute keeps the full-session figure's scaling */
+     feed's move LEFT to the close, scaled again); a replay's minute keeps the full-session figure's scaling */
   const left = daySigma != null && at == null ? peekMoveToClose(snapshot.ticker, scopeDateOf(snapshot), minLeft) : null;
   const w1 = left ?? (daySigma != null ? daySigma * Math.sqrt(Math.min(minLeft, SESSION_MIN) / SESSION_MIN) : spot * iv * Math.sqrt(minLeft / YEAR_MINUTES));
   /* ONE PHASE VOCABULARY (the sixth audit's m8: "closed" here, "The next session" on the Read, "Today" on the Levels
      card, all before Friday's open): outside the session the move is the coming session's — "today" before a trading
      day's open, "next session" after its close (bookWindow todayScopeLabel, the Levels card's own word) */
   const aheadWord = todayScopeLabel() === 'Today' ? 'today' : 'next session';
-  const shutMove = movePending ? `${aheadWord} …` : daySigma != null ? `${aheadWord} ±${daySigma.toFixed(2)}` : aheadWord;
+  const shutBand = !movePending && daySigma != null && spot > 0 ? `${(spot - daySigma).toFixed(2)}–${(spot + daySigma).toFixed(2)}` : null;
+  const shutMove = movePending ? `${aheadWord} …` : shutBand ? `${aheadWord} ${shutBand}` : aheadWord;
   const dayStart = bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
   /* THE THERMAL FIELD (thermalFieldPrimitive.ts): where price is likelier to be from now to the close, by the Ahead
      model's corridor (data/ahead.ts) — the odds curve's centre pulled by the strikes, one and two expected moves round
@@ -297,6 +301,14 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   /* what the scale must hold beyond the bars: the levels within reach and the field's one-move band at its end (read by the
      autoscale at draw time) */
   const fieldLast = fieldPoints[fieldPoints.length - 1];
+  const swings = useMemo(() => biggestSwings(bars), [bars]);
+  const swingsRef = useRef(swings);
+  swingsRef.current = swings;
+  const markMovesRef = useRef(markMoves);
+  markMovesRef.current = markMoves;
+  useLayoutEffect(() => {
+    publishSwings(snapshot.ticker, swings);
+  }, [snapshot.ticker, swings]);
   const reachRef = useRef<{ levels: number[]; cone: [number, number] | null; spot: number }>({ levels: [], cone: null, spot });
   reachRef.current = { levels: [...levels.map(l => l.price), ...(focus != null ? [focus] : [])], cone: fieldLast ? [fieldLast.lo1, fieldLast.hi1] : null, spot };
   const barsRef = useRef(bars);
@@ -338,6 +350,28 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   }, []);
   const overCard = useRef(false);
   const ladderRef = useRef<KeyLevelsPrimitive | null>(null);
+  const marksRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const paintMoves = useCallback(() => {
+    const api = marksRef.current;
+    const host = hostRef.current;
+    if (!api) return;
+    const list = swingsRef.current;
+    if (!markMovesRef.current || !list.length || !host) {
+      api.setMarkers([]);
+      return;
+    }
+    const ink = (name: string, fallback: string) => {
+      const v = getComputedStyle(host).getPropertyValue(name).trim();
+      return v ? `rgb(${v})` : fallback;
+    };
+    api.setMarkers(list.map(s => ({
+      time: s.time as UTCTimestamp,
+      position: s.delta >= 0 ? 'aboveBar' : 'belowBar',
+      color: s.delta >= 0 ? ink('--bull', '#3DDC97') : ink('--bear', '#FF5C7A'),
+      shape: s.delta >= 0 ? 'arrowUp' : 'arrowDown',
+      text: `${s.delta >= 0 ? '+' : '−'}$${Math.abs(s.delta).toFixed(2)}`,
+    } satisfies SeriesMarker<Time>)));
+  }, []);
   useEffect(() => () => window.clearTimeout(levelLeave.current), []);
 
   useEffect(() => {
@@ -390,6 +424,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     const ladder = new KeyLevelsPrimitive();
     price.attachPrimitive(ladder);
     ladderRef.current = ladder;
+    marksRef.current = createSeriesMarkers(price, []);
+    paintMoves();
     /* the clock: whitespace on every minute of the session, so the axis is the day and holds still as bars come */
     /* the clock (dayChart.ts dayClock): every minute of the session, hidden, on a scale of its own */
     const clockS = chart.addSeries(LineSeries, { visible: false, priceScaleId: CLOCK_SCALE, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
@@ -468,8 +504,13 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       priceRef.current = null;
       fieldRef.current = null;
       ladderRef.current = null;
+      marksRef.current = null;
     };
-  }, [paper, part, open]);
+  }, [paper, part, open, paintMoves]);
+
+  useEffect(() => {
+    paintMoves();
+  }, [paintMoves, markMoves, swings, open]);
 
   /* the clock, when the day's span moves */
   useEffect(() => {
@@ -637,8 +678,10 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
           <PartFact label="Session">
             {session.lo.toFixed(2)} – {session.hi.toFixed(2)}
           </PartFact>
-          <PartFact label="One move" title="One expected move from here to the close, on the name's vol — the thermal field's width; outside the session, the coming session's whole move">
-            <span data-tape-move={movePending ? undefined : w1.toFixed(2)}>{movePending ? '…' : minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} min left` : shutMove}</span>
+          <PartFact label="One move" title={fieldLast ? `By the close, one move is ${fieldLast.lo1.toFixed(2)} to ${fieldLast.hi1.toFixed(2)}. Two moves is ${fieldLast.lo2.toFixed(2)} to ${fieldLast.hi2.toFixed(2)}.` : 'One expected move from here to the close'}>
+            <span data-tape-move={movePending ? undefined : w1.toFixed(2)} data-tape-ahead={fieldLast ? `${fieldLast.lo1.toFixed(2)}-${fieldLast.hi1.toFixed(2)}` : undefined}>
+              {movePending ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)} · ${spot >= fieldLast.lo1 && spot <= fieldLast.hi1 ? 'inside' : spot > fieldLast.hi1 ? 'through the high' : 'through the low'} · ${minLeft}m` : shutMove}
+            </span>
           </PartFact>
         </>
       )}
@@ -691,7 +734,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             <div>
               <dt className="text-[11px] text-textMuted">One move to the close</dt>
               <dd className="mt-0.5 font-mono text-[14px] tnum text-textPrimary whitespace-nowrap" data-tape-move={movePending ? undefined : w1.toFixed(2)}>
-                {movePending ? '…' : minLeft > 0 ? `±${w1.toFixed(2)} · ${minLeft} ${minLeft === 1 ? 'minute' : 'minutes'} left` : shutMove}
+                {movePending ? '…' : minLeft > 0 && fieldLast ? `${fieldLast.lo1.toFixed(2)}–${fieldLast.hi1.toFixed(2)}` : shutMove}
               </dd>
             </div>
           </dl>
@@ -715,6 +758,33 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
             data-tape-levels={groupsKey || undefined}
           >
             <div ref={hostRef} className="absolute inset-0" data-tape-chart />
+            {fieldLast && minLeft > 0 && !movePending && (
+              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[280px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
+                <span className="block text-[10px] uppercase tracking-wider text-textMuted">Ahead to the close</span>
+                <span className="block tnum text-textPrimary">One move {fieldLast.lo1.toFixed(2)} – {fieldLast.hi1.toFixed(2)}</span>
+                <span className="block tnum">Two moves {fieldLast.lo2.toFixed(2)} – {fieldLast.hi2.toFixed(2)}</span>
+                <span className="block tnum">
+                  {minLeft} min left · {spot >= fieldLast.lo1 && spot <= fieldLast.hi1 ? 'price is inside one move' : spot > fieldLast.hi1 ? `price is $${(spot - fieldLast.hi1).toFixed(2)} through the high` : `price is $${(fieldLast.lo1 - spot).toFixed(2)} through the low`}
+                </span>
+              </div>
+            )}
+            {!fieldLast && shutBand && (
+              <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[260px] rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-ahead-read>
+                <span className="block text-[10px] uppercase tracking-wider text-textMuted">{aheadWord === 'today' ? 'Today' : 'Next session'}</span>
+                <span className="block tnum text-textPrimary">One move {shutBand.replace('–', ' – ')}</span>
+                <span className="block tnum">Nothing left in this session. This is the whole move around the close.</span>
+              </div>
+            )}
+            {markMoves && swings.length > 0 && (
+              <div className="pointer-events-none absolute right-14 top-2 z-10 rounded-md border border-borderSubtle px-2.5 py-1.5 font-mono text-[11px] leading-snug text-textSecondary" style={{ background: 'rgba(8,8,10,0.88)' }} data-chart-moves={swings.length}>
+                <span className="block text-[10px] uppercase tracking-wider text-textMuted">Biggest moves</span>
+                {swings.map(s => (
+                  <span key={s.time} className="block tnum text-textPrimary">
+                    {hhmm(nyMinutes(s.time * 1000))} {s.delta >= 0 ? '+' : '−'}${Math.abs(s.delta).toFixed(2)} to {s.to.toFixed(2)}
+                  </span>
+                ))}
+              </div>
+            )}
             {/* the pointer's minute — Compare's glass, beside the point it reads */}
             {hb && hover && (
               <div
@@ -741,7 +811,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
                 const aside = shared.length ? `on the ${shared.map(k => KEY_LEVEL_WORDS[k].name.toLowerCase()).join(' and the ')}` : w.aside;
                 const dist = spot > 0 ? ((levelHot.price - spot) / spot) * 100 : null;
                 const kept = focus != null && Math.abs(focus - levelHot.price) < 1e-9;
-                const keys: LevelName[] = [levelHot.key, ...shared];
+                const keys: LevelName[] = [levelHot.key, ...shared].filter((k): k is LevelName => k !== 'pin' && k !== 'maxPain');
                 const armed = keys.map(k => watched(k)).filter((a): a is NonNullable<typeof a> => !!a);
                 const words = say(keys.map(k => KEY_LEVEL_WORDS[k].name.toLowerCase()));
                 const toggleBell = () => {

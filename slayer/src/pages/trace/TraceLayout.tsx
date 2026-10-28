@@ -21,6 +21,7 @@ import { useLocation, useOutlet } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { TracePageSkeleton } from './traceSkeletons';
 import { useMarketData } from '../../context/MarketDataContext';
+import { sessionPhase } from '../../data/traceLive';
 import TickerSearch from '../../components/ui/TickerSearch';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
@@ -32,7 +33,7 @@ import { TRACE_SUBPAGES } from './subnav';
    sweep the whole universe, and the Tracker lists the reader's marks across
    every name with its own names-only search — a single-ticker picker would
    mislead on all of them. */
-const NO_PICKER = /^\/trace\/(live-tape|dark-pool|screener|net-flow|footprints|watchers|windows|odte|multi-leg|compare|tracker)/;
+const NO_PICKER = /^\/trace\/(live-tape|dark-pool|screener|net-flow|footprints|watchers|intervals|odte|multi-leg|compare|tracker)/;
 
 /* THE SESSION CARD STANDS WHERE IT IS READ (audit round 4, 2026-10-22: it sat on every Trace page while only the Live
    Tape read it). The tape, the dark pool, the structures and Net Flow's market figure honour it; the Screener, Footprints,
@@ -52,6 +53,11 @@ const TraceLayout = () => {
   /* The pages' grids grow with their rows now (2026-09-11), so the column
      holds its width for the sidebar's glide — one layout at the end, not one
      per frame over every rendered row (the Weigher's rule) */
+  const phase = sessionPhase();
+  const subtitle =
+    active.path === '/trace/live-tape' && (phase === 'closed' || phase === 'pre')
+      ? 'The last regular session — the newest stretch before the close, not a live stream. Scroll or jump for the rest of the day.'
+      : active.subtitle;
   const holdRef = useGlideHold<HTMLDivElement>();
 
   return (
@@ -64,7 +70,7 @@ const TraceLayout = () => {
             </span>
             <h1 className="text-[15px] font-semibold leading-tight text-textPrimary">{active.label}</h1>
           </div>
-          <p className="mt-0.5 text-[11px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">{active.subtitle}</p>
+          <p className="mt-0.5 text-[11px] text-textMuted break-words sm:whitespace-nowrap sm:truncate">{subtitle}</p>
         </div>
         <div className="flex items-center gap-2 max-sm:w-full sm:shrink-0" data-trace-picker>
           {picker && <TickerSearch value={activeTicker} onChange={changeTicker} />}

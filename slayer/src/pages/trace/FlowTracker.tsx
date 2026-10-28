@@ -51,7 +51,7 @@ import type { DarkPoolPrint } from '../../types/darkpool';
 /** The options under watch — every kind but a dark cross */
 type WatchedOption = Exclude<WatchedItem, WatchedCross>;
 import { dayLean, ensureSpots, expiredAtBell, liveSpotOf, occOf, traceHeld, sessionIsoAt, tapeSessionIso, useContractDays, useLiveBook, useMarkNow, usd as fmtUsd, type ContractDayNow } from '../../data/traceLive';
-import { nyParts } from '../../core/nyTime';
+import { ctParts, nyClock } from '../../core/nyTime';
 import { ensureBook, peekSpot, useBookRev } from '../../data/uwBook';
 import type { BookContract } from '../../types/trace';
 import type { Column } from '../../components/ui/DataTable';
@@ -88,11 +88,11 @@ const SOURCE_LABEL: Record<WatchSource, string> = {
   'dark-pool': 'Dark pool',
 };
 
-/** "14:22 ET" today, "09/02 14:22 ET" for an older mark — New York's 24-hour clock, whatever the machine's zone */
+/** "8:07 AM CT" today, "10/27 8:07 AM CT" for an older mark — Central, 12-hour */
 function markedAt(ms: number): string {
-  const d = nyParts(new Date(ms));
-  const t = nyParts(new Date());
-  const hm = `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')} ET`;
+  const d = ctParts(new Date(ms));
+  const t = ctParts(new Date());
+  const hm = nyClock(ms, { zone: true });
   const sameDay = d.year === t.year && d.month === t.month && d.day === t.day;
   return sameDay ? hm : `${String(d.month).padStart(2, '0')}/${String(d.day).padStart(2, '0')} ${hm}`;
 }
@@ -177,7 +177,7 @@ const isoOfExpiry = (e: string) => {
 
 const Dash = () => <span className="text-textSecondary">—</span>;
 
-/** Index option roots — the vendor has no stock state or bars for them (/stock/SPXW/stock-state answers 422), so the
+/** Index option roots — the feed has no stock state or bars for them (/stock/SPXW/stock-state answers 422), so the
     Tracker neither seeds a book for them nor draws a spot: an index mark's spot reads "—", never "$0.00" */
 const INDEX_ROOTS = new Set(['SPX', 'SPXW', 'XSP', 'NDX', 'NDXP', 'XND', 'RUT', 'RUTW', 'MRUT', 'VIX', 'VIXW', 'DJX', 'OEX', 'XEO']);
 
@@ -530,7 +530,7 @@ const FlowTracker = () => {
               </span>
             );
           return (
-            <span className="text-textSecondary" title={w.units == null ? 'Marked before the structure was read from its legs — the size and price are the vendor\'s' : `${w.units} units at the net a unit`}>
+            <span className="text-textSecondary" title={w.units == null ? 'Marked before the structure was read from its legs — the size and price are as listed' : `${w.units} units at the net a unit`}>
               <span className="text-textPrimary">{num(w.size)}×</span> @ <span className="text-textPrimary">{w.net === 0 ? '—' : `$${Math.abs(w.net).toFixed(2)}`}</span>{' '}
               <span className="text-[11px]">{w.net === 0 ? '' : w.net > 0 ? 'debit' : 'credit'}</span>
             </span>

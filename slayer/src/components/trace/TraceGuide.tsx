@@ -66,16 +66,16 @@ export const SidesRule = () => (
       <b className="text-textPrimary">After the close</b> prints keep coming against thin post-market quotes: they are labelled after hours and never read bullish, bearish, accumulation or distribution. Each print is judged by its own time and flag — index and ETF options (SPX, SPY, QQQ…) trade their regular session to 16:15, stock options to 16:00. The badge beside Pause says which session it is.
     </p>
     <p className="mt-2">
-      <b className="text-textPrimary">A compression print</b> — OPRA's cbmo or mctp, or a print the vendor tags arbitrage — is a package that nets open interest down between members (a call bought against a put sold at one strike). It is labelled "compression · not a bet", counted on its own, and kept out of every bullish or bearish total and the largest, top-bull and top-bear facts; on Multi-Leg a cbmo or mctp structure keeps its shape's name without bull or bear, and is never the largest. A contract whose day was mostly floor-traded multi-leg packages (half or more on the floor and half or more in packages) is set apart wherever contracts are ranked — "floor package · not a bet". A cancelled print never traded and is dropped everywhere.
+      <b className="text-textPrimary">A compression print</b> — OPRA's cbmo or mctp, or a print tagged arbitrage — is a package that nets open interest down between members (a call bought against a put sold at one strike). It is labelled "compression · not a bet", counted on its own, and kept out of every bullish or bearish total and the largest, top-bull and top-bear facts; on Multi-Leg a cbmo or mctp structure keeps its shape's name without bull or bear, and is never the largest. A contract whose day was mostly floor-traded multi-leg packages (half or more on the floor and half or more in packages) is set apart wherever contracts are ranked — "floor package · not a bet". A cancelled print never traded and is dropped everywhere.
     </p>
     <p className="mt-2">
       <b className="text-textPrimary">A leg of a multi-leg order</b> — a print whose OPRA condition marks it one leg of a spread, fly or condor (mlet, mlft, tlct and their family) — is half of a structure, not a bet of its own: a call vertical prints one call bought and one sold in the same millisecond. It is labelled "spread leg", counted on its own and in the call and put money, and kept out of every bullish or bearish total Trace builds from prints and the largest, top-bull and top-bear facts. Multi-Leg reads which way the whole structure went, from its net — except after hours, where the shape is shown and not read.
     </p>
     <p className="mt-2">
-      <b className="text-textPrimary">The vendor's own totals are not ours.</b> Net premium, net calls and net puts that come already summed from the vendor — its top-net-impact ranking (Net Flow's board), its minute ticks (Net Flow's pane, Intervals, Compare's net), its flow by expiry (Compare's clock cuts and same-day money), its net flow by expiry (0DTE and the cut panes) and the market tide — <b className="text-textPrimary">include spread legs and floor packages</b>: the vendor sums every print, and the legs cannot be taken back out without every print across the market. Only the totals Trace builds from prints — the Live Tape, the Dark Pool and Multi-Leg — leave them out. A name heavy with spreads can lean on its legs: BAC's "most bullish +$19.7M" was mostly put legs of mlft packages sold on the bid. Each such figure says so on its hover.
+      <b className="text-textPrimary">Some totals are not ours.</b> Net premium, net calls and net puts that come already summed — the top-net-impact ranking (Net Flow's board), the minute ticks (Net Flow's pane, Intervals, Compare's net), the flow by expiry (Compare's clock cuts and same-day money), the net flow by expiry (0DTE and the cut panes) and the market tide — <b className="text-textPrimary">include spread legs and floor packages</b>: every print is in the sum, and the legs cannot be taken back out without every print across the market. Only the totals Trace builds from prints — the Live Tape, the Dark Pool and Multi-Leg — leave them out. A name heavy with spreads can lean on its legs: BAC's "most bullish +$19.7M" was mostly put legs of mlft packages sold on the bid. Each such figure says so on its hover.
     </p>
     <p className="mt-2">
-      <b className="text-textPrimary">A lean</b> — at the ask, on the bid, even — is one rule on every page: at least half the day's contracts traded on a side, and that side holds 55% or more of the contracts that traded on a side; otherwise it is even, or mostly mid / no side. The figure a lean prints ("BID 60%") is that share of the sided contracts — the number the rule is decided on, judged before any rounding — and an even day prints its larger side's share too ("even · ask 52%"); the hover gives each side's share of the whole day. It counts contracts, because that is what the vendor carries per contract; a name's net premium is its own figure. A flow alert's side is the side that carried 60% or more of its whole premium, unsided money included.
+      <b className="text-textPrimary">A lean</b> — at the ask, on the bid, even — is one rule on every page: at least half the day's contracts traded on a side, and that side holds 55% or more of the contracts that traded on a side; otherwise it is even, or mostly mid / no side. The figure a lean prints ("BID 60%") is that share of the sided contracts — the number the rule is decided on, judged before any rounding — and an even day prints its larger side's share too ("even · ask 52%"); the hover gives each side's share of the whole day. It counts contracts, because that is what is carried per contract; a name's net premium is its own figure. A flow alert's side is the side that carried 60% or more of its whole premium, unsided money included.
     </p>
   </Section>
 );
@@ -322,7 +322,7 @@ export const FootprintsGuide = () => (
     <Section title="What stayed">
       <p>Volume is loud and gone by the close; open interest is what stayed overnight, and this page ranks what was built and unwound.</p>
       <p className="mt-2">
-        <b className="text-textPrimary">Whose trading.</b> A count of open interest is set the morning after a session trades, so each change is named by the session that made it — "in Oct 22's trading" — and pairs with that session's volume. Once the vendor publishes the count after the book's session, every row takes it; until then a row stays on the count before and says so (marked with its day, and left out of the sums). While a session runs its own build is not counted yet: the page shows the session before's, named.
+        <b className="text-textPrimary">Whose trading.</b> A count of open interest is set the morning after a session trades, so each change is named by the session that made it — "in Oct 22's trading" — and pairs with that session's volume. Once the count is published after the book's session, every row takes it; until then a row stays on the count before and says so (marked with its day, and left out of the sums). While a session runs its own build is not counted yet: the page shows the session before's, named.
       </p>
       <OiChangeFigure />
     </Section>
@@ -487,7 +487,7 @@ export const WindowsGuide = () => (
   <div data-trace-guide="windows">
     <SidesRule />
     <Section title="A quarter hour">
-      <p>One name's options session, 09:30 to 16:00 New York, cut into quarter hours, a bar each, taller where more traded — the busiest in magenta, the one you have open on a silver column, the newest breathing while it fills. Every figure is the vendor's minute ticks for the name, every expiry, summed over the fifteen minutes. ← and → walk the quarter hours.</p>
+      <p>One name's options session, 09:30 to 16:00 New York, cut into quarter hours, a bar each, taller where more traded — the busiest in magenta, the one you have open on a silver column, the newest breathing while it fills. Every figure is the name's minute ticks, every expiry, summed over the fifteen minutes. ← and → walk the quarter hours.</p>
       <DayStripFigure />
     </Section>
     <Section title="Share of the day">
@@ -636,7 +636,7 @@ export const NetFlowGuide = () => (
       <BoardRowFigure />
     </Section>
     <Section title="The pane">
-      <p>The picked name through the session, minute by minute from the vendor's tape: its own one-minute closes as the white line, its running net call and put premium across every expiry, the contracts each minute on the floor. The pane's figures are where those lines end, 09:30 to the close. The board is the vendor's own ranking of the whole day, read at its own moment, so a name's two figures differ by the minutes outside the session and the time between reads (META −$149.6M on the pane beside −$151.5M on the board). Both are vendor totals: spread legs and floor packages are in them. Net puts bought lean bearish and wear red; sold, they lean bullish and wear green.</p>
+      <p>The picked name through the session, minute by minute from the tape: its own one-minute closes as the white line, its running net call and put premium across every expiry, the contracts each minute on the floor. The pane's figures are where those lines end, 09:30 to the close. The board is the day's own ranking, read at its own moment, so a name's two figures differ by the minutes outside the session and the time between reads (META −$149.6M on the pane beside −$151.5M on the board). Both are summed totals: spread legs and floor packages are in them. Net puts bought lean bearish and wear red; sold, they lean bullish and wear green.</p>
       <PaneLinesFigure />
     </Section>
     <Section title="The inks">
@@ -784,7 +784,7 @@ export const LiveTapeGuide = () => (
       <FillFigure />
     </Section>
     <Section title="Side, lean and window">
-      <p>A print's side is the vendor's own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count; a tag the quote at the print contradicts gives way to the quote, and a fill through the quote says "under bid" or "over ask". The day lean is the contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean is called only when at least half the day traded on a side. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 2,000 — and the Window fact says from when to when; with one name typed, its biggest contracts of the whole day stand beside them.</p>
+      <p>A print's side is its own tag — at the ask, on the bid, or mid — the same on the tape, the card and every count; a tag the quote at the print contradicts gives way to the quote, and a fill through the quote says "under bid" or "over ask". The day lean is the contract's whole day so far: its contracts at the ask, on the bid, and at the mid or with no side — a lean is called only when at least half the day traded on a side. The head and the sentence count the prints in hand — the newest unbroken stretch of the tape, up to 2,000 — and the Window fact says from when to when; with one name typed, its biggest contracts of the whole day stand beside them.</p>
     </Section>
     <Section title="The inks">
       <p>Premium quiet below $250K, bold above, the largest print on the tape in magenta.</p>
@@ -945,7 +945,7 @@ export const DarkPoolGuide = () => (
       <InkFigure />
     </Section>
     <Section title="Where the dark money went">
-      <p>The second box is the market's latest dark prints — the vendor's recent feed, about $100K and up — collected while the page is open, by name, the heaviest first; its window is printed beside its total. The Lit lane is the same grammar for prints on the exchanges. A name typed above reads that name's whole day instead: its off-exchange share of the day's shares and its dark dollars, from the vendor's day by price. A row, or a name in the sentence, puts that name on the box above.</p>
+      <p>The second box is the market's latest dark prints — about $100K and up — collected while the page is open, by name, the heaviest first; its window is printed beside its total. The Lit lane is the same grammar for prints on the exchanges. A name typed above reads that name's whole day instead: its off-exchange share of the day's shares and its dark dollars, from the day's prices. A row, or a name in the sentence, puts that name on the box above.</p>
     </Section>
   </div>
 );

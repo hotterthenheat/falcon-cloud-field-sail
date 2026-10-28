@@ -72,9 +72,12 @@ interface ExpiryCalendarProps {
   valueNote?: string;
   /** A word after a lit day's tooltip */
   dayNote?: (e: Expiry) => string | undefined;
+  /** Days before this (YYYY-MM-DD) are not drawn, and the month cannot step back past it.
+      The blotter's book starts on a day, so the days before it are not a month you can wander. */
+  floor?: string;
 }
 
-const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Icon = CalendarDays, ink, align = 'start', steppers = true, title, testId, onClear, clearLabel = 'Every expiry', anyLabel = 'Any', head, valueNote, dayNote }: ExpiryCalendarProps) => {
+const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Icon = CalendarDays, ink, align = 'start', steppers = true, title, testId, onClear, clearLabel = 'Every expiry', anyLabel = 'Any', head, valueNote, dayNote, floor }: ExpiryCalendarProps) => {
   const [open, setOpen] = useState(false);
   const t = useMemo(() => today(), []);
   const byIso = useMemo(() => new Map(expiries.map(e => [isoDate(e.date), e])), [expiries]);
@@ -107,6 +110,8 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
   ];
   const nearest = expiries[0] ?? null;
   const listedThisMonth = expiries.filter(e => e.date.getFullYear() === cursor.getFullYear() && e.date.getMonth() === cursor.getMonth()).length;
+  const floorMonth = floor ? Number(floor.slice(0, 4)) * 12 + Number(floor.slice(5, 7)) - 1 : null;
+  const beforeFloor = floorMonth != null && cursor.getFullYear() * 12 + cursor.getMonth() <= floorMonth;
 
   const stepBtn = 'inline-flex items-center justify-center w-6 h-7 rounded-md border border-borderSubtle bg-chip text-textMuted hover:text-textPrimary hover:border-borderMuted disabled:hover:text-textMuted disabled:hover:border-borderSubtle transition-colors';
 
@@ -153,8 +158,9 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
             <div className="flex items-center justify-between mb-2.5">
               <button
                 type="button"
-                onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
-                className="p-1.5 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors"
+                disabled={beforeFloor}
+                onClick={() => { if (!beforeFloor) setCursor(c => new Date(c.getFullYear(), c.getMonth() - 1, 1)); }}
+                className="p-1.5 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors disabled:opacity-30 disabled:pointer-events-none"
                 aria-label="Previous month"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -185,6 +191,7 @@ const ExpiryCalendar = ({ value, expiries, onChange, label = 'Expiry', icon: Ico
             <div className="grid grid-cols-7 gap-1">
               {cells.map((d, i) => {
                 if (!d) return <span key={i} />;
+                if (floor && isoDate(d) < floor) return <span key={i} />;
                 const listed = byIso.get(isoDate(d));
                 const isToday = sameDay(d, t);
                 const isSelected = !!selected && sameDay(d, selected.date);

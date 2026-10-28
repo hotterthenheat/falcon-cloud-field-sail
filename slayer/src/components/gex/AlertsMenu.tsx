@@ -50,6 +50,8 @@ const LEVEL_CHIPS: { level: LevelName; label: string }[] = [
   { level: 'putWall', label: 'Put wall' },
   { level: 'flip', label: 'Flip' },
   { level: 'supreme', label: 'Supreme' },
+  { level: 'coneHigh', label: 'Cone high' },
+  { level: 'coneLow', label: 'Cone low' },
 ];
 
 const INDICATOR_CHIPS: { source: IndicatorSource; threshold: number; label: string }[] = [

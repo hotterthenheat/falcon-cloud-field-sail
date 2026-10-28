@@ -85,8 +85,19 @@ export const SHAPE_SAYS: Record<Shape, string> = {
   shelf: 'A run of strikes with steady, middling hedging — support in layers rather than one line',
   void: 'Next to nothing here — a move through these strikes meets no hedging',
 };
-export const GREEK_WORD: Record<Greek, string> = { gex: 'gamma', dex: 'delta', vex: 'vega', vanna: 'vanna', charm: 'charm' };
-export const GREEK_UNIT_WORDS: Record<Greek, string> = { gex: 'dollars of hedging per 1% move', dex: 'dollars of hedging per 1σ move', vex: 'dollars per 1% of vol', vanna: 'dollars of delta per vol point', charm: 'dollars of delta the clock takes a day' };
+export const GREEK_WORD: Record<Greek, string> = { gex: 'gamma', dex: 'delta', vex: 'vega', vanna: 'vanna', charm: 'charm', color: 'color', vomma: 'vomma', speed: 'speed', veta: 'veta', zomma: 'zomma' };
+export const GREEK_UNIT_WORDS: Record<Greek, string> = {
+  gex: 'dollars of hedging per 1% move',
+  dex: 'dollars of hedging per 1σ move',
+  vex: 'dollars of vega per vol point',
+  vanna: 'dollars of delta per vol point',
+  charm: 'dollars of delta the clock takes a day',
+  color: 'dollars of gamma-per-1% per session',
+  vomma: 'dollars of vega per vol point',
+  speed: 'dollars of gamma-per-1% per $1',
+  veta: 'dollars of vega per session',
+  zomma: 'dollars of gamma-per-1% per vol point',
+};
 
 /* the shape's thresholds, as shares of the heaviest |net| among the rows shown */
 const WALL_AT = 0.5;

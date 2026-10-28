@@ -30,16 +30,18 @@ const SOURCES: BuiltinSource[] = [
     slug: 'walls',
     group: 'Slayer',
     title: 'The walls',
-    description: "Today's call wall above and put wall below, drawn across the pane, with the corridor between them washed",
+    description: "Today's call wall and put wall. The corridor is drawn only while price is above the flip. Below the flip the pane washes, because that fill would be claiming dealers absorb when they do not.",
     source: `//@version=6
 indicator("The walls", overlay = true)
 
 callWall = slayer.callWall
 putWall  = slayer.putWall
+flip     = slayer.flip
 
 c = plot(callWall, "Call wall", color = #30D158, linewidth = 1)
 p = plot(putWall,  "Put wall",  color = #FF3B30, linewidth = 1)
-fill(c, p, color = color.new(#C7D3E8, 96), title = "The corridor")
+fill(c, p, color = close > flip ? color.new(#C7D3E8, 96) : na, title = "The corridor")
+bgcolor(close < flip ? color.new(#FF3B30, 94) : na, title = "Under the flip")
 alertcondition(ta.crossover(close, callWall),  "Through the call wall", "{{ticker}} closed above the call wall")
 alertcondition(ta.crossunder(close, putWall),  "Through the put wall",  "{{ticker}} closed below the put wall")`,
   },

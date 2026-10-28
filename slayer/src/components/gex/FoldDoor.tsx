@@ -12,7 +12,10 @@ const FoldDoor = ({ open, onToggle, what, testId }: { open: boolean; onToggle: (
     data-fold={testId}
   >
     <ChevronDown className={`w-3 h-3 transition-transform ${open ? '' : '-rotate-90'}`} />
-    {open ? 'Fold' : 'Unfold'}
+    <span className="inline-grid">
+      <span className="invisible col-start-1 row-start-1" aria-hidden>Unfold</span>
+      <span className="col-start-1 row-start-1">{open ? 'Fold' : 'Unfold'}</span>
+    </span>
   </button>
 );
 

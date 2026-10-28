@@ -22,12 +22,17 @@ export interface SurfaceCell {
 }
 
 export const GREEK_PICK_OPTIONS: MultiOption[] = [
-  { value: 'all', label: 'All five', hint: 'GEX, DEX, VEX, vanna and charm side by side' },
+  { value: 'all', label: 'All', hint: 'GEX, DEX, dollar vega, vanna, charm, color, vomma, speed, veta and zomma' },
   { value: 'gex', label: 'GEX', hint: 'Gamma — how hard dealers must hedge a move' },
-  { value: 'dex', label: 'DEX', hint: 'Delta — which way dealers are leaning' },
-  { value: 'vex', label: 'VEX', hint: 'Vega — how a change in volatility moves them' },
-  { value: 'vanna', label: 'VANNA', hint: 'How their hedges re-price when vol moves — the stock a vol drop makes them buy or sell' },
+  { value: 'dex', label: 'DEX', hint: 'Delta — which way dealers are leaning. Dollars per $1.' },
+  { value: 'vex', label: 'vega $', hint: 'Dollar vega — what the book gains or loses if vol moves one point. Not vanna.' },
+  { value: 'vanna', label: 'VANNA', hint: 'Vanna — the stock a one-point vol move makes dealers buy or sell. Not dollar vega.' },
   { value: 'charm', label: 'CHARM', hint: "The clock's pull on their hedges — the stock the passing day makes them buy or sell" },
+  { value: 'color', label: 'COLOR', hint: 'How gamma-per-1% changes as this session runs' },
+  { value: 'vomma', label: 'VOMMA', hint: 'How vega changes when vol moves one point' },
+  { value: 'speed', label: 'SPEED', hint: 'How gamma-per-1% changes when price moves one dollar' },
+  { value: 'veta', label: 'VETA', hint: 'How vega changes as this session runs' },
+  { value: 'zomma', label: 'ZOMMA', hint: 'How gamma-per-1% changes when vol moves one point' },
 ];
 
 const isGreek = (v: string): v is Greek => (GREEKS as string[]).includes(v);

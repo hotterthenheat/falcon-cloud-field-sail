@@ -1,24 +1,25 @@
 /*
 ==================================================
-  SLAYER TERMINAL - PINNED OR TRENDING, IN ONE SENTENCE
+  SLAYER TERMINAL - THIS NAME'S STRIP
   (components/gex/RegimeLine.tsx)
 
-  The eighth audit's retail finding: no page answered the first question a newcomer asks — "is this name pinned or
-  trending today?". One plain sentence under the Pinpoint head, for the name the desk is on, built from the regime (the
-  sign of the scope's net gamma) and the flip — levelsFor's own values, so it can never disagree with the Board, the
-  Map, the Agenda or Compare. Nothing while the scope's levels are provisional.
-
-  Beside it, "First time here?" — the words Pinpoint uses (supreme, trapdoor, shelf, charm, NOPE…), one line each.
+  Under the Pinpoint head, for the name on the desk.
+  Short regime, that name's levels, that name's ruler.
+  Another name keeps its own. The long sentence stays
+  on the hover, not in the row.
 ==================================================
 */
 
 import { useEffect, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { useLevelsFor } from '../../data/levelsFor';
-import { FLIP_RULE } from '../../data/flipLevel';
-import { peekGammaPriced } from '../../data/uwBook';
-import { nyClock } from '../../core/nyTime';
-import { useLevelsScope } from '../../data/levelsScope';
+import { LEVELS_OPTIONS, setLevelsForName, useNameLevels, type LevelsScope } from '../../data/levelsScope';
+import { setUnitForName, useNameUnit } from '../../data/distanceUnits';
+import { todayScopeLabel } from '../../data/bookWindow';
+import { fmtGexUsd } from '../../data/gex';
+import type { DistanceUnit } from '../../data/atr';
+import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
+import CompanyLogo from '../ui/CompanyLogo';
 import GuideFocus from '../ui/GuideFocus';
 import { FIRST_TIME, FIRST_TIME_EVENT, GLOSSARY } from './glossary';
 import { LONG_GAMMA, SHORT_GAMMA } from './paletteInk';
@@ -26,7 +27,14 @@ import type { TickerLevels } from '../../data/levelsFor';
 
 const fmtK = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
-/** The sentence, from the one source of levels — null while they are provisional */
+const RULER_OPTIONS: DropdownOption<DistanceUnit>[] = [
+  { value: '$', label: '$', hint: 'Dollars from spot' },
+  { value: '%', label: '%', hint: 'Percent of spot' },
+  { value: 'ATR', label: 'ATR', hint: 'Average true ranges — the same distance on SPY and on NVDA' },
+  { value: 'σ', label: 'σ', hint: 'Expected one-day moves — how many the options price in' },
+];
+
+/** The sentence, from the one source of levels — null while they are provisional. Hover only. */
 export function regimeSentence(lv: TickerLevels | null): { lead: string; rest: string; tone: 'LONG' | 'SHORT' } | null {
   if (!lv || !lv.complete || !lv.regime) return null;
   const t = lv.ticker;
@@ -51,63 +59,76 @@ export function regimeSentence(lv: TickerLevels | null): { lead: string; rest: s
 }
 
 const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
-  const scope = useLevelsScope();
+  const scope = useNameLevels(ticker);
+  const unit = useNameUnit(ticker);
   const lv = useLevelsFor(ticker, scope);
   const said = regimeSentence(lv);
-  const priced = lv ? peekGammaPriced(lv.ticker, lv.date) ?? peekGammaPriced(lv.ticker, null) : null;
   const [open, setOpen] = useState(false);
-  /* any page can open the card (glossary.ts openFirstTime — the Map's colour note links here) */
   useEffect(() => {
     const on = () => setOpen(true);
     window.addEventListener(FIRST_TIME_EVENT, on);
     return () => window.removeEventListener(FIRST_TIME_EVENT, on);
   }, []);
+  const name = ticker?.trim().toUpperCase() ?? '';
+  const tone = said?.tone;
+  const ink = tone === 'SHORT' ? SHORT_GAMMA : tone === 'LONG' ? LONG_GAMMA : undefined;
+  const levelOptions = LEVELS_OPTIONS.map(o =>
+    o.value === '0DTE' && todayScopeLabel() !== 'Today'
+      ? { ...o, label: todayScopeLabel(), hint: "Today's contracts expired at the close — the next session's contracts" }
+      : o,
+  );
+  const title = [said ? `${said.lead}${said.rest}` : '', lv ? `${lv.scopeLabel}. ${GLOSSARY.flip}` : ''].filter(Boolean).join(' ');
   return (
-    <div className="flex items-start gap-3 min-w-0 -mt-1" data-regime-line={said?.tone ?? 'pending'}>
-      <p className="min-w-0 flex-1 text-[12px] leading-snug text-textSecondary" title={`Read off ${lv?.scopeLabel ?? 'the Levels card'}: the regime is the sign of net gamma on those contracts, the flip where it changes. ${GLOSSARY.flip}`}>
-        <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted mr-2">Pinned or trending?</span>
-        {said ? (
-          <>
-            <span className="font-semibold" style={{ color: said.tone === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }}>
-              {said.lead}
-            </span>
-            {said.rest}
-            {lv && <span className="text-textMuted"> · {lv.ticker} · {lv.scopeLabel}</span>}
-            {/* TWO CROSSINGS, SAID (the ninth audit's M4): the flip keeps its crossing; the other is named, never swapped in silently */}
-            {lv?.flip != null && lv.flipSecond != null && (
-              <span className="text-textMuted" title={FLIP_RULE} data-flip-second={lv.flipSecond}>
-                {' '}· a second flip at {fmtK(lv.flipSecond)} — the profile crosses twice
-              </span>
-            )}
-            {/* A LEVEL THAT CHANGED STRIKE TODAY, SAID (the ninth audit: the call wall 765 at 12:55, 762 at 13:08, no note) */}
-            {lv && lv.moves.length > 0 && (
-              <span className="text-textMuted" data-level-moves={lv.moves.length} title={lv.moves.map(m => `${m.level} moved ${fmtK(m.from)} → ${fmtK(m.to)} at ${nyClock(m.at)} ET`).join('\n')}>
-                {' '}· {lv.moves.slice(-2).map(m => `${m.level} moved ${fmtK(m.from)} → ${fmtK(m.to)} at ${nyClock(m.at)}`).join(' · ')}
-              </span>
-            )}
-            {/* THE PRICING MINUTE (the eighth audit: 765 read $53M on the Map and $38M on the Agenda, minutes apart) — every
-                strike figure on these pages is the vendor's row priced at this minute and price; a later load re-prices it */}
-            {priced && (
-              <span className="text-textMuted" title="The vendor re-prices every strike's gamma each minute at the live price: figures read at another minute (another page, a reload) differ by that drift" data-priced-at={priced.at}>
-                {' '}· strikes priced {nyClock(priced.at)} ET at {priced.price.toFixed(2)}
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-textMuted">{ticker ? `Reading ${ticker}'s levels…` : '…'}</span>
+    <div className="flex items-center gap-x-3 gap-y-2 flex-wrap min-w-0 py-2 -mt-1 border-b border-borderSubtle" data-regime-line={tone ?? 'pending'} data-name-strip={name || undefined}>
+      <div className="flex items-center gap-2 min-w-0" title={title || undefined}>
+        {name ? <CompanyLogo ticker={name} size={18} /> : null}
+        <span className="font-mono text-[13px] font-semibold text-textPrimary">{name || '—'}</span>
+        <span className="font-mono text-[11px] font-semibold" style={ink ? { color: ink } : undefined} data-regime-word={tone ?? 'pending'}>
+          {said ? (tone === 'SHORT' ? 'Short gamma' : 'Long gamma') : name ? 'Reading…' : '…'}
+        </span>
+        {lv?.complete && (
+          <span className={`font-mono text-[11px] tnum ${lv.netGex > 0 ? 'text-bull' : lv.netGex < 0 ? 'text-bear' : 'text-textMuted'}`} data-regime-net>
+            {fmtGexUsd(lv.netGex)}
+          </span>
         )}
-      </p>
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        aria-pressed={open}
-        className="hit shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded-md text-[10px] text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] aria-pressed:text-textPrimary transition-colors"
-        title="The words Pinpoint uses, one line each"
-        data-first-time
-      >
-        <HelpCircle className="w-3 h-3" />
-        First time here?
-      </button>
+        {lv?.flip != null && (
+          <span className="font-mono text-[11px] tnum text-textSecondary" data-regime-flip>
+            flip {fmtK(lv.flip)}
+          </span>
+        )}
+        {lv?.complete && <span className="font-mono text-[10px] uppercase tracking-wider text-textMuted">{lv.scopeLabel}</span>}
+      </div>
+      <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+        <DropdownSelect<LevelsScope>
+          label="Levels"
+          value={scope}
+          options={levelOptions}
+          onChange={v => name && setLevelsForName(name, v)}
+          title="This name's levels. Another name keeps its own."
+          testId="levels-scope"
+          align="end"
+        />
+        <DropdownSelect<DistanceUnit>
+          label="Ruler"
+          value={unit}
+          options={RULER_OPTIONS}
+          onChange={v => name && setUnitForName(name, v)}
+          title="This name's ruler. Another name keeps its own."
+          testId="ruler"
+          align="end"
+        />
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          aria-pressed={open}
+          className="hit shrink-0 inline-flex items-center gap-1 h-6 px-1.5 rounded-md text-[10px] text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] aria-pressed:text-textPrimary transition-colors"
+          title="The words Pinpoint uses, one line each"
+          data-first-time
+        >
+          <HelpCircle className="w-3 h-3" />
+          First time here?
+        </button>
+      </div>
       <GuideFocus open={open} onClose={() => setOpen(false)} title="The words on Pinpoint" testId="first-time" viewport width={520}>
         <dl className="px-3 py-2.5 grid gap-y-2" data-first-time-card>
           {FIRST_TIME.map(w => (

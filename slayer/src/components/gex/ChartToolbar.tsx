@@ -81,6 +81,11 @@ interface ChartToolbarProps {
   /** Restrict the Overlays menu to these keys — a chart that can't draw a
       layer must not offer its toggle (campaign map: levels + volume only). */
   overlayKeys?: (keyof ChartOverlays)[];
+  /** Expected move is one overlay. Its horizon lives in that menu, not on the desk. */
+  coneHorizon?: 'session' | 'week' | 'next';
+  onConeHorizon?: (next: 'session' | 'week' | 'next') => void;
+  trailGreek?: 'gex' | 'dex' | 'vex';
+  onTrailGreek?: (next: 'gex' | 'dex' | 'vex') => void;
   /** Span the full width: timeframes pinned left, every other control pushed
       right (fullscreen stays last, so it lands furthest right). The divider
       becomes the invisible spacer that does the pushing. */
@@ -204,6 +209,8 @@ interface ChartToolbarProps {
       or opens it in a new tab */
   onSnapshot?: () => Promise<HTMLCanvasElement | null> | HTMLCanvasElement | null;
   snapshotName?: string;
+  /** Beside the picture: a link whose hash is the ticker, the interval, the overlays and the levels. No chain. */
+  onShareLink?: () => void;
 }
 
 const TIMEFRAME_OPTIONS = TIMEFRAMES.map(t => ({ value: t.value, label: t.label }));
@@ -346,9 +353,9 @@ const OVERLAY_ITEMS: { key: keyof ChartOverlays; label: string; hint: string }[]
   { key: 'levels', label: 'Key levels', hint: "Call & put walls, flip and supreme — a ladder at the tape's right edge" },
   { key: 'darkpool', label: 'Dark pool', hint: 'Off-exchange print lines' },
   { key: 'volume', label: 'Volume', hint: 'Session bars along the floor' },
-  { key: 'flow', label: 'Flow', hint: 'Option premium from the tape — calls up, puts down' },
-  { key: 'netDrift', label: 'Net drift', hint: "Running call & put premium totals — the session's lean" },
-  { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol off these bars against the implied the feed reports' },
+  { key: 'flow', label: 'Flow', hint: 'SPXW prints on this chart’s own minutes. Off unless that tape is here — Trace and the practice book are not this history, and they are not labelled live.' },
+  { key: 'netDrift', label: 'Net drift', hint: 'Running call and put premium from those same SPXW prints. Off without them.' },
+  { key: 'volDrift', label: 'Vol drift', hint: 'Realised vol of these bars against the morning at-the-money IV. One number, not a made-up path.' },
   { key: 'dexStrike', label: 'Exposure by strike', hint: 'Delta, gamma or vega across the chain — docked under the tape' },
   { key: 'session', label: 'Session levels', hint: "Yesterday's high, low & close, the opening range and the first hour" },
   { key: 'cone', label: 'Expected move', hint: "The ±1σ/±2σ band the options priced for today, and what's left of it" },
@@ -482,6 +489,10 @@ const ChartToolbar = ({
   minimal = false,
   candles = false,
   overlayKeys,
+  coneHorizon,
+  onConeHorizon,
+  trailGreek,
+  onTrailGreek,
   timeframes,
   trend,
   spread = false,
@@ -517,6 +528,7 @@ const ChartToolbar = ({
   rightExtras,
   onSnapshot,
   snapshotName,
+  onShareLink,
 }: ChartToolbarProps) => {
   const storeThemeKey = useCandleThemeKey();
   const themeKey = themeKeyProp ?? storeThemeKey;
@@ -930,7 +942,23 @@ const ChartToolbar = ({
                   </span>
                 )}
               </button>
-              <ScriptLibrary open={libraryOpen} onClose={() => setLibraryOpen(false)} paneId={paneId} indicators={indicators} onIndicators={onIndicators} fullscreen={fullscreen} />
+              <ScriptLibrary
+                open={libraryOpen}
+                onClose={() => setLibraryOpen(false)}
+                paneId={paneId}
+                indicators={indicators}
+                onIndicators={onIndicators}
+                fullscreen={fullscreen}
+                overlays={overlays}
+                onOverlays={onOverlays}
+                coneHorizon={coneHorizon}
+                onConeHorizon={onConeHorizon}
+                trailGreek={trailGreek}
+                onTrailGreek={onTrailGreek}
+                sessionOr={sessionOr}
+                onSessionOr={onSessionOr}
+                barClock={barClock}
+              />
             </>
           )}
           {onIndicators && indicators && !paneId && (
@@ -946,7 +974,9 @@ const ChartToolbar = ({
               menuSide={menuSide} bounds={menuBounds}
             >
               <div className="p-1.5 flex flex-col gap-0.5">
-                {INDICATOR_ITEMS.map((item, idx) => {
+                {(() => {
+                  const firstSub = INDICATOR_ITEMS.findIndex(i => i.sub);
+                  return INDICATOR_ITEMS.map((item, idx) => {
                   const on = indicators[item.key];
                   const subsOn = SUB_PANE_ORDER.filter(k => indicators[k]).length;
                   /* The third sub-pane is refused, not shrunk into — the same
@@ -955,13 +985,16 @@ const ChartToolbar = ({
                   /* T-15 — session-anchored VWAP has no session cuts to
                      find on a rule clock; the chart skips it and this row
                      says why instead of ticking a line that is not there. */
-                  const heldByClock = (barClock ?? 'time') !== 'time' && (item.key === 'vwap' || item.key === 'vwapBands');
+                  const heldByClock = (barClock ?? 'time') !== 'time' && (item.key === 'vwap' || item.key === 'vwapBands' || item.group === 'book');
                   const capped = (!!item.sub && !on && subsOn >= MAX_SUB_PANES) || heldByClock;
-                  const firstSub = INDICATOR_ITEMS.findIndex(i => i.sub);
+                  const prev = INDICATOR_ITEMS[idx - 1];
                   return (
                     <div key={item.key} className="contents">
-                    {idx === 0 && (
-                      <div className="px-2.5 pt-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">On the tape</div>
+                    {item.group === 'book' && prev?.group !== 'book' && (
+                      <div className="px-2.5 pt-1 font-mono text-[9px] uppercase tracking-widest text-textMuted">From the book</div>
+                    )}
+                    {item.group !== 'book' && !item.sub && prev?.group === 'book' && (
+                      <div className="px-2.5 pt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">On the tape</div>
                     )}
                     {idx === firstSub && (
                       <div className="px-2.5 pt-2 font-mono text-[9px] uppercase tracking-widest text-textMuted">
@@ -1007,7 +1040,8 @@ const ChartToolbar = ({
                     </button>
                     </div>
                   );
-                })}
+                });
+                })()}
               </div>
             </Dropdown>
           )}
@@ -1090,9 +1124,9 @@ const ChartToolbar = ({
         <span className={vertical ? 'h-px w-4 self-center bg-borderSubtle' : 'w-px h-4 bg-borderSubtle'} aria-hidden />
       )}
 
-      {/* Vertical compresses the trigger to icon + count — the full word was
-          what set the upright toolbox's width (Noah, 2026-08-23: "too wide");
-          the hover title keeps the name. */}
+      {/* The chart tools live in Indicators when this pane has the library.
+          Desks without a pane id keep the overlays menu. */}
+      {!paneId && (
       <Dropdown
         label={vertical || compact ? String(activeOverlayCount) : `Overlays ${activeOverlayCount}`}
         icon={<Layers className="w-3 h-3" />}
@@ -1160,6 +1194,46 @@ const ChartToolbar = ({
             broken, and this one has nothing to do until there are lines to
             change.
           */}
+          {onTrailGreek && overlays.trails && overlayItems.some(i => i.key === 'trails') && (
+            <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted shrink-0">Greek</span>
+              <span role="group" aria-label="Trail greek" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
+                {(['gex', 'dex', 'vex'] as const).map(g => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => onTrailGreek(g)}
+                    aria-pressed={trailGreek === g}
+                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] uppercase transition-colors ${
+                      trailGreek === g ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
+                    }`}
+                  >
+                    {g === 'gex' ? 'gex' : g === 'dex' ? 'dex' : 'vega $'}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
+          {onConeHorizon && overlays.cone && overlayItems.some(i => i.key === 'cone') && (
+            <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted shrink-0">Horizon</span>
+              <span role="group" aria-label="Expected move horizon" className="inline-flex items-center gap-0.5 rounded border border-borderMuted p-0.5">
+                {(['session', 'week', 'next'] as const).map(h => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => onConeHorizon(h)}
+                    aria-pressed={coneHorizon === h}
+                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] transition-colors ${
+                      coneHorizon === h ? 'bg-ink/[0.16] text-textPrimary font-semibold' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06]'
+                    }`}
+                  >
+                    {h === 'session' ? 'Session' : h === 'week' ? 'Week' : 'Next'}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
           {onSessionOr && overlays.session && overlayItems.some(i => i.key === 'session') && (
             <div className="flex items-center gap-2 pl-[26px] pr-2.5 pb-2 -mt-1">
               <span className="font-mono text-[9px] uppercase tracking-wider text-textMuted shrink-0">Opening range</span>
@@ -1184,6 +1258,7 @@ const ChartToolbar = ({
           )}
         </div>
       </Dropdown>
+      )}
 
       {(!minimal || candles) && (
       <Dropdown
@@ -1327,6 +1402,17 @@ const ChartToolbar = ({
                   <span className="text-[10px] text-textMuted">{hint}</span>
                 </button>
               ))}
+              {onShareLink && (
+                <button
+                  type="button"
+                  onClick={() => { setOpenMenu(null); onShareLink(); }}
+                  className="w-full flex flex-col items-start px-2 py-1.5 rounded text-left hover:bg-ink/[0.05] transition-colors"
+                  data-snapshot-do="link"
+                >
+                  <span className="font-mono text-[11px] text-textPrimary">Copy a link</span>
+                  <span className="text-[10px] text-textMuted">The levels and the overlays, no chain</span>
+                </button>
+              )}
             </div>
           </Dropdown>
         </span>

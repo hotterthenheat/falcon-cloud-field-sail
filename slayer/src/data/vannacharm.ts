@@ -136,7 +136,9 @@ export function buildVannaCharm(
   const start = Math.max(0, spotIdx - half);
   const window = desc.slice(start, start + half * 2 + 1);
 
-  const maxCharm = window.reduce((a, n) => Math.max(a, Math.abs(n.charm)), 0);
+  const live = snapshot.liveBook === true;
+  const charmOf = (n: StrikeNode) => (live ? n.netCharm : n.charm);
+  const maxCharm = window.reduce((a, n) => Math.max(a, Math.abs(charmOf(n))), 0);
 
   // Pin (max total OI) for the rail
   let pinStrike = window[0]?.strike ?? spot;
@@ -150,7 +152,9 @@ export function buildVannaCharm(
 
   let maxAbs = 1;
   const rows: ShiftBarRow[] = window.map(n => {
-    const projected = projectStrike(n, mode, ivShift, maxCharm, spot, ticker);
+    /* A live book has no migration model. Vanna changes the delta hedge; charm is that hedge bleeding.
+       Neither one relocates a gamma wall, and a hash must not pretend it did. */
+    const projected = live ? n.netGex : projectStrike(n, mode, ivShift, maxCharm, spot, ticker);
     maxAbs = Math.max(maxAbs, Math.abs(n.netGex), Math.abs(projected));
     return { strike: n.strike, pin: n.strike === pinStrike, current: n.netGex, projected };
   });
@@ -173,40 +177,40 @@ export function buildVannaCharm(
   const dist = (price: number) => Number((((price - spot) / spot) * 100).toFixed(2));
   const lvl = (price: number) => ({ price, distPct: dist(price) });
 
-  // Where decay repositioning concentrates — the window's |charm| argmax
   let charmStrike = window[0]?.strike ?? spot;
   let charmAbs = 0;
   for (const n of window) {
-    if (Math.abs(n.charm) > charmAbs) {
-      charmAbs = Math.abs(n.charm);
+    const mag = Math.abs(charmOf(n));
+    if (mag > charmAbs) {
+      charmAbs = mag;
       charmStrike = n.strike;
     }
   }
 
-  // Largest per-strike net-gex change vs the previous scan (the 10s tier —
-  // history snaps are ~1/sec, so ten back ≈ one scan ago)
   let delta: MigrationRead['delta'] = null;
-  const snaps = Simulator.getGexHistory(ticker);
-  if (snaps && snaps.length >= 2) {
-    const nowSnap = snaps[snaps.length - 1];
-    const prevSnap = snaps[Math.max(0, snaps.length - 1 - 10)];
-    const prevMap = new Map(prevSnap.levels.map(l => [l.strike, l.value]));
-    const inWindow = new Set(window.map(n => n.strike));
-    let best: { strike: number; changeUsd: number } | null = null;
-    for (const l of nowSnap.levels) {
-      if (!inWindow.has(l.strike)) continue;
-      const prev = prevMap.get(l.strike);
-      if (prev === undefined) continue;
-      const change = l.value - prev;
-      if (!best || Math.abs(change) > Math.abs(best.changeUsd)) best = { strike: l.strike, changeUsd: change };
+  if (!live) {
+    const snaps = Simulator.getGexHistory(ticker);
+    if (snaps && snaps.length >= 2) {
+      const nowSnap = snaps[snaps.length - 1];
+      const prevSnap = snaps[Math.max(0, snaps.length - 1 - 10)];
+      const prevMap = new Map(prevSnap.levels.map(l => [l.strike, l.value]));
+      const inWindow = new Set(window.map(n => n.strike));
+      let best: { strike: number; changeUsd: number } | null = null;
+      for (const l of nowSnap.levels) {
+        if (!inWindow.has(l.strike)) continue;
+        const prev = prevMap.get(l.strike);
+        if (prev === undefined) continue;
+        const change = l.value - prev;
+        if (!best || Math.abs(change) > Math.abs(best.changeUsd)) best = { strike: l.strike, changeUsd: change };
+      }
+      if (best) delta = { ...best, distPct: dist(best.strike) };
     }
-    if (best) delta = { ...best, distPct: dist(best.strike) };
   }
 
-  // One line: what THIS SCENARIO computes — counts and prices only.
   const moved = shifts.filter(sh => sh.projected !== sh.current);
-  const line =
-    moved.length === 0
+  const line = live
+    ? 'Vanna and charm are the open-interest book. They do not move the gamma walls.'
+    : moved.length === 0
       ? `This scenario leaves all ${shifts.length} levels in place.`
       : (() => {
           const biggest = moved.reduce((a, b) =>
@@ -236,7 +240,7 @@ export function buildVannaCharm(
     flipCurrent: base.flip,
     flipProjected: proj.flip,
     shifts,
-    drift: buildDrift(ticker),
+    drift: live ? [] : buildDrift(ticker),
     read,
   };
 }

@@ -144,7 +144,7 @@ const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside =
 
   const pick = (sym: string) => {
     setOpen(false);
-    if (sym && sym !== ticker) onPick(sym);
+    if (sym) onPick(sym);
   };
 
   const hasLink = linked !== undefined;

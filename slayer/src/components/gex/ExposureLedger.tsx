@@ -62,6 +62,7 @@ import type { SurfaceCell } from './exposureView';
 import { sinceOpenRead } from '../../data/levelview';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
 import { BOOK_TTL_MS, StaleMark, useTickFlash } from '../ui/liveRead';
+import { nearestStrikes, strikeGap } from '../../data/chartMoves';
 import { peekEntry } from '../../data/uwBook';
 
 const letGo = letGoWords();
@@ -79,6 +80,8 @@ interface ExposureLedgerProps {
   /** THE FOCUS (Noah, 2026-10-12): the scrim over the board with only the badged nodes — the biggest moves since the
       open — kept sharp; a door on the band, never a click on a node */
   focusOn?: boolean;
+  /** When set, the focus is the chart's swings (the prices they turned at), not the since-open badges */
+  movePrices?: number[];
   /** The greeks drawn, in the book's order — one, some, or all five (a stable array) */
   greeks: Greek[];
   /** Which leg the capsules carry (the band's Legs card, 2026-10-13): the net, or one leg alone */
@@ -156,6 +159,7 @@ const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
     H2, 2026-10-13: on the ember-and-glacier ramp a pale capsule could be either
     side, and a figure that hides its sign is a figure to hover) */
 const fmtShortUsd = (v: number) => {
+  if (!Number.isFinite(v)) return '—';
   const a = Math.abs(v);
   const sign = v < 0 && a >= 0.5 ? '−' : '';
   if (a >= 1e9) return `${sign}${(a / 1e9).toFixed(a >= 1e10 ? 0 : 1)}B`;
@@ -167,7 +171,7 @@ const fmtShortUsd = (v: number) => {
 const GLYPH = 0.6;
 /** What a cell prints: the full figure, the short one, or the colour alone */
 type Figure = 'full' | 'short' | 'none';
-const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'VEX', vanna: 'VANNA', charm: 'CHARM' };
+const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 interface Focus {
@@ -222,6 +226,8 @@ interface LedgerCellProps {
   pinned?: boolean;
   /** The pane's id stem — the cell's own id is `${idBase}-${g}-${e}-${strike}`, the keys' active descendant */
   idBase: string;
+  /** "expired" when the column has no time left — a dash, not a zero and not "still being read" */
+  pendingWord?: string;
   onHover: (f: Focus | null, x: number, y: number) => void;
   onPick: (f: Focus, x: number, y: number) => void;
 }
@@ -237,14 +243,15 @@ export const SinceBadge = ({ text, dir }: { text: string; dir: 1 | -1 | 0 }) => 
   </span>
 );
 
-const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, ring, star, since, sinceDir, sinceLane, dotBeside, kept, fontSize, figure, mode, paper, pinned, idBase, onHover, onPick }: LedgerCellProps) => {
-  const flash = useTickFlash(v);
+const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, ring, star, since, sinceDir, sinceLane, dotBeside, kept, fontSize, figure, mode, paper, pinned, idBase, pendingWord, onHover, onPick }: LedgerCellProps) => {
+  const pending = !Number.isFinite(v);
+  const flash = useTickFlash(pending ? 0 : v);
   return (
   <div
     data-cell
     data-cell-key={`${g}|${e}|${strike}`}
     id={`${idBase}-${g}-${e}-${strike}`.replace(/\./g, '_')}
-    aria-label={`${fmtStrike(strike)} on ${date} · ${fmtUsd(shownGreek(g, v))}${since ? ` · ${since} since the open` : ''}`}
+    aria-label={`${fmtStrike(strike)} on ${date} · ${pending ? (pendingWord ?? 'contract vol still being read') : fmtUsd(shownGreek(g, v))}${since ? ` · ${since} since the open` : ''}`}
     data-pinned={pinned ? '' : undefined}
     data-kept={kept ? '' : undefined}
     className={`relative min-w-0 px-[3px] py-[2px] cursor-default select-none tabular-nums ${first ? 'border-l border-borderSubtle/60 pl-[2px]' : ''} ${wash}`}
@@ -254,7 +261,7 @@ const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, r
     onClick={ev => onPick({ strike, e, greek: g }, ev.clientX, ev.clientY)}
   >
     <HeatPill
-      value={v}
+      value={pending ? 0 : v}
       maxAbs={maxAbs}
       className={`h-full tabular-nums ${isKing ? 'font-bold' : ''}`}
       fontSize={fontSize}
@@ -269,14 +276,14 @@ const LedgerCell = memo(({ strike, e, g, v, maxAbs, date, first, wash, isKing, r
       dotBeside={dotBeside}
       title={undefined}
     >
-      {figure === 'full' ? fmtUsd(shownGreek(g, v)) : figure === 'short' ? fmtShortUsd(shownGreek(g, v)) : ''}
+      {pending ? '—' : figure === 'full' ? fmtUsd(shownGreek(g, v)) : figure === 'short' ? fmtShortUsd(shownGreek(g, v)) : ''}
     </HeatPill>
     {flash.dir && <span key={flash.gen} aria-hidden className={`pointer-events-none absolute inset-[2px] rounded-full ${flash.dir === 'up' ? 'tick-up' : 'tick-down'}`} />}
   </div>
   );
 });
 
-const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn = false, greeks: greeksWanted, leg = 'net', expiries, rings, hoverStrike, palette = 'house', afterBell = false, selectedStrike, marks, onPointer, onSelectStrike, onExpiry, fitKey, onFit, paper = false, wantCols, onNatural }: ExposureLedgerProps) => {
+const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn = false, movePrices, greeks: greeksWanted, leg = 'net', expiries, rings, hoverStrike, palette = 'house', afterBell = false, selectedStrike, marks, onPointer, onSelectStrike, onExpiry, fitKey, onFit, paper = false, wantCols, onNatural }: ExposureLedgerProps) => {
   const [box, setBox] = useState({ w: 0, h: 0 });
   /* NEVER A CELL WITHOUT ITS FIGURE (Noah, 2026-10-17, the panel narrowed until the capsules went blank: "stopping a
      user from making the screen so small to the point where the node numbers disappear"): the expiries were already
@@ -368,6 +375,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
      fits: the book at the next open when the host says so */
   const todayIdx = todayColumn(surface);
   const shownIdx = useMemo(() => {
+    if (surface.waiting && surface.expiries.length === 0) return [];
     const live = expiries.filter(i => i >= 0 && i < surface.expiries.length);
     const list = live.length ? live : [Math.max(0, todayIdx)];
     return list.slice(0, Math.max(1, fitExpiries ?? Infinity));
@@ -432,7 +440,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
       let best = { strike: sup.strike, e: shownIdx[0] ?? 0, value: 0 };
       if (si >= 0)
         for (const e of shownIdx) {
-          const v = surface.net[g][e][si] ?? 0;
+          const v = surface.net[g][e]?.[si] ?? 0;
           if (Math.abs(v) > Math.abs(best.value)) best = { strike: sup.strike, e, value: v };
         }
       return best;
@@ -447,7 +455,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
       let best = { strike: strikes[0] ?? surface.spot, e: shownIdx[0] ?? 0, value: 0 };
       for (const e of shownIdx)
         for (const strike of strikes) {
-          const v = surface.net[g][e][surface.strikes.indexOf(strike)] ?? 0;
+          const v = surface.net[g][e]?.[surface.strikes.indexOf(strike)] ?? 0;
           if (Math.abs(v) > Math.abs(best.value)) best = { strike, e, value: v };
         }
       return best;
@@ -517,7 +525,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
       let best = 0;
       let bestV = -1;
       for (const e of shownIdx) {
-        const v = Math.abs(surface.net[g][e][s] ?? 0);
+        const v = Math.abs(surface.net[g][e]?.[s] ?? 0);
         if (v > bestV) {
           bestV = v;
           best = e;
@@ -722,10 +730,15 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   /* THE CARD SAYS WHAT THE CELL SAYS (Noah, 2026-10-17, the supreme node's hover: the capsule read −$254.0M and its card
      −$254.1M): a cell prints its figure at three significant figures (q3, below), so the card's legs and net are read
      through the same q3 — one figure for one cell, on the capsule and on the card */
-  const putV = fs >= 0 ? q3(surface.put[focus.greek][focus.e][fs]) : 0;
-  const callV = fs >= 0 ? q3(surface.call[focus.greek][focus.e][fs]) : 0;
-  const netV = fs >= 0 ? q3(surface.net[focus.greek][focus.e][fs]) : 0;
-  const oi = fs >= 0 ? surface.oi[focus.e][fs] : 0;
+  const cellOpen = surface.priced?.[focus.greek]?.[focus.e] !== false;
+  const dead = !!surface.closed?.[focus.e] && (focus.greek === 'color' || focus.greek === 'vomma' || focus.greek === 'speed' || focus.greek === 'veta' || focus.greek === 'zomma');
+  const putRow = surface.put[focus.greek]?.[focus.e];
+  const callRow = surface.call[focus.greek]?.[focus.e];
+  const netRow = surface.net[focus.greek]?.[focus.e];
+  const putV = fs >= 0 && cellOpen && !dead && putRow ? q3(putRow[fs]) : Number.NaN;
+  const callV = fs >= 0 && cellOpen && !dead && callRow ? q3(callRow[fs]) : Number.NaN;
+  const netV = fs >= 0 && cellOpen && !dead && netRow ? q3(netRow[fs]) : Number.NaN;
+  const oi = fs >= 0 ? (surface.oi[focus.e]?.[fs] ?? 0) : 0;
   const gexV = fs >= 0 ? surface.net.gex[focus.e][fs] : 0;
   const distPct = ((focus.strike - surface.spot) / surface.spot) * 100;
   const kingHere = kingFor(focus.greek);
@@ -742,7 +755,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     let total = 0;
     for (const e of all)
       for (const strike of strikes) {
-        const v = Math.abs(surface.net[focus.greek][e][surface.strikes.indexOf(strike)] ?? 0);
+        const v = Math.abs(surface.net[focus.greek][e]?.[surface.strikes.indexOf(strike)] ?? 0);
         total += v;
         if (e === todayIdx) dies += v;
       }
@@ -752,16 +765,24 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   /* AN EMPTY CELL SAYS SO (the owner, 2026-10-14, after a walk as a user: a $0 cell read "put-heavy" and "peak · hedging
      amplifies a move here" — zero is at or over zero, and in an all-negative row it was the row's peak): no leg at all
      is "nothing here", not a side that wins */
-  const empty = Math.abs(putV) < 1e-9 && Math.abs(callV) < 1e-9;
-  const verdict = empty
-    ? 'nothing here · no hedging at this strike for this date'
-    : focus.greek === 'gex'
-      ? gexV >= 0
-        ? 'peak · hedging amplifies a move here'
-        : 'well · hedging absorbs a move here'
-      : netV >= 0
-        ? 'the put side wins here'
-        : 'the call side wins here';
+  const empty = Number.isFinite(putV) && Math.abs(putV) < 1e-9 && Math.abs(callV) < 1e-9;
+  const volGreek = focus.greek === 'vex' || focus.greek === 'color' || focus.greek === 'vomma' || focus.greek === 'speed' || focus.greek === 'veta' || focus.greek === 'zomma';
+  const missed = volGreek && empty && !!surface.miss?.[focus.e]?.[fs];
+  const verdict = dead
+    ? 'expired'
+    : !cellOpen
+      ? 'contract vol is still being read — not a zero'
+      : missed
+        ? 'no vol · not a zero'
+        : empty
+          ? 'nothing here · no hedging at this strike for this date'
+          : focus.greek === 'gex'
+            ? gexV >= 0
+              ? 'peak · hedging amplifies a move here'
+              : 'well · hedging absorbs a move here'
+            : netV >= 0
+              ? 'the put side wins here'
+              : 'the call side wins here';
   const verdictInk = empty ? 'rgb(var(--text-muted))' : focus.greek === 'gex' ? (gexV >= 0 ? SHORT_GAMMA : LONG_GAMMA) : netInk(focus.greek, netV);
   const { levels } = surface;
   const role = focus.strike === levels.callWall ? 'call wall' : focus.strike === levels.putWall ? 'put wall' : focus.strike === pinStrike ? 'pin' : null;
@@ -785,7 +806,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     const ei = openIdx.expiries.get(surface.expiries[e]?.date ?? '');
     const s = surface.strikes.indexOf(strike);
     if (si != null && ei != null && s >= 0) {
-      const now = surface.net[g][e][s];
+      const now = surface.net[g][e]?.[s];
       const was = open.net[g][ei][si];
       if (Number.isFinite(now) && Number.isFinite(was) && Math.abs(now) >= 1e-9) {
         const ratio = was / now;
@@ -826,8 +847,13 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, openIdx, surface, greeks, shownIdx, strikes]);
   /* while the focus door is open, the kept nodes' strike labels and date heads stay readable above the scrim too */
-  const keptRows = useMemo(() => new Set(focusOn ? [...exceptional].map(k => Number(k.split('|')[2])) : []), [focusOn, exceptional]);
-  const keptCols = useMemo(() => new Set(focusOn ? [...exceptional].map(k => k.split('|').slice(0, 2).join('|')) : []), [focusOn, exceptional]);
+  const chartMode = movePrices != null;
+  const keptRows = useMemo(() => {
+    if (!focusOn) return new Set<number>();
+    if (chartMode) return new Set(nearestStrikes(movePrices, strikes, strikeGap(strikes)));
+    return new Set([...exceptional].map(k => Number(k.split('|')[2])));
+  }, [focusOn, chartMode, movePrices, strikes, exceptional]);
+  const keptCols = useMemo(() => new Set(!chartMode && focusOn ? [...exceptional].map(k => k.split('|').slice(0, 2).join('|')) : []), [focusOn, chartMode, exceptional]);
   /* the kept strikes, highest first — the summary line names them (the audit's M12) */
   const keptStrikes = useMemo(() => [...keptRows].sort((a, b) => b - a), [keptRows]);
   /* the chip beside a full figure needs ~128px (the figure at 13px is 60, the chip 26, the padding 16, the star's
@@ -847,7 +873,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   };
   /* THE CARD'S WORDS — the kept cell's; nothing at rest or under a mere hover */
   const cardAside = `${ex?.date ?? ''} · ${focus.e === todayIdx ? 'today' : (ex?.short ?? '')} · ${distPct >= 0 ? '+' : '−'}${Math.abs(distPct).toFixed(2)}%`;
-  const legMax = Math.max(1, Math.abs(putV), Math.abs(callV));
+  const legMax = Math.max(1, Number.isFinite(putV) ? Math.abs(putV) : 0, Number.isFinite(callV) ? Math.abs(callV) : 0);
   const pct = (v: number) => `${Math.round((Math.abs(v) / legMax) * 100)}%`;
   /* THE TAGS ON A LINE OF THEIR OWN (Noah, 2026-10-12: "this should be better formatted" — three tags and the date
      on one head line wrapped "PUT WALL" and "★ HEAVIEST CELL" over two lines each): the head is the strike and the
@@ -868,7 +894,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
       {cardTags.length > 0 && <span className="col-span-2 -mt-0.5 mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] uppercase tracking-widest">{cardTags}</span>}
       <CardRow k="Put" v={fmtUsd(shownGreek(focus.greek, putV))} sub={pct(putV)} ink={PUT_INK} />
       <CardRow k="Call" v={fmtUsd(shownGreek(focus.greek, callV))} sub={pct(callV)} ink={CALL_INK} />
-      <CardRow k={`Net · ${GREEK_LABEL[focus.greek]}`} v={fmtUsd(shownGreek(focus.greek, netV))} sub={empty ? 'nothing' : netV >= 0 ? 'put-heavy' : 'call-heavy'} ink={empty ? 'rgb(var(--text-muted))' : heatLaneColor(netV, surface.maxAbs[focus.greek], mode ?? HEAT_MODE, 0.35, paper)} />
+      <CardRow k={`Net · ${GREEK_LABEL[focus.greek]}`} v={fmtUsd(shownGreek(focus.greek, netV))} sub={dead ? 'expired' : missed ? 'no vol' : empty ? 'nothing' : netV >= 0 ? 'put-heavy' : 'call-heavy'} ink={empty || dead || missed ? 'rgb(var(--text-muted))' : heatLaneColor(netV, surface.maxAbs[focus.greek], mode ?? HEAT_MODE, 0.35, paper)} />
       {oi > 0 && <CardRow k="Open interest" v={oi.toLocaleString('en-US')} sub="contracts" />}
       {sinceHere && <CardRow k="Since the open" v={sinceHere.figure ?? sinceHere.words} sub={sinceHere.figure ? sinceHere.words : undefined} ink={sinceInk(sinceHere.dir)} />}
     </>
@@ -877,6 +903,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
   const cardFoot = (
     <>
       <span style={{ color: verdictInk }}>{verdict}</span>
+      <span className="block mt-0.5 text-textMuted">at current spot</span>
       {pinned && <span className="block mt-0.5 text-[11px] uppercase tracking-wider text-textMuted">kept · {letGo}</span>}
     </>
   );
@@ -912,11 +939,18 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
       {/* WHAT THE FOCUS KEPT, IN WORDS (the audit's M12, 2026-10-13): the count and the strikes, highest first, each a
           keep — ONE LINE ABOVE THE GRID (the owner, 2026-10-13: laid over the grid's foot it wrapped to three lines, hid
           the last rows and sat at a different height in every column); past the width it scrolls sideways */}
-      {focusOn && keptStrikes.length > 0 && (
-        <div className={`shrink-0 h-7 flex items-center gap-x-2 px-3 border-b border-borderSubtle ${ground} font-mono text-[11px] whitespace-nowrap overflow-x-auto scroll-row`} data-ledger-focus-summary={exceptional.size}>
+      {(surface.skipped ?? 0) > 0 && (
+        <div className={`shrink-0 h-6 flex items-center px-3 border-b border-borderSubtle ${ground} font-mono text-[11px] text-textMuted`} data-legs-skipped={surface.skipped}>
+          {surface.skipped} {surface.skipped === 1 ? 'leg' : 'legs'} skipped, no vol
+        </div>
+      )}
+      {focusOn && (
+        <div className={`shrink-0 h-7 flex items-center gap-x-2 px-3 border-b border-borderSubtle ${ground} font-mono text-[11px] whitespace-nowrap overflow-x-auto scroll-row`} data-ledger-focus-summary={chartMode ? (movePrices?.length ?? 0) : exceptional.size}>
           <span className="shrink-0 text-textSecondary">
-            {exceptional.size} biggest {exceptional.size === 1 ? 'move' : 'moves'} since the open
-            {keptStrikes.length < exceptional.size ? `, on ${keptStrikes.length} ${keptStrikes.length === 1 ? 'strike' : 'strikes'}` : ''}
+            {chartMode
+              ? (movePrices && movePrices.length > 0 ? `${movePrices.length} biggest ${movePrices.length === 1 ? 'move' : 'moves'} on the chart` : 'No swing on the chart yet')
+              : `${exceptional.size} biggest ${exceptional.size === 1 ? 'move' : 'moves'} since the open`}
+            {!chartMode && keptStrikes.length < exceptional.size ? `, on ${keptStrikes.length} ${keptStrikes.length === 1 ? 'strike' : 'strikes'}` : ''}
           </span>
           <span className="shrink-0 text-textMuted">·</span>
           {keptStrikes.map(s => (
@@ -932,7 +966,11 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
           ))}
         </div>
       )}
-      {/* THE GRID — rows share the height; past ROW_MIN it scrolls */}
+      {surface.waiting && surface.expiries.length === 0 ? (
+        <div className="flex-1 min-h-0 flex items-center justify-center px-4 text-center font-mono text-[12px] text-textMuted" data-rail-waiting>
+          {surface.waiting}
+        </div>
+      ) : (
       <div className="relative flex-1 min-h-0">
         <div className="pointer-events-none absolute right-2 top-1 z-30">
           <StaleMark at={book?.at} ttlMs={BOOK_TTL_MS} fault={book?.status === 'error' ? 'failed' : null} />
@@ -1117,7 +1155,10 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                   const colWash = !pinned && hovered && hovered.greek === g && hovered.e === e && !isHoverRow ? 'bg-silver/[0.05]' : '';
                   const ring = isHover || isPinned ? SILVER : isSupremeCell ? SUPREME : undefined;
                   const sc = exceptional.has(`${g}|${e}|${strike}`) ? sinceCell(g, e, strike) : null;
-                  const v = q3(surface[leg][g][e][s]);
+                  const raw = surface[leg][g][e][s];
+                  const dead = !!surface.closed?.[e] && (g === 'color' || g === 'vomma' || g === 'speed' || g === 'veta' || g === 'zomma');
+                  const open = !dead && surface.priced?.[g]?.[e] !== false;
+                  const v = open ? q3(raw) : Number.NaN;
                   return (
                     <LedgerCell
                       key={`c-${g}-${exp.dte}-${strike}`}
@@ -1137,12 +1178,13 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
                       sinceLane={laneFor(sc?.text ?? null)}
                       idBase={idBase}
                       dotBeside={dotBeside}
-                      kept={focusOn && exceptional.has(`${g}|${e}|${strike}`)}
+                      kept={focusOn && (chartMode ? keptRows.has(strike) : exceptional.has(`${g}|${e}|${strike}`))}
                       fontSize={fontSize}
                       figure={figureFor(v, isKing && showStar, sc ? laneFor(sc.text) : 'none', sc?.text ?? null)}
                       mode={mode}
                       paper={paper}
                       pinned={isPinned}
+                      pendingWord={dead ? 'expired' : undefined}
                       onHover={onHoverCell}
                       onPick={onPickCell}
                     />
@@ -1154,6 +1196,7 @@ const ExposureLedger = ({ surface, liveSpot, live = true, open = null, focusOn =
           </div>
         </div>
       </div>
+      )}
       {/* THE CARD — following the pointer over the cells, and on the clicked node (see `keptPos`) until the next click */}
       {hovered && hoverStart && (!pinned || hoveringElsewhere) && (
         <PointerFollowCard start={hoverStart} dense width={CARD_W} title={cardTitle} aside={cardAside} foot={cardFoot} testId="data-ledger-card" testValue={keyOf(focus)}>

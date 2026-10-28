@@ -57,6 +57,7 @@ export const KNOWN: Suggestion[] = [
   { path: '/', label: 'Front page' },
   ...NAV_ITEMS.map(i => ({ path: i.path, label: i.label })),
   { path: '/pulse/board', label: 'Four charts', where: 'Pulse' },
+  { path: '/compass/blotter', label: 'Blotter', where: 'Compass' },
   { path: '/compass/tracker', label: 'Tracker', where: 'Compass' },
   ...GEX_SUBPAGES.map(p => ({ path: p.path, label: p.label, where: 'Pinpoint' })),
   ...TRACE_SUBPAGES.map(p => ({ path: p.path, label: p.label, where: 'Trace' })),

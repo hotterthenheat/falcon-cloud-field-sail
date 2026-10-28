@@ -17,7 +17,7 @@ import type { ExecuteResult, LedgerStats, MarketSnapshot, TickerSymbol, TradeRec
    Aged FIRST, then capped: age alone lets a busy session run unbounded, and
    the count alone keeps yesterday's prints alive on a tab left open. */
 export type StampedPrint = FlowPrint & { at: number };
-const TAPE_CAP = 5000;
+const TAPE_CAP = 240;
 const TAPE_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 
 interface LedgerState {
@@ -43,7 +43,10 @@ const MarketDataContext = createContext<MarketDataContextValue | null>(null);
     needs the ticker does not rebuild its charts every second and a half. */
 interface TickerValue {
   activeTicker: TickerSymbol;
+  /** The name that was on the desk before this one. Null until the first change. */
+  previousTicker: TickerSymbol | null;
   changeTicker: (ticker: string) => void;
+  revertTicker: () => void;
 }
 const TickerContext = createContext<TickerValue | null>(null);
 
@@ -61,6 +64,10 @@ export const MarketDataProvider = ({ children }: { children: React.ReactNode }) 
     const pick = readDeskPrefs().opensOn.ticker;
     return pick ? Simulator.setActiveTicker(pick) : Simulator.getActiveTicker();
   });
+  const [previousTicker, setPreviousTicker] = useState<TickerSymbol | null>(null);
+  const previousRef = useRef<TickerSymbol | null>(null);
+  const activeRef = useRef(activeTicker);
+  activeRef.current = activeTicker;
   const [marketData, setMarketData] = useState<MarketSnapshot | null>(null);
   const [flowTape, setFlowTape] = useState<StampedPrint[]>([]);
   /* The print id counter lives in a ref, not in state: it must never reset on
@@ -116,6 +123,9 @@ export const MarketDataProvider = ({ children }: { children: React.ReactNode }) 
     });
   };
 
+  const pendingTick = useRef<MarketSnapshot | null>(null);
+  const tickScheduled = useRef(false);
+
   const processTick = () => {
     Simulator.tick((data) => {
       readyRef.current = true;
@@ -123,17 +133,22 @@ export const MarketDataProvider = ({ children }: { children: React.ReactNode }) 
       const currentActiveTicker = Simulator.getActiveTicker();
       Ledger.updateOpenTrades(currentActiveTicker, data.spot);
 
-      /* 2. Publish the tick AS A TRANSITION (Noah, 2026-08-30: "some sort of
-         buffer... jolts the entire website"). Measured on the Screener: the
-         minute-turn redraw of a 250-row table ran as one 182ms task — the
-         page simply stopped. Nobody clicked for this update; it is background
-         data, so React may render it in slices between frames and commit
-         when done. Same pixels, no frozen frame. Ticker changes stay urgent
-         (changeTicker below) because a person is waiting on those. */
-      startTransition(() => {
-        setMarketData(data);
-        absorbTape(data);
-        updateLedgerState();
+      /* 2. ONE PUBLISH PER FRAME. The simulator can hand a tick faster than
+         the desk draws. Coalesce onto the next frame, then let React render
+         the snapshot as a transition so a tick never freezes the page.
+         Ticker changes stay urgent (changeTicker below). */
+      pendingTick.current = data;
+      if (tickScheduled.current) return;
+      tickScheduled.current = true;
+      requestAnimationFrame(() => {
+        tickScheduled.current = false;
+        const next = pendingTick.current;
+        if (!next) return;
+        startTransition(() => {
+          setMarketData(next);
+          absorbTape(next);
+          updateLedgerState();
+        });
       });
       /* 3. What acts on every tick wherever the reader is — a paper account's working orders (data/feedTicks.ts) */
       announceFeedTick();
@@ -141,6 +156,8 @@ export const MarketDataProvider = ({ children }: { children: React.ReactNode }) 
   };
 
   const startSimulator = () => {
+    /* A shared read is a picture of levels. It does not start the tape. */
+    if (typeof window !== 'undefined' && window.location.pathname.replace(/\/$/, '').endsWith('/terrain/s')) return;
     if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
     processTick();
     tickIntervalRef.current = setInterval(processTick, 1500);
@@ -173,6 +190,11 @@ export const MarketDataProvider = ({ children }: { children: React.ReactNode }) 
 
   const changeTicker = useCallback((ticker: string) => {
     const sym = Simulator.setActiveTicker(ticker);
+    const prev = activeRef.current;
+    if (prev !== sym) {
+      previousRef.current = prev;
+      setPreviousTicker(prev);
+    }
     setActiveTickerState(sym);
     Simulator.tick(data => {
       setMarketData(data);
@@ -180,6 +202,11 @@ export const MarketDataProvider = ({ children }: { children: React.ReactNode }) 
       ledgerRef.current();
     });
   }, []);
+
+  const revertTicker = useCallback(() => {
+    const back = previousRef.current;
+    if (back) changeTicker(back);
+  }, [changeTicker]);
 
   const executeTrade = useCallback((): ExecuteResult => {
     const book = marketRef.current;
@@ -194,7 +221,10 @@ export const MarketDataProvider = ({ children }: { children: React.ReactNode }) 
     ledgerRef.current();
   }, []);
 
-  const tickerValue = useMemo(() => ({ activeTicker, changeTicker }), [activeTicker, changeTicker]);
+  const tickerValue = useMemo(
+    () => ({ activeTicker, previousTicker, changeTicker, revertTicker }),
+    [activeTicker, previousTicker, changeTicker, revertTicker],
+  );
   const marketValue = useMemo<MarketDataContextValue>(
     () => ({ activeTicker, marketData, flowTape, ledgerState, changeTicker, executeTrade, clearLedger }),
     [activeTicker, marketData, flowTape, ledgerState, changeTicker, executeTrade, clearLedger],

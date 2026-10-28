@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
-import type { TickerListing } from '../../data/tickers';
+import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames, type TickerListing } from '../../data/tickers';
+import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
+import CompanyLogo from './CompanyLogo';
 
 type TickerModule = typeof import('../../data/tickers');
 
@@ -15,19 +17,28 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
   const [mod, setMod] = useState<TickerModule | null>(null);
+  const listedRev = useListedRev();
+  const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  const room = roomOf();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const results: TickerListing[] = useMemo(
-    () => (mod ? mod.searchTickers(query, 60) : []),
-    [mod, query]
-  );
+  const results: TickerListing[] = useMemo(() => {
+    if (!mod) return [];
+    if (room === 'listed') return mod.searchTickers(query, 60);
+    return searchRoom(room, query, 60, mod.searchTickers('', 40), companyName);
+  }, [mod, query, room, listedRev, nameRev]);
+
+  useEffect(() => {
+    if (results.length) askCompanyNames(results.map(r => r.symbol));
+  }, [results]);
 
   useEffect(() => {
     if (open) {
       setQuery('');
       setHighlight(0);
       if (!mod) import('../../data/tickers').then(setMod);
+      ensureListed();
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open, mod]);
@@ -70,14 +81,14 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-2 border border-borderSubtle hover:border-borderMuted bg-panel rounded-md pl-2.5 pr-2 py-1.5 font-mono text-xs transition-colors min-w-[104px]"
       >
-        <Search className="w-3.5 h-3.5 text-textMuted" />
+        <CompanyLogo ticker={value} size={14} />
         <span className="font-semibold text-textPrimary">{value}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-textMuted ml-auto transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1.5 z-40 w-72 border border-borderMuted bg-panel rounded-lg shadow-2xl shadow-black overflow-hidden animate-slide-in"
+          className="absolute right-0 top-full mt-1.5 z-40 w-80 border border-borderMuted bg-panel rounded-lg shadow-2xl shadow-black overflow-hidden animate-slide-in"
           onKeyDown={onKeyDown}
         >
           <div className="flex items-center gap-2 px-3 border-b border-borderSubtle">
@@ -86,7 +97,7 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
               ref={inputRef}
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search all tickers…"
+              placeholder={room === 'equity' ? 'Ticker or company…' : room === 'option' ? 'Ticker or company, options only…' : room === 'compass' ? 'One of the 456…' : 'Search tickers…'}
               className="w-full bg-transparent py-2.5 text-sm text-textPrimary placeholder:text-textMuted focus:outline-none"
             />
           </div>
@@ -101,18 +112,25 @@ const TickerSearch = ({ value, onChange }: TickerSearchProps) => {
                   key={t.symbol}
                   onClick={() => pick(t.symbol)}
                   onMouseEnter={() => setHighlight(i)}
-                  className={`w-full flex items-center gap-3 px-3 py-1.5 text-left transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors ${
                     i === highlight ? 'bg-ink/[0.05]' : ''
                   }`}
                 >
+                  <CompanyLogo ticker={t.symbol} size={16} />
                   <span
-                    className={`font-mono text-xs font-semibold w-16 shrink-0 ${
+                    className={`font-mono text-xs font-semibold w-14 shrink-0 ${
                       t.symbol === value ? 'text-silver' : 'text-textPrimary'
                     }`}
                   >
                     {t.symbol}
                   </span>
-                  <span className="text-[11px] text-textSecondary truncate">{t.name}</span>
+                  <span className="text-[11px] text-textSecondary truncate" title={(() => {
+                    const label = companyName(t.symbol);
+                    return label.toUpperCase() === t.symbol ? undefined : label;
+                  })()}>{(() => {
+                    const label = companyName(t.symbol);
+                    return label && label.toUpperCase() !== t.symbol ? label : '';
+                  })()}</span>
                 </button>
               ))
             )}

@@ -35,9 +35,11 @@ import * as Switch from '@radix-ui/react-switch';
 import PopoverCard from '../ui/PopoverCard';
 import JingleBell from '../ui/JingleBell';
 import {
+  armCharmPin,
   armGexFlip,
   armLevel,
   armNewSupreme,
+  armOiJump,
   armWallMove,
   MAX_ALERTS,
   removeAlert,
@@ -103,6 +105,8 @@ const WATCHES: Watch[] = [
   { key: 'gexflip', words: () => 'Dealers change sides', hint: () => 'Dealer hedging on this name flips from amplifying moves to absorbing them, or back', arm: t => armGexFlip(t), is: a => a.kind === 'gexflip' },
   { key: 'newsupreme', words: () => 'The supreme moves to another strike', hint: () => 'The strike holding the most dealer gamma changes', arm: t => armNewSupreme(t), is: a => a.kind === 'newsupreme' },
   { key: 'wallmove', words: () => 'A wall moves 2 strikes or more', hint: () => 'The call wall or the put wall is re-drawn 2 strikes or more from where it stood', arm: t => armWallMove(t, 2), is: a => a.kind === 'wallmove' },
+  { key: 'charmPin', words: () => 'Charm holds into the close', hint: () => 'After 15:00 New York, the charm sign holds for five minutes and price sits inside half a percent of the supreme', arm: t => armCharmPin(t), is: a => a.kind === 'charmPin' },
+  { key: 'oiJump', words: () => 'Open interest doubles', hint: () => 'A strike’s open interest at least doubles against the previous read of the chain', arm: t => armOiJump(t), is: a => a.kind === 'oiJump' },
 ];
 
 /* The plain voice (`waitingWords` / `firedWords`) lives in alertStore.ts, shared with the drawer (2026-09-10) */

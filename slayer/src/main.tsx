@@ -5,14 +5,22 @@ import { AppBoundary } from './components/ui/Fault';
 import { applyStoredDefaults } from './core/storedDefaults';
 import { bootAnalytics } from './core/analytics';
 import { bootSync, watchStorage } from './data/sync';
-/* the seed pool registers itself with the simulator: histories are walked in workers from the first boot */
-import './core/seedPool';
+/* The seed pool is its own chunk. The entry does not wait on it to paint. */
+void import('./core/seedPool');
 import './index.css';
+
+/* Compass scores entry and runner on 0DTE and the weekly for the whole session, whichever desk is open. */
+void import('./data/thetaBook').then(m => m.bootCompass());
 
 /* a default that changed under stored state is carried into storage once, before any page reads it */
 applyStoredDefaults();
 /* the visit count, only on a build that names the site (core/analytics.ts) */
 bootAnalytics();
+
+window.addEventListener('error', (e) => {
+  const body = JSON.stringify({ msg: String(e.message).slice(0, 300), path: location.pathname });
+  try { navigator.sendBeacon?.('/api/log', new Blob([body], { type: 'application/json' })); } catch { /* a failed beacon is not a second error */ }
+});
 
 // NOTE: StrictMode is intentionally off — its dev-mode double-mounting breaks
 // react-draggable/react-grid-layout drag initiation (RGL #1959). Dev-only

@@ -36,11 +36,11 @@ const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: stri
   </figure>
 );
 
-/* The chart: candles, the entry's silver dot and rule, the target ladder at the right edge (a won rung filled, its candle arrowed), the floor's red rule */
+/* The chart: candles, three target lines, the amber entry line, the floor */
 const ChartFigure = () => {
   const candles = [52, 50, 54, 57, 55, 60, 63, 61, 66, 64, 69, 72, 70, 74, 71, 76];
   return (
-    <Figure label="Candles rising left to right: a silver dot marks the entry on its candle with a thin silver rule running right from it, at the right edge two green ticks numbered 1 and 2 (the first filled in, its candle carrying a green arrow), and a thin red rule below running right to its figure" h={104}>
+    <Figure label="Candles with full lines for TP1, TP2, TP3, an amber entry line, and a red stop" h={104}>
       {candles.map((c, i) => {
         const x = 14 + i * 22;
         const o = c - 3 + ((i * 7) % 5);
@@ -54,83 +54,67 @@ const ChartFigure = () => {
           </g>
         );
       })}
-      {/* the entry: a silver dot on its candle, a thin silver rule to the right edge, the premium at its end */}
-      <circle cx={14 + 3 * 22 + 4} cy={90 - 57 + 9} r={2.4} fill={SILVER} />
-      <line x1={14 + 3 * 22 + 4} x2={412} y1={90 - 57 + 9} y2={90 - 57 + 9} stroke={SILVER} strokeOpacity={0.7} strokeWidth={1} />
-      <text x={412} y={90 - 57 + 5} textAnchor="end" fontSize={6.5} fontWeight={600} fill={SILVER} fontFamily={MONO}>
-        entry 0.75
+      <line x1={8} x2={412} y1={18} y2={18} stroke={BULL} strokeOpacity={0.7} strokeWidth={1} />
+      <text x={408} y={16} textAnchor="end" fontSize={6.5} fontWeight={700} fill={BULL} fontFamily={MONO}>
+        TP3  1.68
       </text>
-      {/* the won rung's candle keeps its arrow */}
-      <path d={`M ${14 + 11 * 22 + 4} ${90 - 72 - 7} l -3 4 h 6 z`} fill={BULL} />
-      {/* the ladder at the edge: rung 1 won (filled), rung 2 still to be won */}
-      <rect x={398} y={90 - 72 - 8} width={14} height={4} fill={BULL} />
-      <text x={394} y={90 - 72 - 4} textAnchor="end" fontSize={6.5} fontWeight={700} fill={BULL} fontFamily={MONO}>
-        1
+      <line x1={8} x2={412} y1={30} y2={30} stroke={BULL} strokeOpacity={0.8} strokeWidth={1} />
+      <text x={408} y={28} textAnchor="end" fontSize={6.5} fontWeight={700} fill={BULL} fontFamily={MONO}>
+        TP2  1.31
       </text>
-      <rect x={402} y={11} width={10} height={2} fill={BULL} fillOpacity={0.8} />
-      <text x={398} y={15} textAnchor="end" fontSize={6.5} fontWeight={700} fill={BULL} fontFamily={MONO}>
-        2
+      <line x1={8} x2={412} y1={42} y2={42} stroke={BULL} strokeWidth={1} />
+      <text x={408} y={40} textAnchor="end" fontSize={6.5} fontWeight={700} fill={BULL} fontFamily={MONO}>
+        TP1  1.02
       </text>
-      {/* the floor: a thin red rule from the entry candle to its figure */}
-      <line x1={14 + 3 * 22 + 4} x2={412} y1={96} y2={96} stroke={BEAR} strokeOpacity={0.75} strokeWidth={1} />
-      <text x={412} y={103} textAnchor="end" fontSize={6.5} fontWeight={600} fill={BEAR} fontFamily={MONO}>
-        FLOOR
+      <line x1={8} x2={412} y1={68} y2={68} stroke={WARN} strokeWidth={1.25} />
+      <text x={408} y={66} textAnchor="end" fontSize={6.5} fontWeight={700} fill={WARN} fontFamily={MONO}>
+        ENTRY  0.75
+      </text>
+      <line x1={8} x2={412} y1={96} y2={96} stroke={BEAR} strokeOpacity={0.75} strokeWidth={1} />
+      <text x={408} y={94} textAnchor="end" fontSize={6.5} fontWeight={700} fill={BEAR} fontFamily={MONO}>
+        STOP  0.48
       </text>
     </Figure>
   );
 };
 
-/* The targets: the ladder, one banked in green, one working bright, the entry, the floor */
+/* The take profits: far one on top, then the stop. The entry stays on the chart. */
 const TargetsFigure = () => (
-  <Figure label="A four-column table: Target 2 pending with the price NVDA needs, Target 1 hit with a check in green, the Entry row, and the Floor row in red with the price it breaks below" h={96}>
-    <g fontFamily={MONO} fontSize={6.5} fill={MUTED} letterSpacing={0.6}>
-      <text x={12} y={12}>TARGET</text>
-      <text x={200} y={12} textAnchor="end">PREMIUM</text>
-      <text x={290} y={12} textAnchor="end">FROM ENTRY</text>
-      <text x={408} y={12} textAnchor="end">NVDA NEEDS</text>
+  <Figure label="Take profits named on the ladder, the far one on top, then the stop. No second entry." h={86}>
+    <g fontFamily={MONO}>
+      {[
+        { y: 14, name: 'Take 3', px: '$1.68', sub: '+124% from the premium', ink: INK },
+        { y: 34, name: 'Take 2', px: '$1.31', sub: '+75% from the premium', ink: INK },
+        { y: 54, name: 'Take 1', px: '$1.02', sub: '+36% from the premium · working', ink: BULL },
+      ].map(r => (
+        <g key={r.name}>
+          <line x1={12} x2={12} y1={r.y - 8} y2={r.y + 6} stroke={BULL} strokeWidth={1} />
+          <text x={20} y={r.y} fontSize={8} fontWeight={700} fill={r.ink}>{r.name}</text>
+          <text x={408} y={r.y} textAnchor="end" fontSize={8.5} fontWeight={700} fill={INK}>{r.px}</text>
+          <text x={20} y={r.y + 9} fontSize={6.5} fill={SECOND}>{r.sub}</text>
+        </g>
+      ))}
+      <line x1={12} x2={12} y1={70} y2={82} stroke={BEAR} strokeWidth={1} />
+      <text x={20} y={78} fontSize={8} fontWeight={700} fill={BEAR}>Stop</text>
+      <text x={408} y={78} textAnchor="end" fontSize={8.5} fontWeight={700} fill={BEAR}>$0.48</text>
     </g>
-    <line x1={0} x2={420} y1={17} y2={17} stroke="#ffffff" strokeOpacity={0.08} />
-    {[
-      { y: 32, t: 'Target 2', p: '$1.31', f: '+75%', n: '123.10', ink: INK, bold: true },
-      { y: 52, t: '✓ Target 1', p: '$1.02', f: '+36%', n: '—', ink: BULL, bold: true },
-      { y: 72, t: 'Entry', p: '$0.75', f: '—', n: '—', ink: SECOND, bold: false },
-      { y: 92, t: 'Floor', p: '—', f: '—', n: 'below 118.90', ink: BEAR, bold: true },
-    ].map(r => (
-      <g key={r.t} fontFamily={MONO}>
-        <text x={12} y={r.y} fontSize={8} fontWeight={r.bold ? 700 : 400} fill={r.ink}>
-          {r.t}
-        </text>
-        <text x={200} y={r.y} textAnchor="end" fontSize={8.5} fontWeight={700} fill={r.p === '—' ? MUTED : INK}>
-          {r.p}
-        </text>
-        <text x={290} y={r.y} textAnchor="end" fontSize={8} fill={r.f === '—' ? MUTED : r.t.includes('1') ? BULL : SECOND}>
-          {r.f}
-        </text>
-        <text x={408} y={r.y} textAnchor="end" fontSize={8} fontWeight={r.t === 'Floor' ? 700 : 400} fill={r.n === '—' ? MUTED : INK}>
-          {r.n}
-        </text>
-      </g>
-    ))}
   </Figure>
 );
 
-/* The case: the four-step meter and its word — no figure of ours is drawn, here or on the page (2026-09-19) */
+/* The case: four words, no meter — the page does not draw one */
 const CaseFigure = () => (
-  <Figure label="Four meters of four steps each: all four lit in green reading a strong case, three in green a good case, two in orange caution, one in red a poor case" h={92}>
+  <Figure label="Four case words: strong, good, caution, poor" h={92}>
     {[
-      { y: 18, lit: 4, ink: BULL, word: 'a strong case' },
-      { y: 40, lit: 3, ink: BULL, word: 'a good case' },
-      { y: 62, lit: 2, ink: WARN, word: 'caution' },
-      { y: 84, lit: 1, ink: BEAR, word: 'a poor case' },
+      { y: 18, ink: BULL, word: 'strong' },
+      { y: 40, ink: BULL, word: 'good' },
+      { y: 62, ink: WARN, word: 'caution' },
+      { y: 84, ink: BEAR, word: 'poor' },
     ].map(m => (
       <g key={m.word} fontFamily={MONO}>
         <text x={12} y={m.y} fontSize={6.5} letterSpacing={0.8} fill={MUTED}>
           THE CASE
         </text>
-        {[0, 1, 2, 3].map(i => (
-          <rect key={i} x={80 + i * 36} y={m.y - 6} width={33} height={5} rx={2.5} fill={i < m.lit ? m.ink : '#ffffff'} fillOpacity={i < m.lit ? 0.85 : 0.06} />
-        ))}
-        <text x={236} y={m.y} fontSize={8} fontWeight={700} fill={m.ink}>
+        <text x={80} y={m.y} fontSize={8} fontWeight={700} fill={m.ink}>
           {m.word}
         </text>
       </g>
@@ -140,61 +124,51 @@ const CaseFigure = () => (
 
 /* The contracts around it: two rows, the setup's own in silver */
 const AroundFigure = () => (
-  <Figure label="Two rows: THIS CONTRACT in silver, NVDA 120P, its gamma share and exposure; CALL WALL, NVDA 125C, with its figures and an Open door" h={62}>
+  <Figure label="Five strikes: a short bead, the contract, premium, delta, distance. This strike's bead is silver and longer." h={78}>
     <g fontFamily={MONO} fontSize={6.5} fill={MUTED} letterSpacing={0.6}>
-      <text x={12} y={12}>ROLE</text>
-      <text x={120} y={12}>CONTRACT</text>
-      <text x={260} y={12} textAnchor="end">GAMMA</text>
-      <text x={340} y={12} textAnchor="end">EXPOSURE</text>
+      <text x={48} y={12}>CONTRACT</text>
+      <text x={200} y={12} textAnchor="end">PREMIUM</text>
+      <text x={270} y={12} textAnchor="end">DELTA</text>
+      <text x={350} y={12} textAnchor="end">FROM SPOT</text>
     </g>
     <line x1={0} x2={420} y1={17} y2={17} stroke="#ffffff" strokeOpacity={0.08} />
-    <rect x={0} y={22} width={420} height={18} fill={SILVER} fillOpacity={0.05} />
-    <text x={12} y={34} fontSize={6.5} letterSpacing={0.6} fontWeight={700} fill={SILVER} fontFamily={MONO}>
-      THIS CONTRACT
-    </text>
-    <text x={120} y={34} fontSize={8.5} fontWeight={700} fill={INK} fontFamily={MONO}>
-      NVDA 120<tspan fill={BEAR}>P</tspan>
-    </text>
-    <text x={260} y={34} textAnchor="end" fontSize={8} fill={INK} fontFamily={MONO}>
-      12.0%
-    </text>
-    <text x={340} y={34} textAnchor="end" fontSize={8} fontWeight={700} fill={BEAR} fontFamily={MONO}>
-      $71.1M
-    </text>
-    <text x={12} y={54} fontSize={6.5} letterSpacing={0.6} fill={SECOND} fontFamily={MONO}>
-      CALL WALL
-    </text>
-    <text x={120} y={54} fontSize={8.5} fontWeight={700} fill={INK} fontFamily={MONO}>
-      NVDA 125<tspan fill={BULL}>C</tspan>
-    </text>
-    <text x={260} y={54} textAnchor="end" fontSize={8} fill={INK} fontFamily={MONO}>
-      8.7%
-    </text>
-    <text x={340} y={54} textAnchor="end" fontSize={8} fontWeight={700} fill={BULL} fontFamily={MONO}>
-      −$51.8M
-    </text>
-    <text x={408} y={54} textAnchor="end" fontSize={6.5} letterSpacing={0.6} fill={SECOND} fontFamily={MONO}>
-      OPEN ↗
-    </text>
+    {[
+      { y: 32, w: 10, ink: 'rgb(214,237,248)', name: 'NVDA 120C', prem: '1.15', d: '0.31', dist: '−1.2%', here: false },
+      { y: 50, w: 22, ink: SILVER, name: 'NVDA 125C', prem: '0.84', d: '0.24', dist: '0.0%', here: true },
+      { y: 68, w: 8, ink: 'rgb(214,237,248)', name: 'NVDA 130C', prem: '0.51', d: '0.16', dist: '+1.2%', here: false },
+    ].map(r => (
+      <g key={r.name}>
+        {r.here && <rect x={0} y={r.y - 10} width={420} height={16} fill={SILVER} fillOpacity={0.05} />}
+        <rect x={12} y={r.y - 2} width={r.w} height={r.here ? 3 : 2} fill={r.ink} />
+        <text x={48} y={r.y} fontSize={8.5} fontWeight={r.here ? 700 : 500} fill={INK} fontFamily={MONO}>{r.name}</text>
+        <text x={200} y={r.y} textAnchor="end" fontSize={8} fill={INK} fontFamily={MONO}>{r.prem}</text>
+        <text x={270} y={r.y} textAnchor="end" fontSize={8} fill={SECOND} fontFamily={MONO}>{r.d}</text>
+        <text x={350} y={r.y} textAnchor="end" fontSize={8} fill={SECOND} fontFamily={MONO}>{r.dist}</text>
+      </g>
+    ))}
   </Figure>
 );
 
-export const SetupGuide = () => (
+export const SetupGuide = ({ odte = true }: { odte?: boolean }) => (
   <div data-setup-guide>
-    <Section title="The chart">
-      <p>The stock, live, with the setup drawn on it: the entry on the bar the page opened, each target still to be won as a dashed green line, a target that was hit on the candle that hit it, and the floor in red. A close through the floor retires the setup. The Premium tab shows the contract's own price instead.</p>
-      <ChartFigure />
-    </Section>
-    <Section title="The targets">
-      <p>Each target is a premium the contract can reach, with what the stock needs to do to get it there. A hit target wears a check. The floor is the stock price that ends it. A poor case earns no targets and draws no lines.</p>
-      <TargetsFigure />
-    </Section>
-    <Section title="The case">
-      <p>The case is how sure the engine is, said in one word: strong, good, caution or poor. The meter beside it fills one step for each. The state in the head says where the setup sits in its life: proving itself, in place, trading like its trade, or retiring.</p>
-      <CaseFigure />
-    </Section>
-    <Section title="The contracts around it">
-      <p>The contracts whose hedging this setup trades through: its own row in silver, then the walls, the supreme, the pin and the heaviest strikes on the way to the last target. A row opens that contract's page, with this one as the way back.</p>
+    {odte ? (
+      <>
+        <Section title="The chart">
+          <p>The contract's own prints. No prints, no candles. TP1, TP2 and TP3 are +50%, +100% and +200% from the ask. The stop is the line at −53.22% from the ask. The ask is the line across the chart.</p>
+          <ChartFigure />
+        </Section>
+        <Section title="The targets">
+          <p>Each take profit is the premium the contract can reach, and the percent from the ask you paid. TP1 is +50%, TP2 is +100%, TP3 is +200%. A hit says HIT on the line. The stop is the bid at −53.22% from that ask. The entry is the amber line on the chart, not a second price in this list.</p>
+          <TargetsFigure />
+        </Section>
+      </>
+    ) : (
+      <Section title="The chart">
+        <p>1–7 DTE. The same chart. The ask, the stop, and TP1 through TP3 belong to this contract.</p>
+      </Section>
+    )}
+    <Section title="The strikes beside it">
+      <p>This strike, four each side, and the other side of those strikes. The prints are that contract's trades. A row does not open another contract.</p>
       <AroundFigure />
     </Section>
   </div>

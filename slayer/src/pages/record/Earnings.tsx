@@ -108,7 +108,7 @@ const MACRO_WORD: Record<string, string> = { 'FOMC decision': 'FOMC', 'NFP relea
 /** The pricing in the page's words: how the options price sits against the usual move */
 export const PRICED_WORD: Record<VolState, string> = { RICH: 'rich', INLINE: 'fair', CHEAP: 'cheap' };
 export const PRICED_INK: Record<VolState, string> = { RICH: 'text-warn', INLINE: 'text-textPrimary', CHEAP: 'text-bull' };
-/* a report whose time the vendor does not have ("unknown") is not "after the close" (the re-audit, 2026-10-22) */
+/* a report whose time the feed does not have ("unknown") is not "after the close" (the re-audit, 2026-10-22) */
 export const slotWord = (e: { slot: EarningsEvent['slot']; timeKnown?: boolean }) => (e.timeKnown === false ? 'time not set' : e.slot === 'BMO' ? 'before the open' : 'after the close');
 /** How many past moves the usual move averages — the live feed says; the sample has eight */
 const histN = (e: EarningsEvent) => (e.history === false ? 0 : e.histCount ?? e.pastMoves.length);
@@ -572,7 +572,8 @@ const Earnings = () => {
   const rich = scored.filter(e => stateOf(e) === 'RICH').length;
   const cheap = scored.filter(e => stateOf(e) === 'CHEAP').length;
   const fair = scored.length - rich - cheap;
-  const biggest = ahead.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
+  const pricedPool = sample.filter(e => e.impliedMovePct > 0);
+  const biggest = pricedPool.reduce<EarningsEvent | null>((a, e) => (a === null || e.impliedMovePct > a.impliedMovePct ? e : a), null);
   const today = rankEvents(knownEvents.filter(e => e.daysOut === 0 && e.iso === nyTodayIso()));
   const seen = useSeenNames();
   useEarningsHistories([...sample.map(e => e.ticker), ...seen, ...(show !== 'all' ? ahead.map(e => e.ticker) : [])]);
@@ -595,7 +596,7 @@ const Earnings = () => {
         ? 'nothing is left to price — a report that is out carries its move instead'
         : `of ${sampled ? `the ${sample.length} largest of them` : 'those'}, ${scored.length} with at least ${MIN_PRICED_PRINTS} past moves on file${weekHistOut ? ` (histories ${sample.length - weekHistOut} of ${sample.length} read so far)` : ''}: ${rich} priced rich, ${fair} fair, ${cheap} cheap`,
     ];
-    if (biggest) parts.push(`the biggest move priced is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
+    if (biggest) parts.push(`the biggest move priced among the largest known names is ${biggest.ticker} at ±${biggest.impliedMovePct.toFixed(1)}% on ${biggest.dateLabel}`);
     parts.push(today.length ? `today: ${today.slice(0, 4).map(e => `${e.ticker} ${slotWord(e)}`).join(', ')}${today.length > 4 ? `, and ${today.length - 4} more known names` : ''}${todayMore > 0 ? `, ${todayMore} more on the list` : ''}` : todayMore > 0 ? `no known name reports today, ${todayMore} on the list do` : 'nothing reports today');
     if (cover.missed) parts.push(`${cover.missed} of the ${cover.slots} day lists did not answer, so the count is short`);
     return parts.join(' · ') + '.';
@@ -673,7 +674,7 @@ const Earnings = () => {
             <Fact label="Biggest priced move" testId="biggest">
               {biggest ? (
                 <>
-                  {biggest.ticker} ±{biggest.impliedMovePct.toFixed(1)}% <span className="text-textMuted">· {biggest.dateLabel} · known names, {weekWords}</span>
+                  {biggest.ticker} ±{biggest.impliedMovePct.toFixed(1)}% <span className="text-textMuted">· {biggest.dateLabel} · the largest known names, {weekWords}</span>
                 </>
               ) : (
                 <span className="text-textMuted">—</span>

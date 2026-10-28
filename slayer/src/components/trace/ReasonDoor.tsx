@@ -87,7 +87,7 @@ const PickMenu = <V extends string>({
         aria-label={ariaLabel}
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-1 rounded border border-borderSubtle bg-ink/[0.03] px-2 py-1 text-[11px] text-textPrimary hover:border-borderMuted transition-colors"
+        className="slayer-field flex w-full items-center gap-1 text-left"
       >
         <span className="truncate">{active?.label ?? value}</span>
         <ChevronDown className={`ml-auto w-3 h-3 shrink-0 text-textMuted transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -163,7 +163,7 @@ const CommaInput = ({
         setText(shown);
         onChange(parseNum(shown));
       }}
-      className="shrink-0 w-[92px] bg-ink/[0.04] border border-borderSubtle rounded px-1.5 py-1 font-mono text-[11px] tnum text-textPrimary text-right outline-none focus:border-borderMuted placeholder:text-textMuted/60"
+      className="shrink-0 w-[92px] slayer-field text-right tnum"
     />
   );
 };
@@ -255,7 +255,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
       <button
         onClick={toggle}
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-borderSubtle text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04] font-mono text-[11px] uppercase tracking-wider transition-colors"
+        className="slayer-chip uppercase tracking-wider"
       >
         <ListPlus className="w-3 h-3" />
         Your reasons
@@ -320,10 +320,8 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                 onClick={() => setDraft(blankDraft())}
                 disabled={full}
                 title={full ? `Ten reasons is the most a feed stays readable with` : undefined}
-                className={`w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded border font-mono text-[11px] uppercase tracking-wider transition-colors ${
-                  full
-                    ? 'border-borderSubtle text-textMuted cursor-not-allowed'
-                    : 'border-borderMuted text-textPrimary hover:bg-ink/[0.05]'
+                className={`w-full justify-center uppercase tracking-wider ${
+                  full ? 'slayer-chip opacity-40 cursor-not-allowed' : 'slayer-chip'
                 }`}
               >
                 <Plus className="w-3 h-3" />
@@ -351,7 +349,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                   maxLength={28}
                   placeholder={suggestedName(draft.terms)}
                   onChange={e => setDraft(d => (d ? { ...d, name: e.target.value } : d))}
-                  className="mt-1 w-full bg-ink/[0.04] border border-borderSubtle rounded px-2 py-1 text-[11px] text-textPrimary outline-none focus:border-borderMuted"
+                  className="mt-1 w-full slayer-field"
                 />
               </label>
 
@@ -477,17 +475,15 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
                 <button
                   onClick={commit}
                   disabled={draft.terms.length === 0 || incomplete}
-                  className={`flex-1 px-2 py-1.5 rounded border font-mono text-[11px] uppercase tracking-wider transition-colors ${
-                    draft.terms.length === 0 || incomplete
-                      ? 'border-borderSubtle text-textMuted cursor-not-allowed'
-                      : 'border-borderMuted text-textPrimary hover:bg-ink/[0.05]'
+                  className={`slayer-chip flex-1 justify-center uppercase tracking-wider ${
+                    draft.terms.length === 0 || incomplete ? 'text-textMuted cursor-not-allowed hover:text-textMuted hover:border-borderSubtle' : 'border-borderMuted text-textPrimary'
                   }`}
                 >
                   {draft.id ? 'Save changes' : 'Add to the feed'}
                 </button>
                 <button
                   onClick={() => setDraft(null)}
-                  className="px-2 py-1.5 rounded border border-borderSubtle font-mono text-[11px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors"
+                  className="slayer-chip uppercase tracking-wider"
                 >
                   Cancel
                 </button>

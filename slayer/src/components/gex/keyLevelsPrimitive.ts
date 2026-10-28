@@ -19,10 +19,10 @@
   word 2026-10-05), and the levels take the Compass
   ladder's form at the tape's right edge:
 
-    CALL WALL   a thin green rule, its price above it
-    PUT WALL    the same in red
-    FLIP        a thin silver dashed rule
-    SUPREME     a magenta rule, one step heavier
+    CALL WALL   a thin glacier rule, letter C
+    PUT WALL    the same in ember, letter P
+    FLIP        a thin silver dashed rule, letter F
+    SUPREME     a magenta rule, one step heavier, letter S
 
   Short rungs, not full-width lines; no capsule on the
   axis; no words over the candles. The one under the
@@ -51,8 +51,10 @@ import type { IChartApi, ISeriesApi, ISeriesPrimitive, SeriesAttachedParameter, 
 import type { KeyLevels } from '../../types/gex';
 import { ladderPen, type DrawTarget } from './ladderPaint';
 
-export type KeyLevelKey = 'callWall' | 'putWall' | 'flip' | 'supreme';
-export const KEY_LEVEL_KEYS: KeyLevelKey[] = ['callWall', 'putWall', 'flip', 'supreme'];
+export type KeyLevelKey = 'callWall' | 'putWall' | 'flip' | 'supreme' | 'pin' | 'maxPain' | 'coneHigh' | 'coneLow';
+/** Book rungs only. Cone edges are not on KeyLevels, so the tween must not index them. */
+export const KEY_LEVEL_KEYS = ['callWall', 'putWall', 'flip', 'supreme', 'pin', 'maxPain'] as const;
+const HOT_KEYS: KeyLevelKey[] = [...KEY_LEVEL_KEYS, 'coneHigh', 'coneLow'];
 
 export interface KeyLevelRung {
   key: KeyLevelKey;
@@ -61,6 +63,8 @@ export interface KeyLevelRung {
   ink: string;
   dash?: boolean;
   weight?: 1 | 2;
+  /** How many times today's range reached this price. Drawn as notches, off the candles. */
+  touches?: number;
 }
 
 export interface KeyLevelsLadder {
@@ -73,13 +77,18 @@ export interface KeyLevelsLadder {
 export const KEY_LEVEL_WORDS: Record<KeyLevelKey, { name: string; aside: string; line: string }> = {
   callWall: { name: 'Call wall', aside: 'the most call gamma', line: 'The strike with the most call hedging, either side of price. Above price a rise tends to slow into it; below, it can act as support.' },
   putWall: { name: 'Put wall', aside: 'the most put gamma', line: 'The strike with the most put hedging, either side of price. Below price it is support while it holds; above, it is overhead put hedging, not a floor.' },
-  flip: { name: 'Flip', aside: 'the border', line: 'Where dealer hedging switches sides: on the side price is on it does what the book does now, on the other the opposite.' },
+  flip: { name: 'Flip', aside: 'this book', line: 'Where dealer hedging switches sides, on the contracts this rail is reading. The desk names that set. No crossing within 10% is left blank — it is not invented at the price.' },
   supreme: { name: 'Supreme', aside: 'the biggest strike', line: 'The strike with the most hedging in the whole book. Price tends to be drawn to it as expiry nears.' },
+  pin: { name: 'Pin', aside: 'the most open interest', line: 'The strike with the most open interest on this cut. It is where the chain is heaviest, not a forecast.' },
+  maxPain: { name: 'Max pain', aside: 'not a wall', line: 'The settlement that pays the least intrinsic on the open interest. It is not a wall and it is not the pin.' },
+  coneHigh: { name: 'Cone high', aside: 'this horizon +1σ', line: 'The top of the expected move on the horizon this chart is drawing. A bell fires when price crosses it.' },
+  coneLow: { name: 'Cone low', aside: 'this horizon −1σ', line: 'The bottom of the expected move on the horizon this chart is drawing. A bell fires when price crosses it.' },
 };
 
 /** The rung at rest, and reaching further in under the pointer — media px */
 const RUNG_W = 26;
 const RUNG_W_HOT = 44;
+const RUNG_MARK: Partial<Record<KeyLevelKey, string>> = { callWall: 'C', putWall: 'P', flip: 'F', supreme: 'S' };
 /* THE REACH GLIDES (Noah, 2026-10-14: "the hover should be smooth not rapid"): a rung the pointer lands on widens and
    brightens over this long on the house's expo ease, and the one it left eases back the same way — never a snap */
 const HOT_MS = 180;
@@ -96,7 +105,7 @@ export interface EdgeChip {
 }
 
 /** Who draws when two levels share a price: the supreme, then a wall, then the flip */
-const RANK: Record<KeyLevelKey, number> = { supreme: 3, callWall: 2, putWall: 2, flip: 1 };
+const RANK: Record<KeyLevelKey, number> = { supreme: 3, callWall: 2, putWall: 2, flip: 1, pin: 1, maxPain: 0, coneHigh: 0, coneLow: 0 };
 const samePrice = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 
 class LadderRenderer {
@@ -138,6 +147,23 @@ class LadderRenderer {
         const end = edgeMedia != null ? edgeMedia * hr : chip ? (chip.left - CHIP_GAP) * hr : right;
         const w = (RUNG_W + (RUNG_W_HOT - RUNG_W) * hot) * hr;
         pen.rule(end - w, y, end, r.ink, 0.82 + 0.18 * hot, { trace: edgeMedia != null, dash: r.dash ? [3, 3] : undefined, width: r.weight ?? 1 });
+        const mark = RUNG_MARK[r.key];
+        if (mark) {
+          ctx.fillStyle = r.ink;
+          ctx.font = `${Math.round(9 * vr)}px ui-monospace, monospace`;
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'right';
+          ctx.fillText(mark, end - w - 3 * hr, y);
+        }
+        const n = Math.min(4, r.touches ?? 0);
+        if (n > 0) {
+          ctx.fillStyle = r.ink;
+          for (let i = 0; i < n; i++) {
+            ctx.beginPath();
+            ctx.arc(end - w - (7 + i * 5) * hr, y, 1.5 * vr, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
         if (chip) continue;
         if (figRungs.some(fy => Math.abs(fy - y) < FIG_GAP)) continue;
         figRungs.push(y);
@@ -145,6 +171,16 @@ class LadderRenderer {
         const figAt = edgeMedia != null ? end - w - 4 * hr : undefined;
         if (clear(pen.figureBox(y, true))) taken.push(pen.figure(text, y, r.ink, true, 0.92 + 0.08 * hot, figAt));
         else if (clear(pen.figureBox(y, false))) taken.push(pen.figure(text, y, r.ink, false, 0.92 + 0.08 * hot, figAt));
+      }
+      ctx.fillStyle = '#EDEDED';
+      for (const price of this.source.marks) {
+        const yc = series.priceToCoordinate(price);
+        if (yc == null) continue;
+        const y = Math.round(yc * vr);
+        if (y < 4 * vr || y > H - 4 * vr) continue;
+        ctx.beginPath();
+        ctx.arc(right - 8 * hr, y, 2.2 * vr, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.restore();
     });
@@ -174,6 +210,8 @@ export class KeyLevelsPrimitive implements ISeriesPrimitive<Time> {
   edge: number | null = null;
   /** The field's strike chips at the edge this frame — set by the host, read at draw and in its hit test */
   chips?: () => EdgeChip[];
+  /** Strikes whose open interest at least doubled. Dots, not a new study. */
+  marks: number[] = [];
   private readonly _paneViews: LadderPaneView[];
   /** Each rung's hot state as drawn, 0..1, and where each was when the last pointer move began its glide */
   private _hotNow: Partial<Record<KeyLevelKey, number>> = {};
@@ -220,7 +258,7 @@ export class KeyLevelsPrimitive implements ISeriesPrimitive<Time> {
     this._hotFrame = 0;
     const p = easeOut(Math.min(1, (performance.now() - this._hotStart) / HOT_MS));
     let going = false;
-    for (const k of KEY_LEVEL_KEYS) {
+    for (const k of HOT_KEYS) {
       const from = this._hotFrom[k] ?? 0;
       const to = this.data?.hot === k ? 1 : 0;
       const now = from + (to - from) * p;
@@ -246,11 +284,11 @@ export class KeyLevelsPrimitive implements ISeriesPrimitive<Time> {
     if (!this.data) return;
     let moved = false;
     for (const r of this.data.rungs) {
-      const p = levels[r.key];
-      if (r.price !== p) {
-        r.price = p;
-        moved = true;
-      }
+      if (r.key === 'coneHigh' || r.key === 'coneLow') continue;
+      const p = r.key === 'pin' ? levels.pin : r.key === 'maxPain' ? levels.maxPain : levels[r.key];
+      if (p == null || !Number.isFinite(p) || r.price === p) continue;
+      r.price = p;
+      moved = true;
     }
     if (moved) this.requestUpdate?.();
   }

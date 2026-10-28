@@ -281,9 +281,14 @@ export class Runner {
         return h;
       }),
       fills: this.fills.map(({ colorsArr, seen, ...f }) => {
-        const c = collapse(colorsArr, f.ink);
         void seen;
-        return { ...f, ink: c.ink, colors: c.colors };
+        /* A missing colour is a hole, not the ink. Plots can fall back to
+           their own colour. A fill cannot: `na` means do not paint that bar,
+           which is how the corridor stays off under the flip. */
+        const painted = colorsArr.filter((c): c is string => c != null);
+        if (painted.length === 0) return { ...f, colors: colorsArr };
+        if (painted.length !== colorsArr.length || painted.some(c => c !== painted[0])) return { ...f, colors: colorsArr };
+        return { ...f, ink: painted[0], colors: null };
       }),
       shapes: this.shapes.map(({ colorsArr, seen, ...s }) => {
         const c = collapse(colorsArr, s.ink);

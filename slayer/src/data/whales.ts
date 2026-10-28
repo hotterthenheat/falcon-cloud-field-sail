@@ -145,16 +145,36 @@ export async function uwCall(path: string, priority = false, low = false): Promi
   return copyOf(got);
 }
 
+const failWait = new Map<string, { n: number; until: number }>();
+
+function retryWait(path: string): number {
+  const held = failWait.get(path);
+  if (!held || held.n < 2) return 0;
+  return Math.max(0, held.until - Date.now());
+}
+
+function noteFail(path: string) {
+  const n = (failWait.get(path)?.n ?? 0) + 1;
+  const ms = n < 2 ? 0 : Math.min(30_000, 2000 * 2 ** (n - 2));
+  failWait.set(path, { n, until: Date.now() + ms });
+  return ms;
+}
+
 async function uwFetch(path: string, priority: boolean, low = false): Promise<UwAnswer> {
   await takeSlot(priority, low);
   try {
+    const held = retryWait(path);
+    if (held > 0) await new Promise(r => setTimeout(r, held));
     let res = await fetch(`/api/uw${path}`);
-    /* one retry for a rate limit or a passing gateway hiccup (the ship sweep, 2026-10-22: a single 503 on a route that
-       answered 200 three times straight after) — a second failure is real and is reported */
+    /* After two failures of a rate limit or a dead gateway, wait 2s, then 4, then 8, and stop at 30s.
+       A 200 clears the wait. One retry still happens on the first failure. */
     if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
-      await new Promise(r => setTimeout(r, 1500));
+      const ms = noteFail(path);
+      await new Promise(r => setTimeout(r, ms > 0 ? ms : 1500));
       res = await fetch(`/api/uw${path}`);
     }
+    if (res.ok) failWait.delete(path);
+    else if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) noteFail(path);
     const text = await res.text();
     let parsed: unknown = null;
     try {
@@ -199,12 +219,19 @@ export const whalesInsiders = () => uw<UwInsider[]>('/insider/transactions');
 export const whalesEcon = () => uw<UwEcon[]>('/market/economic-calendar');
 export const whalesScreener = (tickers: string[], priority = false) =>
   uw<Record<string, unknown>[]>(`/screener/stocks?ticker=${tickers.map(t => encodeURIComponent(t)).join(',')}`, priority);
+export const whalesAnalysts = (ticker: string, priority = false) =>
+  uw<Record<string, unknown>[]>(`/screener/analysts?ticker=${encodeURIComponent(ticker)}&limit=200`, priority);
 export const whalesFlow = () => uw<Record<string, unknown>[]>('/option-trades/flow-alerts');
 export const whalesDarkPool = () => uw<Record<string, unknown>[]>('/darkpool/recent');
 export const whalesEarnings = (ticker: string, priority = false) => uw<Record<string, unknown>[]>(`/earnings/${encodeURIComponent(ticker)}`, priority);
 export const whalesEarningsSlot = (slot: 'premarket' | 'afterhours', date: string, page = 0, limit = 100) =>
   uw<Record<string, unknown>[]>(`/earnings/${slot}?date=${encodeURIComponent(date)}&limit=${limit}&page=${page}`);
 export const whalesStock = (ticker: string) => uw<Record<string, unknown>>(`/stock/${encodeURIComponent(ticker)}/info`);
+export const whalesFinancials = (ticker: string, priority = false) =>
+  uw<{ earnings?: Record<string, unknown>[]; income_statements?: Record<string, unknown>[]; cash_flows?: Record<string, unknown>[] }>(
+    `/stock/${encodeURIComponent(ticker)}/financials`,
+    priority,
+  );
 
 export interface UwState {
   close?: string | number;
@@ -241,6 +268,8 @@ export interface UwBar {
   total_volume?: string | number;
   start_time?: string;
   end_time?: string;
+  /** r regular, pr pre-market, po post-market. The index tape sets this; the stock feed does too. */
+  market_time?: string;
 }
 
 export interface UwIv {
@@ -285,6 +314,13 @@ export interface UwContract {
   last_price?: string | number;
   nbbo_bid?: string | number;
   nbbo_ask?: string | number;
+  ask_volume?: string | number;
+  bid_volume?: string | number;
+  mid_volume?: string | number;
+  multi_leg_volume?: string | number;
+  no_side_volume?: string | number;
+  last_tape_time?: string;
+  updated_at?: string;
 }
 
 const enc = (ticker: string) => encodeURIComponent(ticker);

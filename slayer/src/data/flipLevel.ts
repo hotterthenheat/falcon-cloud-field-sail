@@ -51,7 +51,8 @@
 */
 
 import { bellDay, shortDay, todayScopeLabel } from './bookWindow';
-import { DEFAULT_R } from '../core/carry';
+import { carryFor } from '../core/carry';
+import { tradingMinutes, tradingYears } from '../core/tradingYear';
 import { cumulativeFlip, dollarGammaPerContract, netGammaAt, repricedFlip, type FlipRead, type GammaLeg } from '../core/gammaFlip';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { bookToday, isoDate, isTradingDay } from '../core/calendar';
@@ -78,13 +79,10 @@ export function datesOf(snapshot: MarketSnapshot, chain: readonly StrikeNode[]):
 
 /* ---- the clock and the vol ----------------------------------------------------------------------------------- */
 
-const YEAR_MIN = 365 * 24 * 60;
-/** Years from now to 4:00 ET on the expiry date — five minutes at the least, so a leg at the bell stays finite */
+const YEAR_SESSION = 252;
+/** Years from the pricing minute to 16:00 ET on the expiry — trading minutes only, five at the least. */
 export function yearsTo(expiry: string, now: number = Date.now()): number {
-  const today = nyIsoDate(now);
-  const days = Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-  const mins = days * 1440 + (16 * 60 - nyMinutes(now));
-  return Math.max(5, mins) / YEAR_MIN;
+  return tradingYears(expiry, now);
 }
 
 /*
@@ -150,9 +148,9 @@ const legsOfDate = (chain: readonly StrikeNode[], date: string, atmIv: number, n
          above the out-of-the-money side's at its strike (the smile), is re-priced at the smile's vol: its gamma at spot is
          scaled by the two vols' gamma ratio, and the rest of the vendor's figure is carried flat (legSet), so the net at
          spot is still the vendor's */
-      if (own && ownIv && itm && t < 1 / 365 && at > 0 && (mine ?? 0) > ITM_RUNAWAY_IV && wing > 0 && wing < (mine ?? 0) * 0.7) {
-        const g1 = dollarGammaPerContract(at, n.strike, t, wing, DEFAULT_R);
-        const g2 = dollarGammaPerContract(at, n.strike, t, mine!, DEFAULT_R);
+      if (own && ownIv && itm && t <= 1 / YEAR_SESSION && at > 0 && (mine ?? 0) > ITM_RUNAWAY_IV && wing > 0 && wing < (mine ?? 0) * 0.7) {
+        const g1 = dollarGammaPerContract(at, n.strike, t, wing);
+        const g2 = dollarGammaPerContract(at, n.strike, t, mine!);
         if (g2 > 0) {
           g = g0 * Math.min(1, g1 / g2);
           iv = wing;
@@ -385,7 +383,8 @@ function legSet(snapshot: MarketSnapshot, chain: readonly StrikeNode[], at?: num
   const asOfPx = snapshot.asOf != null && at == null ? priceAtMinute(snapshot.ticker, snapshot.asOf) : null;
   const pricedIn = pinned != null || !entry.gammaLive || [...ownDates].every(d => !!peekGammaPriced(snapshot.ticker, d));
   const termIn = want.every(d => ownDates.has(d)) || !!entry.termIv;
-  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}|${asOfPx ?? ''}`;
+  const carry = carryFor(snapshot.ticker);
+  const key = `${snapshot.ticker}|${dates === 'ALL' ? 'ALL' : dates.join(',')}|${want.length}|${spot}|${entry.at}|${sig}|${chain.length}|${factsIn}|${entry.factsDates?.size ?? 0}|${pricedIn}|${termIn}|${asOfPx ?? ''}|${carry.r}|${carry.q}`;
   const term = entry.termIv ?? {};
   const legs: GammaLeg[] = [];
   let withVol = 0;
@@ -430,7 +429,7 @@ export function levelFlip(snapshot: MarketSnapshot, chain: readonly StrikeNode[]
      browser may have moved it) */
   let base = cache.get(set.key);
   if (!base) {
-    const raw = repricedFlip(set.legs, spot, DEFAULT_R);
+    const raw = repricedFlip(set.legs, spot, carryFor(snapshot.ticker).r, undefined, carryFor(snapshot.ticker).q);
     /* off the hold: the crossing nearest price, and the other crossing nearest it disclosed — the same inputs give the same
        answer on every page and in every profile */
     const second = (raw.crossings?.length ?? 0) > 1 && raw.flip != null ? raw.crossings!.filter(x => x !== raw.flip).sort((a, b) => Math.abs(a - raw.flip!) - Math.abs(b - raw.flip!))[0] ?? null : null;
@@ -488,12 +487,14 @@ export function levelNetPath(snapshot: MarketSnapshot, chain: readonly StrikeNod
   const legs = set.legs.map(l => (Math.abs(l.g0) < gross * 1e-7 || (!l.ownIv && Math.abs(l.g0) < gross * 1e-5) ? { ...l, iv: 0 } : l));
   const wall = Date.now();
   const ref = pricingClock(undefined, wall);
-  const YEAR_MS = YEAR_MIN * 60_000;
   const path = prices.map((S, i) => {
     const at = times?.[i];
-    const back = at != null && Number.isFinite(at) ? Math.max(0, ref - at) / YEAR_MS : 0;
+    const leftThen = at != null && Number.isFinite(at) ? tradingMinutes('2099-12-31', at, false) : null;
+    const leftNow = tradingMinutes('2099-12-31', ref, false);
+    const back = leftThen != null && leftNow != null ? Math.max(0, leftThen - leftNow) / (390 * 252) : 0;
     const these = back > 0 ? legs.map(l => (l.iv > 0 && l.t > 0 ? { ...l, t: l.t + back, t0: l.t } : l)) : legs;
-    const v = netGammaAt(these, snapshot.spot, S, DEFAULT_R);
+    const y = carryFor(snapshot.ticker);
+    const v = netGammaAt(these, snapshot.spot, S, y.r, y.q);
     return v === 0 ? 0 : -v;
   });
   return { path, complete: set.complete };

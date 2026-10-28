@@ -91,7 +91,7 @@ const SHOW_OPTIONS: DropdownOption<Show>[] = [
   { value: 'sales', label: 'Sales', hint: 'Sales only, full or partial', tone: 'bear' },
 ];
 
-/* a member the vendor's roster carries no party or state for (Alan Armstrong: party, chamber and district all null on
+/* a member the roster carries no party or state for (Alan Armstrong: party, chamber and district all null on
    /congress/politicians) says so, never a blank tag (round 9) */
 const seat = (t: CongressTrade) => seatLabel(t.member) || `${t.member.chamber === 'Senate' ? 'Senate' : t.member.chamber === 'House' ? 'House' : ''}${t.member.chamber ? ' · ' : ''}party n/a`;
 const typeWord = (t: CongressTrade) => (t.type === 'Purchase' ? 'Purchase' : t.type === 'Exchange' ? 'Exchange' : 'Sale');
@@ -152,7 +152,7 @@ export const assetKey = (t: CongressTrade) => {
 };
 
 export const AssetCell = ({ data }: ICellRendererParams<CongressTrade>) => {
-  /* the vendor's own name for a named stock, once its info lands */
+  /* the own name for a named stock, once its info lands */
   const [seenRef, seen] = useSeen<HTMLSpanElement>();
   useCompanyName(data?.ticker && SYMBOL.test(data.ticker.trim().toUpperCase()) ? data.ticker.trim().toUpperCase() : '', false, seen);
   if (!data) return null;

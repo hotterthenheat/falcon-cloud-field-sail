@@ -144,10 +144,10 @@ export const inksOf = (el: Element): Ink => {
 
 /* ---- THE CLOCK -------------------------------------------------------------------------------------------------- */
 
-/* THE CLOCK IS NEW YORK'S, as the signature's is (brand/useMarketClock.ts) — the market's own hours, whatever the reader's */
-const NY_S = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
-const NY_M = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-export const clock = (ms: number, seconds: boolean) => (seconds ? NY_S : NY_M).format(ms);
+/* The picture's clock is Central, 12-hour — the same instant the sidebar prints. */
+const CT_S = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+const CT_M = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit', hour12: true });
+export const clock = (ms: number, seconds: boolean) => (seconds ? CT_S : CT_M).format(ms);
 const WEEKDAY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' });
 const DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', day: 'numeric' });
 /** a day's own words ("Wed 2") — the calendar's, never a price */

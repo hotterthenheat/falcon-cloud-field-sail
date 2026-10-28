@@ -28,7 +28,7 @@
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import {
   createChart,
   HistogramSeries,
@@ -55,16 +55,13 @@ import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import {
   MONEYNESS,
   NET_SEGMENTS,
-  segmentLabel,
   type MoneynessKey,
   type NetFlowSegment,
 } from '../../data/flowBook';
 import { usd as fmtUsd } from '../../data/traceLive';
 import { SLEEVES, type SleeveKey } from '../../types/compass';
 import CompanyLogo from '../ui/CompanyLogo';
-import { roomBelow } from '../ui/menuRoom';
 import FlowSearch, { type SearchDoor } from './FlowSearch';
-import { SectorMark } from './SectorMark';
 import type { BookContract } from '../../types/trace';
 
 /* The pane's two cuts as cards (the walk, 2026-09-09): which strikes, and how far out */
@@ -144,81 +141,16 @@ export function paneTimes(_ref?: string): number[] {
   return Array.from({ length: n }, (_, i) => first + i * 60);
 }
 
-const SegPick = ({ seg, onSeg, allowed }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegment) => void; allowed?: (s: NetFlowSegment) => boolean }) => {
-  const [open, setOpen] = useState(false);
-  /* The room the pane leaves below the pill — the menu scrolls inside it
-     rather than being sliced at the pane's floor (see ui/menuRoom). */
-  const [menuMax, setMenuMax] = useState<number>();
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const toggle = () => {
-    setMenuMax(roomBelow(wrapRef.current));
-    setOpen(o => !o);
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      setOpen(false);
-    };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, [open]);
-
-  const label = segmentLabel(seg);
-  const groups = (['The book', 'Sectors'] as const).filter(g => NET_SEGMENTS.some(x => x.group === g && (!allowed || allowed(x.key))));
-  return (
-    <div ref={wrapRef} className="relative shrink-0">
-      <button
-        onClick={toggle}
-        title="Which cut of the book this pane watches — by family, or by sector"
-        className="inline-flex items-center gap-1 h-6 px-2 rounded-xs border border-borderSubtle bg-chip hover:bg-ink/[0.06] font-mono text-[11px] font-bold text-textPrimary transition-colors"
-      >
-        {label}
-        <ChevronDown className={`w-3 h-3 text-textSecondary transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        /* Two groups, the way the cut is two kinds of thing (see NET_SEGMENTS):
-           the book by family, then the book by sector — each sector with its
-           glyph, the Screener's own mark, so the shapes carry across pages. */
-        <div
-          style={{ maxHeight: menuMax }}
-          className="absolute left-0 top-full mt-1 z-[70] w-[196px] overflow-y-auto overscroll-contain border border-borderMuted bg-panel rounded-xs shadow-2xl shadow-black/60 p-1 animate-slide-in"
-        >
-          {groups.map((g, gi) => (
-            <div key={g} className={gi > 0 ? 'mt-1 pt-1 border-t border-borderSubtle' : ''}>
-              <div className="px-2 pt-1 pb-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-textMuted">{g}</div>
-              {NET_SEGMENTS.filter(s => s.group === g && (!allowed || allowed(s.key))).map(s => (
-                <button
-                  key={s.key}
-                  onClick={() => {
-                    setOpen(false);
-                    onSeg(s.key);
-                  }}
-                  className={`w-full flex items-center gap-2 text-left px-2 py-1 rounded font-mono text-[11px] transition-colors ${
-                    s.key === seg ? 'bg-ink/[0.06] text-textPrimary font-bold' : 'text-textSecondary hover:bg-ink/[0.04]'
-                  }`}
-                >
-                  {s.group === 'Sectors' && <SectorMark sector={s.label} />}
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+const SegPick = ({ seg, onSeg, allowed }: { seg: NetFlowSegment; onSeg: (s: NetFlowSegment) => void; allowed?: (s: NetFlowSegment) => boolean }) => (
+  <DropdownSelect
+    label="Cut"
+    value={seg}
+    options={NET_SEGMENTS.filter(s => !allowed || allowed(s.key)).map(s => ({ value: s.key, label: s.label, group: s.group }))}
+    onChange={onSeg}
+    title="Which cut of the book this pane watches — by family, or by sector"
+    testId="net-flow-cut"
+  />
+);
 
 interface NetFlowPaneProps {
   book: BookContract[];
@@ -339,7 +271,7 @@ const NetFlowPane = ({
   const endMin = sessionEndMin(ticker ?? ref);
   const nowP = nyParts(new Date());
   const runningNow = isLiveDay() && nowP.hour * 60 + nowP.minute < endMin;
-  const windowWords = runningNow ? `09:30–now (${tail ? nyClock(tail.time * 1000) : nyClock(Date.now())})` : `09:30–${sessionEndLabel(ticker ?? ref)}`;
+  const windowWords = runningNow ? `8:30 AM–now (${tail ? nyClock(tail.time * 1000, { zone: true }) : nyClock(undefined, { zone: true })})` : `8:30 AM–${sessionEndLabel(ticker ?? ref)}`;
   /* THE READOUT AT REST IS THE LATEST MINUTE (retail, round 8: "--:-- SPY — NET CALLS —" before any hover) — the hover
      writes over it, and leaving the chart puts the latest back */
   const restTip = useCallback(() => {
@@ -783,7 +715,7 @@ const NetFlowPane = ({
           />
         )}
         {/* The two cuts as labelled cards (the walk, 2026-09-09 — never chip rows) */}
-        {/* the cards show only where the vendor's minutes can be cut by them: moneyness on a market cut (net-flow/expiry
+        {/* the cards show only where the feed's minutes can be cut by them: moneyness on a market cut (net-flow/expiry
             takes it), never on a name's ticks or a sector's tide, and no tenor — a name's ticks span every expiry */}
         {cutCards && (live != null || (!ticker && !seg.startsWith('sector:'))) && <DropdownSelect label="Moneyness" value={mny} options={MONEY_OPTIONS} onChange={onMny} title={sharedNote ? `Which strikes against the stock — ${sharedNote}` : 'Which strikes against the stock'} testId="pane-money" />}
         {cutCards && live != null && ticker && onTenor && <DropdownSelect label="Tenor" value={tenor} options={CLOCK_OPTIONS} onChange={onTenor} title={sharedNote ? `How far out the contracts run — ${sharedNote}` : 'How far out the contracts run'} testId="pane-clock" />}
@@ -791,9 +723,9 @@ const NetFlowPane = ({
         <span className="ml-auto min-w-0 flex items-center justify-end gap-2.5 flex-wrap font-mono text-[11px] tnum [&>span]:whitespace-nowrap">
           {/* on a cut (Everything, Stocks only…) the white line is the reference name's price, not the pane's subject */}
           {/* AN INDEX-ONLY PANE SAYS ITS LINE IS NOT AN INDEX (audit round 4: "Index options only" over a line labelled "SPY
-              price"): the vendor's minutes carry SPY's price on every cut, so the line is SPY's, said as a reference */}
+              price"): the feed's minutes carry SPY's price on every cut, so the line is SPY's, said as a reference */}
           {/* THE LINES' KEY (retail, round 8: the chart had no legend for its lines) — each label wears its line's stroke */}
-          <span style={{ color: inksNow.spot }} data-pane-legend="spot" title={ticker ? `The thin solid line — ${ref}'s price, its own scale on the left` : `The white line is ${ref}'s price — the vendor's reference line on every cut, not ${seg === 'indexes' ? 'an index level' : "the cut's own price"}; the cut's money is every name in it`}>
+          <span style={{ color: inksNow.spot }} data-pane-legend="spot" title={ticker ? `The thin solid line — ${ref}'s price, its own scale on the left` : `The white line is ${ref}'s price — the reference line on every cut, not ${seg === 'indexes' ? 'an index level' : "the cut's own price"}; the cut's money is every name in it`}>
             <span aria-hidden className="inline-block align-middle w-3.5 mr-1 border-t" style={{ borderColor: inksNow.spot }} />
             {ticker ? `${ref} price` : seg === 'indexes' ? `${ref} price for reference, not an index` : `${ref} price for reference`}
           </span>
@@ -812,11 +744,11 @@ const NetFlowPane = ({
             </span>
           )}
           {ticker && dteMax <= 1 && live == null && (
-            <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The vendor has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry, from the bell">
+            <span className="text-textMuted uppercase text-[11px] tracking-wider" title="The feed has no same-day-only series for one name minute by minute — this pane is the name's money across every expiry, from the bell">
               every expiry
             </span>
           )}
-          <span title={`${ticker ? "The vendor's minute ticks for the name (/stock/{t}/net-prem-ticks), 09:30 to the close" : "The vendor's net flow by expiry (/net-flow/expiry)"}. ${VENDOR_TOTAL_NOTE}`}>
+          <span title={`${ticker ? "The minute ticks for the name (/stock/{t}/net-prem-ticks), 09:30 to the close" : "The net flow by expiry (/net-flow/expiry)"}. ${VENDOR_TOTAL_NOTE}`}>
             <span aria-hidden data-pane-legend="calls" className="inline-block align-middle w-3.5 mr-1 border-t-2" style={{ borderColor: inksNow.calls }} title="The solid line — net call premium, running from the bell" />
             <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net calls</span>
             <span className={ncp >= 0 ? 'text-bull' : 'text-bear'}>{tail ? fmtUsd(ncp) : '—'}</span>
@@ -828,12 +760,12 @@ const NetFlowPane = ({
           </span>
           {/* THE NET, SAID (audit round 5): the figure Compare's headline and Intervals print for the same name and window */}
           {ticker && tail && (
-            <span title="Net calls less net puts, 09:30 to the close — the vendor's minute ticks; the same figure as Compare's net and Intervals' lean">
+            <span title="Net calls less net puts, 09:30 to the close — the feed's minute ticks; the same figure as Compare's net and Intervals' lean">
               <span className="text-textMuted uppercase text-[11px] tracking-wider mr-1">net</span>
               <span className={ncp - npp >= 0 ? 'text-bull' : 'text-bear'}>{ncp - npp < 0 ? '−' : '+'}{fmtUsd(Math.abs(ncp - npp))}</span>
               {/* THE WINDOW UNDER THE FIGURE (audit round 6: BAC +$19.8M here beside +$19.7M on the board, the windows said only
                   on a hover) */}
-              <span className="text-textSecondary text-[11px] ml-1" data-pane-window>· {windowWords} ET{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
+              <span className="text-textSecondary text-[11px] ml-1" data-pane-window>· {windowWords}{isLiveDay() ? '' : `, ${shortDay(tapeSessionIso())}`}</span>
             </span>
           )}
           {headVol != null && tail && <span className="text-textSecondary">{headVol.toLocaleString('en-US')} vol</span>}
@@ -894,9 +826,9 @@ const NetFlowPane = ({
           </span>
           <span className="flex items-center gap-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: inksNow.volLoud }} />
-            {/* A CUT'S BAR IS THE CHANGE IN NET VOLUME (audit round 9, minor 4): the vendor's net-flow and sector-tide minutes
+            {/* A CUT'S BAR IS THE CHANGE IN NET VOLUME (audit round 9, minor 4): the net-flow and sector-tide minutes
                 carry a running net volume, not contracts traded — the bar is |Δ net volume| that minute, named so */}
-            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted" title={ticker ? "Contracts traded that minute — the name's calls and puts" : "The change in the vendor's running net volume that minute (calls less puts), sign dropped — not contracts traded"}>{ticker ? 'Volume' : 'Net vol chg'}</span>
+            <span className="font-mono text-[11px] uppercase tracking-wider text-textMuted" title={ticker ? "Contracts traded that minute — the name's calls and puts" : "The change in the feed's running net volume that minute (calls less puts), sign dropped — not contracts traded"}>{ticker ? 'Volume' : 'Net vol chg'}</span>
             <span ref={tipVolRef} className={`${TIP_VOL_BASE} text-textSecondary`}>
               —
             </span>

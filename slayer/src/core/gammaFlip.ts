@@ -1,3 +1,4 @@
+import { getCarry } from './carry';
 /*
 ==================================================
   SLAYER TERMINAL - THE GAMMA FLIP, AS A TRADER MEANS IT
@@ -86,19 +87,26 @@ export interface FlipRead {
 const RANGE = 0.1;
 const STEPS = 240;
 const SQRT2PI = Math.sqrt(2 * Math.PI);
-/** A leg's Black-Scholes d₁ */
-const d1Of = (S: number, K: number, t: number, iv: number, r: number): number => (Math.log(S / K) + (r + (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
+/** A leg's Black-Scholes d₁, with the dividend yield in the carry. */
+const d1Of = (S: number, K: number, t: number, iv: number, r: number, q: number): number =>
+  (Math.log(S / K) + (r - q + (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
 
-/** Dollar gamma per 1% of one contract at spot S: Γ·S²·0.01·100 */
-export const dollarGammaPerContract = (S: number, K: number, t: number, iv: number, r: number): number => {
+/** Dollar gamma per 1% of one contract at spot S: e^{−qT} · φ(d₁) / (S σ √T) · S² · 0.01 · 100 */
+export const dollarGammaPerContract = (S: number, K: number, t: number, iv: number, r?: number, q?: number): number => {
+  const carry = getCarry();
+  const rate = r ?? carry.r;
+  const yld = q ?? carry.q;
   if (!(S > 0 && K > 0 && t > 0 && iv > 0)) return 0;
-  const d1 = d1Of(S, K, t, iv, r);
+  const d1 = d1Of(S, K, t, iv, rate, yld);
   const pdf = Math.exp(-(d1 * d1) / 2) / SQRT2PI;
-  return (pdf / (S * iv * Math.sqrt(t))) * S * S * 0.01 * 100;
+  return Math.exp(-yld * t) * (pdf / (S * iv * Math.sqrt(t))) * S * S * 0.01 * 100;
 };
 
 /** The book's net gamma at hypothetical spot S, house sign */
-export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: number): number {
+export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r?: number, q?: number): number {
+  const carry = getCarry();
+  const rate = r ?? carry.r;
+  const yld = q ?? carry.q;
   let sum = 0;
   for (const l of legs) {
     if (!l.g0) continue;
@@ -109,7 +117,7 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
     /* re-priced off the leg's own gamma at S₀: the ratio of S·φ(d₁), in logs so a far wing cannot underflow */
     const base = l.s0 && l.s0 > 0 ? l.s0 : S0;
     const tBase = l.t0 && l.t0 > 0 ? l.t0 : l.t;
-    const a = d1Of(base, l.strike, tBase, l.iv, r);
+    const a = d1Of(base, l.strike, tBase, l.iv, rate, yld);
     /* A LEG WHOSE GAMMA AT SPOT IS BELOW THE PRINT'S RESOLUTION (the tenth pass, 2026-10-23 15:54 ET): six deviations
        from its strike a contract holds under e^-18 of its peak gamma, so the vendor's cent-rounded figure there is noise,
        and re-pricing it toward the strike multiplied that noise by e^30 (minutes before the bell, SPY's same-day book
@@ -118,9 +126,9 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
       sum += l.g0;
       continue;
     }
-    const b = d1Of(S, l.strike, l.t, l.iv, r);
-    /* Γ·S² ∝ S·φ(d₁)/(σ√T): at another moment the √T term no longer cancels */
-    const ln = Math.log(S / base) - (b * b) / 2 + (a * a) / 2 + (tBase !== l.t ? 0.5 * Math.log(tBase / l.t) : 0);
+    const b = d1Of(S, l.strike, l.t, l.iv, rate, yld);
+    /* Γ·S² ∝ e^{−qT}·S·φ(d₁)/(σ√T). The dividend does not cancel when the two moments have different time left. */
+    const ln = -yld * (l.t - tBase) + Math.log(S / base) - (b * b) / 2 + (a * a) / 2 + (tBase !== l.t ? 0.5 * Math.log(tBase / l.t) : 0);
     /* NO 25× CAP (the second re-audit, 2026-10-22): a wing's gamma legitimately grows a few hundred times as price walks
        to its strike (NVDA's 230 call, 1 day out: $7M at 212, ~$2B at 230), and the cap froze those legs at their spot
        value, which left jitter crossings on SPY's whole book and moved QQQ's by 1%. G₀ is the vendor's live gamma, so the
@@ -134,8 +142,8 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
        priced off a spot a few dollars from its strike, grew by e^30+ and drew SPY's book at −$3×10^17, which the chart
        library refuses and the Map stopped). Inside a day the ceiling binds whatever vol the leg carries: no contract
        can hold more gamma than that, own vol or not. */
-    if (l.oi && l.oi > 0 && (!l.ownIv || l.t < 1 / 365)) {
-      const cap = Math.max(Math.abs(l.g0), (l.oi * l.strike * Math.exp(-r * l.t)) / (SQRT2PI * l.iv * Math.sqrt(l.t)));
+    if (l.oi && l.oi > 0 && (!l.ownIv || l.t <= 1 / 252)) {
+      const cap = Math.max(Math.abs(l.g0), (l.oi * l.strike * Math.exp(-yld * l.t)) / (SQRT2PI * l.iv * Math.sqrt(l.t)));
       if (Math.abs(g) > cap) g = Math.sign(g) * cap;
     }
     sum += g;
@@ -144,7 +152,7 @@ export function netGammaAt(legs: readonly GammaLeg[], S0: number, S: number, r: 
 }
 
 /** The flip off re-priced legs: the zero of net gamma across hypothetical spots, nearest spot inside ±10% */
-export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: number, range: number = RANGE): FlipRead {
+export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r?: number, range: number = RANGE, q?: number): FlipRead {
   const net0 = legsIn.reduce((a, l) => a + l.g0, 0);
   /* the vendor prints gamma to the cent: a leg within a ten-millionth of the book is rounding, and multiplied by a
      wing's growth it would be noise the size of a strike — such legs are carried flat */
@@ -171,7 +179,7 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: numbe
   for (let i = 0; i <= STEPS; i++) cx.push(lo + coarseStep * i);
   cx.push(spot);
   cx.sort((a, b) => a - b);
-  const cy = cx.map(S => netGammaAt(broad, spot, S, r));
+  const cy = cx.map(S => netGammaAt(broad, spot, S, r, q));
   const broadAt = (S: number): number => {
     let i = 1;
     let j = cx.length - 1;
@@ -191,7 +199,7 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r: numbe
   /* a leg priced at another price (the close, read after hours) is NOT its own value at spot: spot is searched from, and
      the book is re-priced there like anywhere else */
   const ownSpot = legs.every(l => !l.s0 || l.s0 === spot);
-  const at = (S: number) => (S === spot && ownSpot ? net0 : broadAt(S) + netGammaAt(narrow, spot, S, r));
+  const at = (S: number) => (S === spot && ownSpot ? net0 : broadAt(S) + netGammaAt(narrow, spot, S, r, q));
   const maxG = narrow.reduce((m, l) => Math.max(m, Math.abs(l.g0)), 0);
   let width = Infinity;
   for (const l of narrow) if (Math.abs(l.g0) >= 0.01 * maxG) width = Math.min(width, l.iv * Math.sqrt(l.t) * spot);

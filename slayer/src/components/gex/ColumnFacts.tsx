@@ -25,7 +25,7 @@ import type { LevelsScope } from '../../data/levelsScope';
 import { levelTicks } from '../../data/levelRecord';
 import { sessionBars } from '../../data/levelview';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
-import { useDistanceUnit } from '../../data/distanceUnits';
+import { useNameUnit } from '../../data/distanceUnits';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';
 import { ABSORB, AMPLIFY, FLIP } from './paletteInk';
 import DayMoveText from './DayMoveText';
@@ -57,7 +57,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const live = useRoomSpot(ticker, !fresh);
   const spot = live ?? snapshot.spot;
   const change = snapshot.changePercent ?? 0;
-  const unit = useDistanceUnit();
+  const unit = useNameUnit(ticker);
   const bookRev = useBookRev();
   ensureBook(ticker, 'board');
   const levels = roomLevels(snapshot, scope);

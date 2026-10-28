@@ -1,7 +1,8 @@
 import { heatRampColor } from './heatmap';
 import type { ISeriesPrimitive, SeriesAttachedParameter, Time, IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { GexSnapshot } from '../../types/market';
-import { nySession } from '../../core/nyTime';
+import { nyIsoDate, nySession } from '../../core/nyTime';
+import { nodeMark, peakStrikes, priceTag, type NodeMark, type PriceTag } from '../../data/nodeScore';
 
 /*
   Exposure nodes — the ORIGINAL trail form, back by request (Noah,
@@ -33,7 +34,7 @@ const PUT_RGB: readonly [number, number, number] = [245, 197, 66]; // honey gold
 const CALL_RGB: readonly [number, number, number] = [214, 237, 248]; // glacier ice — the absorb pole (2026-08-29)
 const SUPREME_RGB: readonly [number, number, number] = [234, 0, 255]; // magenta, restored — mirrors palette SUPREME
 /* THE WALLS LIVE HERE (Noah, 2026-08-22: "I hate how they look on the side
-   line"): each moment's call wall beads ink green, its put wall red, and the
+   line"): each moment's call wall beads ink glacier, its put wall ember, and the
    flip runs as a blue tick trail — the levels ON the tape, history included,
    instead of static lines at today's values. Same level rules as the chips
    used (buildLevelsFor): wall = heaviest |gamma| above/below that moment's
@@ -52,10 +53,8 @@ const FLIP_RGBA = 'rgba(156,163,175,0.8)'; // indecision gray — the regime bor
    The band belongs to the crown. */
 const FLIPK_RGBA = 'rgba(234,0,255,0.85)'; // the supreme outranks the flip on a shared strike too
 
-/* A dozen strikes per column, steep falloff; below the floor, nothing. The
-   ranking happens ONCE, when the data arrives — a frame must never sort. */
-const TOP_N = 12;
-const MIN_STRENGTH = 0.08;
+/* A peak is at least each same-sign neighbour and 20% of that moment's largest node.
+   A tie is one node across both strikes. The rest stays, at about a quarter. */
 
 /* THE HOVER (Noah, 2026-10-15, after reading his partner's Terrain: "i want all of those things like hover ring, chain,
    veil, card and legend line … but do not incorporate his sizing … nor his colors. the hover should ONLY hover over
@@ -81,6 +80,12 @@ export interface BeadHit {
   /** the side (positive = put-dominant, pushes a move along) and the bead's strength against the reference */
   put: boolean;
   t: number;
+  /** Born, grew, flipped, died — set on the bucket that confirmed it. */
+  mark?: 'born' | 'grew' | 'flipped' | 'died';
+  /** What price did over the ten minutes after it touched. */
+  tag?: 'rejected' | 'absorbed' | 'broke';
+  /** False when the flow net is too small a share of the volume to trust. */
+  firm?: boolean;
   /** the bead's centre and half-sizes on the pane, CSS px */
   x: number;
   y: number;
@@ -105,6 +110,20 @@ interface Bead {
   t: number;
   /** Sim side-coding: positive = put-dominant (amplifies), negative = call-dominant (absorbs) */
   put: boolean;
+  /** A local peak or a flat tie. The rest of the column stays, faded. */
+  peak: boolean;
+  /** False when the bead is the rest of the book, drawn behind same-day expiry. */
+  front: boolean;
+  /** The other strike of a tie. One bead covers both. */
+  span?: number;
+  /** Born, grew, flipped, or died. Set on the bucket the rule confirms. */
+  mark?: NodeMark;
+  /** What price did in the ten minutes after it touched. */
+  tag?: PriceTag;
+  /** The bucket has no print for a strike that was a node. Not a blank. */
+  missing?: boolean;
+  /** False when the flow net is under about 2% of the strike's volume. Drawn dashed. */
+  firm?: boolean;
 }
 
 /** One column of the field, ranked and scaled at load time */
@@ -114,6 +133,8 @@ interface Column {
   top: Bead[];
   /** Every strike — only consulted for a focused strike outside the top */
   all: Map<number, Bead>;
+  /** The bucket before this one was missing. The row says so. */
+  gap?: boolean;
 }
 
 /** The focused level's ink: the focus lime — or the supreme's magenta while the
@@ -151,10 +172,34 @@ class TrailsPaneRenderer {
     pin it completely.
   */
   private cacheKey = '';
-  /** The field, rasterized — repaints between data ticks (crosshair moves
-      run at 60fps) blit this instead of re-filling thousands of subpaths;
-      the fill cost, not the path building, was the hover jank. */
+  /** The field, rasterized — a hover repaint blits this. A pan or a price-scale
+      drag blits it shifted, and the paths are rebuilt once the gesture stops,
+      so the frame stays a drawImage instead of thousands of fills. */
   private bmp: HTMLCanvasElement | null = null;
+  private blitRev = -1;
+  private blitX = 0;
+  private blitProbe = 0;
+  private blitBar = 0;
+  private blitHr = 1;
+  private blitVr = 1;
+  private settle = 0;
+  private movedAt = 0;
+
+  /** One rebuild after the pan stops. Re-arming during the gesture never paints. */
+  private armSettle(src: GexTrailsPrimitive): void {
+    this.movedAt = performance.now();
+    if (this.settle) return;
+    const wait = () => {
+      if (performance.now() - this.movedAt < 48) {
+        this.settle = requestAnimationFrame(wait);
+        return;
+      }
+      this.settle = 0;
+      this.cacheKey = '';
+      src.requestUpdate?.();
+    };
+    this.settle = requestAnimationFrame(wait);
+  }
 
   draw(target: DrawTarget): void {
     const src = this.source;
@@ -194,7 +239,7 @@ class TrailsPaneRenderer {
     if (last <= first) return;
     const col0 = src.columnAt(first);
     const barSpacing = ts.options().barSpacing ?? 6;
-    if (src.ref <= 0) return;
+    if (src.ref <= 0 && src.restRef <= 0) return;
     /* WAVEFORMS, NOT DOTS (Noah, 2026-08-22, against Sovereign's close-ups):
        a rail is a ribbon — every bead is as WIDE as its slot, so they touch,
        and the variation is VERTICAL: the ribbon's thickness flickers with
@@ -238,6 +283,36 @@ class TrailsPaneRenderer {
       const probeB = series.priceToCoordinate((col0.top[0]?.strike ?? 0) + 1) ?? -1;
       const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${supreme}|${src.cwStrike}|${src.pwStrike}|${src.flipPrice}|${src.focusInk}`;
       const cached = key === this.cacheKey && !!this.bmp;
+      /* PAN AND SCALE DRAGS stay a blit. The bitmap was painted at blitX /
+         blitProbe; this frame's origin moved, so it is drawn shifted. The
+         paths rebuild once, after the pointer rests. */
+      let scrolled = false;
+      if (
+        !cached &&
+        this.bmp &&
+        x0 != null &&
+        this.blitRev === src.rev &&
+        this.bmp.width === scope.bitmapSize.width &&
+        this.bmp.height === scope.bitmapSize.height &&
+        this.blitHr === hr &&
+        this.blitVr === vr
+      ) {
+        const scale = this.blitBar > 0 ? barSpacing / this.blitBar : 1;
+        const dx = (Number(x0) - this.blitX) * hr;
+        const dy = (probeA - this.blitProbe) * vr;
+        const zoomOk = scale > 0.75 && scale < 1.35;
+        if (
+          zoomOk &&
+          Math.abs(dx) < scope.bitmapSize.width * 0.5 &&
+          Math.abs(dy) < scope.bitmapSize.height * 0.5
+        ) {
+          const w = this.bmp.width;
+          const h = this.bmp.height;
+          ctx.drawImage(this.bmp, dx, dy, w * scale, h * scale);
+          scrolled = true;
+          this.armSettle(src);
+        }
+      }
 
       /* BATCHED: beads are gathered into one path per ink (alpha quantised to
          ~20 steps), then each path is filled once — into the BITMAP. */
@@ -245,6 +320,17 @@ class TrailsPaneRenderer {
       const halos = new Map<string, Path2D>();
       const flipPath = new Path2D();
       let flipDrawn = false;
+      const glyphs: { x: number; y: number; mark?: NodeMark; tag?: PriceTag; word?: string }[] = [];
+      const dashes: { x: number; y: number; w: number }[] = [];
+      /* Zoomed out, one word per node stacks into noise. Count the window instead. */
+      const tight = barSpacing < 8;
+      let born = 0;
+      let grew = 0;
+      let flipped = 0;
+      let died = 0;
+      let held = 0;
+      let off = 0;
+      let broke = 0;
       const pathFor = (map: Map<string, Path2D>, key: string) => {
         let p = map.get(key);
         if (!p) map.set(key, (p = new Path2D()));
@@ -261,8 +347,19 @@ class TrailsPaneRenderer {
       };
 
       // ---- the beads (skipped whole when the cache holds) --------------------
-      for (let ci = cached ? last : first; ci < last; ci++) {
+      for (let ci = cached || scrolled ? last : first; ci < last; ci++) {
         const col = src.columnAt(ci);
+        if (tight && !cached) {
+          for (const bead of col.top) {
+            if (bead.mark === 'born') born += 1;
+            else if (bead.mark === 'grew') grew += 1;
+            else if (bead.mark === 'flipped') flipped += 1;
+            else if (bead.mark === 'died') died += 1;
+            if (bead.tag === 'absorbed') held += 1;
+            else if (bead.tag === 'rejected') off += 1;
+            else if (bead.tag === 'broke') broke += 1;
+          }
+        }
         // The bead's bar, and where inside it this moment sits
         const bucket = Math.floor(col.time / barSec) * barSec;
         const slot = slots > 1 ? Math.floor(((col.time - bucket) / barSec) * slots) : 0;
@@ -271,6 +368,7 @@ class TrailsPaneRenderer {
         if (xBar === null || xBar < -halfW || xBar > wCss + halfW) continue;
         const x = slots > 1 ? xBar - halfW + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
         const cx = x * hr;
+        if (col.gap) glyphs.push({ x: cx, y: 16 * vr, word: 'gap' });
 
         // The flip: ONE dotted blue line at TODAY'S flip — a tick per column
         // in the field's grammar, never a solid side line
@@ -293,6 +391,7 @@ class TrailsPaneRenderer {
           const fb = col.all.get(focus);
           if (fb) beads = [...beads, fb];
         }
+        beads = [...beads].sort((a, b) => Number(a.front !== false) - Number(b.front !== false));
 
         for (const bead of beads) {
           const isFocus = focus != null && bead.strike === focus;
@@ -302,14 +401,32 @@ class TrailsPaneRenderer {
           // t^1.6 — the amplitude; weak strikes stay hairlines, rails swell
           const t = Math.max(isFocus ? 0.08 : 0, bead.t);
           const s = Math.pow(t, 1.6);
-          const ry = (A_MIN + s * (A_MAX - A_MIN)) * vr;
+          const thin = bead.front === false && !isFocus ? 0.62 : 1;
+          const ry = (A_MIN + s * (A_MAX - A_MIN)) * vr * thin;
           const yc = y * vr;
           // Translucent on purpose — the tape reads THROUGH the ribbon
-          let core = 0.16 + s * 0.5;
-          let halo = 0.04 + s * 0.14;
+          let core = 0.42 + s * 0.5;
+          let halo = 0.03 + s * 0.06;
+          /* A peak keeps its ink. Anything else stays at about a quarter, and is not deleted. */
+          if (bead.missing) {
+            core = 0.35;
+            halo = 0;
+          } else if (!bead.peak && !isFocus) {
+            core = 0.25;
+            halo = 0;
+          }
+          if (bead.front === false && !isFocus && bead.peak) {
+            core *= 0.55;
+            halo *= 0.45;
+          }
           if (focus != null && !isFocus) {
             core *= 0.3; // the field steps back
             halo *= 0.3;
+          }
+          /* A thin flow net is still drawn, dashed and faded, so a sign flip stays visible without looking certain. */
+          if (bead.firm === false) {
+            core *= 0.35;
+            halo *= 0.2;
           }
           /* Ink precedence: the focus wins, then THE SUPREME — above the walls
              (Noah, 2026-08-29: the crown is never diluted; reverses the
@@ -326,7 +443,6 @@ class TrailsPaneRenderer {
              faintest bead still whispers in hue instead of vanishing into
              ramp-black — the alpha already carries the fade. Quantised to 8
              bins so the batcher stays a batcher. */
-          const tBin = Math.min(7, Math.round((0.2 + 0.8 * t) * 7));
           const inkKey = isFocus
             ? 'f'
             : isSupreme
@@ -336,8 +452,8 @@ class TrailsPaneRenderer {
                 : bead.strike === src.pwStrike
                   ? 'pw'
                   : bead.put
-                    ? `p@${tBin}`
-                    : `c@${tBin}`;
+                    ? 'p'
+                    : 'c';
 
           /* Each ELLIPSE bead is its OWN subpath: ellipse() draws a line
              from the path's current point to the ellipse's start, so without
@@ -345,29 +461,47 @@ class TrailsPaneRenderer {
              RECTS (2026-08-29): under ~2px of height an ellipse is invisible
              arc math — the vast majority of beads — and rect() paths cost a
              fraction. Only the swelling rails keep the round nose. */
-          const round = ry > 2 * vr;
-          // The halo: wider and taller, faint — what makes the ribbon soft.
-          // Gated on real pixels too: a halo around a sub-pixel bead is
-          // path-building with no visible return.
-          if (t > 0.2 && ry * 1.9 > 2.2 * vr) {
+          const y2 = bead.span ? yOf(bead.span) : null;
+          const top = y2 == null ? yc - ry : Math.min(y, y2) * vr;
+          const bot = y2 == null ? yc + ry : Math.max(y, y2) * vr;
+          const mid = (top + bot) / 2;
+          const half = Math.max(ry, (bot - top) / 2);
+          const round = half > 2 * vr && !bead.missing;
+          if (!bead.missing && t > 0.55 && half * 1.35 > 2.4 * vr) {
             const hx = rx * 1.15;
             const p = pathFor(halos, `${inkKey}|${Math.round(halo * 40)}`);
             if (round) {
-              p.moveTo(cx + hx, yc);
-              p.ellipse(cx, yc, hx, ry * 1.9, 0, 0, Math.PI * 2);
+              p.moveTo(cx + hx, mid);
+              p.ellipse(cx, mid, hx, half * 1.9, 0, 0, Math.PI * 2);
             } else {
-              p.rect(cx - hx, yc - ry * 1.9, hx * 2, ry * 3.8);
+              p.rect(cx - hx, mid - half * 1.9, hx * 2, half * 3.8);
             }
           }
-          // The core: a slot-wide bead whose height is this moment's strength
           const p = pathFor(cores, `${inkKey}|${Math.round(core * 20)}`);
-          if (round) {
-            p.moveTo(cx + rx, yc);
-            p.ellipse(cx, yc, rx, ry, 0, 0, Math.PI * 2);
+          if (bead.missing) {
+            p.rect(cx - rx * 0.7, mid - 0.6 * vr, rx * 1.4, 1.2 * vr);
+          } else if (round) {
+            p.moveTo(cx + rx, mid);
+            p.ellipse(cx, mid, rx, half, 0, 0, Math.PI * 2);
           } else {
-            p.rect(cx - rx, yc - ry, rx * 2, ry * 2);
+            p.rect(cx - rx, top, rx * 2, Math.max(1, bot - top));
           }
+          if (bead.mark || bead.tag) {
+            if (!tight) glyphs.push({ x: cx, y: Math.max(11 * vr, top - 2 * vr), mark: bead.mark, tag: bead.tag });
+          }
+          if (bead.firm === false) dashes.push({ x: cx, y: mid, w: Math.max(rx * 2, 4 * hr) });
         }
+      }
+      if (tight && !cached) {
+        const parts: string[] = [];
+        if (born) parts.push(`${born} born`);
+        if (grew) parts.push(`${grew} grew`);
+        if (flipped) parts.push(`${flipped} flipped`);
+        if (died) parts.push(`${died} died`);
+        if (held) parts.push(`${held} held`);
+        if (off) parts.push(`${off} off`);
+        if (broke) parts.push(`${broke} broke`);
+        if (parts.length) glyphs.push({ x: 8 * hr, y: 14 * vr, word: parts.join(' · ') });
       }
 
       const INKS: Record<string, readonly [number, number, number]> = {
@@ -389,7 +523,7 @@ class TrailsPaneRenderer {
           tctx.fill(path);
         }
       };
-      if (!cached) {
+      if (!cached && !scrolled) {
         const bmp = this.bmp && this.bmp.width === scope.bitmapSize.width && this.bmp.height === scope.bitmapSize.height
           ? this.bmp
           : document.createElement('canvas');
@@ -399,6 +533,28 @@ class TrailsPaneRenderer {
         if (bctx) {
           paint(bctx, halos, 40);
           paint(bctx, cores, 20);
+          bctx.font = `${Math.round(8 * vr)}px sans-serif`;
+          bctx.fillStyle = 'rgba(237,237,237,0.9)';
+          bctx.textBaseline = 'bottom';
+          for (const g of glyphs) {
+            const word = g.word ?? (g.mark === 'born' ? '+' : g.mark === 'grew' ? '↑' : g.mark === 'flipped' ? '↔' : g.mark === 'died' ? '×' : g.tag === 'broke' ? 'broke' : g.tag === 'absorbed' ? 'held' : g.tag === 'rejected' ? 'off' : '');
+            if (!word) continue;
+            bctx.textAlign = g.word && !g.mark && !g.tag ? 'left' : 'center';
+            bctx.fillText(word, g.x, g.y);
+          }
+          if (dashes.length) {
+            bctx.save();
+            bctx.setLineDash([3 * hr, 2 * hr]);
+            bctx.strokeStyle = 'rgba(237,237,237,0.7)';
+            bctx.lineWidth = Math.max(1, vr);
+            bctx.beginPath();
+            for (const d of dashes) {
+              bctx.moveTo(d.x - d.w / 2, d.y);
+              bctx.lineTo(d.x + d.w / 2, d.y);
+            }
+            bctx.stroke();
+            bctx.restore();
+          }
           /* The regime border draws OVER the field (2026-08-29): it is the
              line the whole map hinges on, and under the beads it spent half
              its length buried in whatever band it crossed. */
@@ -409,9 +565,19 @@ class TrailsPaneRenderer {
           }
           this.bmp = bmp;
           this.cacheKey = key;
+          this.blitRev = src.rev;
+          this.blitX = x0 == null ? 0 : Number(x0);
+          this.blitProbe = probeA;
+          this.blitBar = barSpacing;
+          this.blitHr = hr;
+          this.blitVr = vr;
+          if (this.settle) {
+            cancelAnimationFrame(this.settle);
+            this.settle = 0;
+          }
         }
       }
-      if (this.bmp) ctx.drawImage(this.bmp, 0, 0);
+      if (!scrolled && this.bmp) ctx.drawImage(this.bmp, 0, 0);
 
       // ---- THE HOVER, over the bitmap (never in it): the veil, the bead again at full, its ring --------------
       const hover = src.hover;
@@ -423,18 +589,15 @@ class TrailsPaneRenderer {
         const xBar = ts.timeToCoordinate(bucket as Time);
         const y = yOf(hover.strike);
         if (b && xBar !== null && y !== null && slot % stride === 0) {
-          /* the veil: the chart's ground at the complement of HOVER_KEEP — the field dims toward its ground; the candles,
-             drawn after this layer, keep their light */
-          const g = src.groundRgb();
-          ctx.fillStyle = `rgba(${g[0]},${g[1]},${g[2]},${(1 - HOVER_KEEP).toFixed(2)})`;
-          ctx.fillRect(0, 0, scope.bitmapSize.width, scope.bitmapSize.height);
+          /* No veil. Dimming the whole field read as a blur on the nodes.
+             The bead under the pointer is drawn again, with a ring. The rest stay as they are. */
           const x = slots > 1 ? xBar - halfW + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
           const cx = x * hr;
           const yc = y * vr;
           const ry = beadHalfHeight(Math.max(focus != null && b.strike === focus ? 0.08 : 0, b.t), A_MIN, A_MAX) * vr;
           /* the bead again, at its full light, in its own ink */
           const isSupreme = supreme != null && b.strike === supreme;
-          const rgb = focus != null && b.strike === focus ? ink : isSupreme ? SUPREME_RGB : heatRampColor(b.put ? 1 : -1, Math.min(7, Math.round((0.2 + 0.8 * b.t) * 7)) / 7);
+          const rgb = focus != null && b.strike === focus ? ink : isSupreme ? SUPREME_RGB : b.put ? PUT_RGB : CALL_RGB;
           ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)`;
           ctx.beginPath();
           ctx.ellipse(cx, yc, rx, Math.max(ry, 1.5 * vr), 0, 0, Math.PI * 2);
@@ -691,7 +854,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     const value = this.valueOf(lvl);
     let total = 0;
     for (const l of snap.levels) total += Math.abs(this.valueOf(l));
-    return { strike: best.bead.strike, time: snap.time, ci: best.ci, value, share: total > 0 ? Math.abs(value) / total : 0, open: this.openValue(best.ci, best.bead.strike), put: best.bead.put, t: best.bead.t, x: best.cx, y: best.cy, rx, ry: best.ry };
+    return { strike: best.bead.strike, time: snap.time, ci: best.ci, value, share: total > 0 ? Math.abs(value) / total : 0, open: this.openValue(best.ci, best.bead.strike), put: best.bead.put, t: best.bead.t, mark: best.bead.mark, tag: best.bead.tag, firm: best.bead.firm, x: best.cx, y: best.cy, rx, ry: best.ry };
   }
 
   /** The strike's value at its day's first column on or after the New York open — null where the field holds none */
@@ -782,7 +945,7 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
   /** Bumped on every data hand-off — the renderer's path cache keys on it. */
   rev = 0;
   /** Built columns by snapshot identity — see setData's incremental note. */
-  private colCache = new WeakMap<GexSnapshot, { time: number; top: Bead[]; all: Map<number, Bead> }>();
+  private colCache = new WeakMap<GexSnapshot, { time: number; top: Bead[]; all: Map<number, Bead>; back?: GexSnapshot; gap?: boolean }>();
   private colRef = -1;
 
   /** The Greek the beads draw — see TrailGreek */
@@ -792,53 +955,74 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     return levelValue(l, this.greek);
   }
 
-  setData(snapshots: GexSnapshot[], maxAbs: number, enabled: boolean, barSec = 60, greek: TrailGreek = 'gex'): void {
+  /** The 85th percentile of this session's column maxima. It only rises.
+      Same-day expiry and the rest of the book each keep their own, so a
+      0DTE pin does not resize the monthly shelf. It resets on a new session, not when a larger node prints. */
+  private ratchet = 0;
+  private restRatchet = 0;
+  private scaleDay = '';
+  private wasSplit = false;
+  private behindAt = new Map<number, GexSnapshot>();
+  private glyph = new Map<string, { mark?: NodeMark; tag?: PriceTag }>();
+  restRef = 0;
+  private colRest = -1;
+
+  setData(snapshots: GexSnapshot[], maxAbs: number, enabled: boolean, barSec = 60, greek: TrailGreek = 'gex', _scaleTo = 0, behind: GexSnapshot[] = [], prices: readonly { time: number; close: number }[] = []): void {
     this.rev++;
+    const lastPx = prices.length ? prices[prices.length - 1].time : Infinity;
+    const clip = (rows: GexSnapshot[]) => rows.filter(s => s.time <= lastPx);
+    snapshots = clip(snapshots);
+    behind = clip(behind);
     this.snapshots = snapshots;
+    this.behindAt = new Map(behind.map(s => [s.time, s]));
     this.maxAbs = maxAbs;
     this.barSec = barSec;
+    const anchor = snapshots[0]?.time ?? behind[0]?.time ?? 0;
+    const day = anchor ? nyIsoDate(anchor * 1000) : '';
+    const split = behind.length > 0;
+    if (day !== this.scaleDay || greek !== this.greek || split !== this.wasSplit) {
+      this.ratchet = 0;
+      this.restRatchet = 0;
+      this.scaleDay = day;
+      this.wasSplit = split;
+    }
     this.greek = greek;
-    // The snapshots' own spacing (the smallest gap between neighbours —
-    // overnight gaps are larger and must not set it)
     let step = Infinity;
-    for (let i = 1; i < snapshots.length; i++) {
-      const d = snapshots[i].time - snapshots[i - 1].time;
+    const span = snapshots.length ? snapshots : behind;
+    for (let i = 1; i < span.length; i++) {
+      const d = span[i].time - span[i - 1].time;
       if (d > 0 && d < step) step = d;
     }
     this.stepSec = Number.isFinite(step) ? step : barSec;
-    // Strength is ABSOLUTE against a stable window reference (a high
-    // percentile of per-moment maxima), so a wall visibly builds and drains
-    // over time instead of every moment being rescaled to its own peak.
-    // Each moment's maximum is remembered against the snapshot object
-    // (history snapshots are immutable; only the live last one is new each
-    // tick), so a tick reads 1,700 numbers instead of walking 100,000 levels.
-    const maxima: number[] = [];
-    const memo = momentMax[greek];
-    for (const s of snapshots) {
-      let m = memo.get(s);
-      if (m === undefined) {
-        m = 0;
-        for (const l of s.levels) {
-          const a = Math.abs(levelValue(l, greek));
-          if (a > m) m = a;
+    this.glyph = this.glyphsOf(snapshots, prices, this.stepSec);
+    const p85 = (rows: GexSnapshot[]) => {
+      const maxima: number[] = [];
+      const memo = momentMax[greek];
+      for (const s of rows) {
+        let m = memo.get(s);
+        if (m === undefined) {
+          m = 0;
+          for (const l of s.levels) {
+            const a = Math.abs(levelValue(l, greek));
+            if (a > m) m = a;
+          }
+          memo.set(s, m);
         }
-        memo.set(s, m);
+        if (m > 0) maxima.push(m);
       }
-      if (m > 0) maxima.push(m);
-    }
-    maxima.sort((a, b) => a - b);
-    this.ref = maxima.length ? maxima[Math.min(maxima.length - 1, Math.floor(maxima.length * 0.85))] : 0;
-    // Rank and scale every column NOW — draw() must never sort. And only
-    // the columns that CHANGED (2026-08-29, the Weigher lag hunt): history
-    // snapshots are immutable objects — only the live last one is replaced
-    // each tick — so built columns cache against the snapshot's identity in
-    // a WeakMap. A tick now builds ONE column instead of the whole session;
-    // a reference shift (the 85th-percentile norm moving) drops the cache,
-    // because every bead's t is baked against it.
+      maxima.sort((a, b) => a - b);
+      return maxima.length ? maxima[Math.min(maxima.length - 1, Math.floor(maxima.length * 0.85))] : 0;
+    };
+    this.ratchet = Math.max(this.ratchet, p85(snapshots));
+    this.restRatchet = Math.max(this.restRatchet, behind.length ? p85(behind) : 0);
+    this.ref = this.ratchet;
+    this.restRef = this.restRatchet;
     const ref = this.ref;
-    if (ref !== this.colRef || greek !== this.colGreek) {
+    const rest = this.restRef;
+    if (ref !== this.colRef || rest !== this.colRest || greek !== this.colGreek) {
       this.colCache = new WeakMap();
       this.colRef = ref;
+      this.colRest = rest;
       this.colGreek = greek;
     }
     this.enabled = enabled;
@@ -846,26 +1030,114 @@ export class GexTrailsPrimitive implements ISeriesPrimitive<Time> {
     this.onData?.(enabled ? this.ref : 0);
   }
 
+  /** Born, grew, flipped, and died, plus the ten-minute price tag. One pass over the book the chart is drawing. */
+  private glyphsOf(snapshots: readonly GexSnapshot[], prices: readonly { time: number; close: number }[], step: number): Map<string, { mark?: NodeMark; tag?: PriceTag }> {
+    const out = new Map<string, { mark?: NodeMark; tag?: PriceTag }>();
+    const seen = new Map<number, { v: number; peak: boolean; time: number; floor: number; firm: boolean }[]>();
+    for (const s of snapshots) {
+      const rows = s.levels.map(l => ({ strike: l.strike, value: this.valueOf(l), firm: l.firm !== false })).filter(r => r.value !== 0);
+      const max = rows.reduce((m, r) => Math.max(m, Math.abs(r.value)), 0);
+      const floor = max * 0.2;
+      const peaks = new Set(peakStrikes(rows));
+      const by = new Map(rows.map(r => [r.strike, r]));
+      const strikes = new Set<number>([...seen.keys(), ...by.keys()]);
+      for (const strike of strikes) {
+        const row = by.get(strike);
+        const v = row?.value ?? 0;
+        const list = seen.get(strike) ?? [];
+        list.push({ v, peak: v !== 0 && peaks.has(strike) && Math.abs(v) >= floor, time: s.time, floor, firm: row?.firm !== false });
+        seen.set(strike, list);
+      }
+    }
+    for (const [strike, list] of seen) {
+      for (let i = 1; i < list.length; i++) {
+        const mark = nodeMark(list.slice(0, i + 1).map(p => ({ v: p.v, peak: p.peak })), list[i].floor);
+        if (!mark) continue;
+        if (!list[i].firm && mark !== 'died') continue;
+        out.set(`${list[i].time}|${strike}`, { mark });
+      }
+    }
+    if (prices.length) {
+      for (const [strike, list] of seen) {
+        for (const p of list) {
+          if (!p.peak) continue;
+          const path = prices.filter(px => px.time >= p.time && px.time <= p.time + 600).map(px => px.close);
+          const tag = priceTag(strike, path);
+          if (!tag) continue;
+          const key = `${p.time}|${strike}`;
+          const prev = out.get(key);
+          out.set(key, { mark: prev?.mark, tag });
+        }
+      }
+    }
+    void step;
+    return out;
+  }
+
   /** The column for snapshot i — built the first time it is on screen, then
       cached against the snapshot's identity (see setData's note). */
   columnAt(i: number): Column {
     const snap = this.snapshots[i];
-    let col = this.colCache.get(snap);
-    if (!col) {
-      const ref = this.ref || 1;
-      const all = new Map<number, Bead>();
-      for (const l of snap.levels) {
-        const v = this.valueOf(l);
-        all.set(l.strike, { strike: l.strike, t: Math.min(1, Math.abs(v) / ref), put: v >= 0 });
+    const back = snap ? this.behindAt.get(snap.time) : undefined;
+    const cached = snap ? this.colCache.get(snap) : undefined;
+    if (cached && cached.back === back) return cached;
+    const all = new Map<number, Bead>();
+    const drawn: Bead[] = [];
+    const take = (rowsSnap: GexSnapshot | undefined, scale: number, front: boolean) => {
+      if (!rowsSnap || !(scale > 0)) return;
+      const rows = rowsSnap.levels
+        .map(l => ({ strike: l.strike, v: this.valueOf(l), firm: l.firm !== false }))
+        .filter(r => r.v !== 0)
+        .sort((a, b) => a.strike - b.strike);
+      let step = Infinity;
+      for (let k = 1; k < rows.length; k++) {
+        const d = rows[k].strike - rows[k - 1].strike;
+        if (d > 0 && d < step) step = d;
       }
-      const top = [...snap.levels]
-        .sort((a, b) => Math.abs(this.valueOf(b)) - Math.abs(this.valueOf(a)))
-        .slice(0, TOP_N)
-        .map(l => all.get(l.strike)!)
-        .filter(b => b.t >= MIN_STRENGTH);
-      col = { time: snap.time, top, all };
-      this.colCache.set(snap, col);
-    }
+      if (!Number.isFinite(step)) step = 1;
+      const floor = rows.reduce((m, r) => Math.max(m, Math.abs(r.v)), 0) * 0.2;
+      for (let j = 0; j < rows.length; j++) {
+        const n = rows[j];
+        const a = Math.abs(n.v);
+        const near = (o?: { strike: number; v: number }) =>
+          !!o && Math.abs(o.strike - n.strike) <= step * 1.01 && Math.sign(o.v) === Math.sign(n.v) && o.v !== 0;
+        const left = rows[j - 1];
+        const right = rows[j + 1];
+        const L = near(left) ? Math.abs(left.v) : -Infinity;
+        const R = near(right) ? Math.abs(right.v) : -Infinity;
+        const peak = a >= floor && a >= L && a >= R;
+        const span = peak && near(right) && a === Math.abs(right.v) ? right.strike : undefined;
+        const folded = near(left) && a === Math.abs(left.v) && Math.abs(left.v) >= floor && Math.abs(left.v) >= (near(rows[j - 2]) ? Math.abs(rows[j - 2].v) : -Infinity);
+        const t = Math.min(1, a / scale);
+        const note = front ? this.glyph.get(`${rowsSnap.time}|${n.strike}`) : undefined;
+        const bead: Bead = { strike: n.strike, t, put: n.v >= 0, peak, front, span, mark: note?.mark, tag: note?.tag, firm: n.firm };
+        if (front || !all.has(n.strike)) all.set(n.strike, bead);
+        if (folded) continue;
+        drawn.push(bead);
+      }
+      if (front && this.snapshots.length) {
+        const prev = this.snapshots[this.snapshots.indexOf(rowsSnap) - 1];
+        if (prev && rowsSnap.time - prev.time > this.stepSec * 1.5) {
+          /* the hole is named on the column, below */
+        }
+        const prevRows = prev?.levels.map(l => ({ strike: l.strike, v: this.valueOf(l) })).filter(r => r.v !== 0) ?? [];
+        const prevMax = prevRows.reduce((m, r) => Math.max(m, Math.abs(r.v)), 0);
+        const have = new Set(rows.map(r => r.strike));
+        for (const p of prevRows) {
+          if (have.has(p.strike) || Math.abs(p.v) < prevMax * 0.2) continue;
+          const bead: Bead = { strike: p.strike, t: 0, put: p.v >= 0, peak: false, front, missing: true };
+          if (!all.has(p.strike)) all.set(p.strike, bead);
+          drawn.push(bead);
+        }
+      }
+    };
+    take(back, this.restRef, false);
+    take(snap, this.ref || 1, true);
+    const top = drawn.sort((a, b) => b.t - a.t);
+    const prev = this.snapshots[i - 1];
+    const gap = !!snap && !!prev && snap.time - prev.time > this.stepSec * 1.5;
+    const col = { time: snap?.time ?? back?.time ?? 0, top, all, back, gap };
+    if (snap) this.colCache.set(snap, col);
     return col;
   }
 }

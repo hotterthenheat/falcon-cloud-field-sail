@@ -8,10 +8,8 @@ import { fmtUsd } from '../../data/gex';
 import type { ImpactMetric, ImpactRow } from '../../types/compass';
 
 interface ImpactLeaderboardProps {
-  /** Whose book this is — the selected card's name */
-  ticker: string;
-  /** Why this book — e.g. "#3 GOOGL 162.50P selected" — the subtitle says so */
-  note?: string;
+  /** Whose book this is — the whole Compass list, not one selected name */
+  scope: string;
   rows: ImpactRow[];
   /** Opens the contract's own analysis page — the same door the setup cards use. */
   onOpen: (row: ImpactRow) => void;
@@ -67,19 +65,13 @@ const magnitude = (r: ImpactRow, metric: ImpactMetric): number => {
   }
 };
 
-/* A RAIL beside the board (Noah, 2026-08-17: "a side section next to the
-   setups"). It is ONE name's book — the SELECTED card's — and says so; it
-   never claims to drive a 16-name board (Noah, 2026-08-19). "Driving the
-   setup" lives on the analysis page (SetupDrivers), where there is one
-   setup for it to be true of.
-   Each row is the contract, then the four facts under aligned headers; the
-   ranked column reads bright and carries the magnitude bar, normalized to
-   the leader. COLOR = INFORMATION: the side letter speaks the market's
-   language (C bull, P bear), the bar is side-tinted, and exposure wears its
-   sign. The whole row is the door to the contract's analysis. */
-const ImpactLeaderboard = ({ ticker, note, rows, onOpen }: ImpactLeaderboardProps) => {
+/* A RAIL beside the board. It is the whole Compass book, ranked, not the
+   selected card's name. Each row is the contract, then the four facts under
+   aligned headers; the ranked column reads bright and carries the magnitude
+   bar, normalized to the leader. The whole row opens that contract. */
+const ImpactLeaderboard = ({ scope, rows, onOpen }: ImpactLeaderboardProps) => {
   const [metric, setMetric] = useState<ImpactMetric>('gamma');
-  const scope = useId();
+  const layoutId = useId();
 
   const ranked = useMemo(() => {
     const sorted = [...rows].sort((a, b) =>
@@ -107,14 +99,13 @@ const ImpactLeaderboard = ({ ticker, note, rows, onOpen }: ImpactLeaderboardProp
        title over one line, then the window. It ADOPTS the board's height
        (the wrapper is absolute-inset in Compass): the rows scroll inside,
        and the bottom edge lands on the board's line. */
-    <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col w-full flex-1 min-h-0" data-compass-rail={ticker}>
+    <div className="relative border border-borderSubtle rounded-md overflow-hidden bg-panel flex flex-col w-full flex-1 min-h-0" data-compass-rail>
       <div className="px-5 pt-4 pb-3">
         <div className="h-6 flex items-center gap-3">
           <h3 className="text-[15px] font-semibold leading-tight text-textPrimary">Heaviest contracts</h3>
         </div>
-        <p className="mt-0.5 text-[11px] text-textMuted whitespace-nowrap truncate">
-          on {ticker}
-          {note ? ` · ${note}` : ''} · a column head ranks by it · a row opens the contract
+        <p className="mt-0.5 text-[11px] leading-snug text-textMuted">
+          Gamma across {scope}. Where the book sits — not what the tape is buying.
         </p>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto border-t border-borderSubtle">
@@ -124,7 +115,7 @@ const ImpactLeaderboard = ({ ticker, note, rows, onOpen }: ImpactLeaderboardProp
             under their names — and it lives INSIDE the scroller, sticky, so
             the scrollbar narrows header and rows alike (outside it, the
             columns drifted by the scrollbar's width). */}
-        <LayoutGroup id={scope}>
+        <LayoutGroup id={layoutId}>
           <div
             role="group"
             aria-label="Rank by"

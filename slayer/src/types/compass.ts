@@ -169,9 +169,13 @@ export type OptionRight = 'C' | 'P';
 export interface SetupGreeks {
   delta: number;
   gamma: number;
+  /** Dollars per calendar day, per share. Not the annual partial. */
   theta: number;
+  /** Dollars per 1 vol point, per share. */
   vega: number;
+  /** Implied vol in percent, 20 means 20%. */
   iv: number;
+  rho?: number;
 }
 
 export interface TargetLevel {
@@ -231,6 +235,37 @@ export interface Setup {
   priceTargets: number[];
   liquidityLabel: 'Tight' | 'Normal' | 'Wide';
   liquiditySpread: string;
+  /** Underlying at the quote. Absent on older rows. */
+  spot?: number;
+  /** Exchange time of the quote, epoch ms. */
+  quotedAt?: number;
+  /** When Compass first listed this contract, epoch ms. Not a model call. */
+  seenAt?: number;
+  /** P(TP1) from the entry model at the scan that picked this contract. */
+  p1?: number;
+  /** P(runner) from the runner model at that same scan. */
+  prun?: number;
+  /** prun ≥ 0.50. A non-runner leaves at 1.50 × the fill. */
+  runner?: boolean;
+  /** Both models named this exact contract. It is listed once. */
+  modelAgree?: boolean;
+  /** The hold kept after the two models were compared. */
+  better?: 'runner' | 'entry';
+  /** Scalp is its own bet. 31% and 70.67% are swings. Wing is the cheap reversal. Closest is not a call. */
+  band?: 'scalp' | 'average' | 'top' | 'wing' | 'closest';
+  /** An average call that later cleared 70.67%. Same trade. Hold longer. */
+  strength?: boolean;
+  /** Theta's higher-order greeks on this quote. Charm, color and veta are the annual partial. */
+  vanna?: number;
+  charm?: number;
+  vomma?: number;
+  veta?: number;
+  speed?: number;
+  zomma?: number;
+  color?: number;
+  ultima?: number;
+  lambda?: number;
+  epsilon?: number;
   invalidationPrice: number;
   invalidationReason: string;
 }

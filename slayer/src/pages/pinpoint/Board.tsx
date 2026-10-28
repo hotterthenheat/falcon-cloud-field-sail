@@ -37,14 +37,14 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast, peekPriceAt, refreshBoardPrices } from '../../data/uwBook';
-import { useDistanceUnit } from '../../data/distanceUnits';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, peekExtLast, peekPriceAt, refreshBoardPrices, ensureBook } from '../../data/uwBook';
+import { useNameUnit } from '../../data/distanceUnits';
 import { fmtDistance, impliedDaySigma } from '../../data/atr';
-import { readLevelsScope } from '../../data/levelsScope';
 import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, sessionDay, todayScopeLabel } from '../../data/bookWindow';
 import { buildBoardRow, netGexTitle, type BoardRow } from '../../data/board';
 import { strikeTag, todayWords } from '../../data/agenda';
 import { addBoardName, removeBoardName, useBoardNames } from '../../data/boardNames';
+import { isOptionRoot, useListedRev } from '../../data/listedNames';
 import { tickerName } from '../../data/tickers';
 import TickerLookup from '../../components/ui/TickerLookup';
 import useFocusTrap from '../../components/ui/useFocusTrap';
@@ -56,10 +56,10 @@ import { CALL_WALL, FLIP, LONG_GAMMA, PUT_WALL, SHORT_GAMMA, SUPREME, THERMAL_WA
 import { fmtDollars } from '../../data/ahead';
 import { chanceLabel } from '../../data/wall';
 import { nyClock } from '../../core/nyTime';
-import { useLevelsScope } from '../../data/levelsScope';
 import { bellNone, BELL_NONE_TITLE } from '../../data/flipLevel';
 import { callWallWordsAt, levelRoles, putWallWordsAt, wallPlace } from '../../core/walls';
-import { BOARD_TTL_MS, FeedFallback, StaleMark, TickFigure } from '../../components/ui/liveRead';
+import { BOARD_TTL_MS, StaleMark, TickFigure } from '../../components/ui/liveRead';
+import { ReadMiss } from './BookDown';
 import { kindTip } from '../../components/gex/glossary';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -78,7 +78,7 @@ const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`;
    the desk's unit — dollars, percent, or the day's implied σ (the name's own IV). With no scale for the unit (no ATR on
    this feed) it falls back to dollars rather than print a unit with no number. */
 const Dist = ({ ticker, spot, pct }: { ticker: string; spot: number; pct: number }) => {
-  const unit = useDistanceUnit();
+  const unit = useNameUnit(ticker);
   /* within the one tolerance (core/walls.ts wallPlace, 0.05%) a level is AT price — never "−$0.00" */
   if (Math.abs(pct) < 0.05) return <>at price</>;
   if (unit === '%') return <>{fmtPct(pct)}</>;
@@ -119,7 +119,7 @@ const RemoveName = ({ ticker, remove }: { ticker: string; remove: (t: string) =>
 /* TODAY'S STRIKES NOT IN YET (the ship pass, 2026-10-22): until a name's front-date chain lands, its "Today" levels
    would be the whole book's — the cells say they are loading instead of printing the wrong book */
 const Pending = ({ data }: { data: BoardRow }) => (
-  <span className="font-mono text-[11px] text-textMuted" title={readLevelsScope() === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker} — the levels appear in a moment` : `Still loading the ${todayScopeLabel() === 'Today' ? "contracts the Today levels read" : "next session's contracts"} on ${data.ticker} — the levels appear in a moment`} data-board-pending>
+  <span className="font-mono text-[11px] text-textMuted" title={data.scope === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker}` : `Still loading ${data.ticker}'s front expiry`} data-board-pending>
     …
   </span>
 );
@@ -171,7 +171,7 @@ const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
       </span>
       {/* THE PRICE'S OWN TIME (the ninth audit's m2) — when the price was printed, not when the board was built */}
       {!ext && data.priceAt != null && (
-        <span className="text-[10px] text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true })} ET — ${sessionDay().open ? 'the board refreshes prices every 10s and the levels every 90s' : `the levels and the prices are ${cadenceWords()}`}`} data-price-at={data.priceAt}>
+        <span className="text-[10px] text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true, zone: true})} — ${sessionDay().open ? 'the board refreshes prices every 10s and the levels every 90s' : `the levels and the prices are ${cadenceWords()}`}`} data-price-at={data.priceAt}>
           as of {nyClock(data.priceAt)}
         </span>
       )}
@@ -194,12 +194,12 @@ const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
    off its Nov 20 contracts — it has none expiring today). The Levels card's Today reads the front expiry; where that is
    not today's (or the next session's), the date stands beside the figure. */
 const ExpiryMark = ({ data }: { data: BoardRow }) => {
-  if (readLevelsScope() === 'ALL' || !data.levelsDate || dayWordOf(data.levelsDate)) return null;
+  const dated = data.levelsDate;
+  const word = data.scope === 'ALL' ? 'all expiries' : dated && !dayWordOf(dated) ? (expirySpan([dated]) ?? dated) : null;
+  if (!word) return null;
   return (
-    /* ON ITS OWN LINE UNDER THE FIGURE (the eleventh audit's m4: at 1440 the tag cut the cell — "amplifies…", "−$111.3…",
-       "150 Oc…" on SMCI, MSTR, NFLX) */
-    <span className="block font-mono text-[9px] leading-[11px] font-normal text-textMuted whitespace-nowrap" title={`${data.ticker} has no contracts expiring ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — this column reads its nearest expiry, ${expirySpan([data.levelsDate]) ?? data.levelsDate}`} data-board-expiry={data.levelsDate}>
-      {expirySpan([data.levelsDate]) ?? data.levelsDate}
+    <span className="block font-mono text-[9px] leading-[11px] font-normal text-textMuted whitespace-nowrap" title={data.scope === 'ALL' ? `${data.ticker} is read off every listed expiry` : `${data.ticker} has no contracts expiring ${todayScopeLabel() === 'Today' ? 'today' : 'in the next session'} — this column reads its nearest expiry, ${word}`} data-board-expiry={data.scope === 'ALL' ? 'ALL' : dated}>
+      {word}
     </span>
   );
 };
@@ -495,7 +495,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
             </span>
           </div>
           <div className="flex flex-col min-w-0">
-            {label(readLevelsScope() === 'ALL' ? 'Supreme · all exp.' : todayScopeLabel() === 'Today' ? 'Supreme · today' : 'Supreme · next', `The single strike with the most hedging on it, on ${readLevelsScope() === 'ALL' ? 'every listed expiry' : todayScopeLabel() === 'Today' ? "today's contracts" : "the next session's contracts"} (the Levels card)`)}
+            {label(row.scope === 'ALL' ? 'Supreme · all' : 'Supreme', row.scope === 'ALL' ? `The strike with the most hedging on ${row.ticker}, every listed expiry` : `The strike with the most hedging on ${row.ticker}, this name's front expiry`)}
             <span className="font-bold" style={{ color: SUPREME }}>
               {fmtStrike(row.supreme)}
             </span>
@@ -515,7 +515,9 @@ const Board = () => {
   const navigate = useNavigate();
   /* THE NAMES ON THE BOARD — the list the user keeps (2026-09-09: twelve to
      start, add any listing, take any off) */
-  const names = useBoardNames();
+  const stored = useBoardNames();
+  const listedRev = useListedRev();
+  const names = useMemo(() => stored.filter(isOptionRoot), [stored, listedRev]);
   usePinpointFeed(names[0]);
   const bookRev = useBookRev();
   const [rows, setRows] = useState<BoardRow[]>([]);
@@ -623,15 +625,14 @@ const Board = () => {
      the nearest wall and how far, the flip, the supreme, net GEX — come straight after it; the long ones (watch first,
      the day's path, crossings, positions) leave the grid there. Anything past the screen scrolls inside the grid. */
   const phone = useIsPhone();
-  const levelsScope = useLevelsScope();
   const anyMine = rows.some(r => r.yours.positions > 0);
   const recKey = `${recordDay().date}|${recordDay().isToday}|${recordDay().done}|${bellDay().head}|${todayScopeLabel()}`;
   const columnDefs = useMemo<ColDef<BoardRow>[]>(() => {
     const cols: ColDef<BoardRow>[] = [
       { headerName: 'Name', field: 'ticker', pinned: 'left', width: phone ? 92 : 100, cellRenderer: NameCell, sortable: true, headerTooltip: 'The stock or fund. Click a row to open it on the Map' },
       { headerName: 'Price', field: 'spot', flex: 0.9, minWidth: 108, cellRenderer: SpotCell, comparator: (a: number, b: number) => a - b, headerTooltip: todayScopeLabel() === 'Today' ? "The last price and today's change" : "The regular-session close — the price the levels were read at, and every distance on the board is measured from it — and the session's change; the after-hours move is beside it, labelled" },
-      { headerName: levelsScope === 'ALL' ? 'Hedging · all expiries' : todayScopeLabel() === 'Today' ? 'Hedging today' : 'Hedging · next session', field: 'regime', flex: 0.6, minWidth: 82, cellRenderer: RegimeCell, headerTooltip: 'What dealer hedging is doing at the current price: absorbing moves when the net GEX beside it is positive (dealers long gamma), amplifying them when it is negative (short gamma). The flip is the price where that changes' },
-      { headerName: levelsScope === 'ALL' ? 'Net GEX · all expiries' : `Net GEX · ${todayScopeLabel().toLowerCase()}`, field: 'netGex', flex: 0.7, minWidth: 84, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: 'Net GEX: all the dealer hedging on the name added up, in dollars per 1% move, on the contracts the Levels card picks. Positive (green) tends to absorb moves; negative (red) tends to amplify them' },
+      { headerName: 'Hedging', field: 'regime', flex: 0.6, minWidth: 82, cellRenderer: RegimeCell, headerTooltip: "What dealer hedging is doing at the current price on this name's own levels. The word under it says today or all expiries. Positive net GEX absorbs; negative amplifies. The flip is where that changes." },
+      { headerName: 'Net GEX', field: 'netGex', flex: 0.7, minWidth: 84, cellRenderer: NetCell, comparator: (a: number, b: number) => Math.abs(a) - Math.abs(b), headerTooltip: "Net GEX on this name's own levels, dollars per 1% move. Each name can be today or every expiry." },
       {
         headerName: 'Flip · how far',
         field: 'flipDistPct',
@@ -653,7 +654,7 @@ const Board = () => {
         headerTooltip: 'The nearer of the two walls and how far it is. The call wall is the strike with the most call gamma: while dealers are long gamma there it tends to slow a rise (above price it is a lid; once price is through it, it can act as support). The put wall is the strike with the most put gamma: below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet',
         comparator: (a: BoardRow['nearest'], b: BoardRow['nearest']) => Math.abs(a.distPct) - Math.abs(b.distPct),
       },
-      { headerName: levelsScope === 'ALL' ? 'Supreme · all' : todayScopeLabel() === 'Today' ? 'Supreme · today' : 'Supreme · next', field: 'supreme', flex: 0.5, minWidth: 72, cellRenderer: SupremeCell, headerTooltip: 'The supreme: the single strike with the most hedging on it, read off the contracts the Levels card picks (Today or All expiries). The Map, the Agenda and Compare show the same number' },
+      { headerName: 'Supreme', field: 'supreme', flex: 0.5, minWidth: 72, cellRenderer: SupremeCell, headerTooltip: "The strike with the most hedging on this name, on that name's own levels." },
       {
         headerName: 'Watch first',
         field: 'watch',
@@ -688,13 +689,14 @@ const Board = () => {
     return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
     // the heads name the session on record and the bell's day — they roll at the open and the close (recKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, levelsScope, recKey, anyMine]);
+  }, [phone, recKey, anyMine]);
   /* a long head ("Supreme · all exp.", "Net GEX · today") wraps to two lines rather than cut (the sixth audit's m11) */
   const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip', wrapHeaderText: true, autoHeaderHeight: true }), []);
 
   const open = (e: RowClickedEvent<BoardRow>) => {
     if (!e.data) return;
     changeTicker(e.data.ticker);
+    ensureBook(e.data.ticker, 'full', true);
     navigate('/pinpoint/map');
   };
 
@@ -726,7 +728,7 @@ const Board = () => {
         <span className="font-mono text-[9px] uppercase tracking-widest text-textSecondary">The names on your board</span>
         <StaleMark at={bookAt} ttlMs={BOARD_TTL_MS} fault={bookDown ? 'failed' : null} />
         <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum tabular-nums" data-board-count>
-          {rows.length < names.length ? `still reading ${names.filter(n => !rows.some(r => r.ticker === n)).slice(0, 4).join(' ')}` : `${names.length} names`} · closest to its flip (as a % of price) first · click a name to open it on the map
+          {rows.length < names.length ? `${rows.length} of ${names.length} in · ${names.length - rows.length} still loading` : `${names.length} names`} · closest to its flip (as a % of price) first · click a name to open it on the map
         </span>
         <input
           value={quick}
@@ -734,7 +736,7 @@ const Board = () => {
           placeholder="Filter · SPY QQQ NVDA"
           aria-label="Filter names — as many as you like, spaces or commas between"
           title="As many names as you like, spaces or commas between"
-          className="ml-auto flex-1 min-w-[9rem] sm:flex-none sm:w-44 h-7 max-sm:h-10 bg-transparent border border-borderSubtle rounded-md px-2 font-mono text-[10px] text-textPrimary placeholder:text-textMuted focus:outline-none focus:border-silver/50"
+          className="ml-auto flex-1 min-w-[9rem] sm:flex-none sm:w-44 slayer-field"
           data-board-filter
         />
         <span ref={addRootRef} className="relative inline-flex">
@@ -765,7 +767,10 @@ const Board = () => {
                 <TickerLookup
                   onPick={sym => {
                     addBoardName(sym);
+                    changeTicker(sym);
+                    ensureBook(sym, 'full', true);
                     setAdding(false);
+                    navigate('/pinpoint/map');
                   }}
                 />
               </div>,
@@ -775,7 +780,7 @@ const Board = () => {
         <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted tnum tabular-nums">updated {scanAt} · {cadenceWords()}</span>
       </div>
       {bookDown && rows.length === 0 ? (
-        <FeedFallback fault="failed" />
+        <ReadMiss onRetry={() => names.forEach(t => ensureBook(t, 'full'))} />
       ) : phone ? (
         <div data-board-cards>
           {rows.length === 0 && <p className="px-3 py-4 font-mono text-[11px] text-textSecondary">Still reading the book</p>}

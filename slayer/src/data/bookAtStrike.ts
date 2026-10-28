@@ -36,6 +36,7 @@ import { buildBuilding, type BuildVerdict } from './building';
 import { readSessionClock } from './moc';
 import { sessionBars } from './levelview';
 import { cutOf, shapesOf, type MapRow, type Shape } from './mapShape';
+import { GREEKS } from './exposureSurface';
 import { testEvents } from './wall';
 import type { ExposureProfileData } from '../types/gex';
 
@@ -78,14 +79,18 @@ export const changeWords = (c: BookAtStrike['change']): string => {
 export function buildBook(ticker: string, profile: ExposureProfileData): Book {
   const spot = profile.levels.spot;
   const { callWall, putWall, supreme, flip } = profile.levels;
-  const rows: MapRow[] = profile.strikes.map(s => ({
-    strike: s.strike,
-    legs: { gex: s.gex, dex: s.dex, vex: s.vex, vanna: s.vanna, charm: s.charm },
-    net: s.gex.net,
-    shape: null,
-    role: s.strike === supreme ? 'supreme' : s.strike === callWall ? 'call wall' : s.strike === putWall ? 'put wall' : null,
-    above: s.strike >= spot,
-  }));
+  const rows: MapRow[] = profile.strikes.map(s => {
+    const legs = {} as MapRow['legs'];
+    for (const g of GREEKS) legs[g] = s[g];
+    return {
+      strike: s.strike,
+      legs,
+      net: s.gex.net,
+      shape: null,
+      role: s.strike === supreme ? 'supreme' : s.strike === callWall ? 'call wall' : s.strike === putWall ? 'put wall' : null,
+      above: s.strike >= spot,
+    };
+  });
   const shaped = shapesOf(rows);
   const cut = Math.max(1, cutOf(shaped));
 

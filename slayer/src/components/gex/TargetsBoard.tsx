@@ -69,7 +69,7 @@ import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import { chanceLabel, holdLabel, holdShort, pathFlowWords, pathLean } from '../../data/wall';
 import { GLOSSARY, kindTip } from './glossary';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
-import { useDistanceUnit } from '../../data/distanceUnits';
+import { useNameUnit } from '../../data/distanceUnits';
 import { cadenceWords, longDay, recordDay, aheadWord, sessionDay } from '../../data/bookWindow';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
 import { bookCandles, peekDaySigma, peekIv, useBookRev } from '../../data/uwBook';
@@ -84,8 +84,8 @@ const WARM = THERMAL_WARM;
 const COOL = THERMAL_COOL;
 /* "<1%" for the tiny chances — no floor (the audit: SPY 742–782, five expected moves out, all read "2% reached") */
 const pct = chanceLabel;
-const ORDER_OPTIONS: DropdownOption<AgendaOrder>[] = AGENDA_ORDERS.map(o => ({ value: o.value, label: o.label, hint: o.hint }));
-const WINDOW_OPTIONS: DropdownOption<number>[] = STRIKE_WINDOWS.map(w => ({ value: w, label: `${w} each side`, hint: w === 30 ? 'The whole book' : `${w} strikes above spot and ${w} below` }));
+export const ORDER_OPTIONS: DropdownOption<AgendaOrder>[] = AGENDA_ORDERS.map(o => ({ value: o.value, label: o.label, hint: o.hint }));
+export const WINDOW_OPTIONS: DropdownOption<number>[] = STRIKE_WINDOWS.map(w => ({ value: w, label: `${w} each side`, hint: w === 30 ? 'The whole book' : `${w} strikes above spot and ${w} below` }));
 
 /* ---- small parts ------------------------------------------------------------------ */
 
@@ -417,14 +417,20 @@ interface ControlsProps {
   updatedAt: string;
   /** Across every pane */
   strikes: number;
+  /** False when each pane carries its own Ranked by and Strikes */
+  lenses?: boolean;
 }
 
 /** Ranked by · Strikes · the names door · when the numbers were read — one line for every pane (the Building row's
     grammar; since 2026-10-15 the Targets face takes one to four names, each on its own expiry) */
-export const TargetsControls = ({ order, onOrder, window, onWindow, names, updatedAt, strikes }: ControlsProps) => (
+export const TargetsControls = ({ order, onOrder, window, onWindow, names, updatedAt, strikes, lenses = true }: ControlsProps) => (
   <div className="px-5 pb-2 flex items-center gap-2 flex-wrap" data-targets-controls>
-    <DropdownSelect label="Ranked by" value={order} options={ORDER_OPTIONS} onChange={onOrder} title="The order of the list" testId="targets-order" />
-    <DropdownSelect label="Strikes" value={window} options={WINDOW_OPTIONS} onChange={v => onWindow(v as StrikeWindow)} title="How many strikes around spot" testId="targets-strikes" />
+    {lenses && (
+      <>
+        <DropdownSelect label="Ranked by" value={order} options={ORDER_OPTIONS} onChange={onOrder} title="The order of the list" testId="targets-order" />
+        <DropdownSelect label="Strikes" value={window} options={WINDOW_OPTIONS} onChange={v => onWindow(v as StrikeWindow)} title="How many strikes around spot" testId="targets-strikes" />
+      </>
+    )}
     {names}
     <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-textMuted whitespace-nowrap" data-targets-updated>
       {strikes} strikes · updated {updatedAt} · {cadenceWords()}
@@ -520,7 +526,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   const loudSet = useMemo(() => new Set([...agenda.targets].sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight)).slice(0, 3).map(t => t.strike)), [agenda.targets]);
   const lead = agenda.first[0];
   /* the shell's ruler (data/distanceUnits.ts) — the Building ledger's and the Board's own */
-  const unit = useDistanceUnit();
+  const unit = useNameUnit(ticker);
   const rev = useBookRev();
   const fromSpot = useMemo(() => {
     const scales = { atr: sessionAtr(bookCandles(ticker) ?? []), sigma: peekDaySigma(ticker) ?? impliedDaySigma(agenda.spot, peekIv(ticker) ?? 0) };
@@ -631,7 +637,7 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
           {wide && headCell('#', false, '', 'Its place in the order: how likely price gets there times how much happens if it does')}
           {headCell('Strike', false, '', 'The option strike price, with its role: call wall (the most call hedging), put wall (the most put hedging — below price it is support while it holds (dealers are short gamma there, so a break can accelerate); above price it is overhead put hedging, not a floor — a rally into it can speed up selling, or it can act as a magnet), supreme (the most hedging of all), shelf (dealers long gamma: their hedging slows price, above or below) or trapdoor (dealers short gamma: their hedging speeds a move through it, above or below) — the Map\'s colours')}
           {wide && headCell('From spot', true, '', 'How far the strike is from the current price, in the Ruler at the top of the page ($, %, ATR or σ)')}
-          {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the vendor's implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
+          {headCell(agenda.horizon ? `Reached ${agenda.horizon}` : clock.inSession ? 'Reached' : aheadWord() === 'today' ? 'Reached today' : 'Reached next', true, 'whitespace-nowrap', agenda.horizon ? `The chance price touches this strike ${agenda.horizon} — the Levels card reads that expiry, so the odds run on the implied move into it` : clock.inSession ? 'The chance price touches this strike before the close' : `The chance price touches this strike ${aheadWord() === 'today' ? "in today's session" : 'next session'}`)}
           {full && headCell('Today', false, 'whitespace-nowrap', recordDay().isToday && !recordDay().done ? "What today's session has already done at the strike: traded through it, and how often it held or broke (the Map's \"How the levels held\" count) — a dash where the session has not reached it" : recordDay().isToday ? `Today's session has closed — these targets are the next session's (${longDay(sessionDay().next)}); how today's levels held is on the Map` : 'The session has not opened yet — nothing has been reached today')}
           {headCell('Net gamma', true, '', "The net gamma at this strike on the contracts the Levels card reads, dollars per 1% move — positive (green): dealers long gamma, their hedging slows price here; negative (red): short gamma, their hedging speeds a move through. The bar: a wall's size against the biggest wall on this ticker (100%); empty on a trapdoor or a thin strike")}
           {full && headCell('If it breaks', false, '', 'Where price runs next if it gets through, and how much stock dealers must buy or sell on the way')}

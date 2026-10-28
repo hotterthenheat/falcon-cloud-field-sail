@@ -65,7 +65,7 @@ import { useCallback, useSyncExternalStore } from 'react';
   is building the context from data it already holds.
 */
 
-export type LevelName = 'callWall' | 'putWall' | 'flip' | 'supreme';
+export type LevelName = 'callWall' | 'putWall' | 'flip' | 'supreme' | 'coneHigh' | 'coneLow';
 export type IndicatorSource = 'vwap' | 'ema9' | 'ema21' | 'ema50' | 'rsi';
 
 interface AlertBase {
@@ -132,6 +132,17 @@ export interface WallMoveAlert extends AlertBase {
   step: number;
 }
 
+export interface CharmPinAlert extends AlertBase {
+  kind: 'charmPin';
+  sign: -1 | 0 | 1;
+  /** Epoch ms the sign has held near the supreme. 0 until both are true. */
+  since: number;
+}
+
+export interface OiJumpAlert extends AlertBase {
+  kind: 'oiJump';
+}
+
 export interface FlowAlert extends AlertBase {
   kind: 'flow';
   /** Premium floor in dollars. */
@@ -180,13 +191,15 @@ export type Alert =
   | GexFlipAlert
   | NewSupremeAlert
   | WallMoveAlert
+  | CharmPinAlert
+  | OiJumpAlert
   | FlowAlert
   | NewsAlert
   | ScriptAlert;
 
 export type AlertKind = Alert['kind'];
 
-const LEVEL_NAMES: readonly LevelName[] = ['callWall', 'putWall', 'flip', 'supreme'];
+const LEVEL_NAMES: readonly LevelName[] = ['callWall', 'putWall', 'flip', 'supreme', 'coneHigh', 'coneLow'];
 const INDICATOR_SOURCES: readonly IndicatorSource[] = ['vwap', 'ema9', 'ema21', 'ema50', 'rsi'];
 const isSide = (v: unknown): v is -1 | 0 | 1 => v === -1 || v === 0 || v === 1;
 const isFin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -225,6 +238,11 @@ const readAlert = (a: unknown): Alert | null => {
     case 'wallmove':
       if (!isFin(c.strikes) || (c.strikes as number) < 1 || !isFin(c.callBase) || !isFin(c.putBase) || !isFin(c.step)) return null;
       return { ...base, kind: 'wallmove', strikes: c.strikes as number, callBase: c.callBase as number, putBase: c.putBase as number, step: c.step as number };
+    case 'charmPin':
+      if (!isSide(c.sign)) return null;
+      return { ...base, kind: 'charmPin', sign: c.sign, since: isFin(c.since) ? (c.since as number) : 0 };
+    case 'oiJump':
+      return { ...base, kind: 'oiJump' };
     case 'flow':
       if (!isFin(c.floor) || (c.floor as number) <= 0 || !isFin(c.armedAt)) return null;
       return { ...base, kind: 'flow', floor: c.floor as number, armedAt: c.armedAt as number };
@@ -362,6 +380,14 @@ export function armWallMove(ticker: string, strikes: number): Alert | null {
     () => ({ id: freshId(), kind: 'wallmove', strikes, callBase: 0, putBase: 0, step: 0, firedAt: 0 }),
     a => a.kind === 'wallmove' && a.strikes === strikes
   );
+}
+
+export function armCharmPin(ticker: string): Alert | null {
+  return arm(ticker, () => ({ id: freshId(), kind: 'charmPin', sign: 0, since: 0, firedAt: 0 }), a => a.kind === 'charmPin');
+}
+
+export function armOiJump(ticker: string): Alert | null {
+  return arm(ticker, () => ({ id: freshId(), kind: 'oiJump', firedAt: 0 }), a => a.kind === 'oiJump');
 }
 
 export function armNews(ticker: string, now: number): Alert | null {
@@ -614,7 +640,7 @@ export function useUnseenAll(): number {
   everywhere an alert is written out (the rule: one row, one shape).
 */
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
-const LEVEL_WORDS = { callWall: 'the call wall', putWall: 'the put wall', flip: 'the gamma flip', supreme: 'the supreme' } as const;
+const LEVEL_WORDS = { callWall: 'the call wall', putWall: 'the put wall', flip: 'the gamma flip', supreme: 'the supreme', coneHigh: 'the cone high', coneLow: 'the cone low' } as const;
 const AVERAGE_WORDS = { vwap: 'VWAP', ema9: '9-bar average', ema21: '21-bar average', ema50: '50-bar average' } as const;
 const money = (v: number) => `$${v >= 1e6 ? `${(v / 1e6).toFixed(v % 1e6 ? 1 : 0)}M` : `${Math.round(v / 1e3)}K`}`;
 
@@ -631,6 +657,10 @@ export function waitingWords(a: Alert): string {
       return 'the supreme moves to another strike';
     case 'wallmove':
       return `a wall moves ${a.strikes} strikes or more`;
+    case 'charmPin':
+      return 'charm stays one way into the close, near the supreme';
+    case 'oiJump':
+      return 'a strike’s open interest doubles';
     case 'flow':
       return `an option trade of ${money(a.floor)} or more lands`;
     case 'news':
@@ -661,6 +691,10 @@ export function firedWords(a: Alert, ticker = ''): string {
       return 'the supreme moved to another strike';
     case 'wallmove':
       return `a wall moved ${a.strikes} strikes or more`;
+    case 'charmPin':
+      return 'charm held into the close near the supreme';
+    case 'oiJump':
+      return 'a strike’s open interest doubled';
     case 'flow':
       return `an option trade of ${money(a.floor)} or more landed`;
     case 'news':
@@ -698,6 +732,10 @@ function resetAlert(a: Alert, spot: number, now: number): Alert {
       return { ...a, firedAt: 0, strike: 0 };
     case 'wallmove':
       return { ...a, firedAt: 0, callBase: 0, putBase: 0, step: 0 };
+    case 'charmPin':
+      return { ...a, firedAt: 0, sign: 0, since: 0 };
+    case 'oiJump':
+      return { ...a, firedAt: 0 };
     case 'flow':
       return { ...a, firedAt: 0, armedAt: now };
     case 'news':
@@ -723,6 +761,9 @@ function sameIdentity(a: Alert, b: Alert): boolean {
       return true;
     case 'wallmove':
       return b.kind === 'wallmove' && a.strikes === b.strikes;
+    case 'charmPin':
+    case 'oiJump':
+      return true;
     case 'flow':
       return b.kind === 'flow' && Math.abs(a.floor - b.floor) < 1e-9;
     case 'news':
@@ -753,11 +794,17 @@ export interface AlertContext {
   /** Named levels with REAL nulls (core/walls.ts rules), not spot fallbacks:
       "no call wall qualifies" must read as absent here, or a level alert
       would chase the fallback around the tape. */
-  levels: { callWall: number | null; putWall: number | null; flip: number | null; supreme: number | null };
+  levels: { callWall: number | null; putWall: number | null; flip: number | null; supreme: number | null; coneHigh?: number | null; coneLow?: number | null };
   /** Signed total of the book's net GEX; null when the book is unreadable. */
   netGex: number | null;
   /** The chain's strike spacing; 0 when unknown. */
   step: number;
+  /** Signed charm of the book, when the chain printed it. */
+  charm?: number | null;
+  /** New York minutes since midnight. Charm-into-the-close starts at 15:00. */
+  nyMin?: number;
+  /** A strike's open interest at least doubled against the previous read. */
+  oiJump?: boolean;
   /** Latest value per indicator the evaluating pane computed; absent or null
       when not computable (too few bars). */
   values: Partial<Record<IndicatorSource, number | null>>;
@@ -847,6 +894,27 @@ export function evaluateAlert(a: Alert, ctx: AlertContext): AlertVerdict {
       return { fire: moved(a.callBase, ctx.levels.callWall) || moved(a.putBase, ctx.levels.putWall) };
     }
 
+    case 'charmPin': {
+      /* After 15:00 New York: the charm sign and a price inside half a percent
+         of the supreme have to hold together for five minutes. The next tick
+         after arming is not enough. */
+      const charm = ctx.charm;
+      const sup = ctx.levels.supreme;
+      const ny = ctx.nyMin ?? 0;
+      const near = charm != null && charm !== 0 && sup != null && ctx.close > 0 && ny >= 15 * 60
+        && Math.abs(ctx.close - sup) / ctx.close < 0.005;
+      if (!near || charm == null) {
+        if (a.sign !== 0 || a.since) return { fire: false, armed: { ...a, sign: 0, since: 0 } };
+        return NONE;
+      }
+      const sign: -1 | 1 = charm > 0 ? 1 : -1;
+      if (a.sign !== sign || !a.since) return { fire: false, armed: { ...a, sign, since: Date.now() } };
+      return { fire: Date.now() - a.since >= 5 * 60 * 1000 };
+    }
+
+    case 'oiJump':
+      return { fire: ctx.oiJump === true };
+
     case 'flow':
       return { fire: ctx.prints.some(p => p.at > a.armedAt && p.premium >= a.floor) };
 
@@ -876,7 +944,7 @@ export function alertLabel(a: Alert): string {
     case 'price':
       return `${a.price.toFixed(2)} ${a.above ? 'above' : 'below'}`;
     case 'level':
-      return `${{ callWall: 'call wall', putWall: 'put wall', flip: 'flip', supreme: 'supreme' }[a.level]} cross`;
+      return `${{ callWall: 'call wall', putWall: 'put wall', flip: 'flip', supreme: 'supreme', coneHigh: 'cone high', coneLow: 'cone low' }[a.level]} cross`;
     case 'indicator':
       return a.source === 'rsi'
         ? `RSI ${a.threshold} · ${a.tf}`
@@ -887,6 +955,10 @@ export function alertLabel(a: Alert): string {
       return 'new supreme';
     case 'wallmove':
       return `wall moves ${a.strikes}+ strikes`;
+    case 'charmPin':
+      return 'charm pins into the close';
+    case 'oiJump':
+      return 'open interest doubles';
     case 'flow':
       return `print ≥ $${a.floor >= 1_000_000 ? `${(a.floor / 1_000_000).toFixed(a.floor % 1_000_000 ? 1 : 0)}M` : `${Math.round(a.floor / 1_000)}K`}`;
     case 'news':

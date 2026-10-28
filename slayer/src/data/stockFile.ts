@@ -10,8 +10,8 @@ import type { DarkPoolPrint } from '../types/darkpool';
 import type { FlowPrint } from '../types/trace';
 import { darkPrint } from './traceLive';
 import { alertSides, darkPrintKey } from './sidesRule';
-import { uwCall, whalesBars, whalesDailyLong, whalesEarnings, whalesOptionContracts, whalesScreener, type UwDaily } from './whales';
-import { nyIsoDate, nyMinutes as nyMinuteOf, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
+import { uwCall, whalesAnalysts, whalesBars, whalesDailyLong, whalesEarnings, whalesFinancials, whalesOptionContracts, whalesScreener, whalesStock, type UwDaily } from './whales';
+import { nyClock, nyIsoDate, nyMinutes as nyMinuteOf, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 
 export interface EarnRow {
   report_date?: string;
@@ -22,6 +22,26 @@ export interface EarnRow {
   /** 'company' when the company set the date; 'estimation' while it is the vendor's estimate */
   source?: string | null;
   report_time?: string | null;
+}
+
+/** One quarterly filing from /stock/{t}/financials. Dollars, as the vendor prints them. */
+export interface QuarterFiling {
+  fiscal: string;
+  revenue: number;
+  grossProfit: number | null;
+  operatingIncome: number | null;
+  netIncome: number | null;
+  operatingCash: number | null;
+  capex: number | null;
+}
+
+/** Latest price target from each firm, last 180 days. The median is the street's fair value. */
+export interface StreetBook {
+  median: number;
+  low: number;
+  high: number;
+  firms: number;
+  asOf: string;
 }
 
 export interface StockFile {
@@ -50,6 +70,10 @@ export interface StockFile {
   rangeAsOf?: string;
   /** Epoch ms of the last print that landed. */
   at?: number;
+  /** Quarterly income and cash flow, newest first. Empty when the vendor has no statements. */
+  quarters: QuarterFiling[];
+  /** The street's targets. Null when no firm has printed one in the last 180 days. */
+  street: StreetBook | null;
 }
 
 const EMPTY_EARN: EarnRow[] = [];
@@ -60,8 +84,9 @@ const EMPTY_CONTRACTS: Record<string, unknown>[] = [];
 const NO_WINDOW: TapeWindow = { complete: false, from: '', to: '', rows: 0, pages: 0 };
 /** One object per status. A fresh object on every read makes useSyncExternalStore
     treat the file as changed and warn that getSnapshot is not cached. */
-const LOADING: StockFile = { status: 'loading', tapes: 'loading', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
-const FAILED: StockFile = { status: 'error', tapes: 'live', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS };
+const EMPTY_QUARTERS: QuarterFiling[] = [];
+const LOADING: StockFile = { status: 'loading', tapes: 'loading', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS, quarters: EMPTY_QUARTERS, street: null };
+const FAILED: StockFile = { status: 'error', tapes: 'live', session: '', screen: null, earnings: EMPTY_EARN, days: EMPTY_DAYS, flow: EMPTY_FLOW, flowWindow: NO_WINDOW, dark: EMPTY_DARK, darkWindow: NO_WINDOW, contracts: EMPTY_CONTRACTS, quarters: EMPTY_QUARTERS, street: null };
 
 const blank = (status: StockFile['status']): StockFile => (status === 'error' ? FAILED : LOADING);
 
@@ -79,7 +104,7 @@ const num = (v: unknown): number => {
 const clock = (iso: string): string => {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return '';
-  return new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
+  return nyClock(t);
 };
 
 const mmddyyyy = (iso: string): string => {
@@ -346,6 +371,105 @@ export const darkReadable = (p: DarkPoolPrint): boolean => p.intent !== 'ROTATIO
    the first reader that shows them asks for them. */
 const heads = new Map<string, Promise<StockFile | null>>();
 const tapesAsked = new Set<string>();
+
+const finite = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+};
+
+function quartersFrom(fin: { income_statements?: Record<string, unknown>[]; cash_flows?: Record<string, unknown>[] } | null): QuarterFiling[] {
+  const inc = Array.isArray(fin?.income_statements) ? fin.income_statements : [];
+  const cash = new Map<string, Record<string, unknown>>();
+  for (const row of Array.isArray(fin?.cash_flows) ? fin.cash_flows : []) {
+    if (String(row.report_type ?? '') !== 'quarterly') continue;
+    const fiscal = String(row.fiscal_date_ending ?? '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fiscal)) cash.set(fiscal, row);
+  }
+  const out: QuarterFiling[] = [];
+  for (const row of inc) {
+    if (String(row.report_type ?? '') !== 'quarterly') continue;
+    const fiscal = String(row.fiscal_date_ending ?? '').slice(0, 10);
+    const revenue = finite(row.total_revenue);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fiscal) || revenue == null || revenue === 0) continue;
+    const cf = cash.get(fiscal);
+    out.push({
+      fiscal,
+      revenue,
+      grossProfit: finite(row.gross_profit),
+      operatingIncome: finite(row.operating_income),
+      netIncome: finite(row.net_income),
+      operatingCash: cf ? finite(cf.operating_cashflow) : null,
+      capex: cf ? finite(cf.capital_expenditures) : null,
+    });
+  }
+  out.sort((a, b) => b.fiscal.localeCompare(a.fiscal));
+  return out.slice(0, 12);
+}
+
+function earnFromFinancials(rows: Record<string, unknown>[] | undefined): EarnRow[] {
+  if (!Array.isArray(rows)) return [];
+  const out: EarnRow[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const date = String(row.report_date ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || seen.has(date)) continue;
+    seen.add(date);
+    out.push({
+      report_date: date,
+      actual_eps: finite(row.reported_eps),
+      street_mean_est: finite(row.estimated_eps),
+      source: 'company',
+      report_time: typeof row.report_time === 'string' ? row.report_time : null,
+    });
+  }
+  return out;
+}
+
+/** Latest quarter against the same quarter a year earlier, when both are on the file. */
+export function quarterFacts(rows: readonly QuarterFiling[]): {
+  revenue: number | null;
+  revenueGrowthPct: number | null;
+  grossMarginPct: number | null;
+  operatingMarginPct: number | null;
+  fcfMarginPct: number | null;
+} {
+  const q = rows[0];
+  if (!q) return { revenue: null, revenueGrowthPct: null, grossMarginPct: null, operatingMarginPct: null, fcfMarginPct: null };
+  const prev = rows[4] && rows[4].revenue ? rows[4] : null;
+  const pct = (part: number | null) => (part == null || !q.revenue ? null : (100 * part) / q.revenue);
+  const capex = q.capex == null ? null : Math.abs(q.capex);
+  const fcf = q.operatingCash != null && capex != null ? q.operatingCash - capex : null;
+  return {
+    revenue: q.revenue,
+    revenueGrowthPct: prev ? (q.revenue / prev.revenue - 1) * 100 : null,
+    grossMarginPct: pct(q.grossProfit),
+    operatingMarginPct: pct(q.operatingIncome),
+    fcfMarginPct: pct(fcf),
+  };
+}
+
+const STREET_MS = 180 * 86_400_000;
+function streetFrom(rows: Record<string, unknown>[] | null | undefined): StreetBook | null {
+  if (!Array.isArray(rows)) return null;
+  const latest = new Map<string, { at: number; target: number }>();
+  const floor = Date.now() - STREET_MS;
+  for (const row of rows) {
+    const target = finite(row.target);
+    const firm = String(row.firm || row.analyst_name || '').trim();
+    const at = Date.parse(String(row.timestamp || ''));
+    if (!firm || target == null || !(target > 0) || !Number.isFinite(at) || at < floor) continue;
+    const cur = latest.get(firm);
+    if (!cur || at > cur.at) latest.set(firm, { at, target });
+  }
+  const got = [...latest.values()];
+  if (!got.length) return null;
+  const vals = got.map(v => v.target).sort((a, b) => a - b);
+  const mid = vals.length % 2 === 1 ? vals[(vals.length - 1) / 2] : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
+  const asOf = new Date(Math.max(...got.map(v => v.at))).toISOString().slice(0, 10);
+  return { median: mid, low: vals[0], high: vals[vals.length - 1], firms: vals.length, asOf };
+}
+
 async function load(ticker: string): Promise<StockFile | null> {
   const session = lastSessionIso();
   /* THE HEAD FIRST (audit round 5, phone: the AAPL page was all skeletons after 35s — it waited on up to 26 paged tape
@@ -357,23 +481,41 @@ async function load(ticker: string): Promise<StockFile | null> {
     whalesDailyLong(ticker).catch(() => [] as UwDaily[]),
     /* the same call the earnings page makes, so the two pages' busiest contracts agree */
     whalesOptionContracts(ticker, undefined, true).catch(() => [] as Record<string, unknown>[]),
+    whalesFinancials(ticker, true).catch(() => null),
+    whalesStock(ticker).catch(() => null),
+    whalesAnalysts(ticker, true).catch(() => [] as Record<string, unknown>[]),
   ]);
-  const [screenR, earnR, dayR, contractR] = await headP;
+  const [screenR, earnR, dayR, contractR, finR, infoR, analystR] = await headP;
   const screen = Array.isArray(screenR) ? (screenR.find(r => String(r.ticker || '').toUpperCase() === ticker) ?? screenR[0] ?? null) : null;
   const days = daysFrom(Array.isArray(dayR) ? dayR : []);
-  const got = (Array.isArray(screenR) && screenR.length > 0) || days.length > 0 || (Array.isArray(earnR) && earnR.length > 0);
+  const quarters = quartersFrom(finR);
+  const street = streetFrom(Array.isArray(analystR) ? analystR : []);
+  const fromFeed = Array.isArray(earnR) ? earnR : [];
+  const fromStatements = earnFromFinancials(finR?.earnings);
+  const earnings = fromFeed.length ? fromFeed : fromStatements;
+  const nextOnFile = typeof infoR?.next_earnings_date === 'string' ? infoR.next_earnings_date.slice(0, 10) : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(nextOnFile) && !earnings.some(e => String(e.report_date ?? '').slice(0, 10) === nextOnFile)) {
+    earnings.push({
+      report_date: nextOnFile,
+      source: 'company',
+      report_time: typeof infoR?.announce_time === 'string' ? infoR.announce_time : null,
+    });
+  }
+  const got = (Array.isArray(screenR) && screenR.length > 0) || days.length > 0 || earnings.length > 0 || quarters.length > 0;
   const head: StockFile = {
     status: got ? 'live' : 'error',
     tapes: 'loading',
     session,
     screen: screen && typeof screen === 'object' ? (screen as Record<string, unknown>) : null,
-    earnings: Array.isArray(earnR) ? earnR : [],
+    earnings,
     days,
     flow: EMPTY_FLOW,
     flowWindow: NO_WINDOW,
     dark: EMPTY_DARK,
     darkWindow: NO_WINDOW,
     contracts: Array.isArray(contractR) ? (contractR as Record<string, unknown>[]) : [],
+    quarters,
+    street,
     at: got ? Date.now() : undefined,
   };
   files.set(ticker, head);

@@ -32,7 +32,7 @@
 
 import { levelRoles, type LevelRole } from '../../core/walls';
 import { expirySpan, todayScopeLabel } from '../../data/bookWindow';
-import { useLevelsScope } from '../../data/levelsScope';
+import { useNameLevels } from '../../data/levelsScope';
 import { useLevelsFor } from '../../data/levelsFor';
 import { peekDaySigma, peekEntry, peekMoveToClose, peekScopeMove } from '../../data/uwBook';
 import { shownGreek } from './retailSign';
@@ -160,7 +160,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
      the 61 strikes near spot" over the matrix's Oct 23 → Nov 3 rows beside the Levels card's −$3.1B). The net GEX and
      each level's figure are the Levels card's contracts (data/levelsFor.ts — the one source); a figure summed over the
      matrix's own rows says it is the matrix's */
-  const scope = useLevelsScope();
+  const scope = useNameLevels(snapshot.ticker);
   const lv = useLevelsFor(snapshot.ticker, scope);
   const lvReady = !!lv && lv.complete;
   const windowWords = `matrix rows ${expirySpan(shownIdx.map(i => surface.expiries[i]?.date).filter(Boolean) as string[]) ?? ''}`;
@@ -240,21 +240,21 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   }, [pointed]);
 
   /* TO THE CLOSE — ONE EXPECTED MOVE ON EVERY PAGE (the fourth audit, 2026-10-23: this card said ±7.32 off the matrix's
-     front vol over a session while Compare and the reach odds said the vendor's ±$4.74): the vendor's own implied move
+     front vol over a session while Compare and the reach odds said the ±$4.74): the own implied move
      into the Levels scope's expiry (uwBook peekDaySigma), scaled to the minutes left while the session runs */
   const clock = readSessionClock();
   const minLeft = clock.secondsToClose / 60;
   const shut = minLeft <= 0;
   const sigmaDay = peekDaySigma(snapshot.ticker, lv?.date ?? null);
   /* A LATER EXPIRY'S MOVE IS ITS OWN, OVER ITS WHOLE HORIZON (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20 —
-     the card read $4.95, the ATM vol over one session, against the vendor's $14.98 into Nov 20): uwBook peekScopeMove,
+     the card read $4.95, the ATM vol over one session, against the $14.98 into Nov 20): uwBook peekScopeMove,
      the same move the reach odds read (data/wall.ts scopeSigma), and the card says which number it is */
   const scopeMove = peekScopeMove(snapshot.ticker, lv?.date ?? null);
   const multi = !!scopeMove?.multi;
   /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2) */
   const w1 = multi ? scopeMove!.move : sigmaDay != null ? (shut ? sigmaDay : peekMoveToClose(snapshot.ticker, lv?.date ?? null, minLeft) ?? sigmaDay * Math.sqrt(Math.min(390, minLeft) / 390)) : null;
   const moveDate = lv?.date ?? null;
-  const moveWords = scopeMove?.words ?? (moveDate ? `the vendor's implied move into ${expirySpan([moveDate])}` : "the vendor's implied move");
+  const moveWords = scopeMove?.words ?? (moveDate ? `the implied move into ${expirySpan([moveDate])}` : 'the implied move');
   const nearest = (price: number) => surface.strikes.reduce((b, s) => (Math.abs(s - price) < Math.abs(b - price) ? s : b), surface.strikes[0]);
 
   const go = (id: SectionId) => {
@@ -411,7 +411,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
                 <button key={r.strike} onClick={() => onKeep?.(r.strike)} className="contents text-left" title={`Keep ${fmtStrike(r.strike)}`}>
                   <span className="text-textPrimary font-semibold"><span className="text-textMuted font-normal mr-1.5">{i + 1}</span>{fmtStrike(r.strike)}</span>
                   <span className="text-[11px] uppercase tracking-wider truncate" style={{ color: role?.ink ?? MUTED }}>{role?.word ?? ''}</span>
-                  <span style={{ color: rampInk(greek, now, surface.front.maxAbs[greek]) }}>{fmtUsd(shownGreek(greek, now))}</span>
+                  <span style={{ color: rampInk(greek, now, surface.maxAbs[greek]) }}>{fmtUsd(shownGreek(greek, now))}</span>
                   <span className="text-right"><Change now={shownGreek(greek, now)} then={shownThen(thenAt(winIdx, r.strike))} /></span>
                 </button>
               );

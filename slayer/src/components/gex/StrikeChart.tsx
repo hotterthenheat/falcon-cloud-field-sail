@@ -16,6 +16,7 @@ import {
   LineStyle,
   LineType,
   PriceScaleMode,
+  CrosshairMode,
   type IChartApi,
   type ISeriesApi,
   type IPriceLine,
@@ -24,7 +25,10 @@ import {
   type MouseEventParams,
   type Time,
 } from 'lightweight-charts';
-import { bookCandles, bookHistory as liveGexHistory, dayBars, ensureBook, peekDaySigma, peekIv } from '../../data/uwBook';
+import { deskTape, ensureBook, historyForDate, peekDaySigma, peekEntry, peekIv, snapshotFor, useBookRev } from '../../data/uwBook';
+import { getDeskSession, useDeskSession } from '../../data/deskSession';
+import { snapsAsOf } from '../../data/exposureScope';
+import { WhyHere } from './whyHere';
 import { onGlide, promisedWidth } from '../../core/glide';
 import { compile, explain, run as runScript, type Compiled } from '../../core/pine';
 import { setPaneBars, usePaneScripts } from '../../data/paneScripts';
@@ -43,12 +47,16 @@ import {
   type Timeframe,
 } from '../../data/timeframe';
 import { BEAD_INK_CSS, GexTrailsPrimitive, type BeadHit } from './gexNodesPrimitive';
-import { rgbOf, THERMAL_YELLOW } from './thermalFieldPrimitive';
-import { THERMAL_COOL, THERMAL_WARM, resolveInk } from './paletteInk';
+import { ExpectedMovePrimitive, type ConeHit } from './expectedMovePrimitive';
+import { coneFor, ensureCone } from '../../data/coneFeed';
 import { KeyLevelsPrimitive, KEY_LEVEL_KEYS, KEY_LEVEL_WORDS, type KeyLevelKey, type KeyLevelRung } from './keyLevelsPrimitive';
 import { LADDER_HIT_W, nearRule } from './ladderPaint';
 import PointerCard, { CardRow, PointerFollowCard, letGoWords } from '../ui/PointerCard';
-import { nyClock } from '../../core/nyTime';
+import { nyClock, nyMinutes } from '../../core/nyTime';
+import { beepAlert } from '../../data/alertSound';
+import { oiDoubled } from '../../data/oiWatch';
+import { bookFailed, ensureThetaCandles, markBookFailed, noteThetaDraw, thetaCandles } from '../../data/thetaCandles';
+import { nodeScore } from '../../data/nodeScore';
 import { fmtStrike } from '../../data/ahead';
 import PaneFoot from './PaneFoot';
 import ReplayStrip from './ReplayStrip';
@@ -56,7 +64,7 @@ import { commitArm, evaluateAlert, markFired, useAlerts, type AlertContext, type
 import { newsPulse } from '../../data/news';
 import { exposureNowFor, fmtGexUsd as fmtUsd } from '../../data/gex';
 import { ChevronsLeft, ChevronsUp, GripVertical, Lock, PanelLeft, PanelTop, Pencil, Type, Unlock } from 'lucide-react';
-import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, gestureOf, isFreehand, isWordsKind, loadDrawings, needsThirdAnchor, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
+import { DrawingsPrimitive, REST_INK_DARK, REST_INK_LIGHT, gestureOf, isFreehand, isWordsKind, loadDrawings, needsThirdAnchor, popDrawings, saveDrawings, usesPts, type Drawing, type DrawingKind } from './drawingsPrimitive';
 import DrawRailTools, { DrawSheet } from './DrawRailTools';
 import { drawToolLabel, registerDrawChart, rememberDrawTool, touchDrawChart } from './drawTools';
 import {
@@ -81,7 +89,6 @@ import { buildTapeEvents, macroWindow, type MarketEvent, type MacroDate } from '
 import { impliedDaySigma, sessionAtr } from '../../data/atr';
 import { buildEarningsCalendar, type EarningsEvent } from '../../data/earnings';
 import { EventsPrimitive } from './eventsPrimitive';
-import { ExpectedMovePrimitive } from './expectedMovePrimitive';
 import { RTH_MINUTES } from '../../core/calendar';
 import { cumulativeDrift, driftPeak } from '../../data/driftSeries';
 import { impliedVolLine, realizedVol, volCeiling } from '../../data/volDrift';
@@ -137,8 +144,8 @@ const PRICE_STRETCH = 3;
   arriving is bearish, which is direction, not dealer side — gold and steel
   would be the wrong vocabulary here.
 */
-const FLOW_CALL_INK = BULL;
-const FLOW_PUT_INK = PUT_WALL;
+const FLOW_CALL_INK = '#30D158';
+const FLOW_PUT_INK = '#FF3B30';
 
 /*
   THE DRIFT LINES WEAR THE SAME TWO INKS AS THE FLOW LEGS, and they should:
@@ -167,17 +174,10 @@ const DRIFT_PUT_INK = PUT_WALL;
 const RV_INK = '#BBB2E8';
 const IV_INK = '#EDE4CD';
 
-/** Height of a pane's name chip, and its inset from the pane's top edge. */
-const PANE_LABEL_H = 17;
-const PANE_LABEL_INSET = 3;
-
-/* Every product pane names itself, the way the reference does — an unlabelled
-   strip of bars under a chart is a puzzle. The fills are the faintest wash of
-   each pane's own subject so the chip reads as belonging to its band. */
-const PANE_LABEL_LOOK: Record<string, { text: string; bg: string; fg: string }> = {
-  flow: { text: 'Flow', bg: 'rgba(120,110,40,0.35)', fg: '#E8E4C8' },
-  netDrift: { text: 'Net drift', bg: 'rgba(40,90,60,0.35)', fg: '#CFE8D8' },
-  volDrift: { text: 'Vol drift', bg: 'rgba(70,60,110,0.35)', fg: '#DCD6F0' },
+const PANE_LABEL_LOOK: Record<string, string> = {
+  flow: 'Flow',
+  netDrift: 'Net drift',
+  volDrift: 'Vol drift',
 };
 
 /* The drawing tools themselves — their families, names and glyphs — are drawTools.tsx; the rail's buttons are DrawRailTools.tsx. */
@@ -450,7 +450,21 @@ export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | nul
   /* Sub-minute and rule bars have no live seconds tape — they stay empty. */
   if (alt || mins < 1) return [];
   ensureBook(ticker, 'board');
-  return aggregateCandles(bookCandles(ticker) ?? dayBars(ticker) ?? [], mins);
+  const session = getDeskSession();
+  const book = deskTape(ticker, session).bars;
+  if (book && book.length >= 1) {
+    noteThetaDraw(ticker, false);
+    return aggregateCandles(book, mins);
+  }
+  if (bookFailed(ticker)) {
+    const th = thetaCandles(ticker);
+    if (th && th.length >= 2) {
+      noteThetaDraw(ticker, true);
+      return aggregateCandles(th, mins);
+    }
+  }
+  noteThetaDraw(ticker, false);
+  return [];
 }
 
 export const DEFAULT_OVERLAYS: ChartOverlays = {
@@ -571,6 +585,8 @@ export interface ChartLayerApi {
 
 interface StrikeChartProps {
   ticker: string;
+  /** The expiry the nodes draw. Null is the first expiry still open, the same column the calendar shows first. */
+  bookDate?: string | null;
   /** Bumped every simulator tick so the chart folds in the newest bar */
   revision: number;
   levels: KeyLevels;
@@ -680,6 +696,8 @@ interface StrikeChartProps {
       otherwise (the Map's Greek dropdown, 2026-09-06). Pulse and Terrain
       pass nothing and stay on gamma. */
   trailsGreek?: 'gex' | 'dex' | 'vex';
+  /** Which expected-move wedge to draw. Session unless the indicators menu says otherwise. */
+  coneHorizon?: 'session' | 'week' | 'next';
   /** THE FIELD'S KEY ROW under the plot (2026-10-18): drawn here unless the host prints the key on a line of its own —
       Terrain's desk bar — in which case the reference figure goes out through `onTrailKey` (0 when the field is off) */
   trailKey?: boolean;
@@ -896,7 +914,8 @@ function useToolbarGap(containerRef: MutableRefObject<HTMLDivElement | null>, on
   chart [should] be the call and put wall for the other charts like terrain
   instead of mixing the color palettes for key levels + gex". So the field
   keeps its thermal palette to itself, and the levels stand at the edge in
-  their own inks: call wall green, put wall red, flip the house silver
+  their own inks: call wall glacier (C), put wall ember (P), flip dashed silver (F).
+  Green and red are the regime, not the walls.
   (dashed), supreme magenta one step heavier. The silver is read off the chart
   box (focusInk) so it follows the tape's ground. Moves between scans are
   TWEENED (rAF + easeOutCubic) so the rungs glide instead of jumping.
@@ -962,6 +981,7 @@ const StrikeChart = ({
   height = 460,
   keepView = false,
   trailsGreek = 'gex',
+  coneHorizon = 'session',
   trailKey = true,
   onTrailKey,
   compact = false,
@@ -984,6 +1004,7 @@ const StrikeChart = ({
   onEnterDraw,
   railTopOk = true,
   footInset = 0,
+  bookDate = null,
   replay = false,
   replayTime = null,
   pickTime = false,
@@ -1000,12 +1021,14 @@ const StrikeChart = ({
   projectionRef,
   exportRef,
 }: StrikeChartProps) => {
-  /* WHERE THE BARS COME FROM — the simulator, or the host's tape. Every read below goes through these four. */
+  const bookRev = useBookRev();
+  const session = useDeskSession();
+  /* WHERE THE BARS COME FROM — the host's tape, or this session's prints. Another session is never left on screen. */
   const tapeRef = useRef<ChartTape | undefined>(tape);
   tapeRef.current = tape;
   const barsFor = (mins: number, alt?: AltBarSpec | null): Candle[] => (tapeRef.current ? aggregateCandles(tapeRef.current.bars, Math.max(1, mins)) : displayBars(ticker, mins, alt));
-  const baseBars = (): Candle[] => tapeRef.current?.bars ?? bookCandles(ticker) ?? dayBars(ticker) ?? [];
-  const bookHistory = () => (tapeRef.current ? [] : (liveGexHistory(ticker) ?? []));
+  const baseBars = (): Candle[] => tapeRef.current?.bars ?? deskTape(ticker, session).bars;
+  const bookHistory = () => (tapeRef.current ? [] : (historyForDate(ticker, bookDate) ?? []));
   const nameIv = (): number | undefined => (tapeRef.current ? tapeRef.current.iv : peekIv(ticker) ?? undefined);
   const drawKey = tape?.key ?? ticker;
   /* NO TICK UNDER THE HAND (Noah, 2026-08-30: "i was in the middle of a drag
@@ -1116,7 +1139,7 @@ const StrikeChart = ({
      reader can drag the separators, the time axis's height is the library's to
      decide, and with three optional panes the offsets depend on which of them
      happen to be open. */
-  const [paneLabels, setPaneLabels] = useState<{ key: string; bottom: number }[]>([]);
+  const [paneLabels, setPaneLabels] = useState<{ key: string; top: number }[]>([]);
   /*
     THE RUNWAY — a series that draws nothing and holds only WHITESPACE.
 
@@ -1148,6 +1171,7 @@ const StrikeChart = ({
   /* THE FIELD'S HOVER (2026-10-15): the bead under the pointer (its card follows the pointer), the one kept by a click
      (its card stands still, with more), the size reference the legend line prints */
   const [beadCard, setBeadCard] = useState<BeadHit | null>(null);
+  const [coneCard, setConeCard] = useState<ConeHit | null>(null);
   const [pinnedBead, setPinnedBead] = useState<{ hit: BeadHit; x: number; y: number } | null>(null);
   const pinnedBeadRef = useRef(pinnedBead);
   pinnedBeadRef.current = pinnedBead;
@@ -1926,6 +1950,7 @@ const StrikeChart = ({
       rightPriceScale: { borderColor: s0.line, minimumWidth: 0 },
       timeScale: { borderColor: s0.line, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7, tickMarkFormatter: tapeRef.current?.clock === 'ny' ? nyTickMarks : localTickMarks },
       crosshair: {
+        mode: CrosshairMode.Normal,
         vertLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
         horzLine: { color: s0.crosshair, labelBackgroundColor: s0.label },
       },
@@ -2042,9 +2067,23 @@ const StrikeChart = ({
         dedupes by payload, so honouring them costs a string compare.
       */
       if (param.sourceEvent) {
-        // This pane owns its crosshair again — give the horizontal arm back.
         syncedRef.current = null;
         setFollower(false);
+        const series = candleSeriesRef.current;
+        const price = series ? series.coordinateToPrice(param.point.y) : null;
+        const lv = levelsRef.current;
+        let snapped: number | null = null;
+        if (series && price != null && Number.isFinite(price)) {
+          const y2 = series.priceToCoordinate(price + 1);
+          const pxPerDollar = y2 == null ? 0 : Math.abs(param.point.y - y2);
+          const rungs = [lv.callWall, lv.putWall, lv.flip, lv.supreme].filter(v => v > 0);
+          let bestD = 4;
+          for (const rung of rungs) {
+            const dPx = Math.abs(rung - price) * pxPerDollar;
+            if (pxPerDollar > 0 && dPx < bestD) { snapped = rung; bestD = dPx; }
+          }
+          if (snapped != null && typeof param.time === 'number') chart.setCrosshairPosition(snapped, param.time as UTCTimestamp, series);
+        }
         onCrosshairRef.current?.(typeof param.time === 'number' ? (param.time as UTCTimestamp) : null);
       }
       emitReadout(readoutAt(param.logical));
@@ -2289,24 +2328,21 @@ const StrikeChart = ({
       { key: 'netDrift', series: driftCallsRef.current },
       { key: 'volDrift', series: rvRef.current },
     ];
-    let next: { key: string; bottom: number }[] = [];
+    let next: { key: string; top: number }[] = [];
     if (chart) {
       try {
         const panes = chart.panes();
         const heights = panes.map(pane => pane.getHeight());
-        const axisH = chart.timeScale().height();
         for (const w of wanted) {
           if (!w.series) continue;
           const idx = w.series.getPane().paneIndex();
           /* Pane 0 is the tape. A product series that somehow landed there has
              no band of its own to label. */
           if (idx <= 0 || idx >= heights.length) continue;
-          /* A band collapsed to a sliver has no room for a chip, and one drawn
-             anyway would sit over the pane above it. */
-          if (heights[idx] <= 8) continue;
-          let up = axisH;
-          for (let j = idx; j < heights.length; j++) up += heights[j];
-          next.push({ key: w.key, bottom: up - PANE_LABEL_H - PANE_LABEL_INSET });
+          if (heights[idx] < 36) continue;
+          let top = 0;
+          for (let j = 0; j < idx; j++) top += heights[j];
+          next.push({ key: w.key, top: top + 6 });
         }
       } catch {
         /* the chart is mid-teardown; no chips rather than a thrown render */
@@ -2314,11 +2350,27 @@ const StrikeChart = ({
       }
     }
     setPaneLabels(prev =>
-      prev.length === next.length && prev.every((p, i) => p.key === next[i].key && p.bottom === next[i].bottom)
+      prev.length === next.length && prev.every((p, i) => p.key === next[i].key && p.top === next[i].top)
         ? prev
         : next
     );
   }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const kick = () => remeasurePaneLabels();
+    const onDrag = (e: PointerEvent) => {
+      if (e.buttons) kick();
+    };
+    el.addEventListener('pointermove', onDrag);
+    const ro = new ResizeObserver(kick);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('pointermove', onDrag);
+      ro.disconnect();
+    };
+  }, [remeasurePaneLabels, mainNonce]);
 
   /*
     THE FLOW BAND: Trace's premium, in this chart's own buckets.
@@ -2385,24 +2437,31 @@ const StrikeChart = ({
       flowPutsRef.current = puts;
       try {
         chart.panes()[0]?.setStretchFactor(PRICE_STRETCH);
-        calls.getPane().setStretchFactor(FLOW_STRETCH);
+        const pane = calls.getPane();
+        pane.setStretchFactor(FLOW_STRETCH);
+        calls.priceScale().applyOptions({ scaleMargins: { top: 0.04, bottom: 0.04 }, borderVisible: false });
+        calls.createPriceLine({ price: 0, color: 'rgba(237,237,237,0.28)', lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: false, title: '' });
       } catch {
         /* pane sizing is a nicety; never lose the chart over it */
       }
     }
 
     const barSec = tfMinutes(timeframe) * 60;
-    const bars = bucketFlow(flowPrints ?? [], { barSec, ticker });
-
+    const buckets = bucketFlow(flowPrints ?? [], { barSec, ticker });
+    const byTime = new Map(buckets.map(b => [b.time, b]));
+    const slots = barsFor(tfMinutes(timeframe));
+    const times = slots.length > 0 ? slots.map(b => b.time) : buckets.map(b => b.time);
     calls.setData(
-      bars
-        .filter(b => b.callPrem > 0)
-        .map(b => ({ time: b.time as UTCTimestamp, value: b.callPrem, color: FLOW_CALL_INK }))
+      times.map(time => {
+        const b = byTime.get(time);
+        return { time: time as UTCTimestamp, value: b?.callPrem ?? 0, color: FLOW_CALL_INK };
+      }),
     );
     puts.setData(
-      bars
-        .filter(b => b.putPrem > 0)
-        .map(b => ({ time: b.time as UTCTimestamp, value: -b.putPrem, color: FLOW_PUT_INK }))
+      times.map(time => {
+        const b = byTime.get(time);
+        return { time: time as UTCTimestamp, value: -(b?.putPrem ?? 0), color: FLOW_PUT_INK };
+      }),
     );
 
     /*
@@ -2413,7 +2472,12 @@ const StrikeChart = ({
       and the zero line would wander off centre. The heaviest leg anywhere sets
       both halves.
     */
-    const max = flowMaxLeg(bars);
+    const max = flowMaxLeg(slots.length > 0
+      ? slots.map(c => {
+          const b = byTime.get(c.time);
+          return { time: c.time, callPrem: b?.callPrem ?? 0, putPrem: b?.putPrem ?? 0, count: b?.count ?? 0 };
+        })
+      : buckets);
     if (max > 0) {
       const range = () => ({ priceRange: { minValue: -max, maxValue: max } });
       calls.applyOptions({ autoscaleInfoProvider: range });
@@ -2972,6 +3036,7 @@ const StrikeChart = ({
       leftPriceScale: { borderColor: s.line },
       timeScale: { borderColor: s.line },
       crosshair: {
+        mode: CrosshairMode.Normal,
         vertLine: { color: s.crosshair, labelBackgroundColor: s.label },
         horzLine: { color: s.crosshair, labelBackgroundColor: s.label },
       },
@@ -2997,14 +3062,21 @@ const StrikeChart = ({
     if (!chart || !candleSeries || !volumeSeries || !trails) return;
 
     const base = baseBars();
-    if (!base || base.length === 0) return;
+    if (!base || base.length === 0) {
+      const book = peekEntry(ticker);
+      if (!book || book.status === 'loading') return;
+      candleSeries.setData([]);
+      volumeSeries.setData([]);
+      trails.setData([], 0, false, 60, trailsGreek);
+      return;
+    }
 
     const theme = themeRef.current;
     const mins = tfMinutes(timeframe);
     const all = barsFor(mins, altSpec);
     /* This world's key, and whether the reader has asked for its whole
        history (onRange sets it); the recent window otherwise */
-    const key = `${ticker}|${timeframe}|${barClock}`;
+    const key = `${ticker}|${timeframe}|${barClock}|${session}`;
     worldKeyRef.current = key;
     const full = fullWorldRef.current === key;
     const bars = windowOf(all, full);
@@ -3053,17 +3125,9 @@ const StrikeChart = ({
 
 
     if (changed || jumped) {
-      /* THE FIRST PAINT CARRIES THE RECENT BARS (2026-09-06, the perf sweep):
-         a month of one-minute bars is 8,580 points, and the library checks
-         every one of them on setData — the single largest cost of opening a
-         chart, on the click frame; and the whole store following "one task
-         later" was a 79ms task of its own on every open. Now the recent
-         window is all that loads until the reader scrolls to its left edge
-         (onRange), and the whole store lands then, once per world. The view
-         holds through that because the library anchors the scroll to the
-         right edge, not to a bar index. */
       candleSeries.setData(bars.map(toMain));
       volumeSeries.setData(bars.map(b => toVolume(b, theme)));
+      if (newWorld || jumped) showRecent();
       // Baseline style pivots on the CURRENT session's open — found at the
       // last overnight gap in the aggregated bars (intraday only; dailies
       // fall back to the buffer's first open)
@@ -3119,14 +3183,14 @@ const StrikeChart = ({
          mount), and that would have asked for the whole store at once. */
       recentHeldRef.current = false;
       if (held) armTimer = requestAnimationFrame(() => (recentHeldRef.current = true));
-    } else if (altSpec && bars.length !== altCountRef.current) {
-      /* On a rule clock the tick that COMPLETES the forming bar also opens
-         the next, and update() refuses to rewrite an older time — so the
-         completed bar's closing quarter would be lost. A count change
-         reloads the whole (small, capped by the seconds ring) array; the
-         in-between ticks stay on the cheap update path below. */
+    } else if (bars.length !== altCountRef.current && (altSpec || Math.abs(bars.length - altCountRef.current) > 1)) {
+      /* A rule clock completes a bar and opens the next in one tick, and a
+         two-session tape can land after a one-session paint. update() cannot
+         rewrite older times, so a count jump reloads. A single new bar stays
+         on the cheap path below. */
       candleSeries.setData(bars.map(toMain));
       volumeSeries.setData(bars.map(b => toVolume(b, theme)));
+      showRecent();
     } else {
       const last = bars[bars.length - 1];
       candleSeries.update(toMain(last));
@@ -3148,8 +3212,8 @@ const StrikeChart = ({
     const showTrails = overlays.trails && mins <= INTRADAY_MAX_MINUTES && !altSpec;
     trails.labelPx = compact ? 8.5 : 9.5;
     const handTrails = () => {
-      const snaps = aggregateSnapshots(baseGex ?? [], trailMins);
-      trails.setData(snaps, snapshotsMaxAbs(snaps), showTrails, mins * 60, trailsGreek);
+      const front = aggregateSnapshots(bookHistory(), trailMins);
+      trails.setData(front, snapshotsMaxAbs(front), showTrails, mins * 60, trailsGreek, 0, [], bars.map(b => ({ time: b.time, close: b.close })));
     };
     /* A COLD FOLD LEAVES THE MOUNT FRAME (2026-09-06, the perf sweep): the
        first time a store is folded to the field's texture it is the single
@@ -3174,7 +3238,7 @@ const StrikeChart = ({
     }
     handTrails();
     return () => cancelAnimationFrame(armTimer);
-  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek]);
+  }, [ticker, revision, timeframe, themeKey, overlays.trails, showRecent, reloadNonce, mainNonce, toMain, compact, altSpec, barClock, fullNonce, trailsGreek, levels.spot, levels.callWall, levels.putWall, levels.flip, levels.supreme, bookRev, session, bookDate]);
 
   /* `compact` can change without the chart being rebuilt — a desktop window
      dragged across the phone line, a handset rotated. The mount effect read it
@@ -3199,21 +3263,39 @@ const StrikeChart = ({
     cancelAnimationFrame(levelRafRef.current);
     shownLevelsRef.current = null;
 
-    // Levels are LIVE values — hidden during replay so history isn't lied about
-    if (!overlays.levels || replay) {
+    // Live rungs are today's book. In replay the minute gamma at the bar is the book — walls and flip are not stored on it.
+    if (!overlays.levels) {
       ladder.setData(null);
       setLevelCard(null);
       return;
     }
-
-    /* the flip's silver is read off the chart box — until the box exists (the first pass) the house silver's dark value,
-       never the lime the focus falls back to */
     const silver = boxEl ? readToken('--silver', undefined, boxEl) : '#C7D3E8';
+    if (replay) {
+      const data = replayDataRef.current;
+      const bar = data?.bars[Math.max(0, replayIdx - 1)];
+      const prior = bar ? snapsAsOf(data?.snaps ?? [], bar.time) : [];
+      const snap = prior.length ? prior[prior.length - 1] : undefined;
+      let supreme = Number.NaN;
+      let best = 0;
+      for (const row of snap?.levels ?? []) {
+        const a = Math.abs(row.value);
+        if (a > best) {
+          best = a;
+          supreme = row.strike;
+        }
+      }
+      const asOf = { spot: bar?.close ?? Number.NaN, callWall: Number.NaN, putWall: Number.NaN, flip: Number.NaN, supreme };
+      ladder.setData(best > 0 ? { rungs: ladderOf(asOf, silver), hot: null } : null);
+      setLevelCard(null);
+      return;
+    }
     const L = levelsRef.current;
     ladder.setData({ rungs: ladderOf(L, silver), hot: null });
+    const chain = snapshotFor(ticker, 'ALL');
+    ladder.marks = chain ? oiDoubled(ticker, peekEntry(ticker)?.at ?? 0, chain.chain) : [];
     shownLevelsRef.current = { ...L };
     levelTickerRef.current = ticker;
-  }, [ticker, overlays.levels, replay, mainNonce, themeKey, appTheme, boxEl]);
+  }, [ticker, overlays.levels, replay, replayIdx, mainNonce, themeKey, appTheme, boxEl]);
 
   /* THE POINTER ON A RUNG — within RULE_NEAR of a rule, in the ladder's band at the right edge: the rung brightens and
      reaches in, and the card says what it is (the Compass marks' hover, CampaignAnalysis). The card tracks the pointer by
@@ -3221,7 +3303,7 @@ const StrikeChart = ({
   useEffect(() => {
     const chart = chartRef.current;
     const ladder = ladderRef.current;
-    if (!chart || !ladder || !overlays.levels || replay) return;
+    if (!chart || !ladder || !overlays.levels) return;
     const onMove = (p: MouseEventParams<Time>) => {
       const d = ladder.data;
       const series = candleSeriesRef.current;
@@ -3284,13 +3366,22 @@ const StrikeChart = ({
   useEffect(() => {
     const prim = sessionPrimRef.current;
     if (!prim) return;
-    if (!overlays.session || replay || altSpec) {
+    if (!overlays.session || altSpec) {
       prim.setLines([]);
       return;
     }
-    prim.setLines(sessionLines(buildSessionLevels(baseBars(), sessionOr)));
+    let base = baseBars();
+    if (replay) {
+      const cut = replayDataRef.current?.bars[Math.max(0, replayIdx - 1)]?.time;
+      if (cut == null) {
+        prim.setLines([]);
+        return;
+      }
+      base = base.filter(b => b.time <= cut);
+    }
+    prim.setLines(sessionLines(buildSessionLevels(base, sessionOr)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, revision, sessionOr, overlays.session, replay, mainNonce, altSpec]);
+  }, [ticker, revision, sessionOr, overlays.session, replay, replayIdx, mainNonce, altSpec, session]);
 
   /*
     THE EXPECTED-MOVE CONE — T-9.
@@ -3333,20 +3424,24 @@ const StrikeChart = ({
     const sessStart = starts.length > 0 ? starts[starts.length - 1] : 0;
     const sess = starts.length > 0 ? bars.slice(sessStart) : [];
     const anchor = bars.length - 1;
-    const iv = nameIv() ?? 0;
-    /* Elapsed counts THROUGH the last bar — a bar covers its interval. */
     const elapsed = sess.length > 0 ? (sess[sess.length - 1].time - sess[0].time) / 60 + mins : 0;
-    /* the field's inks off this chart's own box — the thermal pair as the tape resolved them (2026-10-15) */
-    const inkHost = containerRef.current ?? document.documentElement;
-    prim.setInks({ warm: rgbOf(resolveInk(THERMAL_WARM, inkHost)), yellow: THERMAL_YELLOW, cool: rgbOf(resolveInk(THERMAL_COOL, inkHost)), strength: chartGround(themeKey) === 'light' ? 0.42 : 0.5 });
+    ensureCone(ticker);
+    const spot = bars.length ? bars[bars.length - 1].close : 0;
+    const live = spot > 0 ? coneFor(ticker, coneHorizon, spot) : null;
+    const iv = live?.iv || nameIv() || 0;
+    const left = live?.forwardMin ?? Math.max(0, RTH_MINUTES - elapsed);
+    const horizonWord = coneHorizon === 'week' ? 'Week' : coneHorizon === 'next' ? 'Next' : 'Session';
     prim.setData({
-      cone: buildExpectedMoveCone(sess, iv, Math.max(0, RTH_MINUTES - elapsed), mins),
+      cone: buildExpectedMoveCone(sess, iv, Math.max(0, left), mins),
       barTimes: bars.map(b => b.time),
       barMinutes: mins,
       anchor,
+      oddsName: horizonWord,
+      iv,
+      source: live?.source ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.cone, replay, mainNonce, altSpec]);
+  }, [ticker, timeframe, revision, overlays.cone, replay, mainNonce, altSpec, coneHorizon]);
 
   /*
     THE EVENT MARKERS — T-11. The calendar half (this name's report, the
@@ -3361,12 +3456,17 @@ const StrikeChart = ({
   useEffect(() => {
     const prim = eventsPrimRef.current;
     if (!prim) return;
-    if (!overlays.events || replay || altSpec) {
+    if (!overlays.events || altSpec) {
       prim.setData(null);
       setEventCard(null);
       return;
     }
-    const now = new Date();
+    const cut = replay ? replayDataRef.current?.bars[Math.max(0, replayIdx - 1)]?.time : null;
+    if (replay && cut == null) {
+      prim.setData(null);
+      return;
+    }
+    const now = cut != null ? new Date(cut * 1000) : new Date();
     const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const key = `${ticker}|${todayIso}`;
     if (eventsCalRef.current?.key !== key) {
@@ -3380,21 +3480,21 @@ const StrikeChart = ({
     const cal = eventsCalRef.current;
     const mins = tfMinutes(timeframe);
     const bars = barsFor(mins);
-    // eslint-disable-next-line no-console
-    console.log('[events-debug]', JSON.stringify(buildTapeEvents({ bars: baseBars(), prints: flowPrints ?? [], earnings: cal.earnings, macro: cal.macro, todayIso: cal.todayIso }).map(e => ({ k: e.kind, t: e.time, m: e.minutesAhead, l: e.label }))), 'cal', JSON.stringify({ e: cal.earnings?.ticker, macro: cal.macro.length }));
+    const sec = (at: number) => (at > 1e12 ? at / 1000 : at);
+    const built = buildTapeEvents({
+      bars: baseBars().filter(b => (cut == null ? true : b.time <= cut)),
+      prints: (flowPrints ?? []).filter(p => cut == null || sec(p.at) <= cut).map(p => ({ ...p, at: sec(p.at) })),
+      earnings: cal.earnings,
+      macro: cal.macro,
+      todayIso: cal.todayIso,
+    });
     prim.setData({
-      events: buildTapeEvents({
-        bars: baseBars(),
-        prints: flowPrints ?? [],
-        earnings: cal.earnings,
-        macro: cal.macro,
-        todayIso: cal.todayIso,
-      }),
-      barTimes: bars.map(b => b.time),
+      events: cut == null ? built : built.filter(e => e.time != null && e.time <= cut),
+      barTimes: (cut == null ? bars : bars.filter(b => b.time <= cut)).map(b => b.time),
       barMinutes: mins,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, timeframe, revision, overlays.events, replay, mainNonce, flowPrints, altSpec]);
+  }, [ticker, timeframe, revision, overlays.events, replay, replayIdx, mainNonce, flowPrints, altSpec]);
 
   /*
     THE LIVE PRICE, as a card on the right scale.
@@ -3467,9 +3567,12 @@ const StrikeChart = ({
       }
 
       const p = price.toFixed(2);
-      if (p !== shownPrice) {
-        priceEl.textContent = p;
-        shownPrice = p;
+      const minute = nyMinutes((lastBarTimeRef.current || 0) * 1000);
+      const offCash = minute < 9 * 60 + 30 || minute > 16 * 60;
+      const label = offCash ? `${p} AH` : p;
+      if (label !== shownPrice) {
+        priceEl.textContent = label;
+        shownPrice = label;
       }
 
       /*
@@ -3589,7 +3692,12 @@ const StrikeChart = ({
       const t = Math.min(1, (now - start) / DUR);
       const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
       const cur: KeyLevels = { ...target };
-      for (const k of KEY_LEVEL_KEYS) cur[k] = origin[k] + (target[k] - origin[k]) * e;
+      for (const k of KEY_LEVEL_KEYS) {
+        const from = origin[k];
+        const to = target[k];
+        if (from == null || to == null) continue;
+        cur[k] = from + (to - from) * e;
+      }
       ladder.setPrices(cur);
       shownLevelsRef.current = cur;
       if (t < 1) levelRafRef.current = requestAnimationFrame(step);
@@ -3754,7 +3862,7 @@ const StrikeChart = ({
     const waiting = alerts.filter(a => !a.firedAt);
     if (waiting.length === 0) return;
 
-    const needsBook = waiting.some(a => a.kind === 'level' || a.kind === 'gexflip' || a.kind === 'newsupreme' || a.kind === 'wallmove');
+    const needsBook = waiting.some(a => a.kind === 'level' || a.kind === 'gexflip' || a.kind === 'newsupreme' || a.kind === 'wallmove' || a.kind === 'charmPin' || a.kind === 'oiJump');
     const exp = needsBook ? exposureNowFor(ticker) : null;
 
     const values: Partial<Record<IndicatorSource, number | null>> = {};
@@ -3791,15 +3899,46 @@ const StrikeChart = ({
         ? (flowPrints ?? []).filter(p => p.ticker === ticker).map(p => ({ at: p.at, premium: p.premium }))
         : [],
       news: waiting.some(a => a.kind === 'news') ? newsPulse(ticker) : [],
+      charm: (() => {
+        if (!waiting.some(a => a.kind === 'charmPin')) return null;
+        const book = snapshotFor(ticker, 'ALL');
+        if (!book) return null;
+        let c = 0;
+        let any = false;
+        for (const n of book.chain) if (n.netCharm) { c += n.netCharm; any = true; }
+        return any ? c : null;
+      })(),
+      nyMin: nyMinutes(Date.now()),
+      oiJump: waiting.some(a => a.kind === 'oiJump') && oiDoubled(ticker, peekEntry(ticker)?.at ?? 0, snapshotFor(ticker, 'ALL')?.chain ?? []).length > 0,
     };
 
     const now = Date.now();
     for (const a of waiting) {
       const verdict = evaluateAlert(a, ctx);
-      if (verdict.fire) markFired(ticker, a.id, now);
+      if (verdict.fire) { markFired(ticker, a.id, now); beepAlert(); }
       else if (verdict.armed) commitArm(ticker, verdict.armed);
     }
   }, [alerts, ticker, revision, replay, timeframe, flowPrints]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z' || e.shiftKey) return;
+      const prev = popDrawings(ticker);
+      if (!prev) return;
+      e.preventDefault();
+      shapesRef.current = prev;
+      drawingsRef.current?.setDrawings(prev);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ticker]);
+
+  useEffect(() => {
+    if (peekEntry(ticker)?.status === 'error') {
+      markBookFailed(ticker);
+      ensureThetaCandles(ticker);
+    }
+  }, [ticker, revision]);
 
 
 
@@ -4069,11 +4208,14 @@ const StrikeChart = ({
     const mins = tfMinutes(timeframe);
     // The replay's last bar is complete — its sub-bar beads belong to it
     trails.setData(
-      data.snaps.filter(s => s.time < cutoff + mins * 60),
+      snapsAsOf(data.snaps, cutoff),
       data.maxAbs,
       overlays.trails && mins <= INTRADAY_MAX_MINUTES,
       mins * 60,
-      trailsGreek
+      trailsGreek,
+      0,
+      [],
+      data.bars.slice(0, idx).map(b => ({ time: b.time, close: b.close })),
     );
   }, [replay, replayIdx, replayNonce, ownPhase, external, overlays.trails, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -4692,6 +4834,12 @@ const StrikeChart = ({
           const bead = tr && tr.enabled && !pinnedBeadRef.current && !levelCard && px >= 0 && px < plotW ? tr.beadAt(px, e.clientY - rect.top) : null;
           tr?.setHover(bead);
           setBeadCard(prev => (bead === null ? (prev === null ? prev : null) : prev && prev.strike === bead.strike && prev.time === bead.time ? prev : bead));
+          const coneHit = !bead && overlays.cone ? conePrimRef.current?.probe(px, e.clientY - rect.top) ?? null : null;
+          setConeCard(prev => {
+            if (!coneHit) return prev === null ? prev : null;
+            if (prev && prev.up1 === coneHit.up1 && prev.band === coneHit.band && prev.horizon === coneHit.horizon) return prev;
+            return coneHit;
+          });
           /* The event lane's hover — resolved here because canvas glyphs
              cannot be hovered and the card wants real type. Cheap: one hit
              test per move, state written only when the answer changes. */
@@ -4712,6 +4860,7 @@ const StrikeChart = ({
           setEventCard(null);
           trailsRef.current?.setHover(null);
           setBeadCard(null);
+          setConeCard(null);
         }}
       >
         {picking && pickFade && (
@@ -4738,16 +4887,16 @@ const StrikeChart = ({
             the tape still pans straight through them. Positions are measured
             off the live layout — see remeasurePaneLabels. */}
         {paneLabels.map(l => {
-          const look = PANE_LABEL_LOOK[l.key];
-          if (!look) return null;
+          const text = PANE_LABEL_LOOK[l.key];
+          if (!text) return null;
           return (
             <span
               key={l.key}
               aria-hidden
-              className="pointer-events-none absolute left-2 z-10 rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-widest"
-              style={{ bottom: l.bottom, background: look.bg, color: look.fg }}
+              className="pointer-events-none absolute left-2 z-10 font-mono text-[9px] uppercase tracking-wider text-textMuted"
+              style={{ top: l.top }}
             >
-              {look.text}
+              {text}
             </span>
           );
         })}
@@ -5266,6 +5415,7 @@ const StrikeChart = ({
                 <CardRow k="Price" v={levelCard.price.toFixed(2)} ink={ink} />
                 {dist != null && <CardRow k="From spot" v={`${dist >= 0 ? '+' : '−'}${Math.abs(dist).toFixed(2)}%`} sub={dist >= 0 ? 'above' : 'below'} />}
                 <span className="col-span-2 mt-0.5 text-textSecondary leading-snug">{w.line}</span>
+                <WhyHere ticker={ticker} level={levelCard.key} />
               </PointerFollowCard>
             );
           })()}
@@ -5279,11 +5429,13 @@ const StrikeChart = ({
             const b = pinnedBead?.hit ?? beadCard!;
             const kept = !!pinnedBead;
             const tr = trailsRef.current;
-            const greekWord = trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega';
+            const greekWord = trailsGreek === 'gex' ? 'Gamma' : trailsGreek === 'dex' ? 'Delta' : 'Vega $';
             /* the side as the figure's sub, what it does as a line of its own — on the value's line the words ran past the
                card's edge and dragged every figure with them (Noah, 2026-10-15: "words are bleeding out") */
-            const side = b.value >= 0 ? 'puts' : 'calls';
-            const does = b.value >= 0 ? 'Hedging there pushes a move along.' : 'Hedging there holds a move back.';
+            const side = b.value >= 0 ? 'positive' : 'negative';
+            const does = b.value >= 0 ? 'Positive gamma holds a move back.' : 'Negative gamma pushes a move along.';
+            const markWord = b.mark === 'born' ? 'Born' : b.mark === 'grew' ? 'Grew' : b.mark === 'flipped' ? 'Flipped' : b.mark === 'died' ? 'Died' : null;
+            const tagWord = b.tag === 'absorbed' ? 'Held' : b.tag === 'rejected' ? 'Off' : b.tag === 'broke' ? 'Broke' : null;
             const ink = b.value >= 0 ? BEAD_INK_CSS.put : BEAD_INK_CSS.call;
             const since = b.open == null ? null : b.value - b.open;
             const rank = kept && tr ? tr.rankAt(b.ci, b.strike) : null;
@@ -5296,6 +5448,9 @@ const StrikeChart = ({
             const rows = (
               <>
                 <CardRow k={greekWord} v={fmtUsd(b.value)} ink={ink} sub={side} />
+                {markWord && <CardRow k="Node" v={markWord} />}
+                {tagWord && <CardRow k="Price" v={tagWord} sub="ten minutes" />}
+                {b.firm === false && <CardRow k="Flow" v="thin" sub="net under 2% of the volume" />}
                 <CardRow k="Of the book" v={`${(b.share * 100).toFixed(1)}%`} sub="then" />
                 <CardRow k="Since the open" v={since == null ? '—' : `${since >= 0 ? '+' : '−'}${fmtUsd(Math.abs(since))}`} />
                 {kept && rank && <CardRow k="Rank then" v={`${rank.rank} of ${rank.of}`} />}
@@ -5308,15 +5463,34 @@ const StrikeChart = ({
             const title = fmtStrike(b.strike);
             const aside = `${nyClock(b.time * 1000)} ET`;
             return kept ? (
-              <PointerCard x={pinnedBead!.x} y={pinnedBead!.y} width={252} still testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
+              <PointerCard x={pinnedBead!.x} y={pinnedBead!.y} width={176} dense still testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
                 {rows}
               </PointerCard>
             ) : (
-              <PointerFollowCard start={pointerAtRef.current} width={252} testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
+              <PointerFollowCard start={pointerAtRef.current} width={176} dense testId="data-bead-card" testValue={`${b.strike}`} title={title} aside={aside} foot={foot}>
                 {rows}
               </PointerFollowCard>
             );
           })()}
+
+        {coneCard && !beadCard && !pinnedBead && (
+          <PointerFollowCard
+            start={pointerAtRef.current}
+            width={176}
+            dense
+            testId="data-cone-card"
+            title={coneCard.horizon}
+            aside={coneCard.band === 1 ? 'inside 1σ' : 'inside 2σ'}
+          >
+            <CardRow k="±1σ" v={`${(coneCard.up1 - coneCard.spot).toFixed(2)}`} sub={coneCard.spot > 0 ? `${(((coneCard.up1 - coneCard.spot) / coneCard.spot) * 100).toFixed(2)}%` : undefined} />
+            <CardRow k="Upper" v={coneCard.up1.toFixed(2)} />
+            <CardRow k="Lower" v={coneCard.dn1.toFixed(2)} />
+            <CardRow k="±2σ" v={coneCard.up2.toFixed(2)} sub={coneCard.dn2.toFixed(2)} />
+            <CardRow k="Vol" v={coneCard.iv > 0 ? `${(coneCard.iv * 100).toFixed(1)}%` : '—'} />
+            <CardRow k="Left" v={coneCard.minutes > 0 ? `${Math.round(coneCard.minutes)}m` : '—'} />
+            {coneCard.source && <span className="col-span-2 mt-0.5 text-textMuted leading-snug">{coneCard.source}</span>}
+          </PointerFollowCard>
+        )}
 
         {/* T-11's hover card — floats above the lane at the marker's x,
             flipping to the left of it near the right edge. */}
@@ -5373,21 +5547,22 @@ const StrikeChart = ({
           2026-10-18: the reference at the row's end ran off at 360 to 1024); the bar is hidden, the row still moves */}
       {trailKey && overlays.trails && trailRef > 0 && !replay && (
         <div className="shrink-0 h-5 px-2 flex items-center gap-x-3 font-mono text-[9px] text-textMuted whitespace-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-trail-key>
-          <span>size = {trailsGreek === 'gex' ? 'gamma' : trailsGreek === 'dex' ? 'delta' : 'vega'} at the strike</span>
+          <span>Flow · same dollars as the strike rail</span>
+          <span>size = {trailsGreek === 'gex' ? 'net gamma' : trailsGreek === 'dex' ? 'net delta' : 'net vega'} at the strike</span>
           <span className="inline-flex items-center gap-1">
-            <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: BEAD_INK_CSS.put }} aria-hidden /> puts · pushes a move along
+            <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: BEAD_INK_CSS.put }} aria-hidden /> positive · holds a move back
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: BEAD_INK_CSS.call }} aria-hidden /> calls · holds one back
+            <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: BEAD_INK_CSS.call }} aria-hidden /> negative · pushes a move along
           </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: SUPREME }} aria-hidden /> the supreme
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="w-3 h-[5px] rounded-full shrink-0" style={{ background: 'rgb(var(--silver))' }} aria-hidden /> your strike
-          </span>
+          <span>a tie is one node across both strikes · the rest stays faint</span>
+          {(() => {
+            const score = nodeScore(ticker);
+            if (!score || score.unsigned == null) return null;
+            return <span>no side on {Math.round(score.unsigned * 100)}% of the near volume</span>;
+          })()}
           <span className="ml-auto" data-trail-key-ref>
-            Full size = {fmtUsd(trailRef)}{trailsGreek === 'gex' ? ' per 1% move' : ''} · the field's reference
+            Full size = {fmtUsd(trailRef)}{trailsGreek === 'gex' ? ' per 1% move' : trailsGreek === 'dex' ? ' per $1' : ' per vol point'}
           </span>
         </div>
       )}

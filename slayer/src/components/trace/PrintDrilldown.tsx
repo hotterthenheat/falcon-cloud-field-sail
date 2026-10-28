@@ -51,9 +51,9 @@ const SENT_TONE: Record<PrintSentiment, Tone> = { BULLISH: 'bull', BEARISH: 'bea
 /* NO FIGURE OF OURS ON THE CARD (the re-audit, 2026-10-22): "Spread + a day of theta" stood on a seeded IV (hRange) and a
    spread formula on open interest, read off the simulator's snapshot — SPY 763P read 1.2% where its quote, 0.09 × 0.10,
    is a 10.5% spread — and the Compass verdict and grade beside it were seeded the same way. Both are gone. The card's
-   cost of carry is the print's OWN quote and the vendor's own theta (spreadAndTheta below). */
+   cost of carry is the print's OWN quote and the feed's own theta (spreadAndTheta below). */
 
-/** The print's real cost to cross: its NBBO spread as a share of the mid, and a day of the vendor's theta as a share of
+/** The print's real cost to cross: its NBBO spread as a share of the mid, and a day of the feed's theta as a share of
     the fill — each null when the print does not carry it */
 function spreadAndTheta(p: FlowPrint): { spreadPct: number | null; thetaPct: number | null } {
   const mid = p.bid > 0 && p.ask >= p.bid ? (p.bid + p.ask) / 2 : 0;
@@ -83,7 +83,7 @@ function thetaWords(p: FlowPrint, thetaPct: number | null, printIso: string = ta
     : n <= 0
       ? `expired at the ${shortDay(printIso)} bell, the day of the print`
       : `${n} day${n === 1 ? '' : 's'} from expiry (${shortDay(p.expiry)}) at the ${shortDay(printIso)} print`;
-  return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share ${live ? 'decays' : 'decayed'} by then`, title: `The vendor's theta is a rate — $${rate.toFixed(dp(rate))} a share a day at this instant — and in an option's last days it runs past the price, because the value goes to zero at expiry. A day cannot take more than the $${p.fill.toFixed(2)} it is worth.`, warn: true };
+  return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share ${live ? 'decays' : 'decayed'} by then`, title: `The theta is a rate — $${rate.toFixed(dp(rate))} a share a day at this instant — and in an option's last days it runs past the price, because the value goes to zero at expiry. A day cannot take more than the $${p.fill.toFixed(2)} it is worth.`, warn: true };
 }
 
 const TABLE_TABS = [
@@ -175,15 +175,15 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
   const read = p.floorPackage
     ? ' It is one leg of a floor package — no side, filed in the same millisecond as alerts on the root’s other contracts, or on a contract whose day was mostly floor-traded multi-leg packages — so it is not a bet, not a block, and is not read bullish or bearish.'
     : p.compression
-    ? ' It is a compression print (OPRA cbmo / mctp, or the vendor’s arbitrage tag) — a package that nets open interest down between members, a call against a put at one strike — so it is not a bet and is not read bullish or bearish.'
+    ? ' It is a compression print (OPRA cbmo / mctp, or an arbitrage tag) — a package that nets open interest down between members, a call against a put at one strike — so it is not a bet and is not read bullish or bearish.'
     : p.extended
     ? ' It printed after hours, against a thin post-market quote, so it is not read bullish or bearish.'
     : p.cross
     ? ' It is a cross trade — pre-arranged between two parties at one price, no side taken on the screen — so it is not read bullish or bearish and is never crowned.'
     : p.quoteNoRead === 'crossed'
-    ? ` The quote at the fill was crossed (bid $${fixed(p.bid)} at or over ask $${fixed(p.ask)}), so the fill cannot be read against it — no side, whatever the vendor tagged, and no bullish or bearish read.`
+    ? ` The quote at the fill was crossed (bid $${fixed(p.bid)} at or over ask $${fixed(p.ask)}), so the fill cannot be read against it — no side, whatever the feed tagged, and no bullish or bearish read.`
     : p.quoteNoRead === 'stale'
-    ? ' One side of the quote at the fill was more than five minutes old, so the fill cannot be read against it — no side, whatever the vendor tagged, and no bullish or bearish read.'
+    ? ' One side of the quote at the fill was more than five minutes old, so the fill cannot be read against it — no side, whatever was tagged, and no bullish or bearish read.'
     : isSpreadLeg(p) && p.dayCard
     ? ' Half or more of its day traded as legs of multi-leg orders — the side a leg prints on is how its package was filled, so the day is not read bullish or bearish; Multi-Leg reads which way the structures went.'
     : isSpreadLeg(p)
@@ -369,7 +369,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
      on a put sold — the side is not the direction; the sentiment line under it carries the direction */
   const sideTone = print?.side === 'MID' ? 'text-textMuted' : 'text-textPrimary';
 
-  /* THE CONTRACT'S OWN TAPE (the audit, 2026-10-22): its prints, its minutes and its history off the vendor's
+  /* THE CONTRACT'S OWN TAPE (the audit, 2026-10-22): its prints, its minutes and its history off the feed's
      per-contract routes, and the underlying's net premium minute by minute — data/contractflow.ts */
   const load = useContractTape(print?.occ, print?.ticker, dateIso);
   const cf: ContractTape | null = load.tape;
@@ -450,7 +450,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
   };
 
   const linkBtn =
-    'inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded border border-borderSubtle bg-ink/[0.02] font-mono text-[11px] uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors';
+    'slayer-chip uppercase tracking-wider justify-center';
 
   const dateLabel = isoToDate(dateIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -678,14 +678,14 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                   the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
               {/* THE LABEL IS SHORT, ITS SOURCE ON HOVER (retail, round 11: "TODAY'S VOLUME · SESSION ROW, READ 20:18 ET, AFTER-HOURS
                   PRINTS INCLUDED" ran over the Open interest beside it) */}
-              <Fact label={day && day.vol > 0 ? <span title={`The contract's session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt)} ET` : ''}${isLiveDay(dateIso) && sessionPhase() !== 'after' && sessionPhase() !== 'closed' ? '' : ' — after-hours prints included'}`}>{isLiveDay(dateIso) ? "Today's volume" : `${shortDay(dateIso)} volume`}</span> : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
+              <Fact label={day && day.vol > 0 ? <span title={`The contract's session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt, { zone: true })}` : ''}${isLiveDay(dateIso) && sessionPhase() !== 'after' && sessionPhase() !== 'closed' ? '' : ' — after-hours prints included'}`}>{isLiveDay(dateIso) ? "Today's volume" : `${shortDay(dateIso)} volume`}</span> : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
               <Fact label={day && day.vol > 0 ? 'Vol ÷ OI' : print.dayCard ? 'Vol ÷ OI' : `Vol ÷ OI · at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={(() => {
                   /* never "0.00x" for 21 on 5,164 (audit round 8) */
                   const voi = dayOi > 0 ? dayVol / dayOi : print.volOverOI;
                   return Number.isFinite(voi) && voi > 0 && voi < 0.01 ? '<0.01x' : `${fixed(voi)}x`;
                 })()} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
-              {/* the cost to cross, off the print's OWN quote; a day of time off the vendor's own theta — no model */}
+              {/* the cost to cross, off the print's OWN quote; a day of time off the own theta — no model */}
               <Fact
                 label="Spread at the print"
                 value={cost.spreadPct == null ? '—' : `${fixed(cost.spreadPct, 1)}% of the mid · ${fixed(print.bid)} × ${fixed(print.ask)}`}
@@ -720,7 +720,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               <div className="border border-borderSubtle bg-inset rounded-md overflow-hidden" data-print-tape>
                 <div className="px-3 py-2 border-b border-borderSubtle/60 flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-[11px] uppercase tracking-widest text-textSecondary">The tape</span>
-                  <span className="font-mono text-[11px] text-textMuted">the contract and {print.ticker} on one clock · {isLiveDay(dateIso) ? 'today' : dateLabel}, {cf ? cf.window.label : `09:30–${sessionEndLabel(print.ticker)} ET`}</span>
+                  <span className="font-mono text-[11px] text-textMuted">the contract and {print.ticker} on one clock · {isLiveDay(dateIso) ? 'today' : dateLabel}, {cf ? cf.window.label : `8:30 AM–${sessionEndLabel(print.ticker)}`}</span>
                   <span className="ml-auto flex items-center gap-0.5">
                     {INTERVALS.map(m => (
                       <Chip key={m} active={m === intervalMin} onClick={() => setIntervalMin(m)} title={`${m}-minute bars`}>
@@ -825,11 +825,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             <button
               onClick={() => onToggleMark(print.id)}
               aria-pressed={isMarked}
-              className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded border font-mono text-[11px] uppercase tracking-wider transition-colors ${
-                isMarked
-                  ? 'border-select/40 bg-select/[0.08] text-select'
-                  : 'border-borderSubtle bg-ink/[0.02] text-textSecondary hover:text-textPrimary hover:border-borderMuted'
-              }`}
+              className={`slayer-chip uppercase tracking-wider justify-center ${isMarked ? 'border-select/40 bg-select/[0.08] text-select hover:text-select' : ''}`}
             >
               <Bookmark className="w-3.5 h-3.5" fill={isMarked ? 'currentColor' : 'none'} />
               {isMarked ? 'Tracking' : 'Track print'}
@@ -887,7 +883,7 @@ const OrdersTable = ({ tape }: { tape: ContractTape }) => {
   );
 };
 
-/** Is this session actually unusual for this contract, or is this just how it trades? The vendor's day-by-day
+/** Is this session actually unusual for this contract, or is this just how it trades? The day-by-day
     history; the session on the card wears the selection edge. */
 const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: string; unusual: boolean }) => {
   const premSum = rows.reduce((a, r) => a + r.premium, 0) || 1;
@@ -901,7 +897,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
             <th className={`${th} text-right`}>Volume</th>
             <th className={`${th} text-right`} title="Open interest standing at the session's open — counted after the session before traded">Open int.</th>
             <th className={`${th} text-right`} title="What the session's own trading did to open interest: the next morning's count less its open's — beside its own volume. The newest session's is not counted until the next morning">OI change</th>
-            <th className={`${th} text-right`} title="The regular session's close — 16:15 for index and ETF options, 16:00 for stock options. This session's is read off its own prints; the other sessions show the vendor's last price, which can be an after-hours fill (marked ≈)">Close</th>
+            <th className={`${th} text-right`} title="The regular session's close — 16:15 for index and ETF options, 16:00 for stock options. This session's is read off its own prints; the other sessions show the last price, which can be an after-hours fill (marked ≈)">Close</th>
             <th className={`${th} text-right`}>Avg</th>
             <th className={`${th} text-left`} title="The session's volume on the bid, at the mid or no side, and at the ask">Bid · mid · ask</th>
             <th className={`${th} text-right`}>Implied vol</th>
@@ -927,7 +923,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 <td className={`${td} text-right ${d.oiChange == null ? 'text-textMuted' : d.oiChange >= 0 ? 'text-bull dir-up' : 'text-bear dir-down'}`}>
                   {d.oiChange == null ? '—' : `${d.oiChange >= 0 ? '+' : '−'}${Math.abs(d.oiChange).toLocaleString('en-US')}`}
                 </td>
-                <td className={`${td} text-right text-textPrimary whitespace-nowrap`} title={d.closeBasis === 'regular' ? `The regular session's last print${d.extLast ? `; after the close it last printed $${fixed(d.extLast.price)} at ${d.extLast.time} ET (extended hours)` : ''}` : "The vendor's last price for the session — it can be an after-hours fill"}>
+                <td className={`${td} text-right text-textPrimary whitespace-nowrap`} title={d.closeBasis === 'regular' ? `The regular session's last print${d.extLast ? `; after the close it last printed $${fixed(d.extLast.price)} at ${d.extLast.time} ET (extended hours)` : ''}` : "The feed's last price for the session — it can be an after-hours fill"}>
                   {d.close > 0 ? `${d.closeBasis === 'regular' ? '' : '≈'}$${fixed(d.close)}` : '—'}
                   {d.extLast && <span className="block text-[10px] text-textMuted">ext ${fixed(d.extLast.price)} · {d.extLast.time.slice(0, 5)}</span>}
                 </td>
@@ -935,7 +931,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 <td className="px-2 py-1.5">
                   <span
                     className="flex h-[3px] w-24 rounded-full overflow-hidden bg-ink/[0.14]"
-                    title={`${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).bid}% on the bid · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).mid}% mid or no side · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).ask}% at the ask${d.basis === 'prints' ? ' — off the session’s own prints, cancelled ones left out' : d.canceledVol > 0 ? ` — the vendor’s sides, which still hold ${d.canceledVol.toLocaleString('en-US')} cancelled contracts it cannot attribute` : ''}`}
+                    title={`${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).bid}% on the bid · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).mid}% mid or no side · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).ask}% at the ask${d.basis === 'prints' ? ' — off the session’s own prints, cancelled ones left out' : d.canceledVol > 0 ? ` — the sides, which still hold ${d.canceledVol.toLocaleString('en-US')} cancelled contracts it cannot attribute` : ''}`}
                   >
                     <span className="h-full bg-bear/80" style={{ width: `${pc(d.bidVol)}%` }} />
                     <span className="h-full bg-ink/30" style={{ width: `${pc(d.midVol + d.neutralVol)}%` }} />

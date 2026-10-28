@@ -41,11 +41,11 @@ import { useBoxFold } from '../../data/boxFold';
 import { sessionBars } from '../../data/levelview';
 import { flipSidesWords } from '../../data/flipLevel';
 import { flipCrossings } from '../../data/flipGauge';
-import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev } from '../../data/uwBook';
+import { deskBars, peekIv, ensureOiChange, peekOiChange, useBookRev, useResolvedSession } from '../../data/uwBook';
 import { oiWhen, valueOiChange } from '../../data/building';
 import { aheadWord, longDay, recordDay } from '../../data/bookWindow';
 import { fmtDollars as fmtUsdShort } from '../../data/ahead';
-import { sessionOfMinute, useDeskSession } from '../../data/deskSession';
+import { sessionOfMinute } from '../../data/deskSession';
 import { nyClock, nyMinutes } from '../../core/nyTime';
 import { baseRates, levelTicks, sessionRecords, type RecordLevel, type Tick } from '../../data/levelRecord';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
@@ -172,8 +172,8 @@ const GRID = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg
 
 /** `scope`: the host's chip saying which name's levels these are */
 const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false, unavailable: unavailableIn = null }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** Plain words when the book today's session ran on is no longer available (after the close) — said instead of a table of zeros */ unavailable?: string | null; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
-  const picked = useDeskSession();
-  const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : picked;
+  const read = useResolvedSession(snapshot.ticker);
+  const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
   const bars = useMemo(() => {
     if (barsProp) return barsProp;
     if (session !== 'rth') return deskBars(snapshot.ticker, session) ?? [];
@@ -214,7 +214,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       const held = tests - broke;
       /* THE OVERNIGHT OPEN-INTEREST CHANGE AT THE LEVEL, NOT "GAMMA SINCE OPEN" (the Pinpoint audit, 2026-10-22: SPY 760
          read "39× growing", 764 "new today" and the flip — not a strike — "new today", off a history that walked today's
-         volume onto the open interest; volume is not open interest). The vendor's count, contract by contract, on the
+         volume onto the open interest; volume is not open interest). The feed's count, contract by contract, on the
          Levels card's contracts only (Building's valueOiChange), as the change in the hedging's size at the strike. */
       let trend = 'not a strike';
       let trendFig = '';
@@ -325,7 +325,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     return lv && lv.flipFound !== false && lv.net != null ? flipSidesWords(lv.flip, lv.spot, lv.net) : null;
   }, [snapshot, levelsScope]);
   /* THE BASE RATES (data/levelRecord.ts): the sessions on hand before today, each level as it stood at its open, graded
-     by the report's own rule — read, not stored; a machine on the vendor's two years grades two years */
+     by the report's own rule — read, not stored; a machine on the feed's two years grades two years */
   const rates = useMemo(() => baseRates(sessionRecords(snapshot.ticker, peekIv(snapshot.ticker))), [snapshot.ticker]);
 
   const first = bars[0]?.time;
@@ -353,11 +353,11 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         <h3 className="text-[16px] font-semibold leading-tight text-textPrimary" data-report-day={rec.date}>How the levels held {rec.isToday && !rec.done ? 'today' : `· ${longDay(rec.date)}`}</h3>
         {scope}
         {rec.done && (
-          <span className="font-mono text-[11px] text-textSecondary whitespace-nowrap" title={`The levels in this table are the ones ${longDay(rec.date)}'s session ran on — the Levels card at the top of the page reads ${aheadWord() === 'today' ? "today's" : "the next session's"} contracts, so its walls and supreme can differ`} data-report-book>
+          <span className="font-mono text-[11px] text-textSecondary whitespace-nowrap" title={`The levels in this table are the ones ${longDay(rec.date)}'s session ran on — this name's levels read ${aheadWord() === 'today' ? "today's" : "the next session's"} contracts, so its walls and supreme can differ`} data-report-book>
             {longDay(rec.date)}'s book · the head reads {aheadWord() === 'today' ? "today's" : "the next session's"}
           </span>
         )}
-        {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The contracts these levels are read from — the Levels card at the top of the page, the same as the Board's" data-report-span>{span}</span>}
+        {span && <span className="font-mono text-[11px] text-textMuted whitespace-nowrap" title="The contracts these levels are read from — this name's levels, the same as the Board's" data-report-span>{span}</span>}
         <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the rows, the strips and the ticks mean" testId="report-guide" />
         <FoldDoor open={open} onToggle={toggleOpen} what="the report" testId="report" />
         {rates.insideMove.n > 0 && (

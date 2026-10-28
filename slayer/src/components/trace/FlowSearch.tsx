@@ -133,7 +133,7 @@ export function searchedName(raw: string): string | null {
   if (c) return c.ticker;
   return /^\$?[A-Z][A-Z0-9.]{0,5}$/.test(q) ? q.replace(/^\$/, '') : null;
 }
-/** …once the typing settles, so "N", "NV", "NVD" are not each asked of the vendor */
+/** …once the typing settles, so "N", "NV", "NVD" are not each asked of the feed */
 export function useSearchedName(raw: string, settleMs = 350): string | null {
   const want = searchedName(raw);
   const [name, setName] = useState(want);
@@ -144,7 +144,7 @@ export function useSearchedName(raw: string, settleMs = 350): string | null {
   }, [want, name, settleMs]);
   return name;
 }
-/** A typed contract as the vendor's own symbol, when every part of it is typed (the year inferred: the first such date on
+/** A typed contract as the feed's own symbol, when every part of it is typed (the year inferred: the first such date on
     or after `fromIso`) */
 export function contractOcc(raw: string, fromIso: string): { occ: string; expiry: string } | null {
   const c = parseContractQuery(raw);

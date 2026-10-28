@@ -489,7 +489,7 @@ const News = () => {
     ? 'Reading the wire'
     : coverage.wholeDay
       ? coverage.today ? 'Every story on the wire today' : `${wireDayWord}'s wire${sinceText}`
-      : `The wire since ${coverage.today ? '' : `${wireDayWord}, `}${nyClock(coverage.fromMs)} ET${coverage.reading ? ', reading further back' : ''}`;
+      : `The wire since ${coverage.today ? '' : `${wireDayWord}, `}${nyClock(coverage.fromMs, { zone: true })}${coverage.reading ? ', reading further back' : ''}`;
   const econ = useEconFeed();
   const events = useMemo(() => (news.status === 'live' ? news.events : []), [news, wireRev]); // eslint-disable-line react-hooks/exhaustive-deps
   const calendar = useMemo(() => (econ.status === 'live' ? econ.events : []), [econ, wireRev]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -582,7 +582,7 @@ const News = () => {
     const by: Record<Sort, (a: GeoNewsEvent, b: GeoNewsEvent) => number> = {
       newest: (a, b) => a.item.minutesAgo - b.item.minutesAgo,
       matters: (a, b) => {
-        /* UW's MAJOR flag is shown as the vendor's, but a routine notice it flags (a dividend declared, a results date,
+        /* UW's MAJOR flag is shown as the feed's, but a routine notice it flags (a dividend declared, a results date,
            a conference slot, a tokenized listing) is not lifted up the wire for it (the re-audit, 2026-10-22) */
         /* and a press release from a company the page does not list (no ticker, the Product beat — "MiniTool
            ShadowMaker 5.0 Introduces Cloud Sync") is never lifted to lead the wire (the third audit, 2026-10-23) */
@@ -797,7 +797,7 @@ const News = () => {
                 </Fact>
               </>
             ) : (
-              <Fact label="The wire leans" testId="mood" tip="The vendor's own positive and negative marks, weighed">
+              <Fact label="The wire leans" testId="mood" tip="The own positive and negative marks, weighed">
                 <span className={moodInk}>{mood.pending ? 'reading' : news.status === 'sim' ? '—' : mood.label === 'LEANS BULLISH' ? 'bullish' : mood.label === 'LEANS BEARISH' ? 'bearish' : 'mixed'}</span>
               </Fact>
             )}
@@ -816,7 +816,7 @@ const News = () => {
             <Fact label="Next print" testId="next" wrap tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
               {nextPrint ? (
                 <>
-                  {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} ET · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
+                  {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
                 </>
               ) : (
                 nextReport ? (
@@ -1003,7 +1003,7 @@ const News = () => {
 
         {/* THE ROWS — every story on the cut, in the chosen order */}
         {/* Below lg the rows scroll sideways inside their box at a readable width (the phone pass, 2026-09-13) */}
-        {/* THE WIRE SCROLLS INSIDE ITS BOX past twenty rows (Noah, 2026-10-13, on the vendor feed: "it goes on forever"):
+        {/* THE WIRE SCROLLS INSIDE ITS BOX past twenty rows (Noah, 2026-10-13, on the feed feed: "it goes on forever"):
             a window of NEWS_WINDOW_H, the column head pinned at its top, the read line under it where it always was — the
             one list in the house that keeps a window (grids grow, the Compass board rule of 2026-09-11), because a day
             of the wire is hundreds of rows and the box is one of three on the page */}

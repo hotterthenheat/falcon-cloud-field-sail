@@ -44,7 +44,6 @@
 
 import { sessionStarts } from './indicators';
 import { levelRoles, pickLegWalls, type LevelRole } from '../core/walls';
-import { DEFAULT_R } from '../core/carry';
 import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate, isTradingDay, nextSession, today as nyTodayDate } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
@@ -312,11 +311,11 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
     if (oi && oi > 0 && gex) dg = Math.abs(gex) / oi;
     else if (n?.gexPx && n.gexPx > 0) {
       const iv = (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || entry?.iv || 0;
-      dg = dollarGammaPerContract(n.gexPx, r.strike, yearsTo(r.expiry, n.gexAt ?? undefined), iv, DEFAULT_R);
+      dg = dollarGammaPerContract(n.gexPx, r.strike, yearsTo(r.expiry, n.gexAt ?? undefined), iv);
     } else if (vendorGamma && vendorGamma > 0) dg = vendorGamma * per1;
     else {
       const iv = (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || entry?.iv || 0;
-      dg = dollarGammaPerContract(spot, r.strike, yearsTo(r.expiry), iv, DEFAULT_R);
+      dg = dollarGammaPerContract(spot, r.strike, yearsTo(r.expiry), iv);
     }
     /* A SAME-DAY CONTRACT IS VALUED AT A STEADY GAMMA (the tenth audit's M5, 2026-10-23: PLTR 200 Today read "shrank
        $458K · draining · new puts offset it" for +1,513 calls / +919 puts — the in-the-money 200P's row gamma rests on a
@@ -329,7 +328,7 @@ export function valueOiChange(snapshot: MarketSnapshot, chain: readonly { strike
     let dgMain = dg;
     if (tLeft < 1 / 365) {
       const vol = smileAt(r.expiry, r.strike, px) || (call ? n?.callIv : n?.putIv) || entry?.termIv?.[r.expiry] || 0;
-      const steady = vol > 0 ? dollarGammaPerContract(px, r.strike, tLeft, vol, DEFAULT_R) : 0;
+      const steady = vol > 0 ? dollarGammaPerContract(px, r.strike, tLeft, vol) : 0;
       if (steady > 0 || dg === 0) dgMain = steady;
     }
     const cell = out.get(r.strike) ?? { dCall: 0, dPut: 0, call: 0, put: 0, callAlt: 0, putAlt: 0 };

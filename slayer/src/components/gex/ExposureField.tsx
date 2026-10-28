@@ -50,7 +50,7 @@ import { attachScrollMore } from '../ui/scrollMore';
 import { FLAT_DOOR, FLAT_ON } from '../ui/flatDoor';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Crosshair, Maximize2, Minimize2, Plus, X } from 'lucide-react';
-import { bookDatesIn, bookRevision, ensureBook, snapshotOf } from '../../data/uwBook';
+import { bookDatesIn, bookRevision, ensureBook, liveBars, snapshotOf, useBookRev } from '../../data/uwBook';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 import { useAnchoredMenu } from '../ui/useAnchoredMenu';
@@ -63,7 +63,10 @@ import TickerSearch from '../ui/TickerSearch';
 import { useFadeClose } from '../ui/useFadeClose';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { STRIKE_WINDOWS, type StrikeWindow } from '../../data/exposure';
-import { readLevelsScope, useLevelsScope, type LevelsScope } from '../../data/levelsScope';
+import { LEVELS_OPTIONS, levelsForName, setLevelsForName, useLevelsRev, useNameLevels, type LevelsScope } from '../../data/levelsScope';
+import { setUnitForName, unitForName, useDistanceUnit } from '../../data/distanceUnits';
+import type { DistanceUnit } from '../../data/atr';
+import { biggestSwings, setChartFocus, swingsFor, swingsKnown, useChartMovesRev } from '../../data/chartMoves';
 import ColumnFacts from './ColumnFacts';
 import { roomLevels } from '../../data/roomLevels';
 import { levelsFor } from '../../data/levelsFor';
@@ -71,7 +74,7 @@ import { bookForDates, expirySpan, levelsBook, levelsDate, levelsWords, todaySco
 import { shownGreek } from './retailSign';
 import { useLedgerPalette } from '../../data/ledgerPalette';
 import MoreDoor from './MoreDoor';
-import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, type ExposureSurface, type Greek } from '../../data/exposureSurface';
+import { todayColumn, buildExposureSurface, CALENDAR_DTES, GREEKS, contractsReady, isContractGreek, type ExposureSurface, type Greek } from '../../data/exposureSurface';
 import { snapshotAtOpen } from '../../data/levelview';
 import { HEAT_MODE, heatCellStyle, heatRampColorFor } from './heatmap';
 import type { MarketSnapshot } from '../../types/market';
@@ -233,7 +236,7 @@ const LEDGER_WINDOWS: StrikeWindow[] = [15, 20, 25, 30];
 const LEDGER_REST: StrikeWindow = 20;
 /* THE CEILING OF EXPIRIES by greeks side by side (Noah, 2026-09-22: "7 being the max when you are choosing all 5
    greeks"): the most the band draws at once, whatever the width — the page never changes shape by itself */
-const EXPIRY_CEILING: Record<number, number> = { 1: 20, 2: 15, 3: 10, 4: 8, 5: 7 };
+const EXPIRY_CEILING: Record<number, number> = { 1: 20, 2: 15, 3: 10, 4: 8, 5: 7, 6: 6, 7: 5, 8: 4, 9: 4, 10: 3 };
 /** What the columns are drawn from — one snapshot of the picks that change the book's SHAPE (the soft swap) */
 interface DrawnShape {
   view: LedgerView;
@@ -242,6 +245,15 @@ interface DrawnShape {
   range: { from: number; through: number };
   afterBell: boolean;
   legs: LegsPick;
+}
+/** One name's book when several stand side by side. A change here does not move the others. */
+interface NameLens {
+  from: number;
+  through: number;
+  rings: number;
+  legs: LegsPick;
+  after: boolean;
+  view: LedgerView;
 }
 /** The old shape's fade-out; the new one's fade-in is index.css's view-in (320ms) */
 const SWAP_OUT_MS = 0;
@@ -281,7 +293,7 @@ interface BandMeasure {
   savings: Partial<Record<DoorKey, number>>;
 }
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
-const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'VEX', vanna: 'VANNA', charm: 'CHARM' };
+const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
 /*
   THE HEAD IN THE APPROVED GRAMMAR (Noah, 2026-09-06: "our heatmap header
   needs a fixing. the buttons are quite horrid"): one thin line of labelled
@@ -326,17 +338,8 @@ function listedIso(snap: MarketSnapshot | null | undefined): string[] {
     .map(e => e.date);
 }
 
-const ISO_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function shortIso(iso: string): string {
-  const parts = iso.slice(0, 10).split('-');
-  const m = Number(parts[1]);
-  const d = Number(parts[2]);
-  if (!m || !d) return iso.slice(0, 10);
-  return `${ISO_MONTHS[m - 1]} ${d}`;
-}
-
 const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, onHoverStrike, onSelectStrike, openRatio, onTicker, toolbar = 'desk', marks, lead, greeks: greeksProp, onGreeks, fresh = false, after, fullMode = 'portal', fullOpen, headFull = false, multi = false, selectedStrikeFor, onSelectStrikeFor, snapshotFor, onNaturalWidth, onBandNeed, headSlot, pack = false, above, onNames, onExpiries, onNameDates, narrowHint = 'widen the window', viewLock, legsLock }: ExposureFieldProps) => {
-  const [ownPick, setOwnPick] = useState<string[]>(['gex']);
+  const [ownPick, setOwnPick] = useState<string[]>(['gex', 'dex', 'vex', 'vanna', 'charm', 'color', 'vomma', 'speed', 'veta', 'zomma']);
   const pick = greeksProp ?? ownPick;
   /* the page's theme: on paper the island and everything drawn in it wear the light set and the paper ramps */
   const paper = useResolvedTheme() === 'light';
@@ -345,26 +348,21 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     setOwnPick(settled);
     onGreeks?.(settled);
   };
-  /* The greeks drawn — a stable array per pick, so the grid and the ladder memo on it */
-  /* A LIVE BOOK HAS NO VEGA: the vendor's per-strike exposure carries gamma, delta, vanna and charm only, and VEX drew
-     a column of $0 down every strike (the Pinpoint sweep, 2026-10-22). On a live book it is not offered, not drawn. */
-  const noVex = !!snapshot?.liveBook;
+  /* VEX and the higher greeks are the contracts' own vol. Until that read lands they are not drawn — a column of $0 is a lie. */
+  const contracts = contractsReady(snapshot);
   const greeks = useMemo(() => {
     const g = pickGreeks(pick);
-    if (!noVex) return g;
-    const kept = g.filter(x => x !== 'vex');
+    if (contracts) return g;
+    const kept = g.filter(x => !isContractGreek(x));
     return kept.length ? kept : (['gex'] as Greek[]);
-  }, [pick, noVex]);
-  const greekGroups = useMemo(
-    () => (noVex ? [{ title: GREEK_GROUPS[0].title, options: GREEK_PICK_OPTIONS.filter(o => o.value !== 'vex').map(o => (o.value === 'all' ? { ...o, label: 'All four', hint: 'GEX, DEX, vanna and charm side by side' } : o)) }] : GREEK_GROUPS),
-    [noVex]
-  );
+  }, [pick, contracts]);
+  const greekGroups = GREEK_GROUPS;
   /* THE WINDOW OF EXPIRIES (Noah, 2026-09-22: "it forces you to start from the current date and goes through to the
      date you choose… there should be some sort of max, 7 being the max when you are choosing all 5 greeks"): From and
      Through, as indices into the book's expiries, nearest first. THE CEILING is by how many greeks stand side by side —
      seven with five, more with fewer — and the window is clamped to it whenever the pick changes, so the page never
      draws more than it said it would. What FITS at the width still cuts under the ceiling (below). */
-  const ceiling = EXPIRY_CEILING[Math.min(5, Math.max(1, greeks.length))] ?? 7;
+  const ceiling = EXPIRY_CEILING[Math.min(10, Math.max(1, greeks.length))] ?? 3;
   /* three expiries by rest in Terrain's panel — today, tomorrow and the week's ("Today → Oct 19", Noah's default view,
      2026-10-15); the Map opens on eight */
   /* THE MAP'S MATRIX OPENS ON THE LEVELS CARD'S CONTRACTS (the seventh audit's retail finding, 2026-10-23: "GEX · 1% move ·
@@ -373,7 +371,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      All expiries: the nearest dates the ceiling allows. A window the reader picks stays theirs until the Levels card
      changes. */
   const rangeForScope = (sc: LevelsScope) => ({ from: 0, through: toolbar === 'panel' ? Math.min(2, ceiling - 1) : sc === '0DTE' ? 0 : Math.min(7, ceiling - 1) });
-  const [range, setRange] = useState<{ from: number; through: number }>(() => rangeForScope(readLevelsScope()));
+  const [range, setRange] = useState<{ from: number; through: number }>(() => rangeForScope(levelsForName(snapshot?.ticker)));
   useEffect(() => {
     setRange(r => (r.through - r.from + 1 > ceiling ? { from: r.from, through: r.from + ceiling - 1 } : r));
   }, [ceiling]);
@@ -424,6 +422,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      matrix's three legs): a calendar cell carries one figure, so on the calendar Both and All DRAW as the net, and the
      matrix takes the pick back the moment it returns */
   const [legs, setLegs] = useState<LegsPick>('all');
+  const [nameLens, setNameLens] = useState<Record<string, NameLens>>({});
+  const manyRef = useRef(false);
   const legsDrawn: LegsPick = legsLock ?? (panel ? 'net' : view === 'calendar' && (legs === 'both' || legs === 'all') ? 'net' : legs);
   /* A FIRST-VISIT NOTE over the book (idea 12, 2026-10-13): three lines once, dismissed for good on this machine — the
      guides stay for the full read */
@@ -447,12 +447,17 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* THE LEVELS ARE THE LEVELS CARD'S (the ship pass, 2026-10-22 — they were the Expiries window's, so the Map named a
      supreme of eight dates beside the Board's supreme of today). The Expiries card picks the matrix's columns; the named
      levels (supreme, walls, flip) are the Levels card's, the same on every Pinpoint page. */
-  const levelsScope = useLevelsScope();
+  const levelsScope = useNameLevels(snapshot?.ticker);
+  useLevelsRev();
+  useDistanceUnit();
+  useBookRev();
+  useChartMovesRev();
   const scopeSeen = useRef(levelsScope);
   useEffect(() => {
     if (scopeSeen.current === levelsScope) return;
     scopeSeen.current = levelsScope;
-    setOwnDates({});
+    /* several names: this card is the frame's. It does not pull the other books onto the new window. */
+    if (manyRef.current) return;
     setRange(rangeForScope(levelsScope));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levelsScope]);
@@ -488,19 +493,15 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   }, [ownKey, onNameDates, ownDates]);
   const scopedCache = useRef(new WeakMap<ExposureSurface, { key: string; out: ExposureSurface }>());
   const scoped = (surf: ExposureSurface, snap: MarketSnapshot, dates: string[] = chosenDates): ExposureSurface => {
-    const key = `${levelsScope}|${dates.join(',')}|${bookRevision()}`;
+    const sc = levelsForName(snap.ticker);
+    const key = `${sc}|${dates.join(',')}|${bookRevision()}`;
     const hit = scopedCache.current.get(surf);
     if (hit?.key === key) return hit.out;
-    /* THE LEVELS ARE THE LEVELS CARD'S (the ship pass, 2026-10-22): the matrix draws the Expiries card's dates, but the
-       supreme, the walls and the flip it names are read off the Levels card's contracts — the Board's, the Agenda's and
-       Compare's book — so SPY's supreme is one strike on every page. The magenta row is that strike. */
-    const lvBook = levelsBook(snap, levelsScope);
+    /* Each name's walls, flip and supreme are THAT name's levels — not the frame's card. */
+    const lvBook = levelsBook(snap, sc);
     const room = roomLevels(lvBook, '0DTE');
     if (!room) return surf;
-    /* EVERY NAMED LEVEL IS levelsFor's (the sixth audit's B1, 2026-10-23: META All expiries read 750 · +$290.7M off the
-       raw book, the Map's door 650 · −$76.9M — the front column's, kept because 750 sat outside the drawn strikes). The
-       supreme, the walls and the flip are levelsFor(ticker, scope)'s whether or not their strike is drawn. */
-    const lv = snap.liveBook ? levelsFor(snap.ticker, levelsScope) : null;
+    const lv = snap.liveBook ? levelsFor(snap.ticker, sc) : null;
     const levels = lv
       ? { ...room, supreme: lv.supreme, callWall: lv.callWall ?? room.callWall, putWall: lv.putWall ?? room.putWall, flip: lv.flip ?? room.flip, flipFound: lv.flip != null, complete: room.complete && lv.complete }
       : room;
@@ -541,13 +542,13 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     const hi = Math.max(lo, Math.min(sh.range.through, last));
     const all = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
     const live = sh.afterBell && todayIdx >= 0 ? all.filter(i => i !== todayIdx) : all;
-    const cap = EXPIRY_CEILING[Math.min(5, Math.max(1, sh.greeks.length))] ?? 7;
+    const cap = EXPIRY_CEILING[Math.min(10, Math.max(1, sh.greeks.length))] ?? 7;
     return (live.length ? live : all.slice(0, 1)).slice(0, cap);
   };
   const shownFor = (surface: ExposureSurface, sh: { range: { from: number; through: number }; afterBell: boolean; greeks: Greek[] }): number[] => windowFor(surface, sh).slice(0, Math.max(1, fitDepth));
   const indicesFor = (surface: ExposureSurface, snap: MarketSnapshot, dates: string[], greekCount: number): number[] => {
     const iso = listedIso(snap);
-    const cap = EXPIRY_CEILING[Math.min(5, Math.max(1, greekCount))] ?? 7;
+    const cap = EXPIRY_CEILING[Math.min(10, Math.max(1, greekCount))] ?? 7;
     if (dates.length && iso.length === surface.expiries.length) {
       const want = new Set(dates);
       const idx = iso.flatMap((d, i) => (want.has(d) ? [i] : []));
@@ -1102,10 +1103,69 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     });
     setHeadNeed(prev => (Math.abs(prev - need) < 2 ? prev : Math.ceil(need)));
   });
+  manyRef.current = extraBooks.length > 0;
+  const lensRef = useRef(nameLens);
+  lensRef.current = nameLens;
+  const greekRef = useRef(greekByName);
+  greekRef.current = greekByName;
+  /* back to one name: the column's picks become the band's, so nothing snaps to the old shared window */
+  useEffect(() => {
+    if (extraBooks.length > 0) return;
+    const saved = lensRef.current[hostTicker];
+    if (!saved) return;
+    setRange({ from: saved.from, through: saved.through });
+    setRings(saved.rings);
+    setLegs(saved.legs);
+    setAfterBell(saved.after);
+    if (!viewLock) setView(saved.view);
+    const g = greekRef.current[hostTicker];
+    if (g?.length) setPick(g);
+    setNameLens({});
+  }, [extraBooks.length, hostTicker, viewLock]);
+  const [phoneBand, setPhoneBand] = useState(false);
+  const onPointerRef = useRef<(cell: SurfaceCell | null) => void>(() => {});
+  const onPointer = useCallback((cell: SurfaceCell | null) => onPointerRef.current(cell), []);
+  const onSelectStrikeForRef = useRef(onSelectStrikeFor);
+  onSelectStrikeForRef.current = onSelectStrikeFor;
+  const handlesRef = useRef(new Map<string, { keep: (s: number) => void; point: (cell: SurfaceCell | null) => void }>());
+  const listsRef = useRef(new Map<string, unknown[]>());
+  const roomSeen = useRef(0);
+  const [, reroom] = useState(0);
+  const hostNaturalRef = useRef(0);
+  const namedNeedRef = useRef(0);
+  const bandScrollRef = useRef(false);
+  const [bandStamp, setBandStamp] = useState(0);
+  const [fitStamp, setFitStamp] = useState(0);
+  useEffect(() => {
+    if (!snapshot || !surface) return;
+    const consider = [hostTicker, ...names];
+    const on: string[] = [];
+    for (const t of consider) {
+      if (!t) continue;
+      const followed = t in ownFocus ? ownFocus[t] : focusOn;
+      const v = manyRef.current ? (nameLens[t]?.view ?? view) : view;
+      if (followed && (v === 'calendar' || v === 'matrix')) on.push(t);
+    }
+    setChartFocus(on);
+  }, [focusOn, ownFocus, names, hostTicker, view, nameLens, snapshot, surface]);
+  useEffect(() => {
+    if (!bandScrollRef.current) return;
+    const el = bandEl.current;
+    if (!el) return;
+    const offs = [...el.querySelectorAll<HTMLElement>('[data-ledger-toolbar-row]')].map(attachScrollMore);
+    return () => offs.forEach(off => off());
+  }, [bandStamp]);
+  useLayoutEffect(() => {
+    if (!snapshot || !surface) return;
+    const now = islandRef.current?.parentElement?.clientWidth ?? islandRef.current?.clientWidth ?? 0;
+    if (now !== roomSeen.current) reroom(n => n + 1);
+    onNaturalWidth?.(hostNaturalRef.current);
+    if (namedNeedRef.current > 0) onBandNeed?.(namedNeedRef.current);
+  }, [fitStamp, snapshot, surface, onNaturalWidth, onBandNeed]);
   if (!snapshot || !surface) {
     return (
       <div className="h-full min-h-[300px] grid place-items-center font-mono text-[11px] text-textMuted uppercase tracking-widest">
-        Waiting for the first tick
+        No options book. Price history, walls and the strike field appear when the data feed is connected.
       </div>
     );
   }
@@ -1164,6 +1224,10 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      fold back open in their spots. Folds, not glides: nothing scales, nothing
      remounts, the neighbours slide over on real layout. */
   const many = extraBooks.length > 0;
+  /* Biggest moves follows the chart, per name. The tape owns its ticker (a replay cuts the bars); every other name is read off the live session. */
+  const lensFor = (t: string): NameLens => nameLens[t] ?? { from: range.from, through: range.through, rings, legs, after: afterBell, view };
+  const setLens = (t: string, patch: Partial<NameLens>) =>
+    setNameLens(prev => ({ ...prev, [t]: { ...(prev[t] ?? lensFor(t)), ...patch } }));
   const tight = 1 + extraBooks.length >= TIGHT_AT;
   /* the band's mode by its measured width (see BAND_*_ROW_PX); the desk toolbar (Pulse) has no band and never
      measures, so its cards keep their names */
@@ -1174,9 +1238,10 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* …and on a coarse pointer (a tablet) while the picks cannot be named on one row: a thumb cannot hover a bare pick's
      tooltip, and at 682px (a tablet with the rail folded) the two tidy rows ran to four */
   const bandScroll = toolbar === 'band' && bandW > 0 && (bandW < BAND_SCROLL_PX || (coarsePointer && bandW < BAND_NAMED_ROW_PX));
-  /* ON A PHONE THE CONTROLS FOLD BEHIND ONE ROW (the eleventh audit's retail finding: ~1,100px of controls before the first
-     strike row at 390): the name and one "Controls" door; the picks, the doors and the supreme open under it */
-  const [phoneBand, setPhoneBand] = useState(false);
+  if (bandScrollRef.current !== bandScroll) {
+    bandScrollRef.current = bandScroll;
+    queueMicrotask(() => setBandStamp(n => n + 1));
+  }
   const namedFits = toolbar === 'band' && namedNeed > 0 && bandW >= namedNeed + 24;
   /* THE DOORS' WORDS GO ONE DOOR AT A TIME, the least read first, until the row fits — the picks keep theirs */
   const compactDoors = new Set<DoorKey>();
@@ -1217,6 +1282,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const divider = toolbar === 'band' && !bandScroll ? <span aria-hidden className="h-5 w-px shrink-0 bg-borderSubtle" data-band-divider /> : null;
   const strips = (
     <>
+      {!many && (
+        <>
       {divider}
       {/* bare in the panel (2026-10-15): "Calendar", "GEX" and "Today → Oct 19" say what they are without their label words,
           and the three cards then share the panel's one head line with the tabs at 580px */}
@@ -1224,21 +1291,21 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {/* with names side by side the greek steps down to each column's head; the profile draws GEX alone (its foot says
           so), so the card steps aside there rather than read "All five" over a chart it does not govern (the re-audit's M2) */}
       {view !== 'profile' && (
-        <Fold open={!many} gap={8} testId="data-band-greek">
-          <DropdownMulti label="Greek" values={pick} groups={greekGroups} onChange={setPick} emptyWord="All" clearWord={noVex ? 'Clear · all four' : 'Clear · all five'} title={noVex ? 'One, some, or all four' : 'One, some, or all five'} testId="ledger-greek" align="start" bare={stripsBare || panel} flat={toolbar === 'band'} />
+        <Fold open gap={8} testId="data-band-greek">
+          <DropdownMulti label="Greek" values={pick} groups={greekGroups} onChange={setPick} emptyWord="All" clearWord="Clear · all" title="One, some, or all" testId="ledger-greek" align="start" bare={stripsBare || panel} flat={toolbar === 'band'} />
         </Fold>
       )}
       {/* the profile draws the net alone — the card steps aside there */}
       {view !== 'profile' && !panel && <DropdownSelect label="Legs" value={legsDrawn} options={legsOptions(view === 'calendar')} onChange={setLegs} title="Which legs the cells carry" testId="ledger-legs" bare={stripsBare} flat={toolbar === 'band'} />}
       {divider}
       {/* the trigger says the window DRAWN when the fit cuts the one chosen — "Today → Oct 16 · 4 of 7" (the audit's H4) */}
-      <ExpiryRangeCard label="Expiries" days={expiryDays} from={range.from} through={range.through} onChange={(from, through) => { setOwnDates({}); setRange({ from, through }); }} ceiling={ceiling} ceilingWhy={ceilingWhy} shortcuts={shortcuts} title="Which expiries every name follows. A name can leave this from its own column; changing it here puts every name back on it." testId="ledger-expiries" note={fitNote} bare={stripsBare || panel} flat={toolbar === 'band'} cut={{ through: shownIdx[shownIdx.length - 1] ?? range.through, shown: shownIdx.length, wanted }} />
+      <ExpiryRangeCard label="Expiries" days={expiryDays} from={range.from} through={range.through} onChange={(from, through) => setRange({ from, through })} ceiling={ceiling} ceilingWhy={ceilingWhy} shortcuts={shortcuts} title="Which expiries this book shows." testId="ledger-expiries" note={fitNote} bare={stripsBare || panel} flat={toolbar === 'band'} cut={{ through: shownIdx[shownIdx.length - 1] ?? range.through, shown: shownIdx.length, wanted }} />
       {!panel && <DropdownSelect
         label="Strikes"
         value={rings}
         /* THE COUNTS THE GRID DRAWS (the paying-user audit's L4/M6, 2026-10-13): the menu said 41 rows for twenty each side
            and 61 for thirty while the grid drew 40 and 60 (spot sits between two strikes, not on a row), and The read
-           said 60 under a 40-row grid. Counted off the book itself — a vendor's chain can hold fewer — and the widest
+           said 60 under a 40-row grid. Counted off the book itself — a feed's chain can hold fewer — and the widest
            window is named for what it is: the whole book */
         options={LEDGER_WINDOWS.map(w => {
           const up = Math.min(w, bookAbove);
@@ -1256,6 +1323,8 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       />}
       {/* a face of its own, so "Now" alone on a bare band still says which card it is (the audit's L2) */}
       {!panel && <DropdownSelect label="Show" value={afterBell ? 'after' : 'now'} options={SHOW_OPTIONS} onChange={v => setAfterBell(v === 'after')} title={todayScopeLabel() === 'Today' ? "The book as it stands now, or as it will stand after today's expiries" : "The book as it stands now, or as it will stand once the next session's own expiries have gone (today's already expired at the close)"} testId="ledger-show" bare={stripsBare} flat={toolbar === 'band'} />}
+        </>
+      )}
       {/* the colours switch left the band for Settings › Appearance (idea 10, 2026-10-13): a preference made once, not a
           read, and 150px of every row */}
     </>
@@ -1265,7 +1334,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   const lvDate = snapshot ? levelsDate(snapshot, levelsScope) : null;
   /* each name's levels' contracts, by strike — a level's matrix row prints them (ExposureMatrix levelLegsAt) */
   const levelLegsOf = (snap: MarketSnapshot) => {
-    const chain = levelsBook(snap, levelsScope).chain;
+    const chain = levelsBook(snap, levelsForName(snap.ticker)).chain;
     const at = new Map(chain.map(n => [n.strike, n] as const));
     return (k: number) => {
       const n = at.get(k);
@@ -1349,27 +1418,14 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      name, view, greek, expiries, strikes, show, colours) on the first, the doors (names, replay, the supreme, the
      read, how to read, fullscreen) on the second, the fullscreen door last on either. See BAND_*_ROW_PX. */
   const bandRows: 'one' | 'two' = bandMode === 'two' || bandOver ? 'two' : 'one';
-  /* THE PHONE'S ROWS WRAP (the seventh audit's m8, 2026-10-23: scrolled sideways, "GREEK GEX" and "THE RE…" sat cut at
-     the edge and Legs, Expiries, Strikes and Show were off the screen with nothing saying so) — every control is on the
-     screen, row under row. The scroll fade below stays for a row that is still wider than the screen. */
-  useEffect(() => {
-    if (!bandScroll) return;
-    const el = bandEl.current;
-    if (!el) return;
-    const offs = [...el.querySelectorAll<HTMLElement>('[data-ledger-toolbar-row]')].map(attachScrollMore);
-    return () => offs.forEach(off => off());
-  }, [bandScroll, bandRows]);
 
   const leadFold = lead ? (
     <Fold open={!many} gap={8} testId="data-band-lead">
       <span className="shrink-0 inline-flex items-center">{lead}</span>
     </Fold>
   ) : null;
-  /* THE FOCUS DOOR — beside Names: the calendar's biggest moves since the open, sharp over a softened board. Only on
-     the calendar, never in the replay (no badges there); the word says what it keeps. */
-  /* NAMED FOR WHAT IT KEEPS (the audit's H9, 2026-10-13): "Focus" was also the shell chip's word for a kept strike, so one
-     word named two things on one screen; the door says "Biggest moves". And it STAYS on the matrix, disabled, rather
-     than coming and going with the view and shifting the doors beside it (the audit's L9). */
+  /* THE FOCUS DOOR — the biggest swings on the price chart up to this minute, on the matrix and the calendar.
+     The strikes those runs turned at stay sharp. A replay uses the chart's bars up to the minute it stands on. */
   const focusDoor = (
     <button
       type="button"
@@ -1378,10 +1434,9 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         setFocusOn(v => !v);
       }}
       aria-pressed={focusOn}
-      disabled={fresh}
-      title={fresh ? 'Not while the replay runs' : focusOn ? 'Back to the whole board (Esc)' : 'Keep only the biggest moves since the open sharp — the badged nodes'}
+      title={focusOn ? 'Back to the whole board (Esc)' : 'The biggest moves on the price chart up to this minute — the strikes they turned at stay sharp'}
       aria-label="Biggest moves"
-      className={`${FLAT_DOOR} disabled:opacity-50 ${doorCompact('focus') ? 'w-7 justify-center px-0' : ''} ${focusOn ? FLAT_ON : ''}`}
+      className={`${FLAT_DOOR} ${doorCompact('focus') ? 'w-7 justify-center px-0' : ''} ${focusOn ? FLAT_ON : ''}`}
       data-ledger-focus-door={focusOn ? 'on' : 'off'}
     >
       <Crosshair className="w-3 h-3" />
@@ -1435,7 +1490,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
       {namesDoor}
       {/* only where it works (the paying-user audit's L7): a greyed door on the matrix and the profile was a control that
           said no every time it was tried */}
-      {view === 'calendar' && focusDoor}
+      {(view === 'calendar' || view === 'matrix') && focusDoor}
       {after}
       {divider}
       {moreDoor}
@@ -1555,14 +1610,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     pointedRef.current?.(cell?.strike ?? null);
     onHoverStrike?.(cell?.strike ?? null);
   };
-  /* STABLE HANDLES AND LISTS FOR THE PANES (2026-10-12): the panes are memoised; a fresh arrow or array a render
-     would undo that, so the handlers go through refs and a list is the same array while its values are */
-  const onPointerRef = useRef(onPointerLive);
   onPointerRef.current = onPointerLive;
-  const onPointer = useCallback((cell: SurfaceCell | null) => onPointerRef.current(cell), []);
-  const onSelectStrikeForRef = useRef(onSelectStrikeFor);
-  onSelectStrikeForRef.current = onSelectStrikeFor;
-  const handlesRef = useRef(new Map<string, { keep: (s: number) => void; point: (cell: SurfaceCell | null) => void }>());
   const handlesFor = (t: string) => {
     let h = handlesRef.current.get(t);
     if (!h) {
@@ -1571,7 +1619,6 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
     }
     return h;
   };
-  const listsRef = useRef(new Map<string, unknown[]>());
   const same = <T,>(key: string, next: T[]): T[] => {
     const prev = listsRef.current.get(key) as T[] | undefined;
     if (prev && prev.length === next.length && prev.every((v, i) => v === next[i])) return prev;
@@ -1613,13 +1660,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
   /* THE ROOM AS IT IS AFTER THE COMMIT (2026-10-14): the island's room is read in render, off the DOM the last commit
      left — a name added made the host widen the book in the same commit, and the panes were drawn one frame at the old
      room's share (204px each) before they took the new one. Re-read before paint, re-rendered at once if it moved. */
-  const roomSeen = useRef(0);
   roomSeen.current = islandRoom;
-  const [, reroom] = useState(0);
-  useLayoutEffect(() => {
-    const now = islandRef.current?.parentElement?.clientWidth ?? islandRef.current?.clientWidth ?? 0;
-    if (now !== roomSeen.current) reroom(n => n + 1);
-  });
   const islandW = islandMax > 0 && islandRoom > 0 ? Math.min(islandMax, islandRoom) : islandRef.current?.clientWidth ?? 0;
   const tileW = carousel ? Math.max(0, islandW - 16) : islandW > 0 && staying > 0 ? Math.floor((islandW - (many ? 8 : 0)) / staying) : 0;
 
@@ -1627,14 +1668,12 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
      then, so a box packing to one narrow pane never squeezes the band into its phone rows before it has been measured */
   /* the Map's band goes up to the Pinpoint head; the panel's three cards go up to the panel's own head line (2026-10-15) */
   const headOut = (toolbar === 'band' || panel) && !!headSlot && !full;
-  useEffect(() => {
-    if (namedNeed > 0) onBandNeed?.(namedNeed);
-  }, [namedNeed, onBandNeed]);
   const hostNatural = naturalW > 0 ? (headOut ? naturalW : Math.max(naturalW, namedNeed > 0 ? namedNeed + 48 : BAND_ONE_ROW_PX)) + 2 : 0;
-  /* told before paint (a layout effect): the Map sizes the book and decides where the day box stands in the same frame */
-  useLayoutEffect(() => {
-    onNaturalWidth?.(hostNatural);
-  }, [hostNatural, onNaturalWidth]);
+  namedNeedRef.current = namedNeed;
+  if (hostNaturalRef.current !== hostNatural) {
+    hostNaturalRef.current = hostNatural;
+    queueMicrotask(() => setFitStamp(n => n + 1));
+  }
 
   const body = (
     <div className="relative h-full min-h-0 flex flex-col">
@@ -1683,13 +1722,16 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
         {allColumns.map(c => {
           const kept = c.host ? selectedStrike : selectedStrikeFor?.(c.ticker) ?? null;
           const keep = c.host ? onSelectStrike : handlesFor(c.ticker).keep;
-          /* the column's own greeks — the host's are the page's */
-          const colPick = c.host ? pick : greeksOf(c.ticker);
-          /* ONE GREEK PER NAME when names stand side by side (Noah, 2026-09-12) — the host's too:
-             a multi pick made before a name arrived kept five greeks in a third of the band
-             (2026-09-14), the widest way to empty the capsules */
-          const colGreeks = same(`g:${c.ticker}`, c.host ? (many ? d.greeks.slice(0, 1) : d.greeks) : (noVex ? pickGreeks(colPick).filter(g => g !== 'vex') : pickGreeks(colPick)));
+          /* the column's own greeks — with several names, each column keeps its own and the band does not move the rest */
+          const pickedGreek = greekByName[c.ticker] ?? (c.host ? pick : ['gex']);
+          const drawnGreek = pickGreeks(pickedGreek).filter(x => contracts || !isContractGreek(x));
+          const colGreeks = same(`g:${c.ticker}`, many ? drawnGreek : c.host ? d.greeks : drawnGreek);
           const colGreek: Greek = c.host ? leadGreek : colGreeks[0] ?? 'gex';
+          const lens = many ? lensFor(c.ticker) : null;
+          const colView = lens?.view ?? d.view;
+          const colRings = lens?.rings ?? d.rings;
+          const colAfter = lens?.after ?? d.afterBell;
+          const colLegs: LegsPick = lens ? (colView === 'calendar' && (lens.legs === 'both' || lens.legs === 'all') ? 'net' : lens.legs) : d.legs;
           const read = readOf(c.ticker);
           /* the host's chip is the band's own, stepped down — in the own-name chip's
              clothes so the chips side by side look alike; a quote only while there
@@ -1749,7 +1791,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     forced flow skeleton load and not the nodes look"): on the calendar, a grid of capsules the width
                     the column will have — the strike column, as many date columns as will fit the promised width, a
                     spot row in the middle; on the matrix, a bar a row as before */}
-                {view === 'calendar' ? (
+                {colView === 'calendar' ? (
                   (() => {
                     const colsFit = Math.max(1, Math.min(7, columnsThatFit(Math.max(120, (tileW || 400) - 10))));
                     return (
@@ -1797,22 +1839,42 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                 )}
               </>
             );
-          /* the surface as drawn: its levels are the expiries the reader picked — the band's, unless this name left them */
-          const namePick = (ownDates[c.ticker]?.length ? ownDates[c.ticker] : chosenDates).filter(d => !!book.snapshot.uwByDate?.[d]?.length);
-          const dates = namePick.length ? namePick : chosenDates;
+          const colScope = levelsForName(book.snapshot.ticker);
+          const iso = listedIso(book.snapshot);
+          let dates: string[];
+          let colWindow: number[];
+          if (lens) {
+            const cap = EXPIRY_CEILING[Math.min(10, Math.max(1, colGreeks.length))] ?? 7;
+            const ranged = windowFor(book.surface, { range: { from: lens.from, through: lens.through }, afterBell: lens.after, greeks: colGreeks });
+            if (ownDates[c.ticker]?.length) {
+              const want = new Set(ownDates[c.ticker]);
+              dates = iso.filter(d => want.has(d));
+              const idx = iso.flatMap((d, i) => (want.has(d) ? [i] : []));
+              colWindow = (idx.length ? idx : ranged).slice(0, cap);
+              if (!dates.length) dates = colWindow.map(i => iso[i]).filter((d): d is string => !!d);
+            } else {
+              colWindow = ranged;
+              dates = colWindow.map(i => iso[i]).filter((d): d is string => !!d);
+            }
+          } else {
+            const namePick = (ownDates[c.ticker]?.length ? ownDates[c.ticker] : chosenDates).filter(d => !!book.snapshot.uwByDate?.[d]?.length);
+            dates = namePick.length ? namePick : chosenDates;
+            colWindow = same(`e:${c.ticker}:${dates.join(',')}`, indicesFor(book.surface, book.snapshot, dates, colGreeks.length));
+          }
+          const ownFit = fitRef.current.get(c.ticker);
+          const colShown = lens ? colWindow.slice(0, Math.max(1, ownFit ?? colWindow.length)) : same(`s:${c.ticker}:${dates.join(',')}:${fitDepth}`, colWindow.slice(0, Math.max(1, fitDepth)));
+          const colLvDate = levelsDate(book.snapshot, colScope);
+          const listedN = (book.snapshot.uwExpiries ?? []).filter(e => book.snapshot.uwByDate?.[e.date]?.length).length;
           const surfDrawn = scoped(book.surface, book.snapshot, dates);
-          /* THE COLOURED ROWS ARE THE WALLS OF THE NUMBERS SHOWN (the seventh audit's retail finding): where the matrix's
-             window is not the Levels card's contracts, its rows are coloured by the window's own call wall, put wall
-             and supreme — read off the same dates it adds up — and its head says which window that is */
-          const differs = dates.length > 0 && (levelsScope === 'ALL' ? dates.length < allListed : !(dates.length === 1 && dates[0] === lvDate));
+          /* where this name's window is not its own levels, the rows wear the window's walls */
+          const differs = dates.length > 0 && (colScope === 'ALL' ? dates.length < listedN : !(dates.length === 1 && dates[0] === colLvDate));
           const winLevels = differs && book.snapshot.liveBook ? roomLevels(bookForDates(book.snapshot, dates), '0DTE') : null;
           const surfMatrix = winLevels ? { ...surfDrawn, levels: { ...surfDrawn.levels, supreme: winLevels.supreme, callWall: winLevels.callWall, putWall: winLevels.putWall, flip: winLevels.flip, flipFound: winLevels.flipFound, pin: winLevels.pin, pinFound: winLevels.pinFound } } : surfDrawn;
-          const colWindow = same(`e:${c.ticker}:${dates.join(',')}`, indicesFor(book.surface, book.snapshot, dates, colGreeks.length));
-          const colShown = same(`s:${c.ticker}:${dates.join(',')}:${fitDepth}`, colWindow.slice(0, Math.max(1, fitDepth)));
           const followed = c.ticker in ownFocus ? ownFocus[c.ticker] : focusOn;
-          const colFocus = followed && view === 'calendar' && !fresh;
-          const iso = listedIso(book.snapshot);
-          const expiryValue = ownDates[c.ticker]?.length === 1 && iso.includes(ownDates[c.ticker][0]) ? ownDates[c.ticker][0] : '';
+          const colFocus = followed && (colView === 'calendar' || colView === 'matrix');
+          /* The tape publishes the bars it drew, including a replay cut. Until that lands, a live name uses its session and a replay waits — a full-day read during a replay would mark moves that have not happened yet. */
+          const turns = !colFocus ? [] : swingsKnown(c.ticker) ? swingsFor(c.ticker) : fresh ? [] : biggestSwings(liveBars(c.ticker));
+          const movePrices = colFocus ? turns.map(s => s.to) : undefined;
           const sup = surfDrawn.supreme[colGreeks[0] ?? 'gex'];
           const supEx = surfDrawn.expiries[sup.e];
           return cell(
@@ -1838,7 +1900,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     data-column-supreme={book.snapshot.liveBook && surfDrawn.levels?.complete === false ? undefined : sup.strike}
                   >
                     <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-supreme" />
-                    <span className="text-[11px] text-textMuted">Supreme <span className="text-warn/90">· {levelsScope === 'ALL' ? 'All exp.' : todayScopeLabel()}</span></span>
+                    <span className="text-[11px] text-textMuted">Supreme <span className="text-warn/90">· {colScope === 'ALL' ? 'All exp.' : todayScopeLabel()}</span></span>
                     <span className="text-[11px] font-semibold tnum text-textPrimary whitespace-nowrap">
                       {/* nothing provisional (the seventh audit's retail blocker): "…" until the Levels card's scope is final */}
                       {book.snapshot.liveBook && (colGreeks[0] ?? 'gex') === 'gex' && surfDrawn.levels?.complete === false ? (
@@ -1861,25 +1923,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                       ticker choice") — a single choice, never the multi pick */}
                   {many && (
                     <span className="ml-auto shrink-0 inline-flex items-center gap-1.5">
-                      <DropdownSelect<string>
-                        label="Expiries"
-                        value={expiryValue}
-                        options={[{ value: '', label: 'With the band', hint: 'Follows the expiries on the band' }, ...iso.map(d => ({ value: d, label: shortIso(d), hint: `${c.ticker} only` }))]}
-                        onChange={v => setOwnDates(prev => {
-                          const next = { ...prev };
-                          if (!v) delete next[c.ticker];
-                          else next[c.ticker] = [v];
-                          return next;
-                        })}
-                        title={`Which expiries ${c.ticker} reads. The band still sets every name that follows it.`}
-                        testId={`ledger-expiries-${c.ticker}`}
-                        align="end"
-                      />
                       <button
                         type="button"
                         onClick={() => setOwnFocus(prev => ({ ...prev, [c.ticker]: !(c.ticker in prev ? prev[c.ticker] : focusOn) }))}
                         aria-pressed={followed}
-                        title={`Biggest moves on ${c.ticker} only`}
+                        title={`Biggest moves on ${c.ticker}'s chart, up to this minute`}
                         className={`inline-flex items-center justify-center w-6 h-6 rounded-md border transition-colors ${followed ? 'border-silver/60 bg-silver/[0.12] text-textPrimary' : 'border-borderSubtle bg-chip text-textMuted hover:text-textPrimary'}`}
                         data-column-focus={c.ticker}
                       >
@@ -1891,8 +1939,11 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     <DropdownSelect<string>
                       label="Greek"
                       value={colGreeks[0] ?? 'gex'}
-                      options={noVex ? SINGLE_GREEK_OPTIONS.filter(o => o.value !== 'vex') : SINGLE_GREEK_OPTIONS}
-                      onChange={g => (c.host ? setPick([g]) : setGreeksOf(c.ticker, [g]))}
+                      options={SINGLE_GREEK_OPTIONS}
+                      onChange={g => {
+                        setGreeksOf(c.ticker, [g]);
+                        if (c.host && !many) setPick([g]);
+                      }}
                       title={`What ${c.ticker}'s cells measure`}
                       testId={`ledger-greek-${c.ticker}`}
                       align="end"
@@ -1904,10 +1955,70 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     {removeDoor}
                   </div>
                 </div>
+                {lens && (
+                  <div className="flex items-center gap-1 px-2 py-1 border-t border-borderSubtle/60 flex-wrap" data-column-controls={c.ticker}>
+                    {!viewLock && (
+                      <DropdownSelect<LedgerView> label="View" value={lens.view} options={VIEWS_FOR[viewHost].map(v => VIEW_OPTION[v])} onChange={v => setLens(c.ticker, { view: v })} title={`How ${c.ticker} is drawn. The other names keep theirs.`} testId={`ledger-view-${c.ticker}`} />
+                    )}
+                    <ExpiryRangeCard
+                      label="Expiries"
+                      days={book.surface.expiries.map((e, i) => ({ value: i, date: expiryFor(e.dte).date, label: e.dte === 0 && todayScopeLabel() === 'Today' ? 'Today' : e.date, hint: e.date }))}
+                      from={lens.from}
+                      through={lens.through}
+                      onChange={(from, through) => {
+                        setOwnDates(prev => {
+                          if (!prev[c.ticker]) return prev;
+                          const next = { ...prev };
+                          delete next[c.ticker];
+                          return next;
+                        });
+                        setLens(c.ticker, { from, through });
+                      }}
+                      ceiling={EXPIRY_CEILING[Math.min(10, Math.max(1, colGreeks.length))] ?? 7}
+                      ceilingWhy={`${c.ticker} only`}
+                      shortcuts={[{ label: 'Front', hint: 'The nearest expiry', from: 0, through: 0 }]}
+                      title={`Which expiries ${c.ticker} shows. Does not move the other names.`}
+                      testId={`ledger-expiries-${c.ticker}`}
+                    />
+                    <DropdownSelect<number>
+                      label="Strikes"
+                      value={lens.rings}
+                      options={LEDGER_WINDOWS.map(w => ({ value: w as number, label: w === WHOLE_BOOK ? 'All' : `±${w}`, short: w === WHOLE_BOOK ? 'All' : `±${w}` }))}
+                      onChange={v => setLens(c.ticker, { rings: v })}
+                      title={`How many strikes ${c.ticker} shows. The other names keep theirs.`}
+                      testId={`ledger-strikes-${c.ticker}`}
+                    />
+                    {colView !== 'profile' && (
+                      <DropdownSelect<LegsPick> label="Legs" value={lens.legs} options={legsOptions(colView === 'calendar')} onChange={v => setLens(c.ticker, { legs: v })} title={`Which legs ${c.ticker} draws. The other names keep theirs.`} testId={`ledger-legs-${c.ticker}`} />
+                    )}
+                    <DropdownSelect<'now' | 'after'> label="Show" value={lens.after ? 'after' : 'now'} options={SHOW_OPTIONS} onChange={v => setLens(c.ticker, { after: v === 'after' })} title={`Now or after the bell, for ${c.ticker} only.`} testId={`ledger-show-${c.ticker}`} />
+                    <DropdownSelect<LevelsScope>
+                      label="Levels"
+                      value={levelsForName(c.ticker)}
+                      options={LEVELS_OPTIONS.map(o => (o.value === '0DTE' && todayScopeLabel() !== 'Today' ? { ...o, label: todayScopeLabel() } : o))}
+                      onChange={v => setLevelsForName(c.ticker, v)}
+                      title={`Which contracts ${c.ticker}'s walls and flip are read off. The other names keep theirs.`}
+                      testId={`ledger-levels-${c.ticker}`}
+                    />
+                    <DropdownSelect<DistanceUnit>
+                      label="Ruler"
+                      value={unitForName(c.ticker)}
+                      options={[
+                        { value: '$', label: '$', hint: 'Dollars from spot' },
+                        { value: '%', label: '%', hint: 'Percent of spot' },
+                        { value: 'ATR', label: 'ATR', hint: 'Average true ranges' },
+                        { value: 'σ', label: 'σ', hint: 'Expected one-day moves' },
+                      ]}
+                      onChange={v => setUnitForName(c.ticker, v)}
+                      title={`How ${c.ticker} measures a distance. The other names keep theirs.`}
+                      testId={`ledger-ruler-${c.ticker}`}
+                    />
+                  </div>
+                )}
               </Fold>
               {/* EACH NAME'S OWN FACTS OVER ITS OWN COLUMN, one name or four (the owner, 2026-10-14: the head printed the
                   room's name alone above a book of four) — ColumnFacts.tsx */}
-              {!panel && <ColumnFacts ticker={c.ticker} snapshot={levelsBook(book.snapshot, levelsScope)} scope="0DTE" width={tileW} fresh={fresh} />}
+              {!panel && <ColumnFacts ticker={c.ticker} snapshot={levelsBook(book.snapshot, colScope)} scope="0DTE" width={tileW} fresh={fresh} />}
               <div className="relative flex-1 min-h-0" data-ledger-body={c.ticker}>
                 {/* the arriving view fades in — opacity only, the way a box of figures is allowed to */}
                 {/* the shape on screen: out on the old, in on the new (the soft swap above) */}
@@ -1918,16 +2029,16 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                      greeks of a five-greek calendar; the book now steps left of it and re-fits — the read's own width, 460 or
                      62% of the pane, the panel's own rule (BookRead) */
                   style={{ opacity: fading ? 0 : 1, transition: `opacity ${SWAP_OUT_MS}ms ease-in`, paddingRight: read === 'open' && !tight ? 'min(460px, 62%)' : undefined }}
-                  data-ledger-view={d.view}
+                  data-ledger-view={colView}
                   data-ledger-shape={drawn.key}
                   data-ledger-fading={fading || undefined}
                 >
-                  {d.view === 'profile' ? (
+                  {colView === 'profile' ? (
                     <ExposureProfileView surface={surfDrawn} expiries={colShown} liveSpot={book.snapshot.spot} live={!fresh} selectedStrike={kept} onSelectStrike={keep} paper={paper} />
-                  ) : d.view === 'matrix' ? (
-                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfMatrix} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={d.rings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={d.legs} windowLabel={differs ? (!book.snapshot.liveBook || bookDatesIn(c.ticker) ? `${expirySpan(dates)} (${dates.length} ${dates.length === 1 ? 'expiry' : 'expiries'})` : '…') : null} levelLegsAt={differs && !winLevels ? levelLegsOf(book.snapshot) : null} levelsWords={levelsLabel} windowLevels={!!winLevels} />
+                  ) : colView === 'matrix' ? (
+                    <ExposureMatrix onNatural={packs ? naturalFor(c.ticker, 'matrix') : undefined} surface={surfMatrix} liveSpot={book.snapshot.spot} live={!fresh} greeks={colGreeks} expiries={colShown} rings={colRings} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} lead={c.host ? leadGreek : undefined} legs={colLegs} windowLabel={differs ? (!book.snapshot.liveBook || bookDatesIn(c.ticker) ? `${expirySpan(dates)} (${dates.length} ${dates.length === 1 ? 'expiry' : 'expiries'})` : '…') : null} levelLegsAt={differs && !winLevels ? levelLegsOf(book.snapshot) : null} levelsWords={levelsLabel} windowLevels={!!winLevels} movePrices={colView === 'matrix' ? movePrices : undefined} />
                   ) : (
-                    <ExposureLedger wantCols={colGreeks.length * colWindow.length} onNatural={packs ? naturalFor(c.ticker, 'calendar') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} open={view === 'calendar' && !fresh ? openSurfaceOf(book.ticker) : null} focusOn={colFocus} greeks={colGreeks} expiries={colWindow} rings={d.rings} leg={d.legs === 'both' || d.legs === 'all' ? 'net' : d.legs} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} afterBell={d.afterBell} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} onExpiry={(many || onExpiries) ? i => { const date = listedIso(book.snapshot)[i]; if (many && date) { setOwnDates(prev => ({ ...prev, [c.ticker]: [date] })); return; } setOwnDates({}); setRange({ from: i, through: i }); } : undefined} fitKey={c.ticker} onFit={reportFit} paper={paper} />
+                    <ExposureLedger wantCols={colGreeks.length * colWindow.length} onNatural={packs ? naturalFor(c.ticker, 'calendar') : undefined} surface={surfDrawn} liveSpot={book.snapshot.spot} live={!fresh} open={colView === 'calendar' && !fresh ? openSurfaceOf(book.ticker) : null} focusOn={colFocus} movePrices={colView === 'calendar' ? movePrices : undefined} greeks={colGreeks} expiries={colWindow} rings={colRings} leg={colLegs === 'both' || colLegs === 'all' ? 'net' : colLegs} hoverStrike={c.host ? hoverStrike : undefined} palette={palette} afterBell={colAfter} selectedStrike={kept} marks={c.host ? marks : undefined} onPointer={c.host ? onPointer : handlesFor(c.ticker).point} onSelectStrike={keep} onExpiry={(many || onExpiries) ? i => { const date = listedIso(book.snapshot)[i]; if (many && date) { setOwnDates(prev => ({ ...prev, [c.ticker]: [date] })); return; } setOwnDates({}); setRange({ from: i, through: i }); } : undefined} fitKey={c.ticker} onFit={reportFit} paper={paper} />
                   )}
                 </div>
                 {/* NOTHING PROVISIONAL, SAID (the fourth audit's M1: the matrix's window grew from "Oct 23 → Oct 29" to Nov 3 as
@@ -1935,7 +2046,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     listed date and the levels' contracts are in, the book is veiled and says why */}
                 {/* …but a matrix or profile on the Levels card's own front date needs only that date (the eighth audit: a phone's Map
                     still read "Loading SPY's expiries…" at 12s while the forty far dates landed behind a window of one) */}
-                {book.snapshot.liveBook && !fresh && (!(bookDatesIn(c.ticker) || (d.view !== 'calendar' && levelsScope !== 'ALL' && !differs && dates.length === 1)) || roomLevels(levelsBook(book.snapshot, levelsScope), '0DTE')?.complete === false) && (
+                {book.snapshot.liveBook && !fresh && (!(bookDatesIn(c.ticker) || (colView !== 'calendar' && colScope !== 'ALL' && !differs && dates.length === 1)) || roomLevels(levelsBook(book.snapshot, colScope), '0DTE')?.complete === false) && (
                   <div className="absolute inset-0 z-10 grid place-items-center bg-card/80 backdrop-blur-[2px]" data-ledger-loading={c.ticker}>
                     <span className="font-mono text-[11px] uppercase tracking-widest text-textMuted">Loading {c.ticker}'s expiries…</span>
                   </div>
@@ -1949,7 +2060,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
                     greek={colGreek}
                     mode={palette === 'thermal' ? 'thermal-yellow' : HEAT_MODE}
                     expiries={colShown}
-                    afterBell={d.afterBell}
+                    afterBell={colAfter}
                     rings={d.rings as StrikeWindow}
                     selectedStrike={kept}
                     fill={tight}
@@ -1995,7 +2106,7 @@ const ExposureField = ({ snapshot, half: halfProp, hoverStrike, selectedStrike, 
           {/* WHICH CONTRACTS, SAID (the ship pass, 2026-10-22): the figures are the Expiries card's dates summed; the
               supreme and the walls marked on them are the Levels card's — the Board's — so the two can differ */}
           {chosenDates.length > 0 && (
-            <span className={`inline-flex items-center gap-1.5 ${scopeDiffers ? 'text-textSecondary font-semibold' : 'text-textMuted/80'}`} title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from the Levels card at the top of the page — the same levels the Board, the Agenda and Compare show." data-legend-scope>
+            <span className={`inline-flex items-center gap-1.5 ${scopeDiffers ? 'text-textSecondary font-semibold' : 'text-textMuted/80'}`} title="The dollar figures add up the dates on the Expiries card. The supreme, call wall and put wall marked on them come from this name's levels — the same levels the Board, the Agenda and Compare show." data-legend-scope>
               {scopeDiffers && view !== 'calendar' ? <>figures and coloured rows: {spanWords} · the Levels card: {levelsLabel}</> : <>figures: {spanWords} · levels: {levelsLabel}</>}
             </span>
           )}

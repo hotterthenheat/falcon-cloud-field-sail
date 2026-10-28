@@ -11,47 +11,34 @@ interface GreeksRowProps {
   flash?: boolean;
 }
 
-interface RowProps {
-  label: string;
-  value: number;
-  format: (v: number) => string;
-  arrow?: 'up' | 'down' | null;
-  tone?: string;
-  flash?: boolean;
-}
-
-/* A LEDGER, not a tile strip (Noah, 2026-08-09 — the boxed 4-cell greek grid
-   is "the first AI-generated thing I always see"): full-width rows, label
-   left in muted caps, value right in bright tabular figures, hairlines the
-   only chrome. AnimatedNumber, not toFixed strings — this ledger lives on
-   persistent cards (the meters-glide doctrine: values ROLL, never snap). */
-const Row = ({ label, value, format, arrow = null, tone = 'text-textPrimary', flash = false }: RowProps) => (
-  <div className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
-    <span className="font-mono text-[9px] uppercase tracking-widest text-textMuted">
-      {label in TERMS ? <Term k={label as TermKey} /> : label}
-    </span>
-    <span className={`font-mono text-[12px] font-semibold tnum inline-flex items-center gap-1 ${tone}`}>
-      {arrow === 'up' && <span className="text-bull text-[9px]">▲</span>}
-      {arrow === 'down' && <span className="text-bear text-[9px]">▼</span>}
-      <AnimatedNumber value={value} format={format} flash={flash} />
-    </span>
-  </div>
-);
-
+/* Four greeks in a row, the board's stat grammar — not a second hairline
+   ledger stacked under the quote. The sign is the ink. No arrow. */
 const GreeksRow = ({ greeks, fourth = 'vega', flash = false }: GreeksRowProps) => {
+  const cells = [
+    {
+      label: 'Delta',
+      value: greeks.delta,
+      format: (v: number) => v.toFixed(2),
+      tone: greeks.delta >= 0 ? 'text-bull' : 'text-bear',
+    },
+    { label: 'Gamma', value: greeks.gamma, format: (v: number) => v.toFixed(4), tone: 'text-textPrimary' },
+    { label: 'Theta', value: greeks.theta, format: (v: number) => v.toFixed(2), tone: 'text-warn' },
+    fourth === 'vega'
+      ? { label: 'Vega', value: greeks.vega, format: (v: number) => v.toFixed(2), tone: 'text-textPrimary' }
+      : { label: 'IV', value: greeks.iv, format: (v: number) => `${v.toFixed(1)}%`, tone: 'text-textPrimary' },
+  ];
   return (
-    <div className="divide-y divide-borderSubtle">
-      <Row label="Delta" value={greeks.delta} format={v => v.toFixed(2)} arrow={greeks.delta >= 0 ? 'up' : 'down'} flash={flash} />
-      <Row label="Gamma" value={greeks.gamma} format={v => v.toFixed(4)} flash={flash} />
-      <Row label="Theta" value={greeks.theta} format={v => v.toFixed(2)} tone="text-warn" flash={flash} />
-      {fourth === 'vega' ? (
-        // No arrow, no lime: vega is a magnitude, not a direction — the old
-        // hardcoded bull-green ▲ beside a neon-lime number was two greens
-        // saying nothing (lime is the interface's voice, never data).
-        <Row label="Vega" value={greeks.vega} format={v => v.toFixed(2)} flash={flash} />
-      ) : (
-        <Row label="IV" value={greeks.iv} format={v => `${v.toFixed(1)}%`} flash={flash} />
-      )}
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3" data-greeks>
+      {cells.map(c => (
+        <div key={c.label} className="min-w-0">
+          <div className="font-mono text-[9px] uppercase tracking-widest text-textMuted">
+            {c.label in TERMS ? <Term k={c.label as TermKey} /> : c.label}
+          </div>
+          <div className={`mt-0.5 font-mono text-[13px] font-semibold tnum ${c.tone}`}>
+            <AnimatedNumber value={c.value} format={c.format} flash={flash} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 };

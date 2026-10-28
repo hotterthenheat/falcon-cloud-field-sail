@@ -35,17 +35,10 @@ import type { SessionLevelKey, SessionLevels } from '../../data/sessionLevels';
 
 /* Platinum steel at low alpha — present, never competing with the tape. */
 const INK = '226,234,244';
-const LINE_ALPHA = 0.38;
-/* The RULES stay quiet furniture, but their NAMES are meant to be read —
-   0.62 made them wallpaper (Noah, 2026-08-28: "just a tad bit too muted in
-   wording"). Bright silver for settled tags; a forming tag stays a step
-   quieter because it is also wearing the word. */
+const LINE_ALPHA = 0.55;
 const TAG_ALPHA = 0.92;
-const FORMING_TAG_ALPHA = 0.62;
-/* A forming range is quieter than a settled one, and says so in words too. */
-const FORMING_ALPHA = 0.22;
-
-/* In CSS px, scaled to the bitmap at draw time. Dash then gap. */
+const FORMING_TAG_ALPHA = 0.7;
+const FORMING_ALPHA = 0.28;
 const DASH: Record<SessionLevelKey, number[]> = {
   prevClose: [6, 4],
   prevHigh: [12, 5],
@@ -103,13 +96,13 @@ export function sessionLines(s: SessionLevels): SessionLine[] {
      a prop desk scribbles; this desk writes the fact out. "1st hour" IS the
      initial balance — the jargon adds nothing the clock doesn't say. */
   const WORDS: Record<SessionLevelKey, string> = {
-    prevHigh: "Prev day high",
-    prevLow: "Prev day low",
-    prevClose: "Prev close",
-    orHigh: `First ${s.orMinutes}m high`,
-    orLow: `First ${s.orMinutes}m low`,
-    ibHigh: '1st hour high',
-    ibLow: '1st hour low',
+    prevHigh: 'Prev high',
+    prevLow: 'Prev low',
+    prevClose: 'Prev close',
+    orHigh: `OR ${s.orMinutes}m high`,
+    orLow: `OR ${s.orMinutes}m low`,
+    ibHigh: 'Hour high',
+    ibLow: 'Hour low',
   };
   return s.levels.map(l => ({
     key: l.key,
@@ -176,19 +169,19 @@ class SessionLevelsRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        /* The tag speaks in the house's two voices: the NAME in silver and
-           the PRICE bright beside it — the label whispers, the value never
-           does. A forming range still says so, after the number. */
-        const name = `${line.tag} `;
+        /* Right edge, not the middle of the tape. A chip in the centre
+           sat on the candles. The name and the price share one short chip
+           just inside the plot, and a collision steps down one lane. */
+        const name = line.tag;
         const priceTxt = line.price.toFixed(2);
-        const formingTxt = line.forming ? ' · forming' : '';
+        ctx.font = `500 ${fontPx * vr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
         const nameW = ctx.measureText(name).width;
+        const gap = 6 * hr;
         const priceW = ctx.measureText(priceTxt).width;
-        const formingW = formingTxt ? ctx.measureText(formingTxt).width : 0;
-        const textW = nameW + priceW + formingW;
+        const textW = nameW + gap + priceW;
         const boxW = textW + TAG_PAD_X * 2 * hr;
-        const boxH = tagH + TAG_PAD_Y * 2 * vr;
-
+        const boxH = tagH;
+        const x = Math.max(2 * hr, w - boxW - 8 * hr);
         const wanted = y - boxH / 2;
         let top = wanted;
         let lanes = 0;
@@ -196,30 +189,17 @@ class SessionLevelsRenderer {
           top += boxH + 2 * vr;
           lanes++;
         }
-        /* Still colliding after the cap, or off the plot: no tag. */
         if (taken.some(t => top < t.bottom && top + boxH > t.top)) continue;
         if (top + boxH > h || top < 0) continue;
         taken.push({ top, bottom: top + boxH });
 
-        /* CENTRED on the rule (Noah, 2026-08-28: "they should be at the
-           middle of the line and not the far left") — the middle of the
-           plot is where the eye crosses a horizontal rule, and the left
-           edge put every name over the oldest, least-read bars. */
-        const x = Math.max(2 * hr, (w - boxW) / 2);
-        /* A wash behind the text, so a tag over a candle is still readable
-           without painting a solid block on the tape. */
-        ctx.fillStyle = 'rgba(10,10,10,0.66)';
+        ctx.fillStyle = 'rgba(10,10,10,0.72)';
         ctx.fillRect(x, top, boxW, boxH);
-        const nameAlpha = line.forming ? FORMING_TAG_ALPHA : TAG_ALPHA;
         const cy = top + boxH / 2;
-        ctx.fillStyle = `rgba(${INK},${nameAlpha})`;
+        ctx.fillStyle = `rgba(${INK},${line.forming ? FORMING_TAG_ALPHA : TAG_ALPHA})`;
         ctx.fillText(name, x + TAG_PAD_X * hr, cy);
-        ctx.fillStyle = `rgba(237,237,237,${line.forming ? 0.75 : 0.98})`;
-        ctx.fillText(priceTxt, x + TAG_PAD_X * hr + nameW, cy);
-        if (formingTxt) {
-          ctx.fillStyle = `rgba(${INK},${FORMING_TAG_ALPHA})`;
-          ctx.fillText(formingTxt, x + TAG_PAD_X * hr + nameW + priceW, cy);
-        }
+        ctx.fillStyle = `rgba(237,237,237,${line.forming ? 0.8 : 1})`;
+        ctx.fillText(priceTxt, x + TAG_PAD_X * hr + nameW + gap, cy);
       }
       ctx.restore();
     });

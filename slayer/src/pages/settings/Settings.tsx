@@ -1237,8 +1237,8 @@ const Settings = () => {
           {/* THE DESK */}
           {current === 'desk' && (
           <Section id="desk" title="The desk" line="What every desk reads by — carried by your account when you are signed in, so it follows you between machines">
-            <Row name="Ruler" line="The unit every distance on Pinpoint is read in — the flip, the walls, the targets" testId="ruler">
-              <DropdownSelect<DistanceUnit> label="Ruler" value={unit} options={RULER_OPTIONS} onChange={setDistanceUnit} title="The unit every distance on Pinpoint is read in" testId="settings-ruler" align="end" />
+            <Row name="Ruler" line="The default unit a name uses until you set one on its strip. Dollars, percent, ATR, or the expected move." testId="ruler">
+              <DropdownSelect<DistanceUnit> label="Ruler" value={unit} options={RULER_OPTIONS} onChange={setDistanceUnit} title="The default ruler. A name you set on Pinpoint keeps its own." testId="settings-ruler" align="end" />
             </Row>
             {/* THE DESK'S OWN ROWS, LIVE (Noah, 2026-09-12: "make the desk buttons
                 actually have the function behind them") — data/deskPrefs.ts;

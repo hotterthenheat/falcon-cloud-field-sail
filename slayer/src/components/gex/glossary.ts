@@ -4,7 +4,7 @@
 */
 const WORDS = {
   gex: 'GEX (gamma exposure): the dollars of stock dealers would trade for a 1% move to stay hedged, strike by strike — positive (green) means they are long gamma and trade against the move, negative (red) short gamma and trade with it',
-  supreme: 'Supreme: the single strike with the most dealer gamma on it (either sign), on the contracts the Levels card reads — usually the strongest level on the chart',
+  supreme: 'Supreme: the single strike with the most dealer gamma on it (either sign), on this name’s levels — today’s contracts, or every listed expiry — usually the strongest level on the chart',
   trapdoor: 'Trapdoor: a strike where dealers are short gamma — their hedging speeds a move through it instead of slowing it',
   shelf: 'Shelf: a strike where dealers are long gamma and that holds at least a third of the biggest wall — their hedging slows price there',
   book: 'The book: every open option contract on the name, and the dealer hedging it implies, strike by strike and expiry by expiry',
@@ -47,7 +47,7 @@ export const FIRST_TIME: { term: string; says: string }[] = [
   { term: 'NOPE', says: WORDS.nope.replace(/^NOPE \(net options pricing effect\): /, '') },
   { term: 'DEX · VEX · vanna', says: `${WORDS.dex.replace(/^DEX \(delta exposure\): /, 'DEX: ')} ${WORDS.vex.replace(/^VEX \(vega exposure\): /, 'VEX: ')} ${WORDS.vanna}` },
   { term: 'The book', says: WORDS.book.replace(/^The book: /, '') },
-  { term: 'Today · Next session', says: 'The Levels card reads today’s expiring contracts while the session is ahead or running; after the 4:00 close (and over a weekend) it reads the next session’s — the day each figure belongs to is named beside it.' },
+  { term: 'Today · Next session', says: 'Each name keeps its own levels. Today reads that name’s expiring contracts while the session is ahead or running; after the 4:00 close (and over a weekend) it reads the next session’s. All expiries adds every listed date. The day each figure belongs to is named beside it.' },
   { term: 'Colours on the Map', says: 'Each row is a strike. Red and orange (ember orange on the other palette): dealer hedging pushes a move along there; green (glacier blue): it holds one back. Magenta marks the supreme, blue the call wall, gold the put wall.' },
   { term: 'Max pain vs likeliest close', says: WORDS.maxPain.replace(/^Max pain: /, 'Max pain: ') },
 ];

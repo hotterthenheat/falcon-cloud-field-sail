@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Working from '../ui/Working';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Activity, ArrowRightLeft, CornerDownLeft, Crosshair, Users } from 'lucide-react';
+import CompanyLogo from '../ui/CompanyLogo';
 import { NAV_ITEMS } from './nav';
 import { GEX_SUBPAGES } from '../../pages/pinpoint/subnav';
 import { TRACE_SUBPAGES } from '../../pages/trace/subnav';
@@ -9,6 +10,9 @@ import { RECORD_SUBPAGES } from '../../pages/record/subnav';
 import { useMarketData } from '../../context/MarketDataContext';
 import Simulator from '../../core/simulator';
 import { armDrawTool, canArmDrawTool, searchDrawTools } from '../gex/drawTools';
+import { ensureListed, roomOf, searchRoom, useListedRev } from '../../data/listedNames';
+import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
+import { sendDeskCmd } from '../../data/terrainCmd';
 
 type TickerModule = typeof import('../../data/tickers');
 
@@ -19,7 +23,7 @@ interface CommandPaletteProps {
 
 interface PaletteAction {
   id: string;
-  group: 'Navigate' | 'Ticker' | 'Draw';
+  group: 'Navigate' | 'Ticker' | 'Draw' | 'Chart';
   label: string;
   hint: string;
   run: () => void;
@@ -28,18 +32,25 @@ interface PaletteAction {
 
 const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const onTerrain = location.pathname === '/terrain' || location.pathname.startsWith('/terrain/');
   const { changeTicker, activeTicker } = useMarketData();
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
   const [tickMod, setTickMod] = useState<TickerModule | null>(null);
+  const listedRev = useListedRev();
+  const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
+  const room = roomOf();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // The full ticker universe (S&P 500 + NASDAQ listings) — lazy, its chunk is
   // ~300KB and ⌘K is the desk's only terminal-ticker control (Noah,
   // 2026-08-18: four names was the whole reachable market).
   useEffect(() => {
-    if (open && !tickMod) import('../../data/tickers').then(setTickMod);
-  }, [open, tickMod]);
+    if (!open) return;
+    if (!tickMod) import('../../data/tickers').then(setTickMod);
+    if (room !== 'listed') ensureListed();
+  }, [open, tickMod, room]);
 
   const actions = useMemo<PaletteAction[]>(() => {
     const nav: PaletteAction[] = NAV_ITEMS.map(item => ({
@@ -77,6 +88,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
     }));
     /* Compass's second page (2026-09-13): the Tracker left the Manage group for the tree under Compass */
     const compassSubs: PaletteAction[] = [
+      { id: 'nav-/compass/blotter', group: 'Navigate', label: 'Compass → Blotter', hint: 'Every trade recorded, entry to exit', icon: <Activity className="w-3.5 h-3.5" />, run: () => navigate('/compass/blotter') },
       { id: 'nav-/compass/tracker', group: 'Navigate', label: 'Compass → Tracker', hint: 'The setups you keep, live', icon: <Activity className="w-3.5 h-3.5" />, run: () => navigate('/compass/tracker') },
     ];
     return [...nav, ...gexSubs, ...compassSubs, ...recordSubs, ...flowSubs];
@@ -88,12 +100,26 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   const tickerActions = useMemo<PaletteAction[]>(() => {
     const q = query.trim();
     if (q && tickMod) {
-      return tickMod.searchTickers(q, 8).map(t => ({
+      const rows = room === 'listed'
+        ? tickMod.searchTickers(q, 8)
+        : searchRoom(room, q, 8, tickMod.searchTickers('', 8), companyName);
+      return rows.map(t => ({
         id: `ticker-${t.symbol}`,
         group: 'Ticker' as const,
-        label: `Set ticker → ${t.symbol}`,
-        hint: t.symbol === activeTicker ? 'active' : t.name === t.symbol ? 'switch simulation feed' : t.name,
-        icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
+        label: t.name && t.name.toUpperCase() !== t.symbol ? `${t.symbol} · ${t.name}` : t.symbol,
+        hint: t.symbol === activeTicker ? 'active' : 'set the name',
+        icon: <CompanyLogo ticker={t.symbol} size={14} />,
+        run: () => changeTicker(t.symbol),
+      }));
+    }
+    if (tickMod && room !== 'listed') {
+      const rows = searchRoom(room, '', 8, tickMod.searchTickers('', 8), companyName);
+      return rows.map(t => ({
+        id: `ticker-${t.symbol}`,
+        group: 'Ticker' as const,
+        label: t.name && t.name.toUpperCase() !== t.symbol ? `${t.symbol} · ${t.name}` : t.symbol,
+        hint: t.symbol === activeTicker ? 'active' : '',
+        icon: <CompanyLogo ticker={t.symbol} size={14} />,
         run: () => changeTicker(t.symbol),
       }));
     }
@@ -105,7 +131,13 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
       icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
       run: () => changeTicker(tk),
     }));
-  }, [query, tickMod, changeTicker, activeTicker]);
+  }, [query, tickMod, changeTicker, activeTicker, room, listedRev, nameRev]);
+
+  useEffect(() => {
+    if (!open || !tickMod || room === 'listed') return;
+    const rows = searchRoom(room, query.trim(), 8, tickMod.searchTickers('', 8), companyName);
+    if (rows.length) askCompanyNames(rows.map(r => r.symbol));
+  }, [open, tickMod, room, query, listedRev, nameRev]);
 
   /* THE DRAWING TOOLS, BY NAME (2026-09-19): "fib ext", Enter, and the tool is in hand on the chart the pointer was last over
      (gex/drawTools.tsx). Only with a query — thirty-four more rows at rest would bury the pages — and only on a page that
@@ -127,15 +159,32 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
       }));
   }, [query, open]);
 
+  /* LEVELS AND THE CONE, BY NAME. They live in the overlay menu, not on the
+     desk bar, so ⌘K is the other door. The desk applies the command to the
+     pane that is active. Only while that desk is the page. */
+  const chartActions = useMemo<PaletteAction[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!open || !onTerrain || !q) return [];
+    const rows: PaletteAction[] = [
+      { id: 'chart-levels', group: 'Chart', label: 'Levels', hint: 'walls on this pane', icon: <Crosshair className="w-3.5 h-3.5" />, run: () => sendDeskCmd({ op: 'overlay', key: 'levels' }) },
+      { id: 'chart-cone', group: 'Chart', label: 'Cone', hint: 'expected move on this pane', icon: <Crosshair className="w-3.5 h-3.5" />, run: () => sendDeskCmd({ op: 'overlay', key: 'cone' }) },
+      { id: 'chart-cone-session', group: 'Chart', label: 'Cone · Session', hint: "today's expected move", icon: <Crosshair className="w-3.5 h-3.5" />, run: () => sendDeskCmd({ op: 'horizon', horizon: 'session' }) },
+      { id: 'chart-cone-week', group: 'Chart', label: 'Cone · Week', hint: "this week's expected move", icon: <Crosshair className="w-3.5 h-3.5" />, run: () => sendDeskCmd({ op: 'horizon', horizon: 'week' }) },
+      { id: 'chart-cone-next', group: 'Chart', label: 'Cone · Next', hint: "the next expiry's expected move", icon: <Crosshair className="w-3.5 h-3.5" />, run: () => sendDeskCmd({ op: 'horizon', horizon: 'next' }) },
+    ];
+    return rows.filter(a => a.label.toLowerCase().includes(q) || a.hint.toLowerCase().includes(q));
+  }, [query, open, onTerrain]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [...actions, ...tickerActions];
     return [
       ...actions.filter(a => a.label.toLowerCase().includes(q) || a.hint.toLowerCase().includes(q)),
+      ...chartActions,
       ...drawActions,
       ...tickerActions,
     ];
-  }, [actions, tickerActions, drawActions, query]);
+  }, [actions, tickerActions, drawActions, chartActions, query]);
 
   useEffect(() => {
     if (open) {

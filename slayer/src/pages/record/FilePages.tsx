@@ -446,7 +446,7 @@ const ShortName = ({ data }: ICellRendererParams<ShortRow>) =>
 const ShortSector = ({ data }: ICellRendererParams<ShortRow>) =>
   data ? (
     data.sector === '—' ? (
-      <span className="text-[11px] text-textMuted" title="The vendor's file does not name a sector">—</span>
+      <span className="text-[11px] text-textMuted" title="The feed's file does not name a sector">—</span>
     ) : (
       <span className="inline-flex items-center gap-1.5 text-[11px] text-textSecondary">
         <SectorMark sector={data.sector} />

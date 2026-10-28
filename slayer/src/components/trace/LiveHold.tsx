@@ -16,16 +16,17 @@
   the SAME moment; nothing derived can drift. A ticker change releases the
   hold: an old book must never wear a new name.
 
-  THE BUTTON. The tape's exact control — LIVE breathes lime (the house's one
-  "this is live" signal), PAUSED holds amber — plus one honesty rule: a held
-  page says "as of HH:MM" beside the button, so a frozen table can never
-  pass for a live one.
+  THE BUTTON. Pause wears the holographic silver (the galaxy ink on paper).
+  Resume stays amber and carries the hold's clock inside the same width, so a
+  held page cannot pass for one that is still moving and the row under it
+  does not jump.
 */
 
 import { useEffect, useRef, useState } from 'react';
 import { nyClock } from '../../core/nyTime';
 import { Pause, Play } from 'lucide-react';
 import { marketPhase, noteTraceHold, type MarketPhase } from '../../data/traceLive';
+import { useResolvedTheme } from '../../theme/theme';
 
 /* THE BADGE SAYS THE SESSION (the re-audit, 2026-10-22: every page wore LIVE after the close while its prints were
    after-hours ones) — and it is a LABEL, not a button (the third audit: the "AFTER HOURS" badge was the pause button, so
@@ -110,6 +111,7 @@ const clock = (d: Date) => nyClock(d, { zone: true });
 
 export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { paused: boolean; onToggle: () => void; heldAt?: Date | null; waitingFirst?: boolean }) => {
   const phase = usePhase();
+  const paper = useResolvedTheme() === 'light';
   const live = phase === 'regular' || phase === 'late';
   return (
     <span className="inline-flex items-center gap-2 shrink-0" data-live-hold data-session-phase={phase}>
@@ -126,29 +128,32 @@ export const LiveHold = ({ paused, onToggle, heldAt, waitingFirst = false }: { p
       <button
         onClick={onToggle}
         aria-pressed={paused}
-        title={paused ? 'Resume — the page follows the feed again' : 'Pause — hold the page; nothing moves under you until you resume'}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border font-mono text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+        title={paused ? (waitingFirst ? 'Paused before the first read landed — the page keeps reading until it does, then holds there' : heldAt ? `Held as of ${clock(heldAt)} — resume and the page follows again` : 'Resume — the page follows the feed again') : 'Pause — hold the page; nothing moves under you until you resume'}
+        className={`inline-grid place-items-center px-3 py-1.5 rounded-md border font-mono text-[11px] font-semibold uppercase tracking-wider transition-colors ${
           paused
             ? 'border-warn/40 bg-warn/[0.06] text-warn hover:bg-warn/[0.1]'
-            : /* the live signal's own form per theme (tokens.css --live-*) while the session runs */
-              live
-              ? 'tone-live hover:opacity-90'
-              : 'border-borderSubtle bg-chip text-textSecondary hover:text-textPrimary'
+            : paper
+              ? 'galaxy-bg border-transparent'
+              : 'holo-bg text-[#0a0a0a] border-transparent hover:opacity-90'
         }`}
         data-hold-button
       >
-        {paused ? (
-          <>
-            <Play className="w-3 h-3" /> Resume
-          </>
-        ) : (
-          <>
-            <Pause className="w-3 h-3" /> Pause
-          </>
-        )}
+        {/* the wider label is always in the box, invisible, so Pause and Resume take the same width and the row under them does not jump */}
+        <span className="invisible col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap" aria-hidden>
+          <Play className="w-3 h-3" /> Resume · 00:00 ET
+        </span>
+        <span className="col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap">
+          {paused ? (
+            <>
+              <Play className="w-3 h-3" /> {waitingFirst ? 'Holds' : heldAt ? `Resume · ${clock(heldAt)}` : 'Resume'}
+            </>
+          ) : (
+            <>
+              <Pause className="w-3 h-3" /> Pause
+            </>
+          )}
+        </span>
       </button>
-      {paused && waitingFirst && <span className="font-mono text-[11px] text-textMuted uppercase tracking-wider whitespace-nowrap" title="Paused before the first read landed — the page keeps reading until it does, then holds there">paused before the first read · holds when it lands</span>}
-      {paused && !waitingFirst && heldAt && <span className="font-mono text-[11px] text-textMuted uppercase tracking-wider whitespace-nowrap tnum">paused · as of {clock(heldAt)}</span>}
     </span>
   );
 };

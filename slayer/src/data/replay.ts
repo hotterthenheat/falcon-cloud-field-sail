@@ -39,7 +39,6 @@ import { OPEN_MIN, hhmm } from './ahead';
 import { sessionBars } from './levelview';
 import { sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
 import { nyDay, nyMinutes } from '../core/nyTime';
-import { DEFAULT_R } from '../core/carry';
 import { dollarGammaPerContract } from '../core/gammaFlip';
 import { bookToday, isoDate } from '../core/calendar';
 import { yearsTo } from './flipLevel';
@@ -243,9 +242,9 @@ function repriceDate(chain: readonly StrikeNode[], date: string, s0: number, s1:
   const T1 = yearsTo(date, t1);
   const ratio = (K: number, iv: number) => {
     if (!(iv > 0)) return 1;
-    const a = dollarGammaPerContract(s0, K, T0, iv, DEFAULT_R);
+    const a = dollarGammaPerContract(s0, K, T0, iv);
     if (!(a > 0)) return 1;
-    return Math.min(RATIO_CAP, dollarGammaPerContract(s1, K, T1, iv, DEFAULT_R) / a);
+    return Math.min(RATIO_CAP, dollarGammaPerContract(s1, K, T1, iv) / a);
   };
   return chain.map(n => {
     const callGex = n.callGex * ratio(n.strike, n.callIv && n.callIv > 0 ? n.callIv : atmIv);

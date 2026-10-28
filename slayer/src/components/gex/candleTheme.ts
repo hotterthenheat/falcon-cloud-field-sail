@@ -145,8 +145,8 @@ export const CANDLE_THEMES = {
     down: '#3B4A61',
     wickUp: '#B4DAF8',
     wickDown: '#53647e',
-    volUp: 'rgba(147,201,242,0.20)',
-    volDown: 'rgba(59,74,97,0.34)',
+    volUp: 'rgba(147,201,242,0.32)',
+    volDown: 'rgba(59,74,97,0.46)',
   },
   // Velvet — warm ivory up / muted violet down. Echoes the pastel heat family.
   velvet: {
@@ -173,8 +173,8 @@ export const CANDLE_THEMES = {
     down: '#FF3B30',
     wickUp: '#4ADE6E',
     wickDown: '#FF5F55',
-    volUp: 'rgba(48,209,88,0.24)',
-    volDown: 'rgba(255,59,48,0.24)',
+    volUp: 'rgba(48,209,88,0.38)',
+    volDown: 'rgba(255,59,48,0.36)',
     canvas: { bg: '#060907', grid: 'rgba(255,255,255,0.04)' },
   },
   // Two blues on blue-black — pale ice up / saturated steel down.

@@ -260,7 +260,7 @@ const LedgerTooltip = ({ active, payload, step }: LedgerTipProps) => {
     <Box>
       <div className="text-textMuted">
         {flowClock(from)}
-        {step > 1 ? `–${flowClock(from + step)}` : ''} ET · {(p.vol ?? 0).toLocaleString('en-US')} contracts
+        {step > 1 ? `–${flowClock(from + step)}` : ''} CT · {(p.vol ?? 0).toLocaleString('en-US')} contracts
       </div>
       {(p.up ?? 0) > 0 && <div style={{ color: ASK }}>paid the offer {fmtUsd(p.up as number)}</div>}
       {(p.down ?? 0) > 0 && <div style={{ color: BID }}>hit the bid {fmtUsd(p.down as number)}</div>}
@@ -375,7 +375,7 @@ const NetTooltip = ({ active, payload }: NetTipProps) => {
   if (!p) return null;
   return (
     <Box>
-      <div className="text-textMuted">{Number.isFinite(p.min) ? `${flowClock(p.min as number)} ET` : ''}</div>
+      <div className="text-textMuted">{Number.isFinite(p.min) ? `${flowClock(p.min as number)} CT` : ''}</div>
       {Number.isFinite(p.netCall) && <div style={{ color: (p.netCall as number) >= 0 ? ASK : BID }}>net calls {fmtUsd(p.netCall as number)}</div>}
       {Number.isFinite(p.netPut) && <div style={{ color: (p.netPut as number) > 0 ? BID : ASK }}>net puts {fmtUsd(p.netPut as number)} {(p.netPut as number) > 0 ? '· bought, bearish' : (p.netPut as number) < 0 ? '· sold, bullish' : ''}</div>}
     </Box>
@@ -407,9 +407,7 @@ const MetricPicker = ({ value, onChange }: { value: NetMetric; onChange: (v: Net
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded border font-mono text-[11px] uppercase tracking-wider transition-colors ${
-          open ? 'border-borderMuted bg-ink/[0.05] text-textPrimary' : 'border-borderSubtle bg-ink/[0.02] text-textSecondary hover:text-textPrimary'
-        }`}
+        className={`slayer-chip uppercase tracking-wider ${open ? 'border-borderMuted text-textPrimary' : ''}`}
       >
         {active.label}
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -452,7 +450,7 @@ const BarTooltip = ({ active, payload, step }: BarTipProps) => {
     <Box>
       <div className="text-textMuted">
         {flowClock(from)}
-        {step > 1 ? `–${flowClock(from + step)}` : ''} ET
+        {step > 1 ? `–${flowClock(from + step)}` : ''} CT
       </div>
       {Number.isFinite(p.callVol) && <div style={{ color: ASK }}>calls {Math.abs(p.callVol as number).toLocaleString('en-US')} contracts</div>}
       {Number.isFinite(p.putVol) && <div style={{ color: BID }}>puts {Math.abs(p.putVol as number).toLocaleString('en-US')} contracts</div>}
@@ -550,7 +548,7 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
         </ResponsiveContainer>
       </div>
 
-      {/* the session's contracts by side — the vendor's own split of the same minutes */}
+      {/* the session's contracts by side — the feed's own split of the same minutes */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5">
         <Stat label="Calls at the ask" value={n.callAsk.toLocaleString('en-US')} tone="text-bull" />
         <Stat label="Calls on the bid" value={n.callBid.toLocaleString('en-US')} tone="text-bear" />

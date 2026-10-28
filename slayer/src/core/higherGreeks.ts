@@ -109,7 +109,20 @@ export function higherGreeks(S: number, K: number, t: number, v: number, r?: num
   const yld = q ?? carry.q;
   if (t <= 0) t = 0.0001;
   if (v <= 0) v = 0.01;
+  return higherRaw(S, K, t, v, rate, yld);
+}
 
+/** The same partials with no floor. Null when the inputs cannot be priced — a dead expiry, a missing vol, a bad spot.
+    The public `higherGreeks` still floors a zero so older callers do not divide by zero. */
+export function higherGreeksExact(S: number, K: number, t: number, v: number, r?: number, q?: number): HigherGreeks | null {
+  const carry = getCarry();
+  const rate = r ?? carry.r;
+  const yld = q ?? carry.q;
+  if (!(S > 0) || !(K > 0) || !(t > 1e-6) || !(v > 0) || v > 3) return null;
+  return higherRaw(S, K, t, v, rate, yld);
+}
+
+function higherRaw(S: number, K: number, t: number, v: number, rate: number, yld: number): HigherGreeks {
   const { sqT, dfQ, d1, d2, phi, gamma, vega } = core(S, K, t, v, rate, yld);
 
   const zomma = (gamma * (d1 * d2 - 1)) / v;

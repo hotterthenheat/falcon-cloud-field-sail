@@ -801,4 +801,4 @@ export function applyFilters(rows: BookContract[], f: BookFilters): BookContract
 }
 
 /** Said on every figure the vendor sums for us (audit round 5, SidesRule): its totals carry spread legs and floor packages */
-export const VENDOR_TOTAL_NOTE = 'A vendor total — it includes spread legs and floor packages (the vendor sums every print; the legs cannot be taken back out without every print across the market). Only the totals Trace builds from prints — the Live Tape, the Dark Pool, Multi-Leg — leave them out';
+export const VENDOR_TOTAL_NOTE = 'A summed total — it includes spread legs and floor packages (every print is in the sum; the legs cannot be taken back out without every print across the market). Only the totals Trace builds from prints — the Live Tape, the Dark Pool, Multi-Leg — leave them out';

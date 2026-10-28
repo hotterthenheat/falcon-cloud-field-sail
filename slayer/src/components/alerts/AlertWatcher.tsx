@@ -154,6 +154,8 @@ const AlertWatcher = () => {
           putWall: exp?.putWall ?? null,
           flip: exp?.flip ?? null,
           supreme: exp?.supreme ?? null,
+          coneHigh: null,
+          coneLow: null,
         },
         netGex: exp ? exp.netGex : null,
         step: exp?.step ?? 0,

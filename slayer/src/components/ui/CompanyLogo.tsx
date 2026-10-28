@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { HAS_LOGO, PHOTO_LOGOS } from '../../data/logoFiles';
 
 interface CompanyLogoProps {
   ticker: string;
@@ -67,7 +68,18 @@ const DEEP_MARKS: Record<string, string> = {
    THE TICKER IS THE MARK: the three letters ARE what everyone reads. So a fund keeps its letters, but as a badge that
    was MEANT — the page's ink as a solid tile with the letters cut out of it — where a name we simply have no file for
    wears the quiet grey tile. It is the list's anchor, and it is never asked of the server. */
-const FUND_MARKS = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'SPX', 'NDX', 'RUT', 'VIX']);
+/* A fund has no company. The ticker is the mark — a solid tile, not a gray "missing" one, and never a request.
+   The first eight are the indexes and the big ETFs even when a file exists (the issuer's wordmark is the wrong mark).
+   The rest are the other products on the Compass list: a letter tile until a file is actually there. */
+const CORE_FUNDS = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'SPX', 'NDX', 'RUT', 'VIX']);
+const FUND_EXTRA = new Set([
+  'SPXW', 'XSP', 'RUTW', 'TQQQ', 'SQQQ', 'SOXL', 'SOXS', 'SPXL', 'SPXU', 'SPXS', 'UPRO', 'TNA', 'TZA',
+  'UVXY', 'UVIX', 'VXX', 'SVIX', 'SVXY', 'TMF', 'TBT', 'TLT', 'LABU', 'BOIL', 'KOLD', 'NUGT', 'JNUG', 'NAIL',
+  'FAS', 'DPST', 'AGQ', 'YINN', 'BITO', 'BITX', 'ARKK', 'ARKG', 'SMH', 'SOXX', 'GDX', 'GDXJ', 'XBI', 'XHB',
+  'XRT', 'XOP', 'XLE', 'XLF', 'XLK', 'XLI', 'XLV', 'XLY', 'XLP', 'XLU', 'XLC', 'KRE', 'KWEB', 'EWZ', 'EWW',
+  'EEM', 'EFA', 'FXI', 'GLD', 'SLV', 'USO', 'UNG', 'VOO', 'NVDL', 'TSLL', 'IBB', 'OIH', 'URA', 'URNM', 'MSOS',
+  'TAN', 'UCO', 'SSO', 'RSP',
+]);
 
 /* A FILE THAT IS NOT A MARK (the dossier sweep, 2026-10-22). Most of the fetched set are favicons wrapped in an SVG: a
    raster, not a shape. Two of those fail on the page: a favicon that is one flat colour (NEM's is a white 16px square)
@@ -133,10 +145,15 @@ const probeLogo = (sym: string): Promise<Probe> => {
 const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) => {
   const sym = ticker.toUpperCase();
   const [failedFor, setFailedFor] = useState<string | null>(null);
-  const fund = FUND_MARKS.has(sym);
+  const [remoteMiss, setRemoteMiss] = useState<string | null>(null);
+  const local = HAS_LOGO.has(sym);
+  /* A fund's mark is the ticker. A file we curated stays. Everything else asks the public mark once; a 404 is the letter tile, remembered so the row does not ask again. */
+  const fund = CORE_FUNDS.has(sym) || (FUND_EXTRA.has(sym) && !local);
+  const remoteOff = fund || local || NO_LOGO.has(sym) || remoteMiss === sym;
+  const photo = PHOTO_LOGOS.has(sym);
   const [probe, setProbe] = useState<Probe | undefined>(() => PROBED.get(sym));
   useEffect(() => {
-    if (fund || NO_LOGO.has(sym)) return;
+    if (fund || !local || photo || NO_LOGO.has(sym)) return;
     let live = true;
     const known = PROBED.get(sym);
     if (known) setProbe(known);
@@ -144,10 +161,11 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
     return () => {
       live = false;
     };
-  }, [sym, fund]);
-  const failed = fund || failedFor === sym || NO_LOGO.has(sym) || probe === 'flat';
+  }, [sym, fund, local, photo]);
+  const localFailed = local && (failedFor === sym || NO_LOGO.has(sym) || probe === 'flat');
+  const failed = fund || localFailed || (!local && remoteOff);
   const deep = DEEP_MARKS[sym];
-  const masked = (deep !== undefined || INK_MARKS.has(sym)) && probe !== 'opaque';
+  const masked = local && (deep !== undefined || INK_MARKS.has(sym)) && probe !== 'opaque';
   const shape = `url(/logos/${sym}.svg) center / contain no-repeat`;
 
   return (
@@ -171,6 +189,28 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
           {/* the whole symbol up to five letters (round 11: FWONK's tile read "FWON", another listed symbol) */}
           {sym.length <= 5 ? sym : sym.slice(0, 4)}
         </span>
+      ) : !local ? (
+        <img
+          src={`https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}`}
+          alt=""
+          draggable={false}
+          onError={() => {
+            NO_LOGO.add(sym);
+            setRemoteMiss(sym);
+          }}
+          className="block h-full w-full rounded-[4px] object-contain"
+        />
+      ) : photo ? (
+        <img
+          src={`/logos/${sym}.svg`}
+          alt=""
+          draggable={false}
+          onError={() => {
+            NO_LOGO.add(sym);
+            setFailedFor(sym);
+          }}
+          className="block h-full w-full rounded-[4px]"
+        />
       ) : probe === undefined ? (
         /* NO <img> BEFORE THE FILE IS READ (round 11: /logos/HSBC.svg, SPCX, CEA, PUMP and the Congress ITT card drew the
            browser's broken-image icon — the dev server answers a missing file with the app's HTML). The probe reads the

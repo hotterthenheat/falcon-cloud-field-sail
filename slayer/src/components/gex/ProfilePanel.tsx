@@ -56,6 +56,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Info, X } from 'lucide-react';
 import { bookCandles, dayBars, snapshotOf, useBookRev } from '../../data/uwBook';
+import { nodeScore } from '../../data/nodeScore';
+import { levelsFor } from '../../data/levelsFor';
+import { yesterdayLevel } from '../../data/levelMemory';
 import Term from '../ui/Term';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
@@ -158,9 +161,13 @@ const GROWN_MAX = 400;
     gex should look like 1 button that is active on one of them at a time not a dropdown like the rest") */
 const VIEW_TABS = [
   { value: 'ladder', label: 'Ladder' },
-  { value: 'net', label: 'Net' },
-  { value: 'gex', label: 'GEX' },
+  { value: 'net', label: 'Matrix' },
+  { value: 'gex', label: 'Calendar' },
+  { value: 'surface', label: 'Surface' },
+  { value: 'history', label: 'History' },
+  { value: 'greeks', label: 'Greeks' },
 ] as const;
+type RailView = (typeof VIEW_TABS)[number]['value'];
 /** The head on TWO ROWS below the full tier (2026-09-16: the view tabs and the host's Expiry
     card on the first, the lane tools on the second — one row cannot hold them all at 340) */
 const HEAD_TOP_2 = 56;
@@ -402,6 +409,8 @@ interface ProfilePanelProps {
   onClose?: () => void;
   closeHint?: string;
   className?: string;
+  /** Phone sheet. Ladder only — the calendar is the crash, and it stays unmounted. */
+  lockView?: 'ladder';
 }
 
 interface Placed {
@@ -419,7 +428,7 @@ interface Hover {
 
 const ProfilePanel = ({
   rows, maxAbs, legs, openRatio = null, palette = 'thermal', step, levels, flow, lane, onLane, greek, words = { pos: 'amplifies', neg: 'absorbs' }, focusPrice, onSelect, projection, onGuide, guideOpen = false,
-  ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '',
+  ticker, width, onWidth, restWidth, chartFloor = CHART_MIN_W, headCard, onClose, closeHint = 'Hide this panel', className = '', lockView,
 }: ProfilePanelProps) => {
   const mode = modeOf(palette);
   /* ON PAPER (the page's light theme — the panel's own ground, never the chart's) the ramps are the paper ramps
@@ -434,6 +443,7 @@ const ProfilePanel = ({
     inksRef.current = paper && rootRef.current ? lightInks(rootRef.current) : DARK_INKS;
   }, [paper]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const railArmRef = useRef<() => void>(() => {});
   const placedRef = useRef<Placed[]>([]);
   const [hover, setHover] = useState<Hover | null>(null);
   /* THE VIEW of the size lane (Noah, 2026-09-16, on the partner's Net tab: "I actually like his
@@ -447,13 +457,10 @@ const ProfilePanel = ({
      the expiries to what the panel's width holds and says so, so a wider panel shows more and a narrow one asks for
      width or fewer. Its snapshot is the simulator's read of the name, re-read every ten seconds while the tab is up. */
   /* GEX FIRST (Noah, 2026-10-15, with the panel in front of him: "the gex should also be the first thing that opens") */
-  const [view, setView] = useState<'ladder' | 'net' | 'gex'>('gex');
-  /* THE NET TAB IS THE MATRIX (Noah, 2026-10-17: "the net for the side panel SHOULD be the matrix because its the
-     put/call"): Net and GEX both mount the Map's field — Net locked to the MATRIX with put · call · net under every
-     greek, GEX to the CALENDAR; the tab is the view, so the field shows no View card. The hand-drawn net view (each
-     strike's net as a figure and dashes) stepped aside the same day. */
-  const onField = view === 'gex' || view === 'net';
-  const fieldView: 'matrix' | 'calendar' = view === 'net' ? 'matrix' : 'calendar';
+  const [viewState, setView] = useState<RailView>(lockView ?? 'gex');
+  const view = lockView ?? viewState;
+  const onField = view === 'gex' || view === 'net' || view === 'surface';
+  const fieldView: 'matrix' | 'calendar' | 'profile' = view === 'net' ? 'matrix' : view === 'surface' ? 'profile' : 'calendar';
   const [gexTick, setGexTick] = useState(0);
   useEffect(() => {
     if (!onField) return;
@@ -464,10 +471,10 @@ const ProfilePanel = ({
      field portals them in, DayBox's way), the row wraps as the panel narrows, and the book starts under the row's
      MEASURED height — one line on a wide panel, two or three on a narrow one */
   const [stripSlot, setStripSlot] = useState<HTMLElement | null>(null);
+  const [bookView, setBookView] = useState<'flow' | 'oi' | 'gap'>('flow');
   const headRef = useRef<HTMLDivElement | null>(null);
   const [headH, setHeadH] = useState(HEAD_TOP);
   useEffect(() => {
-    if (!onField) return;
     const el = headRef.current;
     if (!el) return;
     const read = () => setHeadH(Math.max(HEAD_TOP, Math.round(el.getBoundingClientRect().height)));
@@ -478,10 +485,17 @@ const ProfilePanel = ({
   }, [view]);
   const bookRev = useBookRev();
   const gexSnap = useMemo<MarketSnapshot | null>(() => {
-    if (!onField || !ticker) return null;
-    return snapshotOf(ticker);
+    if ((!onField && view !== 'greeks') || !ticker) return null;
+    const snap = snapshotOf(ticker);
+    if (!snap || bookView === 'flow') return snap;
+    const chain = snap.chain.map(n => {
+      if (n.oiNetGex == null) return n;
+      if (bookView === 'oi') return { ...n, netGex: n.oiNetGex, callGex: n.oiCallGex ?? n.callGex, putGex: n.oiPutGex ?? n.putGex };
+      return { ...n, netGex: n.netGex - n.oiNetGex, callGex: n.callGex - (n.oiCallGex ?? n.callGex), putGex: n.putGex - (n.oiPutGex ?? n.putGex) };
+    });
+    return { ...snap, chain };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, ticker, gexTick, bookRev]);
+  }, [view, ticker, gexTick, bookRev, bookView]);
   /* where the rows start this frame — the head, plus the key when it is drawn */
   const headBandRef = useRef(HEAD_TOP);
   /* whether the rows PRINT their figures this frame — the card carries them only when they
@@ -641,7 +655,9 @@ const ProfilePanel = ({
     if (flow) for (const r of flow.rungs) rungBy.set(r.strike, r);
 
     const draw = (ts: number) => {
-      raf = requestAnimationFrame(draw);
+      raf = 0;
+      let keep = true;
+      try {
       const dt = lastTsRef.current ? Math.min(64, ts - lastTsRef.current) : 16;
       lastTsRef.current = ts;
       const k = 1 - Math.exp(-dt / 110);
@@ -656,6 +672,7 @@ const ProfilePanel = ({
           if (c2 && canvas.width && canvas.height) c2.clearRect(0, 0, canvas.width, canvas.height);
           lastKey = 'gex';
         }
+        keep = false;
         return;
       }
       const W = root.clientWidth;
@@ -677,7 +694,7 @@ const ProfilePanel = ({
       const spotY = p.yFor(levels.spot) ?? -1;
       const hv = hoverRef.current;
       const key = `${W}|${Htot}|${H}|${y0.toFixed(1)}|${pitch.toFixed(2)}|${spotY.toFixed(1)}|${hv?.strike ?? ''}|${dataRev.current}`;
-      if (key === lastKey && settledRef.current) return;
+      if (key === lastKey && settledRef.current) { keep = false; return; }
       lastKey = key;
       /* THE TIER this frame, off the panel's own width: the column's width, and whether the key
          is drawn under the head (the ladder view, above thin) — the rows start under both */
@@ -1453,9 +1470,14 @@ const ProfilePanel = ({
         ctx.fill();
       }
       settledRef.current = settled;
+      } finally {
+        if (keep) raf = requestAnimationFrame(draw);
+      }
     };
+    const arm = () => { if (!raf) raf = requestAnimationFrame(draw); };
+    railArmRef.current = arm;
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); railArmRef.current = () => {}; };
   }, [rows, maxAbs, legs, openRatio, mode, step, levels, flow, lane, focusPrice, projection, showSize, showFlow, vp, liveSplit, view, paper]);
 
   /* THE POINTER — the nearest strike by height, anywhere in the lanes */
@@ -1481,6 +1503,7 @@ const ProfilePanel = ({
     }
     if (!best) return;
     if (!hoverRef.current || !near(hoverRef.current.strike, best.strike) || Math.abs(hoverRef.current.x - x) > 2) setHover({ strike: best.strike, x, y: best.y });
+    railArmRef.current();
   };
   const onLeave = () => setHover(null);
   const onClick = () => {
@@ -1824,6 +1847,15 @@ const ProfilePanel = ({
         {/* on GEX the row WRAPS: the tabs, then the field's cards through the slot, the close door pinned at the right */}
         <div className={`flex items-center gap-1.5 min-w-0 ${onField ? 'flex-wrap gap-y-1 py-[3px] pr-7' : ''}`} style={onField ? { minHeight: HEAD_TOP } : { height: HEAD_TOP }}>
           {viewTabs}
+          {gexSnap?.chain.some(n => n.oiNetGex != null) && (
+            <span className="pointer-events-auto inline-flex items-center gap-1 font-mono text-[10px]" data-book-view={bookView}>
+              {(['flow', 'oi', 'gap'] as const).map(id => (
+                <button key={id} type="button" onClick={() => setBookView(id)} className={bookView === id ? 'text-textPrimary' : 'text-textMuted'} title={id === 'gap' ? 'Flow gamma minus open-interest gamma' : id === 'oi' ? 'Open interest only' : 'Signed flow, starting from open interest'}>
+                  {id === 'flow' ? 'Flow' : id === 'oi' ? 'OI' : 'Gap'}
+                </button>
+              ))}
+            </span>
+          )}
           {onField && <div ref={setStripSlot} className="contents" data-profile-head-slot />}
           {headCard && !onField && (
             <span className="pointer-events-auto shrink-0 inline-flex" data-profile-head-card>
@@ -1866,6 +1898,63 @@ const ProfilePanel = ({
       {onField && (
         <div className="absolute inset-x-0 bottom-0 overflow-y-auto overflow-x-hidden pointer-events-auto select-text" style={{ top: headH }} data-profile-gex>
           <ExposureField snapshot={gexSnap} toolbar="panel" viewLock={fieldView} legsLock={view === 'net' ? 'all' : undefined} selectedStrike={focusPrice ?? null} onSelectStrike={onSelect} fullMode="portal" narrowHint="widen the panel or pick fewer" headSlot={stripSlot} />
+        </div>
+      )}
+      {(view === 'history' || view === 'greeks') && (
+        <div className="absolute inset-x-0 bottom-0 overflow-y-auto px-2 py-1 font-mono text-[10px] leading-4 text-textSecondary pointer-events-auto" style={{ top: headH }}>
+          {view === 'history' && ticker && (() => {
+            const lv = levelsFor(ticker, 'ALL');
+            const y = yesterdayLevel(ticker, 'supreme');
+            const moves = lv?.moves ?? [];
+            return (
+              <>
+                <p className="text-textMuted">Level moves today. A blank line means it has not changed strike.</p>
+                {moves.length === 0 && <p>No move recorded.</p>}
+                {moves.map((m, i) => (
+                  <p key={`${m.level}-${m.at}-${i}`}>{m.level} {m.from.toFixed(2)} → {m.to.toFixed(2)}</p>
+                ))}
+                <p>Yesterday supreme: {y != null ? y.toFixed(2) : 'unavailable'}</p>
+              </>
+            );
+          })()}
+          {view === 'greeks' && (
+            <>
+              {([
+                ['netGex', 'Gamma $'],
+                ['oiNetGex', 'Open interest gamma $'],
+                ['netDex', 'Delta $'],
+                ['netVex', 'Vega $'],
+                ['netVanna', 'Vanna $'],
+                ['netCharm', 'Charm $'],
+              ] as const).map(([key, label]) => {
+                const chain = gexSnap?.chain ?? [];
+                if (key === 'oiNetGex' && !chain.some(n => n.oiNetGex != null)) return null;
+                const sum = chain.reduce((a, n) => a + (Number(n[key]) || 0), 0);
+                return <p key={key}>{label}: {chain.length ? fmtUsd(sum) : 'unavailable'}</p>;
+              })}
+              {(() => {
+                const chain = gexSnap?.chain ?? [];
+                const gaps = chain.filter(n => n.bookGap);
+                const score = ticker ? nodeScore(ticker) : null;
+                return (
+                  <>
+                    {gaps.length > 0 && <p>Disagree: {gaps.map(n => n.strike).join(' ')}</p>}
+                    {score && score.unsigned != null && <p>No side on {Math.round(score.unsigned * 100)}% of the near volume.{score.unsigned >= 0.4 ? ' The flow book is thin.' : ''}</p>}
+                    {score && ([['Flow', score.flowHeld, score.flowBroke], ['Nearby', score.nearHeld, score.nearBroke], ['OI', score.oiHeld, score.oiBroke]] as const).map(([name, held, broke]) => {
+                      const n = held + broke;
+                      if (!n) return null;
+                      return <p key={name}>{n < 25 ? `${name}: ${n} events. The rate waits for 25.` : `${name} held ${held} of ${n}, inside 5¢ or 2bp for 10 minutes.`}</p>;
+                    })}
+                    {score && score.oiMiss != null && <p>Yesterday's flow against this morning's open interest: {Math.round(score.oiMiss * 100)}% of OI, {score.oiMissStrikes} strikes.</p>}
+                    {score?.oiMissBy?.map(ex => (
+                      <p key={ex.expiry}>{ex.expiry.slice(5)} calls {ex.call ? `${Math.round(ex.call.rate * 100)}% of OI, ${ex.call.strikes}` : '—'} · puts {ex.put ? `${Math.round(ex.put.rate * 100)}% of OI, ${ex.put.strikes}` : '—'}</p>
+                    ))}
+                  </>
+                );
+              })()}
+              <p className="text-textMuted">One chain. Missing is unavailable, not zero.</p>
+            </>
+          )}
         </div>
       )}
     </div>

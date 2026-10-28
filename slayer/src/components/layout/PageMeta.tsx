@@ -81,6 +81,7 @@ const TOP: Record<string, Meta> = {
   '/terrain': page('Terrain', 'Charts and nothing in the way: one to four side by side on one set of controls, with drawing tools, your own scripts and the book beside the chart.'),
   '/compass': page('Compass', 'Contracts that fit the levels right now. Each one carries a live state: active while the structure holds, watch while it forms, fading when it breaks.'),
   '/compass/tracker': page('Tracker', 'The setups you kept, followed to the close.', 'Compass'),
+  '/compass/blotter': page('Blotter', 'Every trade recorded, from the fill in to the fill out.', 'Compass'),
   '/weigher': page('Weigher', 'Weigh any contract before you take it: the chart, the chain and your watchlist on one desk, and what a position would return at every price.'),
   '/community': page('Community', 'The traders’ room. It opens after launch.'),
   '/start': page('Start', 'Every page of the terminal, one picture and one line each: pick where to begin.'),

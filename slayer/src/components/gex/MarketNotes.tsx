@@ -45,7 +45,7 @@ const MarketNotes = ({ notes, onAddNote }: MarketNotesProps) => {
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && submit()}
           placeholder="Add a note…"
-          className="w-full bg-inputBg border border-borderSubtle rounded-md px-2.5 py-1.5 font-mono text-[11px] text-textPrimary placeholder:text-textMuted focus:border-borderMuted outline-none transition-colors"
+          className="w-full slayer-field"
         />
       </div>
     </div>

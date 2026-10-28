@@ -148,7 +148,7 @@ const PriceReplay = ({ d, reported }: { d: EarningsDossier; reported: boolean })
     return (
       <div className="px-5 pb-4 flex flex-col gap-3" data-name-replay="unpriced">
         <p className="text-[12px] text-textSecondary">
-          The options do not price this print yet — the vendor carries no expected move for {e.dateLabel}
+          The options do not price this print yet — the feed carries no expected move for {e.dateLabel}
           {e.confirmed ? '' : ', an estimated date'}. The replay fills in once the report is on the near calendar.
         </p>
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 pt-3 border-t border-borderSubtle/60">
@@ -455,7 +455,7 @@ const EarningsName = () => {
                       {e.moveLive ? 'the stock is moving' : 'the stock moved'} <span className={e.actualMovePct >= 0 ? 'text-bull' : 'text-bear'}>{e.actualMovePct >= 0 ? '+' : '−'}{Math.abs(e.actualMovePct).toFixed(2)}%</span> {e.moveLive ? 'so far' : ''} {e.slot === 'BMO' && e.timeKnown !== false ? 'on the report day' : 'the session after'}
                     </span>
                   ) : (
-                    <span className="text-textMuted">{e.reactionIso && e.reactionIso === nyIsoDate() ? 'the reacting session is today — reading its move' : e.slot === 'BMO' ? "the move is the report day's session — the vendor has not posted it yet" : "the move is the next session's — it is not made yet"}</span>
+                    <span className="text-textMuted">{e.reactionIso && e.reactionIso === nyIsoDate() ? 'the reacting session is today — reading its move' : e.slot === 'BMO' ? "the move is the report day's session — the feed has not posted it yet" : "the move is the next session's — it is not made yet"}</span>
                   )
                 ) : (
                   <span className={e.confirmed ? 'text-textMuted' : 'text-warn'}>{e.confirmed ? 'the company has confirmed the date' : 'date estimated — the company has not set it'}</span>

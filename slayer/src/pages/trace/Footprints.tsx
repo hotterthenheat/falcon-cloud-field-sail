@@ -117,7 +117,7 @@ const tooltipsFor = (cover: OiCover): Record<string, string> => ({
   ...TOOLTIPS,
   oi: `Open interest ${oiAfterWords(cover.day)} — counted the morning after`,
   prevoi: cover.day ? `Open interest that stood at ${shortDay(cover.day)}'s open — after ${shortDay(prevSessionIso(cover.day))}'s trading` : 'Open interest of the count before',
-  doi: `What open interest did ${oiInWords(cover.day)} — positions built or unwound. A row marked with an earlier day is still on the count before (the vendor has not published this contract's newer one)`,
+  doi: `What open interest did ${oiInWords(cover.day)} — positions built or unwound. A row marked with an earlier day is still on the count before (the feed has not published this contract's newer one)`,
 });
 const TOOLTIPS: Record<string, string> = {
   oi: 'Open interest as of the last count',
@@ -191,7 +191,7 @@ const Footprints = () => {
      interest) — a contract that expired at the bell is left out, and the sentence says how many */
   const stand = useMemo(() => standing(cutExpiry(heldBook)), [heldBook, cutExpiry]);
   const book = stand.rows;
-  /* ONE SESSION'S BUILDS (audit round 7): the counts that pair with the newest published day; a contract the vendor has
+  /* ONE SESSION'S BUILDS (audit round 7): the counts that pair with the newest published day; a contract the feed has
      not re-counted yet keeps its row, marked, and stays out of every sum and pill */
   const cover = useMemo(() => oiCoverOf(book), [book]);
   const onCount = useCallback((r: BookContract) => !oiLags(r, cover), [cover]);
@@ -249,7 +249,7 @@ const Footprints = () => {
     const removed = unwinds.reduce((a, r) => a + r.deltaOI, 0);
     /* the contracts still on the count before — not the ones set apart as not a bet (audit round 11, minor 6) */
     const lag = filtered.length - onCountRows.length;
-    const tail = `${lag ? ` ${num(lag)} contract${lag === 1 ? ' is' : 's are'} still on the count before (the vendor has not re-counted ${lag === 1 ? 'it' : 'them'}) — marked, and left out.` : ''}${cover.allPending && cover.volDay && cover.volDay !== cover.day ? ` ${dayPos(cover.volDay).replace(/^./, c => c.toUpperCase())} volume builds the next count, set the morning of ${nextCountDay(cover.volDay)}.` : ''}`;
+    const tail = `${lag ? ` ${num(lag)} contract${lag === 1 ? ' is' : 's are'} still on the count before (the feed has not re-counted ${lag === 1 ? 'it' : 'them'}) — marked, and left out.` : ''}${cover.allPending && cover.volDay && cover.volDay !== cover.day ? ` ${dayPos(cover.volDay).replace(/^./, c => c.toUpperCase())} volume builds the next count, set the morning of ${nextCountDay(cover.volDay)}.` : ''}`;
     if (builds.length === 0 && unwinds.length === 0) return <RichRead text={`No open interest changed ${oiInWords(cover.day)} on ${counted.length ? '' : 'any single bet among '}${cutWord ? `the contracts ${cutWord}` : 'the book'}.${apartWords}${tail}`} />;
     /* The Screener's grammar (Noah, 2026-08-30): what open interest did, in
        plain words — no "standing interest", no "builds and unwinds" puzzle. */
@@ -566,7 +566,7 @@ const Footprints = () => {
           </>
         }
       >
-        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts', "the vendor's list for the day is done", hold.paused, 'Load more ↓')} emptyText={query.trim() && book.length > 0 ? searchMiss(query, 'contract') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : "Nothing on this cut — no contract's open interest moved enough to show under these cards"} testId="footprints" />
+        <TraceGrid rows={rows} columns={columns} hidden={hidden} widths={WIDTHS} tooltips={tooltips} rowKey={keyOf} onRowClick={openRow} selectedKey={openKey} pinLeft={PIN_LEFT} pinRight={PIN_RIGHT} phoneRow={phoneRow} autoHeight endless={endlessOf(bookPack.older, bookPack.name ? `${bookPack.name} contracts` : 'contracts', 'the list for the day is done', hold.paused, 'Load more ↓')} emptyText={query.trim() && book.length > 0 ? searchMiss(query, 'contract') : reading ? 'Reading the book…' : bookPack.fault && heldBook.length === 0 ? 'This read did not land — the footprints fill when the book answers' : "Nothing on this cut — no contract's open interest moved enough to show under these cards"} testId="footprints" />
       </TraceBox>
 
       <BookDrill list={loudest && !shown.some(r => r.key === loudest.key) ? [loudest, ...shown] : shown} openKey={openKey} onOpen={setOpenKey} tick={tick} />

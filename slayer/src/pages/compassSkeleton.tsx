@@ -34,7 +34,7 @@ export const CompassHeadSkeleton = () => (
 
 /** Under the shell: the board for /compass, the Tracker's page for /compass/tracker (2026-09-13), a setup's page for /compass/<id> */
 export const CompassRouteSkeleton = ({ pathname }: { pathname: string }) =>
-  /^\/compass\/tracker/.test(pathname) ? (
+  /^\/compass\/(tracker|blotter)/.test(pathname) ? (
     <PageSkeleton />
   ) : /^\/compass\/[^/]+/.test(pathname) ? (
     <>

@@ -55,6 +55,8 @@ export interface GexLevel {
   */
   callOI?: number;
   putOI?: number;
+  /** False when the flow net is under about 2% of that strike's gross volume. Absent means the open-interest book. */
+  firm?: boolean;
 }
 
 /** Net GEX across strikes captured at one bar-aligned moment. */
@@ -83,6 +85,12 @@ export interface StrikeNode {
   callGex: number;
   putGex: number;
   netGex: number;
+  /** Open-interest gamma, kept when near-dated netGex is the signed-flow inventory. */
+  oiNetGex?: number;
+  oiCallGex?: number;
+  oiPutGex?: number;
+  /** Flow and open interest disagree by more than a fifth. */
+  bookGap?: boolean;
   callDex: number;
   putDex: number;
   netDex: number;
@@ -111,6 +119,12 @@ export interface StrikeNode {
   putIv?: number;
   callGamma?: number;
   putGamma?: number;
+  /** Signed contract count the greeks were multiplied by. Positive means dealers are short that side.
+      Set for every expiry: flow inventory within five sessions, open interest after that. Absent until the contracts are read. */
+  callBook?: number;
+  putBook?: number;
+  /** False when this strike's flow net is too small a share of its volume to trust. The sign is still the flow sign. */
+  flowFirm?: boolean;
 }
 
 export type TradeDirection = 'BULLISH' | 'BEARISH';
@@ -137,6 +151,8 @@ export interface TapeOrder {
   size: number;
   orderType: 'SWEEP' | 'BLOCK';
   side: 'ASK' | 'BID';
+  /** Days to expiry. 0 is the session's contracts. Absent only on a print that never named one. */
+  dte?: number;
 }
 
 export interface MarketSnapshot {
@@ -156,6 +172,8 @@ export interface MarketSnapshot {
   uwByDate?: Record<string, StrikeNode[]>;
   /** Every expiry the vendor listed, nearest first. */
   uwExpiries?: { date: string; dte: number }[];
+  /** Expiry dates whose option-contracts rows have been read. VEX and the higher greeks are real only on these dates. */
+  uwFacts?: ReadonlySet<string>;
   /** The live book's day move: `changePercent` is the regular session's change; this keeps the move outside the session
       (pre-market before the open, after hours after the close) apart, and whether the day's change is known yet */
   dayMove?: { extPct: number | null; phase: 'pre' | 'regular' | 'post' | 'closed'; known: boolean };

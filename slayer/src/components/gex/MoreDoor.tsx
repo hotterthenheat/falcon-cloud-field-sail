@@ -20,7 +20,7 @@ import { useAnchoredMenu } from '../ui/useAnchoredMenu';
 import { FLAT_DOOR } from '../ui/flatDoor';
 import useFocusTrap from '../ui/useFocusTrap';
 import { bookCsv, downloadText, levelsJson, stampForName } from '../../data/exportBook';
-import { readLevelsScope } from '../../data/levelsScope';
+import { levelsForName } from '../../data/levelsScope';
 import { bookFreshness, sourceWords } from './BookProvenance';
 import { LEVEL_ORDER } from '../../core/walls';
 import type { ExposureSurface, Greek } from '../../data/exposureSurface';
@@ -64,7 +64,7 @@ const MoreDoor = ({ surface, greeks, expiries, onData, compact = false }: Props)
   const stamp = stampForName();
   const take = (what: 'book' | 'levels') => {
     if (what === 'book') downloadText(`${surface.ticker}-book-${stamp}.csv`, bookCsv(surface, greeks, expiries), 'text/csv;charset=utf-8');
-    else downloadText(`${surface.ticker}-levels-${stamp}.json`, levelsJson(surface, readLevelsScope(), src.short), 'application/json');
+    else downloadText(`${surface.ticker}-levels-${stamp}.json`, levelsJson(surface, levelsForName(surface.ticker), src.short), 'application/json');
     setOpen(false);
   };
   const row = 'w-full text-left px-2.5 py-2 rounded-md hover:bg-ink/[0.06] transition-colors flex items-start gap-2.5';

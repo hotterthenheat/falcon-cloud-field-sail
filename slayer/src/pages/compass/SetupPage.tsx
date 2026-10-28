@@ -25,15 +25,15 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { setCompassView } from '../../data/compassView';
 import { ArrowLeft, LayoutGrid } from 'lucide-react';
-import Simulator from '../../core/simulator';
 import { useMarketData } from '../../context/MarketDataContext';
-import { useSeeded } from '../../components/gex/useSeeded';
 import { suggest } from '../notFound/suggest';
 import { useNotFoundHead } from '../notFound/NotFound';
-import { makeSetup, parseSetupId, setupIdOf } from '../../data/compass';
+import { parseSetupId, setupIdOf } from '../../data/compass';
+import { liveSetup, liveSpot, useThetaBook } from '../../data/thetaBook';
+import { heldSetup, leftOf } from '../../data/compassModel';
+import { COMPASS_SET } from '../../data/compassUniverse';
 import type { OptionRight, SleeveKey } from '../../types/compass';
 import CampaignAnalysis from '../../components/compass/CampaignAnalysis';
-import { CampaignSkeleton } from '../compassSkeleton';
 
 const SetupPage = () => {
   const { id = '' } = useParams();
@@ -45,7 +45,11 @@ const SetupPage = () => {
   const navigate = useNavigate();
   const { activeTicker, marketData, changeTicker } = useMarketData();
   const from = (location.state as { from?: string } | null)?.from ?? null;
-  const address = useMemo(() => parseSetupId(id), [id]);
+  const address = useMemo(() => {
+    const parsed = parseSetupId(id);
+    if (!parsed || !COMPASS_SET.has(parsed.ticker)) return null;
+    return parsed;
+  }, [id]);
 
   /* The desk REPOINTS to the contract's underlying — a QQQ setup over an SPY
      chain was the monitor pricing the wrong market (Noah's screenshot, 2026-08) */
@@ -61,20 +65,18 @@ const SetupPage = () => {
   // Bumps every simulator tick — drives incremental candle updates on the chart
   const revRef = useRef(0);
   const revision = useMemo(() => ++revRef.current, [marketData]);
-  /* Found at: the moment this page opened — the numbers that earned the click
-     are frozen inside CampaignAnalysis from this bar on */
+  /* As of: the moment this page opened. The campaign freezes on that bar.
+     It is not when the sweep found the setup. */
   const gradedAt = useMemo(() => new Date().toLocaleTimeString('en-GB'), [id]);
 
-  const seeded = useSeeded(address?.ticker ?? null);
+  const liveBook = useThetaBook(address?.sleeve === 'weekly' ? 'weekly' : 'odte');
   const setup = useMemo(() => {
+    const live = liveBook.setups.find(s => s.id === id) ?? liveSetup(id) ?? heldSetup(id);
+    if (live) return live;
     if (!address) return null;
-    Simulator.register(address.ticker);
-    const cfg = Simulator.TICKERS[address.ticker];
-    if (!cfg) return null;
-    return makeSetup(address.ticker, cfg.currentPrice, address.strike, address.right, address.scanner, cfg.iv, address.sleeve);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, marketData]);
-  const spot = address ? (Simulator.TICKERS[address.ticker]?.currentPrice ?? 0) : 0;
+    return null;
+  }, [address, id, liveBook.setups]);
+  const spot = liveSpot(setup?.ticker ?? address?.ticker ?? '') || 0;
 
   const back = (
     <div className="flex items-center gap-4" data-setup-back>
@@ -114,11 +116,29 @@ const SetupPage = () => {
     );
   }
 
-  if (!seeded || !setup) {
+  if (!setup) {
+    const left = leftOf(id);
+    if (left) {
+      return (
+        <>
+          {back}
+          <div className="border border-bear/30 bg-bear/[0.04] rounded-md px-5 py-6" data-setup-left={left.why}>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">{left.ticker}</span>
+            <p className="mt-1 text-[16px] font-semibold text-textPrimary">{left.contract}</p>
+            <p className="mt-2 font-mono text-[12px] font-bold uppercase tracking-wider text-bear">{left.why}</p>
+            <p className="mt-1 text-[12px] text-textSecondary">This contract left the board. It is not a live pick.</p>
+          </div>
+        </>
+      );
+    }
     return (
       <>
         {back}
-        <CampaignSkeleton />
+        <div className="border border-borderSubtle rounded-md bg-panel px-5 py-6" data-setup-missing>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-textMuted">{address.ticker}</span>
+          <p className="mt-1 text-[16px] font-semibold text-textPrimary">{address.ticker} {address.strike}{address.right}</p>
+          <p className="mt-2 text-[12px] text-textSecondary">Not on this pass. The tape opens a contract the scan is holding.</p>
+        </div>
       </>
     );
   }

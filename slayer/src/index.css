@@ -56,7 +56,7 @@
     /* Holographic silver, not lime (Noah, 2026-08-30: "remove the neon green
        highlight"): a focus ring says WHERE YOU ARE, and that is silver's
        job — lime is reserved for what is live. */
-    outline: 1px solid rgba(199, 211, 232, 0.55);
+    outline: 2px solid #C7D3E8;
     outline-offset: 1px;
   }
 }
@@ -216,6 +216,17 @@
       left: min(0px, calc(50% - 22px));
       right: min(0px, calc(50% - 22px));
     }
+  }
+}
+
+/* The house control. Search fields, filter chips and their hover are this,
+   on every desk — silver is where you are, the chip is the resting face. */
+@layer components {
+  .slayer-field {
+    @apply h-7 max-sm:h-10 rounded-md border border-borderSubtle bg-chip px-2 font-mono text-[11px] text-textPrimary placeholder:text-textMuted transition-colors hover:border-borderMuted focus:outline-none focus:border-silver/50;
+  }
+  .slayer-chip {
+    @apply inline-flex items-center gap-1.5 h-7 max-sm:h-10 px-2.5 rounded-md border border-borderSubtle bg-chip font-mono text-[11px] text-textSecondary transition-colors hover:border-borderMuted hover:text-textPrimary disabled:opacity-40 disabled:pointer-events-none;
   }
 }
 
@@ -528,6 +539,14 @@
    so a shadow of its own would be cut to the band). The Map's ladder wears both; Terrain's pane ring is untouched. */
 .holo-ring-firm {
   padding: 2px;
+}
+
+/* Terrain's panes are instruments, not holes in the page. A silver hairline
+   and a short top shade so the ticker sits on a quiet band instead of on
+   the first candles. The shade is under the chrome (z-20) and ignores the
+   pointer, so a drag on the top of the tape still pans. */
+[data-chart-frame] {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
 .holo-halo {
@@ -971,6 +990,21 @@ body.room-walled { animation: room-flicker 11s linear infinite; }
 }
 [data-trace-grid] .ag-body-horizontal-scroll:not(.ag-scrollbar-invisible) {
   min-height: 8px;
+}
+/* A locked book (the blotter): the sort mark sits in the padding, so the head
+   stays lined up with the figures and a click does not shove it. */
+[data-trace-grid][data-lock] .ag-header-cell-label {
+  position: relative;
+}
+[data-trace-grid][data-lock] .ag-sort-indicator-container {
+  position: absolute;
+  width: 14px;
+}
+[data-trace-grid][data-lock] .ag-right-aligned-header .ag-sort-indicator-container {
+  left: 0;
+}
+[data-trace-grid][data-lock] .ag-header-cell:not(.ag-right-aligned-header) .ag-sort-indicator-container {
+  right: 0;
 }
 /* The × that takes a name off the board shows on its row's hover (Board.tsx NameCell) */
 .slayer-board [data-board-remove] {

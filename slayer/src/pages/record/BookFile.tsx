@@ -162,8 +162,8 @@ export const HouseFile = () => {
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "Unusual Whales' estimate of the average price the house paid — '—' where it rests on a first buy the filing contradicts" },
       { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales\' perc_of_share_value) — over the whole filing, not only the lines read here' },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
-      { headerName: 'First buy', field: 'firstBuy', width: 110, valueFormatter: p => (p.value && /^\d{4}-\d{2}-\d{2}/.test(String(p.value)) ? longDay(String(p.value)) : String(p.value ?? '—')), headerTooltip: "The first quarter this house reported owning the stock — '—' where the vendor's date is contradicted by the filing itself (units held in earlier quarters, or a first price far off the filing's own)" },
-      { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "The close on the day of the first buy. Not a strike. '—' where the vendor's first buy cannot be trusted (see First buy)" },
+      { headerName: 'First buy', field: 'firstBuy', width: 110, valueFormatter: p => (p.value && /^\d{4}-\d{2}-\d{2}/.test(String(p.value)) ? longDay(String(p.value)) : String(p.value ?? '—')), headerTooltip: "The first quarter this house reported owning the stock — '—' where the date is contradicted by the filing itself (units held in earlier quarters, or a first price far off the filing's own)" },
+      { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "The close on the day of the first buy. Not a strike. '—' where the first buy cannot be trusted (see First buy)" },
     ],
     [],
   );
@@ -197,7 +197,7 @@ export const HouseFile = () => {
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{moneyB(value)}{bookLive.totalB ? <span className="text-textMuted"> · {Math.round((100 * value) / bookLive.totalB)}%</span> : null}</dd>
           </div>
           {/* THE WHOLE FILING'S CALLS AND PUTS (audit round 7: the cards read "Calls $0 · Puts $0" off the top 80 lines while
-              BlackRock's 13F carries $12.8B of calls and $4.16B of puts — the vendor's own call_value / put_value) */}
+              BlackRock's 13F carries $12.8B of calls and $4.16B of puts — the feed's own call_value / put_value) */}
           <div>
             <dt className="text-[10px] text-textMuted cursor-help" title={`Calls on the whole 13F as Unusual Whales totals it (call_value) — the market value of the shares the call lines cover${callValue > 0 ? `; ${moneyB(callValue)} of it in the ${feed.length} lines read below` : `; none of the ${feed.length} largest lines below is a call`}`}>Calls · whole 13F</dt>
             <dd className="mt-0.5 font-mono text-[12px] tnum text-textPrimary">{bookLive.optionsB ? moneyB(bookLive.optionsB.calls) : '—'}</dd>

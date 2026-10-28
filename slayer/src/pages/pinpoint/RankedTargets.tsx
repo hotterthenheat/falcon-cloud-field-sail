@@ -64,11 +64,12 @@ import { ensureBook, snapshotOf, useBookRev, usePinpointFeed } from '../../data/
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
-import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
+import DropdownSelect from '../../components/ui/DropdownSelect';
+import ExpiryCard, { type ExpiryChoice } from '../../components/ui/ExpiryCard';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import { Deferred } from '../../components/ui/Skeleton';
 import NamesDoor from '../../components/gex/NamesDoor';
-import TargetsBoard, { TargetsControls, densityFor, type TargetsDensity } from '../../components/gex/TargetsBoard';
+import TargetsBoard, { ORDER_OPTIONS, TargetsControls, WINDOW_OPTIONS, densityFor, type TargetsDensity } from '../../components/gex/TargetsBoard';
 import { TargetsGuide } from '../../components/gex/TargetsGuide';
 import { AgendaSwitch } from './Agenda';
 import { TargetsInner, TargetsPageSkeleton } from '../../components/gex/targetsSkeletons';
@@ -83,6 +84,7 @@ import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { buildExposureSurface, CALENDAR_DTES } from '../../data/exposureSurface';
 import { aheadClock, type AheadClock } from '../../data/ahead';
 import { readSessionClock } from '../../data/moc';
+import { levelsForName } from '../../data/levelsScope';
 import { MAX_PANES, OFF_SCOPE_TITLE, PANE_COLS, newPaneKey, readPanes, usePanesFollowScope, writePanes, type Pane } from '../../data/panes';
 import { contractWords, usePositions } from '../../data/positions';
 import type { ExposureExpiry } from '../../types/gex';
@@ -94,6 +96,11 @@ const PANES_KEY = 'slayer_targets_panes';
 let panesMemory: Pane[] | null = null;
 let orderMemory: AgendaOrder = 'matters';
 let windowMemory: StrikeWindow = 20;
+
+const WINDOWS = new Set<number>([10, 15, 20, 25, 30]);
+const ORDERS = new Set<string>(['matters', 'nearest', 'reached', 'weakest', 'biggest']);
+const paneWindow = (p: Pane, fallback: StrikeWindow): StrikeWindow => (WINDOWS.has(p.strikes ?? -1) ? (p.strikes as StrikeWindow) : fallback);
+const paneOrder = (p: Pane, fallback: AgendaOrder): AgendaOrder => (ORDERS.has(p.order ?? '') ? (p.order as AgendaOrder) : fallback);
 
 /* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
 const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
@@ -109,7 +116,7 @@ interface PaneProps {
   clock: AheadClock;
   density: TargetsDensity;
   count: number;
-  expiryOptions: DropdownOption<ExposureExpiry>[];
+  expiryOptions: ExpiryChoice<ExposureExpiry>[];
   /** The first pane follows the frame's name when it carries none of its own */
   linked: boolean;
   onToggleLink: () => void;
@@ -121,10 +128,12 @@ interface PaneProps {
   yours?: ReadonlyMap<number, string>;
   focus: number | null;
   onPick: (strike: number) => void;
+  /** This pane's list. Absent on a single pane — the row above owns it. */
+  own?: { order: AgendaOrder; window: StrikeWindow; onOrder: (o: AgendaOrder) => void; onWindow: (w: StrikeWindow) => void };
 }
 
 /** A pane: its own alerts, its own watch menu, its own door off — the board under its line */
-const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count, expiryOptions, linked, onToggleLink, onPickName, onExpiry, onRemove, yours, focus, onPick, offScope }: PaneProps) => {
+const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count, expiryOptions, linked, onToggleLink, onPickName, onExpiry, onRemove, yours, focus, onPick, offScope, own }: PaneProps) => {
   const navigate = useNavigate();
   const { focusOn } = useFocus();
   const alerts = useAlerts(ticker);
@@ -143,7 +152,13 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
   const chip = <ScopeChip closeOutside ticker={ticker} linked={index === 0 ? linked : undefined} quote={density === 'full'} onToggleLink={index === 0 ? onToggleLink : undefined} onPick={onPickName} />;
   const expiry = (
     <>
-      <DropdownSelect label="Expiry" value={pane.expiry} options={expiryOptions} onChange={onExpiry} title="Which expiry's hedging this pane ranks — it follows the Levels card at the top until you pick another" testId={`targets-expiry-${index}`} size="sm" />
+      <ExpiryCard label="Expiry" value={pane.expiry} choices={expiryOptions} onChange={onExpiry} title={`Which expiry ${ticker} ranks. The other names keep theirs.`} testId={`targets-expiry-${index}`} size="sm" />
+      {own && (
+        <>
+          <DropdownSelect label="Ranked by" value={own.order} options={ORDER_OPTIONS} onChange={own.onOrder} title={`How ${ticker} is ranked. The other names keep theirs.`} testId={`targets-order-${index}`} />
+          <DropdownSelect label="Strikes" value={own.window} options={WINDOW_OPTIONS} onChange={v => own.onWindow(v as StrikeWindow)} title={`How many strikes ${ticker} shows. The other names keep theirs.`} testId={`targets-strikes-${index}`} />
+        </>
+      )}
       {offScope && (
             <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
               own expiry
@@ -198,13 +213,13 @@ const RankedTargets = () => {
     setPanesState(next);
   };
   const patchPane = (key: string, patch: Partial<Pane>) => setPanes(panes.map(p => (p.key === key ? { ...p, ...patch } : p)));
-  const levelsScope = usePanesFollowScope(panes, setPanes);
+  usePanesFollowScope(panes, setPanes);
   const addPane = (ticker: string) => {
     if (panes.length >= MAX_PANES) return;
     const t = ticker.trim().toUpperCase();
     if (!t) return;
     ensureBook(t, 'full');
-    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: levelsScope }]);
+    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: levelsForName(t) }]);
   };
   const removePane = (key: string) => {
     if (panes.length <= 1) return;
@@ -224,7 +239,7 @@ const RankedTargets = () => {
   /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
   /* each pane's Expiry card names the listing its own name reads (ladderExpiryOptions with a ticker) — re-read as the
      book lands (bookRev re-renders the page) */
-  const expiryOptionsFor = (t: string): DropdownOption<ExposureExpiry>[] => ladderExpiryOptions(t).map(o => ({ value: o.value, label: o.label, hint: o.hint }));
+  const expiryOptionsFor = (t: string): ExpiryChoice<ExposureExpiry>[] => ladderExpiryOptions(t);
 
   /* THE CLOCK — New York time, re-read every 15s; the reach odds run on it */
   const [clockRaw, setClockRaw] = useState(() => readSessionClock());
@@ -272,16 +287,16 @@ const RankedTargets = () => {
     return m;
   }, [scan, pinnedKey, bookRev]);
   const snapFor = (p: Pane): MarketSnapshot | null => {
-    if (!scan) return null;
-    if (!p.ticker || p.ticker === scan.snap.ticker) return scan.snap;
-    return ownSnaps.get(p.ticker) ?? scan.snap;
+    const want = p.ticker ?? activeTicker;
+    if (scan && scan.snap.ticker === want) return scan.snap;
+    return ownSnaps.get(want) ?? null;
   };
   const tickerFor = (p: Pane) => p.ticker ?? activeTicker;
   const focusFor = (t: string) => (focus && focus.ticker === t ? focus.price : null);
 
   /* THE AGENDA, one a pane — the same composition At the wall makes, every strike through it, on the pane's expiry */
   const nonce = scan?.nonce ?? 0;
-  const panesKey = panes.map(p => `${p.key}:${p.ticker ?? ''}:${p.expiry}`).join(',');
+  const panesKey = panes.map(p => `${p.key}:${p.ticker ?? ''}:${p.expiry}:${p.strikes ?? ''}:${p.order ?? ''}`).join(',');
   const agendas = useMemo(() => {
     const out = new Map<string, Agenda>();
     for (const p of panes) {
@@ -290,8 +305,8 @@ const RankedTargets = () => {
       /* THE DESK'S ONE AGENDA (data/board.ts deskAgenda) — the Board's and Compare's watch-first is this page's; the
          Strikes card only trims the list */
       const surface = buildExposureSurface(snap, 30, CALENDAR_DTES);
-      const agenda = deskAgenda(snap, p.expiry, clock, order, surface);
-      if (agenda) out.set(p.key, trimAgenda(agenda, window));
+      const agenda = deskAgenda(snap, p.expiry, clock, paneOrder(p, order), surface);
+      if (agenda) out.set(p.key, trimAgenda(agenda, paneWindow(p, window)));
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -331,7 +346,7 @@ const RankedTargets = () => {
         </div>
         <p className="mt-0.5 text-[11px] text-textMuted lg:whitespace-nowrap lg:truncate">
           Every strike in the order it matters {todayScopeLabel() === 'Today' ? 'today' : 'next session'} — how likely price gets there × how much happens if it does
-          {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
+          {panes.length > 1 ? ' · one pane a name, each with its own expiry, rank and strikes' : ''}
         </p>
       </div>
       <TargetsControls
@@ -380,11 +395,12 @@ const RankedTargets = () => {
                     onToggleLink={() => patchPane(p.key, { ticker: linked ? t : undefined })}
                     onPickName={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
                     onExpiry={e => patchPane(p.key, { expiry: e })}
-                    offScope={p.expiry !== levelsScope}
+                    offScope={p.expiry !== levelsForName(t)}
                     onRemove={() => removePane(p.key)}
                     yours={t === activeTicker ? yours : undefined}
                     focus={focusFor(t)}
                     onPick={strike => toggleFocus(strike, t)}
+                    own={panes.length > 1 ? { order: paneOrder(p, order), window: paneWindow(p, window), onOrder: o => patchPane(p.key, { order: o }), onWindow: w => patchPane(p.key, { strikes: w }) } : undefined}
                   />
                 </Deferred>
               ) : (

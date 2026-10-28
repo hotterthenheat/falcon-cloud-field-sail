@@ -6,23 +6,30 @@
 */
 
 let inflight = 0;
-const waiters: (() => void)[] = [];
-const MAX = 2;
+const next: (() => void)[] = [];
+const first: (() => void)[] = [];
+const MAX = 8;
+const RESERVED = 2;
 
-function take(): Promise<void> {
-  if (inflight < MAX) {
+function take(jump = false): Promise<void> {
+  const cap = jump ? MAX : MAX - RESERVED;
+  if (inflight < cap) {
     inflight += 1;
     return Promise.resolve();
   }
-  return new Promise(resolve => waiters.push(resolve));
+  return new Promise(resolve => (jump ? first : next).push(resolve));
 }
 
 function release(): void {
   inflight -= 1;
-  const next = waiters.shift();
-  if (next) {
+  if (first.length && inflight < MAX) {
     inflight += 1;
-    next();
+    first.shift()?.();
+    return;
+  }
+  if (next.length && inflight < MAX - RESERVED) {
+    inflight += 1;
+    next.shift()?.();
   }
 }
 
@@ -59,8 +66,8 @@ function faultText(status: number, parsed: unknown, text: string): string {
   return msg || `unavailable ${status}`;
 }
 
-export async function thetaCall(path: string): Promise<{ status: number; data: unknown; error: string | null }> {
-  await take();
+export async function thetaCall(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
+  await take(jump);
   try {
     const res = await fetch(`/api/theta${path}`);
     const text = await res.text();

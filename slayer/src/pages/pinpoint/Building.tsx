@@ -72,10 +72,11 @@ import { bookCandles, bookHistory, ensureBook, peekDaySigma, peekIv, snapshotOf,
 import { useTicker } from '../../context/MarketDataContext';
 import { useFocus } from '../../context/FocusContext';
 import ScopeChip from '../../components/ui/ScopeChip';
-import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
+import DropdownSelect from '../../components/ui/DropdownSelect';
+import ExpiryCard, { type ExpiryChoice } from '../../components/ui/ExpiryCard';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import { Deferred } from '../../components/ui/Skeleton';
-import BuildingLedger, { BuildingControls, type BuildOrder, type BuildShow } from '../../components/gex/BuildingLedger';
+import BuildingLedger, { BuildingControls, ORDER_OPTIONS, SHOW_OPTIONS, WINDOW_OPTIONS, type BuildOrder, type BuildShow } from '../../components/gex/BuildingLedger';
 import NamesDoor from '../../components/gex/NamesDoor';
 import { BuildingGuide } from '../../components/gex/BuildingGuide';
 import { ladderExpiryOptions } from '../../components/gex/ladderControls';
@@ -86,7 +87,8 @@ import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
 import { aheadClock } from '../../data/ahead';
 import { fmtDistance, impliedDaySigma, sessionAtr } from '../../data/atr';
 import { buildBuilding, oiWhen, type Building as BuildingData } from '../../data/building';
-import { useDistanceUnit } from '../../data/distanceUnits';
+import { unitForName, useNameUnit } from '../../data/distanceUnits';
+import { levelsForName } from '../../data/levelsScope';
 import { readSessionClock } from '../../data/moc';
 import { MAX_PANES, OFF_SCOPE_TITLE, PANE_COLS, newPaneKey, readPanes, usePanesFollowScope, writePanes, type Pane } from '../../data/panes';
 import { usePositions } from '../../data/positions';
@@ -109,6 +111,13 @@ let windowMemory: StrikeWindow = 20;
    alone had been the default since 2026-09-13 */
 let showMemory: BuildShow = 'all';
 
+const WINDOWS = new Set<number>([10, 15, 20, 25, 30]);
+const ORDERS = new Set<string>(['strike', 'built', 'drained']);
+const SHOWS = new Set<string>(['moved', 'all']);
+const paneWindow = (p: Pane, fallback: StrikeWindow): StrikeWindow => (WINDOWS.has(p.strikes ?? -1) ? (p.strikes as StrikeWindow) : fallback);
+const paneOrder = (p: Pane, fallback: BuildOrder): BuildOrder => (ORDERS.has(p.order ?? '') ? (p.order as BuildOrder) : fallback);
+const paneShow = (p: Pane, fallback: BuildShow): BuildShow => (SHOWS.has(p.show ?? '') ? (p.show as BuildShow) : fallback);
+
 /* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
 const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
@@ -126,13 +135,13 @@ const Building = () => {
     setPanesState(next);
   };
   const patchPane = (key: string, patch: Partial<Pane>) => setPanes(panes.map(p => (p.key === key ? { ...p, ...patch } : p)));
-  const levelsScope = usePanesFollowScope(panes, setPanes);
+  usePanesFollowScope(panes, setPanes);
   const addPane = (ticker: string) => {
     if (panes.length >= MAX_PANES) return;
     const t = ticker.trim().toUpperCase();
     if (!t) return;
     ensureBook(t, 'full');
-    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: levelsScope }]);
+    setPanes([...panes, { key: newPaneKey(), ticker: t, expiry: levelsForName(t) }]);
   };
   const removePane = (key: string) => {
     if (panes.length <= 1) return;
@@ -154,12 +163,12 @@ const Building = () => {
     setShowState(s);
   };
   const [guideOpen, setGuideOpen] = useState(false);
-  /* THE DISTANCE FROM SPOT under every strike, in the shell's own ruler */
-  const unit = useDistanceUnit();
+  /* each pane's distance is that name's ruler */
+  useNameUnit(activeTicker);
   /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
   /* each pane's Expiry card names the listing its own name reads (ladderExpiryOptions with a ticker) — re-read as the
      book lands (bookRev re-renders the page) */
-  const expiryOptionsFor = (t: string): DropdownOption<ExposureExpiry>[] => ladderExpiryOptions(t).map(o => ({ value: o.value, label: o.label, hint: o.hint }));
+  const expiryOptionsFor = (t: string): ExpiryChoice<ExposureExpiry>[] => ladderExpiryOptions(t);
 
   /* THE CLOCK — New York time, re-read every 15s; the pace runs on it */
   const [clockRaw, setClockRaw] = useState(() => readSessionClock());
@@ -207,23 +216,23 @@ const Building = () => {
     return m;
   }, [scan, pinnedKey, bookRev]);
   const snapFor = (p: Pane): MarketSnapshot | null => {
-    if (!scan) return null;
-    if (!p.ticker || p.ticker === scan.snap.ticker) return scan.snap;
-    return ownSnaps.get(p.ticker) ?? scan.snap;
+    const want = p.ticker ?? activeTicker;
+    if (scan && scan.snap.ticker === want) return scan.snap;
+    return ownSnaps.get(want) ?? null;
   };
   const tickerFor = (p: Pane) => p.ticker ?? activeTicker;
   const focusFor = (t: string) => (focus && focus.ticker === t ? focus.price : null);
 
   /* THE ANSWERS, one a pane — the whole day's snapshots against the live chain, on the pane's expiry */
   const nonce = scan?.nonce ?? 0;
-  const panesKey = panes.map(p => `${p.key}:${p.ticker ?? ''}:${p.expiry}`).join(',');
+  const panesKey = panes.map(p => `${p.key}:${p.ticker ?? ''}:${p.expiry}:${p.strikes ?? ''}:${p.order ?? ''}:${p.show ?? ''}`).join(',');
   const builds = useMemo(() => {
     const out = new Map<string, BuildingData>();
     for (const p of panes) {
       const snap = snapFor(p);
       if (!snap) continue;
       const t = snap.ticker;
-      const profile = buildExposureProfile(snap, p.expiry, window);
+      const profile = buildExposureProfile(snap, p.expiry, paneWindow(p, window));
       ensureOiChange(t);
       out.set(p.key, buildBuilding(snap, bookHistory(t) ?? [], bookCandles(t) ?? [], profile, clock, peekOiChange(t)));
     }
@@ -270,10 +279,10 @@ const Building = () => {
           {first.overnight
             ? `The overnight open-interest count, contract by contract · the hedging ${oiWhen(first.oiDates).long} added or took off, each contract valued at the same pricing as the wall now (the live book's own price and minute)${oiWhen(first.oiDates).pending ? ` · ${oiWhen(first.oiDates).pending}` : ''} · every strike, the steady ones too — Show · What moved folds them away`
             : `${clock.inSession ? "Today's trading" : 'The last session'}, strike by strike · estimated from the day's volume until the overnight open-interest count loads · every strike, the steady ones too — Show · What moved folds them away`}
-          {panes.length > 1 ? ' · one pane a name, each on its own expiry' : ''}
+          {panes.length > 1 ? ' · one pane a name, each with its own expiry, strikes and order' : ''}
         </p>
       </div>
-      <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={counted ? moved : null} total={total} />
+      <BuildingControls clock={clock} order={order} onOrder={setOrder} window={window} onWindow={setWindow} show={show} onShow={setShow} names={namesDoor} updatedAt={scan.at} moved={counted ? moved : null} total={total} lenses={panes.length < 2} />
 
       {/* THE PANES — side by side at desk width, a hairline between; stacked on a phone */}
       <div className={`border-t border-borderSubtle grid grid-cols-1 ${PANE_COLS[panes.length] ?? ''} gap-px bg-borderSubtle/60`} data-build-grid>
@@ -283,7 +292,7 @@ const Building = () => {
           const linked = p.ticker === undefined;
           const iv = data ? peekIv(data.ticker) : null;
           const scales = data && iv != null ? { atr: sessionAtr(bookCandles(data.ticker) ?? []), sigma: peekDaySigma(data.ticker) ?? impliedDaySigma(data.spot, iv) } : null;
-          const distanceOf = (strike: number) => (data && scales ? fmtDistance(strike - data.spot, data.spot, unit, scales) : '');
+          const distanceOf = (strike: number) => (data && scales ? fmtDistance(strike - data.spot, data.spot, unitForName(t), scales) : '');
           const head = (
             <>
               <ScopeChip
@@ -295,8 +304,15 @@ const Building = () => {
                 onToggleLink={i === 0 ? () => patchPane(p.key, { ticker: linked ? t : undefined }) : undefined}
                 onPick={next => (i === 0 && linked ? changeTicker(next) : patchPane(p.key, { ticker: next.toUpperCase() }))}
               />
-              <DropdownSelect label="Expiry" value={p.expiry} options={expiryOptionsFor(tickerFor(p))} onChange={e => patchPane(p.key, { expiry: e })} title="Which expiry's hedging this pane reads — it follows the Levels card at the top until you pick another" testId={`build-expiry-${i}`} size="sm" />
-              {p.expiry !== levelsScope && (
+              <ExpiryCard label="Expiry" value={p.expiry} choices={expiryOptionsFor(tickerFor(p))} onChange={e => patchPane(p.key, { expiry: e })} title={`Which expiry ${t} reads. The other names keep theirs.`} testId={`build-expiry-${i}`} size="sm" />
+              {panes.length > 1 && (
+                <>
+                  <DropdownSelect label="Show" value={paneShow(p, show)} options={SHOW_OPTIONS} onChange={s => patchPane(p.key, { show: s })} title={`What ${t} lists. The other names keep theirs.`} testId={`build-show-${i}`} />
+                  <DropdownSelect label="Order" value={paneOrder(p, order)} options={ORDER_OPTIONS} onChange={o => patchPane(p.key, { order: o })} title={`How ${t} is listed. The other names keep theirs.`} testId={`build-order-${i}`} />
+                  <DropdownSelect label="Strikes" value={paneWindow(p, window)} options={WINDOW_OPTIONS} onChange={w => patchPane(p.key, { strikes: w })} title={`How many strikes ${t} shows. The other names keep theirs.`} testId={`build-window-${i}`} />
+                </>
+              )}
+              {p.expiry !== levelsForName(t) && (
             <span title={OFF_SCOPE_TITLE} className="inline-flex items-center h-6 px-1.5 rounded border border-borderSubtle font-mono text-[9px] uppercase tracking-widest text-textMuted cursor-help" data-off-scope>
               own expiry
             </span>
@@ -316,9 +332,9 @@ const Building = () => {
                     data={data}
                     ticker={t}
                     clock={clock}
-                    order={order}
-                    window={window}
-                    show={show}
+                    order={paneOrder(p, order)}
+                    window={paneWindow(p, window)}
+                    show={paneShow(p, show)}
                     distanceOf={distanceOf}
                     yours={t === activeTicker ? yours : undefined}
                     focus={focusFor(t)}

@@ -67,7 +67,7 @@ import { LEVELS_WINDOW } from './roomLevels';
 import { bookCandles, snapshotOf } from './uwBook';
 import { peekQuote, extendedLine, priceWords, screenerRead, screenerNeedsCloses } from './liveQuote';
 import { peekLive, peekTickerNews } from './liveRecord';
-import { darkReadable, peekStockFile, type EarnRow, type StockFile } from './stockFile';
+import { darkReadable, peekStockFile, quarterFacts, type EarnRow, type StockFile } from './stockFile';
 import { lastSessionIso, nyTodayIso } from './nyDate';
 import { nyClock, nyIsoDate, nyMinutes, SESSION_CLOSE_MIN, SESSION_OPEN_MIN } from '../core/nyTime';
 import { peekRegularCloses, phaseOf } from './dayChange';
@@ -1060,8 +1060,8 @@ const pastPrints = (rows: EarnRow[]): EarnRow[] => {
 };
 const withEstimate = (r: EarnRow) => hasVal(r.actual_eps) && hasVal(r.street_mean_est);
 
-/* The last print, earnings growth, the dividend and the market cap. Revenue, margins and a fair value are not on this feed. */
 const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } => {
+  const filed = quarterFacts(file.quarters ?? []);
   if (file.status !== 'live') return { read: EMPTY_NUMBERS, factors: [] };
   const past = pastPrints(file.earnings);
   const last = past[0];
@@ -1084,7 +1084,7 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
   const growth = nOr(file.screen?.eps_growth_4q);
   const div = nOr(file.screen?.dividend_yield);
   const cap = nOr(file.screen?.marketcap);
-  if (epsActual == null && growth == null && div == null && cap == null) return { read: EMPTY_NUMBERS, factors: [] };
+  if (epsActual == null && growth == null && div == null && cap == null && filed.revenue == null && file.street == null) return { read: EMPTY_NUMBERS, factors: [] };
   const factors: Factor[] = [];
   if (epsSurprisePct != null) {
     factors.push({
@@ -1123,23 +1123,23 @@ const numbersFor = (file: StockFile): { read: Fundamentals; factors: Factor[] } 
       epsActual,
       epsSurprisePct,
       revenueEstimateB: null,
-      revenueActualB: null,
+      revenueActualB: filed.revenue != null ? filed.revenue / 1e9 : null,
       revenueSurprisePct: null,
       beats: scored.length ? beats : null,
       beatOf: scored.length,
       inline: scored.length ? inline : null,
       misses: scored.length ? misses : null,
-      revenueGrowthPct: null,
+      revenueGrowthPct: filed.revenueGrowthPct,
       epsGrowthPct: growth != null ? growth * 100 : null,
-      operatingMarginPct: null,
-      freeCashFlowMarginPct: null,
+      operatingMarginPct: filed.operatingMarginPct,
+      freeCashFlowMarginPct: filed.fcfMarginPct,
       pe: null,
       sectorMedianPe: null,
       evToSales: null,
       peg: null,
       sectorPercentile: null,
-      fairValue: null,
-      vsFairValuePct: null,
+      fairValue: file.street?.median ?? null,
+      vsFairValuePct: file.street && nOr(file.screen?.close) != null && file.street.median > 0 ? ((nOr(file.screen?.close)! / file.street.median) - 1) * 100 : null,
       valuation: null,
       healthScore: null,
       guidance: null,

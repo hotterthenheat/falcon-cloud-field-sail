@@ -7,9 +7,10 @@
 ==================================================
 */
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import type { TrackedSetup } from '../types/tracker';
 import { SCANNERS, type Setup, type ScannerKey } from '../types/compass';
+import { gateTrack, type TrackAnswer } from '../data/compassDoor';
 
 const STORAGE_KEY = 'slayer_tracked_setups';
 
@@ -55,7 +56,7 @@ function saveToStorage(setups: TrackedSetup[]): void {
 
 interface TrackerContextValue {
   trackedSetups: TrackedSetup[];
-  trackSetup: (setup: Setup, scanner: ScannerKey) => void;
+  trackSetup: (setup: Setup, scanner: ScannerKey, book?: { mark: number; stop: number; ask?: number }) => TrackAnswer;
   untrackSetup: (id: string) => void;
   isTracked: (id: string) => boolean;
 }
@@ -64,36 +65,47 @@ const TrackerContext = createContext<TrackerContextValue | null>(null);
 
 export const TrackerProvider = ({ children }: { children: React.ReactNode }) => {
   const [trackedSetups, setTrackedSetups] = useState<TrackedSetup[]>(loadFromStorage);
+  const bookRef = useRef(trackedSetups);
+  bookRef.current = trackedSetups;
 
-  const trackSetup = useCallback((setup: Setup, scanner: ScannerKey) => {
-    setTrackedSetups(prev => {
-      if (prev.some(t => t.id === setup.id)) return prev; // already tracked
-      const next = [
-        ...prev,
-        {
-          id: setup.id,
-          contract: setup.contract,
-          ticker: setup.ticker,
-          strike: setup.strike,
-          right: setup.right,
-          scanner,
-          sleeve: setup.sleeve,
-          trackedAt: Date.now(),
-          scoreAtTrack: setup.score,
-          verdictAtTrack: setup.verdict,
-        },
-      ];
-      saveToStorage(next);
-      return next;
-    });
+  const trackSetup = useCallback((setup: Setup, scanner: ScannerKey, book?: { mark: number; stop: number; ask?: number }): TrackAnswer => {
+    const prev = bookRef.current;
+    const gate = gateTrack(prev, setup);
+    if (!gate.ok) return gate;
+    if (prev.some(t => t.id === setup.id)) return { ok: true };
+    const next = [
+      ...prev,
+      {
+        id: setup.id,
+        contract: setup.contract,
+        ticker: setup.ticker,
+        strike: setup.strike,
+        right: setup.right,
+        scanner,
+        sleeve: setup.sleeve,
+        trackedAt: Date.now(),
+        scoreAtTrack: setup.score,
+        verdictAtTrack: setup.verdict,
+        markAtTrack: book?.mark,
+        stopAtTrack: book?.stop,
+        askAtTrack: book?.ask ?? setup.ask,
+        signalBid: setup.bid,
+        signalAsk: setup.ask,
+        signalMid: setup.mid,
+      },
+    ];
+    bookRef.current = next;
+    saveToStorage(next);
+    setTrackedSetups(next);
+    return { ok: true };
   }, []);
 
   const untrackSetup = useCallback((id: string) => {
-    setTrackedSetups(prev => {
-      const next = prev.filter(t => t.id !== id);
-      saveToStorage(next);
-      return next;
-    });
+    if (!bookRef.current.some(t => t.id === id)) return;
+    const next = bookRef.current.filter(t => t.id !== id);
+    bookRef.current = next;
+    saveToStorage(next);
+    setTrackedSetups(next);
   }, []);
 
   const isTracked = useCallback(
