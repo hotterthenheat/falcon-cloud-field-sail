@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Node view, before and after</title>
+<style>
+  html, body { margin: 0; background: #050505; color: #ededed; font-family: "Avenir Next", "Segoe UI", Helvetica, sans-serif; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px; }
+  h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #9a9a9a; }
+  .stage { position: relative; height: 280px; background: #070907; border: 1px solid #222; overflow: hidden; }
+  .price { position: absolute; left: 0; right: 0; height: 2px; background: #ededed; opacity: 0.85; }
+  .bead { position: absolute; border-radius: 999px; transform: translate(-50%, -50%); }
+  .tag { position: absolute; font-size: 10px; font-family: ui-monospace, Menlo, monospace; }
+  .foot { margin: 6px 0 0; font-size: 11px; color: #c8c8c8; line-height: 1.35; }
+  .chip { position: absolute; top: 8px; left: 8px; font-size: 10px; background: #C7D3E8; color: #0a0a0a; padding: 2px 6px; border-radius: 3px; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Today · top 12, one book, one scale</h2>
+    <div class="stage" id="now"></div>
+    <p class="foot">Every heavy strike draws. Green and red in this picture are the wall inks still named in the field file. Size is against the 85th percentile of the session, which is already better than scaling to one node. There is no mark when a node is born or dies.</p>
+  </section>
+  <section>
+    <h2>Proposed · peaks, 0DTE, events</h2>
+    <div class="stage" id="next"></div>
+    <p class="foot">Same tape. Only peaks and plateaus, faded if they are under a fifth of the session scale. 0DTE is the bright ribbon; the rest of the book is the thin one. A tick marks a node that flipped. Full size does not jump when a new maximum prints.</p>
+  </section>
+</main>
+<script>
+  const price = [40, 42, 48, 55, 52, 46, 44, 50, 62, 70, 66, 58, 54, 49, 47];
+  function paint(id, mode) {
+    const el = document.getElementById(id);
+    price.forEach((y, i) => {
+      const x = 36 + i * 46;
+      const line = document.createElement('i');
+      line.className = 'price';
+      line.style.left = (x - 8) + 'px';
+      line.style.width = '16px';
+      line.style.top = (210 - y) + 'px';
+      el.appendChild(line);
+    });
+    const rows = mode === 'now'
+      ? [[0.9,'#30D158',18],[0.55,'#FF3B30',14],[0.35,'#30D158',10],[0.22,'#FF3B30',8],[0.15,'#7ABDD7',6]]
+      : [[0.9,'#7ABDD7',16],[0.7,'#F5C542',14]];
+    rows.forEach((r, ri) => {
+      const [t, color, h] = r;
+      price.forEach((y, i) => {
+        const wobble = mode === 'now' ? (i % 3) * 4 : (ri === 0 ? 0 : 18);
+        const b = document.createElement('i');
+        b.className = 'bead';
+        b.style.left = (36 + i * 46) + 'px';
+        b.style.top = (210 - y + (ri - 1) * 16 + wobble * 0) + 'px';
+        b.style.top = (150 + ri * 28 - (i % 4) * 2) + 'px';
+        b.style.width = (mode === 'now' ? 18 : 22) + 'px';
+        b.style.height = h + 'px';
+        b.style.background = color;
+        b.style.opacity = mode === 'now' ? 0.35 + t * 0.5 : (ri === 1 ? 0.35 : 0.9);
+        el.appendChild(b);
+      });
+    });
+    if (mode === 'next') {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.textContent = '0DTE';
+      el.appendChild(chip);
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+      tag.style.left = '250px';
+      tag.style.top = '168px';
+      tag.style.color = '#F5C542';
+      tag.textContent = 'flipped';
+      el.appendChild(tag);
+      const tag2 = document.createElement('div');
+      tag2.className = 'tag';
+      tag2.style.left = '430px';
+      tag2.style.top = '120px';
+      tag2.style.color = '#EDEDED';
+      tag2.textContent = 'rejected';
+      el.appendChild(tag2);
+    }
+  }
+  paint('now', 'now');
+  paint('next', 'next');
+</script>
+</body>
+</html>

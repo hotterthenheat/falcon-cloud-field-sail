@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Terrain — the master brief</title>
+<style>
+  :root { --ink:#1c1915; --muted:#5c564c; --line:#d9d2c5; --green:#1f6b45; --green-soft:#e7f2eb; --warn:#8a3d12; --warn-soft:#f8ebe3; --code:#f3efe6; }
+  @page { size: letter; margin: 0.6in 0.65in; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Iowan Old Style", Palatino, Georgia, serif; color:var(--ink); font-size:11pt; line-height:1.4; }
+  h1,h2,h3 { font-family:"Avenir Next","Segoe UI",Helvetica,Arial,sans-serif; line-height:1.2; font-weight:650; }
+  h1 { font-size:26pt; margin:0 0 8px; letter-spacing:-0.03em; }
+  h2 { font-size:15pt; margin:22px 0 8px; page-break-after:avoid; border-top:2px solid var(--ink); padding-top:8px; }
+  h3 { font-size:12pt; margin:14px 0 4px; page-break-after:avoid; color:var(--green); }
+  p { margin:0 0 7px; }
+  a { color:var(--green); }
+  code,pre { font-family:ui-monospace,Menlo,Consolas,monospace; }
+  code { font-size:0.86em; background:var(--code); padding:0 3px; }
+  pre { background:var(--code); border:1px solid var(--line); padding:7px 9px; font-size:8pt; line-height:1.32; page-break-inside:avoid; white-space:pre-wrap; }
+  table { width:100%; border-collapse:collapse; margin:8px 0 12px; font-family:"Avenir Next",Helvetica,sans-serif; font-size:8.3pt; line-height:1.3; }
+  th,td { border:1px solid var(--line); padding:3px 5px; vertical-align:top; text-align:left; }
+  th { background:#efeae1; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .kicker { font-family:"Avenir Next",Helvetica,sans-serif; letter-spacing:.16em; text-transform:uppercase; font-size:9pt; color:var(--green); }
+  .lede { font-size:12.5pt; }
+  .meta { font-family:"Avenir Next",Helvetica,sans-serif; font-size:9pt; color:var(--muted); }
+  .callout { background:var(--green-soft); border-left:4px solid var(--green); padding:8px 12px; margin:8px 0 12px; page-break-inside:avoid; }
+  .warn { background:var(--warn-soft); border-left:4px solid var(--warn); padding:8px 12px; margin:8px 0 12px; page-break-inside:avoid; }
+  figure { margin:8px 0 12px; page-break-inside:avoid; }
+  figure img { width:100%; border:1px solid var(--line); }
+  figcaption { font-family:"Avenir Next",Helvetica,sans-serif; font-size:8pt; color:var(--muted); margin-top:3px; }
+  ol.toc { font-family:"Avenir Next",Helvetica,sans-serif; font-size:11pt; }
+  ol.toc a { color:var(--ink); text-decoration:none; }
+  .tag { font-family:"Avenir Next",Helvetica,sans-serif; font-size:8pt; text-transform:uppercase; border:1px solid var(--line); padding:0 4px; }
+</style>
+</head>
+<body>
+
+<p class="kicker">Slayer · Terrain · master brief</p>
+<h1>Make the desk the one a trader trusts</h1>
+<p class="lede">One read of the three briefs: what is broken, what was measured, how the beads work, how a signed book replaces the open-interest guess, and where the sell side has already moved.</p>
+<p class="meta">Evening of 27 Oct 2026, Chicago time. Parts 1–3 stay on disk as the long versions. This file keeps the decisions, the numbers, the pictures and the snippets, and drops the repeated tours. Sources are linked. Nothing is quoted at length. The app source was not changed.</p>
+
+<h2 id="toc">Contents</h2>
+<ol class="toc">
+  <li><a href="#sum">Executive summary</a></li>
+  <li><a href="#now">What the desk does today</a></li>
+  <li><a href="#meas">What was measured</a></li>
+  <li><a href="#look">How it reads</a></li>
+  <li><a href="#nodes">Exposure nodes</a></li>
+  <li><a href="#flow">Signed flow, past the open-interest proxy</a></li>
+  <li><a href="#inst">Where institutions are heading</a></li>
+  <li><a href="#road">The roadmap</a></li>
+  <li><a href="#gap">What was not verified</a></li>
+</ol>
+
+<h2 id="sum">1. Executive summary</h2>
+<p>Terrain already draws the object a gamma trader wants: candles, a strike ribbon, and walls, in one pane. OpenMarket’s own guide says its heats and flips disagree, and cloning its 241 studies would not fix Terrain. Three bugs do.</p>
+<ol>
+  <li><strong>Two books.</strong> Candles, trails, IV and the cone read Unusual Whales. The header price and the wall, flip and supreme rungs read the in-browser simulator. On the synthetic book the chart printed 463.22 (+1.81%) and the header printed about $497 with that same percent. On the node shot the candles printed 464.46 and the header $489.35.</li>
+  <li><strong>The rail can take the page down.</strong> <code>ExposureField</code> returns early while the book is empty, then calls more hooks when it arrives. React throws, and the route boundary replaces the desk. A per-pane boundary is the net. Moving the hooks is the fix.</li>
+  <li><strong>The beads are an open-interest story.</strong> They are well drawn — on the price scale, scaled to the 85th percentile, twelve strikes, faded by strength — and the path through the day is a straight line through open interest, not the trades. JPMorgan has already left that proxy for Cboe’s client buy/sell flag (<a href="https://www.bloomberg.com/news/articles/2026-10-25/zero-day-option-traders-are-betting-against-big-s-p-500-swings">Bloomberg, 25 Oct 2026</a>). Terrain can start with the side tags it already stores.</li>
+</ol>
+<div class="callout">Do the small correctness fixes first. They are ratio 4 or 5. Then one book, then a signed inventory from prints already classified. Do not buy a Cboe license, and do not move the walls onto the signed number, until that inventory beats the prior on a test written down in advance.</div>
+
+<h2 id="now">2. What the desk does today</h2>
+<p>Route <code>/terrain</code>, <code>slayer/src/pages/terrain/Terrain.tsx</code>. Each pane is a <code>StrikeChart</code>. The ribbon is <code>GexTrailsPrimitive</code> in <code>gexNodesPrimitive.ts</code>. Levels come from <code>buildLevelsFor</code> on the simulator. The whale book is <code>uwBook.ts</code>, through <code>/api/uw</code>. The key stays on the server. Part 1 has the file table. This is the behaviour that matters.</p>
+<p>With no vendor key the rail says it is waiting for a tick. The proxy is unconfigured. The header still quotes simulator dollars. That empty state is a lie. Part 1 has the copy. The fix is one sentence: no key, no tick is coming, and the number on screen is a practice book.</p>
+<p>The flip on the rungs is the nearest sign-change midpoint. The Map uses <code>core/gammaFlip.ts</code>. On the same synthetic book the Map said long gamma, pin near 455, no flip within 10%. Part 1 has that shot. Do not draw a second flip. Use one function.</p>
+<figure>
+  <img src="screenshots/01-no-key-default.png" alt="Terrain with no vendor key" />
+  <figcaption>No key. The header is a simulator price. The chart has no candles. Part 1.</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/02-three-up-rail-fault.png" alt="Three panes fault when the book arrives" />
+  <figcaption>Three panes, rails on, synthetic book. The hooks crash. The route boundary replaces the desk. Part 1.</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/09-pinpoint-map.png" alt="Pinpoint map on the same synthetic book" />
+  <figcaption>Same book, Map route. Spot is the book’s. The regime line is the one Terrain’s header does not have. Part 1.</figcaption>
+</figure>
+
+<h2 id="meas">3. What was measured</h2>
+<p>Part 2 timed the desk. Synthetic book, rails off, Playwright and Chrome. Frame time is the gap between animation frames. A drop is over 32.5ms. The production simulator still ticks every 1.5s. Bursts call that same <code>processTick</code> faster and are labelled as such.</p>
+<table>
+  <tr><th>Desk</th><th>Gesture</th><th class="n">p50</th><th class="n">p95</th><th class="n">Max</th><th class="n">&gt;32ms</th></tr>
+  <tr><td>1, 2 and 4 panes, 15-minute</td><td>Pan and zoom</td><td class="n">16.7</td><td class="n">16.7–16.8</td><td class="n">16.8</td><td class="n">0</td></tr>
+  <tr><td>1 pane, 1-minute config</td><td>Pan</td><td class="n">16.7</td><td class="n">33.4</td><td class="n">50.1</td><td class="n">19 of 56</td></tr>
+  <tr><td>4 small 1-minute panes</td><td>Pan and zoom</td><td class="n">16.7</td><td class="n">16.7</td><td class="n">16.8</td><td class="n">0</td></tr>
+</table>
+<p>Idle at the real 1.5s tick holds 60Hz. A compressed 50-per-second burst on two panes was the bad window: achieved 25/s, 15 frames over 50ms, one gap of 83ms. It did not repeat on the neighbours. A Chrome trace of a four-pane burst had 12 tasks over 16ms and a worst task of 21ms. No task over 50ms. The long-task observer fired zero times.</p>
+<p>The CPU sampler, four panes at about 50 ticks a second: <code>drawImage</code> 368ms of self time, <code>vwapSeries</code> 49ms, <code>ellipse</code> 42ms. Pan was not a paint problem (<code>drawImage</code> 21ms, the chart renderer 3ms). <code>vwapSeries</code> runs because <code>Terrain.tsx</code> rebuilds five-timeframe confluence on every revision even with studies off (<code>buildConfluence</code>, <code>data/confluence.ts</code>). Cache the last bar. A worker for that fold is the wrong worker. An <code>OffscreenCanvas</code> is only worth it for the bead field, and only after the confluence fix.</p>
+<p>Crosshair, pointer to the next frame, four panes: p50 2.0ms, p95 2.4ms. The other panes are marked in the same synchronous call (<code>emitCrosshair</code>, around line 2731). Their paint was not timed apart.</p>
+<p>Open, four panes. Dev cold: HTML 438ms, four canvases 3.1s, warm 2.2s. Production build: HTML 151ms, canvases 2.1s, and the one reload was slower (2.7s). That open pulled 144 JS files, 2.27MB on the wire, 7.19MB decoded. Terrain’s own chunk is 96KB gzipped to 32KB. The shell entry is 1,445KB raw, 443KB gzip. No API key was in the entry chunk.</p>
+<p>Memory, 36 seconds at 4 ticks a second: listeners flat, DOM nodes about +73 a second, and one unexplained drop of roughly 3,800 nodes at 12 seconds. Not an eight-hour soak. The tape cap is 5,000 prints. That is the suspect, not a conviction.</p>
+<p>The rail’s ladder, after a click off the GEX view, held 16.7ms at 10 ticks a second. <code>ProfilePanel</code>’s <code>draw</code> still asks for a frame forever (line 643), 27ms of self time in 1.5s. Gate it when nothing is moving. The one-up GEX view did not crash in 6.4s this run. Part 1’s crash still stands. It is a race.</p>
+<pre>// confluence: do not refold 8,580 bars when only the last close moved
+if (prev && prev.n === base.length && prev.t === last.time && prev.c === last.close) return prev.rows;</pre>
+
+<h2 id="look">4. How it reads</h2>
+<p>The identity row floats over the candles at opacity 0.55 until hover (<code>Terrain.tsx</code> line 1780). The page ground computed to <code>#050505</code>. Full green <code>#30D158</code> is 10.1:1. At 55% opacity it is about 3.5:1, under 4.5:1 for 11px text. The price itself falls from 17.4:1 to 5.5:1. A phone forces the chrome to opacity 1, because there is no hover. The desktop, where the trader stares, is the dim one. Fade the tools. Do not fade the price.</p>
+<p>Wall rungs are glacier <code>#7ABDD7</code> (9.8:1) and ember <code>#F5C542</code> (12.6:1). The field file still paints those walls green and red. The comments still say green and red. Part 2 has the ratios. Put a letter on the rung. A 1px hue is not a name.</p>
+<figure>
+  <img src="screenshots/part2-chrome.png" alt="Dim header beside a full-strength price" />
+  <figcaption>Mock. Left is opacity 0.55. Right keeps the price at full strength and adds a book-age chip. Part 2.</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/part2-palette.png" alt="Level inks and a proposed lettered set" />
+  <figcaption>Mock. Current inks, then the same hues with a letter and a heavier rule. Part 2.</figcaption>
+</figure>
+<p>The chart skeleton is real and <code>aria-hidden</code>. Keys 1–4, brackets and arrows already announce into an <code>aria-live</code> region. After seven Tabs, focus sat on the Fibonacci tool with a 1px ring at about 4.5:1. At 768px there was no horizontal overflow and no rail (the rail is hidden below 1280). A three-line first-run strip is the onboarding. Part 2 has that mock. The Levels and Cone chips from part 1 are how you turn overlays on once you know the names. They are not an introduction.</p>
+
+<h2 id="nodes">5. Exposure nodes</h2>
+<p>The chart does not draw bubbles. It draws a ribbon. <code>historyFrom</code> ramps today’s open interest from the open to the close and multiplies the current net by that fraction. <code>aggregateSnapshots</code> keeps the peak minute in each bucket, not the average. The bead clock is at most five minutes. <code>setData</code> sets the scale to the 85th percentile of each column’s maximum, so a wall can grow instead of every minute being full size. <code>columnAt</code> keeps the twelve largest absolute values, then drops anything under 8% of that scale. Height is strength to the power 1.6. Positive is put-side ember. Negative is call-side glacier. Hover is one bead, a ring, and a card. The pointer pass did not land on a bead. The card is in <code>StrikeChart.tsx</code> around line 5277.</p>
+<figure>
+  <img src="screenshots/part3-nodes.png" alt="Beads on a synthetic five-minute SPY pane" />
+  <figcaption>Synthetic 5-minute pane. The live legend: size is gamma at the strike, full size $49.3M per 1% move. That dollar figure is the harness, not a print.</figcaption>
+</figure>
+<p>QuantData’s Interval Map, from the 25 Apr 2025 help note: a bubble per strike per interval, GEX, DEX, VEX and CHEX, 1-minute through 15-minute and beyond, about nine months of sessions, raw or difference, green and red, a strike-count control, a tooltip of strike and value. Their VEX is vanna. Terrain’s VEX is dollar vega. Using their word on Terrain’s toggle swaps two greeks. They are ahead on history, on a real difference, and on naming the play (rejection, support, a break, a new bubble). Terrain is ahead on living in the candle pane and on a scale that is not the column’s own max.</p>
+<p>The peak rule Zak was given is right and breaks on a flat wall. Strictly greater than both neighbours deletes a plateau, which is what a wall is. Ties delete both strikes. A monthly strike is not a neighbour of a 0DTE strike. Scaling to the single strongest 0DTE node resizes the whole day when that node changes, and at the open it makes everything look full. Terrain’s 85th percentile is the better scale. Make it a ratchet that only rises, one for 0DTE and one for the rest. Fade under 20% of that ratchet. Delete only the non-peaks under 8%.</p>
+<pre>const peak = (a &gt; L && a &gt; R) || plateau; // plateau: equal to a same-sign neighbour, shelf beats the outside
+const t = scale &gt; 0 ? Math.min(1, a / scale) : 0;
+if (t &lt; 0.08 && !peak) continue;
+function ratchet(prev: number, p85: number) { return Math.max(prev, p85); }</pre>
+<p>Greeks, per strike, dealers short both legs, which is what <code>nodeFrom</code> does. Do not use <code>exposureAt</code> for this field: it flips the put. GEX is dollars per 1% (<code>spot² × 0.01</code>). DEX as coded is per $1 (<code>× spot</code>); a surface label says “1σ” and those two sentences disagree, so the bead should say “per $1” until someone measures it. Dollar vega is <code>OI × vega × 100</code>, then the code haircuts by about 0.55. Vanna is dollars per vol point. Charm is dollars per session (<code>× spot / 252</code>). Color, vomma, speed, veta and zomma are already computed in <code>greekSurfaces.ts</code> at the current spot for each strike. They are not on the beads. One Black-Scholes pass per visible peak, once a minute, is cheap. A year of them is a nightly job. Part 3 has the ten snippets.</p>
+<figure>
+  <img src="screenshots/part3-mock.png" alt="Mock of peaks, a 0DTE split, and event marks" />
+  <figcaption>Mock. Right side: 0DTE in front, the rest faded, a flip mark and a rejection mark, scale that does not jump.</figcaption>
+</figure>
+
+<h2 id="flow">6. Signed flow</h2>
+<p>Open interest does not say who is long. Early models assumed clients sold every call and bought every put. Terrain assumes the dealer is short both, softened to about 55% and 53% in the engine note. Either assumption is wrong on 0DTE call buying and on put selling. Official open interest prints once a day. <code>historyFrom</code> draws the missing hours as a ramp.</p>
+<p>A signed print fixes the side. Customer bought, dealer is shorter the option. Customer sold, dealer is longer. Open versus close does not change that direction. It changes whether open interest should rise. OPRA has no open-close flag. The net of the day is the honest substitute. That method is already written, and not built, in <code>slayer/docs/signed-book-spec.md</code> (3 Oct 2026).</p>
+<p>What Zak can use now is already on the whale tape. <code>sideOfTags</code> and <code>quoteNoReadOf</code> in <code>traceLive.ts</code> read <code>ask_side</code>, <code>bid_side</code>, <code>mid_side</code> and the NBBO, and they refuse a crossed quote or a quote older than five minutes. <code>printCondition</code> marks sweeps, multi-leg prints, crosses and compression (<code>cbmo</code>, <code>mctp</code>). There is no customer-versus-firm flag and no open-versus-close flag. Flow alerts are not the full tape. Say so on the toggle.</p>
+<p>ThetaData Options Standard is listed in <code>docs/launch-costs.md</code> at $80 a month, read 17 Sep 2026, personal use, trades and tick quotes. That is enough to run the quote rule and store it. Commercial display is a different license. Terrain does not call Theta today. Cboe Open-Close, the feed in the JPMorgan note, is not priced in this repo. It is an exchange license. Buy it after the estimate beats the prior, not before.</p>
+<pre>const side = noRead ? 'MID' : sideOfTags(row.tags, price, bid, ask);
+const w = side === 'ASK' ? 1 : side === 'BID' ? 0 : 0.5;
+const weakened = cond.multi ? 0.5 + (w - 0.5) / 2 : w;
+if (cond.compression || cond.cross) return;
+lot.dealer = -lot.signed; // other side of the customer, since the open
+const gex = lot.dealer * gammaPerContract * 100 * spot * spot * 0.01;</pre>
+<p>Leave compression and crosses out. Half-weight a spread leg. Start from yesterday’s open interest with the prior, and add today’s signed contracts on top. DEX, vanna and charm use the same inventory and section 4’s scaling. The toggle defaults to open interest until the test in the spec’s §8 passes: the signed book must rank the next half hour’s range better than the prior, by a margin set before the run. Where the two signs disagree, draw a hollow bead and say which book says what. The quality word is strong, good, caution or poor, from how much size was at the bid or ask. No public digit. Do not move the on-chart walls until that test passes. A flow birth — a peak that exists only on the signed book — is the Interval Map’s “new bubble,” with a cause.</p>
+<p>The quote rule still mislabels. Midpoint prints must stay unsigned. Market maker against market maker looks like a customer until Cboe says otherwise. 0DTE should not be blended back toward yesterday’s prior. The Trace audit already found one compression print that read as hundreds of millions of bullish premium. That is why compression is excluded.</p>
+
+<h2 id="inst">7. Where institutions are heading, and how Terrain gets there first</h2>
+<p>Desks are leaving a single open-interest sign. They want the client’s side, the dealer’s hedge in futures, and the other flows that are not gamma at all: vanna and charm into the close, vol-control and CTA rebalancing, and the gap between index vol and single-name vol. A retail app does not replicate a bank book. It can put the same questions on the pane, labelled as estimates, with the data it can actually hold.</p>
+
+<h3>Client side, not a prior</h3>
+<p>Bloomberg, Christian Dass, 25 Oct 2026, reports that JPMorgan’s derivatives strategists moved off an open-interest proxy for S&amp;P 500 gamma to Cboe data that says whether the client bought or sold. The same piece says early frameworks assumed clients sold all calls and bought all puts. UBS’s Kieran Diamond, quoted there, describes 0DTE traders buying calls and selling puts into a decline and doing the reverse into a rally — a counter-trend delta — and says that flow can outweigh dealer re-hedging until it flips in a real selloff. OptionMetrics’ Garrett DeSimone is cited for about 66% of S&amp;P 500 option volume expiring within a day. <a href="https://www.bloomberg.com/news/articles/2026-10-25/zero-day-option-traders-are-betting-against-big-s-p-500-swings">Bloomberg, 25 Oct 2026</a>.</p>
+<p>Terrain cannot license Cboe Open-Close this week. It can show Diamond’s pattern without that license: on SPY, from the ask-side and bid-side volumes already on the whale minute route, “into a down bar, was call volume at the ask?” That is a counter-trend chip, one number, labelled as the vendor’s side tag. Files: <code>contractflow.ts</code>, the desk bar. Effort S. It is not dealer gamma. Do not draw it as a wall.</p>
+
+<h3>0DTE gamma is usually a dampener, and sometimes it is not</h3>
+<p>Cboe’s own note puts market-maker 0DTE net gamma in a small band against futures liquidity: on the order of $170 million to $670 million through the day, against about $400 billion of S&amp;P futures, and a late-day median around +$173 million with a wide whisker that does go negative. Customer 0DTE flow, in their telling, is balanced, not a one-way short-gamma machine. <a href="https://www.cboe.com/insights/posts/volatility-insights-evaluating-the-market-impact-of-spx-0-dte-options">Cboe Insights, “Much Ado About 0DTEs”</a>. The post’s date was not in the excerpt retrieved here.</p>
+<p>Amaya, Garcia-Ares, Pearson and Vasquez, 25 Jan 2025, use Cboe’s SPX and SPXW trades to build the market-maker book. Gamma is often positive and often negative. They estimate the largest volatility impact they can find at about 3.3 annualized points on a day and 6.4 points inside a 30-minute window. <a href="https://cdn.cboe.com/resources/education/research_publications/gammasqueezes.pdf">Cboe research PDF</a>.</p>
+<p>Adams, Fontaine and Ornthanalai, written 3 May 2024, revised 20 Jun 2025, find index volatility lower by about 60 to 90 annualized basis points on 0DTE days. Market makers match most same-day flow and hedge the longer-dated inventory that rolls into the expiry. That hedge dampens. It does not amplify. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4881008">SSRN 4881008</a>.</p>
+<p>Dim, Eraker and Vilkov look at whether the 0DTE boom destabilizes the index. The abstract that was retrieved says the evidence fits delta-hedging and does not fit a simple destabilizing story. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4692190">SSRN 4692190</a>. The paper itself was not read line by line.</p>
+<p>What Terrain should do: split 0DTE from the rest before sizing a bead, and never describe “the” gamma as one sign. A chip can say “0DTE book is small next to the futures” when the dollar gamma is under a threshold you set, so a huge notional does not get narrated as a huge hedge. That is the Cboe point, and it is a sentence, not a model.</p>
+
+<h3>Vanna, charm, and the post-expiry window</h3>
+<p>Nomura’s Charlie McElligott, as reported rather than from the notes themselves: on 9 Sep 2024, call skew steepened into a selloff and he described two-sided short gamma, legacy puts below and calls up around 5600 (<a href="https://heisenbergreport.com/2024/09/09/oh-snap-did-i-short-into-the-lows/">Heisenberg Report</a>). On 19 May 2025, call skew bid again and dealers short upside calls in index and in the large singles, which he treats as melt-up fuel if spot reaches those strikes (<a href="https://heisenbergreport.com/2025/05/19/fearing-the-right-tail/">Heisenberg Report</a>). A 21 Mar 2025 Odd Lots conversation with him is the plain-language version of the same hedging loop (<a href="https://podscripts.co/podcasts/odd-lots/lots-more-with-charlie-mcelligott-on-the-sharp-strange-selloff">transcript</a>).</p>
+<p>The mechanical piece Terrain does not say out loud: after a large expiry, gamma unclenches, and what is left is vanna (delta changes when vol changes) and charm (delta decays with the clock). Hedgeye’s 18 Oct 2024 note, summarizing that window, is a clear retail-facing version: the week after expiry those second-order flows are weakest, so the index can move more freely (<a href="https://app.hedgeye.com/insights/157497-october-18th-2024-positioning-remains-favorable">Hedgeye, 18 Oct 2024</a>). Volland’s May guide goes one step further and prefers a “delta decay” number — how many shares the 0DTE book must trade by the bell — over charm alone (<a href="https://vol.land/VollandUserGuide_May26.pdf">Volland user guide</a>).</p>
+<p>Terrain already has vanna and charm on the chain, and section 4’s units. The sell-side sentence is a projection: from now until the bell, if vol is unchanged, charm says the dealer buys or sells this many dollars; if vol drops one point, vanna adds this many. One line on the pinned card. Files: <code>netCharm</code> and <code>netVanna</code>, the card in <code>StrikeChart.tsx</code>. Effort S once the signs are the same convention as GEX. Do not draw a second ribbon.</p>
+
+<h3>Goldman, BofA, UBS, and the gamma number as a regime</h3>
+<p>These figures are from write-ups of the notes, not from the banks’ originals, and they move by billions in a day. Treat them as evidence that the sign matters and the level does not sit still. Goldman’s desk, as relayed on 13 Nov 2024, had dealers long on the order of $8 billion of SPX gamma, flipping short if spot rose about 2% (<a href="https://sellside.substack.com/p/goldman-sachs-trading-desk-pre-cpi">secondary note</a>). Bank of America, via Tickmill on 16 Dec 2024, had average SPX gamma over a month around +$10.6 billion and a Thursday print near +$12.6 billion, a large piece of it in one year-end call (<a href="https://www.tickmill.com/blog/institutional-insights-bofa-systematic-flows-monitor">Tickmill</a>). The same monitor on 16 Jun 2025 had gamma only about +$3.1 billion, near the middle of the year’s range (<a href="https://www.tickmill.com/blog/institutional-insights-bofa-systematic-flow-monitor-160625">Tickmill</a>). Investing.com, 30 Dec 2024, quoting BofA’s Chintan Kotecha, had gamma jump from about +$5.6 billion to +$15.8 billion in a day on one expiry’s calls (<a href="https://www.investing.com/news/stock-market-news/how-are-ctas-positioned-entering-2025-3791152">Investing.com</a>).</p>
+<p>Citi and Barclays vol notes were not retrieved as primary documents this pass. UBS’s public piece that was retrieved is the 0DTE counter-trend work above, plus a 25 Mar 2025 model comment that CTAs had sold on the order of $100 billion of equities in four weeks (<a href="https://www.mnimarkets.com/articles/ubs-point-to-continued-cta-unwind-of-equity-longs-neutral-in-usd-1742893938543">MNI</a>). JPMorgan’s July 2025 systematic note, again via a summary, had vol-target funds re-levering and CTAs still long with room before a momentum stop (<a href="https://www.tickmill.com/blog/institutional-insights-jpmorgan-us-equity-derivatives-strategy">Tickmill, 23 Jul 2025</a>). BBVA’s 9 Dec 2024 outlook treats call overwriting and 0DTE as a structural reason dealer gamma stays long and realized vol stays low (<a href="https://www.bbvamarketstrategy.com/public/flow-derivatives/bbva-equity-derivatives-2025-outlook-higher-volatility-ahead">BBVA</a>).</p>
+<p>Terrain’s version of the Goldman sentence is not a dollar claim about the Street. It is: “this name’s net, per 1%, and the spot move that would flip the sign.” That is <code>levels.net</code> plus the distance to the flip, once both use one book. Effort S after the one-book fix. Publishing “$8 billion” would be pretending.</p>
+
+<h3>CTA, vol-control, risk parity</h3>
+<p>These are not gamma. A vol-control fund cuts equity when realized vol rises. A CTA cuts when the trend breaks. Risk parity cuts when stocks and bonds move together. McElligott’s old “hamster wheel” is the loop: long dealer gamma suppresses realized vol, the vol-control fund relevers, expiry unclenches gamma, realized vol jumps, the fund delevers, dealers flip short, and the move extends. Terrain should not fit a CTA book. It can show the input those models use, on the active symbol: realized vol over the last 20 sessions against the implied move it already stores, and a one-line “vol-control would be adding / cutting if it targets 10%.” Label it a toy. Files: <code>peekDaySigma</code> and the candle history. Effort S. A real CTA tape is a data vendor. Skip it.</p>
+
+<h3>The retail platforms, and what not to copy</h3>
+<p>SqueezeMetrics published the public GEX idea and the Dark Index. Their monitor says positive GEX stifles volatility and negative GEX magnifies it, and that a high DIX (they flag about 45% and up) lined up with higher average 60-day returns in their set. <a href="https://squeezemetrics.com/monitor">squeezemetrics.com/monitor</a>. DIX is short-sale volume in dark pools. Terrain already has dark-pool prints from the whale feed. A DIX-style ratio is a count of short-marked volume over total, if the feed carries the flag. Check the row before drawing it. Do not invent the flag. Effort S if the field exists, otherwise drop it.</p>
+<p>SpotGamma’s own comparison says a GEX formula assumes a side, and describes HIRO as the real-time hedge impulse and SGOI as an estimate of who is positioned. <a href="https://spotgamma.com/best-gamma-exposure-tool-comparison/">SpotGamma, comparison page</a>. HIRO’s interesting idea is not another heatmap. It is “this print forces the dealer to buy or sell this many shares now.” Terrain can approximate that from a signed print times the contract’s delta, summed for a minute, without their product. Files: the same <code>signedBook</code> map, a sparkline on the desk bar. Effort M. It is an estimate. Say so.</p>
+<pre>const shares = -signedContracts * delta * 100; // dealer hedge if they take the other side
+minute.add(shares);</pre>
+<p>MenthorQ publishes GEX and DEX plus a volatility stack: risk premium, skew, smile, term structure, and CTA-style models, and an AI layer called QUIN. <a href="https://menthorq.com/guide/menthorq-vs-spotgamma-which-options-data/">MenthorQ’s comparison</a>. Terrain already stores IV rank and a term structure in <code>uwBook</code>. The missing sentence is “implied minus realized, over 20 sessions,” which is the vol risk premium in one number. Carr and Wu, Journal of Financial Economics 2016, is the institutional version of extracting that premium from the surface (<a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1701685">SSRN 1701685</a>). Do not fit their surface. Show the one spread. Skew is the 25-delta put vol minus the 25-delta call vol, if the chain has the vols. Part 1 already asked for a skew number in the header. This is that number, with a source. An AI paragraph belongs on a button, user-clicked, server key, two sentences, as part 2 said. MenthorQ’s QUIN is not a reason to narrate the book on a timer.</p>
+<p>Volland reconstructs the dealer from OPRA, print by print, using price, IV, a binomial value and the quote, then sums gamma, vanna and charm by strike and expiry. Their guide also names dispersion: hedging an index option with the stocks. <a href="https://vol.land/VollandUserGuide_May26.pdf">Volland guide</a>. Terrain’s dispersion approximation is not a basket. It is “SPY’s net gamma versus the sum of the names on this desk.” If the index is long gamma and the names are short, say that. Files: the per-pane levels, one strip. Effort M. It will be wrong when the desk is four random names. Label the universe.</p>
+<p>An OptionMetrics note on signed volume (the file is dated in the path January 2020) is the academic cousin of the quote rule: demand, especially for downside puts, shows up in the skew. <a href="https://optionmetrics.com/wp-content/uploads/2020/01/Assessing-Option-Demand-from-Signed-Volume-Order-Flow.pdf">OptionMetrics PDF</a>. A machine-learning classifier on top of the quote rule is not the next build. The spec already says the published work found the quote rule the best single rule, and that extras (depth, package reconstruction) get tested, not shipped. <code>signed-book-spec.md</code> §9. If the behavioural test fails, try depth. Do not train a model first.</p>
+<p>Expected-move accuracy is the scorecard part 1 already asked for: how often the close landed inside the cone. That is the retail version of “is the implied move honest.” Store it in <code>localStorage</code> per symbol. No new data.</p>
+
+<h2 id="road">8. The roadmap</h2>
+<p>Impact is 1–5. Effort is S = 1, M = 2, L = 3. The sort is impact divided by effort. Phase is separate: fix now is anything that makes the current desk true; next is the book a trader would switch for; moat is what the banks pay a license for, and only after a test.</p>
+<table>
+  <tr><th class="n">#</th><th>Item</th><th>Phase</th><th class="n">Impact</th><th>Effort</th><th class="n">Ratio</th></tr>
+  <tr><td class="n">1</td><td>Move every hook in <code>ExposureField</code> above the early return</td><td>Fix now</td><td class="n">5</td><td>S</td><td class="n">5</td></tr>
+  <tr><td class="n">2</td><td>Peak filter that keeps a plateau, fade the rest</td><td>Fix now</td><td class="n">5</td><td>S</td><td class="n">5</td></tr>
+  <tr><td class="n">3</td><td>Ratchet the 85th-percentile scale, 0DTE separate from the rest</td><td>Fix now</td><td class="n">5</td><td>S</td><td class="n">5</td></tr>
+  <tr><td class="n">4</td><td>Error boundary around each pane</td><td>Fix now</td><td class="n">5</td><td>S</td><td class="n">5</td></tr>
+  <tr><td class="n">5</td><td>Empty state: no key, no tick, practice book</td><td>Fix now</td><td class="n">5</td><td>S</td><td class="n">5</td></tr>
+  <tr><td class="n">6</td><td>Call the bead “vega $”, and give vanna its own name</td><td>Fix now</td><td class="n">4</td><td>S</td><td class="n">4</td></tr>
+  <tr><td class="n">7</td><td>Stop fading the price and the change</td><td>Fix now</td><td class="n">4</td><td>S</td><td class="n">4</td></tr>
+  <tr><td class="n">8</td><td>Book age in seconds, and backoff after the single retry</td><td>Fix now</td><td class="n">4</td><td>S</td><td class="n">4</td></tr>
+  <tr><td class="n">9</td><td>Letter on each rung; fix the green/red comments</td><td>Next</td><td class="n">3</td><td>S</td><td class="n">3</td></tr>
+  <tr><td class="n">10</td><td>First-run strip for the keys that already work</td><td>Next</td><td class="n">3</td><td>S</td><td class="n">3</td></tr>
+  <tr><td class="n">11</td><td>Charm and vanna, dollars to the bell, on the pinned card</td><td>Next</td><td class="n">3</td><td>S</td><td class="n">3</td></tr>
+  <tr><td class="n">12</td><td>Implied minus realized, and the cone’s hit rate</td><td>Next</td><td class="n">3</td><td>S</td><td class="n">3</td></tr>
+  <tr><td class="n">13</td><td>One book for the header, the candles and the rungs</td><td>Fix now</td><td class="n">5</td><td>M</td><td class="n">2.5</td></tr>
+  <tr><td class="n">14</td><td>Signed inventory from prints already classified; OI versus flow toggle</td><td>Next</td><td class="n">5</td><td>M</td><td class="n">2.5</td></tr>
+  <tr><td class="n">15</td><td>Minute-to-minute difference as a hollow bead</td><td>Next</td><td class="n">5</td><td>M</td><td class="n">2.5</td></tr>
+  <tr><td class="n">16</td><td>0DTE drawn in front of the rest of the book</td><td>Next</td><td class="n">4</td><td>M</td><td class="n">2</td></tr>
+  <tr><td class="n">17</td><td>Born, grew, flipped, died, and the same marks on replay</td><td>Next</td><td class="n">4</td><td>M</td><td class="n">2</td></tr>
+  <tr><td class="n">18</td><td>Hedge impulse: signed print times delta, per minute</td><td>Moat</td><td class="n">4</td><td>M</td><td class="n">2</td></tr>
+  <tr><td class="n">19</td><td>Regime sentence, scope on the rung, max pain, expected-move line</td><td>Next</td><td class="n">4</td><td>M</td><td class="n">2</td></tr>
+  <tr><td class="n">20</td><td>Incremental confluence, and stop the shell decoding 7MB on open</td><td>Next</td><td class="n">4</td><td>M</td><td class="n">2</td></tr>
+  <tr><td class="n">21</td><td>Vol-control toy: realized against a 10% target, not a CTA book</td><td>Next</td><td class="n">2</td><td>S</td><td class="n">2</td></tr>
+  <tr><td class="n">22</td><td>Index versus the names on the desk, labelled as a partial dispersion</td><td>Moat</td><td class="n">3</td><td>M</td><td class="n">1.5</td></tr>
+  <tr><td class="n">23</td><td>Cboe Open-Close, after the estimate beats the prior</td><td>Moat</td><td class="n">5</td><td>L</td><td class="n">1.7</td></tr>
+  <tr><td class="n">24</td><td>Precompute peaks for a multi-month picker</td><td>Moat</td><td class="n">3</td><td>L</td><td class="n">1</td></tr>
+</table>
+<p>Rows 1 through 8 and row 13 are the fix-now set. Row 13 ranks below several small items on the ratio and above them in consequence: a trader who cannot trust the price cannot use a prettier bead. Do it in the same release as the hooks. Rows 14 through 17 are the release that beats an Interval Map still sitting on open interest. Row 18 is the HIRO-shaped idea, and it waits on row 14. Row 23 is the bank feed. It is last on purpose.</p>
+
+<h2 id="gap">9. What was not verified</h2>
+<ul>
+  <li>A live Unusual Whales chain, a live Theta terminal, and a live Cboe Open-Close feed. Every bead dollar in the shots is synthetic.</li>
+  <li>The bead hover card on screen. The pointer missed. The card is from the source.</li>
+  <li>QuantData’s product, SpotGamma’s product, and the banks’ original notes. Comparisons use the help note Zak pasted, public pages, and secondary write-ups, labelled as such.</li>
+  <li>Citi and Barclays vol-strategy notes, and a Tier1Alpha methods page. They were looked for and not retrieved. Nothing here is attributed to them.</li>
+  <li>The date on Cboe’s “Much Ado About 0DTEs” post. The figures are from the page. The dateline was not in the excerpt.</li>
+  <li>Dim, Eraker and Vilkov beyond the abstract line that was retrieved.</li>
+  <li>An eight-hour memory soak, the GEX calendar’s redraw, a separate sibling-crosshair timestamp, and a split of the 2.1s production open into parse versus data versus paint.</li>
+  <li>A Cboe Open-Close price. It is not in the repo. The $80 Theta figure is the 17 Sep 2026 note, personal use.</li>
+  <li>That the signed book beats the prior. The test is specified. It has not been run.</li>
+</ul>
+<p class="meta">The three part PDFs remain the long versions. This one is the order of work.</p>
+</body>
+</html>
