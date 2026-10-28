@@ -127,6 +127,22 @@
 </table>
 <p>At the real 1.5s cadence the desk is the idle row: 60Hz. The burst is the stress test. One window was bad and the neighbours were not: two panes at a requested 50/s only achieved 25/s, with 15 frames over 50ms and a gap of 83ms. The same desk at a requested 200/s then ran clean. That 83ms gap did not repeat, so it is not a scaling law. It is one bad window, reported because it happened.</p>
 <p>A <code>PerformanceObserver</code> for <code>longtask</code> was installed and stayed empty on every window, including that one. The API was present (<code>ltErr</code> was null). A Chrome trace of a four-pane burst at about 50/s recorded 16,265 timeline events, 12 <code>RunTask</code> entries longer than 16ms, and a worst task of 21ms. Nothing in the trace was a 50ms task. The 83ms frame gap was slack between tasks, not one long task.</p>
+<p>The CPU sampler (250µs) is the profiler capture. Self time is the whole window, not one frame. <code>(program)</code> is idle and native bookkeeping, so it is listed once and then ignored. Sampler line numbers are the transformed module; the source lines cited later were opened in the repo.</p>
+<table>
+  <tr><th>Window</th><th>Function</th><th>Where the sampler put it</th><th class="num">Self time</th></tr>
+  <tr><td>4-pane pan</td><td><code>(program)</code></td><td>native</td><td class="num">1,903ms</td></tr>
+  <tr><td>4-pane pan</td><td><code>drawImage</code></td><td>canvas</td><td class="num">21ms</td></tr>
+  <tr><td>4-pane pan</td><td><code>AnimatedNumber</code></td><td><code>AnimatedNumber.tsx</code></td><td class="num">3.5ms</td></tr>
+  <tr><td>4-pane pan</td><td>chart renderer</td><td><code>lightweight-charts</code></td><td class="num">3.1ms</td></tr>
+  <tr><td>4-pane 50/s ticks</td><td><code>(program)</code></td><td>native</td><td class="num">1,865ms</td></tr>
+  <tr><td>4-pane 50/s ticks</td><td><code>drawImage</code></td><td>canvas</td><td class="num">368ms</td></tr>
+  <tr><td>4-pane 50/s ticks</td><td><code>vwapSeries</code></td><td><code>data/indicators.ts</code></td><td class="num">49ms</td></tr>
+  <tr><td>4-pane 50/s ticks</td><td><code>ellipse</code></td><td>canvas, the bead field</td><td class="num">42ms</td></tr>
+  <tr><td>4-pane 50/s ticks</td><td>bead walk</td><td><code>gexNodesPrimitive.ts</code></td><td class="num">29ms</td></tr>
+  <tr><td>Ladder, 10/s</td><td><code>draw</code></td><td><code>ProfilePanel.tsx</code></td><td class="num">27ms</td></tr>
+  <tr><td>Ladder, 10/s</td><td><code>vwapSeries</code></td><td><code>data/indicators.ts</code></td><td class="num">11ms</td></tr>
+</table>
+<p>Pan is not a paint problem. A tick burst is. <code>drawImage</code> at 368ms plus <code>ellipse</code> at 42ms is the bead field and the chart repainting on every commit. That is the number behind the OffscreenCanvas note in the next section. <code>vwapSeries</code> is the number behind the confluence fix, and it is app code, so it is the one to change first.</p>
 
 <figure>
   <svg viewBox="0 0 640 150" width="100%" height="150" role="img" aria-label="Dropped frames during tick bursts">
@@ -248,12 +264,15 @@ function publish(data) {
 };</pre>
 <p>The profile recorded 27ms of self time in <code>draw</code> during a 1.5s, 10/s burst with the ladder up, and the frames still held 16.7ms. Virtualizing 29 strikes will not pay. Gating the loop will. Keep the frame loop only while the ease, the hover, or the data revision is in motion. When the key matches the previous frame, cancel the request. Expected: that 27ms per rail per 1.5s disappears while the trader is still, and four open ladders stop spending a slice of every frame on an ease that has already finished.</p>
 
-<h3>What the profiles say not to build</h3>
-<ul>
-  <li><strong>OffscreenCanvas for the candles.</strong> The pan profile’s chart-library time was about 3ms. The primitive that paints the beads (<code>gexNodesPrimitive.ts</code>, the visible-column walk around line 165) showed up, and it already binary-searches the visible range instead of walking the whole store. Moving it off the main thread is a project. It is not the top of this trace.</li>
-  <li><strong>A worker for the exposure fold.</strong> The first brief already describes the slice in <code>StrikeChart.tsx</code> around line 3154: the cold fold is chopped into batches of 400 so one frame does not pay for the store. This pass did not find that fold on the hot path of a tick. The hot path was confluence.</li>
-  <li><strong>Memoizing <code>railForCut</code> as the main win.</strong> It was not in the top of the tick profile. The header’s heaviest-strike read already depends on it. Leave it until a profile says otherwise.</li>
-</ul>
+<h3>OffscreenCanvas, a worker, and virtualization</h3>
+<p>These three were on the list to consider. The profiles pick a different order than the list.</p>
+<p><strong>OffscreenCanvas, for the bead field, not for pan.</strong> During the four-pane tick burst <code>drawImage</code> took 368ms of self time and <code>ellipse</code> took 42ms. During the pan, <code>drawImage</code> was 21ms and the chart renderer was 3ms. Moving the candle canvas off the main thread would not have changed the pan numbers. Moving the bead paint would. <code>gexNodesPrimitive.ts</code> already draws in <code>useBitmapCoordinateSpace</code> and only walks the visible columns (around line 165). The scoped change is a worker that owns an <code>OffscreenCanvas</code> for that primitive and receives <code>{ snaps, from, to }</code> once per commit, not once per ellipse. Expected gain: some of that 368ms leaves the main thread during a burst. At the real 1.5s tick the same paint still happens, once, and it already fits in a frame. Do the confluence fix first. It is smaller and it is the hottest function that is ours.</p>
+<pre>const worker = new Worker(new URL('./beadField.worker.ts', import.meta.url));
+const canvas = beadCanvas.transferControlToOffscreen();
+worker.postMessage({ canvas, snaps, from, to }, [canvas]);</pre>
+<p><strong>A worker for the exposure fold.</strong> The first brief already describes the slice in <code>StrikeChart.tsx</code> around line 3154: the cold fold is chopped into batches of 400 so one frame does not pay for the store. This pass did not find that fold on the hot path of a tick. The fold worker is the wrong worker. The bead worker above is the one the samples support.</p>
+<p><strong>Virtualizing the ladder.</strong> The ladder draw walked a 29-strike book and still held 16.7ms frames. A window of a few dozen rows does not need a virtual scroller. Revisit it if a name ever carries several hundred strikes into <code>ProfilePanel</code> <code>draw</code>.</p>
+<p><strong>Memoizing <code>railForCut</code> as the main win.</strong> It was not in the top of the tick profile. Leave it until a profile says otherwise.</p>
 
 <h2>3. The desk, as it reads</h2>
 <p>The first brief said OpenMarket’s expected-move rails are hard to tell apart, and it described Terrain’s rungs as green and red. Both of those sentences are about the wrong surface for this section. Terrain’s wall inks were changed on 23 Oct 2026. <code>palette.ts</code> lines 21–32:</p>
@@ -325,6 +344,7 @@ const MARK = { callWall: 'C', putWall: 'P', flip: 'F', supreme: 'S' };</pre>
 <h3>Hierarchy, type, density</h3>
 <p>The desk already makes one good structural choice: the header floats, so four panes are four charts and not four charts under four toolbars. The cost is above. The type is the other cost. Replay badges and the “live only” chip are 9px uppercase (<code>StrikeChart.tsx</code> around line 5246, the replay badge around <code>Terrain.tsx</code> line 1811). Eleven pixels is the price. Ten pixels is the secondary row. Nine pixels with wide tracking is a label that has to be leaned toward. Nothing here needs a new typeface. The price at 13px, full opacity, and everything else allowed to be 11px, is the whole scale.</p>
 <p>Density is handled by shedding, and the code says so: the change percent is the first thing the identity row drops when the column is narrow (around line 1836), and the heaviest-strike read was moved off the row because it pushed the expand control onto the candles. That is the right failure. The row that remains should be the one number a glance needs, at full strength. The heaviest strikes can stay on the second line that already appears on hover (<code>data-heavy-line</code>, opacity 0 until then).</p>
+<p>Spacing, from the classes on that row and from the screenshots: the identity strip is <code>gap-2</code>, <code>px-2</code>, <code>py-1</code>, floating over the candles with a 3px blur. The tools are not spaced under it. They are a second strip at opacity 0, so the gap appears only on hover. At rest the pane has one tight cluster in the corner and empty tape everywhere else. That is the right density for a chart. The thing that is wrong is the contrast of the cluster, not the padding. On the 768px shot the shell nav takes the room the chart tools would have used, and the pane chrome stays in that same corner. No horizontal overflow at 768.</p>
 
 <h3>Hover cards</h3>
 <p>The rung card and the bead card are the house pattern: a title, a short aside, two or three figures, one sentence. The bead card was already fixed once when the words ran out of the box (the comment at line 5283, 15 Oct 2026). Width 252px, and a click keeps it. That is the quality bar. The event card a few lines later is a different widget: a 10px uppercase label in a hand-positioned box, max 260px. One card component, used by the rung, the bead and the event, is the polish. No new information. The rung card’s problem is discovery, not layout, and the letter on the rung is the discovery.</p>
@@ -398,7 +418,16 @@ const MARK = { callWall: 'C', putWall: 'P', flip: 'F', supreme: 'S' };</pre>
 <p><code>server/thetaProxy.mjs</code> forwards <code>/api/theta</code> to <code>127.0.0.1:25503</code> and will start the jar only when Java 21 and a credential file exist. Terrain never calls it. A search of the terrain and gex trees finds no Theta client. Wiring it in is a new reader that produces the same candle shape <code>displayBars</code> already consumes, used when <code>uwFetch</code> has failed twice. It is not a drop-in: Theta’s bars and the whale chain will disagree about the price, which is the two-book problem again if both are shown as one number. If Theta feeds candles, the header has to say “candles: Theta, chain: none” rather than silently mixing them. Effort is large. Impact is a desk that still draws a session when the whale proxy returns 503. Do it after the age chip, which is useful even with one vendor.</p>
 
 <h3>Tests</h3>
-<p><code>npm test</code> is <code>scripts/terrain-setups-proof.ts</code>. It covers pane keys and setups. It does not build a chain and compare Terrain’s rung with the Map’s flip. The first brief already asked for that one assertion; it is still absent, and it is not repeated here as a new item. What this pass adds:</p>
+<p><code>npm test</code> is <code>scripts/terrain-setups-proof.ts</code>. It covers pane keys and setups. It does not build a chain and compare Terrain’s rung with the Map’s flip. The first brief already asked for that assertion. It is still absent. The fixture, which that brief did not write out:</p>
+<pre>// scripts/terrain-levels-proof.ts
+// One chain. Terrain's levelsOf midpoint and core/gammaFlip must name the same strike.
+const chain = syntheticChain({ spot: 455, step: 5 });
+const terrain = levelsOf(chain);
+const map = gammaFlip(chain);
+assert.equal(terrain.flip, map.flip);
+assert.equal(terrain.callWall, wallsOf(chain).call);
+assert.equal(terrain.putWall, wallsOf(chain).put);</pre>
+<p>Files: a new script next to <code>terrain-setups-proof.ts</code>, calling <code>levelsOf</code> from <code>Terrain.tsx</code> (export it) and <code>gammaFlip</code> from <code>core/gammaFlip.ts</code>. Wire it into <code>npm test</code> beside the setups proof. What this pass adds on top of that:</p>
 <ul>
   <li>A render test that <code>ExposureField</code> calls the same hooks with a null snapshot and with a live one. That is the crash, pinned, so the hook move cannot regress. The first brief has the fix. The test is new.</li>
   <li><code>displayBars</code> returns an empty list when the book is missing, and the session bars when it is live. Today a regression toward the simulator’s candles would not fail a script.</li>
@@ -442,6 +471,11 @@ const MARK = { callWall: 'C', putWall: 'P', flip: 'F', supreme: 'S' };</pre>
 
 <h3>Config version and a second tab <span class="tag">S</span> <span class="tag">Impact: medium</span></h3>
 <p>Section 4. <code>loadCfg</code>, the <code>setItem</code> effect, a <code>storage</code> listener.</p>
+<pre>const saved = { version: 1, ...cfg };
+localStorage.setItem(TERRAIN_KEY, JSON.stringify(saved));
+window.addEventListener('storage', (e) => {
+  if (e.key === TERRAIN_KEY && e.newValue) setCfg(loadCfg());
+});</pre>
 
 <h3>Crosshair magnet <span class="tag">S</span> <span class="tag">Impact: medium</span></h3>
 <p>The crosshair already syncs in under a frame. It does not stick to a strike. When the pointer is within a few pixels of a rung, report that rung’s price instead of the free price, and let the synced panes mark the same strike. Files: the crosshair handler in <code>StrikeChart.tsx</code> (the <code>onCrosshairRef</code> call around line 2048) and <code>ladderOf</code>. A magnet that prefers the call wall over a random price is the interaction the rung letters are for.</p>
@@ -462,7 +496,19 @@ onCrosshairRef.current?.(time, snapped);</pre>
 <p>Section 4. <code>StrikeChart.tsx</code> line 3384, plus the <code>error</code> listener.</p>
 
 <h3>A sound when price tags a wall <span class="tag">S</span> <span class="tag">Impact: low</span></h3>
-<p>The alert kinds for a flip, a new supreme and a wall that moves two strikes already exist (<code>WatchMenu.tsx</code> around lines 103–105). A price crossing the wall is the first brief’s rung-card alert. What is missing is a sound, off by default, on the alert that already fires. One <code>AudioContext</code> beep in the alert watcher, behind a desk toggle. Do not add a new alert kind to get a noise.</p>
+<p>The alert kinds for a flip, a new supreme and a wall that moves two strikes already exist (<code>WatchMenu.tsx</code> around lines 103–105). A price crossing the wall is the first brief’s rung-card alert. What is missing is a sound, off by default, on the alert that already fires. One beep in the alert watcher, behind a desk toggle. Do not add a new alert kind to get a noise. Files: <code>components/alerts/AlertWatcher.tsx</code>, a boolean on the Terrain config.</p>
+<pre>if (prefs.sound && justFired.length) {
+  const ctx = new AudioContext();
+  const o = ctx.createOscillator();
+  o.frequency.value = 660;
+  o.connect(ctx.destination);
+  o.start(); o.stop(ctx.currentTime + 0.08);
+}</pre>
+
+<h3>OI marks on the tape <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
+<p>The first brief already lists the overlays Terrain has, and it says not to add a second heat. The missing mark is smaller than that: a dot on a strike whose open interest doubled since the previous read, drawn by the same primitive as the rungs, not a new study with a period. Files: <code>keyLevelsPrimitive.ts</code> or a sibling primitive, fed by the OI snapshot <code>uwBook</code> already stores. The alert for the same event is the next item. The mark is so you can see it without arming anything.</p>
+<pre>const jumped = strikes.filter(s => prevOi.get(s.strike) > 0 && s.oi &gt; prevOi.get(s.strike) * 2);
+primitive.setData(jumped.map(s => ({ price: s.strike, ink: '#EDEDED' })));</pre>
 
 <h3>Yesterday’s book, as a list <span class="tag">M</span> <span class="tag">Impact: high</span></h3>
 <p>The first brief said to draw notches when a level was tested, and not to draw a second set of history lines. A list is neither. <code>levelRecord</code> can already say the call wall moved. A panel, one row per level: “call wall 455 → 460 since yesterday’s close, 1.1%.” Files: the record module, a small block under the identity row or on the rung card. No new series on the candles.</p>
@@ -480,34 +526,66 @@ onCrosshairRef.current?.(time, snapped);</pre>
 }</pre>
 
 <h3>A link, not only a PNG <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
-<p>The camera already imports <code>html2canvas</code> on press (<code>Terrain.tsx</code> around line 1379) and that chunk is split. A PNG cannot be reopened as a desk. A share payload is the symbol, the interval, the overlay flags, and the level prices at the moment of the shot, encoded in the hash of a read-only route. The route draws one pane from that payload and does not start the simulator. Files: a <code>/terrain/s/:id</code> route, <code>localStorage</code> or a short unowned row if a database is already on for something else — it is not, for this app, so keep the payload in the hash and accept the length limit. Do not put the chain in the URL.</p>
+<p>The camera already imports <code>html2canvas</code> on press (<code>Terrain.tsx</code> around line 1379) and that chunk is split. A PNG cannot be reopened as a desk. A share payload is the symbol, the interval, the overlay flags, and the level prices at the moment of the shot, encoded in the hash of a read-only route. The route draws one pane from that payload and does not start the simulator. Files: a <code>/terrain/s</code> route. There is no database on this app, so the payload stays in the hash. Do not put the chain in the URL.</p>
+<pre>const payload = { t: ticker, tf: timeframe, overlays, levels: { call: L.callWall, put: L.putWall, flip: L.flip, supreme: L.supreme } };
+location.hash = '#' + btoa(JSON.stringify(payload));</pre>
 
 <h3>How many names are long gamma <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
 <p>The regime sentence for one name is the first brief. A strip on the desk bar is the count across the open panes, or across the watchlist the simulator already holds: “3 of 4 long gamma.” It uses the same sign the Map already computes. Files: a function next to the regime helper the first brief names, rendered once in <code>Terrain.tsx</code>, not once per pane. When the books disagree, the strip is hidden rather than averaged. One line back to the first brief for the per-name sentence.</p>
+<pre>const signs = panes.map(p => signOf(p.ticker)); // +1 long, -1 short, 0 unknown
+const known = signs.filter(s => s !== 0);
+const label = known.length ? `${known.filter(s => s > 0).length} of ${known.length} long gamma` : '';</pre>
 
 <h3>Two names, one regime question <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
 <p>Compare today is a price overlay. The question a GEX desk is for is “is SPY long gamma while QQQ is short?” A two-column card: sign, distance to the flip in percent, distance to the supreme. Not a second chart. Files: the levels each pane already computes, a toggle on the link chip (panes that share a letter). Effort is the card. The levels have to be the same book, or the card is the two-book bug with a heading.</p>
+<pre>// two linked panes, same book, or the card stays blank
+{ label: 'Flip', a: pct(spotA, flipA), b: pct(spotB, flipB) }
+{ label: 'Sign', a: signA, b: signB }</pre>
 
 <h3>A 0DTE open list <span class="tag">M</span> <span class="tag">Impact: medium</span></h3>
-<p>Not a new indicator. A workspace that, before the open, shows for the active name: where the flip sits relative to the previous close, whether the supreme moved overnight (the list above), the expected-move high and low the first brief already wants on the chart, and the IV rank the header should already show. One column, four rows, dismissed at 9:45. Files: a component beside the desk, reading <code>uwBook</code> fields that are already fetched. It is worthless until those fields are the book the header uses. Build it after the first brief’s one-book item, not before.</p>
+<p>Not a new indicator. A workspace that, before the open, shows for the active name: where the flip sits relative to the previous close, whether the supreme moved overnight (the list above), the expected-move high and low the first brief already wants on the chart, and the IV rank the header should already show. One column, four rows, dismissed at 9:45. Files: a component beside the desk, reading <code>uwBook</code> fields that are already fetched. It is worthless until those fields are the book the header uses. Build it after the first brief’s one-book item, not before. The expected-move line itself stays in that brief.</p>
+<pre>const rows = [
+  ['Flip vs prior close', pct(flip, priorClose)],
+  ['Supreme overnight', diffLevels(yesterday, today).supreme],
+  ['Expected move', `${emLow} – ${emHigh}`],
+  ['IV rank', ivRank],
+];</pre>
 
 <h3>Undo for a drawing <span class="tag">M</span> <span class="tag">Impact: low</span></h3>
 <p>There is an undo helper in the UI kit. The drawing tools do not call it. A stack of the last 20 drawing mutations per symbol, Cmd-Z, stored next to the drawings that already persist per ticker. Files: <code>drawingsPrimitive.ts</code>, the key handler in <code>Terrain.tsx</code>. Cap the stack so it cannot be the thing that fills <code>localStorage</code>.</p>
+<pre>const undo = []; // per ticker, max 20
+function mutate(next) { undo.push(drawings); drawings = next; if (undo.length > 20) undo.shift(); }
+function pop() { const prev = undo.pop(); if (prev) drawings = prev; }</pre>
 
 <h3>A pane in its own window <span class="tag">M</span> <span class="tag">Impact: low</span></h3>
 <p><code>window.open</code> to <code>/terrain?pop=SPY&amp;tf=1m</code> with layout forced to 1. The config parser already accepts a layout. The only new work is reading the query once and not writing that back over the desk’s saved four-pane layout. Useful on two monitors. Easy to get wrong if the pop writes <code>slayer_terrain_v1</code>.</p>
+<pre>const pop = new URLSearchParams(location.search).get('pop');
+if (pop) { /* render one pane; skip the setItem effect */ }
+else window.open(`/terrain?pop=${ticker}&tf=${timeframe}`);</pre>
 
 <h3>One sentence on a stall <span class="tag">M</span> <span class="tag">Impact: low</span></h3>
 <p>The app has no model client. No xAI import, no OpenAI import. A button on the rung card, “why here,” sends the symbol, the four level prices, the sign, and the distance, and asks for two sentences a trader could have written. User-initiated, one request per click, server-side key, a hard timeout. Do not send the chain. Do not run it on a timer. Files: a new route under the existing server, the card in <code>StrikeChart.tsx</code>. Until a key exists, the button stays off. Shipping a fake sentence is worse than no button.</p>
+<pre>// server only, on click
+const prompt = `${ticker} stalled at ${spot}. Call wall ${call}, put wall ${put}, flip ${flip}, supreme ${supreme}, sign ${sign}. Two sentences.`;
+const text = await complete(prompt, { timeoutMs: 8000, maxTokens: 120 });</pre>
 
 <h3>The shell is why the open takes two seconds <span class="tag">L</span> <span class="tag">Impact: high</span></h3>
-<p>Section 1. Terrain’s own chunk is 96KB. The open still decoded 7.19MB across 144 files, and the entry chunk is 1.4MB raw. The work is finding what the shell imports eagerly (the map, the grid, the editor) and leaving it on the routes that use it. Expected gain: the production “four canvases” number, 2.1s cold, moves by whatever fraction of that 2.1s is script evaluation. This pass did not split that 2.1s into parse versus data versus chart mount, so the gain is “a large part of two seconds,” not a promised 400ms.</p>
+<p>Section 1. Terrain’s own chunk is 96KB. The open still decoded 7.19MB across 144 files, and the entry chunk is 1.4MB raw. The work is finding what the shell imports eagerly (the map, the grid, the editor) and leaving it on the routes that use it. Files: <code>App.tsx</code> and whatever the entry chunk still imports statically. Expected gain: the production “four canvases” number, 2.1s cold, moves by whatever fraction of that 2.1s is script evaluation. This pass did not split that 2.1s into parse versus data versus chart mount, so the gain is “a large part of two seconds,” not a promised 400ms.</p>
+<pre>const Map = lazy(() => import('./pages/whatever-pulls-houseGrid'));
+// same for the editor and the grid. The shell file should not import them.</pre>
 
 <h3>The book on a phone <span class="tag">L</span> <span class="tag">Impact: medium</span></h3>
-<p>Below <code>xl</code> the rail is not rendered, and the rail keys are unbound so they cannot announce a rail that is not there (<code>Terrain.tsx</code> around line 2628). That is correct. A bottom sheet, opened by the same key once the viewport is wide enough to mean it, or by a “Strikes” button that already exists in the comment, is the phone version: the ladder, not the GEX calendar, because the calendar is the crash and the ladder is the list. Pinch stays the chart library’s gesture. Do not mount <code>ExposureField</code> in the sheet until the hooks are fixed.</p>
+<p>Below <code>xl</code> the rail is not rendered, and the rail keys are unbound so they cannot announce a rail that is not there (<code>Terrain.tsx</code> around line 2628). That is correct. A bottom sheet, opened by a “Strikes” button, is the phone version: the ladder, not the GEX calendar, because the calendar is the crash and the ladder is the list. Pinch stays the chart library’s gesture. Do not mount <code>ExposureField</code> in the sheet until the hooks are fixed. Files: <code>Terrain.tsx</code> and <code>ProfilePanel.tsx</code> with <code>view</code> forced to <code>ladder</code>.</p>
+<pre>{belowXl && sheetOpen && (
+  &lt;div className="fixed inset-x-0 bottom-0 h-[55vh]"&gt;
+    &lt;ProfilePanel view="ladder" … /&gt;
+  &lt;/div&gt;
+)}</pre>
 
 <h3>Theta under the candles <span class="tag">L</span> <span class="tag">Impact: medium</span></h3>
-<p>Section 4. A second reader, labelled, used only after the whale book has failed. Not a silent fallback.</p>
+<p>Section 4. A second reader, labelled, used only after the whale book has failed. Not a silent fallback. Files: a reader next to <code>uwBook.ts</code> that calls <code>/api/theta</code>, and the branch in <code>displayBars</code> (<code>StrikeChart.tsx</code> around line 449).</p>
+<pre>const bars = bookCandles(ticker) ?? (uwFailed(ticker) ? thetaCandles(ticker) : null) ?? [];
+// header chip must say "candles: Theta" when the second branch wins</pre>
 
 <h2>6. What to do, in order</h2>
 <p>Only items that are not the first brief’s roadmap. Impact is 1–5. Effort is S = 1, M = 2, L = 3. The sort is impact divided by effort. Ties break toward the smaller change.</p>
@@ -526,7 +604,7 @@ onCrosshairRef.current?.(time, snapped);</pre>
   <tr><td class="num">11</td><td>Rail draw loop sleeps when the ease has settled</td><td class="num">2</td><td>S</td><td class="num">2.0</td></tr>
   <tr><td class="num">12</td><td>Remove <code>[events-debug]</code> and beacon a thrown error</td><td class="num">2</td><td>S</td><td class="num">2.0</td></tr>
   <tr><td class="num">13</td><td>A sound on an alert that already fires</td><td class="num">2</td><td>S</td><td class="num">2.0</td></tr>
-  <tr><td class="num">14</td><td>Charm-into-the-close and OI-doubled alerts</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
+  <tr><td class="num">14</td><td>OI-doubled marks on the tape, plus the charm and OI alerts</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
   <tr><td class="num">15</td><td>Share payload in the URL, beside the PNG</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
   <tr><td class="num">16</td><td>Watchlist breadth: how many names are long gamma</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
   <tr><td class="num">17</td><td>Two names compared on sign and distance, not on price</td><td class="num">3</td><td>M</td><td class="num">1.5</td></tr>
