@@ -27,8 +27,6 @@
 ==================================================
 */
 
-import { createContext, } from 'react';
-
 /** A smooth open spline through points (Catmull-Rom, rendered as cubic
     Béziers). One curve for the whole ladder — the per-row quadratics met at
     corners and doubled back wherever neighbours pulled opposite ways (Noah,
@@ -51,8 +49,4 @@ export const splinePath = (pts: { x: number; y: number }[], xMin: number, xMax: 
   }
   return d;
 };
-import { HEAT_MODE, type HeatMode } from './heatmap';
-
-/** The ramp in hand, read by the legs and the card without threading a prop through every row */
-const ModeCtx = createContext<HeatMode>(HEAT_MODE);
 

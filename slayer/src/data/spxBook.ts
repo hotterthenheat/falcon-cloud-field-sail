@@ -6,7 +6,6 @@
 import { type SpxRead } from './spxFacts';
 
 let read: SpxRead | null = null;
-const listeners = new Set<() => void>();
 
 export function spxRead(): SpxRead | null {
   return read;

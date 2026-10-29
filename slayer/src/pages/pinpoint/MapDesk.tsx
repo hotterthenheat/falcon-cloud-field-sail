@@ -26,7 +26,6 @@ import DayBox from '../../components/gex/DayBox';
 import ReplayStrip from '../../components/gex/ReplayStrip';
 import { MapReadings } from '../../components/vendor/LiveDesk';
 import { posAtMinute, replayDay, replayLabel, replayMinute, replayRange, replaySections, replayStart, sectionBarsAt, snapPos, snapshotAt, type ReplayRange } from '../../data/replay';
-import { readSessionClock } from '../../data/moc';
 import { setReplayLabel } from './replayState';
 import { readPosition, usePositions } from '../../data/positions';
 import { buildExposureProfile, type StrikeWindow } from '../../data/exposure';
@@ -245,11 +244,6 @@ const MapDesk = () => {
     setReplayLabel(replayWords);
     return () => setReplayLabel(null);
   }, [replayWords]);
-  /* outside the session the door replays the last session, and says so */
-  const marketOpen = (() => {
-    const c = readSessionClock();
-    return c.phase === 'OPEN' || c.phase === 'AUCTION';
-  })();
   /* replay opens at the session's first bar, playing */
   const startReplay = () => {
     if (!scan) return;
@@ -432,7 +426,6 @@ const MapDesk = () => {
   }, [frameSnap]);
 
   const ticker = frameSnap?.ticker ?? activeTicker;
-  const focusPrice = focusFor(ticker);
   const calTicker = scopes.calendar ?? calSnap?.ticker ?? ticker;
   const tapeTicker = scopes.tape ?? tapeSnap?.ticker ?? ticker;
   const dayTicker = scopes.day ?? daySnap?.ticker ?? ticker;

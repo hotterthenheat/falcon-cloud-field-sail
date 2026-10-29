@@ -1,4 +1,4 @@
-import type { ISeriesPrimitive, SeriesAttachedParameter, Time, IChartApi, ISeriesApi } from 'lightweight-charts';
+import { MismatchDirection, type ISeriesPrimitive, type SeriesAttachedParameter, type Time, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { GexSnapshot } from '../../types/market';
 import { nyIsoDate, nySession } from '../../core/nyTime';
 import { nodeMark, peakStrikes, priceTag, type NodeMark, type PriceTag } from '../../data/nodeScore';
@@ -51,6 +51,11 @@ const FLIP_RGBA = 'rgba(156,163,175,0.8)'; // indecision gray — the regime bor
    its chip, its axis line, and the ladder's K·PW / K·CW tags all name it.
    The band belongs to the crown. */
 const FLIPK_RGBA = 'rgba(234,0,255,0.85)';
+/* The field's raster reaches this share of the pane past each side (x) and above and below (y), and is redrawn this long
+   after the view last moved */
+const RASTER_MX = 0.35;
+const RASTER_MY = 0.25;
+const SETTLE_MS = 120;
 /* the field's ink slots, in the order the renderer's INKS list holds them */
 const INK_F = 0;
 const INK_K = 1;
@@ -178,12 +183,19 @@ class TrailsPaneRenderer {
       drag blits it shifted, and the paths are rebuilt once the gesture stops,
       so the frame stays a drawImage instead of thousands of fills. */
   private bmp: HTMLCanvasElement | null = null;
-  private blitRev = -1;
-  private blitX = 0;
-  private blitProbe = 0;
-  private blitBar = 0;
-  private blitHr = 1;
-  private blitVr = 1;
+  /* The raster's own frame, to map it onto a moved view: its margins (bitmap px), the data revision and pixel ratios it
+     was drawn at, a reference bar's time and x, the bar spacing, and two price probes (price→pixel is affine) */
+  private rMx = 0;
+  private rMy = 0;
+  private rRev = -1;
+  private rHr = 1;
+  private rVr = 1;
+  private rRefTime = 0;
+  private rXRef = 0;
+  private rBar = 0;
+  private rPrice = 0;
+  private rYa = 0;
+  private rYb = 0;
   private settle = 0;
   private movedAt = 0;
   private labelsOf: { snap: GexSnapshot; greek: TrailGreek; total: number; top: { strike: number; value: number }[] } | null = null;
@@ -193,7 +205,7 @@ class TrailsPaneRenderer {
     this.movedAt = performance.now();
     if (this.settle) return;
     const wait = () => {
-      if (performance.now() - this.movedAt < 48) {
+      if (performance.now() - this.movedAt < SETTLE_MS) {
         this.settle = requestAnimationFrame(wait);
         return;
       }
@@ -240,6 +252,40 @@ class TrailsPaneRenderer {
     }
     const last = lo; // exclusive
     if (last <= first) return;
+    /* The raster reaches past the view by RASTER_MX of its width each side (in bars, through the logical range, so a
+       session gap does not shorten it): a pan or zoom then maps the last raster instead of re-rastering every frame */
+    const barSpacing0 = ts.options().barSpacing ?? 6;
+    let rFirst = first;
+    let rLast = last;
+    const lr = ts.getVisibleLogicalRange();
+    const paneW = src.chart.paneSize(0).width;
+    if (lr && paneW > 0) {
+      const mB = Math.ceil((paneW * RASTER_MX) / Math.max(0.5, barSpacing0)) + 2;
+      const at = (i: number, dir: MismatchDirection) => {
+        const d = series.dataByIndex(i, dir);
+        return d ? Number(d.time) : null;
+      };
+      const tL = at(Math.floor(lr.from) - mB, MismatchDirection.NearestRight);
+      const tR = at(Math.ceil(lr.to) + mB, MismatchDirection.NearestLeft);
+      const fromR = Math.min(fromT, (tL ?? fromT) - src.barSec * 2);
+      const toR = Math.max(toT, (tR ?? toT) + src.barSec * 2);
+      lo = 0;
+      hi = first;
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (snaps[m].time < fromR) lo = m + 1;
+        else hi = m;
+      }
+      rFirst = lo;
+      lo = last;
+      hi = snaps.length;
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (snaps[m].time <= toR) lo = m + 1;
+        else hi = m;
+      }
+      rLast = lo;
+    }
     const col0 = src.columnAt(first);
     const barSpacing = ts.options().barSpacing ?? 6;
     if (src.ref <= 0 && src.restRef <= 0) return;
@@ -286,34 +332,29 @@ class TrailsPaneRenderer {
       const probeB = series.priceToCoordinate((col0.top[0]?.strike ?? 0) + 1) ?? -1;
       const key = `${src.rev}|${wCss}|${scope.mediaSize.height}|${barSpacing.toFixed(3)}|${x0}|${first}|${last}|${probeA.toFixed(2)}|${probeB.toFixed(2)}|${hr}|${vr}|${focus}|${supreme}|${src.cwStrike}|${src.pwStrike}|${src.flipPrice}|${src.focusInk}`;
       const cached = key === this.cacheKey && !!this.bmp;
-      /* PAN AND SCALE DRAGS stay a blit. The bitmap was painted at blitX /
-         blitProbe; this frame's origin moved, so it is drawn shifted. The
-         paths rebuild once, after the pointer rests. */
+      /* A MOVED VIEW MAPS THE LAST RASTER. The raster was drawn with margins at another bar spacing, scroll and price
+         scale; both axes are affine, so one drawImage puts every bead where this frame's scales want it (the beads'
+         heights keep the raster's scale until the rebuild). The rebuild runs once the gesture rests (SETTLE_MS), or
+         now when the view leaves the raster or the scale drifts too far. A resting view re-rasters, so it is exact. */
       let scrolled = false;
-      if (
-        !cached &&
-        this.bmp &&
-        x0 != null &&
-        this.blitRev === src.rev &&
-        this.bmp.width === scope.bitmapSize.width &&
-        this.bmp.height === scope.bitmapSize.height &&
-        this.blitHr === hr &&
-        this.blitVr === vr
-      ) {
-        const scale = this.blitBar > 0 ? barSpacing / this.blitBar : 1;
-        const dx = (Number(x0) - this.blitX) * hr;
-        const dy = (probeA - this.blitProbe) * vr;
-        const zoomOk = scale > 0.75 && scale < 1.35;
-        if (
-          zoomOk &&
-          Math.abs(dx) < scope.bitmapSize.width * 0.5 &&
-          Math.abs(dy) < scope.bitmapSize.height * 0.5
-        ) {
-          const w = this.bmp.width;
-          const h = this.bmp.height;
-          ctx.drawImage(this.bmp, dx, dy, w * scale, h * scale);
-          scrolled = true;
-          this.armSettle(src);
+      const bmp0 = this.bmp;
+      if (!cached && bmp0 && this.rRev === src.rev && this.rHr === hr && this.rVr === vr && this.rBar > 0 && this.rYb !== this.rYa) {
+        const xRef = ts.timeToCoordinate(this.rRefTime as Time);
+        const yA = series.priceToCoordinate(this.rPrice);
+        const yB = series.priceToCoordinate(this.rPrice + 1);
+        if (xRef !== null && yA !== null && yB !== null) {
+          const sx = barSpacing / this.rBar;
+          const sy = (yB - yA) / (this.rYb - this.rYa);
+          const dX = (xRef + sx * (-this.rMx / hr - this.rXRef)) * hr;
+          const dY = (yA + sy * (-this.rMy / vr - this.rYa)) * vr;
+          const dW = bmp0.width * sx;
+          const dH = bmp0.height * sy;
+          const covers = dX <= 0.5 && dX + dW >= scope.bitmapSize.width - 0.5 && dY <= 0.5 && dY + dH >= scope.bitmapSize.height - 0.5;
+          if (covers && sx > 0.5 && sx < 2.5 && sy > 0.5 && sy < 2) {
+            ctx.drawImage(bmp0, dX, dY, dW, dH);
+            scrolled = true;
+            this.armSettle(src);
+          }
         }
       }
 
@@ -351,11 +392,12 @@ class TrailsPaneRenderer {
       };
 
       // ---- the beads (skipped whole when the cache holds) --------------------
-      for (let ci = cached || scrolled ? last : first; ci < last; ci++) {
-        const col = src.columnAt(ci);
-        if (tight && !cached) {
-          for (let bi = 0; bi < col.top.length; bi++) {
-            const bead = col.top[bi];
+      /* the window's counts read the view's columns only, never the raster's margins */
+      if (tight && !cached && !scrolled) {
+        for (let ci = first; ci < last; ci++) {
+          const top = src.columnAt(ci).top;
+          for (let bi = 0; bi < top.length; bi++) {
+            const bead = top[bi];
             if (bead.mark === 'born') born += 1;
             else if (bead.mark === 'grew') grew += 1;
             else if (bead.mark === 'flipped') flipped += 1;
@@ -365,12 +407,17 @@ class TrailsPaneRenderer {
             else if (bead.tag === 'broke') broke += 1;
           }
         }
+      }
+      const rasterW = scope.bitmapSize.width + 2 * Math.round(scope.bitmapSize.width * RASTER_MX);
+      const mxCss = Math.round(scope.bitmapSize.width * RASTER_MX) / hr;
+      for (let ci = cached || scrolled ? rLast : rFirst; ci < rLast; ci++) {
+        const col = src.columnAt(ci);
         // The bead's bar, and where inside it this moment sits
         const bucket = Math.floor(col.time / barSec) * barSec;
         const slot = slots > 1 ? Math.floor(((col.time - bucket) / barSec) * slots) : 0;
         if (slot % stride !== 0) continue;
         const xBar = ts.timeToCoordinate(bucket as Time);
-        if (xBar === null || xBar < -halfW || xBar > wCss + halfW) continue;
+        if (xBar === null || xBar < -halfW - mxCss || xBar > wCss + halfW + mxCss) continue;
         const x = slots > 1 ? xBar - halfW + ((slot / stride + 0.5) / drawnSlots) * barSpacing : xBar;
         const cx = x * hr;
         if (col.gap) glyphs.push({ x: cx, y: 16 * vr, word: 'gap' });
@@ -523,13 +570,22 @@ class TrailsPaneRenderer {
         }
       };
       if (!cached && !scrolled) {
-        const bmp = this.bmp && this.bmp.width === scope.bitmapSize.width && this.bmp.height === scope.bitmapSize.height
-          ? this.bmp
-          : document.createElement('canvas');
-        bmp.width = scope.bitmapSize.width;
-        bmp.height = scope.bitmapSize.height;
+        const mxPx = Math.round(scope.bitmapSize.width * RASTER_MX);
+        const myPx = Math.round(scope.bitmapSize.height * RASTER_MY);
+        const bw = rasterW;
+        const bh = scope.bitmapSize.height + 2 * myPx;
+        const bmp = this.bmp ?? document.createElement('canvas');
+        /* a size change clears the canvas; a same-size raster is cleared by hand */
+        if (bmp.width !== bw || bmp.height !== bh) {
+          bmp.width = bw;
+          bmp.height = bh;
+        }
         const bctx = bmp.getContext('2d');
         if (bctx) {
+          bctx.setTransform(1, 0, 0, 1, 0, 0);
+          bctx.clearRect(0, 0, bw, bh);
+          /* everything is drawn in the view's own pixels, shifted into the margins by whole pixels */
+          bctx.setTransform(1, 0, 0, 1, mxPx, myPx);
           paint(bctx, halos, 40);
           paint(bctx, cores, 20);
           bctx.font = `${Math.round(8 * vr)}px sans-serif`;
@@ -562,21 +618,27 @@ class TrailsPaneRenderer {
             bctx.fillStyle = flipOnSupreme ? FLIPK_RGBA : FLIP_RGBA;
             bctx.fill(flipPath);
           }
+          bctx.setTransform(1, 0, 0, 1, 0, 0);
           this.bmp = bmp;
           this.cacheKey = key;
-          this.blitRev = src.rev;
-          this.blitX = x0 == null ? 0 : Number(x0);
-          this.blitProbe = probeA;
-          this.blitBar = barSpacing;
-          this.blitHr = hr;
-          this.blitVr = vr;
+          this.rMx = mxPx;
+          this.rMy = myPx;
+          this.rRev = src.rev;
+          this.rHr = hr;
+          this.rVr = vr;
+          this.rRefTime = firstBucket;
+          this.rXRef = x0 == null ? 0 : Number(x0);
+          this.rBar = barSpacing;
+          this.rPrice = col0.top[0]?.strike ?? 0;
+          this.rYa = probeA;
+          this.rYb = probeB;
           if (this.settle) {
             cancelAnimationFrame(this.settle);
             this.settle = 0;
           }
         }
       }
-      if (!scrolled && this.bmp) ctx.drawImage(this.bmp, 0, 0);
+      if (!scrolled && this.bmp) ctx.drawImage(this.bmp, -this.rMx, -this.rMy);
 
       // ---- THE HOVER, over the bitmap (never in it): the veil, the bead again at full, its ring --------------
       const hover = src.hoverOverlay ? null : src.hover;
