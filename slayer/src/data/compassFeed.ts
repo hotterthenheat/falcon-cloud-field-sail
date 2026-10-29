@@ -177,3 +177,31 @@ export function useCompassFeed(): CompassFeed {
   );
   return feed;
 }
+
+/** The marks still waiting to be scored from recorded quotes (the terminal missed them, or the engine started after
+    them): how many names, and the oldest mark's clock. */
+export function backlog(marks: readonly MarkRow[] = feed.marks): { names: number; oldest: string; late: number } {
+  let names = 0;
+  let late = 0;
+  let oldest = '';
+  let oldestAt = Infinity;
+  for (const m of marks) {
+    for (const v of Object.values(m.names)) {
+      if (v === 'late') late += 1;
+      if (v !== 'pending') continue;
+      names += 1;
+      if (m.at < oldestAt) {
+        oldestAt = m.at;
+        oldest = m.clock;
+      }
+    }
+  }
+  return { names, oldest, late };
+}
+
+/** One line for a page while marks are waiting, or ''. */
+export function backlogLine(marks: readonly MarkRow[] = feed.marks): string {
+  const b = backlog(marks);
+  if (!b.names) return '';
+  return `Scoring missed marks late from recorded quotes: ${b.names.toLocaleString('en-US')} left, from ${b.oldest} ET.`;
+}

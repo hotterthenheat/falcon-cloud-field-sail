@@ -9,8 +9,8 @@ import { useTracker } from '../context/TrackerContext';
 import { nyClock, nyIsoDate } from '../core/nyTime';
 import { activeStop, useSignals, type Signal } from '../data/compassLedger';
 import { daySummary, optionFees } from '../data/compassOutcome';
-import { holdCompassFeed, useCompassFeed } from '../data/compassFeed';
-import { asOfText } from '../components/ui/states';
+import { backlogLine, holdCompassFeed, useCompassFeed } from '../data/compassFeed';
+import { EmptyBox, asOfText } from '../components/ui/states';
 import { useThetaStatus } from '../data/thetaQuote';
 import TraceBox, { Fact } from '../components/trace/TraceBox';
 import ContractLabel from '../components/ui/ContractLabel';
@@ -134,13 +134,16 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
       sentence={sentence ? <span data-tracker-line>{sentence}</span> : false}
     >
       {rows.live.length + rows.done.length === 0 ? (
-        <div className="border-t border-borderSubtle px-5 py-10 font-mono text-t11 text-textMuted" data-tracker-empty>
-          No signal is in play. When Compass fires a Book A, B or C call it shows here with the quote it fired on, its fill and its path, until it closes.
-          {record.length > 0 && (
-            <button type="button" onClick={() => navigate('/compass/blotter')} className="ml-1 text-textPrimary underline decoration-borderMuted underline-offset-4">
-              Every earlier signal is on the blotter.
-            </button>
-          )}
+        <div className="border-t border-borderSubtle" data-tracker-empty>
+          <EmptyBox
+            title="Nothing in play"
+            reason={backlogLine(feed.marks) || 'When the scan fires a Book A, B or C call it shows here with the quote it fired on, its fill and its path, until it closes.'}
+            action={record.length > 0 ? (
+              <button type="button" onClick={() => navigate('/compass/blotter')} className="slayer-chip uppercase tracking-wider tap-40">
+                Every earlier call is on the blotter
+              </button>
+            ) : undefined}
+          />
         </div>
       ) : (
         <div className="border-t border-borderSubtle px-4 sm:px-5 py-4 flex flex-col gap-4">
