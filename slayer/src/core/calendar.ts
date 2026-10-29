@@ -70,6 +70,14 @@ export const MARKET_HOLIDAYS = new Set([
 const LIVE_HOLIDAYS = new Set<string>();
 
 /** Local-date ISO key (NOT toISOString — that shifts across the UTC boundary). */
+export { MONTHS } from './nyTime';
+
+/** New York's date of an instant, YYYYMMDD */
+export function nyYmd(ms: number): string {
+  const p = nyParts(ms);
+  return `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
+}
+
 export function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -113,6 +121,23 @@ function walkToSession(from: Date, step: 1 | -1): Date {
   const d = new Date(from);
   for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() + step);
   return d;
+}
+
+/** The session on or before a date (the date itself when it trades) */
+export function sessionAtOrBefore(d: Date): Date {
+  const out = new Date(d);
+  for (let i = 0; i < 10 && !isTradingDay(out); i++) out.setDate(out.getDate() - 1);
+  return out;
+}
+
+/** The session strictly before a date, at local midnight */
+export function sessionBefore(d: Date): Date {
+  const out = atMidnight(d);
+  for (let i = 0; i < 12; i++) {
+    out.setDate(out.getDate() - 1);
+    if (isTradingDay(out)) break;
+  }
+  return out;
 }
 
 /** The next date the market is open, today included if it is a session. */

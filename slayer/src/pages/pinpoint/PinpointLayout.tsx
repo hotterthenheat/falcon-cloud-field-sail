@@ -15,6 +15,7 @@ import { useReplayLabel } from './replayState';
 import SessionBook from '../../components/ui/SessionBook';
 import RegimeLine from '../../components/gex/RegimeLine';
 import { SayPage } from '../../components/layout/PageMeta';
+import { fmtStrike } from '../../core/format';
 
 /*
 ==================================================
@@ -67,8 +68,6 @@ import { SayPage } from '../../components/layout/PageMeta';
   screen's head is not left empty beside its name.
 ==================================================
 */
-
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 const PinpointLayout = () => {
   const { activeTicker } = useTicker();

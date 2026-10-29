@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
-import { bookToday, expiryFor, isoDate, isTradingDay, nextSession } from '../core/calendar';
+import { bookToday, expiryFor, isoDate, isTradingDay, nextSession, MONTHS as MON3 } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { pickLegWalls } from '../core/walls';
 import { registerChainDates } from './chainDates';
@@ -1783,7 +1783,6 @@ interface ScopeMove {
   /** "1σ = the vendor's straddle into Nov 20 × 1.25" — which number was used, in words */
   words: string;
 }
-const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const monDayOf = (iso: string): string => {
   const [, m, d] = iso.split('-').map(Number);
   return m && d ? `${MON3[m - 1]} ${d}` : iso;

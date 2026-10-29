@@ -11,6 +11,7 @@ import { MODELS_VALIDATED, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data
 import { useContractLive } from '../../data/thetaBook';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
+import { usd2 as money } from '../../core/format';
 
 const Stat = ({ label, value, ink = 'text-textPrimary', right = false }: { label: string; value: string; ink?: string; right?: boolean }) => (
   <span className={`flex flex-col gap-0.5 min-w-0 ${right ? 'items-end text-right' : ''}`}>
@@ -59,8 +60,6 @@ const placeWord = (setup: Setup): string => {
   if (Math.abs(pts) / spot < 0.0015) return 'ATM';
   return `${Math.abs(pts).toFixed(0)} pts ${pts > 0 ? 'ITM' : 'OTM'}`;
 };
-
-const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** The contract's own expiration. Not the sleeve's calendar chip. */
 export function ownExpiry(setup: { expiry: string; expiryDate?: string }): string {

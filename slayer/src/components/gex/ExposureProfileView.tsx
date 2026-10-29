@@ -39,9 +39,9 @@ import { readToken, useResolvedTheme } from '../../theme/theme';
 import { daySurface } from './dayChart';
 import { ABSORB, AMPLIFY, CALL_WALL, FLIP, PUT_WALL, SUPREME, alpha, resolveInk } from './paletteInk';
 import type { ExposureSurface } from '../../data/exposureSurface';
+import { fmtStrikeOrDash as fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))';
-const fmtStrike = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 /** a tag's width, near enough, for keeping the rules' tags off each other */
 const TAG_PX = 6.4;
 const TAG_ROW = 14;

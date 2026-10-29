@@ -52,11 +52,11 @@ import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
 import GuideFocus, { GuideDoor } from '../ui/GuideFocus';
 import ReportGuide from './ReportGuide';
 import type { Candle, MarketSnapshot } from '../../types/market';
+import { fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const GREEN = 'rgb(var(--bull))';
 const RED = 'rgb(var(--bear))';
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 /* NEW YORK'S CLOCK, like "Last touched" beside it (the audit's H2, 2026-10-13): the browser's zone put 05:43 and 01:36 on one row for the same minute */
 const hhmm = (unix: number) => nyClock(unix * 1000);
 

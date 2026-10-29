@@ -45,6 +45,7 @@ import { levelRoles, type LevelRole } from '../../core/walls';
 import { HEAT_MODE, heatCellStyle, type HeatMode } from './heatmap';
 import { AXIS_COL_W, AXIS_READ_H, AXIS_STRIKE_W } from './compareSkeletons';
 import { useResolvedTheme } from '../../theme/theme';
+import { fmtStrike } from '../../core/format';
 
 const SILVER = '#C7D3E8';
 const INK = '#ededed';
@@ -66,7 +67,6 @@ const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const SANS = '"Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 const PAD = 14;
 
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const near = (x: number, y: number) => Math.abs(x - y) < 1e-9;
 const rgba = (hex: string, a: number) => {
   const n = parseInt(hex.slice(1), 16);

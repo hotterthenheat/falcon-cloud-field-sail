@@ -35,6 +35,7 @@ import {
   type Setup,
   type SleeveKey,
 } from '../../types/compass';
+import { MONTHS as MONTH_SHORT } from '../../core/calendar';
 
 /** Dollars with a thousands separator. $5651.67 is not a price anyone can read. */
 const money = (n: number, digits = 2) =>
@@ -85,7 +86,6 @@ function isoOf(label: string): string {
 }
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** "Mon Oct 26" from the contract's real expiry session. */
 function dayStamp(iso: string): string {

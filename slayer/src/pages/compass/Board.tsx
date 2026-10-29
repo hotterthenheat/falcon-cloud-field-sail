@@ -17,7 +17,7 @@ import { OPEN_CAP, sessionBook, useScanClock } from '../../data/compassDoor';
 import { setCompassAlert, useCompassAlert } from '../../data/compassAlerts';
 import { odteAsleep, odteBoardDone, nextOdteOpen } from '../../data/compassSession';
 import { SCANNERS, SLEEVES, type OptionRight, type ScannerKey, type Setup, type SleeveKey } from '../../types/compass';
-import { expiryFor } from '../../core/calendar';
+import { expiryFor, MONTHS } from '../../core/calendar';
 import { companyName, companyNamesRev, subscribeCompanyNames, askCompanyNames } from '../../data/tickers';
 import { NAV_INK } from '../../components/layout/nav';
 import TraceBox, { Fact } from '../../components/trace/TraceBox';
@@ -33,7 +33,6 @@ import { CompassGuide } from '../../components/compass/CompassGuide';
 import SetupScanBoard from '../../components/compass/SetupScanBoard';
 import FilterTabs from '../../components/ui/FilterTabs';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** "Sep 16", or "Sep 10 '27" once the year turns */
 const dayOf = (d: Date) => {
   const sameYear = d.getFullYear() === new Date().getFullYear();

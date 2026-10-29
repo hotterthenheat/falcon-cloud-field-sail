@@ -4,7 +4,7 @@
 import { parseBoosters, predict, type Tree } from './lgbm';
 import { thetaCall } from './theta';
 import { nyParts, nyWallStamp } from '../core/nyTime';
-import { isTradingDay } from '../core/calendar';
+import { isTradingDay, nyYmd as ymd } from '../core/calendar';
 import { ensureBook, snapshotOf } from './uwBook';
 import { econReleases } from './monthCalendar';
 import {
@@ -196,10 +196,6 @@ function ivStates(price: number, S: number, K: number, T: number, call: boolean)
     else lo = mid;
   }
   return (lo + hi) / 2;
-}
-
-function ymd(ms: number): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)).replace(/-/g, '');
 }
 
 function minuteOf(ms: number): number {

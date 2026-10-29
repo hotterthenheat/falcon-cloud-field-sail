@@ -2,8 +2,8 @@
    named ("Oct 22"), never "today". */
 
 import { nextSessionIso, nyDateOf, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
+import { MONTHS } from '../../core/calendar';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const parse = (iso: string) => {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? { y: Number(m[1]), mo: Number(m[2]), d: Number(m[3]) } : null;

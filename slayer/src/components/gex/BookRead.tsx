@@ -51,6 +51,7 @@ import type { MarketSnapshot } from '../../types/market';
 import { Change, READ_WINDOWS } from './ChangeMark';
 import { HEAT_MODE, heatLaneColor, type HeatMode } from './heatmap';
 import { CALL_WALL, FLIP, PUT_WALL, SUPREME } from './paletteInk';
+import { fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))';
 const MUTED = 'rgb(var(--text-muted))';
@@ -66,8 +67,6 @@ const SECTIONS = [
   { id: 'recent', label: 'Recent' },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]['id'];
-
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 interface BookReadProps {
   surface: ExposureSurface;

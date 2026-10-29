@@ -11,8 +11,6 @@ import { ChevronDown, Link2, Unlink2 } from 'lucide-react';
 import { extendedLine, priceWords, useLiveQuote, type LiveQuote } from '../../data/liveQuote';
 import { DayRef } from '../../data/bookWindow';
 
-/** "Today's" in the session; outside it the last regular session named by its date ("Thu Oct 22's") */
-const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** "Oct 22" */
 const shortMonDay = (iso: string): string => {
   const [, m, d] = iso.split('-').map(Number);
@@ -29,6 +27,7 @@ import useFocusTrap from './useFocusTrap';
 import { useAnchoredMenu } from './useAnchoredMenu';
 import { MorphingInfinity, useWorking } from './Working';
 import { useNameArriving } from '../gex/useSeeded';
+import { MONTHS as MON3 } from '../../core/calendar';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token (deep steel on the light theme) */
 /** Matches the `w-72` on the menu — the placement keeps its far edge on screen */

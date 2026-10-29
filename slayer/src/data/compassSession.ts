@@ -2,7 +2,7 @@
    equity option, and an index option are three different clocks. Stocks and ETFs, the Theta stock tape: pre-market
    04:00–09:30, regular 09:30–16:00, after-hours 16:00–20:00. Every listed name. */
 
-import { isTradingDay } from '../core/calendar';
+import { isTradingDay, MONTHS as OPEN_MONTH } from '../core/calendar';
 import { now } from '../core/clock';
 import { nyMinutes, nyParts, nyWallTime, type At } from '../core/nyTime';
 import type { DeskSession } from './deskSession';
@@ -220,7 +220,6 @@ export function odteAsleep(at: At = now()): boolean {
 }
 
 const OPEN_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const OPEN_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** When the next 0DTE tape opens. That contract expires the next session, not the day that just stopped. */
 export function nextOdteOpen(at: At = now()): { atMs: number; line: string } {

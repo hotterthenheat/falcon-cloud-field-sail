@@ -8,11 +8,10 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import * as Popover from '@radix-ui/react-popover';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
 import { CARD } from './DropdownSelect';
-import { isoDate, today, type Expiry } from '../../core/calendar';
+import { isoDate, today, type Expiry, MONTHS as SHORT } from '../../core/calendar';
 
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 

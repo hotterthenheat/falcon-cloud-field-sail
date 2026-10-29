@@ -26,6 +26,7 @@ import type { TileControl, TileProps, TileState, WorkspaceCtx } from '../tile';
 import { useDeskClock } from '../useDeskClock';
 import { agendaOf, buildingOf, clockNow, keyLevelsOf, surface30 } from './derive';
 import { TileHeads, TileNoBook, TileRead, TileRow, TileRows, dirInk, fmtStrike, signedPct, useDoor } from './parts';
+import { pctWhole as pct } from '../../../core/format';
 
 const SILVER = 'rgb(var(--silver))';
 const same = (a: number | null, b: number) => a != null && Math.abs(a - b) < 1e-9;
@@ -159,8 +160,6 @@ export const LevelsTile = ({ ctx, state }: TileProps) => {
 /* the range, where it closes and at the wall stood here — gone with the Ahead and At-the-wall pages */
 
 /* ------------------------------------------------------------------ targets */
-
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
 const kindOf = (t: Target) => (t.role ? 'named' : t.isShelf ? 'shelf' : t.isWall ? 'thin' : 'trapdoor');

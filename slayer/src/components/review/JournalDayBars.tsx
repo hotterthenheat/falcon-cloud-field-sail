@@ -4,8 +4,8 @@
 import { useState } from 'react';
 import { dirInk, pct, usdSigned } from './words';
 import type { DayTotal } from '../../data/review/journalFigures';
+import { MONTHS } from '../../core/calendar';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const short = (day: string) => `${MONTHS[Number(day.slice(5, 7)) - 1]} ${Number(day.slice(8, 10))}`;
 const long = (day: string) => {

@@ -15,13 +15,13 @@ import type { ReactNode } from 'react';
 import { LONG_GAMMA, PUT_WALL, SHORT_GAMMA, SUPREME, THERMAL_COOL, THERMAL_WARM } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import { targetName, type Agenda } from '../../data/agenda';
+import { pctWhole as pct } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const MONO = 'ui-monospace, Menlo, monospace';
 const SANS = 'ui-sans-serif, system-ui, sans-serif';
 const WARM = THERMAL_WARM;
 const COOL = THERMAL_COOL;
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="px-5 py-4 border-b border-borderSubtle/60 last:border-b-0">

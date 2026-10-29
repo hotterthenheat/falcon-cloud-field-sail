@@ -12,9 +12,18 @@
 */
 
 import { nyParts } from './nyTime';
+import { MONTHS } from './calendar';
 
 const DASH = '—';
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A strike as the chain prints it: whole strikes bare, the rest to the cent ("NaN" for no figure) */
+export const fmtStrike = (v: number): string => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
+/** …and a dash for no figure */
+export const fmtStrikeOrDash = (v: number): string => (!Number.isFinite(v) ? DASH : fmtStrike(v));
+/** A fraction as a whole percent: 0.237 → "24%" */
+export const pctWhole = (v: number): string => `${Math.round(v * 100)}%`;
+/** Dollars to the cent with thousands: "$1,234.50" (a minus as JavaScript writes it) */
+export const usd2 = (v: number): string => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** A signed percent, the minus a true minus; a rounded zero carries no sign */
 export const pctSigned = (v: number, digits = 1): string => {

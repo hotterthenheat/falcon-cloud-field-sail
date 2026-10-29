@@ -1,7 +1,7 @@
 /* The paper account's clock: New York's wall clock, the trading day, the bell and years to expiry, as pure
    functions of an instant so the engine can be handed any moment. */
 
-import { isTradingDay, isoDate, sessionsBetween } from '../../core/calendar';
+import { isTradingDay, isoDate, sessionsBetween, MONTHS } from '../../core/calendar';
 import { nyClock } from '../../core/nyTime';
 
 /** The minutes after midnight New York's clock names: the open, the bell, the flat-by and the roll */
@@ -90,7 +90,6 @@ export function yearsToExpiry(expiry: string, ms: number): number {
   return (sessionsBetween(dateAt(t.date), dateAt(expiry)) + today) / 252;
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** "7:55 AM CT" — the desk's clock. The trading day underneath is still New York's. */
 const nyClockWords = (ms: number): string => nyClock(ms, { zone: true });

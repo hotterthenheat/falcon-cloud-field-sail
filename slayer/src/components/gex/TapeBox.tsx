@@ -29,10 +29,10 @@ import { CLOCK_SCALE, DAY_SCALE_W, dayChartOptions, dayClock, daySurface, daySta
 import { biggestSwings, publishSwings, useChartFocus } from '../../data/chartMoves';
 import { KeyLevelsPrimitive, KEY_LEVEL_WORDS, type KeyLevelRung } from './keyLevelsPrimitive';
 import type { Candle, MarketSnapshot } from '../../types/market';
+import { fmtStrikeOrDash as fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))';
 const INK_3 = 'rgb(var(--text-muted))';
-const fmtStrike = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const TAPE_KEY = 'slayer_map_tape';
 /* The key levels as the ladder's rungs at the tape's right edge (keyLevelsPrimitive.ts); the rung under the pointer
    brightens with a card that keeps the strike or sets its bell. The band the pointer finds a rung in, media px. */

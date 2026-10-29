@@ -45,7 +45,7 @@
 import { sessionStarts } from './indicators';
 import { levelRoles, pickLegWalls, type LevelRole } from '../core/walls';
 import { dollarGammaPerContract } from '../core/gammaFlip';
-import { bookToday, isoDate, isTradingDay, nextSession, today as nyTodayDate } from '../core/calendar';
+import { bookToday, isoDate, isTradingDay, nextSession, today as nyTodayDate, MONTHS as MON } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase } from '../core/nyTime';
 import { recordDay } from './bookWindow';
 import { datesOf, smileOf, yearsTo } from './flipLevel';
@@ -155,14 +155,6 @@ export interface Building {
   loading: boolean;
 }
 
-/*
-  THE OVERNIGHT COUNT, NAMED BY THE SESSION IT COUNTS (the fifth audit, 2026-10-23: at 01:00 ET Friday the change was
-  called "yesterday's trading" while it was Wednesday's — OI 10-21 → 10-22; Thursday's count is set the next morning).
-  The vendor's oi-change runs from the open interest of `last_date` to that of `curr_date`; the contracts opened and
-  closed in between were traded on `last_date`'s session. The words name that session by its date, and say so when the
-  latest finished session's count is not out yet.
-*/
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monDay = (iso: string): string => {
   const [, m, d] = iso.split('-').map(Number);
   return m && d ? `${MON[m - 1]} ${d}` : iso;

@@ -73,6 +73,7 @@ import ClockGuide from './ClockGuide';
 import type { MarketSnapshot } from '../../types/market';
 import { alpha, pressureInks } from './paletteInk';
 import { useLedgerPalette } from '../../data/ledgerPalette';
+import { fmtStrike } from '../../core/format';
 
 const LIVE = 'rgb(var(--select))';
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
@@ -80,7 +81,6 @@ const OPEN_MIN = 9 * 60 + 30;
 const CLOSE_MIN = 16 * 60;
 const SPAN = CLOSE_MIN - OPEN_MIN; // 390 trading minutes
 const BLOCK_MIN = 5;
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 interface Phase {

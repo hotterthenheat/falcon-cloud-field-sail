@@ -1,5 +1,5 @@
 import type { MarketSnapshot, StrikeNode } from '../types/market';
-import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday } from '../core/calendar';
+import { bookToday, isoDate, isTradingDay, nextSession, today as nyToday, MONTHS } from '../core/calendar';
 import { nyIsoDate, nySessionPhase, nyWallTime } from '../core/nyTime';
 import { registerChainDates } from './chainDates';
 import { bookCandles, bookFixed, bookRevision, fixedAsOfWords, peekEntry, peekSessionAll } from './uwBook';
@@ -93,8 +93,6 @@ export function bookForDates(snapshot: MarketSnapshot, dates: readonly string[] 
   if (!chain?.length) return snapshot;
   return { ...snapshot, chain, uwChains: { ...snapshot.uwChains, '0DTE': chain, ALL: chain } };
 }
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** The window in the book's own words: "Oct 21" or "Oct 21 → Oct 30". */
 export function expirySpan(dates: readonly string[] | null | undefined): string | null {

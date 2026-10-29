@@ -37,6 +37,7 @@ import { callWallWordsAt, levelRoles, putWallWordsAt, wallPlace } from '../../co
 import { BOARD_TTL_MS, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { ReadMiss } from './BookDown';
 import { kindTip } from '../../components/gex/glossary';
+import { fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
@@ -47,7 +48,6 @@ const SCAN_INTERVAL_MS = 10_000;
 /* The grid's theme and modules are the house's (components/ui/houseGrid.ts) — the Record's tables wear the same */
 const MODULES = GRID_MODULES;
 const THEME = GRID_THEME;
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`;
 
 /* The Board reads the Ruler: a distance in dollars, percent or the day's 1σ; with no scale for the unit, dollars. */

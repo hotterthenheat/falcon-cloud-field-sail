@@ -49,13 +49,13 @@ import {
 import type { ExposureLevels } from '../../types/gex';
 import { callWallWords, putWallWords } from '../../core/walls';
 import { flipSidesWords } from '../../data/flipLevel';
+import { fmtStrike } from '../../core/format';
 
 /* ARMED WEARS HOLO SILVER here — the label, its count and the switches (Noah,
    2026-09-05: "change the alerts button and the sub toggle buttons to holo
    silver on active"); the bell itself wears the alert orange (2026-09-10). */
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
 const SILVER_FILL = 'rgb(var(--silver-fill))'; /* the silver as a SURFACE — a filled pill with the dark word on it, the holo flat form on either ground */
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 
 interface Watch {
   key: string;

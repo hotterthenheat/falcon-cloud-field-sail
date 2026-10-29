@@ -11,7 +11,7 @@ export const SESSION_OPEN_MIN = 9 * 60 + 30;
 export const SESSION_CLOSE_MIN = 16 * 60;
 export const SESSION_LENGTH_MIN = SESSION_CLOSE_MIN - SESSION_OPEN_MIN;
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const MONTHS: readonly string[] = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const two = (n: number) => String(n).padStart(2, '0');
 
@@ -56,7 +56,6 @@ export const nyMinutes = (at?: At): number => {
   const p = nyParts(at);
   return p.hour * 60 + p.minute;
 };
-
 
 /** New York's clock, 24-hour: "14:03", "14:03:42" with seconds, "14:03 ET" with the zone. */
 export function nyClock(at?: At, opts: { seconds?: boolean; zone?: boolean } = {}): string {

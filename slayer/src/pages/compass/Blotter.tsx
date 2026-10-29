@@ -8,7 +8,7 @@ import type { Column } from '../../components/ui/DataTable';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import ExpiryCalendar from '../../components/ui/ExpiryCalendar';
 import ContractLabel from '../../components/ui/ContractLabel';
-import { isoDate, type Expiry } from '../../core/calendar';
+import { isoDate, type Expiry, MONTHS as SHORT } from '../../core/calendar';
 import { heldWords, usd, dirInk } from '../../components/review/words';
 import { useCompassBook, type BookLine } from '../../data/compassLedger';
 import { Tip } from '../../components/ui/Tooltip';
@@ -16,7 +16,6 @@ import { Tip } from '../../components/ui/Tooltip';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const longDay = (iso: string) => {
   const d = new Date(`${iso}T12:00:00`);
   return `${WEEK[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;

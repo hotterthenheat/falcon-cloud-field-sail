@@ -16,6 +16,7 @@ import { claimSlot, commitClosest, currentPicks, paintQuotes, releaseSlot, reset
 import { settleBoard, syncOpenBook } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import type { Timeframe } from './timeframe';
+import { nyYmd as ymd } from '../core/calendar';
 
 const INDEX_OF: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
 const OPTION_OF: Record<string, string> = { SPX: 'SPXW', RUT: 'RUTW' };
@@ -478,10 +479,6 @@ async function scanWeeklyWave(): Promise<boolean> {
 }
 
 const SPARK_UNDER: Record<string, string> = { SPXW: 'SPX', XSP: 'SPX', RUTW: 'RUT', SPX: 'SPX', RUT: 'RUT', VIX: 'VIX', NDX: 'NDX', NDXP: 'NDX' };
-
-function ymd(ms: number): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)).replace(/-/g, '');
-}
 
 async function closesOf(symbol: string, index: boolean): Promise<number[]> {
   for (let back = 0; back < 4; back++) {

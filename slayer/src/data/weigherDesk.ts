@@ -1,7 +1,7 @@
 /* The Weigher's chain: listed expiries and the live chain from ThetaData (the vendor's listed contracts when
    ThetaData does not answer), the session's volume and open interest, and yesterday's close. */
 
-import { expiryFor, isoDate, type Expiry } from '../core/calendar';
+import { expiryFor, isoDate, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
 import { estimatePremium } from './compass';
 import { thetaCall } from './theta';
 import { THETA_DAYS, bsOnMark, yearFracLeft } from './weigherGate';
@@ -13,6 +13,7 @@ import { nyIsoDate, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { blackScholesGreeks } from '../core/greeks';
 import type { OptionRight } from '../types/compass';
 import type { MarketSnapshot } from '../types/market';
+import { normCdf as normalCDF } from '../core/math';
 
 // ---- deterministic hash noise (the house pattern) ---------------------------
 function hash(s: string): number {
@@ -114,14 +115,6 @@ export interface DeskChain {
   expiryIso: string;
   /** Option symbol the quotes were requested on. Absent means the chain's own ticker. */
   optRoot?: string;
-}
-
-/** Abramowitz–Stegun N(x) — same approximation core/greeks uses. */
-function normalCDF(x: number): number {
-  const k = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804 * Math.exp((-x * x) / 2);
-  const p = k * (0.31938153 + k * (-0.356563782 + k * (1.781477937 + k * (-1.821255978 + k * 1.330274429))));
-  return x >= 0 ? 1 - d * p : d * p;
 }
 
 /** Contract IV off the name's base vol: a gentle smile plus put skew, all
@@ -514,8 +507,6 @@ function optionRoots(ticker: string): string[] {
   const weekly = WEEKLY_ROOT[name];
   return weekly ? [weekly, name] : [name];
 }
-
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function dayLabel(iso: string, weekday: number): string {
   if (weekday === 0) return '0 DTE';

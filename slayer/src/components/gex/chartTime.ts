@@ -19,8 +19,8 @@
 
 import { TickMarkType, type Time, type TickMarkFormatter } from 'lightweight-charts';
 import { readDeskPrefs } from '../../data/deskPrefs';
+import { MONTHS } from '../../core/calendar';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const two = (n: number) => String(n).padStart(2, '0');
 
 /* THE CLOCK IS THE READER'S CHOICE (Settings › The desk, 2026-09-12): the

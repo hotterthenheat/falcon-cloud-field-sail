@@ -54,6 +54,7 @@ import StrikeNum, { hasCents } from './StrikeNum';
 import { useResolvedTheme } from '../../theme/theme';
 import { nearestStrikes, strikeGap } from '../../data/chartMoves';
 import type { SurfaceCell } from './exposureView';
+import { fmtStrike } from '../../core/format';
 
 interface ExposureMatrixProps {
   surface: ExposureSurface;
@@ -126,7 +127,6 @@ const LEG_MIN = 80;
    enough that "Open interest · 18,709 contracts" prints whole — the calendar's card is the same */
 /* a bit smaller than it was (the owner, 2026-10-14) */
 export const CARD_W = 224;
-const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const head = 'font-mono text-t11 font-semibold uppercase tracking-widest';
 
 interface Row {
