@@ -8,7 +8,7 @@
 ==================================================
 */
 
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useMarketData } from '../../context/MarketDataContext';
 import ThemePreview from './ThemePreview';
 import { createPortal } from 'react-dom';
@@ -53,7 +53,8 @@ import {
   type PriceScale,
 } from './StrikeChart';
 import { INDICATOR_ITEMS } from './indicatorItems';
-import ScriptLibrary from '../scripts/ScriptLibrary';
+/* The scripts library loads the first time its menu opens, not with every chart */
+const ScriptLibrary = lazy(() => import('../scripts/ScriptLibrary'));
 import { usePaneScripts } from '../../data/paneScripts';
 import { closeEditor, useEditorDock } from '../../data/editorDock';
 import AlertsMenu from './AlertsMenu';
@@ -540,6 +541,11 @@ const ChartToolbar = ({
   const rootRef = useRef<HTMLDivElement | null>(null);
   /* The library, and what is on the pane for its count on the door */
   const [libraryOpen, setLibraryOpen] = useState(false);
+  /* mounted from the first open on, so its own close animation and state survive */
+  const [libraryAsked, setLibraryAsked] = useState(false);
+  useEffect(() => {
+    if (libraryOpen) setLibraryAsked(true);
+  }, [libraryOpen]);
   const paneScripts = usePaneScripts(paneId);
   const onPaneCount = paneScripts.filter(p => p.chart.visible).length + (indicators ? INDICATOR_ITEMS.filter(i => indicators[i.key]).length : 0);
   /* The editor sits beside a full-screen chart only: this pane leaving full screen closes its dock (the draft stays) */
@@ -939,6 +945,8 @@ const ChartToolbar = ({
                   </span>
                 )}
               </button>
+              {libraryAsked && (
+              <Suspense fallback={null}>
               <ScriptLibrary
                 open={libraryOpen}
                 onClose={() => setLibraryOpen(false)}
@@ -956,6 +964,8 @@ const ChartToolbar = ({
                 onSessionOr={onSessionOr}
                 barClock={barClock}
               />
+              </Suspense>
+              )}
             </>
           )}
           {onIndicators && indicators && !paneId && (

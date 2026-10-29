@@ -1,6 +1,6 @@
-/* Live option prices from Unusual Whales' listed contracts: each contract's NBBO, last print, open interest,
-   volume and the vendor's greeks. The Weigher's chain falls back to this when ThetaData does not answer, and the
-   watchlist, positions and the paper account mark their contracts here. */
+/* Option prices from Unusual Whales' listed contracts: each contract's NBBO, last print, open interest, volume and
+   the vendor's greeks, for the readers that mark contracts on Unusual Whales. The Weigher's chain is ThetaData's
+   (data/weigherDesk.ts) and never reads this. */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { expiryFor, isoDate, isTradingDay, today as nyToday, MONTHS } from '../core/calendar';
@@ -156,17 +156,6 @@ export function peekMark(ticker: string, expiry: string, strike: number, right: 
   return null;
 }
 
-/** A contract's live IV (decimal) from whichever of the name's sheets carries the strike, nearest expiry first. */
-export function ivNear(ticker: string, strike: number, right: OptionRight): number | null {
-  const name = ticker.toUpperCase();
-  const keys = [...sheets.keys()].filter(k => k.startsWith(`${name}|`)).sort();
-  for (const k of keys) {
-    const sheet = sheets.get(k)!;
-    for (const [rk, m] of sheet.rows) if (rk.endsWith(`|${markKey(strike, right)}`) && m.iv > 0) return m.iv;
-  }
-  return null;
-}
-
 export function subscribeMarks(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -243,13 +232,6 @@ const blankContract = (strike: number, right: OptionRight, spot: number): DeskCo
 });
 
 const fixed = (v: number, d: number) => (Number.isFinite(v) ? Number(v.toFixed(d)) : NaN);
-
-/** One expiry's chain from the vendor's listed contracts, `range` strikes each side of spot. */
-export async function loadUwChain(ticker: string, dte: number, range = 18, root?: string): Promise<DeskChain> {
-  const iso = isoDate(expiryFor(dte).date);
-  await ensureMarks(ticker, iso);
-  return sheetChain(ticker, iso, range, root);
-}
 
 /** The chain from the sheet already in hand (empty until it lands), centred on `centre` or spot. */
 export function sheetChain(ticker: string, iso: string, range = 18, root?: string, centre?: number): DeskChain {

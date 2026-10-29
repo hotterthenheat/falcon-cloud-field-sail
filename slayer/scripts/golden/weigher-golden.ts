@@ -79,6 +79,21 @@ expectEqual('pinned: IV · delta · touch · profit long (rounded)', [read.iv.to
 console.log(`  (775C by hand: IV ${(v * 100).toFixed(3)}%, delta ${phiCdf(d1).toFixed(4)}, touch ${(touchHand * 100).toFixed(2)}%, finish ITM ${(phiCdf(d2) * 100).toFixed(2)}%, profit long ${(above(beLong) * 100).toFixed(2)}%)`);
 expectEqual('touch odds are never below the finish odds', read.touch >= read.itm, true);
 
+/* ---- the terminal's greek units, read off the chain (weigherDesk.unitScale) ---- */
+{
+  const { unitScale } = await import('../../src/data/weigherDesk');
+  /* the 775C's theta per calendar day (−0.7493) and two neighbours', as an annual feed would print them (× 365), and
+     with the other model's clock putting each 10–30% off */
+  const day = [read.theta, -0.61, -0.42];
+  expectEqual('theta printed per year reads as ÷ 365', unitScale(day.map((d, i) => [d * 365 * [1, 1.12, 0.8][i], d] as const)), 365);
+  expectEqual('theta printed per day reads as ÷ 1', unitScale(day.map((d, i) => [d * [1, 1.25, 0.9][i], d] as const)), 1);
+  /* vega per 1.00 of vol (the docs' "divide by 100") against the 775C's 0.1762 per vol point */
+  const vega = [read.vega, 0.15, 0.11];
+  expectEqual('vega per 1.00 of vol reads as ÷ 100', unitScale(vega.map(v => [v * 100, v] as const)), 100);
+  expectEqual('no agreement, no scale (the mark\'s own greek stays)', unitScale([[5, 1], [40, 1], [700, 1]]), null);
+  expectEqual('fewer than three rows, no scale', unitScale([[365, 1], [365, 1]]), null);
+}
+
 /* ---- the touch formula against a Monte Carlo walk ---- */
 {
   const S0 = 100, B = 105, sig = 0.3, T = 0.1;

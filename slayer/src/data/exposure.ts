@@ -152,8 +152,9 @@ export function buildExposureProfile(
 
   /* the walls (core/walls.ts pickLegWalls): the most call gamma and the most put gamma on the full book, either side of spot */
   const picked = pickLegWalls(chain, n => n.callGex, n => n.putGex);
-  const callWall = picked.callWall ?? spot;
-  const putWall = picked.putWall ?? spot;
+  /* no strike carries the leg: no wall (NaN, `callWallFound`/`putWallFound` false), never spot standing in */
+  const callWall = picked.callWall ?? Number.NaN;
+  const putWall = picked.putWall ?? Number.NaN;
   /* The flip is where the book's net gamma, re-priced at each price, crosses zero (data/flipLevel.ts); none within ±10%
      is `flipFound: false`, the number then holding spot only as a placeholder. */
   const flipRead = levelFlip(snapshot, chain);
@@ -172,16 +173,17 @@ export function buildExposureProfile(
 
   /* "Today" without its own date's strikes is the whole book standing in — never final */
   const complete = flipRead.complete && !snapshot.levelsPending && !(snapshot.liveBook && expiry === '0DTE' && !(liveChain && liveChain.length));
-  const levels: ExposureLevels = { spot, callWall, putWall, pin: pinStrike, pinFound, flip, flipFound: flipRead.flip != null, net: flipRead.netAtSpot, supreme, complete };
+  const hasCall = Number.isFinite(callWall);
+  const hasPut = Number.isFinite(putWall);
+  const levels: ExposureLevels = { spot, callWall, putWall, callWallFound: hasCall, putWallFound: hasPut, pin: pinStrike, pinFound, flip, flipFound: flipRead.flip != null, net: flipRead.netAtSpot, supreme, complete };
 
   // Zone bands (strikes descending: from ≥ to). One row of breathing room per wall.
   const strikeList = strikes.map(s => s.strike);
   const step = strikeList.length > 1 ? Math.abs(strikeList[0] - strikeList[1]) : 1;
-  const zones: ZoneBand[] = [
-    { from: callWall + step, to: callWall - step, kind: 'call-wall', label: 'CALL WALL' },
-    { from: putWall + step, to: putWall - step, kind: 'put-wall', label: 'PUT WALL' },
-  ];
-  if (callWall - putWall > 3 * step) {
+  const zones: ZoneBand[] = [];
+  if (hasCall) zones.push({ from: callWall + step, to: callWall - step, kind: 'call-wall', label: 'CALL WALL' });
+  if (hasPut) zones.push({ from: putWall + step, to: putWall - step, kind: 'put-wall', label: 'PUT WALL' });
+  if (hasCall && hasPut && callWall - putWall > 3 * step) {
     zones.push({ from: callWall - step * 2, to: putWall + step * 2, kind: 'friction', label: 'FRICTION' });
   }
   /* The empty runs between shelves over the same window, pushed after the walls so a pocket never displaces a wall's band. */
@@ -207,12 +209,14 @@ export function buildExposureProfile(
   const insights = [
     /* the regime is the SIGN of net gamma, printed in the retail sign; the flip is where that sign changes */
     `Net GEX is ${retailNet > 0 ? '+' : retailNet < 0 ? '−' : ''}${fmtUsd(Math.abs(retailNet))} — dealers are ${retailNet > 0 ? 'long gamma, so their hedging absorbs moves' : 'short gamma, so their hedging amplifies moves'}. ${flipRead.flip != null ? `The flip is ${fmtK(flipRead.flip)}, where that changes.` : 'There is no flip within ±10%.'}`,
-    inFriction
-      ? `Price sits between key levels (${fmtK(putWall)} – ${fmtK(callWall)}) inside the friction zone.`
-      : `Price is ${spot >= callWall ? 'above the call wall' : 'below the put wall'} — outside the friction zone.`,
+    !hasCall || !hasPut
+      ? `No ${!hasCall && !hasPut ? 'call or put' : !hasCall ? 'call' : 'put'} gamma on these contracts, so no ${!hasCall && !hasPut ? 'walls' : !hasCall ? 'call wall' : 'put wall'}.`
+      : inFriction
+        ? `Price sits between key levels (${fmtK(putWall)} – ${fmtK(callWall)}) inside the friction zone.`
+        : `Price is ${spot >= callWall ? 'above the call wall' : 'below the put wall'} — outside the friction zone.`,
     pinFound ? `Price is pinned toward ${fmtK(pinStrike)}: the most open interest, with dealers long gamma there.` : `The most open interest in the window sits at ${fmtK(pinStrike)}.`,
-    `A break below ${fmtK(putWall)} shifts pressure toward ${fmtK(putWall - step * 2)}.`,
-    `A break above ${fmtK(callWall)} opens quick supply up to ${fmtK(callWall + step * 2)}.`,
+    ...(hasPut ? [`A break below ${fmtK(putWall)} shifts pressure toward ${fmtK(putWall - step * 2)}.`] : []),
+    ...(hasCall ? [`A break above ${fmtK(callWall)} opens quick supply up to ${fmtK(callWall + step * 2)}.`] : []),
   ];
 
   // Spot marker slot (strikes descending)

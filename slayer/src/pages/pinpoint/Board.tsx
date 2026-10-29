@@ -13,7 +13,7 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import { useTicker } from '../../context/MarketDataContext';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
-import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, dayMoveWords, changeInk, refreshBoardPrices, ensureBook } from '../../data/uwBook';
+import { useBookRev, usePinpointFeed, peekEntry, peekIv, peekDaySigma, refreshBoardPrices, ensureBook } from '../../data/uwBook';
 import { useNameUnit } from '../../data/distanceUnits';
 import { fmtDistance } from '../../data/atr';
 import { bellDay, cadenceWords, dayWordOf, expirySpan, longDay, recordDay, recordPossessive, todayScopeLabel } from '../../data/bookWindow';
@@ -37,7 +37,8 @@ import { callWallWordsAt, levelRoles, putWallWordsAt, wallPlace } from '../../co
 import { BOARD_TTL_MS, StaleMark, TickFigure } from '../../components/ui/liveRead';
 import { ReadMiss } from './BookDown';
 import { kindTip } from '../../components/gex/glossary';
-import { LivePrice } from '../../components/gex/LivePrice';
+import { LivePrice, ThetaOfflineNote } from '../../components/gex/LivePrice';
+import { AsOf } from '../../components/ui/states';
 import { fmtStrike } from '../../core/format';
 
 const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
@@ -106,26 +107,6 @@ const NameCell = ({ data, context }: ICellRendererParams<BoardRow, unknown, Boar
   ) : null;
 
 /* the day's change, not the after-hours move (on its own labelled line); a zero change is neutral */
-const DayChange = ({ data, compact = false, lead = false, extOnly = false }: { data: BoardRow; compact?: boolean; /** the change alone */ lead?: boolean; /** the move outside the session alone */ extOnly?: boolean }) => {
-  const w = dayMoveWords(data.day);
-  if (!w) return null;
-  const main = data.day?.dayPct;
-  if (extOnly) return w.ext ? <span className="font-mono text-t10 text-textMuted whitespace-nowrap" title={w.title}>{w.ext}</span> : null;
-  if (lead)
-    return (
-      <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-t11' : 'text-t10'} whitespace-nowrap`} title={w.title} data-day-change>
-        <span style={{ color: changeInk(main) }}>{w.main}</span>
-        {w.when && <span className="text-textMuted">{w.when}</span>}
-      </span>
-    );
-  return (
-    <span className={`inline-flex items-baseline gap-1.5 font-mono ${compact ? 'text-t11' : 'text-t10'} whitespace-nowrap`} title={w.title} data-day-change>
-      <span style={{ color: changeInk(main) }}>{w.main}</span>
-      {w.when && <span className="text-textMuted">{w.when}</span>}
-      {w.ext && <span className="text-textMuted">· {w.ext}</span>}
-    </span>
-  );
-};
 
 /* the live price is ThetaData's (components/gex/LivePrice.tsx); the levels' own price sits under it */
 const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
@@ -499,6 +480,10 @@ const Board = () => {
     };
     step();
   }, []);
+  /* every name's read starts at once, in the board's order, so each kept copy paints without waiting on the rows built before it */
+  useEffect(() => {
+    names.forEach(n => ensureBook(n, 'board'));
+  }, [names]);
   /* a book landing in pieces emits many times a second: one rebuild per burst; a row whose own book did not move is
      handed back unchanged (data/board.ts buildBoardRow) and leaves the grid alone */
   useEffect(() => {
@@ -658,13 +643,15 @@ const Board = () => {
 
   const stamps = names.map(n => peekEntry(n));
   const bookAt = stamps.reduce<number | null>((best, e) => (e && e.at > 0 ? (best == null ? e.at : Math.min(best, e.at)) : best), null);
+  const keptAt = stamps.reduce<number | null>((best, e) => (e?.keptAt ? (best == null ? e.at : Math.min(best, e.at)) : best), null);
   const bookDown = names.length > 0 && stamps.length > 0 && stamps.every(e => e?.status === 'error');
   return (
     /* the board is as tall as its rows: every name shows, the page scrolls, never the grid */
     <div className="border border-borderSubtle rounded-md overflow-clip flex flex-col" data-board>
       <div className="shrink-0 flex items-center gap-3 flex-wrap px-2 py-1.5 bg-panel border-b border-borderSubtle/70" data-board-toolbar>
         <span className="font-mono text-t9 uppercase tracking-widest text-textSecondary">The names on your board</span>
-        <StaleMark at={bookAt} ttlMs={BOARD_TTL_MS} fault={bookDown ? 'failed' : null} />
+        {keptAt != null ? <AsOf at={keptAt} title="Some rows are this browser's kept copies, shown while their fresh reads land" /> : <StaleMark at={bookAt} ttlMs={BOARD_TTL_MS} fault={bookDown ? 'failed' : null} />}
+        <ThetaOfflineNote />
         <span className="font-mono text-t9 uppercase tracking-widest text-textMuted tnum tabular-nums" data-board-count>
           {rows.length < names.length ? `${rows.length} of ${names.length} in · ${names.length - rows.length} still loading` : `${names.length} names`} · closest to its flip (as a % of price) first · click a name to open it on the map
         </span>

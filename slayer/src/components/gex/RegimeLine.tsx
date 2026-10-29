@@ -9,7 +9,7 @@ import { todayScopeLabel } from '../../data/bookWindow';
 import { fmtGexUsd } from '../../data/gex';
 import { peekEntry, useBookRev } from '../../data/uwBook';
 import { LivePrice } from './LivePrice';
-import { nyStamp } from '../../core/nyTime';
+import { AsOf } from '../ui/states';
 import type { DistanceUnit } from '../../data/atr';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import CompanyLogo from '../ui/CompanyLogo';
@@ -101,8 +101,8 @@ const RegimeLine = ({ ticker }: { ticker: string | null | undefined }) => {
         {lv?.complete && lv.flip == null && <span className="font-mono text-t11 text-textMuted" title={GLOSSARY.flip}>no flip within 10%</span>}
         {lv?.complete && <span className="font-mono text-t10 uppercase tracking-wider text-textMuted">{lv.scopeLabel}</span>}
         {entry?.keptAt && (
-          <span className="font-mono text-t9 uppercase tracking-widest text-warn" title="This browser's kept copy of the book, shown while the fresh read loads; it is replaced as soon as that lands" data-kept>
-            kept · {nyStamp(entry.at, { zone: true })}
+          <span data-kept>
+            <AsOf at={entry.at} title="This browser's kept copy of the book, shown while the fresh read loads; it is replaced as soon as that lands" />
           </span>
         )}
       </div>

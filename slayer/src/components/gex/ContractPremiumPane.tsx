@@ -21,7 +21,6 @@ import {
 import { liveBars, useBookRev } from '../../data/uwBook';
 import { aggregateCandles, tfMinutes, type Timeframe } from '../../data/timeframe';
 import { estimatePremium } from '../../data/compass';
-import { contractIvFor } from '../../data/weigherDesk';
 import { candleSeriesOptions, chartGround, chartSurface, getCandleTheme, useCandleThemeKey } from './candleTheme';
 import { useResolvedTheme } from '../../theme/theme';
 import { LOCAL_TIME, fmtClockLocal, fmtDayLocal, localTickMarks } from './chartTime';
@@ -157,9 +156,8 @@ interface ContractPremiumPaneProps {
   priceAt?: (spot: number) => number;
   timeframe: Timeframe;
   revision: number;
-  /** The pricing vol. Omitted, the desk's smile (contractIvFor) — the
-      campaign passes the SETUP's own iv so the tape and its level lines
-      speak one model (the one-generator rule, applied to a chart). */
+  /** The pricing vol for the modelled tape. Omitted, nothing is modelled. The campaign passes the setup's own iv so
+      the tape and its level lines speak one model. */
   iv?: number;
   /** Labelled rules pinned to premiums: targets, the stop, the reference. */
   levels?: PremiumLevel[];
@@ -529,7 +527,8 @@ const ContractPremiumPane = ({ ticker, strike, right, tYears, priceAt, timeframe
     const src = owned ? barsProp : liveBars(ticker);
     const bars = aggregateCandles(src, mins);
     if (bars.length === 0) return;
-    const iv = ivProp ?? contractIvFor(ticker, strike, right);
+    /* a modelled premium needs the contract's own vol; without one nothing is modelled */
+    const iv = ivProp ?? Number.NaN;
     const px = (s: number) => (priceAt ? priceAt(s) : estimatePremium(s, strike, right, iv, tYears));
     const point = (b: (typeof bars)[number], live: boolean) => {
       const o = px(b.open);

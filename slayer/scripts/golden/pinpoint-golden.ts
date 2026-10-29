@@ -7,6 +7,7 @@
   Record: GOLDEN_RECORD=1 npx tsx scripts/golden/pinpoint-golden.ts   (then: npx tsx scripts/golden/slimFixtures.ts pinpoint-2026-10-29)
 */
 import { done, expectEqual, expectNear, freezeClock, installUwFixtures, recordedAt } from './uwFixtures';
+import { pruneSet } from './pinpointRaw';
 import { dealerOf } from '../../src/core/dealerSign';
 import { bsVega, byStrike, contractRow, contractOi, contractVols, exposureRows, impliedMove, levelsOfRows, oiChangeRows, phiCdf, rawAnswers, rawFlip, rawFlowTo, rawLegs, yearsTrading } from './pinpointRaw';
 
@@ -218,4 +219,7 @@ for (const t of NAMES) {
   }
 }
 console.log(`asked ${asked.length} paths`);
+/* GOLDEN_PRUNE=1 after a re-record: drop answers no read asks for, and the spot-exposure columns nothing reads (the
+   volume and bid/ask gamma, delta, vanna and charm), keeping the set small */
+if (process.env.GOLDEN_PRUNE === '1') pruneSet(SET, asked);
 done();

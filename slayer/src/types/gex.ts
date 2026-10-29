@@ -80,8 +80,11 @@ export type GammaBias = 'LONG_GAMMA' | 'SHORT_GAMMA' | 'NEUTRAL';
 
 export interface ExposureLevels {
   spot: number;
+  /** NaN when no strike carries call (put) gamma — `callWallFound` (`putWallFound`) is then false */
   callWall: number;
   putWall: number;
+  callWallFound?: boolean;
+  putWallFound?: boolean;
   /** The strike with the most open interest in the window. Only a PIN when `pinFound`: dealers are long gamma there
       (their hedging pulls price back to it) and price is within 1% of it — otherwise no surface calls it a pin */
   pin: number;
