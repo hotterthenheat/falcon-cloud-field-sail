@@ -71,7 +71,7 @@ const raw = (path: string): Record<string, unknown>[] => {
   return top.flatMap(o => (Array.isArray(o.data) ? (o.data as Record<string, unknown>[]).map(d => ({ ...(o.contract as object), ...d })) : [o]));
 };
 const ymd = DAY.replace(/-/g, '');
-const barRows = raw(`/stock/history/ohlc?symbol=SPY&date=${ymd}&interval=1m&format=json`);
+const barRows = raw(`/stock/history/ohlc?symbol=SPY&start_date=${ymd}&end_date=${ymd}&interval=1m&format=json`);
 const legPath = (c: typeof call) => `/option/history/quote?symbol=SPY&expiration=${c.expiry.replace(/-/g, '')}&strike=${c.strike.toFixed(2)}&right=${c.right === 'C' ? 'call' : 'put'}&date=${ymd}&interval=1m&format=json`;
 const callRows = raw(legPath(call));
 const putRows = raw(legPath(put));
