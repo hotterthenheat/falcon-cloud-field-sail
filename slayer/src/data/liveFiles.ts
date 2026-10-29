@@ -1229,18 +1229,21 @@ export function useScreenerQuotes(tickers: readonly string[]): { settled: boolea
     if (!key || typeof window === 'undefined') return;
     let dead = false;
     let id = 0;
+    /* the oldest of the set's reads — the index's own screen read counts, so the page does not ask twice */
+    const dueIn = () => {
+      const last = Math.max(batchSettled.get(key) ?? 0, Math.min(...key.split(',').map(t => batchAt.get(t) ?? 0)));
+      return Math.max(0, last + (sessionLive() ? BATCH_LIVE_MS : BATCH_IDLE_MS) - Date.now());
+    };
     const tick = () => {
       if (dead) return;
-      /* the oldest of the set's reads — the index's own screen read counts, so the page does not ask twice at load */
-      const last = Math.max(batchSettled.get(key) ?? 0, Math.min(...key.split(',').map(t => batchAt.get(t) ?? 0)));
-      const every = sessionLive() ? BATCH_LIVE_MS : BATCH_IDLE_MS;
-      const wait = Math.max(0, last + every - Date.now());
       id = window.setTimeout(() => {
         if (dead) return;
         /* no read while the tab is hidden: look again in a moment */
         if (document.hidden) return void (id = window.setTimeout(tick, 5_000));
+        /* the board's own read landed while this waited: count from it */
+        if (dueIn() > 1_000) return tick();
         void readBatch(key).finally(tick);
-      }, wait);
+      }, dueIn());
     };
     tick();
     return () => {

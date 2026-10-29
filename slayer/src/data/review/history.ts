@@ -226,7 +226,8 @@ export async function ensureBars(ticker: string, day: string): Promise<boolean> 
   if (bars.has(key)) return bars.get(key) != null;
   barsWant.set(key, 'loading');
   const root = INDEXES.has(t) ? 'index' : 'stock';
-  const path = root === 'index' ? `/index/history/ohlc?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&interval=1m&format=json` : `/stock/history/ohlc?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&interval=1m&format=json`;
+  /* the index route takes no `date=` (the terminal answers 400 "start_date is required"): a one-day range for both */
+  const path = `/${root}/history/ohlc?symbol=${encodeURIComponent(t)}&start_date=${ymd(day)}&end_date=${ymd(day)}&interval=1m&format=json`;
   const got = await load(key, path, rows => parseBars(day, rows));
   if (got.offline) {
     barsWant.set(key, 'offline');

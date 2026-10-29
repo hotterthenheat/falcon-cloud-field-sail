@@ -194,7 +194,7 @@ function whyOf(t: Target, order: AgendaOrder, marketPer1Pct: number): string {
     case 'weakest':
       return t.isShelf ? `${holdLabel(t.hold)} · ${reachWords(t)}${t.today ? '' : ' reached'}` : strikeKind(t) === 'thin' && !t.role ? thinWords(t) : t.role === 'put wall' ? 'the put wall — short gamma, so a break can accelerate' : 'a trapdoor — pushes the move along';
     case 'biggest':
-      return `${fmtDollars(Math.abs(t.weight))} here + ${fmtDollars(Math.abs(t.breakFlow))} on the way through · ${ratio.toFixed(1)}× the market`;
+      return `${fmtDollars(Math.abs(t.weight))} here + ${fmtDollars(Math.abs(t.breakFlow))} on the way through${marketPer1Pct > 1 ? ` · ${ratio.toFixed(1)}× the market` : ''}`;
   }
 }
 

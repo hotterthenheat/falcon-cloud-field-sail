@@ -585,8 +585,13 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
         const fresh = sinceMs > 0 ? got.filter(r => msOf(r) >= sinceMs) : got;
         acc = dedupe(acc.concat(fresh));
         if (!got.full || (sinceMs > 0 && (got.oldest || oldestMs(got)) <= sinceMs)) return { batch: acc, joined: true };
-        const next = (got.oldest || oldestMs(got)) + 1;
+        const oldest = got.oldest || oldestMs(got);
+        const next = oldest + 1;
         if (!next || (olderThan != null && next >= olderThan)) break;
+        /* a gap the walk's remaining pages cannot cover at this page's pace (the open prints ~1,000 a second) is not
+           walked: the newest page stands alone and older pages load as the reader scrolls */
+        const span = newestMs(got) - oldest;
+        if (sinceMs > 0 && span > 0 && ((oldest - sinceMs) / span) > GAP_PAGES - 1 - n) break;
         olderThan = next;
       }
       return { batch: acc, joined: sinceMs <= 0 };

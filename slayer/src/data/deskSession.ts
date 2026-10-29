@@ -8,10 +8,10 @@ import { nyParts } from '../core/nyTime';
 export type DeskSession = 'rth' | 'pre' | 'post' | 'overnight';
 
 export const DESK_SESSIONS: readonly { value: DeskSession; label: string; hint: string; window: string; from: number; to: number; wraps: boolean }[] = [
-  { value: 'rth', label: 'Regular', hint: 'The cash session', window: '8:30 AM–3:00 PM CT', from: 9 * 60 + 30, to: 16 * 60, wraps: false },
-  { value: 'pre', label: 'Premarket', hint: 'Early equity options, and the morning index session', window: '3:00 AM–8:30 AM CT', from: 4 * 60, to: 9 * 60 + 30, wraps: false },
-  { value: 'post', label: 'After hours', hint: 'The curb, then the stock tape to 7:00 PM CT', window: '3:00 PM–7:00 PM CT', from: 16 * 60, to: 20 * 60, wraps: false },
-  { value: 'overnight', label: 'Overnight', hint: 'SPX, VIX, and RUT. The morning leg is under Premarket', window: '7:00 PM–3:00 AM CT', from: 20 * 60, to: 4 * 60, wraps: true },
+  { value: 'rth', label: 'Regular', hint: 'The cash session', window: '9:30 AM–4:00 PM ET', from: 9 * 60 + 30, to: 16 * 60, wraps: false },
+  { value: 'pre', label: 'Premarket', hint: 'Early equity options, and the morning index session', window: '4:00 AM–9:30 AM ET', from: 4 * 60, to: 9 * 60 + 30, wraps: false },
+  { value: 'post', label: 'After hours', hint: 'The curb, then the stock tape to 8:00 PM ET', window: '4:00 PM–8:00 PM ET', from: 16 * 60, to: 20 * 60, wraps: false },
+  { value: 'overnight', label: 'Overnight', hint: 'SPX, VIX, and RUT. The morning leg is under Premarket', window: '8:00 PM–4:00 AM ET', from: 20 * 60, to: 4 * 60, wraps: true },
 ];
 
 const STORAGE_KEY = 'slayer_desk_session_pin';

@@ -88,7 +88,7 @@ export async function fetchGaps(a: PaperAccount, now: number): Promise<Fetched> 
     for (const day of g.days) {
       const t = g.order.contract.ticker.toUpperCase();
       const root = INDEXES.has(t) ? 'index' : 'stock';
-      jobs.push(once(`bars|${t}|${day}`, `/${root}/history/ohlc?symbol=${encodeURIComponent(t)}&date=${ymd(day)}&interval=1m&format=json`, rows => {
+      jobs.push(once(`bars|${t}|${day}`, `/${root}/history/ohlc?symbol=${encodeURIComponent(t)}&start_date=${ymd(day)}&end_date=${ymd(day)}&interval=1m&format=json`, rows => {
         const b = parseBars(day, rows);
         if (b) got.bars.set(`${t}|${day}`, b.bars.map(x => x.close));
       }));

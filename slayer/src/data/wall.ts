@@ -203,6 +203,7 @@ interface Ctx {
   todayIdx: number;
   bars: Candle[];
   clock: AheadClock;
+  /** The dollars of stock a 1% move took in the session — 0 until there are bars enough to say */
   marketPer1Pct: number;
   /** The median weight of the shelves on this book — the size factor's yardstick */
   typicalWall: number;
@@ -438,7 +439,8 @@ export function buildWallContext(
   const typicalWall = shelves.length ? shelves[Math.floor((shelves.length - 1) / 2)] : heaviest * 0.5;
   const topWall = Math.max(1, ...strikes.map(s => wallWeight(s.strike, spot, strikes)));
   const todayBars = bars as Candle[];
-  const marketPer1Pct = dollarsPer1Pct(todayBars) ?? 1;
+  /* 0 until the session has bars enough to say what a 1% move took */
+  const marketPer1Pct = dollarsPer1Pct(todayBars) ?? 0;
   /* the expiry the levels read: its own implied move (data/uwBook.ts peekDaySigma), the 30-day IV only as a fallback */
   const ss = scopeSigma(snapshot, clock.minutesLeft, iv);
   const sigmaLeft = snapshot.liveBook ? ss.sigmaLeft : sigmaOverMinutes(daySigmaOfIv(spot, iv) ?? spot * 0.01, clock.minutesLeft);
