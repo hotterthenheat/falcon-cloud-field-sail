@@ -564,7 +564,7 @@ const Desk = () => {
         ) : tab === 'orders' ? (
           <TraceGrid key="orders" rows={orders} columns={orderCols} rowKey={o => o.id} onRowClick={o => switchTo(o.contract.ticker, o.contract.expiry >= cursor.day ? o.contract : null)} autoHeight animate={false} widths={{ cancel: 56 }} flexes={{ status: 2, what: 1.4 }} emptyText="No orders yet" testId="review-orders" />
         ) : (
-          <TraceGrid key="closed" rows={[...account.trades].reverse()} columns={closedCols} rowKey={t => t.id} autoHeight animate={false} widths={{ qty: 70 }} flexes={{ in: 1.4, out: 1.4 }} emptyText="No closed trades yet" testId="review-closed" />
+          <TraceGrid key="closed" rows={[...account.trades].reverse()} columns={closedCols} rowKey={t => t.id} autoHeight animate={false} widths={{ qty: 60, how: 150, pnl: 150 }} flexes={{ contract: 1, in: 1.8, out: 1.8 }} emptyText="No closed trades yet" testId="review-closed" />
         )
       }
     />

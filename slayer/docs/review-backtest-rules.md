@@ -49,12 +49,19 @@ real, with the costs that are real for options: the spread, the fee, and the dec
 | --- | --- | --- |
 | Market buy | the next minute's quote (or this one, if the clock is paused on it) | the **ask** |
 | Market sell | the same | the **bid** |
-| Limit buy at L | a minute's ask is at or under L | L (never better than the ask asked) |
-| Limit sell at L | a minute's bid is at or over L | L |
-| Stop sell at S | a minute's **bid** is at or under S | the bid of that minute |
+| Limit buy at L | a minute's ask is at or under L — at once, when it already is (a marketable limit) | that minute's **ask** (never over L) |
+| Limit sell at L | a minute's bid is at or over L — at once, when it already is | that minute's **bid** (never under L) |
+| Stop buy at S (added 2026-10-29) | a minute's **ask** is at or over S — placed only over the ask | the ask of that minute |
+| Stop sell at S | a minute's **bid** is at or under S — placed only under the bid | the bid of that minute |
 | Target **on the name** at N | the name's minute closes at or past N, on the contract's good side (a call: at or over; a put: at or under) | the bid of that minute |
 | Stop **on the name** at N | the name's minute closes at or past N, on the other side | the bid of that minute |
 
+- **Every fill is the recorded NBBO** (2026-10-29): a buy at that minute's ask, a sell at its bid. A limit that is
+  already through the market when it is placed is the market at that minute, capped at its price — it fills then, at the
+  ask or the bid, never at its own price. Not at the bell, and not in a minute that is no market.
+- Orders that wait are **Day** (cancelled at 16:00) or **GTC** (carried over the night); the desk's Day / GTC switch sets
+  it for every limit and stop it places.
+- A sell that waits never sells more than is held when it fills: what is left of the position is what it sells.
 - A **dead quote gives no fill**: a minute with no two-sided quote (no bid, no ask, or none recorded) is not a market.
   The order waits. A wide quote is still the market, and fills at its side.
 - A **target and a stop** may ride a buy. They are a limit sell and a stop sell on the same contracts; when one fills,
@@ -146,10 +153,31 @@ open at once — past that a tape cannot be read.
 ## The bell
 
 At 16:00 on a contract's expiry day it **settles at what it is worth in the money**: a call at spot − strike, a put at
-strike − spot, never under zero. The position closes at that price, the cash lands, and the trade is written to the
-record as "expired". Exercise and assignment are not modelled: a long option is only ever cash.
+strike − spot, never under zero (a spread inside its width). The position closes at that price with no fee, the cash
+lands, and the trade is written to the record as "expired". Since 2026-10-29:
+
+- **The price it settles on is the name's close**: the 16:00:00 closing print where ThetaData recorded one (a fund's or
+  a stock's closing cross, an index's closing value), else the session's last bar (an early close's 13:00).
+- **A contract on a stock or a fund is exercised at the close** — the shares it would deliver are taken as sold at the
+  same close, so it lands as what it is in the money ("Exercised at the close"; out of the money, "Expired worthless").
+  Assignment is not modelled: nothing is sold short here.
+- **A contract on a cash index settles in cash** on the index's close ("Cash-settled"). The index roots offered are the
+  PM-settled ones — SPXW on SPX, NDXP on NDX, RUTW on RUT — replayed on the index's own one-minute price. The AM-settled
+  roots (SPX, NDX and RUT monthlies, VIX) settle on a special opening quotation the vendor does not carry, so they are
+  not offered.
+- **A close that is not known is not guessed**: the contract stays held, "settling…", until the name's bars for its
+  expiry day load; the next bell settles it on that day's close.
+- **The bell keeps the account** as it left it (cash, banked, open, what is carried), one a day — the report's By day.
 
 ## The record
+
+- An open contract is **marked at its mid**, half-cents kept (3.90 / 3.91 is 3.905). In a minute that is no market it
+  keeps the last two-sided mid recorded that day, said with its time; with none that day it is not marked (—).
+- **Banked** is what the closed trades and the pieces sold of open ones made, fees in; with the open figure it is the
+  account's whole move. The cost an open position is measured from is kept whole, never a rounded average.
+- A session is kept in this browser and opens again where its clock stands. It can be **copied as it stands** (book,
+  orders, clock — to try another way from there), **run again** from its first day with a fresh book, or **deleted**
+  (the bin asks once more).
 
 - A **trade** is one round trip in one contract: from the first buy to the sell (or the bell) that brings it to zero.
   Buys at different prices average in. Partial sells close a share of it and the trade stays open until it is flat.
@@ -158,6 +186,9 @@ record as "expired". Exercise and assignment are not modelled: a long option is 
 - Frozen facts: a fill, once written, never changes — not when the tape is re-read, not when the rules change.
 
 ## The report (the reader's own numbers)
+
+(2026-10-29) Also: the running total at each minute a trade closed (ET), **By day** — what closed on each day and the
+account at each bell, open contracts marked — the account's deepest fall bell to bell, and the fees paid.
 
 Net P&L · win rate · average win and loss · profit factor · expectancy (dollars and R) · the deepest drawdown · the
 longest losing run · time in a trade — and the cuts that only options have: **by days to expiry at entry, by delta at

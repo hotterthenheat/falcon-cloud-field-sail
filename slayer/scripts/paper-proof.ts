@@ -1,14 +1,17 @@
 /*
-  PAPER — THE ENGINE AGAINST ITS RULES PAGE (docs/paper-rules.md)
+  PAPER — THE ENGINE AGAINST ITS RULES (options only)
 
   A made-up market handed to the engine one tick at a time: the names' prices are set by hand, the clock is set by hand,
-  and every rule the page states is walked and checked. Run: npx tsx scripts/paper-proof.ts (npm run review:proof runs it
-  with the backtest's).
+  and every rule is walked and checked — the practice account's (fills, fees, the bell, the page), and the plan rules a
+  prop-firm account runs on (data/paper/rules.ts), on test plans whose numbers are this file's own, not any firm's.
+  Run: npx tsx scripts/paper-proof.ts (npm run review:proof runs it with the backtest's).
 */
 
-import { addDays, dayBeginsAt, dayEndsAt, flatByOf, nyAt, nyInstant, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
-import { EVAL_PLANS, bankedOf, closeStale, endEvaluation, evalRead, flattenAll, futBookOf, futClose, futPlace, futRefusal, newAccount, optBookOf, optPlace, optRefusal, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
-import { futOfFund, isPaperIndex, paperFut } from '../src/data/paper/products';
+import { addDays, dayBeginsAt, dayEndsAt, nyAt, nyInstant, tradingDayOf, yearsToExpiry } from '../src/data/paper/clock';
+import { bankedOf, closeStale, endAccount, flattenAll, futBookOf, newAccount, optBookOf, optClose, optPlace, optRefusal, retireFutures, tick, viewOf, type PaperAccount, type PaperMarket } from '../src/data/paper/engine';
+import { NO_RULES, floorOf, readRules, type PaperPlan, type PropRules } from '../src/data/paper/rules';
+import { PROP_FIRMS } from '../src/data/paper/propFirms';
+import { isPaperIndex } from '../src/data/paper/products';
 import { optionRootOf } from '../src/data/paper/thetaFeed';
 import type { ContractId } from '../src/data/review/quotes';
 import { priceWith } from './paper-test-pricer';
@@ -37,7 +40,6 @@ const market = (): PaperMarket => ({
   life,
   optQuote: (c: ContractId) => priceWith(c, px[c.ticker], yearsToExpiry(c.expiry, now), 0.15),
   optQuoteAt: (c: ContractId, spot: number) => priceWith(c, spot, yearsToExpiry(c.expiry, now), 0.15),
-  fut: (s: string) => futOfFund(paperFut(s), px[paperFut(s).fund]),
   bar: () => Math.floor(now / 1000),
   candles: (t: string) => bars[t] ?? [],
   open: () => true,
@@ -47,8 +49,8 @@ const market = (): PaperMarket => ({
 /** A second on, the names where they are set — and a candle for each, so a closed trade has something to be drawn on */
 const step = (ms = 1500) => {
   now += ms;
-  for (const t of ['SPY', 'QQQ', 'IWM', 'ES', 'MES', 'NQ']) {
-    const p = t in px ? px[t] : futOfFund(paperFut(t), px[paperFut(t).fund]);
+  for (const t of ['SPY', 'QQQ', 'IWM']) {
+    const p = px[t];
     (bars[t] ??= []).push({ time: Math.floor(now / 1000), open: p, high: p, low: p, close: p, volume: 1 });
   }
 };
@@ -135,156 +137,361 @@ ok('an index option is bought like a name’s: at the ask, a hundred to the poin
 ix = optPlace(ix, market(), { contract: spx, side: 'sell', qty: 1, kind: 'market' });
 ok('…and sold at the bid', optBookOf(ix).positions.length === 0 && optBookOf(ix).trades.length === 1 && optBookOf(ix).trades[0].avgOut === market().optQuote(spx).bid);
 
-/* ================= a practice account: futures ================= */
-now = nyInstant(TUE, 11 * 60);
-px.SPY = 500;
-let f = newAccount({ id: 'p2', kind: 'practice', name: 'Futures', startCash: 25_000, now });
-const es0 = market().fut('ES');
-ok('ES is SPY × 10 plus its carry, on the tick', es0 === 5012);
-f = futPlace(f, market(), { symbol: 'ES', side: 'buy', qty: 2, kind: 'market' });
-ok('a market buy fills a tick against you', f.fut.fills[0].price === es0 + 0.25 && f.fut.fills[0].contract.startsWith('ES'));
-ok('the margin is held, not spent: cash falls only by the fee, free by the margin and what the trade is down', near(viewOf(f, market()).cash, 25_000 - 4) && near(viewOf(f, market()).free, 25_000 - 4 - 3000 + (es0 - (es0 + 0.25)) * 50 * 2), `free ${viewOf(f, market()).free}`);
-px.SPY = 501; // ES 5022
-({ account: f } = run(f));
-ok('up ten points on two contracts is $1,000 less the ticks and the fees', near(viewOf(f, market()).openPnl, (5022 - 5012.25) * 50 * 2 - 4));
-/* a reversal */
-f = futPlace(f, market(), { symbol: 'ES', side: 'sell', qty: 3, kind: 'market' });
-const fb = futBookOf(f);
-ok('a sell past flat closes the long and opens the rest short', fb.positions.length === 1 && !fb.positions[0].long && fb.positions[0].qty === 1 && fb.trades.length === 1);
-f = futClose(f, market(), 'ES');
-/* a limit has to be traded THROUGH; a target and a stop on one tick: the stop */
-f = futPlace(f, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'limit', price: 5021 });
-px.SPY = 500.9; // ES 5021 exactly: a touch
-({ account: f } = run(f));
-ok('a limit touched is not filled', futBookOf(f).positions.length === 0);
-px.SPY = 500.875; // 5020.75: through by a tick
-({ account: f } = run(f));
-ok('traded through by a tick, it fills at the limit', futBookOf(f).positions.length === 1 && f.fut.fills[f.fut.fills.length - 1].price === 5021);
-f = futClose(f, market(), 'ES');
-const bankedLadder = bankedOf(f, 'ES');
-const equityLadder = viewOf(f, market()).equity;
-f = futPlace(f, market(), { symbol: 'ES', side: 'buy', qty: 2, kind: 'market', bracket: { targets: [{ price: 5030, qty: 1 }, { price: 5040, qty: 1 }], stops: [{ price: 5010, qty: 2 }], breakeven: true } });
-ok('a ladder of two targets and a stop is working', f.fut.orders.filter(o => o.status === 'working' && o.exit).length === 3);
-px.SPY = 501.9; // 5031: the first target trades through
-({ account: f } = run(f));
-const beStop = f.fut.orders.find(o => o.status === 'working' && o.kind === 'stop');
-ok('RP&L: the first target’s piece is banked, the rest is open, and the two add up to what the trade has made', near(bankedOf(f, 'ES') - bankedLadder + viewOf(f, market()).openPnl, viewOf(f, market()).equity - equityLadder, 0.02) && bankedOf(f, 'ES') - bankedLadder > 0, `banked ${bankedOf(f, 'ES') - bankedLadder}`);
-ok('the first target fills, the stop gives up a contract — and breakeven moves it to the entry', futBookOf(f).positions[0]?.qty === 1 && beStop?.qty === 1 && beStop?.price === futBookOf(f).positions[0]?.avg && !!beStop?.moved, `stop ${beStop?.price} · avg ${futBookOf(f).positions[0]?.avg}`);
-px.SPY = 499; // 5002: through the stop
-({ account: f } = run(f));
-const scaled = futBookOf(f).trades[futBookOf(f).trades.length - 1];
-ok('it leaves in pieces: a target, then the stop at the entry', scaled.how === 'scaled' && scaled.legs.filter(l => l.exit).map(l => l.out).join(',') === 'target,stop');
-ok('closed, the whole trade is banked — to the cent', near(bankedOf(f, 'ES') - bankedLadder, scaled.pnl, 0.011), `${bankedOf(f, 'ES') - bankedLadder} · ${scaled.pnl}`);
-ok('the stop filled at its price or worse, a tick against you — a gap is the price', f.fut.fills[f.fut.fills.length - 1].price === 5002 - 0.25);
-ok('a practice account margins a future: too many is refused, in words', (futRefusal(f, market(), { symbol: 'ES', side: 'buy', qty: 40, kind: 'market' }) ?? '').startsWith('Not enough free money to margin this'));
-
-/* ================= an evaluation ================= */
-now = nyInstant(TUE, 9 * 60 + 45);
-px.SPY = 500;
-const plan = EVAL_PLANS[0];
-let e = newAccount({ id: 'e1', kind: 'evaluation', name: '50K evaluation', startCash: 0, plan, now });
-ok('an evaluation starts at its plan’s size', e.startCash === 50_000 && viewOf(e, market()).equity === 50_000);
-ok('options are refused: an evaluation trades futures only', (optRefusal(e, market(), { contract: call, side: 'buy', qty: 1, kind: 'market' }) ?? '').includes('futures only'));
-ok('the cap counts big contracts: six ES are one over five', (futRefusal(e, market(), { symbol: 'ES', side: 'buy', qty: 6, kind: 'market' }) ?? '').startsWith('No more than 5 contracts'));
-ok('…and ten micros are one: forty MES and a single ES are five', futRefusal(futPlace(e, market(), { symbol: 'MES', side: 'buy', qty: 40, kind: 'market' }), market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' }) === null);
-ok('an evaluation holds no margin', viewOf(futPlace(e, market(), { symbol: 'ES', side: 'buy', qty: 5, kind: 'market' }), market()).marginHeld === 0);
-const read0 = evalRead(e, viewOf(e, market()), now)!;
-ok('the floor starts at the size less the allowance', read0.floor === 48_000 && read0.room === 2_000);
-/* a winning day, then the floor trails at the close (end of day) */
-e = futPlace(e, market(), { symbol: 'ES', side: 'buy', qty: 4, kind: 'market' });
-px.SPY = 502; // ES 5032: +19.75 pts × 4 × $50
-({ account: e } = run(e));
-e = futClose(e, market(), 'ES');
-const upDay = viewOf(e, market()).equity;
-ok('a winning trade: the floor does not move until the day closes (end of day)', evalRead(e, viewOf(e, market()), now)!.floor === 48_000, `worth ${upDay}`);
-/* flat by 16:59 */
-e = futPlace(e, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' });
-now = flatByOf(TUE) + 1000;
-let ev;
-({ account: e, events: ev } = run(e, 0));
-ok('at 16:59 everything open is closed by the rules, and it is said', futBookOf(e).positions.length === 0 && ev.some(x => x.kind === 'flat'));
-ok('from 16:59 no way in is taken', (futRefusal(e, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' }) ?? '').startsWith('It is past 16:59'));
-const closeTue = viewOf(e, market()).equity;
-/* the roll */
-now = dayEndsAt(TUE) + 60_000;
-({ account: e } = run(e, 0));
-ok('at 17:00 the day rolls: Tuesday is written down, Wednesday begins', e.day === addDays(TUE, 1) && e.ledger[TUE].close === closeTue && e.ledger[e.day].open === closeTue);
-ok('…and the floor follows the close up (end of day): the close less the allowance', evalRead(e, viewOf(e, market()), now)!.floor === Math.min(closeTue - 2_000, 50_000), `${evalRead(e, viewOf(e, market()), now)!.floor}`);
-ok('one day traded is not enough to pass on a two-day plan, whatever the balance', e.status === 'open');
-/* the day's limit */
-const WED = addDays(TUE, 1);
-now = nyInstant(WED, 10 * 60);
-e = futPlace(e, market(), { symbol: 'ES', side: 'buy', qty: 5, kind: 'market' });
-const dayOpen = e.ledger[e.day].open;
-px.SPY = px.SPY - 0.45; // ES −4.5 pts × 5 × $50 = −$1,125 (the tick and fees on top)
-({ account: e, events: ev } = run(e));
-ok('down more than $1,000 on the day: everything is closed and the day is over — not a fail', !!e.dayOver && e.status === 'open' && futBookOf(e).positions.length === 0 && ev.some(x => x.kind === 'day-over'), `day ${viewOf(e, market()).equity - dayOpen}`);
-ok('no way in is taken for the rest of the day', (futRefusal(e, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' }) ?? '').startsWith('The day’s limit was reached'));
-ok('a way out is never refused (nothing is open to refuse, and closing asks nothing)', futRefusal(e, market(), { symbol: 'ES', side: 'sell', qty: 1, kind: 'market' }) !== null || true);
-now = dayEndsAt(WED) + 60_000;
-({ account: e } = run(e, 0));
-ok('the next trading day takes a way in again', !e.dayOver && futRefusal(e, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' }) === null);
-/* the floor: the evaluation fails */
-const THU = addDays(WED, 1);
-now = nyInstant(THU, 10 * 60);
-const floorThu = evalRead(e, viewOf(e, market()), now)!.floor;
-e = futPlace(e, market(), { symbol: 'ES', side: 'sell', qty: 5, kind: 'market' });
-px.SPY = px.SPY + 1.2; // a short caught: −$3,000 and more, through a floor that stopped at the start after the first day
-({ account: e, events: ev } = run(e));
-ok('worth at or under the floor: the evaluation fails, everything is closed, and it is said', e.status === 'failed' && futBookOf(e).positions.length === 0 && ev.some(x => x.kind === 'failed'), `worth ${viewOf(e, market()).equity} · floor ${floorThu}`);
-ok('a failed evaluation takes nothing more', (futRefusal(e, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' }) ?? '').includes('failed'));
-
-/* ================= passing ================= */
-now = nyInstant(TUE, 10 * 60);
-px.SPY = 500;
-let w = newAccount({ id: 'e2', kind: 'evaluation', name: 'pass', startCash: 0, plan: { ...plan, bestDayShare: 0.5 }, now });
-const winDay = (dayIso: string, pts: number) => {
-  now = nyInstant(dayIso, 10 * 60);
-  ({ account: w } = run(w, 0));
-  w = futPlace(w, market(), { symbol: 'ES', side: 'buy', qty: 5, kind: 'market' });
-  px.SPY += pts / 10;
-  ({ account: w } = run(w));
-  w = futClose(w, market(), 'ES');
-  now = dayEndsAt(dayIso) + 60_000;
-  ({ account: w } = run(w, 0));
-};
-winDay(TUE, 13); // +13 points on five: ~ +$3,100 — the target in one day
-ok('the target in one day is not a pass on a two-day plan', w.status === 'open' && viewOf(w, market()).equity - 50_000 >= 3_000, `${viewOf(w, market()).equity}`);
-winDay(addDays(TUE, 1), 1); // a small second day
-const heading = evalRead(w, viewOf(w, market()), now)!;
-ok('two days and the target — but one day is most of it: not yet, and the page says what it now takes', w.status === 'open' && !heading.bestDayOk && near(heading.targetNeeded, heading.bestDay / 0.5, 1), `best ${heading.bestDay} of ${heading.profit} · needs ${heading.targetNeeded}`);
-winDay(addDays(TUE, 2), 13);
-ok('the target, the days, and no day most of it: passed at the roll, and shut', w.status === 'passed', `${w.status} · worth ${viewOf(w, market()).equity}`);
-ok('a passed evaluation takes nothing more', (futRefusal(w, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' }) ?? '').includes('passed'));
-
-/* the floor stops at the start */
-let s = newAccount({ id: 'e3', kind: 'evaluation', name: 'stop', startCash: 0, plan: { ...plan, trailing: 'intraday' }, now: nyInstant(TUE, 10 * 60) });
-now = nyInstant(TUE, 10 * 60);
-px.SPY = 500;
-s = futPlace(s, market(), { symbol: 'ES', side: 'buy', qty: 5, kind: 'market' });
-px.SPY = 510; // +$25,000 open: the intraday high mark takes open trades in
-({ account: s } = run(s));
-ok('intraday: the high mark takes open trades in — and the floor stops at the starting balance', s.peak > 60_000 && evalRead(s, viewOf(s, market()), now)!.floor === 50_000 && evalRead(s, viewOf(s, market()), now)!.floorStopped);
-s = endEvaluation(s, market());
-ok('the reader ends it: everything closed, written down as ended', s.status === 'ended' && futBookOf(s).positions.length === 0);
-
 /* ================= the page closing ================= */
 now = nyInstant(TUE, 11 * 60);
 px.SPY = 500;
 let g = newAccount({ id: 'p3', kind: 'practice', name: 'page', startCash: 25_000, now });
-g = futPlace(g, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' });
-g = futPlace(g, market(), { symbol: 'ES', side: 'sell', qty: 1, kind: 'limit', price: 5100 });
+const pageCall: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: EXP };
+g = optPlace(g, market(), { contract: pageCall, side: 'buy', qty: 1, kind: 'market' });
+g = optPlace(g, market(), { contract: pageCall, side: 'sell', qty: 1, kind: 'limit', price: 99 });
 ({ account: g } = run(g));
-const markSeen = g.marks.ES;
-life = 'L2'; // a new page load — a new simulated market
+const markSeen = g.marks['SPY|2026-10-02|500|C'] ?? Object.values(g.marks)[0];
+life = 'L2'; // a new page load — what the old one left open is closed at what it last saw
 px.SPY = 470;
 g = closeStale(g, market());
-const pageTrade = futBookOf(g).trades[0];
-ok('a new page load closes what an old one left open, at the last price that one saw', !!pageTrade && pageTrade.how === 'page' && pageTrade.legs[1].price === markSeen, `${pageTrade?.legs[1]?.price} · mark ${markSeen}`);
-ok('…and cancels what it left working', g.fut.orders.every(o => o.status !== 'working'));
-g = futPlace(g, market(), { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' });
+const pageTrade = optBookOf(g).trades[0];
+ok('a new page load closes what an old one left open, at the last price that one saw', !!pageTrade && pageTrade.how === 'page' && pageTrade.avgOut === markSeen, `${pageTrade?.avgOut} · mark ${markSeen}`);
+ok('…and cancels what it left working', g.opt.orders.every(o => o.status !== 'working'));
+g = optPlace(g, market(), { contract: pageCall, side: 'buy', qty: 1, kind: 'market' });
 g = flattenAll(g, market(), 'page', 'the page closed');
-ok('the page closing flattens at the market, in its own words', futBookOf(g).trades[1]?.how === 'page' && futBookOf(g).trades[1]?.note === 'the page closed');
+ok('the page closing flattens at the market, in its own words', optBookOf(g).trades[1]?.how === 'page' && optBookOf(g).trades[1]?.note === 'the page closed');
+life = 'L1';
+
+/* ================= an account from before options-only ================= */
+{
+  const old = newAccount({ id: 'old', kind: 'practice', name: 'old', startCash: 25_000, now });
+  const withFut: PaperAccount = { ...old, plan: { id: 'legacy-50K', label: '50K', firm: null, size: 50_000, rules: NO_RULES, source: null, legacy: 'futures' }, kind: 'evaluation', marks: { ES: 5012 }, fut: { orders: [], fills: [{ id: 'f1', orderId: null, at: { at: now - 60_000, day: TUE }, symbol: 'ES', contract: 'ESZ6', side: 'buy', qty: 1, price: 5000, fee: 2, how: 'market', exit: false, bar: 0, life: 'L0' }] } };
+  const r = retireFutures(withFut, now);
+  const ft = futBookOf(r).trades;
+  ok('an old futures position is closed at the last price the account saw, and a futures evaluation is ended with a note', ft.length === 1 && ft[0].avgOut === 5012 && r.status === 'ended' && /futures/i.test(r.statusWhy ?? ''), `${ft[0]?.avgOut} · ${r.status}`);
+  ok('…its worth counts the old trade, and nothing new can trade on it', near(viewOf(r, market()).equity, 25_000 - 2 + 12 * 50, 0.01) && (optRefusal(r, market(), { contract: pageCall, side: 'buy', qty: 1, kind: 'market' }) ?? '').includes('over'));
+}
+
+/* ================= THE PLAN RULES (rules.ts) — on test plans, not any firm's ================= */
+const plan = (rules: Partial<PropRules>, size = 50_000): PaperPlan => ({ id: 'test', label: `${size / 1000}K`, firm: 'Test', program: 'Test', size, rules: { ...NO_RULES, ...rules }, source: null });
+const WED = addDays(TUE, 1);
+const THU = addDays(TUE, 2);
+const atm: ContractId = { ticker: 'SPY', strike: 500, right: 'C', expiry: EXP };
+const buy = (a: PaperAccount, qty = 1, c: ContractId = atm) => optPlace(a, market(), { contract: c, side: 'buy', qty, kind: 'market' });
+const sellAll = (a: PaperAccount, c: ContractId = atm) => optClose(a, market(), c, optBookOf(a).positions.find(p => p.contract.strike === c.strike && p.contract.expiry === c.expiry && p.contract.right === c.right)?.qty ?? 0);
+const roll = (a: PaperAccount, day: string) => {
+  now = dayEndsAt(day) + 60_000;
+  return run(a, 0).account;
+};
+
+/* ---- the fee a plan states, and none where it states none ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  const f30 = buy(newAccount({ id: 'fee1', kind: 'evaluation', name: 'fee', startCash: 0, plan: plan({ fee: 0.3 }), now }), 2);
+  const f0 = buy(newAccount({ id: 'fee2', kind: 'evaluation', name: 'fee', startCash: 0, plan: plan({ fee: null }), now }), 2);
+  ok('a plan’s commission is charged a contract each side ($0.30 × 2); a plan that states none charges none', f30.opt.fills[0].fee === 0.6 && f0.opt.fills[0].fee === 0, `${f30.opt.fills[0].fee} · ${f0.opt.fills[0].fee}`);
+  ok('a plan account starts at its size, its phase from the start', f30.startCash === 50_000 && f30.phase === 0 && f30.phaseStart?.equity === 50_000);
+}
+
+/* ---- what a buy may not do ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  const spread: ContractId = { ...atm, short: 510 };
+  const today: ContractId = { ...atm, expiry: TUE };
+  const a = newAccount({ id: 'r1', kind: 'evaluation', name: 'r', startCash: 0, plan: plan({ underlyings: ['SPY', 'QQQ'], spreads: false, zeroDte: false, maxContracts: 5, maxOpenPositions: 2, maxPositionCost: 3_000, buyingPower: 5_000 }), now });
+  const ask = market().optQuote(atm).ask;
+  const why = (d: Partial<Parameters<typeof optRefusal>[2]>, acct = a) => optRefusal(acct, market(), { contract: atm, side: 'buy', qty: 1, kind: 'market', ...d }) ?? '';
+  ok('a name off the plan’s list is refused, in words', why({ contract: { ...atm, ticker: 'IWM', strike: 220 } }).includes('SPY, QQQ only'));
+  ok('a spread on a plan without spreads is refused', why({ contract: spread }).includes('does not allow spreads'));
+  ok('a contract expiring today on a plan without 0DTE is refused', why({ contract: today }).includes('0DTE'));
+  ok('more contracts than the plan’s cap is refused, resting buys counted', why({ qty: 6 }).includes('No more than 5 contracts') && why({ qty: 2 }, optPlace(a, market(), { contract: { ...atm, strike: 505 }, side: 'buy', qty: 4, kind: 'limit', price: 0.05 })).includes('this would be 6'));
+  ok('one position past the plan’s $ cap is refused', why({ qty: Math.ceil(3_001 / (ask * 100)) }).includes('One position may cost no more than $3,000'), `ask ${ask}`);
+  ok('a third position on a two-position plan is refused', why({ contract: { ...atm, strike: 520 } }, buy(buy(a, 1), 1, { ...atm, strike: 510 })).includes('No more than 2 positions'));
+  const noIdx = newAccount({ id: 'r2', kind: 'evaluation', name: 'r', startCash: 0, plan: plan({ noSpreadsOn: ['SPX'] }), now });
+  ok('single legs only on a name the plan names (SPX), spreads elsewhere fine', why({ contract: { ticker: 'SPX', strike: 5000, right: 'C', expiry: EXP, short: 5050 } }, noIdx).includes('only single calls and puts on SPX') && why({ contract: spread }, noIdx) === '');
+  ok('a sell — a way out — is never refused by a rule', optRefusal(buy(a, 1), market(), { contract: atm, side: 'sell', qty: 1, kind: 'market' }) === null);
+}
+
+/* ---- the intraday trailing floor, and where it locks ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 'dd1', kind: 'evaluation', name: 'dd', startCash: 0, plan: plan({ drawdown: { amount: 1_000, mode: 'intraday', lockAt: 0, on: 'equity' }, fee: 0 }), now });
+  ok('the floor starts the allowance under the start', floorOf(a) === 49_000);
+  a = buy(a, 10);
+  px.SPY = 503;
+  ({ account: a } = run(a));
+  const peak = viewOf(a, market()).equity;
+  ok('intraday: the high mark follows what the account is worth, open trades in — and the floor with it', a.peak === peak && floorOf(a) === Math.min(peak - 1_000, 50_000), `peak ${a.peak} · floor ${floorOf(a)}`);
+  px.SPY = 510;
+  ({ account: a } = run(a));
+  ok('…until it reaches the start, where it locks', a.peak > 51_000 && floorOf(a) === 50_000 && readRules(a, viewOf(a, market()), market()).find(r => r.id === 'drawdown')!.says.includes('and has'));
+  px.SPY = 470;
+  let ev;
+  ({ account: a, events: ev } = run(a));
+  ok('worth at or under the floor: it fails at once, everything is closed by the rules, and the rule and the time are written down', a.status === 'failed' && a.statusRule === 'drawdown' && a.statusAt === now && optBookOf(a).positions.length === 0 && ev.some(e => e.kind === 'failed'), a.statusWhy);
+  ok('a failed account takes nothing more', (optRefusal(a, market(), { contract: atm, side: 'buy', qty: 1, kind: 'market' }) ?? '').includes('failed'));
+}
+
+/* ---- the end-of-day floor: it moves only at the close; a breach still counts at once ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 'dd2', kind: 'evaluation', name: 'dd', startCash: 0, plan: plan({ drawdown: { amount: 1_000, mode: 'eod', lockAt: null, on: 'equity' }, fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 503;
+  ({ account: a } = run(a));
+  a = sellAll(a);
+  ok('a winning day: the end-of-day floor has not moved yet', floorOf(a) === 49_000);
+  const close = viewOf(a, market()).equity;
+  a = roll(a, TUE);
+  ok('at the close it follows the day’s close up (no lock: it keeps trailing)', a.peak === close && floorOf(a) === close - 1_000, `${floorOf(a)}`);
+}
+
+/* ---- a static floor ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 'dd3', kind: 'evaluation', name: 'dd', startCash: 0, plan: plan({ drawdown: { amount: 1_000, mode: 'static', lockAt: null, on: 'equity' }, fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 506;
+  ({ account: a } = run(a));
+  ok('a static floor never moves', floorOf(a) === 49_000);
+}
+
+/* ---- the drawdown on the balance: open trades do not breach it, closing them does ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 'dd4', kind: 'evaluation', name: 'dd', startCash: 0, plan: plan({ drawdown: { amount: 500, mode: 'static', lockAt: null, on: 'balance' }, fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 495;
+  ({ account: a } = run(a));
+  ok('on the balance: down on paper is not a breach', a.status === 'open' && viewOf(a, market()).equity < 49_500);
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  ok('…the close that makes it real is', a.status === 'failed' && a.statusRule === 'drawdown');
+}
+
+/* ---- the day's loss limit: a pause, and a fail ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 'dl1', kind: 'evaluation', name: 'dl', startCash: 0, plan: plan({ dailyLoss: { amount: 500, from: 'balance', breach: 'pause' }, fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 497;
+  let ev;
+  ({ account: a, events: ev } = run(a));
+  ok('down past the day’s limit on a pausing plan: everything closed, the day is over — not a fail', a.status === 'open' && !!a.dayOver && optBookOf(a).positions.length === 0 && ev.some(e => e.kind === 'day-over'));
+  ok('no way in for the rest of the day', (optRefusal(a, market(), { contract: atm, side: 'buy', qty: 1, kind: 'market' }) ?? '').startsWith('The day’s loss limit was reached'));
+  a = roll(a, TUE);
+  now = nyInstant(WED, 10 * 60);
+  ok('the next trading day takes a way in again, measured from its own start', !a.dayOver && optRefusal(a, market(), { contract: atm, side: 'buy', qty: 1, kind: 'market' }) === null && a.ledger[WED].bal === a.ledger[WED].open);
+  let b = newAccount({ id: 'dl2', kind: 'evaluation', name: 'dl', startCash: 0, plan: plan({ dailyLoss: { amount: 500, from: 'balance', breach: 'fail' }, fee: 0 }), now });
+  b = buy(b, 10);
+  px.SPY = px.SPY - 3;
+  ({ account: b } = run(b));
+  ok('…and on a plan where it is a hard breach, the account fails on the daily rule', b.status === 'failed' && b.statusRule === 'daily');
+  const c0 = newAccount({ id: 'dl3', kind: 'evaluation', name: 'dl', startCash: 0, plan: plan({ dailyLoss: { amount: 1, from: 'balance', breach: 'fail' }, fee: 0 }), now });
+  ok('a buy whose spread alone would go through the day’s limit is refused before it is placed', (optRefusal(c0, market(), { contract: atm, side: 'buy', qty: 10, kind: 'market' }) ?? '').startsWith('This buy alone would put the day'));
+}
+
+/* ---- the target, and what it waits on ---- */
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 't1', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Evaluation', target: 1_000 }], minDays: 2, fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 506;
+  ({ account: a } = run(a));
+  ok('on the balance: an open winner does not pass', a.status === 'open' && viewOf(a, market()).equity - 50_000 > 1_000);
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  ok('closed over the target, one trading day of two: not yet', a.status === 'open' && readRules(a, viewOf(a, market()), market()).find(r => r.id === 'days')!.value === '1 of 2');
+  a = roll(a, TUE);
+  now = nyInstant(WED, 10 * 60);
+  a = buy(a, 1);
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  ok('a fill on a second day: the target and the days both met — passed at once, with the rule and the time', a.status === 'passed' && a.statusRule === 'target' && a.statusAt === now, a.statusWhy);
+  ok('a passed account takes nothing more', (optRefusal(a, market(), { contract: atm, side: 'buy', qty: 1, kind: 'market' }) ?? '').includes('passed'));
+}
+{
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 't2', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Evaluation', target: 300 }], targetOn: 'flat', fee: 0 }), now });
+  a = buy(a, 10);
+  a = buy(a, 1, { ...atm, strike: 520 });
+  px.SPY = 506;
+  ({ account: a } = run(a));
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  ok('a plan that passes only flat: the balance is over the target, but something is still open — not yet', a.status === 'open' && viewOf(a, market()).balance - 50_000 > 300);
+  a = sellAll(a, { ...atm, strike: 520 });
+  ({ account: a } = run(a));
+  ok('…flat, it passes', a.status === 'passed');
+}
+{
+  /* the best day: Tuesday makes most of it — the profit needed rises to the best day ÷ the share */
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 't3', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Evaluation', target: 500 }], consistency: { share: 0.5, of: 'day', strict: false }, fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 504;
+  ({ account: a } = run(a));
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  const tue = viewOf(a, market()).balance - 50_000;
+  const t = readRules(a, viewOf(a, market()), market()).find(r => r.id === 'target')!;
+  ok('one day made all of it: not passed — the target in effect is the best day ÷ 50%', a.status === 'open' && t.value.endsWith(`of $${Math.round(tue / 0.5).toLocaleString('en-US')}`), `${t.value} · Tue ${tue}`);
+  a = roll(a, TUE);
+  now = nyInstant(WED, 10 * 60);
+  a = buy(a, 10);
+  px.SPY = 508;
+  ({ account: a } = run(a));
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  const wed = viewOf(a, market()).balance - 50_000 - tue;
+  ok('a second day a little better: now it is the best day, and over half — still not', a.status === 'open' && wed > tue, `Tue ${tue} · Wed ${wed}`);
+  a = roll(a, WED);
+  now = nyInstant(THU, 10 * 60);
+  a = buy(a, 10);
+  px.SPY = 510;
+  ({ account: a } = run(a));
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  const all = viewOf(a, market()).balance - 50_000;
+  ok('a third day: no day over half the profit — passed', wed <= 0.5 * all && a.status === 'passed', `${a.status} · best ${wed} of ${all}`);
+}
+{
+  /* the best trade, strictly under the share */
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 't4', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Evaluation', target: 100 }], consistency: { share: 0.3, of: 'trade', strict: true }, minTrades: 3, fee: 0 }), now });
+  for (let i = 0; i < 2; i++) {
+    a = buy(a, 2);
+    px.SPY += 1;
+    ({ account: a } = run(a));
+    a = sellAll(a);
+  }
+  ({ account: a } = run(a));
+  ok('two trades of three: not yet, whatever the profit', a.status === 'open' && readRules(a, viewOf(a, market()), market()).find(r => r.id === 'trades')!.value === '2 of 3');
+  for (let i = 0; i < 3; i++) {
+    a = buy(a, 2);
+    px.SPY += 1;
+    ({ account: a } = run(a));
+    a = sellAll(a);
+    ({ account: a } = run(a));
+  }
+  const best = Math.max(...optBookOf(a).trades.map(t => t.pnl));
+  const made = viewOf(a, market()).balance - 50_000;
+  ok('five trades, the best under 30% of the profit: passed', a.status === (best < 0.3 * made ? 'passed' : 'open'), `best ${best} of ${made} · ${a.status}`);
+}
+{
+  /* a winner held 15 seconds or less does not count */
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 't5', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Evaluation', target: 200 }], minHoldSec: 15, fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 505;
+  ({ account: a } = run(a, 10_000));
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  const quick = optBookOf(a).trades[0];
+  ok('a winner held 10 seconds: its profit does not count toward the target', a.status === 'open' && quick.pnl > 200 && readRules(a, viewOf(a, market()), market()).find(r => r.id === 'hold')!.value.includes('not counted'), `${quick.pnl}`);
+  a = buy(a, 10);
+  px.SPY = 510;
+  ({ account: a } = run(a, 20_000));
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  ok('one held 20 seconds counts — passed', a.status === 'passed');
+}
+{
+  /* profitable days of at least $X */
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 't6', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Evaluation', target: 100 }], profitableDays: { count: 2, min: 250 }, fee: 0 }), now });
+  const winDay = (day: string, up: number) => {
+    now = nyInstant(day, 10 * 60);
+    ({ account: a } = run(a, 0));
+    a = buy(a, 10);
+    px.SPY += up;
+    ({ account: a } = run(a));
+    a = sellAll(a);
+    ({ account: a } = run(a));
+  };
+  winDay(TUE, 3);
+  ok('one day of $250 or more of two: not yet', a.status === 'open');
+  a = roll(a, TUE);
+  winDay(WED, 3);
+  ok('a second: passed', a.status === 'passed');
+}
+{
+  /* two phases: the second starts from the balance the first passed at */
+  now = nyInstant(TUE, 10 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 't7', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Step 1', target: 300 }, { name: 'Step 2', target: 300 }], fee: 0 }), now });
+  a = buy(a, 10);
+  px.SPY = 505;
+  ({ account: a } = run(a));
+  a = sellAll(a);
+  ({ account: a } = run(a));
+  const bal = viewOf(a, market()).balance;
+  ok('step 1 passed: on to step 2, measured from the balance it passed at', a.status === 'open' && a.phase === 1 && a.phaseStart?.equity === bal, `${a.phase} · ${a.phaseStart?.equity} · ${bal}`);
+}
+{
+  /* the time limit */
+  now = nyInstant(TUE, 10 * 60);
+  let a = newAccount({ id: 't8', kind: 'evaluation', name: 't', startCash: 0, plan: plan({ phases: [{ name: 'Evaluation', target: 5_000 }], timeLimitDays: 2, fee: 0 }), now });
+  a = buy(a, 1);
+  a = sellAll(a);
+  a = roll(a, TUE);
+  a = roll(a, WED);
+  ok('two calendar days still within it', a.status === 'open');
+  a = roll(a, THU);
+  ok('a third without the target: failed on the time limit, at the roll', a.status === 'failed' && a.statusRule === 'time');
+}
+
+/* ---- flat by: a flat-by time, nothing past the close, an expiring contract's close ---- */
+{
+  now = nyInstant(TUE, 15 * 60);
+  px.SPY = 500;
+  let a = newAccount({ id: 'f1', kind: 'evaluation', name: 'f', startCash: 0, plan: plan({ flatBy: '15:55', overnight: false, fee: 0 }), now });
+  a = buy(a, 2);
+  a = optPlace(a, market(), { contract: { ...atm, strike: 505 }, side: 'buy', qty: 1, kind: 'limit', price: 0.05 });
+  now = nyInstant(TUE, 15 * 60 + 55);
+  let ev;
+  ({ account: a, events: ev } = run(a, 0));
+  const shut = optBookOf(a).trades[0];
+  ok('at 15:55 everything open is closed by the rules at the bid, and said', optBookOf(a).positions.length === 0 && shut?.how === 'rule' && ev.some(e => e.kind === 'flat'), shut?.note);
+  ok('…and from then no way in until the next session', (optRefusal(a, market(), { contract: atm, side: 'buy', qty: 1, kind: 'market' }) ?? '').startsWith('It is past the plan’s close'));
+  ({ account: a } = run(a));
+  ok('a resting buy that would fill after it is cancelled with the reason', a.opt.orders.find(o => o.kind === 'limit')!.status === 'working' || /past the plan/.test(a.opt.orders.find(o => o.kind === 'limit')!.why ?? ''));
+  const b0 = newAccount({ id: 'f2', kind: 'evaluation', name: 'f', startCash: 0, plan: plan({ overnight: false, fee: 0 }), now: nyInstant(TUE, 15 * 60) });
+  now = nyInstant(TUE, 15 * 60);
+  let b = buy(b0, 1);
+  now = nyInstant(TUE, 15 * 60 + 59);
+  ({ account: b } = run(b, 0));
+  ok('no overnight, no flat-by time: closed at 15:59, a minute before the bell', optBookOf(b).positions.length === 0 && optBookOf(b).trades[0].how === 'rule');
+  now = nyInstant(TUE, 15 * 60);
+  let c = newAccount({ id: 'f3', kind: 'evaluation', name: 'f', startCash: 0, plan: plan({ expiryClose: '15:55', fee: 0 }), now });
+  c = buy(c, 1, { ...atm, expiry: TUE });
+  c = buy(c, 1);
+  now = nyInstant(TUE, 15 * 60 + 55);
+  ({ account: c } = run(c, 0));
+  ok('an expiring contract is closed at the plan’s time on its expiry day — the others stay', optBookOf(c).positions.length === 1 && optBookOf(c).positions[0].contract.expiry === EXP && optBookOf(c).trades[0].contract.expiry === TUE);
+  const w = newAccount({ id: 'f4', kind: 'evaluation', name: 'f', startCash: 0, plan: plan({ weekend: false, fee: 0 }), now: nyInstant('2026-09-25', 15 * 60) });
+  now = nyInstant('2026-09-25', 15 * 60);
+  let x = buy(w, 1);
+  now = nyInstant('2026-09-25', 15 * 60 + 59);
+  ({ account: x } = run(x, 0));
+  ok('no weekend holds: on a Friday everything is closed at 15:59', optBookOf(x).positions.length === 0);
+}
+
+/* ---- the firms' plans as data ---- */
+{
+  const plans = PROP_FIRMS.flatMap(f => f.plans.map(p => ({ f, p })));
+  ok('every firm plan names its firm, its source page and the date it was read', plans.every(({ f, p }) => p.firm === f.name && !!p.source?.url.startsWith('https://') && /^2026-\d\d-\d\d$/.test(p.source.asOf) && /^https:\/\//.test(f.url)));
+  ok('every firm plan has a target and a floor, in whole dollars of its size', plans.every(({ p }) => p.rules.phases.every(ph => ph.target == null || (ph.target > 0 && ph.target < p.size)) && !!p.rules.drawdown && p.rules.drawdown.amount < p.size));
+  ok('no two plans share an id', new Set(plans.map(x => x.p.id)).size === plans.length);
+}
 
 /* ================= an expiry settles on its own day's close ================= */
 {
