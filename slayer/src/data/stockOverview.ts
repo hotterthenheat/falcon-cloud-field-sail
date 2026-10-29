@@ -667,14 +667,10 @@ const busiestOf = (rows: Record<string, unknown>[], right: 'C' | 'P', ticker: st
       floorPct: volume > 0 ? (100 * (nOr(row.floor_volume) ?? 0)) / volume : 0,
       askPct: volume > 0 ? (100 * askV) / volume : 0,
       prevOI: nOr(row.prev_oi) ?? oi,
-      prevVolume: 0,
       prevAvgFill: fill,
-      prevPremium: 0,
-      prevAskPct: 0,
       oiStreak: 0,
       volGtOiStreak: 0,
       earnDays: null,
-      prevSpark: [],
     });
   }
   return out.sort((a, b) => b.volume - a.volume).slice(0, 3);

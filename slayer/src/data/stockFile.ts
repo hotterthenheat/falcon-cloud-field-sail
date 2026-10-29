@@ -194,8 +194,6 @@ function flowsFrom(rows: Record<string, unknown>[], spot: number, session: strin
       ask: num(row.ask),
       fillPos: side === 'ASK' ? 1 : side === 'BID' ? 0 : 0.5,
       side,
-      flowScore: side === 'ASK' ? 60 : side === 'BID' ? -60 : 0,
-      ratioLabel: sides.whole > 0 ? (ask >= bid ? `ASK ${Math.round((ask / sides.whole) * 100)}%` : `BID ${Math.round((bid / sides.whole) * 100)}%`) : '—',
       ratioBidPct: sides.whole > 0 ? (100 * bid) / sides.whole : 0,
       alertSides: { ask, bid, other: sides.other },
       size: num(row.total_size),

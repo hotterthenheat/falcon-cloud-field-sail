@@ -22,10 +22,6 @@ export interface FlowPrint {
   /** Where the fill landed in the spread: 0 = at bid, 1 = at ask */
   fillPos: number;
   side: 'BID' | 'ASK' | 'MID';
-  /** Set only by data/stockFile.ts; no Trace page reads it */
-  flowScore?: number;
-  /** Set only by data/stockFile.ts; no Trace page reads it */
-  ratioLabel?: string;
   /** Bid-side share of the contract's day, 0–100 */
   ratioBidPct: number;
   size: number;
@@ -133,11 +129,6 @@ export interface BookContract {
   prevOI: number;
   /** The previous session's close */
   prevAvgFill: number;
-  /** Set only by data/stockOverview.ts; no Trace page reads them */
-  prevVolume?: number;
-  prevPremium?: number;
-  prevAskPct?: number;
-  prevSpark?: number[];
   /** Consecutive sessions OI has climbed */
   oiStreak: number;
   /** Consecutive sessions volume ran past standing OI */

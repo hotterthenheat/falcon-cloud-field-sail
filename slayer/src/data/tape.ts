@@ -1,17 +1,8 @@
 /* The tape's print rules: what a print is (its kind), which way it reads (sentiment), what is never a bet, the Notable
-   order, and the summary a view's head reads. enrichPrint expands the simulator's thin orders for the simulator desks. */
+   order, and the summary a view's head reads. */
 
-import { now } from '../core/clock';
-import { nyClock } from '../core/nyTime';
-import type { TapeOrder } from '../types/market';
-import type { BookContract, FlowPrint, PrintSentiment, StratTag, TapeSummary } from '../types/trace';
+import type { BookContract, FlowPrint, PrintSentiment, TapeSummary } from '../types/trace';
 import { dayLean, hashId } from './traceLive';
-
-/* ---- the simulator's prints: deterministic per order -------------------------------------------------------------- */
-const h01 = (seed: string): number => (hashId(seed) % 1000) / 1000;
-
-const DTE_POOL = [0, 1, 2, 5, 9, 16, 30, 44, 72, 102, 254];
-const STRATS: StratTag[] = ['Vertical', 'Butterfly', 'Ratio', 'Custom'];
 
 
 /** A day-book row as a print for the contract card. The anchor is the clip the caller hands in (a flow alert's print, or
