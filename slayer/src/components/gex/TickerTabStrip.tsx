@@ -8,12 +8,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
-import { ensureBook, peekChange, peekSpot, useBookRev } from '../../data/uwBook';
+import { ensureBook } from '../../data/uwBook';
+import { peekPrint, useTapeRev, wantPrint } from '../../data/thetaTape';
+import { etClock } from '../../data/thetaFeed';
 import CompanyLogo from '../ui/CompanyLogo';
 import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 import { useAnchoredMenu } from '../ui/useAnchoredMenu';
-import DayMoveText from '../gex/DayMoveText';
 
 export const TAB_MAX = 5;
 const MENU_W = 288;
@@ -66,11 +67,15 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
   }, [open]);
 
   const full = tabs.length >= max;
-  const bookRev = useBookRev();
+  /* each tab's price is ThetaData's print, read with the other panes' in one call */
+  useTapeRev();
+  const tabKey = tabs.join(',');
   useEffect(() => {
-    for (const t of tabs) ensureBook(t, 'board');
-  }, [tabs]);
-  void bookRev;
+    /* the exposure book of every tab is warmed, so a switch draws at once */
+    for (const t of tabKey.split(',').filter(Boolean)) ensureBook(t, 'board');
+    const offs = tabKey.split(',').filter(Boolean).map(t => wantPrint(t));
+    return () => offs.forEach(off => off());
+  }, [tabKey]);
 
   const menu =
     open &&
@@ -107,8 +112,9 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
       )}
       {tabs.map(t => {
         const on = t === active;
-        const price = peekSpot(t);
-        const change = peekChange(t);
+        const print = peekPrint(t);
+        const price = print?.price ?? null;
+        const change = print && print.prev > 0 ? (print.price / print.prev - 1) * 100 : null;
         return (
           <span
             key={t}
@@ -123,10 +129,17 @@ const TickerTabStrip = ({ tabs, active, onPick, onClose, onAdd, paneLabel, compa
             <button type="button" onClick={() => onPick(t)} title={on ? `${t} — on the tape` : `Show ${t} on this pane`} className="pl-2.5 pr-1.5 inline-flex items-center gap-2 min-w-0">
               <CompanyLogo ticker={t} size={14} />
               <span className="text-t11 font-bold tracking-wide">{t}</span>
-              {!compact && price != null && change != null && (
+              {!compact && price != null && (
                 <>
-                  <span className="text-t11 tnum text-textPrimary">{fmtPrice(price)}</span>
-                  <DayMoveText ticker={t} short className="text-t105" />
+                  <span className="text-t11 tnum text-textPrimary" title={print?.kept ? `Last ThetaData print, as of ${etClock(print.readAt)}` : 'ThetaData last print'}>
+                    {fmtPrice(price)}
+                  </span>
+                  {change != null && (
+                    <span className={`text-t105 tnum ${change >= 0 ? 'text-bull' : 'text-bear'}`} title="From the prior regular close">
+                      {change >= 0 ? '+' : '−'}
+                      {Math.abs(change).toFixed(2)}%
+                    </span>
+                  )}
                 </>
               )}
             </button>

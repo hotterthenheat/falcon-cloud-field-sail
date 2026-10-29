@@ -12,6 +12,7 @@ import { loadCloses } from './stockFile';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { nyIsoDate, nyWallTime } from '../core/nyTime';
 import { uwCall, whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
+import { body, createStore, keepFresh, keptRead, liveGet, type Get, type KeptRead } from './feedStore';
 
 interface SlotRow {
   symbol?: string;
@@ -415,8 +416,8 @@ function withHistory(event: EarningsEvent, rows: SlotRow[]): EarningsEvent {
     history: true,
     histCount: h.pastMoves.length,
     histAvgMovePct: h.pastMoves.length ? h.hist : 0,
-    /* the ratio of the two figures shown, each at the one decimal the page prints */
-    richness: priced && Number(h.hist.toFixed(1)) > 0 ? Number(event.impliedMovePct.toFixed(1)) / Number(h.hist.toFixed(1)) : 0,
+    /* implied against usual, unrounded: the figures are rounded only where they are printed */
+    richness: priced ? event.impliedMovePct / h.hist : 0,
     beatRate8q: h.epsCount ? Math.round((h.beatCount / h.epsCount) * 100) : 0,
     beatCount: h.beatCount,
     inlineCount: h.inlineCount,
@@ -699,6 +700,8 @@ function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | nul
 interface Feed {
   status: 'loading' | 'live' | 'sim';
   events: EarningsEvent[];
+  /** The fortnight on screen is the answers this browser kept at this instant, until the fresh read lands */
+  keptAt?: number | null;
 }
 
 let feed: Feed = { status: 'loading', events: [] };
@@ -706,7 +709,9 @@ let feed: Feed = { status: 'loading', events: [] };
 let missedSlots = 0;
 const SLOTS_ASKED = () => fortnight().length * 2;
 const history = new Map<string, SlotRow[] | 'miss'>();
-const listeners = new Set<() => void>();
+/* a name's kept rows paint its page until its own read lands; they never stand in for that read */
+const keptHistory = new Map<string, { rows: SlotRow[]; at: number }>();
+const store = createStore(0);
 let rev = 0;
 let started = false;
 /* the week before the board's, read on the reader's ask: five days, two lists a day */
@@ -720,18 +725,32 @@ const mapEvents = (fn: (e: EarningsEvent) => EarningsEvent) => {
 
 const emit = () => {
   rev += 1;
-  listeners.forEach(fn => fn());
+  store.set(rev);
 };
 
 const subscribe = (fn: () => void) => {
-  listeners.add(fn);
+  const off = store.subscribe(fn);
   ensureEarnings();
-  return () => listeners.delete(fn);
+  return off;
 };
 /* a name's page reads its own rows only; the name hooks listen without starting the fortnight */
-const subscribeQuiet = (fn: () => void) => {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
+const subscribeQuiet = (fn: () => void) => store.subscribe(fn);
+
+function paintKeptHistory(sym: string): void {
+  if (history.has(sym) || keptHistory.has(sym)) return;
+  const k = keptRead();
+  void k.get(`/earnings/${encodeURIComponent(sym)}`).then(res => {
+    if (history.has(sym) || !Array.isArray(res.data) || !res.data.length || k.at == null) return;
+    keptHistory.set(sym, { rows: res.data as SlotRow[], at: k.at });
+    emit();
+  });
+}
+/** A name's report rows as they stand: its own read, else the kept answer with its instant */
+const rowsOf = (sym: string): { rows: SlotRow[] | 'miss' | undefined; keptAt: number | null } => {
+  const own = history.get(sym);
+  if (own) return { rows: own, keptAt: null };
+  const kept = keptHistory.get(sym);
+  return kept ? { rows: kept.rows, keptAt: kept.at } : { rows: undefined, keptAt: null };
 };
 
 async function pullHistory(ticker: string, priority = false): Promise<SlotRow[] | null> {
@@ -739,6 +758,7 @@ async function pullHistory(ticker: string, priority = false): Promise<SlotRow[] 
   const had = history.get(sym);
   if (had && had !== 'miss') return had;
   if (had === 'miss') return null;
+  if (priority) paintKeptHistory(sym);
   try {
     /* a refused or failed read is asked once more before the name is counted as having no history — the priced counts
        moved between loads as the shared key's three slots turned names away */
@@ -836,82 +856,118 @@ export function useEarningsHistories(tickers: readonly string[]): void {
 
 /* one call per day's slot: the route answers up to 500 rows a page */
 const SLOT_PAGE = 500;
+const slotPath = (slot: 'premarket' | 'afterhours', date: string, page: number) => `/earnings/${slot}?date=${encodeURIComponent(date)}&limit=${SLOT_PAGE}&page=${page}`;
+/** The fortnight's events off the day-slot lists, live or over the kept answers; null when nothing answered */
+async function readFortnight(get: Get, kept: boolean): Promise<{ events: EarningsEvent[]; missed: number; rows: SlotRow[] } | null> {
+  const today = nyToday();
+  const days = fortnight();
+  let missed = 0;
+  const batches = await Promise.all(
+    days.flatMap(date =>
+      (['premarket', 'afterhours'] as const).map(async slot => {
+        /* A failed slot is asked again before it is counted missing; a full page is followed; the misses are said on the page. */
+        const read = async (page: number): Promise<SlotRow[]> => {
+          try {
+            const got = await body<SlotRow[]>(get, slotPath(slot, date, page));
+            return Array.isArray(got) ? got : [];
+          } catch (e) {
+            if (kept) throw e;
+            await new Promise(r => setTimeout(r, 1200));
+            const got = await body<SlotRow[]>(get, slotPath(slot, date, page));
+            return Array.isArray(got) ? got : [];
+          }
+        };
+        try {
+          let all = await read(0);
+          for (let page = 1; page < 5 && all.length === page * SLOT_PAGE; page++) all = all.concat(await read(page));
+          return all;
+        } catch {
+          missed += 1;
+          return [] as SlotRow[];
+        }
+      })
+    )
+  );
+  const seen = new Set<string>();
+  const events: EarningsEvent[] = [];
+  for (const rows of batches) {
+    for (const row of rows) {
+      const ev = baseEvent(row, today);
+      if (!ev) continue;
+      const key = `${ev.ticker}-${ev.iso}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      events.push(ev);
+    }
+  }
+  if (!events.length) return null;
+  /* a symbol that is another on the same day plus a class letter is that company's other class; its history is the first's */
+  const byDay = new Map<string, Set<string>>();
+  for (const e of events) {
+    const set = byDay.get(e.iso ?? '') ?? new Set<string>();
+    set.add(e.ticker);
+    byDay.set(e.iso ?? '', set);
+  }
+  for (const e of events) {
+    const base = e.ticker.replace(/[.\-]?[A-Z]$/, '');
+    if (base && base !== e.ticker && base.length >= 2 && byDay.get(e.iso ?? '')?.has(base)) e.classOf = base;
+  }
+  events.sort((a, b) => a.daysOut - b.daysOut || Number(b.known) - Number(a.known) || b.impliedMovePct - a.impliedMovePct);
+  return { events, missed, rows: batches.flat() };
+}
+/** A fresh fortnight keeps every name's past reports already read, so a refresh does not empty the board's history */
+function keepEnriched(events: EarningsEvent[]): EarningsEvent[] {
+  return events.map(e => {
+    const rows = history.get(e.ticker);
+    if (!rows || rows === 'miss' || e.history !== false) return e;
+    const next = withHistory(e, rows.map(r => ({ ...r, symbol: r.symbol || e.ticker })));
+    const rank = ivRankOf(e.ticker);
+    const move = liveMoves.get(`${e.ticker}|${e.iso}`);
+    return { ...next, ...(rank > 0 ? { ivRank: rank } : {}), ...(move ? { actualMovePct: move.pct, moveLive: move.live, reported: true } : {}) };
+  });
+}
+async function pullFortnight(kept: KeptRead | null = null): Promise<void> {
+  const got = await readFortnight(kept ? kept.get : liveGet, !!kept).catch(() => null);
+  if (kept) {
+    /* the kept fortnight paints only until the fresh one lands */
+    if (!got || kept.at == null || (feed.status === 'live' && !feed.keptAt)) return;
+    feed = { status: 'live', events: keepEnriched(got.events), keptAt: kept.at };
+    emit();
+    return;
+  }
+  if (!got) {
+    /* a refresh that fails keeps the fortnight on screen */
+    if (feed.status !== 'live') {
+      feed = { status: 'sim', events: [] };
+      emit();
+    }
+    return;
+  }
+  missedSlots = got.missed;
+  /* the calendar's names serve the name cells, sparing an info call each */
+  rememberCompanyNames(got.rows.map(r => [String(r.symbol || ''), r.full_name] as const));
+  feed = { status: 'live', events: keepEnriched(got.events), keptAt: null };
+  emit();
+  startEnrich();
+  checkTodaysWire();
+}
+/* the fortnight is read again while a page shows it; the clock re-reads which prints are out each minute (09:30, 16:00) */
+const FORTNIGHT_EVERY = { open: 15 * 60_000, extended: 30 * 60_000, closed: null };
+const CLOCK_EVERY = { open: 60_000, extended: 60_000, closed: 10 * 60_000 };
 export function ensureEarnings(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
-  void (async () => {
-    try {
-      const today = nyToday();
-      const days = fortnight();
-      const batches = await Promise.all(
-        days.flatMap(date =>
-          (['premarket', 'afterhours'] as const).map(async slot => {
-            /* A failed slot is asked again before it is counted missing; a full page is followed; the misses are said on the page. */
-            const read = async (page: number): Promise<SlotRow[]> => {
-              try {
-                const got = await whalesEarningsSlot(slot, date, page, SLOT_PAGE);
-                return Array.isArray(got) ? (got as SlotRow[]) : [];
-              } catch {
-                await new Promise(r => setTimeout(r, 1200));
-                const got = await whalesEarningsSlot(slot, date, page, SLOT_PAGE);
-                return Array.isArray(got) ? (got as SlotRow[]) : [];
-              }
-            };
-            try {
-              let all = await read(0);
-              for (let page = 1; page < 5 && all.length === page * SLOT_PAGE; page++) all = all.concat(await read(page));
-              return all;
-            } catch {
-              missedSlots += 1;
-              return [] as SlotRow[];
-            }
-          })
-        )
-      );
-      const seen = new Set<string>();
-      const events: EarningsEvent[] = [];
-      for (const rows of batches) {
-        for (const row of rows) {
-          const ev = baseEvent(row, today);
-          if (!ev) continue;
-          const key = `${ev.ticker}-${ev.iso}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          events.push(ev);
-        }
-      }
-      if (!events.length) throw new Error('empty');
-      /* the calendar's names serve the name cells, sparing an info call each */
-      rememberCompanyNames(batches.flat().map(r => [String(r.symbol || ''), r.full_name] as const));
-      /* a symbol that is another on the same day plus a class letter is that company's other class; its history is the first's */
-      const byDay = new Map<string, Set<string>>();
-      for (const e of events) {
-        const set = byDay.get(e.iso ?? '') ?? new Set<string>();
-        set.add(e.ticker);
-        byDay.set(e.iso ?? '', set);
-      }
-      for (const e of events) {
-        const base = e.ticker.replace(/[.\-]?[A-Z]$/, '');
-        if (base && base !== e.ticker && base.length >= 2 && byDay.get(e.iso ?? '')?.has(base)) e.classOf = base;
-      }
-      events.sort((a, b) => a.daysOut - b.daysOut || Number(b.known) - Number(a.known) || b.impliedMovePct - a.impliedMovePct);
-      feed = { status: 'live', events };
-      emit();
-      startEnrich();
-      /* the clock moves the rule: a minute's tick re-reads which prints are out (09:30, 16:00) */
+  void pullFortnight(keptRead());
+  keepFresh('earnings:fortnight', FORTNIGHT_EVERY, () => pullFortnight(), () => store.readers() > 0);
+  keepFresh(
+    'earnings:clock',
+    CLOCK_EVERY,
+    () => {
+      rereadOut();
       checkTodaysWire();
-      window.setInterval(() => {
-        if (document.hidden) return;
-        rereadOut();
-        checkTodaysWire();
-      }, 60_000);
-    } catch {
-      if (feed.status !== 'live') {
-        feed = { status: 'sim', events: [] };
-        emit();
-      }
-    }
-  })();
+    },
+    () => store.readers() > 0,
+  );
 }
 
 /** The fortnight's reports for a list in a component, soonest first (starts the read) */
@@ -994,6 +1050,12 @@ export function useEarningsCoverage(): { slots: number; missed: number; historie
 /** True when a name's past reports were asked for and did not come back — it is done, not still reading */
 export const historyMissed = (ticker: string): boolean => history.get(ticker.toUpperCase()) === 'miss';
 
+/** The instant of the kept answers the fortnight shows until its fresh read lands, else null */
+export function useEarningsKeptAt(): number | null {
+  const version = useSyncExternalStore(subscribe, () => rev, () => rev);
+  return useMemo(() => feed.keptAt ?? null, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 /** True only while the fortnight has not answered. An empty live list is not pending. */
 export function useEarningsPending(): boolean {
   const version = useSyncExternalStore(subscribe, () => rev, () => rev);
@@ -1010,6 +1072,7 @@ export function useNextReport(ticker: string | null): NextReport | null {
   useEffect(() => {
     if (!sym || history.has(sym)) return;
     let dead = false;
+    paintKeptHistory(sym);
     void pullHistory(sym, true).then(() => {
       if (!dead) emit();
     });
@@ -1019,7 +1082,7 @@ export function useNextReport(ticker: string | null): NextReport | null {
   }, [sym]);
   return useMemo(() => {
     if (!sym) return null;
-    const rows = history.get(sym);
+    const rows = rowsOf(sym).rows;
     if (!rows || rows === 'miss') return null;
     const next = nextReportRow(rows.map(r => ({ ...r, symbol: r.symbol || sym })));
     if (!next?.report_date) return null;
@@ -1043,7 +1106,7 @@ export function useNextReportPending(ticker: string | null): boolean {
   return useMemo(() => !!sym && !history.has(sym), [sym, version]);
 }
 
-export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | 'sim'; dossier: EarningsDossier | null } {
+export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | 'sim'; dossier: EarningsDossier | null; keptAt: number | null } {
   const sym = ticker.trim().toUpperCase();
   const version = useSyncExternalStore(subscribeQuiet, () => rev, () => rev);
   useEffect(() => {
@@ -1085,13 +1148,13 @@ export function useLiveDossier(ticker: string): { status: 'loading' | 'live' | '
     };
   }, [sym]);
   return useMemo(() => {
-    const rows = history.get(sym);
+    const { rows, keptAt } = rowsOf(sym);
     if (rows && rows !== 'miss') {
       const dossier = dossierFromRows(sym, rows);
-      return { status: 'live' as const, dossier };
+      return { status: 'live' as const, dossier, keptAt };
     }
-    if (rows === 'miss') return { status: 'sim' as const, dossier: null };
-    return { status: 'loading' as const, dossier: null };
+    if (rows === 'miss') return { status: 'sim' as const, dossier: null, keptAt: null };
+    return { status: 'loading' as const, dossier: null, keptAt: null };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sym, version]);
 }

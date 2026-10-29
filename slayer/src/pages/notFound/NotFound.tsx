@@ -267,7 +267,6 @@ export const NotFoundPrompt = () => {
                   Front page
                 </Link>
               </div>
-              <p className="mt-3 font-mono text-t11 text-textMuted">No sign-up. It opens on simulated data.</p>
             </div>
           )}
         </div>

@@ -2,7 +2,8 @@
    order, and the summary a view's head reads. */
 
 import type { BookContract, FlowPrint, PrintSentiment, TapeSummary } from '../types/trace';
-import { dayLean, hashId } from './traceLive';
+import { dayLean } from './traceLean';
+import { hashId } from './traceRows';
 
 /** A day-book row as a print for the contract card. The anchor is the clip the caller hands in (a flow alert's print, or
     the contract's real last trade); without one the card speaks for the day — never an invented print. */

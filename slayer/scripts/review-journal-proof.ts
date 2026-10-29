@@ -1,16 +1,14 @@
 /*
   REVIEW · THE JOURNAL'S PROOF — `npx tsx scripts/review-journal-proof.ts` (run with `npm run review:proof`)
-  What the journal computes about a closed trade, and how it cuts and orders them, checked off the browser.
-  Exits 1 on a miss.
+  What the journal computes about a closed trade, and how it cuts and orders them, checked off the browser on the
+  hand-made market (scripts/review-market-fixture.ts). Exits 1 on a miss.
 */
 import { accountOf, advance, cancel, newSession, place, type Session } from '../src/data/review/engine';
 import { excursionOf, keptOf } from '../src/data/review/excursion';
-import { futAccountOf, futAdvance, futCancel, futPlace, newFutSession, type FutSession } from '../src/data/review/futuresEngine';
-import { FUT_RTH_OPEN_MIN, futBarAt, futPriceAt, futProduct } from '../src/data/review/futuresTape';
 import { CUT_AT_REST, ENDED, csvOf, cutFromQuery, cutToQuery, entryOf, inCut, instantOf, piecesWords, rowsOf, tagKeysOf, whenWords, wordsOf, type JournalRow } from '../src/data/review/journal';
-import { chainAt, expiriesAt, quoteAt } from '../src/data/review/quotes';
+import { quoteAt } from '../src/data/review/quotes';
 import { byHour, byName, bySide, bySize, byWeekday, calendarDayOf, dayTotals, grossOf, monthWeeks, runningOf, rowsIn, runsOf, spanOf } from '../src/data/review/journalFigures';
-import { tapeDays } from '../src/data/review/tape';
+import { D1, D2, FAR, installTestMarket } from './review-market-fixture';
 
 let misses = 0;
 const ok = (what: string, pass: boolean, detail = '') => {
@@ -20,14 +18,12 @@ const ok = (what: string, pass: boolean, detail = '') => {
 const near = (a: number, b: number, eps = 0.011) => Math.abs(a - b) <= eps;
 const ny = (t: number) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).format(new Date(t * 1000));
 
-const days = tapeDays();
-const day = days[days.length - 40];
+installTestMarket();
+const day = D1;
 
 /* ---- an option, bought at 10:00 and sold by hand at 11:30, with a target and a stop riding it ---- */
-const exp = (expiriesAt('SPY', day).find(e => e.dte >= 5) ?? expiriesAt('SPY', day)[0]).iso;
-const { rows: chain, spot } = chainAt('SPY', day, 29, exp, 4);
-const strike = chain.reduce((b, r) => (Math.abs(r.strike - spot) < Math.abs(b.strike - spot) ? r : b), chain[0]).strike;
-const call = { ticker: 'SPY', strike, right: 'C' as const, expiry: exp };
+/* minute 29: SPY 500.58, the 500 call asks 3.13; minute 119: SPY 501.81, it bids 4.26 */
+const call = { ticker: 'SPY', strike: 500, right: 'C' as const, expiry: FAR };
 let s: Session = newSession({ id: 'o', name: 'options proof', ticker: 'SPY', startCash: 25000, startDay: day, now: 0 });
 s = advance(s, { day, minute: 29 }, 0);
 const ask = quoteAt(call, day, 29).ask;
@@ -39,22 +35,11 @@ ok('the option is still on at 11:30 (its ways out were far)', !!held && held.qty
 for (const o of s.orders.filter(x => x.status === 'working')) s = cancel(s, o.id, 0);
 s = place(s, { contract: call, side: 'sell', qty: 2, kind: 'market' }, 0);
 const trade = accountOf(s).trades[0];
-ok('it closed as one trade', !!trade && trade.qty === 2, trade ? `${trade.pnl.toFixed(2)}` : 'no trade');
+/* in 2 × 3.13 + 1.30 = 627.30; out 2 × 4.26 − 1.30 = 850.70: +223.40 */
+ok('it closed as one trade, for what its fills say', !!trade && trade.qty === 2 && trade.pnl === 223.4, trade ? `${trade.pnl.toFixed(2)}` : 'no trade');
 
-/* ---- a future, long at 09:40 with a stop and a target, run to the day's end ---- */
-const M = FUT_RTH_OPEN_MIN + 10;
-let f: FutSession = futAdvance(newFutSession({ id: 'f', name: 'futures proof', tickers: ['ES'], startCash: 25000, startDay: day, now: 0 }), { day, minute: M }, 0);
-const ref = futPriceAt('ES', day, M);
-f = futPlace(f, { symbol: 'ES', side: 'buy', qty: 1, kind: 'market', bracket: { target: ref + 400, stop: ref - 400 } }, 0);
-f = futAdvance(f, { day, minute: M + 200 }, 0);
-for (const o of f.orders.filter(x => x.status === 'working')) f = futCancel(f, o.id, 0);
-f = futPlace(f, { symbol: 'ES', side: 'sell', qty: 1, kind: 'market' }, 0);
-const ft = futAccountOf(f).trades[0];
-ok('the future closed as one trade', !!ft && ft.long && ft.qty === 1, ft ? ft.pnl.toFixed(2) : 'no trade');
-
-const rows = rowsOf([s, f]);
+const rows = rowsOf([s]);
 const opt = rows.find(r => !r.fut) as Extract<JournalRow, { fut: false }>;
-const fut = rows.find(r => r.fut) as Extract<JournalRow, { fut: true }>;
 
 /* ---- while it was held ---- */
 const eo = excursionOf(opt);
@@ -63,18 +48,12 @@ ok('its times only go forward', eo.points.every((p, i) => i === 0 || p.time > eo
 ok('the walk ends on what the trade made, to the cent', near(eo.points[eo.points.length - 1].pnl, trade.pnl));
 ok('the best is never less than what was taken, the worst never more', eo.best.pnl >= trade.pnl - 0.011 && eo.worst.pnl <= trade.pnl + 0.011, `${eo.worst.pnl.toFixed(2)} … ${trade.pnl.toFixed(2)} … ${eo.best.pnl.toFixed(2)}`);
 ok('a minute’s worth is the bid it could have been sold into, fees in', (() => { const p = eo.points[30]; const bid = quoteAt(call, day, 29 + 30).bid; return near(p.value, bid) && p.pnl < bid * 100 * 2 - trade.cost + 0.011; })());
-ok('the figure reads the desk’s clock: in at the END of its minute', ny(eo.points[0].time) === '10:00' && whenWords(opt, trade.opened).endsWith('10:00'), `${ny(eo.points[0].time)} · ${whenWords(opt, trade.opened)}`);
+ok('the figure reads the desk’s clock: in at the END of its minute', ny(eo.points[0].time) === '10:00' && whenWords(opt, trade.opened).endsWith('10:00 ET'), `${ny(eo.points[0].time)} · ${whenWords(opt, trade.opened)}`);
 ok('the ways out that rode it are found, priced on the contract, with what each would have made', eo.target?.of === 'contract' && eo.stop?.of === 'contract' && (eo.target.pnl ?? 0) > 0 && (eo.stop.pnl ?? 0) < 0);
 ok('kept is a share of the best, or nothing when it never was up', eo.kept === null ? eo.best.pnl <= 0 : eo.kept <= 1 && eo.kept >= -1);
 ok('walked once: the same trade is the same walk', excursionOf(opt) === eo);
 
-const ef = excursionOf(fut);
-ok('a future is walked a minute at a time too', ef.points.length === ft.heldMin + 1, `${ef.points.length} points`);
-ok('its walk ends on what the trade made', near(ef.points[ef.points.length - 1].pnl, ft.pnl));
-ok('its best reads the HIGHS inside the bars — never under the best close', ef.best.pnl >= Math.max(...ef.points.map(p => p.pnl)) - 0.011);
-ok('…but not the entry minute’s or the exit minute’s', (() => { const b = futBarAt('ES', day, M); const size = futProduct('ES').pointValue; return !b || ef.best.time !== ef.points[0].time || near(ef.best.pnl, ef.points[0].pnl) || (b.high - ft.avgIn) * size < ef.best.pnl + 0.011; })());
-ok('a future’s ways out are prices of the future itself', ef.target?.of === 'future' && ef.stop?.of === 'future' && near(ef.target.price, ref + 400, 0.26));
-const k = keptOf([opt, fut]);
+const k = keptOf([opt]);
 ok('across a cut: what was taken of everything the trades were up at their best', k.share === null ? k.best === 0 : k.share >= 0 && k.share <= 1, k.share == null ? 'never up' : `${Math.round(k.share * 100)}%`);
 
 /* ---- a trade that left in PIECES is walked at its true size ---- */
@@ -93,17 +72,14 @@ ok('across a cut: what was taken of everything the trades were up at their best'
   ok('a minute between the pieces is worth what was taken plus what is still on', near(mid.pnl, took + (mid.value - row.t.avgIn) * 100 * 1 - row.t.legs.reduce((a, l) => a + (l.side === 'buy' ? l.fee : 0), 0) - row.t.legs[1].fee - row.t.legs[2].fee, 0.02), mid.pnl.toFixed(2));
 }
 
-/* ---- newest first, by instant: the two kinds count their minutes from different opens ---- */
+/* ---- newest first, by instant ---- */
 {
-  /* a future closed on the evening BEFORE the option's day (minute 319 of that trading day = 23:19 the night before) */
-  const evening = futAdvance(newFutSession({ id: 'e', name: 'evening', tickers: ['ES'], startCash: 25000, startDay: day, now: 0 }), { day, minute: 300 }, 0);
-  let e2 = futPlace(evening, { symbol: 'ES', side: 'buy', qty: 1, kind: 'market' }, 0);
-  e2 = futAdvance(e2, { day, minute: 319 }, 0);
-  e2 = futPlace(e2, { symbol: 'ES', side: 'sell', qty: 1, kind: 'market' }, 0);
-  const order = rowsOf([e2, s]).map(r => (r.fut ? 'future 23:19 the evening before' : 'option 11:30'));
-  ok('a future closed the evening before sorts UNDER an option closed the next morning', order[0] === 'option 11:30', order.join(' › '));
-  const r0 = rowsOf([e2])[0];
-  ok('…and its instant is the clock its words say', ny(instantOf(r0, r0.t.closed)) === whenWords(r0, r0.t.closed).split(' · ')[1], `${ny(instantOf(r0, r0.t.closed))} · ${whenWords(r0, r0.t.closed)}`);
+  let later = advance(newSession({ id: 'l', name: 'later', ticker: 'SPY', startCash: 25000, startDay: D2, now: 0 }), { day: D2, minute: 5 }, 0);
+  later = place(advance(place(later, { contract: call, side: 'buy', qty: 1, kind: 'market' }, 0), { day: D2, minute: 6 }, 0), { contract: call, side: 'sell', qty: 1, kind: 'market' }, 0);
+  const order = rowsOf([s, later]).map(r => r.s.id);
+  ok('a trade closed the next morning sorts over one closed the day before', order.join() === 'l,o', order.join(' › '));
+  const r0 = rowsOf([later])[0];
+  ok('…and its instant is the clock its words say', ny(instantOf(r0, r0.t.closed)) === whenWords(r0, r0.t.closed).split(' · ')[1].replace(' ET', ''), `${ny(instantOf(r0, r0.t.closed))} · ${whenWords(r0, r0.t.closed)}`);
 }
 
 /* ---- the entry, the tags, the cut ---- */
@@ -114,13 +90,13 @@ ok('the first journal’s one note reads as the first answer', entryOf(rowsOf([l
 ok('…until that answer is written, even to nothing', entryOf(rowsOf([{ ...legacy, journal: { [trade.id]: { why: '' } } }])[0]).why === '');
 ok('an entry’s tags are keys a cut can ask for', tagKeysOf(entryOf(rt)).join('|') === 'setup:Bounce off a wall|mistake:Chased it|mistake:Too big|plan:no');
 ok('a cut by tag, by words, by result and by way', inCut(rt, { ...CUT_AT_REST, tags: ['mistake:Too big'] }) && !inCut(rt, { ...CUT_AT_REST, tags: ['none'] }) && inCut(rt, { ...CUT_AT_REST, find: 'PUT WALL' }) && !inCut(rt, { ...CUT_AT_REST, find: 'nowhere' }) && inCut(rt, { ...CUT_AT_REST, way: 'up' }) && !inCut(rt, { ...CUT_AT_REST, way: 'down' }) && inCut(rt, { ...CUT_AT_REST, notes: 'written' }) && !inCut(opt, { ...CUT_AT_REST, notes: 'written' }));
-ok('options or futures', inCut(fut, { ...CUT_AT_REST, kind: 'futures' }) && !inCut(fut, { ...CUT_AT_REST, kind: 'options' }) && inCut(fut, { ...CUT_AT_REST, name: 'ES' }));
+ok('options or futures', inCut(rt, { ...CUT_AT_REST, kind: 'options' }) && !inCut(rt, { ...CUT_AT_REST, kind: 'futures' }) && inCut(rt, { ...CUT_AT_REST, name: 'SPY' }));
 const cut = { ...CUT_AT_REST, session: 'o', result: 'lost' as const, tags: ['setup:Bounce off a wall', 'plan:no'], find: 'put wall' };
 ok('the cut rides an address and comes back the same', JSON.stringify(cutFromQuery(cutToQuery(cut))) === JSON.stringify(cut) && cutToQuery(CUT_AT_REST) === '', cutToQuery(cut));
 ok('an address that is not ours is the cut at rest', JSON.stringify(cutFromQuery('?result=sideways&kind=bonds')) === JSON.stringify(CUT_AT_REST));
 
 /* ---- the file ---- */
-const csv = csvOf([rt, fut], r => ({ best: excursionOf(r).best.pnl, worst: excursionOf(r).worst.pnl }));
+const csv = csvOf([rt, opt], r => ({ best: excursionOf(r).best.pnl, worst: excursionOf(r).worst.pnl }));
 const lines = csv.split('\r\n');
 ok('the file is a head and a line a trade', lines.length === 3 && lines[0].startsWith('Closed (New York),'));
 ok('words with a comma or a quote in them stay one cell', lines[1].includes('"The name held the put wall, twice."') && lines[1].includes('"Wait for the ""second"" touch"') && wordsOf(entryOf(rt)).includes('twice'));

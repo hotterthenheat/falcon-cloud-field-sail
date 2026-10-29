@@ -1,7 +1,7 @@
 /* A closed trade's own page: the trade on its chart, its shape, what it did while held, the reader's tags and
    words, and three questions worth answering. */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { SayPage } from '../../components/layout/PageMeta';
 import type { UTCTimestamp } from 'lightweight-charts';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -16,12 +16,11 @@ import TagCards from '../../components/review/TagCards';
 import TradeTape from '../../components/review/TradeTape';
 import { dirInk, heldWords, pct, rWords, usd, usdSigned } from '../../components/review/words';
 import { decayPerDay } from '../../data/review/engine';
-import { excursionOf, type WayOut } from '../../data/review/excursion';
-import { futPrice, futProduct } from '../../data/review/futuresTape';
+import { ensureTradeDays, excursionOf, type WayOut } from '../../data/review/excursion';
 import { ENDED, OUT_WORD, cutFromQuery, dayMinOf, entryOf, inCut, nameOf, piecesWords, titleOf, whenWords, type JournalEntry, type JournalRow } from '../../data/review/journal';
 import { useJournalSource, type JournalKind } from '../../data/review/journalSource';
 import { contractWords } from '../../data/review/quotes';
-import { dayWords } from '../../data/review/tape';
+import { dayWords, historyRev, subscribeHistory } from '../../data/review/history';
 import { futWords } from '../../data/paper/products';
 import { fmtClockLocal, fmtStampLocal } from '../../components/gex/chartTime';
 
@@ -32,8 +31,8 @@ const QUESTIONS: { key: 'why' | 'saw' | 'again'; ask: string; hint: string }[] =
 ];
 const barDoor = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted disabled:opacity-30 disabled:cursor-not-allowed transition-colors';
 
-/** A future's price in its own print — a paper future may be one the backtest does not list (the Russell pair) */
-const futAt = (row: JournalRow, v: number): string => (row.fut ? (row.paper ? futWords(row.t.symbol, v) : futPrice(futProduct(row.t.symbol), v)) : v.toFixed(2));
+/** A future's price in its own print (a paper future's), a contract's to the cent */
+const futAt = (row: JournalRow, v: number): string => (row.fut ? futWords(row.t.symbol, v) : v.toFixed(2));
 
 /** "at 11:42" on the trade's own day, "Jun 23, 11:42" on another */
 const momentOf = (time: number, sameDay: boolean) => (sameDay ? `at ${fmtClockLocal(time as UTCTimestamp, 'ny')}` : fmtStampLocal(time as UTCTimestamp, 'ny'));
@@ -89,25 +88,18 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
     return () => window.removeEventListener('keydown', onKey);
   }, [navigate]);
 
-  const ex = useMemo(() => (row ? excursionOf(row) : null), [row?.key, row?.t.pnl]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* a backtest trade's walk reads its recorded days: they load here, and the walk is drawn again as they land */
+  const hrev = useSyncExternalStore(subscribeHistory, historyRev, historyRev);
+  useEffect(() => {
+    if (row) ensureTradeDays(row);
+  }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ex = useMemo(() => (row ? excursionOf(row) : null), [row?.key, row?.t.pnl, hrev]); // eslint-disable-line react-hooks/exhaustive-deps
   /* The reader's usual shape — the six reads averaged over the whole journal of this book, the ghost behind the
      trade's own; walked once per journal (the excursions are cached by trade) */
   const usual = useMemo(() => usualShape(all), [all]);
 
-  if (!row || !ex) {
-    return (
-      <div className={`${card} px-6 py-14 text-center`} data-journal-trade="missing">
-        <p className="text-t13 text-textPrimary">That trade is not in this browser’s journal.</p>
-        <p className="mt-1 text-t11 text-textMuted">{kind === 'paper' ? 'A trade lives with its paper account on this machine.' : 'A trade lives with its session — if the session was deleted, its trades went with it.'}</p>
-        <Link to={source.base} className="mt-4 inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
-          The journal <ArrowRight className="w-3 h-3" />
-        </Link>
-      </div>
-    );
-  }
-
-  const entry = entryOf(row);
-  const save = (patch: Partial<JournalEntry>) => source.setEntry(row.s.id, row.t.id, patch);
+  const entry: JournalEntry = row ? entryOf(row) : {};
+  const save = (patch: Partial<JournalEntry>) => row && source.setEntry(row.s.id, row.t.id, patch);
   /* The words are kept as they are typed: a beat after the last keystroke, and the moment the field is left. Each
      field says so beside its question — "Keeping…" while the beat runs, then "Kept" with a check in silver, the
      house's word for a thing held (the rail card's foot). Reload the page and the mark stands, read off the entry. */
@@ -144,14 +136,27 @@ export const JournalTradePage = ({ kind }: { kind: JournalKind }) => {
     return () => {
       flushRef.current();
     };
-  }, [row.key]);
-  useEffect(() => setKeptState({}), [row.key]);
+  }, [row?.key]);
+  useEffect(() => setKeptState({}), [row?.key]);
+  if (!row || !ex) {
+    return (
+      <div className={`${card} px-6 py-14 text-center`} data-journal-trade="missing">
+        <p className="text-t13 text-textPrimary">That trade is not in this browser’s journal.</p>
+        <p className="mt-1 text-t11 text-textMuted">{kind === 'paper' ? 'A trade lives with its paper account on this machine.' : 'A trade lives with its session — if the session was deleted, its trades went with it.'}</p>
+        <Link to={source.base} className="mt-4 inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary hover:border-borderMuted transition-colors">
+          The journal <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+    );
+  }
+
   const answered = QUESTIONS.filter(q => (entry[q.key] ?? '').trim()).length;
   const oneDay = row.t.opened.day === row.t.closed.day;
 
   /* what happened, in a sentence */
-  const story =
-    ex.best.pnl <= 0
+  const story = !Number.isFinite(ex.best.pnl)
+    ? `Its minute-by-minute path is loading from the recorded quotes. The most it was down was ${usd(Math.abs(ex.worst.pnl), 0)}.`
+    : ex.best.pnl <= 0
       ? `It was never up. The most it was down was ${usd(Math.abs(ex.worst.pnl), 0)}, ${momentOf(ex.worst.time, oneDay)}.`
       : row.t.pnl > 0
         ? `Up ${usd(ex.best.pnl, 0)} at its best, ${momentOf(ex.best.time, oneDay)}. You took ${usd(row.t.pnl, 0)} — ${pct(ex.kept ?? 0)} of it.`

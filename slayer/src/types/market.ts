@@ -72,6 +72,9 @@ export interface StrikeNode {
   callOI: number;
   putOI: number;
   gamma: number;
+  /* Every exposure below (gex, dex, vex, vanna, charm; call, put, net) is KEPT in the house sign of core/dealerSign.ts —
+     the negative of the dealer figure under the one model, dealers long the calls and short the puts. Read it through
+     dealerOf(); never negate by hand. */
   callGex: number;
   putGex: number;
   netGex: number;
@@ -90,11 +93,11 @@ export interface StrikeNode {
   /** The unit greeks at the strike, per contract (not exposures). */
   vanna: number;
   charm: number;
-  /** Vanna exposure: dollars of dealer delta per one point of vol, by leg; positive means a vol drop makes dealers buy. */
+  /** Vanna exposure: dollars of delta per one point of vol, by leg, kept sign (dealer positive: a vol drop makes dealers buy). */
   callVanna: number;
   putVanna: number;
   netVanna: number;
-  /** Charm exposure: dollars of dealer delta per day, by leg; negative means dealers buy as the clock runs. */
+  /** Charm exposure: dollars of delta per session, by leg, kept sign (dealer positive: the clock makes dealers sell). */
   callCharm: number;
   putCharm: number;
   netCharm: number;
@@ -107,8 +110,7 @@ export interface StrikeNode {
   putIv?: number;
   callGamma?: number;
   putGamma?: number;
-  /** Signed contract count the greeks were multiplied by (positive: dealers short that side). Flow inventory within
-      five sessions, open interest after; absent until the contracts are read. */
+  /** The contract count the greeks were multiplied by: the leg's open interest; absent until the contracts are read. */
   callBook?: number;
   putBook?: number;
   /** False when this strike's flow net is too small a share of its volume to trust. The sign is still the flow sign. */

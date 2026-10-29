@@ -348,7 +348,7 @@ const Watchers = () => {
         controls={
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-            <SessionMark at={bookPack.at} fault={bookPack.fault} paused={hold.paused} />
+            <SessionMark at={bookPack.at} fault={bookPack.fault} paused={hold.paused} kept={bookPack.kept} />
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} countNoun="contracts" span />
             <DropdownSelect label="Reason" value={rule} options={reasonOptions} onChange={setRule} title="Which watcher's catches" testId="watchers-reason" />
             <DropdownSelect label="Side" value={side} options={SIDE_OPTIONS} onChange={setSide} title="Calls, puts or both" testId="watchers-side" />

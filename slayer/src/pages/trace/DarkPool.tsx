@@ -21,7 +21,7 @@ import DropdownSelect, { type DropdownOption } from '../../components/ui/Dropdow
 import RichRead from '../../components/ui/RichRead';
 import ColumnChooser, { useHiddenColumns } from '../../components/trace/ColumnChooser';
 import { earnMarks, weightInk } from '../../components/trace/earnedInk';
-import { LiveHold, useHold } from '../../components/trace/LiveHold';
+import { LiveHold, useHold, KeptMark } from '../../components/trace/LiveHold';
 import ReadDoor from '../../components/trace/ReadDoor';
 import TermLine from '../../components/trace/TermLine';
 import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
@@ -694,7 +694,11 @@ const DarkPool = () => {
               </span>
             ) : (
               <span className={hold.paused ? 'invisible' : undefined} aria-hidden={hold.paused || undefined}>
-                <StaleMark at={named ? nameBook.at : tapeKind === 'lit' ? lit.at : dark.at} ttlMs={FLOW_TTL_MS} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />
+                {(named ? nameBook : tapeKind === 'lit' ? lit : dark).kept && (named ? nameBook : tapeKind === 'lit' ? lit : dark).at != null ? (
+                  <KeptMark at={(named ? nameBook : tapeKind === 'lit' ? lit : dark).at!} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />
+                ) : (
+                  <StaleMark at={named ? nameBook.at : tapeKind === 'lit' ? lit.at : dark.at} ttlMs={FLOW_TTL_MS} fault={named ? nameBook.fault : tapeKind === 'lit' ? lit.fault : dark.fault} />
+                )}
               </span>
             )}
             <FlowSearch value={query} onChange={setQuery} rows={searchRows} tickersOnly countNoun="names" span />

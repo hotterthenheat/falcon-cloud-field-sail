@@ -2,7 +2,7 @@
    paused, so everything a page derives from it freezes on the same moment; a new reset key (the ticker) lets go. */
 
 import { useEffect, useRef, useState } from 'react';
-import { nyClock } from '../../core/nyTime';
+import { nyClock, nyDay, nyIsoDate } from '../../core/nyTime';
 import { Pause, Play } from 'lucide-react';
 import { heldFresh, lastRegularClose, marketPhase, noteTraceHold, type MarketPhase } from '../../data/traceLive';
 import { FLOW_TTL_MS, StaleMark } from '../ui/liveRead';
@@ -85,7 +85,8 @@ const clock = (d: Date) => nyClock(d, { zone: true });
 
 /** A read's freshness: "Closed · Oct 28" once the session it reads has ended (a held day read never goes stale), else the
     usual stale mark; hidden while the page is paused */
-export const SessionMark = ({ at, fault, paused = false, ttlMs = FLOW_TTL_MS }: { at: number | null; fault: FeedFault | null; paused?: boolean; ttlMs?: number }) => {
+export const SessionMark = ({ at, fault, paused = false, ttlMs = FLOW_TTL_MS, kept = false }: { at: number | null; fault: FeedFault | null; paused?: boolean; ttlMs?: number; kept?: boolean }) => {
+  if (kept && at != null) return <KeptMark at={at} fault={fault} />;
   const closed = !fault && heldFresh(at) ? lastRegularClose() : null;
   /* outside the session reads poll slowly (traceLive readDue), so a 20s age is not stale there */
   const ph = marketPhase();
@@ -100,6 +101,18 @@ export const SessionMark = ({ at, fault, paused = false, ttlMs = FLOW_TTL_MS }: 
   return (
     <span className={paused ? 'invisible' : undefined} aria-hidden={paused || undefined}>
       <StaleMark at={at} ttlMs={ttl} fault={fault} />
+    </span>
+  );
+};
+
+/** An earlier answer on screen while the fresh one loads: "As of 14:03 ET", dated when it is not today's */
+export const KeptMark = ({ at, fault = null }: { at: number; fault?: FeedFault | null }) => {
+  const today = nyIsoDate() === nyIsoDate(at);
+  return (
+    <span className={`inline-flex items-center gap-1 font-mono text-t9 uppercase tracking-widest ${fault ? 'text-warn' : 'text-textMuted'}`} title={fault ? 'The fresh read did not land; these are the figures from before' : 'Figures from before; the fresh read is loading'} data-stale="kept">
+      <span aria-hidden className={`inline-block h-1.5 w-1.5 rounded-full ${fault ? 'bg-warn' : 'bg-textMuted'}`} />
+      As of {today ? '' : `${nyDay(at)} `}
+      {nyClock(at)} ET{fault ? ' · refresh failed' : ''}
     </span>
   );
 };

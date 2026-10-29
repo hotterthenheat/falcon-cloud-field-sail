@@ -1,12 +1,13 @@
 /* Pinpoint's book, from Unusual Whales (the browser asks /api/uw; the server holds the token).
-   Sign: UW prints call gamma positive, puts negative; the house sign negates both legs (core/walls.ts), so call-heavy
-   strikes are NEGATIVE (dealers long gamma) and put-heavy ones POSITIVE. Readers print -house as the retail sign. */
+   Sign: every exposure is kept in the house sign of core/dealerSign.ts (dealers long the calls, short the puts; kept as the
+   negative of the dealer figure, so call-heavy gamma is NEGATIVE). Pages print dealerOf(kept). */
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { startPinpoint } from './vendorFeed';
 import { bookToday, expiryFor, isoDate, isTradingDay, nextSession, MONTHS as MON3 } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { pickLegWalls } from '../core/walls';
+import { keptLeg, keptOf, keptVendorLeg } from '../core/dealerSign';
 import { registerChainDates } from './chainDates';
 import { dayChangeOf, loadRegularCloses, noteBarCloses, peekRegularCloses, type MarketPhase } from './dayChange';
 import { levelFlip } from './flipLevel';
@@ -20,7 +21,7 @@ import { spxRead } from './spxBook';
 import { blackScholesGreeks } from '../core/greeks';
 import { expiryOpen, tradingYears } from '../core/tradingYear';
 import { carryFor } from '../core/carry';
-import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, quoteMaxAge, smoothSmile, unsignedShare } from '../core/volClock';
+import { dealerInventory, flowFirm, flowImbalance, flowWindow, ivOnTradingClock, quotedVolPoint, quoteMaxAge, smoothSmile, unsignedShare } from '../core/volClock';
 import { noteClose, noteNodes, peakStrikes, type CloseRow } from './nodeScore';
 import { SIM_DESK } from './deskMode';
 import { sigmaFromStraddle, sigmaOverMinutes, STRADDLE_K, STRADDLE_TO_SIGMA } from './expectedMove';
@@ -362,22 +363,22 @@ const emptyNode = (strike: number): StrikeNode => ({
   netCharm: 0,
 });
 
-/** Both legs negated into the house sign (head of this file, core/walls.ts). */
 /* greek-exposure rows are shares (greek × OI × 100); scaled to the house's dollars: GEX per 1% × S²·1%, DEX × S, vanna
-   per vol point × S·1%, charm per session × S/252. */
-function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }): StrikeNode {
+   per vol point × S·1%, charm per session × S/252 × sessionShare (one expiry's rows; the whole book's stay on the calendar
+   year). Its gamma is dealer-signed; its delta, vanna and charm are the holder's. */
+function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number }, expiry?: string): StrikeNode {
   const g = spot > 0 ? spot * spot * 0.01 : 1;
   const d = spot > 0 ? spot : 1;
   const v = spot > 0 ? spot * 0.01 : 1;
-  const c = spot > 0 ? spot / 252 : 1;
-  const callGex = -num(row.call_gex) * g;
-  const putGex = -num(row.put_gex) * g;
-  const callDex = -num(row.call_delta) * d;
-  const putDex = -num(row.put_delta) * d;
-  const callVanna = -num(row.call_vanna) * v;
-  const putVanna = -num(row.put_vanna) * v;
-  const callCharm = -num(row.call_charm) * c;
-  const putCharm = -num(row.put_charm) * c;
+  const c = (spot > 0 ? spot / 252 : 1) * (expiry ? sessionShare(expiry, Date.now()) : 1);
+  const callGex = keptVendorLeg('C', num(row.call_gex) * g, true);
+  const putGex = keptVendorLeg('P', num(row.put_gex) * g, true);
+  const callDex = keptVendorLeg('C', num(row.call_delta) * d, false);
+  const putDex = keptVendorLeg('P', num(row.put_delta) * d, false);
+  const callVanna = keptVendorLeg('C', num(row.call_vanna) * v, false);
+  const putVanna = keptVendorLeg('P', num(row.put_vanna) * v, false);
+  const callCharm = keptVendorLeg('C', num(row.call_charm) * c, false);
+  const putCharm = keptVendorLeg('P', num(row.put_charm) * c, false);
   const strike = num(row.strike);
   return {
     ...emptyNode(strike),
@@ -398,12 +399,12 @@ function nodeFrom(row: UwGreekStrike, spot: number, oi?: { c: number; p: number 
   };
 }
 
-export function chainFrom(rows: UwGreekStrike[], spot: number, oi: Map<number, { c: number; p: number }>, flow?: Map<number, { call: number; put: number }>): StrikeNode[] {
+export function chainFrom(rows: UwGreekStrike[], spot: number, oi: Map<number, { c: number; p: number }>, flow?: Map<number, { call: number; put: number }>, expiry?: string): StrikeNode[] {
   const out: StrikeNode[] = [];
   for (const row of rows) {
     const strike = num(row.strike);
     if (!(strike > 0)) continue;
-    const node = nodeFrom(row, spot, oi.get(strike));
+    const node = nodeFrom(row, spot, oi.get(strike), expiry);
     const traded = flow?.get(strike);
     if (traded && (traded.call > 0 || traded.put > 0)) {
       node.callVol = traded.call;
@@ -436,8 +437,8 @@ function flowMap(rows: UwFlowStrike[]): Map<number, { call: number; put: number 
 }
 
 /* The book's gamma is the vendor's spot-exposures rows: open interest priced at the current price each minute
-   (call_gamma_oi / put_gamma_oi, $ per 1%; equal to OI × Γ × 100 × S² × 1% off option-contracts). Their vanna and charm
-   are scaled to the house's dollars (fitted against the share rows; the put legs print with the opposite sign). */
+   (call_gamma_oi / put_gamma_oi, $ per 1%; equal to OI × Γ × 100 × S² × 1% off option-contracts). Their gamma, vanna and
+   charm are dealer-signed (core/dealerSign.ts); vanna and charm are scaled to the house's dollars below. */
 type LiveLeg = {
   c: number;
   p: number;
@@ -554,25 +555,34 @@ export function peekSettledNet(ticker: string): number | null {
 }
 
 /** A chain with its gamma replaced by the live open-interest book (house sign) — strikes the live book holds that the
-    chain lacks are added, strikes it lacks carry no gamma. Vanna and charm on those rows are the same minute's book,
-    scaled into the house's dollars (see the note above liveGammaRows): per vol point, and per session. */
+    chain lacks are added, strikes it lacks carry no gamma. Vanna and charm on those rows are the same minute's book:
+    vanna × price × 1% is $Δ per vol point, charm ÷ CHARM_SESSION is $Δ per session. */
+/** charm_oi ÷ this = $Δ per 1/252 of a CALENDAR year: Black-Scholes calendar charm × OI × 100 × S ÷ 252 off the same
+    contracts (SPY 10/30 780C: −1.92e11 ÷ 919.8 = −208.8M against −208.0M). sessionShare then puts it on the session clock. */
 const CHARM_SESSION = 0.01 * 365 * 252;
-function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma): StrikeNode[] {
+/** Calendar time per unit of trading time at that minute, T_cal/T_trade (= σ_trading²/σ_calendar²): a calendar-year
+    charm × this is the trading-clock charm the contracts' own greeks print (core/volClock.ts quotedVolPoint, squared) */
+const sessionShare = (expiry: string, at: number): number => quotedVolPoint(expiry, at) ** 2;
+/* `expiry`: one date's rows (charm goes on its session clock); without it the whole book's rows stay on the calendar
+   year. A leg whose contracts were read (callBook/putBook) keeps their vanna and charm; only its gamma is replaced. */
+function withLiveGamma(chain: readonly StrikeNode[], live: LiveGamma, expiry?: string): StrikeNode[] {
   const seen = new Set<number>();
   const paint = (n: StrikeNode, l: LiveLeg | undefined): StrikeNode => {
-    const callGex = l ? -l.c : 0;
-    const putGex = l ? -l.p : 0;
+    const callGex = l ? keptVendorLeg('C', l.c, true) : 0;
+    const putGex = l ? keptVendorLeg('P', l.p, true) : 0;
     const next: StrikeNode = { ...n, callGex, putGex, netGex: callGex + putGex, gexPx: l?.px, gexAt: l?.at };
-    if (l?.vanna && l.px != null && l.px > 0) {
-      const callVanna = -l.cv * l.px * 0.01;
-      const putVanna = l.pv * l.px * 0.01;
+    const painted = n.callBook != null || n.putBook != null;
+    if (!painted && l?.vanna && l.px != null && l.px > 0) {
+      const callVanna = keptVendorLeg('C', l.cv * l.px * 0.01, true);
+      const putVanna = keptVendorLeg('P', l.pv * l.px * 0.01, true);
       next.callVanna = callVanna;
       next.putVanna = putVanna;
       next.netVanna = callVanna + putVanna;
     }
-    if (l?.charm) {
-      const callCharm = -l.cc / CHARM_SESSION;
-      const putCharm = l.pc / CHARM_SESSION;
+    if (!painted && l?.charm) {
+      const share = expiry ? sessionShare(expiry, l.at ?? Date.now()) : 1;
+      const callCharm = keptVendorLeg('C', (l.cc / CHARM_SESSION) * share, true);
+      const putCharm = keptVendorLeg('P', (l.pc / CHARM_SESSION) * share, true);
       next.callCharm = callCharm;
       next.putCharm = putCharm;
       next.netCharm = callCharm + putCharm;
@@ -675,7 +685,7 @@ async function refreshDatesGamma(entry: Entry, token: number): Promise<void> {
   let changed = false;
   for (const [d, live] of walked) {
     if (d < floor || !byDate[d]?.length) continue;
-    byDate[d] = withLiveGamma(byDate[d], live);
+    byDate[d] = withLiveGamma(byDate[d], live, d);
     changed = true;
   }
   if (!changed) return;
@@ -693,20 +703,20 @@ async function dateChain(ticker: string, date: string, spot: number, withGreeks:
     withGreeks || settled ? whalesGreekStrikeExpiry(ticker, date).catch(() => null) : Promise.resolve(null),
     liveGamma(ticker, date, priority).catch(() => null),
   ]);
-  let base = Array.isArray(rows) ? chainFrom(rows, spot, new Map()) : [];
+  let base = Array.isArray(rows) ? chainFrom(rows, spot, new Map(), undefined, date) : [];
   /* A date that settled at 4:00: its live rows are kept to come off the whole book (liveAll); its chain is the vendor's
      morning rows — the book the session ran on, for the session's report. */
   if (settled) {
     if (live) settledLive.set(`${ticker}|${date}`, live);
     if (base.length) return base;
-    return live ? withLiveGamma([], live) : null;
+    return live ? withLiveGamma([], live, date) : null;
   }
-  if (live) return withLiveGamma(base, live);
+  if (live) return withLiveGamma(base, live, date);
   if (!withGreeks) {
     const again = await whalesGreekStrikeExpiry(ticker, date).catch(() => null);
     /* both asks failed: null, so the date is asked again rather than marked empty for good */
     if (!Array.isArray(again)) return null;
-    base = chainFrom(again, spot, new Map());
+    base = chainFrom(again, spot, new Map(), undefined, date);
   } else if (!Array.isArray(rows)) return null;
   return base;
 }
@@ -865,9 +875,8 @@ function parseOcc(symbol: string): { expiry: string; right: 'CALL' | 'PUT'; stri
   return { expiry: `20${m[1]}-${m[2]}-${m[3]}`, right: m[4] === 'C' ? 'CALL' : 'PUT', strike };
 }
 
-/* The vendor's vega stays on the leg until paintLegs replaces it. The node is Black-Scholes vega at the live spot,
-   on the trading clock, times the same signed count as gamma. Both legs take −1. A count that has crossed zero
-   flips the sign with the rest of the book. */
+/* The vendor's vega stays on the leg until paintLegs replaces it with Black-Scholes vega at the live spot, on the
+   trading clock, times open interest, signed by the one model (core/dealerSign.ts). */
 const LONG_QUOTE_MS = 15 * 60_000;
 
 function quoteUsable(row: UwContract, expiry: string, now = Date.now()): boolean {
@@ -887,8 +896,6 @@ function contractIv(row: UwContract, _expiry: string, _now = Date.now()): number
   if (!(iv > 0) || iv >= 10) return 0;
   return iv;
 }
-
-const DEALER_SHORT = -1;
 
 interface LegBook {
   callOI: number;
@@ -931,7 +938,7 @@ function foldContracts(rows: UwContract[], expiry: string, now = Date.now()): Ma
     const vol = num(row.volume);
     const vega = num(row.vega);
     const leg = by.get(parsed.strike) ?? emptyLeg();
-    const dollar = oi * 100 * vega;
+    const dollar = 100 * vega;
     const quoteOk = quoteUsable(row, expiry, now);
     const iv = contractIv(row, expiry);
     const gamma = num(row.gamma);
@@ -952,7 +959,7 @@ function foldContracts(rows: UwContract[], expiry: string, now = Date.now()): Ma
       leg.callNone += none;
       if (quoteOk && bidPx > 0) leg.callBidPx = bidPx;
       if (quoteOk && askPx > 0) leg.callAskPx = askPx;
-      leg.callVex += dollar * DEALER_SHORT;
+      leg.callVex += keptLeg('C', dollar, oi);
       if (iv > 0) leg.callIv = iv;
       if (gamma > 0) leg.callGamma = gamma;
     } else {
@@ -965,7 +972,7 @@ function foldContracts(rows: UwContract[], expiry: string, now = Date.now()): Ma
       leg.putNone += none;
       if (quoteOk && bidPx > 0) leg.putBidPx = bidPx;
       if (quoteOk && askPx > 0) leg.putAskPx = askPx;
-      leg.putVex += dollar * DEALER_SHORT;
+      leg.putVex += keptLeg('P', dollar, oi);
       if (iv > 0) leg.putIv = iv;
       if (gamma > 0) leg.putGamma = gamma;
     }
@@ -980,7 +987,9 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
   /* vols are put on the trading clock at the minute (and price) the vendor priced the date's gamma, the clock the flip
      re-prices at — never the wall clock, or a shut market's book would drift overnight with no new rows */
   const priced = pricedClockOf(nodes);
-  const t = expiry ? tradingYears(expiry) : 0;
+  const t = expiry ? tradingYears(expiry, priced.at) : 0;
+  /* vega and vanna per point of the vol the vendor quotes, not per trading-clock point */
+  const volPt = expiry ? quotedVolPoint(expiry, priced.at) : 1;
   const near = !!expiry && flowWindow(expiry);
   const carry = ticker ? carryFor(ticker) : null;
   const painted = nodes.map(n0 => {
@@ -1036,28 +1045,28 @@ function paintLegs(nodes: readonly StrikeNode[], book: Map<number, LegBook>, oi:
       const putInv = dealerInventory(leg.putOI, leg.putAsk, leg.putBid, leg.putMulti, leg.putVol);
       closes.push({ expiry, strike: n.strike, right: 'C', flow: callInv, oi: leg.callOI });
       closes.push({ expiry, strike: n.strike, right: 'P', flow: putInv, oi: leg.putOI });
-      /* house sign, the vendor's convention: calls negative, puts positive */
       const scale = spot * spot * 0.01 * 100;
-      flowNets.push({ strike: n.strike, value: (put ? put.gamma * putInv * scale : 0) - (call ? call.gamma * callInv * scale : 0) });
+      flowNets.push({ strike: n.strike, value: (put ? keptLeg('P', put.gamma * scale, putInv) : 0) + (call ? keptLeg('C', call.gamma * scale, callInv) : 0) });
     }
     volSum += leg.callVol + leg.putVol;
     bareSum += leg.callMid + leg.callNone + leg.putMid + leg.putNone;
     /* Vega is repriced here, on this clock and this vol, not the vendor's calendar-time vega. */
     n.callBook = callN;
     n.putBook = putN;
+    /* one long contract's $ figures: delta × 100 × S; vanna per quoted vol point (× 1% × 100 × S); charm per session; vega per quoted vol point */
     if (call && callN !== 0) {
-      n.callDex = -call.deltaCall * callN * 100 * spot;
-      n.callVanna = -call.vanna * callN * spot;
-      n.callCharm = -(call.charmCall / 252) * callN * 100 * spot;
-      n.callVex = -call.vega * callN * 100;
+      n.callDex = keptLeg('C', call.deltaCall * 100 * spot, callN);
+      n.callVanna = keptLeg('C', call.vanna * spot * volPt, callN);
+      n.callCharm = keptLeg('C', (call.charmCall / 252) * 100 * spot, callN);
+      n.callVex = keptLeg('C', call.vega * 100 * volPt, callN);
     } else {
       n.callVex = 0;
     }
     if (put && putN !== 0) {
-      n.putDex = -put.deltaPut * putN * 100 * spot;
-      n.putVanna = -put.vanna * putN * spot;
-      n.putCharm = -(put.charmPut / 252) * putN * 100 * spot;
-      n.putVex = -put.vega * putN * 100;
+      n.putDex = keptLeg('P', put.deltaPut * 100 * spot, putN);
+      n.putVanna = keptLeg('P', put.vanna * spot * volPt, putN);
+      n.putCharm = keptLeg('P', (put.charmPut / 252) * 100 * spot, putN);
+      n.putVex = keptLeg('P', put.vega * 100 * volPt, putN);
     } else {
       n.putVex = 0;
     }
@@ -1092,7 +1101,7 @@ function pricedClockOf(nodes: readonly StrikeNode[]): { at: number; px: number }
 export function expiryBookFromRows(spotRows: unknown, contracts: UwContract[], spot: number, expiry: string): StrikeNode[] {
   const live: LiveGamma = new Map();
   liveGammaRows(spotRows, live);
-  const chain = withLiveGamma([], live);
+  const chain = withLiveGamma([], live, expiry);
   return contracts.length ? paintLegs(chain, foldContracts(contracts, expiry, pricedClockOf(chain).at), true, spot, expiry) : chain;
 }
 
@@ -1208,22 +1217,24 @@ async function fillExpiryFacts(entry: Entry, token: number, only?: readonly stri
 }
 
 /** One book at every bar of the tape. The dollars are the chain's own net gamma, the same figure the strike rail
-    shows. Today's volume is not a second multiplier: on a 0DTE name it is many times the open interest, and scaling
-    by it turned a $50M strike into tens of billions. */
-function historyFrom(chain: StrikeNode[], candles: Candle[], _flow: Map<number, { call: number; put: number }>): GexSnapshot[] {
+    shows. Every bar shares one levels array (the book does not change between its reads), registered to its name so a
+    reader holding only a snapshot can ask for the name's levels (bookOfLevels). */
+const levelsOwner = new WeakMap<object, string>();
+/** The name whose book a snapshot's levels array is, or null for one not made here */
+export const bookOfLevels = (levels: object): string | null => levelsOwner.get(levels) ?? null;
+function historyFrom(chain: StrikeNode[], candles: Candle[], ticker: string): GexSnapshot[] {
   if (!chain.length || !candles.length) return [];
-  return candles.map(c => ({
-    time: c.time,
-    levels: chain.map(n => ({
-      strike: n.strike,
-      value: n.netGex,
-      dex: n.netDex ?? 0,
-      vex: n.netVex ?? 0,
-      callOI: n.callOI,
-      putOI: n.putOI,
-      firm: n.flowFirm !== false,
-    })),
+  const levels = chain.map(n => ({
+    strike: n.strike,
+    value: n.netGex,
+    dex: n.netDex ?? 0,
+    vex: n.netVex ?? 0,
+    callOI: n.callOI,
+    putOI: n.putOI,
+    firm: n.flowFirm !== false,
   }));
+  levelsOwner.set(levels, ticker);
+  return candles.map(c => ({ time: c.time, levels }));
 }
 
 function mergeChains(parts: StrikeNode[][]): StrikeNode[] {
@@ -1266,8 +1277,8 @@ function noteSplit(entry: Entry): void {
   }
   const histAll = entry.tape.length >= 2 ? entry.tape : entry.candles;
   const candles = entry.wantFull ? histAll : histAll.filter((c, i) => i === histAll.length - 1 || Math.floor(c.time / 60) % 5 === 0);
-  entry.history0 = historyFrom(entry.byDate[zeroDate], candles, entry.flow);
-  entry.historyRest = historyFrom(mergeChains(restDates.map(d => entry.byDate[d])), candles, entry.flow);
+  entry.history0 = historyFrom(entry.byDate[zeroDate], candles, entry.ticker);
+  entry.historyRest = historyFrom(mergeChains(restDates.map(d => entry.byDate[d])), candles, entry.ticker);
 }
 
 function indicatorsOf(closes: number[]): Indicators {
@@ -1369,36 +1380,47 @@ function liveAll(entry: Entry): StrikeNode[] {
 }
 const liveAllMemo = new WeakMap<Entry, { all: StrikeNode[]; byDate: Entry['byDate']; floor: string; n: number; out: StrikeNode[] }>();
 
-/* Once every live listed date's rows are in, the whole book's call and put gamma at each strike ARE those dates' rows
-   added up (one snapshot for net, walls and flip); until then the vendor's whole-book rows stand in, provisional.
-   Delta, vanna, charm and open interest stay on the whole-book greek rows. */
+/* Once every live listed date's rows are in, the whole book at each strike IS those dates' rows added up — gamma (one
+   snapshot for net, walls and flip) and every other greek, each date on its own clock; until then the vendor's whole-book
+   rows stand in, provisional. Open interest stays on the whole-book rows. */
+const SUMMED = ['Gex', 'Dex', 'Vex', 'Vanna', 'Charm'] as const;
 function oneSnapshot(entry: Entry, base: StrikeNode[]): StrikeNode[] {
   const floor = isoDate(bookToday());
   /* every live listing must be one the dates read (the first forty — datesComplete) */
   if (!entry.gammaLive || !datesComplete(entry) || entry.expiries.filter(e => e.date >= floor).length > 40) return base;
   const dates = Object.keys(entry.byDate).filter(d => d >= floor && entry.byDate[d]?.length);
   if (!dates.length) return base;
-  const sum = new Map<number, { c: number; p: number; px?: number; at?: number }>();
+  type Sum = { c: Record<(typeof SUMMED)[number], number>; p: Record<(typeof SUMMED)[number], number>; px?: number; at?: number };
+  const zero = () => ({ Gex: 0, Dex: 0, Vex: 0, Vanna: 0, Charm: 0 });
+  const sum = new Map<number, Sum>();
   for (const d of dates)
     for (const n of entry.byDate[d]) {
-      const cur = sum.get(n.strike) ?? { c: 0, p: 0 };
-      cur.c += n.callGex;
-      cur.p += n.putGex;
+      const cur = sum.get(n.strike) ?? { c: zero(), p: zero() };
+      for (const g of SUMMED) {
+        cur.c[g] += n[`call${g}`] ?? 0;
+        cur.p[g] += n[`put${g}`] ?? 0;
+      }
       if (n.gexAt != null && (cur.at == null || n.gexAt >= cur.at)) {
         cur.at = n.gexAt;
         cur.px = n.gexPx;
       }
       sum.set(n.strike, cur);
     }
+  const laid = (n: StrikeNode, v: Sum | undefined): StrikeNode => {
+    const out: StrikeNode = { ...n, gexPx: v?.px ?? n.gexPx, gexAt: v?.at ?? n.gexAt };
+    for (const g of SUMMED) {
+      out[`call${g}`] = v ? v.c[g] : 0;
+      out[`put${g}`] = v ? v.p[g] : 0;
+      out[`net${g}`] = out[`call${g}`] + out[`put${g}`];
+    }
+    return out;
+  };
   const seen = new Set<number>();
   const out = base.map(n => {
     seen.add(n.strike);
-    const v = sum.get(n.strike);
-    const callGex = v ? v.c : 0;
-    const putGex = v ? v.p : 0;
-    return { ...n, callGex, putGex, netGex: callGex + putGex, gexPx: v?.px ?? n.gexPx, gexAt: v?.at ?? n.gexAt };
+    return laid(n, sum.get(n.strike));
   });
-  for (const [k, v] of sum) if (!seen.has(k)) out.push({ ...emptyNode(k), callGex: v.c, putGex: v.p, netGex: v.c + v.p, gexPx: v.px, gexAt: v.at });
+  for (const [k, v] of sum) if (!seen.has(k)) out.push(laid(emptyNode(k), v));
   out.sort((a, b) => a.strike - b.strike);
   return out;
 }
@@ -1926,7 +1948,7 @@ export function historyForDate(ticker: string, date: string | 'book' | null): Ge
   if (!entry || entry.status !== 'live' || !picked) return null;
   const histAll = entry.tape.length >= 2 ? entry.tape : entry.candles;
   const candles = entry.wantFull ? histAll : histAll.filter((c, i) => i === histAll.length - 1 || Math.floor(c.time / 60) % 5 === 0);
-  return historyFrom(picked.nodes, candles, entry.flow);
+  return historyFrom(picked.nodes, candles, entry.ticker);
 }
 
 /** Session bars once the book is live. Empty until then — never a made-up chain. */
@@ -1937,8 +1959,8 @@ export function liveBars(ticker: string): Candle[] {
   return bookCandles(t) ?? dayBars(t) ?? [];
 }
 
-/** One minute of the vendor's own gamma (spot-exposures).
-    Positive dampens, the same way the book's net does — call positive, put negative. */
+/** One minute of the vendor's own gamma (spot-exposures), kept in the house sign like the strikes (core/dealerSign.ts):
+    negative = dealers long gamma. */
 interface BookMinute {
   time: number;
   min: number;
@@ -1984,10 +2006,9 @@ export function ensureBookMinutes(ticker: string): void {
       const base = { time, min: nyMinutes(ms), spot };
       const vol = parseFloat(String(o.gamma_per_one_percent_move_vol ?? ''));
       const dir = parseFloat(String(o.gamma_per_one_percent_move_dir ?? ''));
-      /* the vendor's dealer gamma is positive when dealers are long gamma (they absorb); the house prints that
-         NEGATIVE ("absorbs") and short gamma positive ("amplifies") — so the minute's net is negated like the strikes */
-      if (Number.isFinite(vol)) volRows.push({ ...base, net: -vol });
-      if (Number.isFinite(dir)) dirRows.push({ ...base, net: -dir });
+      /* the vendor's dealer gamma (positive: dealers long gamma), kept in the house sign like the strikes */
+      if (Number.isFinite(vol)) volRows.push({ ...base, net: keptOf(vol) });
+      if (Number.isFinite(dir)) dirRows.push({ ...base, net: keptOf(dir) });
     }
     /* The open-interest series first: gamma_per_one_percent_move_oi is the whole book re-priced each minute (the same
        measure as the levels' net GEX); volume, then directional, only when it is absent. */
@@ -1999,7 +2020,7 @@ export function ensureBookMinutes(ticker: string): void {
       const v = parseFloat(String(o.gamma_per_one_percent_move_oi ?? ''));
       if (!Number.isFinite(ms) || !Number.isFinite(v)) continue;
       const px = parseFloat(String(o.price ?? ''));
-      oiRows.push({ time: Math.floor(ms / 60000) * 60, min: nyMinutes(ms), spot: Number.isFinite(px) && px > 0 ? px : null, net: -v });
+      oiRows.push({ time: Math.floor(ms / 60000) * 60, min: nyMinutes(ms), spot: Number.isFinite(px) && px > 0 ? px : null, net: keptOf(v) });
     }
     const dedupe = (rows: BookMinute[]) => rows.filter((r, i, a) => a.findIndex(x => x.time === r.time) === i);
     const alive = (rows: BookMinute[]) => rows.reduce((n, r) => n + (r.net !== 0 ? 1 : 0), 0);
@@ -2181,7 +2202,7 @@ async function spxCloseGamma(date: string): Promise<LiveGamma | null> {
 function snapOfClose(time: number, live: LiveGamma): GexSnapshot {
   const levels: GexSnapshot['levels'] = [];
   for (const [strike, leg] of live) {
-    const value = -(leg.c + leg.p);
+    const value = keptOf(leg.c + leg.p);
     if (!value) continue;
     levels.push({ strike, value });
   }
@@ -2388,12 +2409,11 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   /* a name read for the Board alone keeps its replay book at five minutes (one object per strike per bar) — the bars
      are one-minute for the counts, the book it never draws need not be */
   const histCandles = entry.wantFull ? histAll : histAll.filter((c, i) => i === histAll.length - 1 || Math.floor(c.time / 60) % 5 === 0);
-  const histFlow = entry.flow;
   const buildHist = () => {
     if (gen.get(histTicker) !== token) return;
     const cur = cache.get(histTicker);
     if (!cur) return;
-    cur.history = historyFrom(histChain, histCandles, histFlow);
+    cur.history = historyFrom(histChain, histCandles, histTicker);
     emit();
   };
   if (typeof requestIdleCallback === 'function') requestIdleCallback(buildHist, { timeout: 700 });
@@ -2469,10 +2489,10 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
   if (!chain.length || !fresh) {
     /* the front date's live gamma (one call); a chain the full book already holds keeps its other greeks */
     const live = await liveGamma(entry.ticker, front, hot).catch(() => null);
-    if (live) chain = withLiveGamma(chain, live);
+    if (live) chain = withLiveGamma(chain, live, front);
     else {
       const rows = await uwCall(`/stock/${encodeURIComponent(entry.ticker)}/greek-exposure/strike-expiry?expiry=${encodeURIComponent(front)}`, hot);
-      chain = !rows.error && Array.isArray(rows.data) ? chainFrom(rows.data as UwGreekStrike[], entry.spot, new Map()) : chain;
+      chain = !rows.error && Array.isArray(rows.data) ? chainFrom(rows.data as UwGreekStrike[], entry.spot, new Map(), undefined, front) : chain;
     }
   }
   if (!still()) return;
@@ -2636,7 +2656,7 @@ async function loadBoardDatesNow(ticker: string, token: number, listed?: { date:
     if (!still()) return;
     const fetched = await mapLimit(want, 3, async date => {
       const got = date >= floorDay ? walked?.get(date) : undefined;
-      if (got) return [date, withLiveGamma([], got)] as const;
+      if (got) return [date, withLiveGamma([], got, date)] as const;
       try {
         return [date, await within(dateChain(ticker, date, e.spot, false, isHot(ticker)), DATE_READ_MS)] as const;
       } catch {

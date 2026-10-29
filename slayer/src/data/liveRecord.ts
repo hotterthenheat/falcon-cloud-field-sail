@@ -2,25 +2,26 @@
    answered, or failed, stays empty. */
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { BoundedMap, createStore, keepFresh, keptRead, type Cadence } from './feedStore';
 import { EMPTY_CONGRESS, summariseCongress } from './congress';
 import { personSlug, summariseFlow } from './insiders';
 import { geoFromItems, type EconEvent, type GeoNewsEvent } from './newsroom';
 import type { CongressFeed, CongressTrade, InsiderFlow, InsiderTrade, TxCode } from '../types/record';
-import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwInsider, type UwNews, type UwPolitician } from './whales';
+import { whalesEcon, whalesPoliticians, uwCall, type UwCongress, type UwEcon, type UwInsider, type UwNews, type UwPolitician } from './whales';
 import { nyIsoDaysBack } from './nyDate';
-import { isTradingDay, today as nyTodayDate } from '../core/calendar';
-import { nySessionPhase } from '../core/nyTime';
+import { isTradingDay } from '../core/calendar';
 import { peekRegularCloses } from './dayChange';
 import { loadCloses } from './stockFile';
 import { congressFromWhales, econFromWhales, foreignSuspects, insidersFromWhales, markForeignIssuers, newsFromWhales, readInsiders, storyLeadTicker } from './whalesMap';
 
 type FeedStatus = 'loading' | 'live' | 'sim';
 
+/* `keptAt`: the book on screen is the answers this browser kept at that instant, until the fresh read lands */
 interface LiveSnapshot {
-  news: { status: FeedStatus; events: GeoNewsEvent[] };
-  econ: { status: FeedStatus; events: EconEvent[] };
-  congress: { status: FeedStatus; trades: CongressTrade[]; notMemberAges?: number[] };
-  insiders: { status: FeedStatus; trades: InsiderTrade[] };
+  news: { status: FeedStatus; events: GeoNewsEvent[]; keptAt?: number | null };
+  econ: { status: FeedStatus; events: EconEvent[]; keptAt?: number | null };
+  congress: { status: FeedStatus; trades: CongressTrade[]; notMemberAges?: number[]; keptAt?: number | null };
+  insiders: { status: FeedStatus; trades: InsiderTrade[]; keptAt?: number | null };
 }
 
 const initial: LiveSnapshot = {
@@ -30,15 +31,13 @@ const initial: LiveSnapshot = {
   insiders: { status: 'loading', trades: [] },
 };
 
+const store = createStore<LiveSnapshot>(initial);
 let snap: LiveSnapshot = initial;
-const listeners = new Set<() => void>();
-
-const emit = (next: LiveSnapshot) => {
-  snap = next;
-  listeners.forEach(fn => fn());
+const patch = (part: Partial<LiveSnapshot>) => {
+  snap = { ...snap, ...part };
+  store.set(snap);
 };
-
-const patch = (part: Partial<LiveSnapshot>) => emit({ ...snap, ...part });
+const notify = () => store.notify();
 
 /* The whole day's wire: the first read pages back (100 a page) past New York's midnight, at most NEWS_PAGE_CAP pages;
    after that only the newest page is merged in. The page says from what time the stories are complete. */
@@ -94,15 +93,18 @@ function wireDay(rows: UwNews[]): string {
 const nyMidnightMs = (): number => nyMidnightOf(wireDay(newsRows));
 let newsCoverage: NewsCoverage = { fromMs: null, wholeDay: false, reading: true, day: nyIsoDaysBack(0), today: true, since: 0 };
 
+/* the kept pages paint the wire until the first fresh page lands */
+let keptNews: { rows: UwNews[]; at: number } | null = null;
 function paintNews() {
+  const kept = !newsRows.length && keptNews ? keptNews : null;
   const seen = new Set<string>();
-  const rows = newsRows.filter(r => {
+  const rows = (kept ? kept.rows : newsRows).filter(r => {
     const k = newsKey(r);
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
-  newsRows = rows;
+  if (!kept) newsRows = rows;
   /* the wire on the page is the wire day's stories (and, on a weekend or holiday, the newer ones since) only */
   const day = wireDay(rows);
   const midnight = nyMidnightOf(day);
@@ -121,8 +123,22 @@ function paintNews() {
     wholeDay: (sameDay && newsCoverage.wholeDay) || (from != null && from <= midnight),
   };
   const items = newsFromWhales(todays, priorClose);
-  patch({ news: { status: 'live', events: geoFromItems(items) } });
-  wantCloses(todays);
+  patch({ news: { status: 'live', events: geoFromItems(items), keptAt: kept ? kept.at : null } });
+  if (!kept) wantCloses(todays);
+}
+
+async function paintKeptNews(): Promise<void> {
+  const k = keptRead();
+  const rows: UwNews[] = [];
+  for (let page = 0; page < NEWS_PAGE_CAP; page++) {
+    const res = await k.get(`/news/headlines?limit=${NEWS_LIMIT}&page=${page}`);
+    if (res.error || !Array.isArray(res.data)) break;
+    rows.push(...(res.data as UwNews[]));
+    if ((res.data as UwNews[]).length < NEWS_LIMIT) break;
+  }
+  if (!rows.length || newsRows.length || k.at == null) return;
+  keptNews = { rows, at: k.at };
+  paintNews();
 }
 
 /* the regular closes for the names whose stories crossed outside the session, read once a day; the wire repaints as they land */
@@ -162,6 +178,7 @@ async function pullNews() {
   newsPulling = true;
   try {
     if (!newsBackfilled) {
+      if (!newsRows.length) void paintKeptNews();
       for (let page = 0; page < NEWS_PAGE_CAP; page++) {
         const res = await uwCall(`/news/headlines?limit=${NEWS_LIMIT}&page=${page}`, page === 0);
         if (res.error || !Array.isArray(res.data)) {
@@ -192,7 +209,7 @@ async function pullNews() {
   } finally {
     newsPulling = false;
     newsCoverage = { ...newsCoverage, reading: false };
-    listeners.forEach(fn => fn());
+    notify();
   }
 }
 
@@ -202,10 +219,16 @@ export function useNewsCoverage(): NewsCoverage {
 }
 
 async function pullEcon() {
+  if (snap.econ.status === 'loading') {
+    const k = keptRead();
+    void k.get('/market/economic-calendar').then(res => {
+      if (snap.econ.status === 'loading' && Array.isArray(res.data) && k.at != null) patch({ econ: { status: 'live', events: econFromWhales(res.data as UwEcon[]), keptAt: k.at } });
+    });
+  }
   try {
     const rows = await whalesEcon();
     if (!Array.isArray(rows)) throw new Error('shape');
-    patch({ econ: { status: 'live', events: econFromWhales(rows) } });
+    patch({ econ: { status: 'live', events: econFromWhales(rows), keptAt: null } });
   } catch {
     if (snap.econ.status !== 'live') patch({ econ: { status: 'sim', events: [] } });
   }
@@ -243,8 +266,17 @@ const markPage = (rows: UwCongress[]): UwCongress[] => {
 };
 const paintCongress = () => {
   const feed = congressFromWhales(congressRows, congressPeople);
-  patch({ congress: { status: 'live', trades: feed.trades, notMemberAges: feed.notMemberAges } });
+  patch({ congress: { status: 'live', trades: feed.trades, notMemberAges: feed.notMemberAges, keptAt: null } });
 };
+/* the kept first page and roster paint the book until the fresh read lands */
+function paintKeptCongress(): void {
+  const k = keptRead();
+  void Promise.all([k.get(`/congress/recent-trades?limit=${CONGRESS_LIMIT}`), k.get('/congress/politicians?last_traded_within_months=24')]).then(([rows, people]) => {
+    if (congressRows.length || !Array.isArray(rows.data) || k.at == null) return;
+    const feed = congressFromWhales(rows.data as UwCongress[], Array.isArray(people.data) ? (people.data as UwPolitician[]) : congressPeople);
+    patch({ congress: { status: 'live', trades: feed.trades, notMemberAges: feed.notMemberAges, keptAt: k.at } });
+  });
+}
 
 async function pageCongress(): Promise<void> {
   while (!congressDone && congressCalls < CONGRESS_CALL_CAP) {
@@ -292,8 +324,8 @@ function extendCongress(): Promise<void> {
       .finally(() => {
         congressPulling = null;
         congressCoverage = { ...congressCoverage, reading: false };
-        if (snap.congress.status === 'live') paintCongress();
-        else listeners.forEach(fn => fn());
+        if (congressRows.length) paintCongress();
+        else notify();
       });
   }
   return congressPulling;
@@ -310,11 +342,12 @@ async function pullCongress() {
     }
     return;
   }
+  paintKeptCongress();
   const people = whalesPoliticians()
     .then(p => {
       if (Array.isArray(p) && p.length) {
         congressPeople = p;
-        if (snap.congress.status === 'live') paintCongress();
+        if (congressRows.length) paintCongress();
       }
     })
     .catch(() => undefined);
@@ -454,6 +487,7 @@ function paintInsiders() {
   const s = coverOf(bigSales);
   const restOldest = oldestFiling(restRows);
   const read = readInsiders(merged);
+  insiderLive = true;
   void probeIssuers(merged).then(found => {
     if (found) paintInsiders();
   });
@@ -476,7 +510,24 @@ function paintInsiders() {
     restCount: restRows.length,
     restReading,
   };
-  patch({ insiders: { status: 'live', trades: read.trades } });
+  patch({ insiders: { status: 'live', trades: read.trades, keptAt: null } });
+}
+/* the kept first pages paint the book until a fresh page lands */
+let insiderLive = false;
+function paintKeptInsiders(): void {
+  const k = keptRead();
+  void Promise.all([k.get(`${BUYS_PATH}&page=0`), k.get(`${SALES_PATH}&page=0`), k.get(`${REST_PATH}&page=0`)]).then(pages => {
+    const rows = pages.flatMap(p => (Array.isArray(p.data) ? (p.data as UwInsider[]) : []));
+    if (insiderLive || !rows.length || k.at == null) return;
+    const seen = new Set<string>();
+    const merged = rows.filter(r => {
+      const key = String(r.id ?? `${r.ticker}-${r.owner_name}-${r.transaction_date}-${r.transaction_code}-${r.amount}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    patch({ insiders: { status: 'live', trades: readInsiders(merged).trades, keptAt: k.at } });
+  });
 }
 
 async function pageBack(pg: Pager): Promise<void> {
@@ -503,6 +554,7 @@ function extend(pg: Pager): Promise<void> {
 }
 
 async function pullInsiders() {
+  if (!insiderLive) paintKeptInsiders();
   try {
     /* the first page of each read lands first so the grid paints, then the purchases and big sales page back */
     const [buy0, sale0, rest0] = await Promise.all([uwCall(`${BUYS_PATH}&page=0`), uwCall(`${SALES_PATH}&page=0`), uwCall(`${REST_PATH}&page=0`)]);
@@ -531,7 +583,7 @@ async function pullInsiders() {
     await Promise.all([rest, extend(buys), extend(bigSales)]);
   } catch {
     restReading = false;
-    if (snap.insiders.status !== 'live') patch({ insiders: { status: 'sim', trades: [] } });
+    if (!insiderLive) patch({ insiders: { status: 'sim', trades: [] } });
   }
 }
 
@@ -548,33 +600,15 @@ export function useInsiderCoverage(): InsiderCoverage {
   return insCoverage;
 }
 
-/* The books refresh only while the session trades, the tab is shown and a page listens; a page that mounts, or a tab
-   that comes back, re-reads any book older than its interval. */
-const refreshers = new Map<string, { ms: number; at: number; run: () => void }>();
-const sessionTrading = () => isTradingDay(nyTodayDate()) && nySessionPhase() === 'open';
-function refreshStale(): void {
-  if (typeof document !== 'undefined' && document.hidden) return;
-  for (const r of refreshers.values()) if (Date.now() - r.at >= r.ms) r.run();
-}
-function every(key: string, ms: number, pull: () => Promise<void>): void {
-  if (refreshers.has(key) || typeof window === 'undefined') return;
-  const r = { ms, at: 0, run: () => {} };
-  r.run = () => {
-    r.at = Date.now();
-    void pull();
-  };
-  refreshers.set(key, r);
-  r.run();
-  window.setInterval(() => {
-    if (document.hidden || listeners.size === 0 || !sessionTrading()) return;
-    if (Date.now() - r.at >= ms - 1_000) r.run();
-  }, ms);
-  if (refreshers.size === 1) document.addEventListener('visibilitychange', () => listeners.size > 0 && refreshStale());
-}
-const ensureNews = () => every('news', 60_000, pullNews);
-const ensureEcon = () => every('econ', 60_000, pullEcon);
-const ensureCongress = () => every('congress', 5 * 60_000, pullCongress);
-const ensureInsiders = () => every('insiders', 5 * 60_000, pullInsiders);
+/* Each book is read again while a page shows it and the tab is in front: the wire every minute in the session, the
+   filings every five; less often around the session, and the wire only when the market is shut. */
+const NEWS_EVERY: Cadence = { open: 60_000, extended: 120_000, closed: 600_000 };
+const BOOK_EVERY: Cadence = { open: 5 * 60_000, extended: 15 * 60_000, closed: null };
+const shown = () => store.readers() > 0;
+const ensureNews = () => keepFresh('record:news', NEWS_EVERY, pullNews, shown);
+const ensureEcon = () => keepFresh('record:econ', BOOK_EVERY, pullEcon, shown);
+const ensureCongress = () => keepFresh('record:congress', BOOK_EVERY, pullCongress, shown);
+const ensureInsiders = () => keepFresh('record:insiders', BOOK_EVERY, pullInsiders, shown);
 
 function ensure() {
   ensureNews();
@@ -583,13 +617,14 @@ function ensure() {
   ensureInsiders();
 }
 
-const listen = (fn: () => void) => {
-  if (listeners.size === 0) refreshStale();
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-};
+const listen = (fn: () => void) => store.subscribe(fn);
 
 export const peekLive = (): LiveSnapshot => snap;
+
+/** The instant of the kept answers a book shows until its fresh read lands, else null — never starts a read */
+export function useKeptAt(part: keyof LiveSnapshot): number | null {
+  return useSyncExternalStore(listen, () => snap[part].keptAt ?? null, () => null);
+}
 
 function subscribeLive(fn: () => void): () => void {
   const off = listen(fn);
@@ -719,18 +754,33 @@ export function useInsiderBuyers(windowDays: number): InsiderFlow[] {
   }, [insiders, windowDays]);
 }
 
-const TICKER_WAIT: { status: FeedStatus; trades: InsiderTrade[] } = { status: 'loading', trades: [] };
-const tickerIns = new Map<string, { status: FeedStatus; trades: InsiderTrade[] }>();
+const TICKER_WAIT: { status: FeedStatus; trades: InsiderTrade[]; keptAt?: number | null } = { status: 'loading', trades: [] };
+const tickerIns = new BoundedMap<string, { status: FeedStatus; trades: InsiderTrade[]; keptAt?: number | null }>(40);
+
+/** Paint a name's book off the kept answer for its path while it is still loading */
+function keptFirst<V extends { status: FeedStatus }>(path: string, books: BoundedMap<string, V>, key: string, make: (data: unknown, at: number) => V | null): void {
+  const k = keptRead();
+  void k.get(path).then(res => {
+    if (res.error || k.at == null || books.peek(key)?.status !== 'loading') return;
+    const v = make(res.data, k.at);
+    if (!v) return;
+    books.set(key, v);
+    notify();
+  });
+}
 
 function ensureTickerInsiders(sym: string) {
   if (tickerIns.has(sym) || typeof window === 'undefined') return;
   tickerIns.set(sym, { status: 'loading', trades: [] });
+  const path = `/insider/transactions?ticker_symbol=${encodeURIComponent(sym)}`;
+  keptFirst(path, tickerIns, sym, (data, at) => (Array.isArray(data) ? { status: 'live', trades: insidersFromWhales(data as UwInsider[]), keptAt: at } : null));
   void (async () => {
-    const res = await uwCall(`/insider/transactions?ticker_symbol=${encodeURIComponent(sym)}`);
+    const res = await uwCall(path);
     const rows = Array.isArray(res.data) ? (res.data as UwInsider[]) : [];
     await probeIssuers(rows);
-    tickerIns.set(sym, res.error ? { status: 'sim', trades: [] } : { status: 'live', trades: insidersFromWhales(rows) });
-    listeners.forEach(fn => fn());
+    const had = tickerIns.peek(sym);
+    tickerIns.set(sym, res.error ? (had?.keptAt ? had : { status: 'sim', trades: [] }) : { status: 'live', trades: insidersFromWhales(rows), keptAt: null });
+    notify();
   })();
 }
 
@@ -762,9 +812,10 @@ interface PersonBox {
   filers: number;
   /** True when the read hit the vendor's 500-row cap, so older filings in the year may be missing */
   capped: boolean;
+  keptAt?: number | null;
 }
 const PERSON_WAIT: PersonBox = { status: 'loading', trades: [], by: 'name', filers: 0, capped: false };
-const persons = new Map<string, PersonBox>();
+const persons = new BoundedMap<string, PersonBox>(30);
 
 function ensurePerson(slug: string, cik: string | undefined, name: string | undefined) {
   const key = cik ? `cik:${cik}` : `name:${slug}`;
@@ -776,6 +827,11 @@ function ensurePerson(slug: string, cik: string | undefined, name: string | unde
     const path = cik
       ? `/insider/transactions?reporter_cik=${encodeURIComponent(cik)}&start_date=${since}&limit=500`
       : `/insider/transactions?owner_name=${encodeURIComponent(owner)}&start_date=${since}&limit=500`;
+    keptFirst(path, persons, key, (data, at): PersonBox | null => {
+      if (!Array.isArray(data)) return null;
+      const rows0 = cik ? (data as UwInsider[]) : (data as UwInsider[]).filter(r => personSlug(r.owner_name || '') === slug);
+      return rows0.length ? { status: 'live', trades: insidersFromWhales(rows0).filter(t => t.daysAgo <= PERSON_DAYS), by: cik ? 'cik' : 'name', filers: 1, capped: data.length >= 500, keptAt: at } : null;
+    });
     let res = await uwCall(path, true);
     let rows = Array.isArray(res.data) ? (res.data as (UwInsider & { reporter_cik?: string })[]) : [];
     /* by name, keep only the rows whose name reads the same as the slug (the vendor's match is a substring) */
@@ -788,20 +844,23 @@ function ensurePerson(slug: string, cik: string | undefined, name: string | unde
         res = byId;
         rows = byId.data as (UwInsider & { reporter_cik?: string })[];
         own = rows;
-        const box = persons.get(key);
+        const box = persons.peek(key);
         if (box) box.by = 'cik';
       }
     }
     await probeIssuers(own);
     const trades = insidersFromWhales(own).filter(t => t.daysAgo <= PERSON_DAYS);
+    const had = persons.peek(key);
+    if (res.error && had?.keptAt) return;
     persons.set(key, {
       status: res.error ? 'sim' : 'live',
       trades,
-      by: cik || persons.get(key)?.by === 'cik' ? 'cik' : 'name',
+      by: cik || had?.by === 'cik' ? 'cik' : 'name',
       filers: new Set(own.map(r => r.reporter_cik).filter(Boolean)).size,
       capped: rows.length >= 500,
+      keptAt: null,
     });
-    listeners.forEach(fn => fn());
+    notify();
   })();
   return key;
 }
@@ -815,6 +874,7 @@ interface InsiderPersonBook {
   filers: number;
   capped: boolean;
   windowDays: number;
+  keptAt: number | null;
 }
 
 /** undefined while the person's filings are being read; null when none is on file in the year. */
@@ -846,6 +906,7 @@ export function useInsiderBook(slug: string): InsiderPersonBook | null | undefin
       filers: box.filers,
       capped: box.capped,
       windowDays: box.status === 'live' && box.trades.length ? PERSON_DAYS : -1,
+      keptAt: box.keptAt ?? null,
     };
   }, [box, seen, insiders, slug]);
 }
@@ -858,10 +919,10 @@ interface TickerCongress {
   complete: boolean;
 }
 const TICKER_CONGRESS_WAIT: TickerCongress = { status: 'loading', trades: [], complete: false };
-const tickerCongress = new Map<string, TickerCongress>();
+const tickerCongress = new BoundedMap<string, TickerCongress>(40);
 
 /* any page that reads a name's reports reads the roster once (party, state), and the rows re-map when it lands */
-const tickerCongressRows = new Map<string, UwCongress[]>();
+const tickerCongressRows = new BoundedMap<string, UwCongress[]>(40);
 let rosterAsked = false;
 function ensureRoster(): void {
   if (rosterAsked || congressPeople.length || typeof window === 'undefined') return;
@@ -870,12 +931,12 @@ function ensureRoster(): void {
     .then(p => {
       if (!Array.isArray(p) || !p.length) return;
       congressPeople = p;
-      for (const [sym, rows] of tickerCongressRows) {
+      for (const [sym, rows] of tickerCongressRows.entries()) {
         const box = tickerCongress.get(sym);
         if (box?.status === 'live') tickerCongress.set(sym, { ...box, trades: congressFromWhales(rows, congressPeople).trades.filter(t => t.ticker.toUpperCase() === sym) });
       }
       if (snap.congress.status === 'live') paintCongress();
-      listeners.forEach(fn => fn());
+      notify();
     })
     .catch(() => {
       rosterAsked = false;
@@ -886,15 +947,17 @@ function ensureTickerCongress(sym: string) {
   if (tickerCongress.has(sym) || typeof window === 'undefined') return;
   tickerCongress.set(sym, TICKER_CONGRESS_WAIT);
   ensureRoster();
+  const path = `/congress/recent-trades?ticker=${encodeURIComponent(sym)}&limit=200`;
+  keptFirst(path, tickerCongress, sym, data => (Array.isArray(data) ? { status: 'live', trades: congressFromWhales(data as UwCongress[], congressPeople).trades.filter(t => t.ticker.toUpperCase() === sym), complete: (data as UwCongress[]).length < 200 } : null));
   void (async () => {
-    const res = await uwCall(`/congress/recent-trades?ticker=${encodeURIComponent(sym)}&limit=200`);
+    const res = await uwCall(path);
     const rows = Array.isArray(res.data) ? (res.data as UwCongress[]) : [];
     tickerCongressRows.set(sym, rows);
     const oldest = rows.map(r => (r.transaction_date || '').slice(0, 10)).filter(Boolean).sort()[0] ?? null;
     tickerCongress.set(sym, res.error
       ? { status: 'sim', trades: [], complete: false }
       : { status: 'live', trades: congressFromWhales(rows, congressPeople).trades.filter(t => t.ticker.toUpperCase() === sym), complete: rows.length < 200 || (!!oldest && oldest <= nyIsoDaysBack(365)) });
-    listeners.forEach(fn => fn());
+    notify();
   })();
 }
 
@@ -929,7 +992,7 @@ interface MemberBook {
   unreadTypes: number;
 }
 const MEMBER_WAIT: MemberBook = { status: 'loading', trades: [], complete: false, unreadTypes: 0 };
-const members = new Map<string, MemberBook>();
+const members = new BoundedMap<string, MemberBook>(30);
 
 /** The first page's address — the vendor desk asks the same, so the two share one call */
 const memberReportsPath = (name: string, page = 1) =>
@@ -958,7 +1021,7 @@ function ensureMember(id: string, name: string) {
     }
     const feed = congressFromWhales(rows, congressPeople);
     members.set(key, failed ? { status: 'sim', trades: [], complete: false, unreadTypes: 0 } : { status: 'live', trades: feed.trades.filter(t => t.tradedDaysAgo <= MEMBER_DAYS), complete, unreadTypes: feed.unreadTypes ?? 0 });
-    listeners.forEach(fn => fn());
+    notify();
   })();
 }
 
@@ -985,22 +1048,30 @@ export function memberFromRoster(id: string): UwPolitician | null {
 interface TickerNews {
   status: FeedStatus;
   events: GeoNewsEvent[];
+  keptAt?: number | null;
 }
-const tickerNewsState = new Map<string, TickerNews>();
-const tickerNewsRows = new Map<string, UwNews[]>();
+const tickerNewsState = new BoundedMap<string, TickerNews>(40);
+const tickerNewsRows = new BoundedMap<string, UwNews[]>(40);
 const tickerNewsAt = new Map<string, number>();
 const tickerNewsListeners = new Set<() => void>();
 const TICKER_NEWS_LOADING: TickerNews = { status: 'loading', events: [] };
-function paintTickerNews(t: string): void {
-  const rows = tickerNewsRows.get(t) ?? [];
+function paintTickerNews(t: string, kept: { rows: UwNews[]; at: number } | null = null): void {
+  const rows = kept ? kept.rows : tickerNewsRows.get(t) ?? [];
   const midnight = nyMidnightMs();
   const todays = rows.filter(r => !(Date.parse(r.created_at) < midnight));
-  tickerNewsState.set(t, { status: 'live', events: geoFromItems(newsFromWhales(todays, priorClose)) });
+  tickerNewsState.set(t, { status: 'live', events: geoFromItems(newsFromWhales(todays, priorClose)), keptAt: kept ? kept.at : null });
   tickerNewsListeners.forEach(fn => fn());
 }
 async function pullTickerNews(t: string): Promise<void> {
   tickerNewsAt.set(t, Date.now());
-  const res = await uwCall(`/news/headlines?ticker=${encodeURIComponent(t)}&limit=50&page=0`, true);
+  const path = `/news/headlines?ticker=${encodeURIComponent(t)}&limit=50&page=0`;
+  if (!tickerNewsRows.has(t)) {
+    const k = keptRead();
+    void k.get(path).then(res => {
+      if (!tickerNewsRows.has(t) && Array.isArray(res.data) && k.at != null) paintTickerNews(t, { rows: res.data as UwNews[], at: k.at });
+    });
+  }
+  const res = await uwCall(path, true);
   if (res.error || !Array.isArray(res.data)) {
     if (tickerNewsState.get(t)?.status !== 'live') {
       tickerNewsState.set(t, { status: 'sim', events: [] });
@@ -1028,17 +1099,21 @@ export function newsPulse(ticker: string): readonly { atMs: number; graded: bool
   const feed = peekTickerNews(t);
   return feed.status === 'live' ? feed.events.map(e => ({ atMs: e.item.atMs, graded: true })) : [];
 }
+/* how many readers each name's headlines have; a name is read again on the wire's cadence while one is shown */
+const tickerNewsReaders = new Map<string, number>();
 export function useTickerNews(ticker: string): TickerNews {
   const t = ticker.toUpperCase();
   return useSyncExternalStore(
     fn => {
       tickerNewsListeners.add(fn);
-      const due = () => !tickerNewsAt.has(t) || Date.now() - (tickerNewsAt.get(t) ?? 0) > 60_000;
-      if (t && due()) void pullTickerNews(t);
-      const id = typeof window !== 'undefined' ? window.setInterval(() => t && !document.hidden && sessionTrading() && due() && void pullTickerNews(t), 15_000) : null;
+      if (t) {
+        tickerNewsReaders.set(t, (tickerNewsReaders.get(t) ?? 0) + 1);
+        if (!tickerNewsAt.has(t) || Date.now() - (tickerNewsAt.get(t) ?? 0) > 60_000) void pullTickerNews(t);
+        keepFresh(`record:news:${t}`, NEWS_EVERY, () => Date.now() - (tickerNewsAt.get(t) ?? 0) > 30_000 && pullTickerNews(t), () => (tickerNewsReaders.get(t) ?? 0) > 0);
+      }
       return () => {
         tickerNewsListeners.delete(fn);
-        if (id != null) window.clearInterval(id);
+        if (t) tickerNewsReaders.set(t, Math.max(0, (tickerNewsReaders.get(t) ?? 1) - 1));
       };
     },
     () => peekTickerNews(t),
@@ -1065,7 +1140,7 @@ function ensureRosterState(): void {
     .catch(() => {
       rosterState = { status: 'sim', rev: rosterState.rev + 1 };
     })
-    .finally(() => listeners.forEach(fn => fn()));
+    .finally(() => notify());
 }
 /** The politician roster's state — starts that one read, never the Congress book */
 export function useCongressRoster(): FeedStatus {

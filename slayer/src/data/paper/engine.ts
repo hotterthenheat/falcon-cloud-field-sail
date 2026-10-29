@@ -2,13 +2,12 @@
    the desk shows is read off them. The market comes in through PaperMarket (feed.ts). */
 
 import { MULT, nameGoesUp, type Bracket, type OrderKind, type Side } from '../review/engine';
-import { onTick } from '../review/futuresTape';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
 import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
 import type { Candle } from '../../types/market';
 import { bellOf, dayEndsAt, flatByOf, nyAt, tradingDayOf } from './clock';
-import { bigOf, frontOn, futWords, isPaperFuture, paperFut } from './products';
+import { bigOf, frontOn, futWords, isPaperFuture, onTick, paperFut } from './products';
 
 /* ================================================================== */
 /*  TYPES                                                              */
@@ -34,8 +33,16 @@ export interface PaperMarket {
   bar: (ticker: string) => number;
   /** The candles a closed trade's chart is written down from — a name's, or a future's */
   candles: (ticker: string) => Candle[];
-  /** Does the market take an order of this kind now (the simulated feed always does) */
+  /** Does the market take an order of this kind now */
   open: (kind: 'option' | 'future') => boolean;
+  /** The name's 16:00 close on a past or today's date (what an expiring contract settles on) — NaN until it is known */
+  closeOf?: (ticker: string, day: string) => number;
+}
+/** What a contract is worth in the money with the name at `close` — a spread's two legs, kept inside its width */
+export function settleValue(c: ContractId, close: number): number {
+  const leg = (k: number) => Math.max(0, c.right === 'C' ? close - k : k - close);
+  if (c.short == null) return cents(leg(c.strike));
+  return cents(Math.max(0, Math.min(Math.abs(c.short - c.strike), leg(c.strike) - leg(c.short))));
 }
 
 /* ---- options ---- */
@@ -1388,6 +1395,8 @@ function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccou
   const day = tradingDayOf(m.now);
   if (day === a.day) return a;
   const v = viewOf(a, m);
+  /* a held contract with no quote yet cannot be valued: the day is written down once it can */
+  if (!Number.isFinite(v.equity)) return a;
   const was = a.day;
   const ledger = { ...a.ledger };
   if (ledger[was]) ledger[was] = { ...ledger[was], close: v.equity };
@@ -1636,8 +1645,11 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       if (!expired(p.contract, m.now)) continue;
       const when = momentAt(m.now);
       next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && contractKey(o.contract) === p.key ? { ...o, status: 'cancelled' as const, done: when, why: 'the contract expired' } : o)));
-      const q = m.optQuote(p.contract);
-      next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: 'sell', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life }, q.intrinsic, 'expired', q, m);
+      /* on the name's 16:00 close that day, not wherever it stands when the page next ticks; it waits until that is known */
+      const close = m.closeOf ? m.closeOf(p.contract.ticker, p.contract.expiry) : NaN;
+      if (!(close > 0)) continue;
+      const q = { ...m.optQuote(p.contract), spot: close };
+      next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: 'sell', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life }, settleValue(p.contract, close), 'expired', q, m);
     }
     /* an evaluation is flat by 16:59 */
     if (next.kind === 'evaluation' && m.now >= flatByOf(next.day) && m.now < dayEndsAt(next.day)) {
@@ -1679,7 +1691,7 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
   const d = next.ledger[next.day];
   if (d && (optBookOf(next).positions.length || futBookOf(next).positions.length)) {
     const eq = viewOf(next, m).equity;
-    if (eq > d.hi || eq < d.lo) next = { ...next, ledger: { ...next.ledger, [next.day]: { ...d, hi: Math.max(d.hi, eq), lo: Math.min(d.lo, eq) } } };
+    if (Number.isFinite(eq) && (eq > d.hi || eq < d.lo)) next = { ...next, ledger: { ...next.ledger, [next.day]: { ...d, hi: Math.max(d.hi, eq), lo: Math.min(d.lo, eq) } } };
   }
   fillEvents(before, next, events);
   return { account: next, events };

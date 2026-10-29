@@ -14,13 +14,13 @@ export const PRACTICE_SUBPAGES: PracticeSubpage[] = [
   {
     path: '/practice/paper',
     label: 'Paper Trade',
-    subtitle: 'Trade today’s live option quotes with pretend money — options off the chain, filled at the live bid and ask',
+    subtitle: 'Trade today’s option chains with pretend money, filled at ThetaData’s live bid and ask',
     icon: LineChart,
   },
   {
     path: '/practice/backtest',
     label: 'Backtest',
-    subtitle: 'Paused until real minute-by-minute option history is wired in',
+    subtitle: 'Replay a past session minute by minute on ThetaData’s recorded quotes, and trade its chain',
     icon: History,
   },
   {

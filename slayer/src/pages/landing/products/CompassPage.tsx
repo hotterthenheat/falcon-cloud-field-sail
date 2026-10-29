@@ -13,7 +13,7 @@ const SHOTS = '/landing/products/compass';
 const FILM: { word: string; says: string }[] = [
   { word: 'The rail', says: 'Heaviest contracts, ranked by whichever column you press: gamma, volume against open interest, distance from spot, exposure. A row opens that contract’s page.' },
   { word: 'The page', says: 'A press on the picked card opens its page on Why we chose this. The pointer runs down the floor and the targets at the chart’s edge and each one says what it is; then Setup, then Contract.' },
-  { word: 'The board', says: 'Back on the board, the Kind turns to every kind and the Name to the busiest one, so the board is one name’s cards only. Then back, and the card picked again.' },
+  { word: 'The board', says: 'Back on the board, the Name narrows it to one name’s cards. Then back, and the card picked again.' },
 ];
 
 const CompassPage = () => (
@@ -24,7 +24,7 @@ const CompassPage = () => (
     head={['Contracts picked off today’s levels.', 'With the reason for each.']}
     intro={
       <>
-        Compass sweeps the option chains against today’s levels and keeps a board of the contracts that clear the bar — 0DTE to long-dated, calls and puts, each one a card with its state, its premium and the move it needs.
+        Compass scores the option chains on the terminal’s live quotes and keeps a board of the contracts that clear the bar — same day and one to seven days out, calls and puts, each one a card with its state, its premium and the move it needs.
         Pick a card and you get the whole case on one page: the chart with the entry, the floor and the targets drawn on it, the reasons it made the board, and the contracts around it. Track the ones you like and the
         Tracker keeps their live figures as the session moves.
       </>
@@ -48,10 +48,9 @@ const CompassPage = () => (
     <Room
       eyebrow="The four choices"
       first="Four choices at the top."
-      second="Expiry, kind, name and layout."
+      second="Expiry, type, name and layout."
       pictures={
         <Pair items={[
-          { src: `${SHOTS}/kind-open`, ratio: '1034 / 519', name: 'The kind', says: 'What found the setup: Top ranked, Quick scalp, Discounted, Rebounds, Breakouts, Trend continuation, Volatility expansion, Mean reversion, Unusual activity, Overpriced, Earnings, or every setup at once. Each row carries its count for the expiry in hand, and says when a kind is limited on it.' },
           { src: `${SHOTS}/name-open`, ratio: '1034 / 573', name: 'The name', says: 'Every name on the sweep with how many setups it holds, and a search box that is focused the moment the card opens. Type two letters and press Enter.' },
         ]} />
       }
@@ -85,7 +84,7 @@ const CompassPage = () => (
 
     {/* ── THE CARD ── */}
     <Room eyebrow="The card" first="Why we chose this." second="The card opens on the reason." pictures={<Pair cols={3} items={[
-      { src: `${SHOTS}/why`, ratio: '854 / 1080', name: 'Why we chose this', says: 'The tab the card opens on. The state, the case and the lens that found it; why it is on the board, with the numbers behind that read as rows — priced against fair value, the move it needs, which side the dealers are on, the clock, the greeks, the liquidity; and what would make us wrong.' },
+      { src: `${SHOTS}/why`, ratio: '854 / 1080', name: 'Why we chose this', says: 'The tab the card opens on. The state and the case; why it is on the board, with the numbers behind that read as rows — priced against fair value, the move it needs, which side the dealers are on, the clock, the greeks, the liquidity; and what would make us wrong.' },
       { src: `${SHOTS}/setup-tab`, ratio: '854 / 1080', name: 'Setup', says: 'The plan as a table: the entry, each target with its price and whether it has been hit, and the floor — the price that retires the setup if it trades through. Track setup lives in the foot, with the door to the Tracker.' },
       { src: `${SHOTS}/contract-tab`, ratio: '854 / 1080', name: 'Contract', says: 'The premium against fair value, the expected move into expiry, the greeks, and the whole thing in dollars for one contract — what it costs, what the targets pay, what the floor costs.' },
     ]} />}>

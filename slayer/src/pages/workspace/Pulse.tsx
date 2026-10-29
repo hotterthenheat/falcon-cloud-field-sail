@@ -10,12 +10,14 @@ import 'react-resizable/css/styles.css';
 import { Check, Lock, LockOpen, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 import { buildExposureProfile } from '../../data/exposure';
-import { ensureBook, snapshotOf, useBookRev } from '../../data/uwBook';
+import { bookStatus, ensureBook, snapshotOf, useBookRev } from '../../data/uwBook';
 import Chip from '../../components/ui/Chip';
 import HoverReadout from '../../components/ui/HoverReadout';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
 import { afterGlide, beginGlide, glideTarget, onGlide } from '../../core/glide';
 import PhoneChart from './PhoneChart';
+import { ChartTileSkeleton } from './pulseSkeletons';
+import { EmptyBox } from '../../components/ui/states';
 import Picker from './Picker';
 import Tile, { TILE_HEAD_H } from './TileFrame';
 import { widgetByKey } from './registry';
@@ -337,9 +339,11 @@ const Pulse = () => {
         {scanSnapshot ? (
           <PhoneChart key={scanSnapshot.ticker} snapshot={scanSnapshot} revision={revision} onPick={changeTicker} />
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <span className="font-mono text-t11 uppercase tracking-widest text-textMuted">Reading {activeTicker}’s live book…</span>
-          </div>
+          bookStatus(activeTicker) === 'error' ? (
+            <EmptyBox title={`No book for ${activeTicker} yet`} reason="Unusual Whales did not answer for this name's dealer book. The desk asks again shortly." />
+          ) : (
+            <ChartTileSkeleton />
+          )
         )}
       </div>
     );
@@ -455,12 +459,9 @@ const Pulse = () => {
         </HoverReadout>
       )}
 
-      {/* THE GRID — fades out on a switch, then the next desk mounts under a fresh key and breathes in */}
-      {!deskCtx ? (
-        <div className="h-64 border border-borderSubtle bg-panel rounded-md flex items-center justify-center">
-          <span className="font-mono text-t11 text-textMuted uppercase tracking-widest">Reading {activeTicker}’s live book…</span>
-        </div>
-      ) : (
+      {/* THE GRID — drawn at once, each tile in its own shape until its name's book lands; it fades out on a switch,
+          then the next desk mounts under a fresh key and breathes in */}
+      {(
         <div key={active} ref={deskRef} /* while a widget is dragged in from the picker the tiles let the pointer through: the library reads the drop's place
              off the element under the pointer, and a tile under it would answer in its own coordinates */
           className={`animate-soft-in-slow transition-opacity duration-200 ease-out ${switching ? 'opacity-0' : 'opacity-100'} ${dragKey ? '[&_.react-grid-item]:pointer-events-none' : ''}`}
@@ -526,6 +527,8 @@ const Pulse = () => {
                       onDuplicate={() => duplicate(inst, def)}
                       onResetSize={() => resetSize(inst, def)}
                       onRemove={() => removeWidget(inst.id)}
+                      bookFailed={bookStatus(def.named && inst.ticker ? inst.ticker : activeTicker) === 'error'}
+                      deskTicker={activeTicker}
                     />
                   </div>
                 );

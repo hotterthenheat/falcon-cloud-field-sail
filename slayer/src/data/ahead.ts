@@ -302,7 +302,7 @@ interface OddsPoint {
 }
 
 /** The model's curve at one moment: each strike's share of a normal `sigma` wide on spot (the probability of closing
-    within half a strike step of it), weighted by a pull (absorbs, the pin) or push (amplifies) with `gravity`. The
+    nearer it than either neighbour), weighted by a pull (absorbs, the pin) or push (amplifies) with `gravity`. The
     pull is a heuristic, not calibrated: the result is a model weight, not a measured chance. */
 function oddsCurve(profile: ExposureProfileData, spot: number, sigma: number, gravity: number, maxHalf: number): OddsPoint[] {
   const { callWall, putWall, supreme, pin } = profile.levels;
@@ -312,13 +312,19 @@ function oddsCurve(profile: ExposureProfileData, spot: number, sigma: number, gr
   /* Only the strikes the close can plausibly reach: the rarer band (two
      standard deviations) plus one, never fewer than four each side — a row
      of 0.0% strikes says nothing and buries the ones that matter */
-  const step = desc.length > 1 ? Math.abs(desc[0].strike - desc[1].strike) || 1 : 1;
+  /* the spacing at price: far strikes are often listed wider apart */
+  const near = Math.min(Math.max(1, spotIdx), desc.length - 1);
+  const step = desc.length > 1 ? Math.abs(desc[near - 1].strike - desc[near].strike) || 1 : 1;
   const half = Math.max(4, Math.min(maxHalf, Math.ceil((2.2 * sigma) / step) + 1));
   const from = Math.max(0, spotIdx - half);
   const window = desc.slice(from, from + half * 2 + 1);
   const sd = Math.max(sigma, 1e-6);
-  return window.map(s => {
-    const plain = normCdf((s.strike + step / 2 - spot) / sd) - normCdf((s.strike - step / 2 - spot) / sd);
+  /* each strike owns the prices nearer it than its neighbours (midpoints), so the shares never overlap where the spacing
+     changes (2.5 near price, 5 further out) */
+  return window.map((s, i) => {
+    const up = from + i - 1 >= 0 ? desc[from + i - 1].strike : s.strike + (desc[from + i + 1] ? s.strike - desc[from + i + 1].strike : step);
+    const dn = desc[from + i + 1] ? desc[from + i + 1].strike : s.strike - (from + i - 1 >= 0 ? desc[from + i - 1].strike - s.strike : step);
+    const plain = normCdf(((s.strike + up) / 2 - spot) / sd) - normCdf(((s.strike + dn) / 2 - spot) / sd);
     const net = s.gex.net / maxAbs; // + amplifies (pushes the close off it), − absorbs (pulls it in)
     const absorb = Math.max(0, -net);
     const amplify = Math.max(0, net);
@@ -385,7 +391,7 @@ export function buildCloseOdds(profile: ExposureProfileData, spot: number, sigma
 
 // ---- the schedule ---------------------------------------------------------------
 
-/** The calendar's net vanna, every expiry and strike — dollars of dealer delta per point of vol */
+/** The calendar's net vanna, every expiry and strike — dollars of delta per point of vol, kept sign (core/dealerSign.ts) */
 export function wholeBookVanna(surface: ExposureSurface): number {
   let v = 0;
   for (let e = 0; e < surface.expiries.length; e++) for (let s = 0; s < surface.strikes.length; s++) v += surface.net.vanna[e]?.[s] ?? 0;

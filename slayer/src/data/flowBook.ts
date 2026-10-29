@@ -7,8 +7,8 @@ import { sleeveForDte } from './compass';
 import { reasonMatches, reasonsSignature, type UserReason } from './flowReasons';
 import type { SleeveKey } from '../types/compass';
 import type { BookContract } from '../types/trace';
-import { dayLean, usd } from './traceLive';
-import { leanWords } from './traceLean';
+import { dayLean, leanWords } from './traceLean';
+import { usd } from './traceRows';
 
 /** A New York minute of the day, spoken — "14:30" */
 const clockOf = (minute: number) => minuteLabel(minute);
@@ -665,3 +665,35 @@ export function applyFilters(rows: BookContract[], f: BookFilters): BookContract
 
 /** Said on every figure the vendor sums for us: its totals carry spread legs and floor packages */
 export const VENDOR_TOTAL_NOTE = 'A summed total: spread legs and floor packages are in it. Live Tape, Dark Pool and Multi-Leg leave them out';
+
+/** A book cut's head: the single bets' premium and call share, how many traded 1.5× their open interest, and the
+    packages, spread legs and crosses set apart (never in the money) */
+export function bookFacts(rows: BookContract[]): { prem: number; callPct: number; fresh: number; names: number; apartPrem: number; apart: number; bets: number } {
+  let prem = 0;
+  let callPrem = 0;
+  let fresh = 0;
+  let apartPrem = 0;
+  let apart = 0;
+  const names = new Set<string>();
+  for (const r of rows) {
+    if (notABet(r)) {
+      apartPrem += r.premium;
+      apart++;
+      continue;
+    }
+    prem += r.premium;
+    if (r.right === 'C') callPrem += r.premium;
+    names.add(r.ticker);
+    if (r.volOverOI >= FRESH_VOL_OI) fresh++;
+  }
+  return { prem, callPct: Math.round((callPrem / Math.max(1, prem)) * 100), fresh, names: names.size, apartPrem, apart, bets: rows.length - apart };
+}
+
+/** The net-flow board's two ends summed: the bullish names' net, the bearish names' net, and the counts */
+export function boardSums(leaders: { ticker: string; net: number }[]): { calls: number; puts: number; gross: number; bullish: number; bearish: number } {
+  const calls = leaders.reduce((a, l) => a + (l.net > 0 ? l.net : 0), 0);
+  const puts = leaders.reduce((a, l) => a + (l.net < 0 ? l.net : 0), 0);
+  const gross = leaders.reduce((a, l) => a + Math.abs(l.net), 0) || 1;
+  const bullish = leaders.filter(l => l.net > 0).length;
+  return { calls, puts, gross, bullish, bearish: leaders.length - bullish };
+}

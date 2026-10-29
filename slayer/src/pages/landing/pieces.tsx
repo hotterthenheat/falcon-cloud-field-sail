@@ -61,16 +61,16 @@ const PRODUCT_GROUPS: { caption: string; products: Product[] }[] = [
   {
     caption: 'Trade',
     products: [
-      { name: 'Compass', glyph: 'compass', line: 'Contracts that fit the levels right now, 0DTE to long-dated, plus the Tracker', path: '/compass', page: '/products/compass' },
+      { name: 'Compass', glyph: 'compass', line: 'Contracts that fit the levels right now, same day and one to seven days out, plus the Tracker', path: '/compass', page: '/products/compass' },
       { name: 'Weigher', glyph: 'weigher', line: 'The chain, your watchlist and your positions on one desk, and what each returns at every price', path: '/weigher', page: '/products/weigher' },
     ],
   },
   {
     caption: 'Practice',
     products: [
-      { name: 'Practice', glyph: 'practice', line: 'Trade with pretend money, replay the past, review every trade', path: '/practice', page: '/products/practice' },
-      { name: 'Paper Trade', glyph: 'paper', line: 'Today’s prices with pretend money, on a practice account or a prop firm’s evaluation', path: '/practice/paper', page: '/products/paper' },
-      { name: 'Backtest', glyph: 'backtest', line: 'Replay a past market minute by minute and trade it', path: '/practice/backtest', page: '/products/backtest' },
+      { name: 'Practice', glyph: 'practice', line: 'Trade live option quotes with pretend money, and review every trade', path: '/practice', page: '/products/practice' },
+      { name: 'Paper Trade', glyph: 'paper', line: 'Today’s live option quotes with pretend money, on a practice account', path: '/practice/paper', page: '/products/paper' },
+      { name: 'Backtest', glyph: 'backtest', line: 'Paused until real minute-by-minute option history is wired in', path: '/practice/backtest', page: '/products/backtest' },
       { name: 'Journal', glyph: 'journal', line: 'Every closed trade on its day, with your tags and your words', path: '/practice/journal', page: '/products/journal' },
     ],
   },

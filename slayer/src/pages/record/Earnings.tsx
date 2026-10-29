@@ -1,7 +1,7 @@
 /* Who reports when, and what the options charge for it: the head's facts, one line of controls, the week as a board of
    five days (or a list of days), then every report in a paged grid. */
 
-import { CONTROLS_LINE } from '../../components/trace/TraceBox';
+import { Controls, PhoneFold, RecordHead, Summary } from '../../components/record/RecordFrame';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
@@ -12,14 +12,13 @@ import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid'
 import { FeedFallback } from '../../components/ui/liveRead';
 import DropdownSelect, { CARD, type DropdownOption } from '../../components/ui/DropdownSelect';
 import TickerLookup from '../../components/ui/TickerLookup';
-import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
 import { EarningsGuide } from '../../components/record/EarningsGuide';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { richText, stateOf, type VolState } from '../../components/earnings/volState';
 import { weekDayDate, weekDayLabel, type EarningsEvent, type NextReport } from '../../data/earnings';
 import { signedPct as signedPctOf } from './money';
-import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEveryReport, useLiveReactions, useNextReport, useNextReportPending, historyMissed, ensureLastWeek, useLastWeekStatus, reactionIsoOf } from '../../data/earningsFeed';
+import { MIN_PRICED_PRINTS, untilWords, useEarningsCoverage, useEarningsHistories, useEarningsPending, useEarningsFailed, useEarningsKeptAt, useEveryReport, useLiveReactions, useNextReport, useNextReportPending, historyMissed, ensureLastWeek, useLastWeekStatus, reactionIsoOf } from '../../data/earningsFeed';
 import { nyTodayIso } from '../../data/nyDate';
 import { nyMinutes } from '../../core/nyTime';
 import { macroWindow, type MacroDate } from '../../data/events';
@@ -417,6 +416,7 @@ const Earnings = () => {
   /* the reacting session's move so far, off the live price */
   useLiveReactions(live);
   const pending = useEarningsPending();
+  const keptAt = useEarningsKeptAt();
   const failed = useEarningsFailed();
   const events = useMemo(() => {
     const mine = new Set(boardNames.map(t => t.toUpperCase()));
@@ -453,7 +453,6 @@ const Earnings = () => {
   const [show, setShow] = useState<ShowPick>('all');
   const [layout, setLayout] = useState<Layout>('board');
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
-  const [guideOpen, setGuideOpen] = useState(false);
   /* the name asked for, and its answer */
   const [asked, setAsked] = useState<string | null>(null);
   const next = useNextReport(asked);
@@ -545,19 +544,13 @@ const Earnings = () => {
     <>
       {/* BOX 1 — WHO REPORTS */}
       <div className="relative border border-borderSubtle rounded-md bg-panel" data-earnings data-week={week} data-show={show} data-layout={layout} data-asked={asked ?? undefined} data-known={knownEvents.length} data-reports={events.length}>
-        <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the calendar" testId="earnings-guide" viewport>
-          <EarningsGuide />
-        </GuideFocus>
-        {/* THE HEAD */}
-        <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-          <div className="min-w-[min(18rem,100%)] flex-1">
-            <div className="h-6 flex items-center gap-3">
-              <h3 className="text-t15 font-semibold leading-tight text-textPrimary whitespace-nowrap">Who reports</h3>
-              <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What the doors, the price and the words mean" testId="earnings-guide" />
-            </div>
-            <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The fortnight's reports · a priced name shows the move its options charge</p>
-          </div>
-          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+        <RecordHead
+          title="Who reports"
+          guide={{ title: 'How to read the calendar', door: 'What the doors, the price and the words mean', testId: 'earnings-guide', body: <EarningsGuide /> }}
+          kept={keptAt}
+          line="The fortnight's reports · a priced name shows the move its options charge"
+          facts={
+            <>
             <Fact label="Reports" testId="reports">
               {failed ? <span className="text-textMuted">—</span> : weekPending ? <span className="text-textMuted">reading the lists…</span> : <>{weekEvents.length.toLocaleString('en-US')} <span className="text-textMuted">· {weekWords} ·</span> {weekKnown.length.toLocaleString('en-US')} <span className="text-textMuted">known names</span>{cover.missed ? <span className="text-warn" title={`${cover.missed} of the ${cover.slots} day lists did not answer`}> · short</span> : null}</>}
             </Fact>
@@ -617,27 +610,24 @@ const Earnings = () => {
                 <span className="text-textMuted">{failed ? '—' : pending ? 'reading the day' : 'nothing reports'}</span>
               )}
             </Fact>
-          </dl>
-        </div>
-        <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-earnings-controls>
+            </>
+          }
+        />
+        <PhoneFold label="Week, filters and summary" testId="earnings">
+        <Controls testId="earnings">
           <DropdownSelect label="Week" value={week} options={WEEK_OPTIONS} onChange={setWeek} title="Which week" testId="earnings-week" />
           <DropdownSelect label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} title="How the options price sits" testId="earnings-show" />
           <DropdownSelect label="Layout" value={layout} options={LAYOUT_OPTIONS} onChange={setLayout} title="The week as a board of the known names, or a list of every report" testId="earnings-layout" />
           <NameAsk asked={asked} onAsk={ask} />
-        </div>
+        </Controls>
         {next && <Answer next={next} inWindow={askedIn} onOpen={open} onClear={() => setAsked(null)} />}
         {asked && !next && (
           <p className="px-5 pb-2 text-t12 text-textSecondary" data-earnings-answer-pending>
             {nextPending ? `Reading when ${asked} reports…` : `${asked} has no report dated today or later on file.`}
           </p>
         )}
-        {failed ? (
-          <FeedFallback />
-        ) : (
-          <p className="px-5 pb-3 text-t12 leading-relaxed text-textSecondary max-sm:hidden" data-earnings-sentence>
-            {pending ? 'Reading the fortnight.' : weekPending ? "Reading last week's lists." : sentence}
-          </p>
-        )}
+        {failed ? <FeedFallback /> : <Summary testId="earnings">{pending ? 'Reading the fortnight.' : weekPending ? "Reading last week's lists." : sentence}</Summary>}
+        </PhoneFold>
         {!pending && !failed && autoNext && week === '1' && (
           <p className="px-5 pb-3 -mt-1 text-t11 text-textMuted" data-earnings-week-note>
             Every report this week is out, so the board opens on next week.{' '}

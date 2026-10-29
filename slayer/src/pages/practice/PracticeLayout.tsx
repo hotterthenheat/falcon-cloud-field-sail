@@ -1,6 +1,6 @@
-/* Practice: trading with pretend money. Paper trades today's live quotes, Backtest is paused until real history is
-   wired in, and the Journal holds every trade of either — two books, never mixed. The head says where each page's
-   prices come from. */
+/* Practice: trading with pretend money. Paper trades today's live ThetaData quotes, Backtest replays ThetaData's
+   recorded ones, and the Journal holds every trade of either — two books, never mixed. The head says where each page's
+   prices come from, and whether the terminal is answering. */
 
 import { Suspense } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';
@@ -10,7 +10,9 @@ import { PracticePageSkeleton } from './practiceSkeletons';
 import BackToTop from '../../components/ui/BackToTop';
 import ScrollHome from '../../components/layout/ScrollHome';
 import { useGlideHold } from '../../components/ui/useGlideHold';
-import { SIM_FEED } from '../../data/paper/feed';
+import { useSyncExternalStore } from 'react';
+import { feedOffline, feedRev, subscribeFeed } from '../../data/paper/thetaFeed';
+import { historyOffline, historyRev, subscribeHistory } from '../../data/review/history';
 
 const Fact = ({ label, children, testId, title }: { label: string; children: React.ReactNode; testId?: string; title?: string }) => (
   <div className="min-w-0">
@@ -31,6 +33,9 @@ const PracticeLayout = () => {
      from one trade of the journal to the next is one page too (JournalTrade fades its own body) */
   const fadeKey = /^\/practice\/journal\/[^/]+\/[^/]+/.test(location.pathname) ? '/practice/journal/trade' : location.pathname.split('/').slice(0, 5).join('/');
   const which = page.path.endsWith('/paper') ? 'paper' : page.path.endsWith('/backtest') ? 'backtest' : 'journal';
+  useSyncExternalStore(subscribeFeed, feedRev, feedRev);
+  useSyncExternalStore(subscribeHistory, historyRev, historyRev);
+  const away = which === 'paper' ? feedOffline() : which === 'backtest' ? historyOffline() : 0;
 
   return (
     <>
@@ -47,21 +52,24 @@ const PracticeLayout = () => {
         <dl className="flex flex-wrap gap-x-6 gap-y-2" data-shell-facts>
           {which === 'paper' && (
             <>
-              <Fact label="Prices" testId="source" title="Each contract’s live bid and ask from Unusual Whales; orders fill only in the options session">
-                {SIM_FEED ? 'Simulated feed' : 'Live quotes'}
+              <Fact label="Prices" testId="source" title="Each contract’s live NBBO from ThetaData; orders fill only on a fresh two-sided quote in the options session">
+                {away ? <span className="text-warn">ThetaData offline</span> : 'ThetaData · live NBBO'}
               </Fact>
-              <Fact label="Clock">Today · New York</Fact>
+              <Fact label="Clock">Today · ET</Fact>
             </>
           )}
           {which === 'backtest' && (
             <>
-              <Fact label="Prices" testId="source">Paused — no real history yet</Fact>
+              <Fact label="Prices" testId="source" title="ThetaData’s recorded NBBO, minute by minute: buys at the ask, sells at the bid">
+                {away ? <span className="text-warn">ThetaData offline</span> : 'ThetaData · recorded NBBO'}
+              </Fact>
+              <Fact label="Clock">A past day · ET</Fact>
             </>
           )}
           {which === 'journal' && (
             <>
-              <Fact label="Prices" testId="source">Paper: live quotes · Backtest: synthetic tape</Fact>
-              <Fact label="Clock">New York</Fact>
+              <Fact label="Prices" testId="source">Paper: live NBBO · Backtest: recorded NBBO</Fact>
+              <Fact label="Clock">ET</Fact>
             </>
           )}
           <Fact label="Money">Pretend — nothing reaches a broker</Fact>

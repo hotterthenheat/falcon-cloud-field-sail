@@ -18,7 +18,7 @@ import { DOCK_ROOM } from '../../../data/editorDock';
 import { buildExposureProfile } from '../../../data/exposure';
 import { buildPrints } from '../../../data/gex';
 import { levelsOf } from './derive';
-import { fmtTwin, twinFamilyFor, twinPrice } from '../../../data/indexTwins';
+import { fmtTwin, twinFamilyFor, twinPrice, useTwinRatio } from '../../../data/indexTwins';
 import { buildLevelRead } from '../../../data/levelview';
 import { TIMEFRAMES, type Timeframe } from '../../../data/timeframe';
 import type { TileProps, TileState } from '../tile';
@@ -161,16 +161,8 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
               <TickerQuickPick ticker={ctx.ticker} onPick={pickTicker} />
               {/* TV's "+" beside the symbol capsule — compare symbols */}
               <CompareControl current={ctx.ticker} compares={compares} onAdd={addCompare} onRemove={removeCompare} />
-              {/* The price twins on index names — the cash index and the futures beside the ETF */}
-              {(() => {
-                const fam = twinFamilyFor(ctx.ticker);
-                if (!fam) return null;
-                return (
-                  <span className="font-mono text-t10 text-textMuted tnum">
-                    {fam.index} {fmtTwin(twinPrice(fam, 'index', levels.spot, levels.spot))} · {fam.futures} {fmtTwin(twinPrice(fam, 'futures', levels.spot, levels.spot))}
-                  </span>
-                );
-              })()}
+              {/* The cash index beside the ETF, at the measured ratio */}
+              <IndexTwin ticker={ctx.ticker} spot={levels.spot} />
             </span>
             <span className="w-px h-4 bg-borderSubtle shrink-0 mx-1.5" aria-hidden />
           </>
@@ -281,7 +273,7 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
             <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <LiveSpot ticker={ctx.ticker} fallback={levels.spot} className="text-t11 font-semibold tnum text-textPrimary" />
+            <LiveSpot ticker={ctx.ticker} className="text-t11 font-semibold tnum text-textPrimary" />
           </div>
           {/* one quiet row per comparison — its line ink, its name, and the only hand-removal outside the + menu */}
           {compares.map(c => (
@@ -355,3 +347,15 @@ const ChartTile = ({ ctx, state, set, lift, pickTicker }: TileProps) => {
 };
 
 export default ChartTile;
+
+/** The cash index's price for the ETF's spot, at the ratio the two live prices give; nothing until both are in */
+function IndexTwin({ ticker, spot }: { ticker: string; spot: number }) {
+  const fam = twinFamilyFor(ticker);
+  const ratio = useTwinRatio(fam);
+  if (!fam || ratio == null) return null;
+  return (
+    <span className="font-mono text-t10 text-textMuted tnum" title={`${fam.index} ÷ ${fam.etf} = ${ratio.toFixed(4)}, from the two live prices`}>
+      {fam.index} {fmtTwin(twinPrice('index', spot, ratio))}
+    </span>
+  );
+}

@@ -10,7 +10,7 @@ import { ChevronDown, Copy, FilePlus2, FolderOpen, History, Pencil, Play, Rotate
 import { compile, explain, run, type Compiled } from '../../core/pine';
 import { NEW_SCRIPT_SOURCE } from '../../data/builtinScripts';
 import { clearDraft, getDraft, openEditor, recentScripts, remember, setDraft, type RecentScript } from '../../data/editorDock';
-import { forgetCompiled } from '../alerts/AlertWatcher';
+import { forgetCompiled } from '../alerts/scriptCompiles';
 import { bumpLibrary, getPaneBars, liftFromPane, placeOnPane, refreshEveryPane, usePaneScripts } from '../../data/paneScripts';
 import { scriptStore } from '../../data/scriptStore';
 import type { PaneId, Script, ScriptVersion } from '../../types/scripts';

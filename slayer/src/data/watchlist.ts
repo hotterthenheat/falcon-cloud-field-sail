@@ -1,11 +1,12 @@
 /* The watched contracts, kept on this machine (`slayer_watchlist_v2`) and carried by the account when signed in
-   (data/sync.ts). A row is marked at its live vendor quote (weigherChain): the mid of a two-sided NBBO, else the
-   last print; with no quote yet the mark is blank, never a model price. */
+   (data/sync.ts). A row is marked at the contract's real-time NBBO mid off the ThetaData terminal (data/thetaQuote.ts);
+   with the terminal down it shows the last mid the terminal gave, stamped with when, and with none the mark is
+   blank — never a model price or another feed's. */
 
 import { useSyncExternalStore } from 'react';
 import { isoDate, sessionsBetween, today } from '../core/calendar';
 import { now } from '../core/clock';
-import { ensureMarks, liveSpotOf, peekMark, subscribeMarks } from './weigherChain';
+import { ensureThetaCloseOn, ensureThetaMark, ensureThetaPrice, peekThetaCloseOn, peekThetaMark, peekThetaPrice, subscribeTheta } from './thetaQuote';
 import type { OptionRight } from '../types/compass';
 import type { WatchRequest, WatchedContract } from '../types/watchlist';
 
@@ -61,16 +62,24 @@ const commit = (next: WatchedContract[]) => {
 
 /* ---- pricing --------------------------------------------------------------------- */
 
-/** The underlying's live price, or NaN until it lands */
+/** The underlying's real-time price (or the last one the terminal gave), or NaN with none */
 function spotOf(ticker: string): number {
-  return liveSpotOf(ticker) ?? NaN;
+  ensureThetaPrice(ticker);
+  return peekThetaPrice(ticker)?.value.price ?? NaN;
 }
 
-/** The contract's live mark (NBBO mid, else last print), or NaN until its quote lands */
+type MarkRead = { mark: number; live: boolean; at: number | null };
+/** The contract's NBBO mid: this session's while the terminal answers, else the last one kept (with its instant) */
+function readMark(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): MarkRead {
+  ensureThetaMark(w.ticker, w.expiry, w.strike, w.right);
+  const m = peekThetaMark(w.ticker, w.expiry, w.strike, w.right);
+  if (!m || !(m.value.mark > 0)) return { mark: NaN, live: false, at: null };
+  return { mark: Number(m.value.mark.toFixed(2)), live: m.live, at: m.live ? null : m.value.read };
+}
+/** A mark only the live terminal gave: what a close or a day's record may lock at */
 function markOf(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>): number {
-  void ensureMarks(w.ticker, w.expiry);
-  const m = peekMark(w.ticker, w.expiry, w.strike, w.right);
-  return m && m.mark > 0 ? Number(m.mark.toFixed(2)) : NaN;
+  const m = readMark(w);
+  return m.live ? m.mark : NaN;
 }
 
 /** What the contract is worth at the bell — intrinsic, nothing else */
@@ -96,11 +105,17 @@ export interface WatchReturns {
   spot: number;
   /** Sessions left to the expiry; 0 on the day */
   dte: number;
+  /** The mark is the terminal's this session (false: a kept one, or none) */
+  live: boolean;
+  /** When a kept mark was taken (null while live or settled) */
+  markAt: number | null;
 }
 
-export function returnsOf(w: WatchedContract, spot = spotOf(w.ticker)): WatchReturns {
+/** The row's returns. `mark` is read off the terminal unless given (a test hands it recorded marks). */
+export function returnsOf(w: WatchedContract, spot = spotOf(w.ticker), given?: MarkRead): WatchReturns {
   const open = w.status === 'open';
-  const mark = open ? markOf(w) : (w.closedMark ?? w.addedMark);
+  const read = open ? given ?? readMark(w) : { mark: w.closedMark ?? w.addedMark, live: true, at: null };
+  const mark = read.mark;
   const todayKey = isoDate(today());
   const before = [...w.marks].filter(m => m.day < todayKey).sort((a, b) => (a.day < b.day ? 1 : -1))[0];
   const prevClose = before ? before.close : w.addedMark;
@@ -118,6 +133,8 @@ export function returnsOf(w: WatchedContract, spot = spotOf(w.ticker)): WatchRet
     toBreakevenPct: ((breakeven - spot) / spot) * 100,
     spot,
     dte: sessionsBetween(today(), new Date(`${w.expiry}T12:00:00`)),
+    live: read.live,
+    markAt: read.at,
   };
 }
 
@@ -210,7 +227,9 @@ export function tickWatchlist(): void {
   const next = list.map(w => {
     if (w.status !== 'open') return w;
     if (w.expiry < todayKey) {
-      const spot = spotOf(w.ticker);
+      /* settled at the expiry day's regular close, not at today's price */
+      ensureThetaCloseOn(w.ticker, w.expiry);
+      const spot = peekThetaCloseOn(w.ticker, w.expiry) ?? NaN;
       if (!(spot > 0)) return w;
       changed = true;
       return { ...w, status: 'expired' as const, closedAt: now().getTime(), closedMark: intrinsicOf(w.strike, w.right, spot) };
@@ -233,7 +252,7 @@ export function tickWatchlist(): void {
 }
 
 /* a landed quote re-renders every list that shows the rows */
-subscribeMarks(() => {
+subscribeTheta(() => {
   if (!list.length) return;
   list = list.slice();
   emit();

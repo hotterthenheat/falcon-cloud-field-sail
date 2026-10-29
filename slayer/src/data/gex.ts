@@ -1,8 +1,9 @@
 /* Dealer-gamma helpers off the live vendor book (uwBook): money formatting, the heat pattern's read, a name's key levels, the book as an alert reads it. */
 
-import { pickFlip, pickWalls } from '../core/walls';
-import { bookHistory, ensureBook, peekChange, peekSpot } from './uwBook';
-import type { GexSnapshot } from '../types/market';
+import { keptOf } from '../core/dealerSign';
+import { bookOfLevels, peekChange, snapshotFor } from './uwBook';
+import { levelsFor } from './levelsFor';
+import { levelsForName } from './levelsScope';
 import type { DarkPoolPrint, KeyLevels } from '../types/gex';
 
 // ---- formatting -------------------------------------------------------------
@@ -28,50 +29,11 @@ export function buildPrints(_ticker: string, _spot: number): DarkPoolPrint[] {
   return [];
 }
 
-/** Key levels for ANY ticker, derived from its latest GEX snapshot — the same
-    book the trails draw, so an expanded board chart agrees with its heatmap. */
+/** A name's key levels: its Levels card's own (data/levelsFor.ts — one wall rule, one flip), NaN while the book loads. */
 export function buildLevelsFor(ticker: string): KeyLevels {
-  const live = liveBookOf(ticker);
-  if (!live) return { spot: NaN, callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN };
-  const { spot, latest } = live;
-
-  let supreme = spot;
-  let supremeAbs = 0;
-  let callWall = spot;
-  let cwAbs = 0;
-  let putWall = spot;
-  let pwAbs = 0;
-  for (const l of latest.levels) {
-    const a = Math.abs(l.value);
-    if (a > supremeAbs) {
-      supremeAbs = a;
-      supreme = l.strike;
-    }
-    if (l.strike > spot && a > cwAbs) {
-      cwAbs = a;
-      callWall = l.strike;
-    }
-    if (l.strike < spot && a > pwAbs) {
-      pwAbs = a;
-      putWall = l.strike;
-    }
-  }
-
-  let flip = spot;
-  let flipDist = Infinity;
-  const sorted = [...latest.levels].sort((a, b) => a.strike - b.strike);
-  for (let i = 1; i < sorted.length; i++) {
-    if (Math.sign(sorted[i - 1].value) !== Math.sign(sorted[i].value)) {
-      const mid = (sorted[i - 1].strike + sorted[i].strike) / 2;
-      const d = Math.abs(mid - spot);
-      if (d < flipDist) {
-        flipDist = d;
-        flip = mid;
-      }
-    }
-  }
-
-  return { spot, callWall, putWall, flip, supreme };
+  const lv = levelsFor(ticker, levelsForName(ticker));
+  if (!lv) return { spot: NaN, callWall: NaN, putWall: NaN, flip: NaN, supreme: NaN };
+  return { spot: lv.spot, callWall: lv.callWall ?? NaN, putWall: lv.putWall ?? NaN, flip: lv.flip ?? NaN, supreme: lv.supreme };
 }
 
 /** The live session change for a ticker, percent (0 until the vendor's read lands) */
@@ -79,10 +41,10 @@ export function spotChangePct(ticker: string): number {
   return peekChange(ticker) ?? 0;
 }
 
-/* The book as an alert reads it: core/walls.ts's real nulls, not the rail's fallbacks (a wall parked at spot would move every tick).
-   `readExposureNow` is pure over a chain; `exposureNowFor` wraps the live vendor book, null while it is unreadable. */
+/* The book as an alert reads it: the Levels card's real nulls, not the rail's fallbacks (a wall parked at spot would move
+   every tick). */
 export interface ExposureNow {
-  /** Signed total of the chain's net GEX. */
+  /** Net GEX of the Levels card's contracts, kept (house) sign */
   netGex: number;
   supreme: number | null;
   callWall: number | null;
@@ -93,10 +55,13 @@ export interface ExposureNow {
   step: number;
 }
 
-export function readExposureNow(
-  chain: readonly { strike: number; value: number }[],
-  spot: number
-): ExposureNow {
+/** The book as an alert reads it. A live book's snapshot reads its name's Levels card (exposureNowFor); a chain made
+    anywhere else carries only its net, so it names the supreme and no wall or flip. */
+export function readExposureNow(chain: readonly { strike: number; value: number }[], spot: number): ExposureNow {
+  const owner = bookOfLevels(chain);
+  const live = owner ? exposureNowFor(owner) : null;
+  if (live) return live;
+  void spot;
   let netGex = 0;
   let supreme: number | null = null;
   let supremeAbs = 0;
@@ -108,36 +73,24 @@ export function readExposureNow(
       supreme = l.strike;
     }
   }
-  const w = pickWalls(chain, spot, l => l.value);
-  const flip = pickFlip(chain, spot, l => l.value);
+  return { netGex, supreme, callWall: null, putWall: null, flip: null, step: stepOf(chain) };
+}
+
+/** The chain's strike spacing — the smallest gap present; 0 when the chain is too thin to say */
+function stepOf(chain: readonly { strike: number }[]): number {
   const sorted = [...chain].sort((a, b) => a.strike - b.strike);
   let step = Infinity;
   for (let i = 1; i < sorted.length; i++) {
     const d = sorted[i].strike - sorted[i - 1].strike;
     if (d > 1e-9) step = Math.min(step, d);
   }
-  return {
-    netGex,
-    supreme,
-    callWall: w.callWall,
-    putWall: w.putWall,
-    flip,
-    step: Number.isFinite(step) ? step : 0,
-  };
+  return Number.isFinite(step) ? step : 0;
 }
 
+/** A name's book as an alert reads it: its Levels card's net (house sign), supreme, walls and flip — null while loading */
 export function exposureNowFor(ticker: string): ExposureNow | null {
-  const live = liveBookOf(ticker);
-  if (!live || live.latest.levels.length === 0) return null;
-  return readExposureNow(live.latest.levels, live.spot);
-}
-
-/** The live vendor book's newest strike snapshot and spot for a name, or null until it lands */
-function liveBookOf(ticker: string): { spot: number; latest: GexSnapshot } | null {
-  const name = ticker.toUpperCase();
-  ensureBook(name);
-  const spot = peekSpot(name);
-  const snaps = bookHistory(name);
-  const latest = snaps?.[snaps.length - 1];
-  return spot != null && spot > 0 && latest ? { spot, latest } : null;
+  const lv = levelsFor(ticker, levelsForName(ticker));
+  if (!lv) return null;
+  const chain = snapshotFor(ticker, lv.scope)?.chain ?? [];
+  return { netGex: keptOf(lv.netGex), supreme: lv.supreme, callWall: lv.callWall, putWall: lv.putWall, flip: lv.flip, step: stepOf(chain) };
 }

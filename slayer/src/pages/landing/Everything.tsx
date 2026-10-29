@@ -92,7 +92,7 @@ const ROOMS: Room[] = [
     ],
   },
   { id: 'dossier', name: 'Dossier', glyph: 'dossier', kind: 'The file on a name', path: '/dossier/news', features: fromRegistry(RECORD_SUBPAGES) },
-  { id: 'practice', name: 'Practice', glyph: 'practice', kind: 'Paper trading and backtesting', path: '/practice/paper', features: fromRegistry(PRACTICE_SUBPAGES) },
+  { id: 'practice', name: 'Practice', glyph: 'practice', kind: 'Paper trading and the journal', path: '/practice/paper', features: fromRegistry(PRACTICE_SUBPAGES) },
   {
     id: 'every',
     name: 'In every room',
@@ -126,7 +126,6 @@ const IN_PLACE_OF: { glyph: GlyphName; text: string; room: string }[] = [
   { glyph: 'terrain', text: 'a charting subscription', room: 'terrain' },
   { glyph: 'trace', text: 'an options screener', room: 'trace' },
   { glyph: 'paper', text: 'a paper-trading account', room: 'practice' },
-  { glyph: 'backtest', text: 'an options backtester', room: 'practice' },
   { glyph: 'journal', text: 'a trading journal', room: 'practice' },
   { glyph: 'dossier', text: 'an earnings calendar', room: 'dossier' },
   { glyph: 'dossier', text: 'an insider and Congress tracker', room: 'dossier' },

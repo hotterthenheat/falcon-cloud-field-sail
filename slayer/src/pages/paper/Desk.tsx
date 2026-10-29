@@ -1,7 +1,8 @@
 /* The paper desk: one to four charts on live prices, the account card, the chain with the order inside a strike,
-   and the book of positions, orders and trades. Orders fill at each contract's live bid and ask. */
+   and the book of positions, orders and trades. Orders fill at each contract's live ThetaData NBBO (data/paper/feed.ts);
+   with the terminal away the desk says so, keeps the last quotes on screen with their time, and nothing fills. */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { X } from 'lucide-react';
 import type { KeyLevels } from '../../types/gex';
 import type { ChartOverlays } from '../../components/gex/StrikeChart';
@@ -16,12 +17,15 @@ import DomLadder, { LadderDock } from '../../components/paper/DomLadder';
 import OptionsChain, { ChainOrder, type ChainOrderDesk } from '../../components/paper/OptionsChain';
 import type { ChartBracket, ChartEntry, ChartMark, ChartPosition } from '../../components/review/PositionLayer';
 import PnlBadges from '../../components/review/PnlBadges';
+import ThetaLine from '../../components/review/ThetaLine';
+import { AsOf } from '../../components/ui/states';
+import { feedRev, subscribeFeed } from '../../data/paper/thetaFeed';
 import { dirInk, rWords, usd, usdSigned } from '../../components/review/words';
 import AccountCard from '../../components/paper/AccountCard';
 import TickerPicker from '../../components/paper/TickerPicker';
 import StartCard from '../../components/paper/StartCard';
 import { DeskMenu, LadderDoor, LayoutDoors } from '../../components/paper/DeskDoors';
-import { onTick } from '../../data/review/futuresTape';
+import { onTick } from '../../data/paper/products';
 import type { OrderKind, Side } from '../../data/review/engine';
 import { currentDesk, quickOf, setActivePane, setPaneName, setPaneTimeframe, setQuick, useDesks } from '../../data/paper/desks';
 import PositionBar from '../../components/paper/PositionBar';
@@ -29,15 +33,14 @@ import type { TradeMark } from '../../components/gex/StrikeChart';
 import { chartMenu, planOfMark, positionLines, type Hands } from './deskHands';
 import { buildExposureProfile } from '../../data/exposure';
 import { peekChange, snapshotOf, useBookRev } from '../../data/uwBook';
-import { useMarks } from '../../data/weigherChain';
 import { isOptionRoot } from '../../data/listedNames';
 import { wantSpotGex } from '../../data/spotGexBook';
 import { nameGoesUp } from '../../data/review/engine';
 import { contractKey, contractWords, type ContractId, type Right } from '../../data/review/quotes';
-import { REVIEW_NAMES } from '../../data/review/tape';
+import { companyName } from '../../data/tickers';
 import type { Timeframe } from '../../data/timeframe';
 import { bankedOf, evalRead, futLadderRoom, futLadderTake, futRefusal, optLadderRoom, optLadderTake, optRefusal, viewOf, type FutOrder, type FutTrade, type MarkedFut, type MarkedOpt, type OptOrder, type OptTrade } from '../../data/paper/engine';
-import { FUTURES_LIVE, LIFE, PAPER_INDEXES, isPaperIndex, liveDeskChain, paperIndex, baseIvOf, futCandles, isPaperFuture, listedNow, paperFut, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
+import { FUTURES_LIVE, LIFE, PAPER_INDEXES, feedOffline, isPaperIndex, ivOf, liveDeskChain, paperIndex, futCandles, spotRead, isPaperFuture, listedNow, paperFut, spotOf, spotForAskNow, spotForBidNow, stepOf } from '../../data/paper/feed';
 import { frontOn, futWords } from '../../data/paper/products';
 import { dayBeginsAt, nyMomentWords } from '../../data/paper/clock';
 import { amendOrder, attachFut, attachOpt, breakevenOrder, cancelOrder, cancelWorking, closeFut, closeOpt, endEval, flattenAccount, liveMarket, placeFutOrder, placeOptOrder, readPaper, rebaseOrder, setInHand, startEvaluation, startPractice, takeHere, trailOrder, usePaper } from '../../data/paper/store';
@@ -99,7 +102,7 @@ const FutLabel = ({ contract, long, symbol }: { contract: string; long: boolean;
   </span>
 );
 
-const titleOf = (ticker: string): string => paperIndex(ticker)?.name ?? REVIEW_NAMES.find(n => n.ticker === ticker)?.name ?? ticker;
+const titleOf = (ticker: string): string => paperIndex(ticker)?.name ?? companyName(ticker);
 
 /* The walls and flip the chart draws: today's live vendor book, else blank */
 function liveLevelsOf(name: string, spot: number): KeyLevels {
@@ -117,7 +120,7 @@ const BEAT_MS = 2_000;
 function useLiveBeat(): number {
   const [n, setN] = useState(0);
   const book = useBookRev();
-  const marks = useMarks([]);
+  const marks = useSyncExternalStore(subscribeFeed, feedRev, feedRev);
   useEffect(() => {
     const id = window.setInterval(() => setN(x => x + 1), BEAT_MS);
     return () => window.clearInterval(id);
@@ -222,7 +225,7 @@ const PaperDesk = () => {
   /* the chain is laddered off a price that stays put, and only re-centred once the name has run most of the ladder away */
   const ck = `${name}|${exp}`;
   if (!fut && exp) {
-    const step = stepOf(name);
+    const step = stepOf(name, exp);
     if (!centreRef.current || centreRef.current.key !== ck || Math.abs(spot - centreRef.current.at) > step * (CHAIN_EACH - 4)) centreRef.current = { key: ck, at: spot };
   }
   /* The chain as the weigher draws it, on the Live Chart's own quotes (feed.ts liveDeskChain) */
@@ -247,7 +250,7 @@ const PaperDesk = () => {
     picked,
     /* the chain's expiry on the name it shows; on another pane's name, the one the chain would open on */
     expiryOf: n => (n === name && exp ? exp : ((listedNow(n, m.now).find(e => e.dte >= 5) ?? listedNow(n, m.now)[0])?.iso ?? null)),
-    strikeNear: (n, px) => Math.round(px / stepOf(n)) * stepOf(n),
+    strikeNear: (n, px) => Math.round(px / stepOf(n, n === name ? exp : null)) * stepOf(n, n === name ? exp : null),
     spotOf,
   };
 
@@ -259,6 +262,7 @@ const PaperDesk = () => {
   if (hit) return hit;
   const fut = isPaperFuture(name);
   const spot = fut ? m.fut(name) : spotOf(name);
+  const ivNow = fut ? 0 : ivOf(name, m.now);
   const positions: ChartPosition[] = fut
     ? v.fut.filter(p => p.symbol === name).map(p => ({ key: p.key, contract: pseudo(p.symbol, p.long), qty: p.qty, spotIn: p.avg, pnl: p.pnl, r: p.r ?? 0, avg: p.avg, bid: p.last, dead: false, label: `${p.contract} · ${p.long ? 'long' : 'short'}`, tone: p.long ? ('bull' as const) : ('bear' as const), long: p.long, last: p.last, room: futLadderRoom(account, m, p.symbol), take: futLadderTake(account, m, p.symbol) }))
     : v.opt.filter(p => p.contract.ticker === name).map(p => ({ key: p.key, contract: p.contract, qty: p.qty, spotIn: p.spotIn, pnl: p.pnl, r: p.r, avg: p.avg, bid: p.quote.bid, dead: p.quote.dead, room: optLadderRoom(account, m, p.contract), take: optLadderTake(account, m, p.contract) }));
@@ -269,7 +273,7 @@ const PaperDesk = () => {
       if (o.status !== 'working' || !o.exit || o.price == null || o.kind === 'market' || o.symbol !== name) continue;
       const pos = v.fut.find(p => p.symbol === o.symbol);
       if (!pos) continue;
-      const reach = pos.last * (prod.vol / Math.sqrt(252));
+      const reach = Infinity;
       brackets.push({ orderId: o.id, kind: o.kind === 'stop' ? 'stop' : 'target', on: 'contract', contract: pseudo(o.symbol, pos.long), qty: o.qty, price: o.price, level: o.price, money: (o.price - pos.avg) * (pos.long ? 1 : -1) * prod.pointValue * o.qty, edge: o.price > pos.last ? 'up' : 'down', far: Math.abs(o.price - pos.last) > reach, trail: o.kind === 'stop' ? (o.trail ?? null) : undefined, trailNow: o.kind === 'stop' ? Math.abs(pos.last - o.price) : undefined, breakeven: !!o.breakeven, canBreakeven: !!o.oco && account.fut.orders.some(x => x.status === 'working' && x.oco === o.oco && x.kind === 'limit') });
     }
   } else {
@@ -283,7 +287,8 @@ const PaperDesk = () => {
       const level = onName ? o.price : spotForBidNow(o.contract, m.now, o.price);
       const sellsAt = onName ? m.optQuoteAt(o.contract, o.price).bid : o.price;
       const here = pos.quote.spot;
-      const reach = here * (baseIvOf(name) / Math.sqrt(252));
+      /* further off than the name's expected day (its live at-the-money IV, one sigma) is off the scale; unknown until it lands */
+      const reach = ivNow > 0 ? here * (ivNow / Math.sqrt(252)) : Infinity;
       brackets.push({ orderId: o.id, kind: o.kind === 'stop' ? 'stop' : 'target', on: onName ? 'name' : 'contract', contract: o.contract, qty: o.qty, price: o.price, level, money: (sellsAt - pos.avg) * 100 * o.qty, edge: nameGoesUp(o.kind, o.contract.right) ? 'up' : 'down', far: level == null || Math.abs(level - here) > reach, trail: o.kind === 'stop' ? (o.trail ?? null) : undefined, trailNow: o.kind === 'stop' ? Math.max(0.01, onName ? Math.abs(here - o.price) : pos.quote.bid - o.price) : undefined, breakeven: !!o.breakeven, canBreakeven: !!o.oco && account.opt.orders.some(x => x.status === 'working' && x.oco === o.oco && x.kind === 'limit') });
     }
   }
@@ -293,13 +298,13 @@ const PaperDesk = () => {
   const entries: ChartEntry[] = [];
   if (fut) {
     const prodE = paperFut(name);
-    const reach = spot * (prodE.vol / Math.sqrt(252));
+    const reach = Infinity;
     for (const o of account.fut.orders) {
       if (o.status !== 'working' || o.exit || o.price == null || o.kind === 'market' || o.symbol !== name) continue;
       entries.push({ orderId: o.id, side: o.side, kind: o.kind === 'stop' ? 'stop' : 'limit', qty: o.qty, price: o.price, level: o.price, edge: o.price > spot ? 'up' : 'down', far: Math.abs(o.price - spot) > reach, priceAt: at => onTick(prodE, at) });
     }
   } else {
-    const reach = spot * (baseIvOf(name) / Math.sqrt(252));
+    const reach = ivNow > 0 ? spot * (ivNow / Math.sqrt(252)) : Infinity;
     for (const o of account.opt.orders) {
       if (o.status !== 'working' || o.side !== 'buy' || o.price == null || o.kind === 'market' || o.contract.ticker !== name) continue;
       const level = spotForAskNow(o.contract, m.now, o.price);
@@ -327,7 +332,7 @@ const PaperDesk = () => {
     held: positions.length,
     /* a future's chart, and an index's, are their own candles (made from the fund's) — an index is never asked of the
        simulator by its own name, and has no book of its own to draw walls from */
-    tape: fut ? { bars: futCandles(name), iv: prod!.vol, key: `paper:fut:${name}`, precision: { decimals: prod!.decimals, tick: prod!.tick } } : undefined,
+    tape: fut ? { bars: futCandles(name), iv: 0, key: `paper:fut:${name}`, precision: { decimals: prod!.decimals, tick: prod!.tick } } : undefined,
     levels: liveLevelsOf(name, spot),
     layer: {
       fills: [],
@@ -603,6 +608,7 @@ const PaperDesk = () => {
     { key: 'pnl', header: 'Made or lost', align: 'right', render: r => <span className={`font-semibold ${dirInk(r.t.pnl)}`}>{usdSigned(r.t.pnl)} <span className="text-t10 font-normal opacity-80">{r.t.r != null ? rWords(r.t.r) : 'no stop · no R'}</span></span> },
   ];
 
+  const nameRead = fut ? null : spotRead(name);
   const picker = (
     <span className="inline-flex items-center gap-2 font-mono text-t12 tnum" data-paper-picker={name}>
       <TickerPicker value={name} onChange={n => setName(n)} futuresOnly={evaluation} day={account.day} futPrice={s => m.fut(s)} indexPrice={s => spotOf(s)} indexes={PAPER_INDEXES} />
@@ -611,19 +617,21 @@ const PaperDesk = () => {
         {deskName.dayPct >= 0 ? '▲ +' : '▼ '}
         {deskName.dayPct.toFixed(2)}%
       </span>
+      {nameRead?.kept && <AsOf at={nameRead.takenAt} />}
     </span>
   );
 
   return (
     <div className="flex flex-col gap-2.5">
       {!holding && elsewhere && <HeldElsewhere />}
+      <ThetaLine since={feedOffline()} at={nameRead?.takenAt} what="ThetaData offline — reconnecting · the quotes on screen are the last ones read, and nothing fills until it answers" />
       <DeskShell
         session={{ id: account.id, name: account.name }}
         kind="paper"
         /* no strip over the chart: the account is the right column's first card */
         strip={false}
         picker={picker}
-        foot="Live bid and ask from the vendor’s listed contracts — practice, not advice. Orders fill only on a two-sided quote in the options session; positions carry from one visit to the next."
+        foot="ThetaData’s live NBBO — practice, not advice. Orders fill only on a two-sided quote read in the last few seconds, in the options session (09:30–16:00 ET); positions carry from one visit to the next."
         revision={revision}
         account={{ equity: v.equity, openPnl: v.openPnl, third: ev ? { label: 'room', value: usd(Math.max(0, ev.room), 0) } : { label: 'free', value: usd(v.free, 0) } }}
         names={[deskName]}

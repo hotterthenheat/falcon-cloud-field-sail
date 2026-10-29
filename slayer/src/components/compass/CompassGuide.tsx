@@ -13,12 +13,14 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
 
 export const CompassGuide = () => (
   <div data-compass-guide>
-    <Section title="The book">
-      <p>Calls and puts, two across. 0DTE carries the stop and the targets, and it stays up until that contract's own close, not 15:00. 1–7 DTE is the same book one week out. Nothing further out. The session card is the hours on the chart: regular, pre-market, after hours, overnight.</p>
+    <Section title="What it reads">
+      <p>ThetaData: each contract's national bid and ask, its greeks and implied vol, open interest, and the underlying's one-minute bars. The scan reads only the names on the strip: the roots that list a same-day contract (0DTE), or the twenty roots with the full feature row (1–7 DTE), or the one name the board is narrowed to. With the terminal down the board says so and keeps the last scan, stamped.</p>
     </Section>
-    <Section title="The window">
-      <p>The scan follows each root’s own option session, overnight and pre-market included where the root trades; outside it the board names the next open. Bid over $0.15, spread at or under 8%, ATM ± 4. One name a session, five open. The fill is the ask on the first quote a full minute after the call. The 0DTE stop is that ask times (1 − 0.5322). A stop, a target, the close, a broken level, or a failed check leaves the board and lands on the blotter as a win or a loss. If the book flips to the other side, even at +20%, it leaves as a caution. That is the choice, not an order, and it is not a loss. SPX and RUT are on 0DTE every session. VIX is on 0DTE only on Tuesday. Nasdaq is not on this book.</p>
+    <Section title="When it scores">
+      <p>Book A and Book B score every five minutes from 09:45 to 15:00 ET, the minutes Model 1 and Model 2 were trained on. Book C (no model) sweeps once from 15:20 ET. A call needs Model 1 at 70.67% or more, a bid over $0.15 and a spread at or under 8%. Book A is within four strikes of the money on the index roots and broad ETFs, or a 6% span on a single name; Book B is the far wing beyond that, at $1 or less and at most half its ask of 30 minutes earlier. Five roots a session.</p>
+    </Section>
+    <Section title="The record">
+      <p>Every call is written to the blotter the moment it fires, with the quote it fired on. It fills at the ask of the first quote a full minute after the call. Then each minute's quote, in order: the stop (0.4678 × the fill, ratcheting up for a runner), a non-runner's take-profit at 1.50×, a 0.40% five-minute reversal of the underlying, and the 15:55 ET flat (15:50 for Book C, which sells 3× inside 120 seconds or 2× inside 30). Nothing is filled from a quote that was not printed.</p>
     </Section>
   </div>
 );
-

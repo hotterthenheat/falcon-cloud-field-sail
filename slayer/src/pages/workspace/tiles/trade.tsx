@@ -9,14 +9,15 @@ import { ListGrid, usdSigned, type ListRow } from '../../../components/weigher/P
 import { expiryFor, isoDate, today } from '../../../core/calendar';
 import { buildBook } from '../../../data/bookAtStrike';
 import { setupIdOf } from '../../../data/compass';
-import { currentPicks } from '../../../data/compassModel';
+import { useThetaBook } from '../../../data/thetaBook';
 import { costOf } from '../../../data/positionCurve';
 import { readPosition, useAllPositions, type Position, type Verdict } from '../../../data/positions';
 import { returnsOf, tickWatchlist, useWatchlist } from '../../../data/watchlist';
 import { blankChain, loadLiveChain, type DeskChain } from '../../../data/weigherDesk';
-import { peekMark, useMarks } from '../../../data/weigherChain';
+import { peekThetaMark, useThetaMarks, useThetaStatus } from '../../../data/thetaQuote';
+import { AsOf, EmptyBox, LoadingBox, asOfText } from '../../../components/ui/states';
 import { snapshotOf } from '../../../data/uwBook';
-import { SCANNERS, SLEEVES, isScannerEligible, type OptionRight, type ScannerKey, type Setup, type SleeveKey } from '../../../types/compass';
+import { SLEEVES, type OptionRight, type Setup, type SleeveKey } from '../../../types/compass';
 import type { ExposureProfileData } from '../../../types/gex';
 import type { WatchedContract } from '../../../types/watchlist';
 import type { TileControl, TileProps, TileState, WorkspaceCtx } from '../tile';
@@ -27,18 +28,15 @@ const fmtDay = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day:
 
 /* ------------------------------------------------------------------ Compass setups */
 
-const sleeveOfState = (state: TileState): SleeveKey => (SLEEVES.some(s => s.key === state.sleeve) ? (state.sleeve as SleeveKey) : 'weekly');
-const scanOfState = (state: TileState, sleeve: SleeveKey): ScannerKey => (SCANNERS.some(s => s.key === state.scan) && isScannerEligible(state.scan as ScannerKey, sleeve) ? (state.scan as ScannerKey) : 'top-setups');
+/* the scan runs two expiries: today's and this week's */
+const SCAN_SLEEVES = SLEEVES.filter(s => s.key === 'odte' || s.key === 'weekly');
+const sleeveOfState = (state: TileState): SleeveKey => (state.sleeve === 'odte' ? 'odte' : 'weekly');
 
-export const setupsControls = ({ state }: { ctx: WorkspaceCtx; state: TileState }): TileControl[] => {
-  const sleeve = sleeveOfState(state);
-  return [
-    { id: 'sleeve', label: 'Expiry', title: 'How far out the contracts run', options: SLEEVES.map(s => ({ value: s.key, label: `${s.label} · ${fmtDay(expiryFor(s.dte).date)}`, hint: s.blurb })) },
-    { id: 'scan', label: 'Scan', title: 'Which scan ranks the cards', options: SCANNERS.filter(s => isScannerEligible(s.key, sleeve)).map(s => ({ value: s.key, label: s.label, hint: s.blurb })) },
-  ];
-};
+export const setupsControls = (): TileControl[] => [
+  { id: 'sleeve', label: 'Expiry', title: 'How far out the contracts run', options: SCAN_SLEEVES.map(s => ({ value: s.key, label: `${s.label} · ${fmtDay(expiryFor(s.dte).date)}`, hint: s.blurb })) },
+];
 
-/** The cards, kept: they re-render when the sweep hands a new ranking, never on the desk's one-second tick */
+/** The cards, kept: they re-render when the scan hands a new ranking */
 const Cards = memo(({ ranked, expiryChip, onOpen }: { ranked: Setup[]; expiryChip: string; onOpen: (s: Setup) => void }) => (
   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-2 content-start" data-tile-rows>
     {ranked.map((s, i) => (
@@ -50,19 +48,28 @@ const Cards = memo(({ ranked, expiryChip, onOpen }: { ranked: Setup[]; expiryChi
 ));
 Cards.displayName = 'Cards';
 
-export const SetupsTile = ({ ctx, state }: TileProps) => {
+/* Compass's own scan, run on the terminal's live quotes while the tile is on the desk (data/thetaBook.ts) */
+export const SetupsTile = ({ state }: TileProps) => {
   const door = useDoor();
   const sleeve = sleeveOfState(state);
-  const scanner = scanOfState(state, sleeve);
-  const ranked = useMemo(() => currentPicks().filter(s => (sleeve === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE')), [sleeve, ctx.revision]);
+  const view = useThetaBook(sleeve);
+  const today = view.setups;
+  const earlier = today.length === 0 ? view.earlier : null;
+  const ranked = earlier ? earlier.setups.filter(s => (sleeve === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE')) : today;
   const expiryChip = useMemo(() => expiryFor(SLEEVES.find(s => s.key === sleeve)?.dte ?? 5).label, [sleeve]);
-  const open = useCallback((s: Setup) => door(`/compass/${setupIdOf({ ticker: s.ticker, strike: s.strike, right: s.right, scanner, sleeve })}`), [door, scanner, sleeve]);
-  if (ranked.length === 0) return <TileEmpty words="Nothing cleared the bar on this scan and expiry." />;
+  const open = useCallback((s: Setup) => door(`/compass/${setupIdOf({ ticker: s.ticker, strike: s.strike, right: s.right, scanner: 'top-setups', sleeve })}`), [door, sleeve]);
+  if (ranked.length === 0) {
+    if (view.status === 'down') return <EmptyBox title="ThetaData offline" reason="Compass scans on the terminal’s live quotes. The cards come back when it answers." />;
+    if (view.status === 'loading') return <LoadingBox shape="block" className="h-full p-2" label="Compass is scanning" />;
+    return <TileEmpty words="Nothing cleared the bar on this expiry yet." />;
+  }
   const top = ranked[0];
   return (
     <div className="h-full min-h-0 flex flex-col" data-setups-tile>
       <Cards ranked={ranked} expiryChip={expiryChip} onOpen={open} />
       <TileRead testId="setups">
+        {earlier ? <AsOf at={earlier.at} prefix="last scan" className="mr-1.5" /> : null}
+        {view.status === 'down' ? <span className="text-warn">ThetaData offline. </span> : null}
         {ranked.length} {ranked.length === 1 ? 'setup' : 'setups'} cleared the bar. First: {top.contract} — {top.headline}
       </TileRead>
     </div>
@@ -146,8 +153,18 @@ export const ChainTile = ({ ctx, state, size }: TileProps) => {
         <ChainCard chain={chain} right={right} sel={sel} onSelect={onSelect} cols={cols} centerKey={`${ctx.ticker}:${dte}`} inlineDrill book={size.room === 'small' ? undefined : bookAt} />
       </div>
       <TileRead testId="chain">
-        {ctx.ticker} options are charging for a move of ±{chain.expectedMovePct.toFixed(1)}% by {fmtDay(chain.expiry.date)}
-        {chain.expiry.dte === 0 ? ', today’s bell' : ` — ${chain.expiry.sessions} ${chain.expiry.sessions === 1 ? 'session' : 'sessions'} out`}. Press a strike for its weigh-up.
+        {chain.kept && chain.takenAt ? <AsOf at={chain.takenAt} className="mr-1.5" /> : null}
+        {chain.offline ? <span className="text-warn">ThetaData offline. </span> : null}
+        {chain.rows.length > 0 && chain.expectedMovePct > 0 ? (
+          <>
+            {ctx.ticker} options are charging for a move of ±{chain.expectedMovePct.toFixed(1)}% by {fmtDay(chain.expiry.date)}
+            {chain.expiry.dte === 0 ? ', today’s bell' : ` — ${chain.expiry.sessions} ${chain.expiry.sessions === 1 ? 'session' : 'sessions'} out`}. Press a strike for its weigh-up.
+          </>
+        ) : chain.rows.length > 0 ? (
+          'Press a strike for its weigh-up.'
+        ) : (
+          `Reading ${ctx.ticker}’s chain for ${fmtDay(chain.expiry.date)}.`
+        )}
       </TileRead>
     </div>
   );
@@ -172,7 +189,9 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
   const door = useDoor();
   const watchlist = useWatchlist();
   const positions = useAllPositions();
-  const marksRev = useMarks(useMemo(() => [...positions.map(p => ({ ticker: p.ticker, expiry: p.expiry })), ...watchlist.filter(w => w.status === 'open').map(w => ({ ticker: w.ticker, expiry: w.expiry }))], [positions, watchlist]));
+  /* every contract's real-time NBBO off the terminal; a kept mark (terminal down) is stamped with its instant */
+  const marksRev = useThetaMarks(useMemo(() => [...positions, ...watchlist.filter(w => w.status === 'open')].map(c => ({ ticker: c.ticker, expiry: c.expiry, strike: c.strike, right: c.right })), [positions, watchlist]));
+  const theta = useThetaStatus();
   /* the desk's sweep marks the watchlist's closes and settles what has expired */
   useEffect(() => {
     tickWatchlist();
@@ -182,8 +201,8 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
       [...positions]
         .sort((a, b) => b.addedAt - a.addedAt)
         .map<ListRow>(p => {
-          const live = peekMark(p.ticker, p.expiry, p.strike, p.right);
-          const value = live && live.mark > 0 ? live.mark : null;
+          const held = peekThetaMark(p.ticker, p.expiry, p.strike, p.right);
+          const value = held && held.value.mark > 0 ? held.value.mark : null;
           const sign = p.side === 'long' ? 1 : -1;
           const cost = costOf(p);
           const total = value != null && cost ? (value - cost.value) * sign * 100 * p.contracts : null;
@@ -211,7 +230,7 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
       let prof = books.get(c.ticker);
       if (prof === undefined) {
         try {
-          const snap = c.ticker === ctx.ticker ? ctx.snapshot : snapshotOf(c.ticker);
+          const snap = c.ticker === ctx.ticker && ctx.snapshot ? ctx.snapshot : snapshotOf(c.ticker);
           prof = snap ? profile30(snap) : null;
         } catch {
           prof = null;
@@ -233,7 +252,15 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
   );
 
   if (rows.length === 0) return <TileEmpty words={show === 'watch' ? 'Nothing watched yet. Press + on a strike in the Weigher’s chain and it stays here.' : show === 'own' ? 'No positions yet. Add one you own or sold on the Weigher.' : 'Nothing held or watched yet. Add a position, or press + on a strike, on the Weigher.'} door="Open the Weigher" onDoor={() => door('/weigher')} />;
-  const total = ownRows.reduce((a, r) => a + (r.kind === 'own' ? r.total ?? 0 : 0), 0);
+  /* the total over the rows that have a mark; a row with none is not a zero */
+  const priced = ownRows.filter(r => r.kind === 'own' && r.total != null);
+  const total = priced.reduce((a, r) => a + (r.kind === 'own' ? r.total ?? 0 : 0), 0);
+  /* the oldest kept mark on the tile, while the terminal is down */
+  const keptAt = theta === 'down' ? rows.reduce<number | null>((m, r) => {
+    const c = r.kind === 'watch' ? r.w : r.p;
+    const h = peekThetaMark(c.ticker, c.expiry, c.strike, c.right);
+    return h && !h.live ? Math.min(m ?? Infinity, h.value.read) : m;
+  }, null) : null;
   const against = rows.filter(r => hedgeOf(r) === 'against').length;
   const openWatch = watchRows.filter(r => r.kind === 'watch' && r.w.status === 'open').length;
   return (
@@ -242,10 +269,15 @@ export const PositionsTile = ({ ctx, state }: TileProps) => {
         <ListGrid rows={rows} selectedId={null} onPick={pick} hedgeOf={hedgeOf} emptyText="Nothing here yet" testId="pulse-positions" />
       </div>
       <TileRead testId="positions">
+        {theta === 'down' && <span className="text-warn">ThetaData offline{keptAt ? ` · marks ${asOfText(keptAt)}` : ' · no marks'}. </span>}
         {ownRows.length > 0 && (
-          <>
-            {ownRows.length} {ownRows.length === 1 ? 'position' : 'positions'}, <span className={`font-mono tnum ${dirInk(total)}`}>{usdSigned(total)}</span> since you added {ownRows.length === 1 ? 'it' : 'them'}.{' '}
-          </>
+          priced.length > 0 ? (
+            <>
+              {ownRows.length} {ownRows.length === 1 ? 'position' : 'positions'}, <span className={`font-mono tnum ${dirInk(total)}`}>{usdSigned(total)}</span> since you added {ownRows.length === 1 ? 'it' : 'them'}{priced.length < ownRows.length ? ` (${priced.length} marked)` : ''}.{' '}
+            </>
+          ) : (
+            <>{ownRows.length} {ownRows.length === 1 ? 'position' : 'positions'}, not marked yet. </>
+          )
         )}
         {openWatch > 0 && `${openWatch} watched. `}
         {against > 0 ? `Dealer hedging works against ${against} of them today.` : 'Dealer hedging is not working against any of them today.'}

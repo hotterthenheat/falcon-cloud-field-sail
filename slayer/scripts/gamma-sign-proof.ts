@@ -1,7 +1,8 @@
 /*
-  Gamma sign and book proof for Pinpoint. The book's gamma is the vendor's open-interest gamma, house-signed (calls
-  negative, puts positive) and printed in the retail sign: a put-only strike reads short gamma, a call-only strike long,
-  and one SPY expiry's book (captured rows, scripts/fixtures/spy-2026-10-29.json) nets exactly what the vendor's rows sum
+  Gamma sign and book proof for Pinpoint. The book's gamma is the vendor's open-interest gamma, kept in the house sign
+  (core/dealerSign.ts: calls negative, puts positive) and printed in the dealer sign: a put-only strike reads short gamma, a
+  call-only strike long, every other greek follows the same model (dealers long the calls, short the puts), and one SPY
+  expiry's book (captured rows, scripts/fixtures/spy-2026-10-29.json) nets exactly what the vendor's rows sum
   to, contracts laid on or not. Also: the flip's outright pricing of far legs, the hold, and the trading clock.
   Run:  npx tsx scripts/gamma-sign-proof.ts
 */
@@ -15,6 +16,8 @@ import { buildExpectedMoveCone, daySigmaOfIv, sigmaFromStraddle, STRADDLE_K, tou
 import { contractHigher } from '../src/data/liveHigher';
 import { buildFlowFromRows, buildHedgeFlowLadder } from '../src/data/hedgeFlow';
 import { blackScholesGreeks } from '../src/core/greeks';
+import { dealerOf } from '../src/core/dealerSign';
+import { shownGreek } from '../src/components/gex/retailSign';
 import type { StrikeNode } from '../src/types/market';
 
 let fail = 0;
@@ -204,6 +207,32 @@ const hot = (right: 'C' | 'P', k: number) => ({ option_symbol: occ(right, k), op
   check('veta is $vega per vol point per session, about half of VEGA one session out', near(h.veta, vetaFd, 0.02) && Math.abs(h.veta / vega) > 0.3 && Math.abs(h.veta / vega) < 0.7);
   /* speed holds S² fixed (∂Γ/∂S × the $ of 1%), the finite difference moves S² too: they differ by 2×$GEX×1% */
   check('speed is $GEX per 1% move (∂Γ/∂S·S²·1%·S·1%)', near(h.speed, speedFd - 2 * gexUsd(S, t, iv) * 0.01, 0.01));
+}
+
+/* 8 — one dealer model on every greek (core/dealerSign.ts): a call-only strike prints each greek as dealers LONG the calls, a
+   put-only strike as dealers SHORT the puts; every page turns every kept greek the same way */
+{
+  const t = tradingYears(expiry, CAPTURE);
+  const signOf = (v: number) => (v > 0 ? 1 : v < 0 ? -1 : 0);
+  let ok = true;
+  for (const [right, k] of [['C', 780], ['P', 765]] as const) {
+    const rows = [row(k, right === 'C' ? 5_000_000 : 0, right === 'P' ? -5_000_000 : 0)];
+    const book = expiryBookFromRows(rows, [hot(right, k)] as never[], spot, expiry);
+    const n = book.find(x => x.strike === k)!;
+    const side = right === 'C' ? 1 : -1;
+    const iv = (right === 'C' ? n.callIv : n.putIv) ?? 0;
+    const g = blackScholesGreeks(spot, k, t, iv);
+    const long = { gex: g.gamma, dex: right === 'C' ? g.deltaCall : g.deltaPut, vex: g.vega, vanna: g.vanna, charm: right === 'C' ? g.charmCall : g.charmPut };
+    const kept = right === 'C' ? { gex: n.callGex, dex: n.callDex, vex: n.callVex, vanna: n.callVanna, charm: n.callCharm } : { gex: n.putGex, dex: n.putDex, vex: n.putVex, vanna: n.putVanna, charm: n.putCharm };
+    for (const greek of ['gex', 'dex', 'vex', 'vanna', 'charm'] as const) {
+      const want = side * signOf(long[greek]);
+      const got = signOf(dealerOf(kept[greek]));
+      const shown = signOf(shownGreek(greek, kept[greek]));
+      console.log(`     ${right} ${k} ${greek}: dealer ${got > 0 ? '+' : '−'} (model ${want > 0 ? '+' : '−'}), printed ${shown > 0 ? '+' : '−'}`);
+      if (got !== want || shown !== want) ok = false;
+    }
+  }
+  check('every greek follows one model: dealers long the calls, short the puts — and prints in that sign', ok);
 }
 
 if (fail) {

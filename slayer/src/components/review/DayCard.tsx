@@ -1,14 +1,14 @@
 /* REVIEW · the day card — a labelled card like every other on a line (DropdownSelect's clothes), opening the house
-   calendar (ExpiryPicker's) on the TAPE'S days: a day the tape does not hold cannot be picked, nor one before
-   `min` (the desk's clock only moves forward). */
+   calendar (ExpiryPicker's) on the sessions ThetaData's quote history holds: from the oldest it reaches to the newest
+   finished one. A day outside that cannot be picked, nor one before `min` (the desk's clock only moves forward). */
 
-import { useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { DayPicker } from 'react-day-picker';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CARD } from '../ui/DropdownSelect';
 import { isoDate } from '../../core/calendar';
-import { dateOf, dayWords, tapeDays } from '../../data/review/tape';
+import { dateOf, dayWords, ensureWindow, historyRev, isReplayDay, replayWindow, subscribeHistory } from '../../data/review/history';
 
 interface Props {
   label: string;
@@ -24,10 +24,18 @@ interface Props {
 
 const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Props) => {
   const [open, setOpen] = useState(false);
-  const days = tapeDays();
-  const held = new Set(days);
-  const floor = min ?? days[0];
+  useSyncExternalStore(subscribeHistory, historyRev, historyRev);
+  useEffect(() => {
+    void ensureWindow();
+  }, []);
+  const w = replayWindow();
+  const floor = min ?? w.first ?? '';
   const selected = dateOf(value);
+  const oldest = w.first ? dateOf(w.first) : (() => {
+    const d = dateOf(w.last);
+    d.setFullYear(d.getFullYear() - 1);
+    return d;
+  })();
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
@@ -53,11 +61,11 @@ const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Pr
               setOpen(false);
             }}
             defaultMonth={selected}
-            startMonth={dateOf(days[0])}
-            endMonth={dateOf(days[days.length - 1])}
+            startMonth={oldest}
+            endMonth={dateOf(w.last)}
             disabled={d => {
               const iso = isoDate(d);
-              return !held.has(iso) || iso < floor;
+              return !isReplayDay(iso) || iso < floor;
             }}
             showOutsideDays
             weekStartsOn={0}
@@ -87,7 +95,10 @@ const DayCard = ({ label, value, onChange, min, title, testId, size = 'md' }: Pr
               focused: '',
             }}
           />
-          <p className="mt-2 pt-2 border-t border-borderSubtle/70 text-t10 text-textMuted">Trading days on the tape{min ? ', from where the clock stands' : ''}.</p>
+          <p className="mt-2 pt-2 border-t border-borderSubtle/70 text-t10 text-textMuted" data-day-card-window>
+            {w.first ? `ThetaData’s recorded sessions, ${dayWords(w.first, true).replace(/^\w+, /, '')} to ${dayWords(w.last, true).replace(/^\w+, /, '')}` : `Recorded sessions up to ${dayWords(w.last, true).replace(/^\w+, /, '')} — how far back the quotes reach is being checked`}
+            {min ? ', from where the clock stands' : ''}.
+          </p>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

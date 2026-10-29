@@ -34,24 +34,26 @@ interface GreekWords {
   posWhy: string;
   negWhy: string;
 }
+/* Keyed on the KEPT sign (core/dealerSign.ts: kept = −dealer), the way every page holds the figure: `pos` is a positive kept
+   value, i.e. a negative dealer exposure. */
 export const GREEK_WORDS: Record<Greek, GreekWords> = {
   gex: { pos: 'pushes along', neg: 'pushes back', posBoth: 'both push along', negBoth: 'both push back', posWhy: 'dealers chase a move there', negWhy: 'dealers lean against a move there' },
-  dex: { pos: 'leans up', neg: 'leans down', posBoth: 'both lean up', negBoth: 'both lean down', posWhy: 'their hedging leans with a rise there', negWhy: 'their hedging leans with a fall there' },
-  vex: { pos: 'gains if vol rises', neg: 'gains if vol falls', posBoth: 'both gain if vol rises', negBoth: 'both gain if vol falls', posWhy: 'dealers are long volatility there', negWhy: 'dealers are short volatility there' },
-  vanna: { pos: 'buys on a vol drop', neg: 'sells on a vol drop', posBoth: 'both buy on a vol drop', negBoth: 'both sell on a vol drop', posWhy: 'a one-point vol drop makes dealers buy stock there', negWhy: 'a one-point vol drop makes dealers sell stock there' },
-  charm: { pos: 'sells as the clock runs', neg: 'buys as the clock runs', posBoth: 'both sell as the clock runs', negBoth: 'both buy as the clock runs', posWhy: 'each passing day makes dealers sell stock there', negWhy: 'each passing day makes dealers buy stock there' },
-  color: { pos: 'gamma builds', neg: 'gamma fades', posBoth: 'both build gamma', negBoth: 'both fade gamma', posWhy: 'the gamma-per-1% book is steepening as the session runs', negWhy: 'the gamma-per-1% book is flattening as the session runs' },
-  vomma: { pos: 'vega rises with vol', neg: 'vega falls with vol', posBoth: 'both gain vega as vol rises', negBoth: 'both lose vega as vol rises', posWhy: 'a vol rise adds vega there', negWhy: 'a vol rise takes vega off there' },
-  speed: { pos: 'gamma rises with price', neg: 'gamma falls with price', posBoth: 'both add gamma as price rises', negBoth: 'both lose gamma as price rises', posWhy: 'a one-dollar rise adds gamma-per-1% there', negWhy: 'a one-dollar rise takes gamma-per-1% off there' },
-  veta: { pos: 'vega builds', neg: 'vega fades', posBoth: 'both build vega', negBoth: 'both fade vega', posWhy: 'vega is steepening as the session runs', negWhy: 'vega is flattening as the session runs' },
-  zomma: { pos: 'gamma rises with vol', neg: 'gamma falls with vol', posBoth: 'both add gamma as vol rises', negBoth: 'both lose gamma as vol rises', posWhy: 'a one-point vol rise adds gamma-per-1% there', negWhy: 'a one-point vol rise takes gamma-per-1% off there' },
+  dex: { pos: 'hedged long stock', neg: 'hedged short stock', posBoth: 'both hedged long stock', negBoth: 'both hedged short stock', posWhy: 'dealers’ options there are short delta, so they hold stock against them', negWhy: 'dealers’ options there are long delta, so they are short stock against them' },
+  vex: { pos: 'gains if vol falls', neg: 'gains if vol rises', posBoth: 'both gain if vol falls', negBoth: 'both gain if vol rises', posWhy: 'dealers are short volatility there', negWhy: 'dealers are long volatility there' },
+  vanna: { pos: 'sells on a vol drop', neg: 'buys on a vol drop', posBoth: 'both sell on a vol drop', negBoth: 'both buy on a vol drop', posWhy: 'a one-point vol drop makes dealers sell stock there', negWhy: 'a one-point vol drop makes dealers buy stock there' },
+  charm: { pos: 'buys as the clock runs', neg: 'sells as the clock runs', posBoth: 'both buy as the clock runs', negBoth: 'both sell as the clock runs', posWhy: 'each passing session makes dealers buy stock there', negWhy: 'each passing session makes dealers sell stock there' },
+  color: { pos: 'gamma fades', neg: 'gamma builds', posBoth: 'both fade gamma', negBoth: 'both build gamma', posWhy: 'dealers’ gamma per 1% is shrinking as the session runs', negWhy: 'dealers’ gamma per 1% is growing as the session runs' },
+  vomma: { pos: 'vega falls with vol', neg: 'vega rises with vol', posBoth: 'both lose vega as vol rises', negBoth: 'both gain vega as vol rises', posWhy: 'a vol rise takes dealer vega off there', negWhy: 'a vol rise adds dealer vega there' },
+  speed: { pos: 'gamma falls with price', neg: 'gamma rises with price', posBoth: 'both lose gamma as price rises', negBoth: 'both add gamma as price rises', posWhy: 'a 1% rise takes dealer gamma off there', negWhy: 'a 1% rise adds dealer gamma there' },
+  veta: { pos: 'vega fades', neg: 'vega builds', posBoth: 'both fade vega', negBoth: 'both build vega', posWhy: 'dealer vega is shrinking as the session runs', negWhy: 'dealer vega is growing as the session runs' },
+  zomma: { pos: 'gamma falls with vol', neg: 'gamma rises with vol', posBoth: 'both lose gamma as vol rises', negBoth: 'both add gamma as vol rises', posWhy: 'a one-point vol rise takes dealer gamma off there', negWhy: 'a one-point vol rise adds dealer gamma there' },
 };
 export const GREEK_LABEL: Record<Greek, string> = { gex: 'GEX', dex: 'DEX', vex: 'vega $', vanna: 'VANNA', charm: 'CHARM', color: 'COLOR', vomma: 'VOMMA', speed: 'SPEED', veta: 'VETA', zomma: 'ZOMMA' };
 
 /** Each greek in one plain sentence — the hover on every label that prints them side by side */
 export const GREEK_EXPLAIN: Record<Greek, string> = {
   gex: 'GEX (gamma): the stock dealers must trade for a 1% move — positive, they absorb moves; negative, they amplify them',
-  dex: 'DEX (delta): the stock dealers already hold against their options — which way their hedging leans',
+  dex: 'DEX (delta): the dealers’ option delta in dollars of stock, if they are long the calls and short the puts — they hold the opposite in stock',
   vex: 'Dollar vega: what the dealers’ option book gains or loses if implied volatility moves one point. Not vanna — vanna is the stock that vol makes them trade.',
   vanna: 'Vanna: the stock dealers must buy or sell if implied volatility moves one point. Not dollar vega.',
   charm: 'CHARM: the stock dealers must buy or sell as a day passes, with price and vol unchanged — the clock pulling on their hedges',

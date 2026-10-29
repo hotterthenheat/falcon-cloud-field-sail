@@ -1,6 +1,6 @@
 /* REVIEW · how a figure is said (one place, so the desk, the report and the journal say it the same way) */
 
-import { clockWords, dayWords } from '../../data/review/tape';
+import { clockWords, dayWords } from '../../data/review/history';
 import type { Moment } from '../../data/review/engine';
 import { pctWhole as pct } from '../../core/format';
 
@@ -13,8 +13,8 @@ export const rWords = (r: number): string => `${r >= 0 ? '+' : MINUS}${Math.abs(
 export { pct };
 /** The direction's ink for a signed figure — flat money is plain */
 export const dirInk = (v: number): string => (Math.abs(v) < 0.005 ? 'text-textSecondary' : v > 0 ? 'text-bull' : 'text-bear');
-/** "Mar 14 · 10:42" */
-export const momentWords = (m: Moment): string => `${dayWords(m.day)} · ${clockWords(m.minute)}`;
+/** "Mar 14 · 10:42 ET" */
+export const momentWords = (m: Moment): string => `${dayWords(m.day)} · ${clockWords(m.minute)} ET`;
 /** Session minutes as a trader would say them. `dayMin`: the minutes in a trading day of that kind — an option's
     390, a future's 1,380 (a future held twenty hours was read as "3.5 sessions"). Days, not "1.0 sessions". */
 export const heldWords = (min: number, dayMin = 390): string => {

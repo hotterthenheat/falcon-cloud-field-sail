@@ -8,6 +8,7 @@ import { setFlexBook } from './oiHeat';
 import { uwCall } from './whales';
 import { nyIsoDaysBack } from './nyDate';
 import { SIM_DESK } from './deskMode';
+import { createStore, keptRead } from './feedStore';
 
 export type VendorState = 'loading' | 'live' | 'empty' | 'error';
 
@@ -23,6 +24,8 @@ export interface VendorRow {
   okAt?: number;
   /** The last ask failed. A print already on the row is kept. */
   fault?: 'down' | 'failed' | null;
+  /** The row is the answer this browser kept at this instant, until the fresh read lands */
+  keptAt?: number | null;
 }
 
 export interface VendorBook {
@@ -37,12 +40,12 @@ interface Job {
   kind: 'uw';
 }
 
-const listeners = new Set<() => void>();
+const store = createStore(0);
 const books = new Map<string, VendorBook>();
 const started = new Set<string>();
 const EMPTY_BOOK: VendorBook = { key: '', rows: [] };
 
-const emit = () => listeners.forEach(fn => fn());
+const emit = () => store.set(n => n + 1);
 const enc = (s: string) => encodeURIComponent(s);
 
 function asRows(data: unknown): unknown[] {
@@ -131,6 +134,14 @@ function faultOf(error: string, status: number): 'down' | 'failed' {
 const FAULT_WORDS = { down: 'Quote desk is down', failed: 'This read did not land' } as const;
 
 async function runJob(key: string, job: Job): Promise<unknown> {
+  /* the kept answer fills the row while the fresh one is out */
+  const k = keptRead();
+  void k.get(job.path).then(kept => {
+    const row = books.get(key)?.rows.find(r => r.id === job.id);
+    if (kept.error || k.at == null || (row && row.state !== 'loading')) return;
+    const view = briefOf(kept.data);
+    paint(key, job.id, { state: view.empty ? 'empty' : 'live', brief: view.brief, n: view.n, data: clip(kept.data), path: job.path, label: job.label, okAt: k.at, keptAt: k.at, fault: null });
+  });
   const res = await uwCall(job.path);
   if (res.error) {
     const fault = faultOf(res.error, res.status);
@@ -156,6 +167,7 @@ async function runJob(key: string, job: Job): Promise<unknown> {
     path: job.path,
     label: job.label,
     okAt: Date.now(),
+    keptAt: null,
     fault: null,
   });
   return res.data;
@@ -649,9 +661,9 @@ export function useVendor(desk: 'pinpoint' | 'dossier', ticker: string, pathname
   const ref = useRef({ desk, ticker, pathname });
   ref.current = { desk, ticker, pathname };
   const subscribe = useCallback((fn: () => void) => {
-    listeners.add(fn);
+    const off = store.subscribe(fn);
     start(ref.current.desk, ref.current.ticker, ref.current.pathname);
-    return () => listeners.delete(fn);
+    return off;
   }, [key]);
   return useSyncExternalStore(subscribe, () => books.get(key) ?? EMPTY_BOOK, () => books.get(key) ?? EMPTY_BOOK);
 }
@@ -668,10 +680,7 @@ function rowOf(key: string, id: string): VendorRow | null {
 
 export function useVendorRow(key: string, id: string): VendorRow | null {
   return useSyncExternalStore(
-    fn => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
+    fn => store.subscribe(fn),
     () => rowOf(key, id),
     () => rowOf(key, id),
   );

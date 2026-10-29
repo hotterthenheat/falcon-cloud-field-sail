@@ -2115,3 +2115,23 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
     max-width: min(100%, calc(min(46vh, 520px) * 4 / 3));
   }
 }
+
+/* The shell's bar while a page's code arrives (components/layout/RouteHold.tsx) */
+@keyframes route-hold {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+.animate-route-hold {
+  animation: route-hold 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-route-hold {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}

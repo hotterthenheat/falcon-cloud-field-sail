@@ -11,6 +11,9 @@ import DropdownSelect, { type DropdownOption } from '../../components/ui/Dropdow
 import Modal from '../../components/ui/Modal';
 import { MorphingInfinity, useBusy } from '../../components/ui/Working';
 import { Door, Field, Row, Said, Section, Tag } from './pieces';
+import { thetaCall } from '../../data/theta';
+import { uwCall } from '../../data/whales';
+import { nyClock } from '../../core/nyTime';
 /* People's grid (AG Grid, ~326 KB) loads only when an owner opens People. */
 const PeopleBox = lazy(() => import('./People'));
 import { NAV_ITEMS } from '../../components/layout/nav';
@@ -917,6 +920,61 @@ function clearLocal(): void {
   for (const k of localKeys()) if (!KEEP_ON_CLEAR.has(k)) localStorage.removeItem(k);
 }
 
+type FeedState = { state: 'asking' | 'up' | 'down' | 'refused'; at: number | null; why?: string };
+const FEED_MS = 30_000;
+
+/** Asks a feed once now and every 30 s while the page is in front; `probe` resolves to the answer's error, null for a good one */
+function useFeedProbe(probe: () => Promise<string | null>): FeedState {
+  const [s, setS] = useState<FeedState>({ state: 'asking', at: null });
+  useEffect(() => {
+    let dead = false;
+    const ask = () => {
+      if (document.visibilityState === 'hidden') return;
+      void probe().then(err => {
+        if (dead) return;
+        if (!err) setS({ state: 'up', at: Date.now() });
+        else if (err === 'closed' || err === 'signed_out' || err === 'no_plan' || err === 'session_invalid') setS(p => ({ state: 'refused', at: p.at, why: err }));
+        else setS(p => ({ state: 'down', at: p.at }));
+      });
+    };
+    ask();
+    const id = window.setInterval(ask, FEED_MS);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return s;
+}
+
+const FeedWord = ({ s, down }: { s: FeedState; down: string }) => (
+  <span className="inline-flex items-center gap-2" data-feed-state={s.state}>
+    <span className={`rounded-full border px-2 py-0.5 font-mono text-t9 uppercase tracking-widest font-semibold ${s.state === 'up' ? 'tone-live' : s.state === 'asking' ? 'border-borderSubtle text-textMuted' : 'border-warn/40 text-warn'}`}>
+      {s.state === 'up' ? 'answering' : s.state === 'asking' ? 'asking' : s.state === 'refused' ? 'refused' : down}
+    </span>
+    <span className="font-mono text-t11 text-textMuted">
+      {s.state === 'refused' ? (s.why === 'no_plan' ? 'your plan does not open it' : 'sign in to read it') : s.at ? `last answered ${nyClock(s.at, { zone: true })}` : s.state === 'asking' ? '' : 'no answer yet'}
+    </span>
+  </span>
+);
+
+/** Whether each feed answers now: ThetaData's terminal (the session calendar, the lightest ask) and Unusual Whales (SPY's state) */
+const FeedRows = () => {
+  const theta = useFeedProbe(() => thetaCall('/calendar/today?format=json', true).then(r => r.error));
+  const uw = useFeedProbe(() => uwCall('/stock/SPY/stock-state').then(r => r.error));
+  return (
+    <>
+      <Row name="ThetaData" line="Real-time stock, index and option quotes, from the terminal on your machine" testId="feed-theta">
+        <FeedWord s={theta} down="offline" />
+      </Row>
+      <Row name="Unusual Whales" line="The dealer book, the tape, flow and the record" testId="feed-uw">
+        <FeedWord s={uw} down="not answering" />
+      </Row>
+    </>
+  );
+};
+
 /** DATA — what's yours on this machine, and where the feed stands */
 const DataBox = () => {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -934,13 +992,8 @@ const DataBox = () => {
     }
   };
   return (
-    <Section id="data" title="Data" line="What's yours on this machine — the board, the marks, the alerts, the desks, these settings — and where the feed stands" aside={<Tag>preview · the feed is simulated</Tag>}>
-      <Row name="The feed" line="Live options and quotes, the tape and the record — delayed while a payment is due" testId="feed">
-        <span className="inline-flex items-center gap-2">
-          <span className="tone-live rounded-full border px-2 py-0.5 font-mono text-t9 uppercase tracking-widest font-semibold">live</span>
-          <span className="font-mono text-t11 text-textMuted">every tick · the book every 10 seconds</span>
-        </span>
-      </Row>
+    <Section id="data" title="Data" line="What's yours on this machine — the board, the marks, the alerts, the desks, these settings — and where the feeds stand">
+      <FeedRows />
       <Row name="Your board, marks and settings" line="A file of everything kept here, to carry to another machine or keep safe · scripts stay in the library" testId="carry">
         <input
           ref={fileRef}

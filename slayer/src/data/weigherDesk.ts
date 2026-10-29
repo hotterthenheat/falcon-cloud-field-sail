@@ -1,11 +1,12 @@
-/* The Weigher's chain: listed expiries and the live chain from ThetaData (the vendor's listed contracts when
-   ThetaData does not answer), the session's volume and open interest, and yesterday's close. */
+/* The Weigher's chain from ThetaData: listed expiries, the chain's greeks and NBBO (one snapshot call each per chain),
+   the session's volume and open interest, and yesterday's close. With the terminal down the last chain stays, stamped
+   with when it was read; nothing stands in for it. */
 
-import { expiryFor, isoDate, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
+import { expiryFor, isoDate, isTradingDay, type Expiry, MONTHS as MONTHS_SHORT } from '../core/calendar';
 import { estimatePremium } from './compass';
-import { thetaCall } from './theta';
+import { keepTheta, keptTheta, noData, thetaGet } from './thetaFeed';
 import { THETA_DAYS, bsOnMark, yearFracLeft } from './weigherGate';
-import { ivNear, listUwExpiries, liveSpotOf, loadUwChain } from './weigherChain';
+import { ivNear, liveSpotOf } from './weigherChain';
 import { peekChange, peekIv, snapshotOf } from './uwBook';
 import { weekdayDte } from './compassParams';
 import { nameTape } from './compassSession';
@@ -115,6 +116,12 @@ export interface DeskChain {
   expiryIso: string;
   /** Option symbol the quotes were requested on. Absent means the chain's own ticker. */
   optRoot?: string;
+  /** The terminal did not answer this read. */
+  offline?: boolean;
+  /** When these quotes were read, epoch ms */
+  takenAt?: number;
+  /** This browser's copy from an earlier visit, shown until the terminal answers */
+  kept?: boolean;
 }
 
 /** Contract IV off the name's base vol: a gentle smile plus put skew, all
@@ -129,19 +136,6 @@ function contractIv(baseIv: number, spot: number, strike: number, right: OptionR
 /** The expiry rail: requested horizons resolved to REAL sessions, deduped —
     two horizons that land on the same Friday are one door, not two. */
 export const DESK_DTES = [0, 2, 4, 7, 14, 21, 30, 45] as const;
-
-function deskExpiries(): Expiry[] {
-  const seen = new Set<string>();
-  const out: Expiry[] = [];
-  for (const dte of DESK_DTES) {
-    const e = expiryFor(dte);
-    const key = isoDate(e.date);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(e);
-  }
-  return out;
-}
 
 /** The desk's horizon (calendar days, what `expiryFor` walks) for a REAL expiry date — a deep link carries the
     date, never a count (the Record sent sessions once and the desk read them as days: a Friday print landed on the
@@ -341,7 +335,9 @@ function snapRows(data: unknown): { contract: Record<string, unknown>; data: Rec
     if (!item || typeof item !== 'object') continue;
     const bag = item as Record<string, unknown>;
     const contract = bag.contract && typeof bag.contract === 'object' ? (bag.contract as Record<string, unknown>) : bag;
-    const row = Array.isArray(bag.data) ? bag.data[0] : bag.data;
+    /* v3 answers flat rows (the contract's fields beside the quote's); a grouped answer nests them under `data` */
+    const rows = Array.isArray(bag.data) ? bag.data : bag.data && typeof bag.data === 'object' ? [bag.data] : 'data' in bag ? [] : [bag];
+    const row = rows[rows.length - 1];
     if (!row || typeof row !== 'object') continue;
     out.push({ contract, data: row as Record<string, unknown> });
   }
@@ -355,16 +351,7 @@ interface LegQuote {
   high: number | null;
 }
 
-const legCache = new Map<string, { at: number; q: LegQuote }>();
-
-function legMark(data: unknown): number | null {
-  for (const item of snapRows(data)) {
-    const bid = numOr(item.data.bid);
-    const ask = numOr(item.data.ask);
-    if (bid != null && ask != null && ask >= bid && ask > 0) return Number(((bid + ask) / 2).toFixed(2));
-  }
-  return null;
-}
+const legCache = new Map<string, { at: number; marks: Map<string, number> }>();
 
 function legDay(data: unknown): { close: number | null; low: number | null; high: number | null } {
   let close: number | null = null;
@@ -381,37 +368,49 @@ function legDay(data: unknown): { close: number | null; low: number | null; high
   return { close, low, high };
 }
 
-/** The live mark and yesterday's close for one contract, whatever chain is on screen. */
-export async function readLeg(ticker: string, expiry: string, strike: number, right: OptionRight): Promise<LegQuote> {
-  const id = `${ticker}|${expiry}|${strike}|${right}`;
-  const hit = legCache.get(id);
-  if (hit && Date.now() - hit.at < 4000) return hit.q;
-  const exp = ymd(expiry);
-  const word = right === 'C' ? 'call' : 'put';
-  const day = priorWeekdayYmd();
-  let mark: number | null = null;
-  let prev: number | null = null;
-  let low: number | null = null;
-  let high: number | null = null;
-  for (const symbol of optionRoots(ticker)) {
-    const base = `symbol=${encodeURIComponent(symbol)}&expiration=${exp}&strike=${strike}&right=${word}`;
-    const [quote, eod, ohlc] = await Promise.all([
-      thetaCall(`/option/snapshot/quote?${base}&format=json`, true),
-      thetaCall(`/option/history/eod?${base}&start_date=${day}&end_date=${day}&format=json`),
-      thetaCall(`/option/snapshot/ohlc?${base}&format=json`, true),
-    ]);
-    if (mark == null && !quote.error && quote.status !== 472 && quote.status !== 478) mark = legMark(quote.data);
-    if (prev == null && !eod.error && eod.status !== 472 && eod.status !== 478) prev = legDay(eod.data).close;
-    if ((low == null || high == null) && !ohlc.error && ohlc.status !== 472 && ohlc.status !== 478) {
-      const session = legDay(ohlc.data);
-      if (low == null) low = session.low;
-      if (high == null) high = session.high;
-    }
-    if (mark != null) break;
+/** Live marks and yesterday's closes for many contracts: one NBBO snapshot and one EOD read per option root and
+    expiry, whatever the strikes. A leg the feed does not quote stays null. */
+export async function readLegs(legs: readonly { ticker: string; expiry: string; strike: number; right: OptionRight }[]): Promise<Map<string, LegQuote>> {
+  const out = new Map<string, LegQuote>();
+  const groups = new Map<string, typeof legs[number][]>();
+  for (const l of legs) {
+    const g = `${l.ticker.toUpperCase()}|${l.expiry}`;
+    const list = groups.get(g) ?? [];
+    list.push(l);
+    groups.set(g, list);
   }
-  const q = { mark, prev, low, high };
-  legCache.set(id, { at: Date.now(), q });
-  return q;
+  await Promise.all(
+    [...groups.entries()].map(async ([g, list]) => {
+      const [ticker, expiry] = g.split('|');
+      const exp = ymd(expiry);
+      const marks = new Map<string, number>();
+      let prevs = new Map<string, number>();
+      for (const symbol of optionRoots(ticker)) {
+        const hit = legCache.get(`${symbol}|${exp}`);
+        let sheet = hit && Date.now() - hit.at < 4000 ? hit.marks : null;
+        if (!sheet) {
+          const quote = await thetaGet(`/option/snapshot/quote?symbol=${encodeURIComponent(symbol)}&expiration=${exp}&format=json`, true);
+          if (quote.error) continue;
+          sheet = new Map();
+          for (const item of snapRows(quote.data)) {
+            const k = contractKey(item.contract);
+            const bid = numOr(item.data.bid);
+            const ask = numOr(item.data.ask);
+            if (k && bid != null && ask != null && ask >= bid && ask > 0) sheet.set(k, Number(((bid + ask) / 2).toFixed(2)));
+          }
+          legCache.set(`${symbol}|${exp}`, { at: Date.now(), marks: sheet });
+        }
+        for (const [k, v] of sheet) if (!marks.has(k)) marks.set(k, v);
+        if (!prevs.size) prevs = await eodCloses(symbol, exp);
+        if (list.every(l => marks.has(`${Number(l.strike.toFixed(4))}|${l.right}`))) break;
+      }
+      for (const l of list) {
+        const k = `${Number(l.strike.toFixed(4))}|${l.right}`;
+        out.set(`${l.ticker}|${l.expiry}|${l.strike}|${l.right}`, { mark: marks.get(k) ?? null, prev: prevs.get(k) ?? null, low: null, high: null });
+      }
+    }),
+  );
+  return out;
 }
 
 /** The low and high of the session they say they entered. Today is the live session. A past day is that day's print. */
@@ -423,9 +422,9 @@ export async function entryRange(ticker: string, expiry: string, strike: number,
   for (const symbol of optionRoots(ticker)) {
     const base = `symbol=${encodeURIComponent(symbol)}&expiration=${exp}&strike=${strike}&right=${word}`;
     const got = y === today
-      ? await thetaCall(`/option/snapshot/ohlc?${base}&format=json`, true)
-      : await thetaCall(`/option/history/eod?${base}&start_date=${y}&end_date=${y}&format=json`);
-    if (got.error || got.status === 472 || got.status === 478 || got.status === 0) continue;
+      ? await thetaGet(`/option/snapshot/ohlc?${base}&format=json`, true)
+      : await thetaGet(`/option/history/eod?${base}&start_date=${y}&end_date=${y}&format=json`);
+    if (got.error) continue;
     const session = legDay(got.data);
     if (session.low != null && session.high != null && session.high >= session.low) return { low: session.low, high: session.high };
   }
@@ -451,9 +450,9 @@ async function eodCloses(symbol: string, expiration: string): Promise<Map<string
   const hit = eodCache.get(key);
   if (hit && Date.now() - hit.at < 6 * 60 * 60 * 1000) return hit.rows;
   const day = priorWeekdayYmd();
-  const got = await thetaCall(`/option/history/eod?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&start_date=${day}&end_date=${day}&format=json`);
+  const got = await thetaGet(`/option/history/eod?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&start_date=${day}&end_date=${day}&format=json`);
   const rows = new Map<string, number>();
-  if (got.error || got.status === 472 || got.status === 478 || got.status === 0) return rows;
+  if (got.error) return rows;
   for (const item of snapRows(got.data)) {
     const k = contractKey(item.contract);
     const close = numOr(item.data.close);
@@ -472,9 +471,9 @@ async function priorAsks(symbol: string, expiration: string): Promise<Map<string
   const key = `${symbol}|${expiration}|${date}${tod.slice(0, 5)}`;
   const hit = priorCache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return hit.rows;
-  const got = await thetaCall(`/option/at_time/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&start_date=${date}&end_date=${date}&time_of_day=${encodeURIComponent(tod)}&format=json`);
+  const got = await thetaGet(`/option/at_time/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&start_date=${date}&end_date=${date}&time_of_day=${encodeURIComponent(tod)}&format=json`);
   const rows = new Map<string, number>();
-  if (got.error || got.status === 472 || got.status === 478 || got.status === 0) return rows;
+  if (got.error) return rows;
   for (const item of snapRows(got.data)) {
     const k = contractKey(item.contract);
     const ask = numOr(item.data.ask);
@@ -516,15 +515,23 @@ function dayLabel(iso: string, weekday: number): string {
 }
 
 /** Every expiration the feed lists for this name. A standard index includes its weekly root, so SPX has a today. `down` means the feed did not answer. An empty list with down false means the name has no options. */
-export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedExpiry[]; down: boolean }> {
+export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedExpiry[]; down: boolean; takenAt?: number }> {
   const roots = optionRoots(ticker);
-  const got = await Promise.all(roots.map(root => thetaCall(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`)));
-  const up = got.map(g => !g.error && g.status !== 472 && g.status !== 478 && g.status !== 0);
-  if (!up.some(Boolean)) {
-    /* ThetaData did not answer: the expiries Unusual Whales lists stand in */
-    const uw = await listUwExpiries(ticker);
-    return uw && uw.length ? { rows: uw.filter(e => !(e.weekday === 0 && nameTape(e.root, true).done)), down: false } : { rows: [], down: true };
+  const got = await Promise.all(roots.map(root => thetaGet(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`)));
+  const up = got.map(g => !g.error);
+  if (up.some(Boolean)) {
+    got.forEach((g, i) => up[i] && keepTheta(`expirations:${roots[i]}`, g.data));
+    return { rows: expiriesFrom(roots, got.map(g => g.data), up), down: false };
   }
+  if (got.every(g => noData(g))) return { rows: [], down: false };
+  /* the terminal did not answer: the list this browser kept, re-dated to today, stamped */
+  const kept = await Promise.all(roots.map(root => keptTheta<unknown>(`expirations:${root}`)));
+  const have = kept.map(k => k != null);
+  if (!have.some(Boolean)) return { rows: [], down: true };
+  return { rows: expiriesFrom(roots, kept.map(k => k?.data), have), down: true, takenAt: Math.max(...kept.map(k => k?.at ?? 0)) };
+}
+
+function expiriesFrom(roots: string[], datas: unknown[], up: boolean[]): ListedExpiry[] {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const byIso = new Map<number, string>();
   for (let d = 0; d <= 240; d++) {
@@ -537,7 +544,7 @@ export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedEx
   const seen = new Set<string>();
   for (let i = 0; i < roots.length; i++) {
     if (!up[i]) continue;
-    const raw = got[i].data;
+    const raw = datas[i];
     const rows = Array.isArray(raw) ? raw : [];
     for (const item of rows) {
       if (!item || typeof item !== 'object') continue;
@@ -555,24 +562,12 @@ export async function listLiveExpiries(ticker: string): Promise<{ rows: ListedEx
     }
   }
   out.sort((a, b) => a.iso.localeCompare(b.iso));
-  return { rows: out, down: false };
+  return out;
 }
 
 function weekdayCount(todayIso: string, expIso: string): number {
   const n = weekdayDte(todayIso.replace(/-/g, ''), expIso.replace(/-/g, ''));
   return Number.isFinite(n) ? n : 0;
-}
-
-/** The desk's own horizons, used only when the expiration feed did not answer. */
-export function fallbackListed(): ListedExpiry[] {
-  const today = nyIsoDate();
-  const dead = nameTape('SPY', true).done;
-  return deskExpiries().flatMap(e => {
-    const iso = isoDate(e.date);
-    const weekday = weekdayCount(today, iso);
-    if (weekday === 0 && dead) return [];
-    return [{ iso, dte: e.dte, weekday, label: dayLabel(iso, weekday), root: '' }];
-  });
 }
 
 /** The listed chain for this name and expiry. `root` is the option symbol when it is not the name (SPX today is SPXW). Bid and ask are that contract's NBBO. A field the feed did not send stays blank. */
@@ -584,11 +579,11 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   const span = Math.min(40, Math.max(8, range));
   const expiration = ymd(iso);
   const [got, quote] = await Promise.all([
-    thetaCall(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&right=both&strike_range=${span}&format=json`, true),
-    thetaCall(`/option/snapshot/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&right=both&strike_range=${span}&format=json`, true),
+    thetaGet(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&right=both&strike_range=${span}&format=json`, true),
+    thetaGet(`/option/snapshot/quote?symbol=${encodeURIComponent(symbol)}&expiration=${expiration}&right=both&strike_range=${span}&format=json`, true),
   ]);
   const nbbo = new Map<string, { bid: number; ask: number; bidSize: number; askSize: number; at: number }>();
-  if (!quote.error && quote.status !== 472 && quote.status !== 478) {
+  if (!quote.error) {
     for (const item of snapRows(quote.data)) {
       const k = contractKey(item.contract);
       if (!k) continue;
@@ -610,9 +605,8 @@ export async function loadLiveChain(ticker: string, dte: number, range = 18, roo
   let quotedAt = 0;
   const ivs: number[] = [];
   const tYears = yearFracLeft(iso);
-  const down = !!got.error || got.status === 472 || got.status === 478 || got.status === 0;
-  /* ThetaData did not answer: the vendor's listed contracts (their NBBO and greeks) stand in */
-  if (down) return loadUwChain(ticker, dte, range, root);
+  /* The terminal did not answer: an empty chain that says so. The desk keeps the chain it had. */
+  if (got.error && !noData(got)) return { ticker: name, spot: 0, step: 1, rows: [], expiry, expectedMovePct: 0, source: 'live', quotedAt: 0, expiryIso: iso, optRoot: symbol, offline: true };
   {
     for (const item of snapRows(got.data)) {
       const strike = numOr(item.contract.strike);
@@ -754,10 +748,12 @@ export function keepSlow(fresh: DeskChain, slow: DeskChain): DeskChain {
   return { ...fresh, rows: fresh.rows.map(r => ({ strike: r.strike, call: take(r.call), put: take(r.put) })) };
 }
 
-/** A new NBBO for the chain already on screen. A down feed returns null — the last live quote stays. */
-export async function refreshLiveChain(prev: DeskChain, range = 18): Promise<DeskChain | null> {
+/** A new NBBO for the chain already on screen. `offline` when the terminal did not answer; null when the read is not
+    this chain's. The last live quote stays either way. */
+export async function refreshLiveChain(prev: DeskChain, range = 18): Promise<DeskChain | 'offline' | null> {
   if (prev.source !== 'live' || !prev.rows.length) return null;
   const next = await loadLiveChain(prev.ticker, prev.expiry.dte, range, prev.optRoot);
+  if (next.offline) return 'offline';
   if (next.source !== 'live' || !next.rows.length || next.expiryIso !== prev.expiryIso) return null;
   return keepSlow(next, prev);
 }
@@ -768,11 +764,11 @@ export async function attachSession(chain: DeskChain): Promise<DeskChain> {
   const symbol = (chain.optRoot || chain.ticker).trim().toUpperCase();
   const q = `symbol=${encodeURIComponent(symbol)}&expiration=${ymd(chain.expiryIso)}&format=json`;
   const [ohlc, oi] = await Promise.all([
-    thetaCall(`/option/snapshot/ohlc?${q}`, true),
-    thetaCall(`/option/snapshot/open_interest?${q}`, true),
+    thetaGet(`/option/snapshot/ohlc?${q}`, true),
+    thetaGet(`/option/snapshot/open_interest?${q}`, true),
   ]);
   const volumeOf = new Map<string, { volume: number; high: number; low: number; close: number }>();
-  if (!ohlc.error && ohlc.status !== 472 && ohlc.status !== 478) {
+  if (!ohlc.error) {
     for (const item of snapRows(ohlc.data)) {
       const k = contractKey(item.contract);
       if (!k) continue;
@@ -789,7 +785,7 @@ export async function attachSession(chain: DeskChain): Promise<DeskChain> {
     }
   }
   const oiOf = new Map<string, number>();
-  if (!oi.error && oi.status !== 472 && oi.status !== 478) {
+  if (!oi.error) {
     for (const item of snapRows(oi.data)) {
       const k = contractKey(item.contract);
       const v = numOr(item.data.open_interest);
@@ -870,16 +866,14 @@ export interface ScanRow {
 /** Whether New York is trading right now — 9:30 to 16:00 ET on a weekday.
     Everything else is the overnight session. */
 export function marketSession(): 'open' | 'overnight' {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour12: false,
-    weekday: 'short',
-    hour: 'numeric',
-    minute: 'numeric',
-  }).formatToParts(new Date());
-  const get = (t: string) => parts.find(x => x.type === t)?.value ?? '';
-  const mins = (Number(get('hour')) % 24) * 60 + Number(get('minute'));
-  const weekday = !['Sat', 'Sun'].includes(get('weekday'));
-  return weekday && mins >= 570 && mins < 960 ? 'open' : 'overnight';
+  const p = nyParts();
+  const mins = p.hour * 60 + p.minute;
+  return isTradingDay(new Date(p.year, p.month - 1, p.day)) && mins >= 570 && mins < 960 ? 'open' : 'overnight';
 }
 
+/** Whether listed options are quoting: 9:30 to 16:15 ET on a trading day (index options trade to 16:15). */
+export function optionsOpen(): boolean {
+  const p = nyParts();
+  const mins = p.hour * 60 + p.minute;
+  return isTradingDay(new Date(p.year, p.month - 1, p.day)) && mins >= 570 && mins < 975;
+}

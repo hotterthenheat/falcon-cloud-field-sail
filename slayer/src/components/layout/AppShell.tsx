@@ -12,6 +12,8 @@ import WayBack from './WayBack';
 import { OPEN_PALETTE_EVENT } from './paletteDoor';
 import { FaultView, isLoadFault, reloadOnceForStaleBuild } from '../ui/Fault';
 import { openFeeds } from '../../data/feedGate';
+import { noteRouteShown } from '../../data/warmRooms';
+import RouteHold from './RouteHold';
 
 /* Loaded after the shell paints, on terminal pages only: the alert engine, the drawers, the paper runner. The palette
    (and the ticker universe it searches) loads the first time it is opened. */
@@ -93,12 +95,16 @@ const AppShell = () => {
     };
   }, [openPalette]);
 
+  /* the page on screen counts as loaded, so a later click back to it never waits */
+  useEffect(() => noteRouteShown(location.pathname), [location.pathname]);
+
   /* the chart pages are framed to the viewport; every other page scrolls */
   const bleedPage = /^\/trace\/(net-flow|odte)/.test(location.pathname);
 
   return (
     /* h-dvh: on a phone 100vh excludes the address bar, and this frame never lets the document scroll */
     <div className="h-screen h-dvh flex flex-row bg-canvas text-textPrimary overflow-hidden">
+      <RouteHold />
       <SideNav onOpenPalette={openPalette} />
       {/* Trace pages reserve the scrollbar gutter so switching between them never changes the page width */}
       <main

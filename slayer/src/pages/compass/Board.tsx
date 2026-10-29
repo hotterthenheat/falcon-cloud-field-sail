@@ -5,15 +5,15 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Check } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { useTracker } from '../../context/TrackerContext';
 import { setupIdOf } from '../../data/compass';
 import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
-import { settleOpen, useCompassBook } from '../../data/compassLedger';
-import { liveSpark, useThetaBook, alertUniverse } from '../../data/thetaBook';
-import { currentPicks, lockReason, scanBusy, scanReport } from '../../data/compassModel';
-import { MODELS_VALIDATED, P1_MIN, UNVALIDATED_LINE } from '../../data/compassParams';
+import { liveSpark, useThetaBook, alertUniverse, scanNames, setScanFocus } from '../../data/thetaBook';
+import { useSignals } from '../../data/compassLedger';
+import { bestByName, currentPicks, lastScanAt, lockReason, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
+import { MODELS_VALIDATED, P1_MIN, SEAT_CAP, UNVALIDATED_LINE, inModelWindow } from '../../data/compassParams';
+import { nyClock, nyDay, nyMinutes } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
-import { OPEN_CAP, sessionBook, useScanClock } from '../../data/compassDoor';
+import { useScanClock } from '../../data/compassDoor';
 import { setCompassAlert, useCompassAlert } from '../../data/compassAlerts';
 import { odteAsleep, odteBoardDone, nextOdteOpen } from '../../data/compassSession';
 import { SCANNERS, SLEEVES, type OptionRight, type ScannerKey, type Setup, type SleeveKey } from '../../types/compass';
@@ -32,6 +32,7 @@ import BackToTop from '../../components/ui/BackToTop';
 import { CompassGuide } from '../../components/compass/CompassGuide';
 import SetupScanBoard from '../../components/compass/SetupScanBoard';
 import FilterTabs from '../../components/ui/FilterTabs';
+import { Tip } from '../../components/ui/Tooltip';
 
 /** "Sep 16", or "Sep 10 '27" once the year turns */
 const dayOf = (d: Date) => {
@@ -95,11 +96,9 @@ const Board = () => {
   const offered: SleeveKey = sleeve === 'weekly' ? 'weekly' : 'odte';
   const [guideOpen, setGuideOpen] = useState(false);
   const clock = useScanClock();
-  const { trackedSetups, untrackSetup } = useTracker();
-  const book = useCompassBook();
-  const closed = useMemo(() => new Set(book.map(l => l.id)), [book]);
   const live = useThetaBook(offered);
-  const openN = sessionBook(trackedSetups).length;
+  const record = useSignals();
+  useEffect(() => setScanFocus(tickerFilter), [tickerFilter]);
 
   // Deep links in: a setup from the Tracker, the Weigher, the tape's drilldown
   // or the Pulse tile lands on ITS PAGE; the wire's door lands here on one name.
@@ -134,28 +133,15 @@ const Board = () => {
     return Object.fromEntries(SLEEVES.map(s => [s.key, expiryFor(s.dte)])) as Record<SleeveKey, ReturnType<typeof expiryFor>>;
   }, [clock.session]);
 
-  const opens = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const [ticker, series] of Object.entries(live.sparks)) {
-      if (series[0] > 0) m.set(ticker, series[0]);
-    }
-    return m;
-  }, [live.sparks]);
-
   // Published calls only. A raw quote is not a call, and a call and the same-strike put are not both sent.
   const rankedSetups = useMemo(() => {
-    const pool = currentPicks().filter(s => (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE' && s.band !== 'lottery'));
+    const held = currentPicks();
+    const source = held.length ? held : live.earlier?.setups ?? [];
+    const pool = source.filter(s => (offered === 'odte' ? s.expiry === '0DTE' : s.expiry !== '0DTE' && s.band !== 'lottery'));
     const ranked = oneSide(pool)
-      .filter(s => !closed.has(s.id))
       .filter(s => !tickerFilter || s.ticker === tickerFilter || (tickerFilter === 'SPX' && (s.ticker === 'SPXW' || s.ticker === 'XSP')) || (tickerFilter === 'NDX' && s.ticker === 'NDXP') || (tickerFilter === 'RUT' && s.ticker === 'RUTW'));
     return (side === 'BOTH' ? ranked : ranked.filter(s => s.right === side)).map(s => ({ ...s, spark: liveSpark(s.ticker) }));
-  }, [live.setups, live.sparks, side, closed, tickerFilter, offered]);
-
-  useEffect(() => {
-    const spotOf = new Map<string, number>();
-    for (const s of live.setups) spotOf.set(s.ticker, live.spots[s.ticker] ?? live.spots[s.ticker === 'SPXW' || s.ticker === 'XSP' ? 'SPX' : s.ticker === 'RUTW' ? 'RUT' : s.ticker] ?? 0);
-    for (const id of settleOpen(trackedSetups, live.setups, spotOf, opens)) untrackSetup(id);
-  }, [live.setups, live.spots, trackedSetups, opens, untrackSetup]);
+  }, [live.setups, live.sparks, live.earlier, record, side, tickerFilter, offered]);
 
   /* Nothing selected → #1 is: a scan, filter or kind change that drops the selected card falls back to the first visible. */
   useEffect(() => {
@@ -237,12 +223,11 @@ const Board = () => {
     return q.length >= 2 && (label.includes(q) || words.includes(q));
   };
 
-  const sideWord = side === 'P' ? 'Puts' : side === 'C' ? 'Calls' : 'Calls and puts';
   const dayOver = offered === 'odte' && odteBoardDone(activeSleeveExp.dte === 0);
   const scanOff = clock.phase === 'closed';
   const report = scanReport(offered === 'weekly' ? 'weekly' : 'odte');
   const bestLine = report.scored
-    ? `Nothing cleared. Closest is ${report.contract} at ${Math.round(report.best * 100)}%.`
+    ? `Nothing cleared. Closest is ${report.contract} at ${(report.best * 100).toFixed(1)}%.`
     : report.quiet
       ? 'Quotes are in. The minute tape did not load, so nothing was scored.'
       : '';
@@ -254,11 +239,45 @@ const Board = () => {
   const called = swings + wings + booksC;
   const caveat = MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`;
   const calledLine = offered === 'odte'
-    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.${caveat}`
-    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''} Model 1 is the entry. Model 2 is the runner.${caveat}`;
+    ? `Book A ${swings}. Book B ${wings}. Book C ${booksC}.${near ? ` Closest ${near}.` : ''}${caveat}`
+    : `Book A ${swings}. Book B ${wings}. Book C is same-day only.${near ? ` Closest ${near}.` : ''}${caveat}`;
+  const scannedAt = lastScanAt(offered === 'weekly' ? 'weekly' : 'odte');
+  const asOf = scannedAt
+    ? `Last scan ${nyClock(scannedAt, { zone: true })}.`
+    : live.earlier?.at
+      ? `Last scan ${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}.`
+      : 'No scan has run today.';
+  const offline = live.theta === 'down';
+  const inWindow = inModelWindow(nyMinutes() - (9 * 60 + 30));
+  const windowLine = 'Books A and B score 09:45 to 15:00 ET, the minutes the models were trained on.';
   const sentence = (
-    <RichRead text={dayOver ? "Same-day calls are done for the session. Cards stay until a stop, a target, the reversal, or the 15:55 flat." : scanOff || clock.phase === 'halt' ? clock.line : !called && !near && lockReason() ? lockReason() : scanBusy() && !called && !near ? reading : called || near ? `${clock.line} ${calledLine}` : clock.open ? (bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')) : clock.line} />
+    <RichRead text={
+      offline
+        ? `ThetaData offline — reconnecting. ${asOf}`
+        : dayOver
+          ? 'Same-day calls are done for the session. A signal stays on the record until its stop, its target, the reversal, or the 15:55 flat.'
+          : scanOff || clock.phase === 'halt'
+            ? `${clock.line} ${asOf}`
+            : !called && !near && lockReason()
+              ? lockReason()
+              : !inWindow
+                ? `${windowLine} ${asOf}`
+                : scanBusy() && !called && !near
+                  ? reading
+                  : called || near
+                    ? `${calledLine} ${asOf}`
+                    : bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')
+    } />
   );
+  const names = scanNames(offered === 'weekly' ? 'weekly' : 'odte');
+  const bests = bestByName(offered === 'weekly' ? 'weekly' : 'odte');
+  const topBest = [...bests.values()].reduce((m, r) => Math.max(m, r.p1), -1);
+  const seats = seatsNow().seats;
+  const emptyLabel = offline
+    ? `ThetaData offline — reconnecting. ${asOf}`
+    : !inWindow
+      ? `${windowLine} ${asOf}`
+      : bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.');
 
   return (
     <>
@@ -273,10 +292,12 @@ const Board = () => {
             facts={
               <>
                 <Fact label="Called" testId="found">{called.toLocaleString('en-US')}</Fact>
+                <Fact label="Best Model 1" testId="best" title={`The highest Model 1 read on this sleeve today. A call needs ${(P1_MIN * 100).toFixed(2)}%.`}>
+                  {topBest >= 0 ? `${(topBest * 100).toFixed(1)}%` : '—'}
+                </Fact>
                 <Fact label="Closest" testId="active">{near.toLocaleString('en-US')}</Fact>
-                <Fact label="Type" testId="proving">{sideWord}</Fact>
-                <Fact label="Slots" testId="fading">
-                  <span className={openN >= OPEN_CAP ? 'text-bear' : 'text-textPrimary'}>{openN} of {OPEN_CAP}</span>
+                <Fact label="Seats" testId="fading" title="Roots Book A and Book B have called today. Five at most.">
+                  <span className={seats >= SEAT_CAP ? 'text-bear' : 'text-textPrimary'}>{seats} of {SEAT_CAP}</span>
                 </Fact>
               </>
             }
@@ -339,7 +360,13 @@ const Board = () => {
             sentence={sentence}
           >
             <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
-            {offered === 'odte' && odteAsleep() ? (
+            <NameStrip names={names} bests={bests} selected={tickerFilter} onPick={t => setCompassView({ tickerFilter: t === tickerFilter ? null : t, selectedId: null })} />
+            {!currentPicks().length && live.earlier && rankedSetups.length > 0 && (
+              <p className="px-5 py-2 border-t border-borderSubtle font-mono text-t10 uppercase tracking-wider text-textMuted" data-compass-asof>
+                As of {nyDay(live.earlier.at || Date.now(), { weekday: true })}{live.earlier.at ? `, ${nyClock(live.earlier.at, { zone: true })}` : ''} · the last session&apos;s scan, not live
+              </p>
+            )}
+            {offered === 'odte' && odteAsleep() && !rankedSetups.length ? (
               <OdteOver />
             ) : (
             <SetupScanBoard
@@ -349,7 +376,7 @@ const Board = () => {
               onSelect={handleSelect}
               onAnalysis={openSetup}
               expiryChip={sleeveDates[offered].label}
-              emptyLabel={bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')}
+              emptyLabel={emptyLabel}
             />
             )}
             </div>
@@ -357,6 +384,33 @@ const Board = () => {
       </div>
       <BackToTop testId="compass" />
     </>
+  );
+};
+
+/** The names the scan reads on this sleeve, each with its best Model 1 read today. A tap narrows the board to it. */
+const NameStrip = ({ names, bests, selected, onPick }: { names: string[]; bests: Map<string, { p1: number; contract: string }>; selected: string | null; onPick: (ticker: string) => void }) => {
+  if (!names.length) return null;
+  return (
+    <div className="px-5 py-2.5 border-t border-borderSubtle flex flex-wrap gap-1.5" data-compass-names>
+      {names.map(t => {
+        const best = bests.get(t);
+        const on = selected === t;
+        return (
+          <Tip key={t} label={best ? `${best.contract}: Model 1 ${(best.p1 * 100).toFixed(1)}%` : `${t}: not scored yet today`}>
+            <button
+              type="button"
+              onClick={() => onPick(t)}
+              aria-pressed={on}
+              className={`inline-flex items-center gap-1.5 h-8 min-w-[40px] px-2 rounded border font-mono text-t11 tnum transition-colors ${on ? 'border-silver/60 bg-silver/[0.06]' : 'border-borderSubtle hover:border-borderMuted'}`}
+              data-compass-name-chip={t}
+            >
+              <span className="font-semibold text-textPrimary">{t}</span>
+              <span className={best && best.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textSecondary'}>{best ? `${(best.p1 * 100).toFixed(1)}%` : '—'}</span>
+            </button>
+          </Tip>
+        );
+      })}
+    </div>
   );
 };
 

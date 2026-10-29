@@ -1,9 +1,12 @@
 /* The backtest's rules in code: pure functions over a session that is its orders and fills, with no clock, storage
-   or React of its own; the desk, the report and the journal read everything off them. */
+   or React of its own; the desk, the report and the journal read everything off them. The market is the recorded one
+   (history.ts): a fill is at the NBBO that stood at the end of its minute — a buy at the ask, a sell at the bid — and the
+   days a move walks must be loaded first (store.ts does that). */
 
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from './ladder';
 import { contractKey, dteAt, legsOf, quoteAt, quoteWith, spotForBid, type ContractId, type Quote } from './quotes';
-import { LAST_MIN, dayIndex, tapeDays } from './tape';
+import { LAST_MIN, dateOf, dayNumber, sessionAfter } from './history';
+import { sessionsBetween } from '../../core/calendar';
 import type { DayNote, JournalEntry } from './journal';
 import { usd2 as money } from '../../core/format';
 
@@ -71,6 +74,8 @@ export interface Fill {
   tag?: string;
   /** The stop that rode the buy, if one did — the planned risk */
   plannedStop?: number;
+  /** On the sell that closed a trade: the lowest open P&L it marked, at each minute's bid, fees in */
+  lowOpen?: number;
 }
 /** The reader's own rules for a session — hard blocks on a way in, set at its start (see the head note) */
 export interface SessionRules {
@@ -88,6 +93,8 @@ export const MAX_NAMES = 2;
 
 export interface Session {
   id: string;
+  /** Played on ThetaData's recorded quotes. A session without it was played on the old synthetic tape and is not kept. */
+  tape?: 'theta';
   name: string;
   /** The first name — kept so a session saved before `tickers` still opens */
   ticker: string;
@@ -114,8 +121,8 @@ export interface Session {
 
 export const DEFAULT_FEE = 0.65;
 export const MULT = 100;
-/** A moment as one number, for order. 2,000 a day: an option's day is 390 minutes, a future's 1,380 (futuresTape.ts) */
-export const stampOf = (m: Moment): number => dayIndex(m.day) * 2000 + m.minute;
+/** A moment as one number, for order: the day's number (days since 1970) and its minute */
+export const stampOf = (m: Moment): number => dayNumber(m.day) * 2000 + m.minute;
 const cents = (v: number) => Math.round(v * 100) / 100;
 
 /** The names a session trades, first one first */
@@ -123,7 +130,7 @@ export const namesOf = (s: Pick<Session, 'ticker' | 'tickers'>): string[] => (s.
 
 export function newSession(o: { id: string; name: string; ticker: string; tickers?: string[]; rules?: SessionRules; startCash: number; fee?: number; startDay: string; now: number }): Session {
   const names = [...new Set((o.tickers?.length ? o.tickers : [o.ticker]).map(t => t.toUpperCase()))].slice(0, MAX_NAMES);
-  return { id: o.id, name: o.name, ticker: names[0], tickers: names, rules: o.rules, startCash: o.startCash, fee: o.fee ?? DEFAULT_FEE, startDay: o.startDay, cursor: { day: o.startDay, minute: 0 }, orders: [], fills: [], notes: {}, createdAt: o.now, touchedAt: o.now, seq: 0 };
+  return { id: o.id, tape: 'theta', name: o.name, ticker: names[0], tickers: names, rules: o.rules, startCash: o.startCash, fee: o.fee ?? DEFAULT_FEE, startDay: o.startDay, cursor: { day: o.startDay, minute: 0 }, orders: [], fills: [], notes: {}, createdAt: o.now, touchedAt: o.now, seq: 0 };
 }
 
 /* ---- what the fills add up to ---- */
@@ -195,43 +202,33 @@ interface Book {
   positions: Position[];
   trades: Trade[];
 }
-/* The trade's open P&L at each minute's bid, from the first fill to the close; the lowest is kept for the drawdown. */
-const lowMemo = new Map<string, number>();
-function lowOpenOf(id: string, contract: ContractId, legs: TradeLeg[]): number {
+/* The trade's open P&L at each minute's bid, from the first fill to the close; the lowest is kept for the drawdown. Read
+   when the closing sell fills (the days it walked are loaded then) and kept on that fill. */
+export function lowOpenOf(contract: ContractId, legs: Pick<TradeLeg, 'at' | 'side' | 'qty' | 'price' | 'fee'>[]): number {
   const first = legs[0];
   const last = legs[legs.length - 1];
-  const key = `${id}|${last.at.day}|${last.at.minute}|${legs.length}`;
-  const hit = lowMemo.get(key);
-  if (hit != null) return hit;
-  const days = tapeDays();
-  let from = dayIndex(first.at.day);
-  const to = dayIndex(last.at.day);
   let low = 0;
-  if (from >= 0 && to >= from) {
-    let held = 0;
-    let cash = 0;
-    let k = 0;
-    for (; from <= to; from++) {
-      const day = days[from];
-      const m0 = day === first.at.day ? first.at.minute : 0;
-      const m1 = day === last.at.day ? last.at.minute : LAST_MIN;
-      for (let m = m0; m <= m1; m++) {
-        while (k < legs.length && legs[k].at.day === day && legs[k].at.minute <= m) {
-          const l = legs[k++];
-          held += l.side === 'buy' ? l.qty : -l.qty;
-          cash += (l.side === 'buy' ? -1 : 1) * l.price * l.qty * MULT - l.fee;
-        }
-        if (held <= 0) continue;
-        const bid = quoteAt(contract, day, m).bid;
-        if (Number.isFinite(bid)) low = Math.min(low, cash + held * bid * MULT);
+  let held = 0;
+  let cash = 0;
+  let k = 0;
+  for (let day: string | null = first.at.day, guard = 0; day && day <= last.at.day && guard < 400; day = sessionAfter(day), guard++) {
+    const m0 = day === first.at.day ? first.at.minute : 0;
+    const m1 = day === last.at.day ? last.at.minute : LAST_MIN;
+    for (let m = m0; m <= m1; m++) {
+      while (k < legs.length && legs[k].at.day === day && legs[k].at.minute <= m) {
+        const l = legs[k++];
+        held += l.side === 'buy' ? l.qty : -l.qty;
+        cash += (l.side === 'buy' ? -1 : 1) * l.price * l.qty * MULT - l.fee;
       }
+      if (held <= 0) continue;
+      const q = quoteAt(contract, day, m);
+      if (!q.dead && Number.isFinite(q.bid)) low = Math.min(low, cash + held * q.bid * MULT);
     }
   }
-  if (lowMemo.size > 2000) lowMemo.clear();
-  lowMemo.set(key, cents(low));
   return cents(low);
 }
-const heldMinutes = (a: Moment, b: Moment) => Math.max(0, (dayIndex(b.day) - dayIndex(a.day)) * (LAST_MIN + 1) + (b.minute - a.minute));
+/** Session minutes between two moments: whole sessions between the days, and the minutes inside them */
+const heldMinutes = (a: Moment, b: Moment) => Math.max(0, (a.day === b.day ? 0 : sessionsBetween(dateOf(a.day), dateOf(b.day))) * (LAST_MIN + 1) + (b.minute - a.minute));
 /** Every fill, in order, folded into the positions still open and the trades that closed */
 export function bookOf(s: Session): Book {
   interface Open {
@@ -296,7 +293,7 @@ export function bookOf(s: Session): Book {
       heldMin: heldMinutes(o.first.at, f.at),
       plannedStop: o.first.plannedStop,
       tag: o.first.tag,
-      lowOpen: Math.min(cents(pnl), lowOpenOf(o.first.id, f.contract, o.legs)),
+      lowOpen: Math.min(cents(pnl), f.lowOpen ?? 0),
     });
     open.delete(key);
   }
@@ -433,6 +430,14 @@ function afterSell(s: Session, sold: Order, q: Quote, at: Moment): Session {
 function fillNow(s: Session, o: Order, price: number, how: FillHow, q: Quote, at: Moment): Session {
   let [id, next] = nextId(s, 'f');
   const fill: Fill = { id, orderId: o.id || null, at, contract: o.contract, side: o.side, qty: o.qty, price: cents(price), fee: how === 'expired' ? 0 : cents(s.fee * o.qty * legsOf(o.contract)), how, spot: q.spot, delta: q.delta, iv: q.iv, theta: q.theta, tag: o.tag, plannedStop: plannedStopOf(o, at) };
+  /* a sell that leaves the position flat closes the trade: its lowest mark is read now, while its days are loaded */
+  if (o.side === 'sell') {
+    const pos = bookOf(s).positions.find(p => p.key === contractKey(o.contract));
+    if (pos && pos.qty <= o.qty) {
+      const legs = [...s.fills.filter(f => contractKey(f.contract) === pos.key && stampOf(f.at) >= stampOf(pos.opened)), fill];
+      fill.lowOpen = lowOpenOf(o.contract, legs);
+    }
+  }
   next = { ...next, fills: [...next.fills, fill], orders: next.orders.map(x => (x.id === o.id ? { ...x, status: 'filled' as const, done: at, fillPrice: fill.price } : x)) };
   /* a sell: the ladder it belongs to — or stands beside — is made to fit what is still held */
   if (o.side === 'sell') next = afterSell(next, o, q, at);
@@ -515,6 +520,7 @@ function ruleRefusal(s: Session, d: Draft, cost: number): string | null {
   const risk = s.rules?.maxRiskPct;
   if (risk != null && risk > 0) {
     const worth = accountOf(s).equity;
+    if (!Number.isFinite(worth)) return 'A held contract has no quote this minute, so the account cannot be valued against your rule — wait a minute';
     const mine = positions.find(p => p.key === key);
     const inIt = (mine ? mine.avg * MULT * mine.qty + mine.fees : 0) + cost;
     if (inIt > worth * risk + 1e-9) return `Your session’s rule: no more than ${pctWords(risk)} of the account on one trade — this would be ${money(inIt)} of ${money(worth * risk)}`;
@@ -768,15 +774,13 @@ function bell(s: Session, day: string): Session {
 
 /** Move the clock forward to a moment, running every minute between. Backward moves never touch the book. */
 export function advance(s: Session, to: Moment, now: number): Session {
-  const days = tapeDays();
   const from = s.cursor;
   if (stampOf(to) <= stampOf(from)) {
     const floor = floorOf(s);
     return { ...s, touchedAt: now, cursor: stampOf(to) < stampOf(floor) ? floor : to };
   }
   let next = s;
-  for (let di = dayIndex(from.day); di <= dayIndex(to.day) && di < days.length; di++) {
-    const day = days[di];
+  for (let day: string | null = from.day, guard = 0; day && day <= to.day && guard < 400; day = sessionAfter(day), guard++) {
     const first = day === from.day ? from.minute + 1 : 0;
     const last = day === to.day ? to.minute : LAST_MIN;
     const busy = next.orders.some(o => o.status === 'working');
@@ -803,8 +807,8 @@ interface Stats {
   best: number;
   worst: number;
 }
-/** What the report's figures need of a closed trade — an option's or a future's. A future entered without a stop has no R
-    (futuresEngine.ts), and the R figures are taken over the trades that have one. */
+/** What the report's figures need of a closed trade — a backtest's or a paper account's. A trade with no R (a paper future
+    entered without a stop) is left out of the R figures. */
 interface Scored {
   pnl: number;
   r: number | null;

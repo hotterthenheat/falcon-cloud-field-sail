@@ -92,7 +92,7 @@ const PhoneChart = ({ snapshot, revision, onPick }: Props) => {
             <span className="text-t10 text-textMuted" aria-hidden>
               ·
             </span>
-            <LiveSpot ticker={ticker} fallback={levels.spot} className="text-t11 font-semibold tnum text-textPrimary" />
+            <LiveSpot ticker={ticker} className="text-t11 font-semibold tnum text-textPrimary" />
           </div>
           {compares.map(c => (
             <div key={`${c.ticker}:${c.mode}`} className="flex items-center gap-1.5">

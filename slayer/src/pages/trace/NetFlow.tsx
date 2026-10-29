@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTicker } from '../../context/MarketDataContext';
 import { fmtCount as num, nyDateOf, tapeSessionIso, tideBetween, useTickerKnown, useTopNet, useTide, usd as fmtUsd } from '../../data/traceLive';
-import { VENDOR_TOTAL_NOTE } from '../../data/flowBook';
+import { boardSums, VENDOR_TOTAL_NOTE } from '../../data/flowBook';
 import { dayAdv, dayPos, isLiveDay, shortDay } from '../../components/trace/dayWords';
 import { useTraceSession } from '../../components/trace/traceSession';
 import { useQParam } from '../../components/trace/addressCut';
@@ -84,11 +84,8 @@ const NetFlow = () => {
   const netMarks = useMemo(() => earnMarks(leaders, l => l.net), [leaders]);
 
   const facts = useMemo(() => {
-    const calls = leaders.reduce((a, l) => a + (l.net > 0 ? l.net : 0), 0);
-    const puts = leaders.reduce((a, l) => a + (l.net < 0 ? l.net : 0), 0);
     /* the board's gross lean: every row prints its share of it */
-    const gross = leaders.reduce((a, l) => a + Math.abs(l.net), 0) || 1;
-    const bullish = leaders.filter(l => l.net > 0).length;
+    const { calls, puts, gross, bullish } = boardSums(leaders);
     const top = leaders[0] ?? null;
     const bottom = leaders.length ? leaders[leaders.length - 1] : null;
     const topIsChamp = !!top && !!bottom && Math.abs(top.net) >= Math.abs(bottom.net);
@@ -210,7 +207,7 @@ const NetFlow = () => {
       controls={
         <>
           <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
-          <SessionMark at={top.at} fault={top.fault} paused={hold.paused} ttlMs={45_000} />
+          <SessionMark at={top.at} fault={top.fault} paused={hold.paused} ttlMs={45_000} kept={top.kept} />
           <span className="inline-flex items-center gap-2 flex-wrap" data-span>
             <FlowSearch value={query} onChange={onQuery} rows={searchRows} countNoun="names" tickersOnly />
             {(unknown || (want && wantKnown === false)) && (

@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { ensureBook, bookStatus, peekEntry, useBookRev } from '../../data/uwBook';
 import GradeMeter, { GRADE_FILL, GRADE_INK } from '../../components/ui/GradeMeter';
 import { gradeOfConviction, postureRead } from '../../data/darkpool';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -21,7 +20,8 @@ import { fmtDayLocal } from '../../components/gex/chartTime';
 import { When } from '../../components/record/when';
 import { lastSessionIso, shortDay } from '../../data/nyDate';
 import { StockGuide } from '../../components/record/StockGuide';
-import { buildStockOverview, fmtMoney, gradeOf, gradeOfComposite, GRADES, ordinal, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
+import { buildStockOverview, fmtMoney, gradeHelp, gradeOf, gradeOfComposite, GRADES, type Factor, type Grade, type Lean, type Pillar, type SourceStatus, type StockOverview, type TimelineKind } from '../../data/stockOverview';
+import { keptWords } from '../../data/feedStore';
 import { TX_CODES, isChosenBuy } from '../../data/insiders';
 import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress, useTickerNews } from '../../data/liveRecord';
@@ -38,8 +38,6 @@ import { useCompanyName } from '../../data/liveFiles';
 import { useLiveQuote, type LiveQuote } from '../../data/liveQuote';
 import { nyClock, nyIsoDate, nySessionPhase, nyWallTime } from '../../core/nyTime';
 import { isTradingDay, today as nyTodayDate } from '../../core/calendar';
-import { LEVEL_ORDER, type LevelRole } from '../../core/walls';
-import type { TickerLevels } from '../../data/levelsFor';
 import { statHelp } from '../../components/record/statHelp';
 import { ago, Box as RecordBox, Door, Fact as RecordFact } from '../../components/record/ui';
 import { pctInk, signedPct } from './money';
@@ -220,7 +218,6 @@ const FactorRow = ({ f }: { f: Factor }) => (
 export const centsGap = (actual: number, est: number) => Math.abs(est) < 0.25 || Math.sign(actual) !== Math.sign(est);
 const epsGap = (actual: number, est: number) => (centsGap(actual, est) ? `${Math.round(Math.abs(actual - est) * 100)}¢` : `${Math.abs(((actual - est) / Math.abs(est || 1)) * 100).toFixed(1)}%`);
 
-const Money = ({ v, signed = true }: { v: number; signed?: boolean }) => <span className={signed ? (v >= 0 ? 'text-bull' : 'text-bear') : ''}>{fmtMoney(v)}</span>;
 
 /** A two-sided share bar: the left side's share of the whole, the rest to the right */
 const ShareBar = ({ left, leftInk = 'bg-bull', rightInk = 'bg-bear/80' }: { left: number; leftInk?: string; rightInk?: string }) => (
@@ -229,136 +226,6 @@ const ShareBar = ({ left, leftInk = 'bg-bull', rightInk = 'bg-bear/80' }: { left
     <span className={`h-full ${rightInk}`} style={{ width: `${100 - left}%`, transition: GLIDE }} />
   </div>
 );
-
-/** A scale's hover read — a small card over the point under the pointer (a drawn scale is never a still picture) */
-const ScaleCard = ({ at, children }: { at: number; children: ReactNode }) => (
-  <div className="absolute -top-1 z-10 pointer-events-none -translate-x-1/2 -translate-y-full rounded-md border border-borderSubtle px-2 py-1.5 whitespace-nowrap text-t10 text-textSecondary" style={{ left: `${Math.max(12, Math.min(88, at))}%`, background: 'rgba(8,8,10,0.9)', backdropFilter: 'blur(3px)' }} data-scale-card>
-    {children}
-  </div>
-);
-
-/** The book on a price scale: the walls, the flip, spot and the supreme on one line, each in its ink; a label that would
-    collide takes the upper row. Hover a mark for its read. */
-const LEVEL_WORDS: Record<string, string> = {
-  put: 'dealer hedging bids there — support',
-  flip: 'above it dealers absorb moves, below it they amplify them',
-  spot: 'the last price',
-  call: 'dealer hedging supplies stock there — resistance',
-  supreme: 'the heaviest strike on the book',
-};
-/* the flip is drawn only when levelsFor found one within ±10% */
-/* A strike holding several levels is one mark naming each role in LEVEL_ORDER; each figure is the one Pinpoint prints. */
-type LegsAt = TickerLevels['legsAt'];
-const ROLE_KEY: Record<LevelRole, string> = { supreme: 'supreme', 'call wall': 'call', 'put wall': 'put', flip: 'flip' };
-const ROLE_INK: Record<LevelRole, string> = { supreme: 'rgb(var(--supreme))', 'call wall': 'rgb(var(--bull))', 'put wall': 'rgb(var(--bear))', flip: SILVER };
-/* a whole strike as written, any other to the cent — "212.50", as Pinpoint prints it */
-const levelPrice = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(2));
-/** The figure behind one role at its strike: "net +$1.2B" for the supreme, "calls +$…" / "puts −$…" for a wall */
-const roleFigure = (role: LevelRole, strike: number, legsAt?: LegsAt): string | null => {
-  const legs = legsAt?.(strike);
-  if (!legs) return null;
-  if (role === 'supreme') return `net ${legs.net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(legs.net))}`;
-  if (role === 'call wall') return `calls ${legs.call >= 0 ? '+' : '−'}${fmtMoney(Math.abs(legs.call))}`;
-  if (role === 'put wall') return `puts ${legs.put >= 0 ? '+' : '−'}${fmtMoney(Math.abs(legs.put))}`;
-  return null;
-};
-/** The scope's levels grouped by strike, in LEVEL_ORDER: each group one price and every role it holds */
-const levelGroups = (lv: { supreme: number; callWall: number | null; putWall: number | null; flip: number | null }) => {
-  const at: Record<LevelRole, number | null> = { supreme: lv.supreme, 'call wall': lv.callWall, 'put wall': lv.putWall, flip: lv.flip };
-  const groups: { price: number; roles: LevelRole[] }[] = [];
-  for (const role of LEVEL_ORDER) {
-    const price = at[role];
-    if (price == null) continue;
-    const g = groups.find(x => Math.abs(x.price - price) < 1e-9);
-    if (g) g.roles.push(role);
-    else groups.push({ price, roles: [role] });
-  }
-  return groups;
-};
-/** The levels as one line, in the house order: "350 supreme · call wall (net +$… · calls +$…) · 340 put wall (puts −$…) · flip 340.82" */
-const LevelsLine = ({ levels }: { levels: Pick<TickerLevels, 'supreme' | 'callWall' | 'putWall' | 'flip' | 'legsAt'> }) => (
-  <p className="mt-1 font-mono text-t10 tnum text-textSecondary" data-stock-levels-line>
-    {levelGroups(levels).map((g, i) => {
-      const figs = g.roles.map(r => roleFigure(r, g.price, levels.legsAt)).filter(Boolean);
-      return (
-        <span key={g.price}>
-          {i ? ' · ' : ''}
-          {/* roles sharing a strike join with "and" */}
-          <span style={{ color: ROLE_INK[g.roles[0]] }}>{g.roles.length > 1 ? `${g.roles.slice(0, -1).join(', ')} and ${g.roles[g.roles.length - 1]}` : g.roles[0]}</span> {levelPrice(g.price)}
-          {figs.length ? <span className="text-textMuted"> ({figs.join(' · ')})</span> : null}
-        </span>
-      );
-    })}
-    {levels.flip == null ? <span className="text-textMuted">{' · '}flip none within ±10%</span> : null}
-  </p>
-);
-const LevelsScale = ({ spot, putWall, flip, callWall, supreme, legsAt }: { spot: number; putWall: number | null; flip: number | null; callWall: number | null; supreme: number; legsAt?: LegsAt }) => {
-  const [hot, setHot] = useState<string | null>(null);
-  const marks = [
-    ...levelGroups({ supreme, callWall, putWall, flip }).map(g => ({
-      key: g.roles.map(r => ROLE_KEY[r]).join('-'),
-      price: g.price,
-      word: g.roles.join(' · '),
-      ink: ROLE_INK[g.roles[0]],
-      roles: g.roles,
-    })),
-    { key: 'spot', price: spot, word: 'spot', ink: 'rgb(var(--text-primary))', roles: [] as LevelRole[] },
-  ].sort((a, b) => a.price - b.price);
-  const lo = marks[0].price;
-  const hi = marks[marks.length - 1].price;
-  const pad = Math.max((hi - lo) * 0.12, spot * 0.004);
-  const x = (p: number) => ((p - (lo - pad)) / (hi - lo + 2 * pad)) * 100;
-  /* two rows of words: a mark within a tenth of the scale of the one before it goes to the other row */
-  const rows: number[] = [];
-  marks.forEach((m, i) => {
-    const prev = marks[i - 1];
-    rows.push(prev && x(m.price) - x(prev.price) < 11 ? (rows[i - 1] === 0 ? 1 : 0) : 0);
-  });
-  const hotMark = marks.find(m => m.key === hot) ?? null;
-  const hotFigs = hotMark ? hotMark.roles.map(r => roleFigure(r, hotMark.price, legsAt)).filter(Boolean) : [];
-  return (
-    <div className="relative">
-      {hotMark && (
-        <ScaleCard at={x(hotMark.price)}>
-          <span className="font-mono font-bold tnum" style={{ color: hotMark.ink }}>
-            {hotMark.word} {hotMark.key === 'spot' ? hotMark.price.toFixed(2) : levelPrice(hotMark.price)}
-          </span>
-          {hotMark.key !== 'spot' && (
-            <span className="font-mono tnum text-textPrimary">
-              {' '}
-              · {signedPct(((hotMark.price - spot) / spot) * 100)} from spot{hotFigs.length ? ` · ${hotFigs.join(' · ')}` : ''}
-            </span>
-          )}
-          <span className="block text-textMuted">{hotMark.key === 'spot' ? LEVEL_WORDS.spot : hotMark.roles.map(r => LEVEL_WORDS[ROLE_KEY[r]]).join('; ')}</span>
-        </ScaleCard>
-      )}
-      <svg width="100%" height={54} className="block overflow-visible" role="img" aria-label={`The book on a price scale: supreme ${supreme}, call wall ${callWall ?? 'none'}, put wall ${putWall ?? 'none'}, flip ${flip != null ? flip.toFixed(2) : 'none within ±10%'}, spot ${spot.toFixed(2)}`} data-stock-scale={hot ?? 'rest'}>
-        <line x1="0%" x2="100%" y1={27} y2={27} stroke="rgb(var(--ink))" strokeOpacity={0.14} />
-        {/* the likely range between the walls, faint */}
-        {putWall != null && callWall != null && <rect x={`${x(Math.min(putWall, callWall))}%`} y={24} width={`${Math.abs(x(callWall) - x(putWall))}%`} height={6} fill={SILVER} fillOpacity={0.1} />}
-        {marks.map((m, i) => {
-          const up = rows[i] === 1;
-          const isSpot = m.key === 'spot';
-          const on = hot === m.key;
-          return (
-            <g key={m.key} data-scale-mark={m.key} onMouseEnter={() => setHot(m.key)} onMouseLeave={() => setHot(h => (h === m.key ? null : h))} style={{ cursor: 'default' }}>
-              {/* a wide silent hit area, so the mark is easy to hover */}
-              <rect x={`calc(${x(m.price)}% - 12px)`} y={0} width={24} height={54} fill="transparent" />
-              <line x1={`${x(m.price)}%`} x2={`${x(m.price)}%`} y1={isSpot ? 18 : 22} y2={isSpot ? 36 : 32} stroke={m.ink} strokeWidth={isSpot || on ? 2 : 1.25} strokeDasharray={m.key === 'flip' ? '2 2' : undefined} />
-              <text x={`${x(m.price)}%`} y={up ? 12 : 46} textAnchor="middle" fontSize={9} fontFamily="ui-monospace, Menlo, monospace" fill={m.ink} fontWeight={isSpot || on ? 700 : 500}>
-                {/* a strike prints as written; an interpolated level (the flip) to the cent, never fifteen decimals */}
-                {isSpot ? m.price.toFixed(2) : levelPrice(m.price)}
-              </text>
-              <text x={`${x(m.price)}%`} y={up ? 4 : 54} textAnchor="middle" fontSize={7.5} fontFamily="ui-monospace, Menlo, monospace" letterSpacing={0.6} fill={m.ink} fillOpacity={on ? 1 : 0.75}>
-                {m.word.toUpperCase()}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
 
 /** The structure's four flags: the last five sessions' swings against the five before */
 const Flags = ({ flags }: { flags: NonNullable<StockOverview['trend']['flags']> }) => {
@@ -429,17 +296,7 @@ const StockName = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { changeTicker } = useTicker();
-  const bookRev = useBookRev();
-  /* The page opens on the light book (whole-book strikes, front expiry); the forty dates behind the All-expiries levels
-     load once that panel is on screen, or at once when Pinpoint's cache already holds them. */
-  const [allWanted, setAllWanted] = useState(false);
-  const allRef = useRef<HTMLDivElement | null>(null);
   const [more, setMore] = useState(false);
-  useEffect(() => setAllWanted(!!peekEntry(T)?.everFull), [T]);
-  useEffect(() => {
-    ensureBook(T, allWanted ? 'full' : 'board');
-  }, [T, allWanted]);
-  /* the wire moves on its own; the book republishes through bookRev */
   /* the read is rebuilt every ten seconds only while the session trades and the tab is shown */
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -474,32 +331,8 @@ const StockName = () => {
     if ((up && closed < 0) || (down && closed > 0)) return `intraday; closed ${closed >= 0 ? '+' : '−'}${Math.abs(closed).toFixed(2)}%`;
     return null;
   };
-  const view = useMemo(() => buildStockOverview(T, file.flow, { allExpiries: allWanted }), [T, tick, recordNews, bookRev, file, quote, allWanted]);
-  const viewReady = !!view;
-  useEffect(() => {
-    if (allWanted || !viewReady) return;
-    const el = allRef.current;
-    if (!el) return;
-    if (typeof IntersectionObserver === 'undefined') {
-      setAllWanted(true);
-      return;
-    }
-    /* a reader who scrolls to the panel asks for it; a panel that merely lands in the first screen does not (a wide
-       desk shows it at once — the forty dates stay a click away, "Read every expiry") */
-    const io = new IntersectionObserver(es => {
-      if (es.some(e => e.isIntersecting) && window.scrollY > 120) setAllWanted(true);
-    });
-    const onScroll = () => {
-      const r = el.getBoundingClientRect();
-      if (window.scrollY > 120 && r.top < window.innerHeight && r.bottom > 0) setAllWanted(true);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    io.observe(el);
-    return () => {
-      io.disconnect();
-      window.removeEventListener('scroll', onScroll);
-    };
-  }, [allWanted, viewReady, T, more]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const view = useMemo(() => buildStockOverview(T, file.flow), [T, tick, recordNews, file, quote]);
   /* The read is held while the quote, the regular closes and the tapes land; past 40 seconds it is shown, marked provisional. */
   const settling = view?.settling ?? [];
   const held = settling.length > 0 && !holdTimedOut;
@@ -541,7 +374,7 @@ const StockName = () => {
     </div>
   );
   if (!view) {
-    if (file.status === 'loading' && bookStatus(T) !== 'error') {
+    if (file.status === 'loading') {
       return (
         <>
           {back}
@@ -601,18 +434,14 @@ const StockName = () => {
   const maxDelta = Math.max(1, ...view.moves.map(m => Math.abs(m.delta)));
   const forIt = view.contributions.filter(c => c.points > 0).length;
   const againstIt = view.contributions.filter(c => c.points < 0).length;
-  const trajectory = numbers.epsGrowthPct == null ? null : numbers.epsGrowthPct > 3 ? 'growing' : numbers.epsGrowthPct < -3 ? 'shrinking' : 'about flat';
+  const growthFactor = byKey.numbers.factors.find(f => f.key === 'growth') ?? null;
   const insiderTotal = insiders.bought + insiders.sold;
   /* the closes on their dates, and the marks that matter on them */
   const sessionPoints: ChartPoint[] = trend.times.map((t, i) => ({ time: t, value: trend.closes[i] })).slice(-30);
   /* the marks sit small on the line in their kind's ink; the card and the timeline carry the words */
   const sessionMarks: ChartMark[] = view.timeline.filter(t => t.time != null).map(t => ({ time: t.time!, color: KIND_MARK[t.kind], on: true, size: 0.34, shape: 'circle' as const, text: `${KIND_WORD[t.kind]} · ${t.text}` }));
   /* the levels named INSIDE the plot at their left end — the axis keeps the figures alone (four named tags collided there) */
-  const sessionLines = [
-    ...(trend.ema20 != null ? [{ price: trend.ema20, color: SILVER, title: '20-day EMA', style: 'dashed' as const, name: 'plot' as const }] : []),
-    ...(money.levelsAll?.complete && money.levelsAll.putWall != null ? [{ price: money.levelsAll.putWall, color: 'rgb(var(--bear))', title: 'support', style: 'dashed' as const, name: 'plot' as const }] : []),
-    ...(money.levelsAll?.complete && money.levelsAll.callWall != null ? [{ price: money.levelsAll.callWall, color: 'rgb(var(--bull))', title: 'resistance', style: 'dashed' as const, name: 'plot' as const }] : []),
-  ];
+  const sessionLines = [...(trend.ema20 != null ? [{ price: trend.ema20, color: SILVER, title: '20-day EMA', style: 'dashed' as const, name: 'plot' as const }] : [])];
   /* the scale holds the line and any level near it (within a quarter of the line's own span past either end), with a
      little air — a wall far from the line is left off the scale rather than flattening thirty sessions into a thread */
   const sessionRange = ((): readonly [number, number] | undefined => {
@@ -730,12 +559,13 @@ const StockName = () => {
                 )}
                 {view.extLine ? <span className="font-mono tnum text-textSecondary" data-stock-ext> · {view.extLine}</span> : <> · {view.marketWord}</>}
                 {view.sector ? ` · ${view.sector}` : ''}
+                {file.keptAt ? <span className="font-mono text-warn" title="The answers this browser kept, shown until the fresh read lands" data-stock-kept> · as of {keptWords(file.keptAt)}</span> : null}
               </p>
             </div>
           </div>
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             {/* the read, in one word; the figure behind it stays in the engine */}
-            <Fact label="Reads" testId="screen">
+            <Fact label="Reads" testId="screen" tip={gradeHelp(view)}>
               {held ? (
                 <span className="text-t13 font-semibold text-textMuted animate-pulse" title={`Held until ${settling.join(', ')} ${settling.length === 1 ? 'is' : 'are'} in`} data-stock-held>
                   reading…
@@ -849,16 +679,16 @@ const StockName = () => {
               <Fact label="50 · 200-day SMA" testId="smas" tip="The 50- and 200-day simple moving averages (the screener's sma_50 and sma_200)">
                 {trend.sma50 != null ? trend.sma50.toFixed(2) : <span className="text-textMuted">needs 50</span>} <span className="text-textMuted">·</span> {trend.sma200 != null ? trend.sma200.toFixed(2) : <span className="text-textMuted">needs 200</span>}
               </Fact>
-              <Fact label="Above its averages" testId="above">
-                {trend.above.count} <span className="text-textMuted">of {trend.above.of} on hand</span>
+              <Fact label="Above its averages" testId="above" tip="How many of the 20-day, 50-day and 200-day averages the last regular close is above">
+                {trend.above.count} <span className="text-textMuted">of {trend.above.of}</span>
               </Fact>
               <Fact label="RSI · ADX" testId="rsi" tip="RSI and ADX over 14 sessions — the screener's rsi_14 and adx_14, the same figures the factors below score">
                 {trend.rsi14 != null ? trend.rsi14.toFixed(0) : '—'} <span className="text-textMuted">·</span> {trend.adx14 != null ? trend.adx14.toFixed(0) : '—'}
               </Fact>
-              <Fact label={`Range · ${screenWord}${file.rangeAsOf ? ` · to ${file.rangeAsOf}` : ''}`} testId="atr">
-                {trend.atrPercentile != null ? (
+              <Fact label={`Day's range · ${screenWord}${file.rangeAsOf ? ` · to ${file.rangeAsOf}` : ''}`} testId="atr" tip={`The session's high minus its low, against the ${trend.sessions} sessions on hand`}>
+                {trend.atrPercentile != null && trend.rangeToday != null ? (
                   <>
-                    {trend.rangeToday != null ? trend.rangeToday.toFixed(2) : ''} <span className="text-textMuted">· {ordinal(trend.atrPercentile)} pct</span>
+                    ${trend.rangeToday.toFixed(2)} <span className="text-textMuted">· wider than {Math.max(0, trend.atrPercentile - Math.round(100 / Math.max(1, trend.sessions)))}% of days</span>
                   </>
                 ) : (
                   '—'
@@ -1110,126 +940,41 @@ const StockName = () => {
       </button>
       {more && (
         <>
-        <Box title="The money" sub="The live options book · every listed expiry unless marked · dealer side" aside={<PillarBarSmall p={byKey.money} held={held} />} testId="money">
+        <Box title="The options" sub={`What traded in ${T}'s options on ${screenWord} · the dealer book is on Pinpoint`} aside={<PillarBarSmall p={byKey.money} held={held} />} testId="money">
           <dl className="px-5 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
-            <Fact label="Net DEX · VEX" testId="dex" tip="Dealers' side, every strike of the live book, in dollars of stock. VEX reads — when the book carries no vega">
-              <Money v={money.netDex} /> <span className="text-textMuted">·</span> {money.netVex != null ? <Money v={money.netVex} /> : <span className="text-textMuted">—</span>}
-              <span className="block text-t9 font-sans text-textMuted leading-snug" data-stock-fact="dex-says">
-                {money.netDex < 0 ? "dealers' options leave them short this much stock, before their hedge" : "dealers' options leave them long this much stock, before their hedge"}
-              </span>
-            </Fact>
-            <Fact label="Vanna · charm" testId="vanna" tip="Dealers' side, every strike, in dollars: vanna per volatility point, charm per session">
-              <Money v={money.netVanna} /> <span className="text-textMuted">·</span> <Money v={money.netCharm} />
-            </Fact>
-            <Fact label="Open interest" testId="oi">
+            <Fact label="Open interest" testId="oi" tip="Contracts open on every listed expiry, and the side that holds more">
               <OpenInterest ticker={view.ticker} fallbackCall={money.callOI} fallbackPut={money.putOI} />
             </Fact>
-            <Fact label={money.volumeAvgIs30 ? "Volume · 30-day avg" : "Volume · usual"} testId="volume">
+            <Fact label={money.volumeAvgIs30 ? 'Volume · 30-day avg' : 'Volume · usual'} testId="volume" tip="Shares traded today against the name's usual day">
               {money.volumeToday != null ? count(money.volumeToday) : '—'} <span className="text-textMuted">· {money.volumeAvg != null ? count(money.volumeAvg) : '—'}</span>
               {money.rvolPaced && (
-                <span className={money.rvol != null && money.rvol >= 1.3 ? 'text-silver' : 'text-textMuted'} title={money.rvolPaced.basis === 'paced' ? `The session's volume so far against the share of a usual day that trades by now (${Math.round(money.rvolPaced.share * 100)}%) — 1.00× is on pace for an ordinary day. Of a full day so far: ${money.rvolPaced.raw.toFixed(2)}×.` : money.rvolPaced.basis === 'full' ? "The whole session's volume against its 30-day average." : 'Too early in the session to pace — shown, not read.'}>
+                <span className={money.rvol != null && money.rvol >= 1.3 ? 'text-silver' : 'text-textMuted'} title={money.rvolPaced.basis === 'paced' ? `Paced to the clock: ${Math.round(money.rvolPaced.share * 100)}% of a usual day trades by now. 1.00× is an ordinary day.` : money.rvolPaced.basis === 'full' ? "The whole session's volume against its 30-day average." : 'Too early in the session to pace — shown, not read.'}>
                   {' '}· {money.rvolPaced.label}
                 </span>
               )}
             </Fact>
-            <Fact label={money.today.length && nySessionPhase() === 'open' ? 'In its range' : 'Closed in its range'} testId="close" tip="Where the last regular minute sits in the session's own high–low">
+            <Fact label={money.today.length && nySessionPhase() === 'open' ? 'Where it trades in its range' : 'Where it closed in its range'} testId="close" tip="The last regular minute against the session's own low (0%) and high (100%)">
               {money.closeInRange != null ? (
                 <>
                   {Math.round(money.closeInRange * 100)}% <span className="text-textMuted">up from the low</span>
                 </>
               ) : (
-                '—'
+                <span className="text-textMuted">{file.tapes === 'loading' ? 'reading…' : '—'}</span>
               )}
             </Fact>
-            <Fact label="Unusual" testId="unusual">
-              {prem > 0 ? (
+            <Fact label="Unusual alerts" testId="unusual" tip="Flow alerts on the session on contracts that traded at least twice their open interest">
+              {file.tapes === 'live' ? (
                 <>
-                  {money.unusual} <span className="text-textMuted">at 2× OI</span>
+                  {money.unusual} <span className="text-textMuted">of {money.flowWindow.alerts}</span>
                 </>
               ) : (
-                <span className="text-textMuted">—</span>
-              )}
-            </Fact>
-            <Fact label={file.tapes === 'loading' || money.darkWindow.complete ? `Dark · ${sessionWord}` : 'Recent dark'} testId="darkshare" tip={`Off-exchange prints of 10K+ shares or $500K+${money.darkWindow.cover && !money.darkWindow.complete ? `, from ${money.darkWindow.cover} ET` : ''}; own-terms prints left out. The lean reads regular hours only.`}>
-              {money.dark.prints.length ? (
-                <>
-                  {fmtMoney(money.dark.totalNotional)} <span className="text-textMuted">· {money.dark.prints.length.toLocaleString('en-US')} prints</span>
-                  {/* the card's set and the read's set, both stated */}
-                  {money.darkWindow.outsideRead ? (
-                    <span className="block text-t10 text-textMuted" data-name-fact="darkread">
-                      buyer/seller read on the {money.darkWindow.read.toLocaleString('en-US')} regular-hours prints ({fmtMoney(money.darkWindow.readNotional)}); {money.darkWindow.outsideRead.toLocaleString('en-US')} outside hours or unquoted are not read
-                    </span>
-                  ) : null}
-                </>
-              ) : (
-                <span className="text-textMuted">—</span>
+                <span className="text-textMuted">reading…</span>
               )}
             </Fact>
           </dl>
-          {/* Two scopes, two rows: the nearest expiry and the whole book can differ in sign, and the line under them says why. */}
-          <div className="px-5 pb-2 flex flex-col gap-2" data-stock-gex-scopes>
-            {/* Every level reads "…" until levelsFor says its scope is complete, under the scope's own label, as on Pinpoint. */}
-            <div className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope={money.levelsToday ? (money.levelsToday.complete ? 'today' : 'today-pending') : 'today-none'} data-complete={money.levelsToday?.complete ? 'yes' : 'no'} title="Pinpoint's nearest-expiry scope: the contracts of the nearest live expiry alone (after the bell, the next session's)">
-              <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary font-semibold" data-stock-scope-label>{money.levelsToday ? money.levelsToday.scopeLabel : 'Nearest expiry'}</span>
-                {money.levelsToday ? (
-                  <span className="font-mono text-t11 tnum" data-stock-gex-next>
-                    net GEX{' '}
-                    {money.levelsToday.complete ? (
-                      <>
-                        <Money v={money.levelsToday.netGex} /> {money.levelsToday.regime ? <span className="text-textMuted">· {money.levelsToday.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span> : null}
-                      </>
-                    ) : (
-                      <span className="text-textMuted">…</span>
-                    )}
-                  </span>
-                ) : null}
-              </div>
-              {money.levelsToday && !money.levelsToday.complete ? (
-                <p className="mt-1 font-mono text-t10 tnum text-textMuted" data-stock-levels-provisional>supreme … · call wall … · put wall … · flip … <span className="normal-case">— reading this name's front expiry</span></p>
-              ) : money.levelsToday ? (
-                <LevelsLine levels={money.levelsToday} />
-              ) : (
-                <p className="mt-1 font-mono text-t10 text-textMuted">Reading the options book…</p>
-              )}
-            </div>
-            <div ref={allRef} className="rounded border border-borderSubtle/70 px-3 py-2" data-stock-levels-scope="all" data-complete={money.levelsAll?.complete ? 'yes' : 'no'}>
-              <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <span className="font-mono text-t9 uppercase tracking-widest text-textPrimary font-semibold">{money.levelsAll ? money.levelsAll.scopeLabel : 'All expiries'} · every listed date</span>
-                <span className="font-mono text-t11 tnum" data-stock-gex-all title="Net gamma over every listed expiry, as on Pinpoint. Positive: dealer hedging absorbs moves; negative: it amplifies them">
-                  net GEX{' '}
-                  {money.levelsAll?.complete ? (
-                    <>
-                      <Money v={money.levelsAll.netGex} /> <span className="text-textMuted">· {money.levelsAll.regime === 'SHORT' ? 'amplifying' : 'absorbing'}</span>
-                    </>
-                  ) : (
-                    <span className="text-textMuted">…</span>
-                  )}
-                </span>
-              </div>
-              {money.levelsAll?.complete ? (
-                <>
-                  <LevelsScale spot={view.price} putWall={money.levelsAll.putWall} flip={money.levelsAll.flip} callWall={money.levelsAll.callWall} supreme={money.levelsAll.supreme} legsAt={money.levelsAll.legsAt} />
-                  <LevelsLine levels={money.levelsAll} />
-                  {money.levelsAll.flip == null && <p className="font-mono text-t10 text-textMuted" data-stock-flip="none">No flip within ±10% — net gamma stays {money.levelsAll.regime === 'SHORT' ? 'short' : 'long'} across the range.</p>}
-                </>
-              ) : (
-                allWanted ? (
-                  <p className="py-2 font-mono text-t10 text-textMuted" data-stock-levels-pending>supreme · call wall · put wall · flip — given once every listed expiry is in</p>
-                ) : (
-                  <p className="py-2 font-mono text-t10 text-textMuted" data-stock-levels-deferred>
-                    The whole book's levels read every listed expiry{peekEntry(T)?.expiries?.length ? ` (${peekEntry(T)!.expiries.length} dates)` : ''} —{' '}
-                    <button type="button" onClick={() => setAllWanted(true)} className="text-textSecondary hover:text-textPrimary underline decoration-dotted underline-offset-2" data-stock-levels-load>
-                      read every expiry
-                    </button>
-                    , or scroll here and they load.
-                  </p>
-                )
-              )}
-            </div>
-            <p className="text-t105 leading-relaxed text-textMuted" data-stock-gex-note>
-              The two scopes can differ in sign: the nearest expiry's dealers can be short gamma (amplifying) while the whole book is long (absorbing), or the reverse. Each figure is right for its own contracts; the nearest expiry drives {isTradingDay(nyTodayDate()) && nySessionPhase() === 'open' ? 'the rest of today' : 'the next session'}, the whole book the weeks after.
-            </p>
+          <div className="px-5 pb-2 flex items-center gap-2 flex-wrap text-t11 text-textSecondary" data-stock-pinpoint>
+            <span>Walls, the flip and dealer gamma for {T}:</span>
+            <Door onClick={openOnMap}>The map on Pinpoint</Door>
           </div>
           {prem > 0 ? (
           <div className="px-5 pb-2" data-stock-flow>
@@ -1276,7 +1021,7 @@ const StockName = () => {
             {/* the caption on its own line, clear of the bar's end words */}
             <p className="font-mono text-t9 uppercase tracking-widest text-textMuted leading-snug" data-stock-dark-caption>
                 {money.darkWindow.read
-                  ? `dark pool · ${postureRead(money.dark)} · ${money.darkWindow.read.toLocaleString('en-US')} regular-session ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.complete ? (money.darkWindow.from ? `, ${money.darkWindow.from}–${money.darkWindow.to} ET` : '') : `, from ${money.darkWindow.cover ?? money.darkWindow.from} ET to the close only — the tape in hand stops there`}${money.dark.largest ? ` · the largest ${fmtMoney(money.dark.largest.notional)} at ${money.dark.largest.price.toFixed(2)}` : ''}`
+                  ? `off-exchange · ${money.dark.postureNote || postureRead(money.dark)} · ${money.darkWindow.read.toLocaleString('en-US')} ${money.darkWindow.read === 1 ? 'print' : 'prints'} of 10K shares or $500K+ on ${sessionWord}${money.darkWindow.complete ? '' : `, from ${money.darkWindow.cover ?? money.darkWindow.from} ET`}`
                   : `dark pool · no read · none of the ${money.darkWindow.inHand} prints in hand is a sized regular-session print priced at the quote`}
             </p>
             <div className="mt-1 flex items-center justify-between font-mono text-t10 tnum">
@@ -1404,10 +1149,10 @@ const StockName = () => {
               {numbers.epsActual < 0 ? '−' : ''}${Math.abs(numbers.epsActual).toFixed(2)}{numbers.epsSurprisePct != null && numbers.epsEstimate != null ? <> <span className={numbers.epsSurprisePct >= 0 ? 'text-bull' : 'text-bear'}>{centsGap(numbers.epsActual, numbers.epsEstimate) ? `${numbers.epsActual - numbers.epsEstimate >= 0 ? '+' : '−'}${Math.round(Math.abs(numbers.epsActual - numbers.epsEstimate) * 100)}¢` : signedPct(numbers.epsSurprisePct)}</span></> : null}
             </Fact>
             )}
-            {numbers.epsGrowthPct != null && (
-            <Fact label="EPS growth · year over year" testId="growth" tip="The latest quarter's EPS against the same quarter a year before; the read caps it at ±100%">
-              <span className={numbers.epsGrowthPct >= 0 ? 'text-bull' : 'text-bear'}>{signedPct(numbers.epsGrowthPct, 2)}</span>
-              {trajectory ? <span className="text-textMuted"> · {trajectory}</span> : null}
+            {growthFactor && (
+            <Fact label="Earnings growth a year" testId="growth" tip="The middle of the 1-, 2- and 3-year EPS changes, each as a rate a year — the figure the numbers pillar scores">
+              <span className={growthFactor.context ? 'text-textSecondary' : growthFactor.lean >= 0 ? 'text-bull' : 'text-bear'}>{growthFactor.value.split(' · ')[0]}</span>
+              <span className="block text-t9 font-sans text-textMuted">{growthFactor.context ? growthFactor.note : growthFactor.value.split(' · ').slice(1).join(' · ')}</span>
             </Fact>
             )}
             {numbers.beats != null && (
@@ -1687,7 +1432,7 @@ const StockName = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
         <Box title="Busiest calls" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="calls">
           <div className="pb-2 mt-auto">
-            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{money.levelsToday ? <>No call volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
+            {money.busiest.calls.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{file.status === 'live' ? <>No call volume on {sessionWord}</> : 'Reading the chain…'}</div>}
             {money.busiest.calls.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onOpen={() => weigh(c)} />
             ))}
@@ -1695,7 +1440,7 @@ const StockName = () => {
         </Box>
         <Box title="Busiest puts" sub={`The three busiest by volume on ${sessionWord} · click one to weigh it`} testId="puts">
           <div className="pb-2 mt-auto">
-            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{money.levelsToday ? <>No put volume on the book on {sessionWord}</> : 'Reading the options book…'}</div>}
+            {money.busiest.puts.length === 0 && <div className="px-5 pb-3 pt-1 font-mono text-t10 uppercase tracking-widest text-textMuted">{file.status === 'live' ? <>No put volume on {sessionWord}</> : 'Reading the chain…'}</div>}
             {money.busiest.puts.map(c => (
               <ContractRow key={c.key} c={c} maxVol={maxVol} onOpen={() => weigh(c)} />
             ))}
@@ -1763,7 +1508,6 @@ function NameWithoutBook({ ticker, file, quote }: { ticker: string; file: StockF
   const px = quote && quote.regularPrice > 0 ? quote.regularPrice : null;
   const pct = quote && Number.isFinite(quote.changePct) ? quote.changePct : null;
   const filed = quarterFacts(file.quarters);
-  const book = bookStatus(ticker);
   return (
     <div className="border border-borderSubtle rounded-md bg-panel px-5 py-4" data-stock-empty={ticker}>
       <div className="flex items-center gap-3 min-w-0">
@@ -1784,7 +1528,7 @@ function NameWithoutBook({ ticker, file, quote }: { ticker: string; file: StockF
         </div>
       </div>
       <p className="mt-3 text-t12 text-textSecondary">
-        {book === 'error' ? 'No options book came back for this name. The map, the walls and the greeks stay empty.' : file.status === 'loading' ? 'The stock file is still being read.' : 'The options book is still being read. The map fills in when it lands.'}
+        {file.status === 'loading' ? 'The stock file is still being read.' : 'The stock file did not come back for this name, so there is no read. The figures below are what did.'}
       </p>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-t11 text-textSecondary">
         <span>{next ? `Next report · ${shortDay(next)}` : file.status === 'error' ? 'The stock file did not load.' : 'No earnings date on this file.'}</span>

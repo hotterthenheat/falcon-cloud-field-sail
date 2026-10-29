@@ -8,7 +8,6 @@ import CompanyLogo from '../ui/CompanyLogo';
 import { CARD } from '../ui/DropdownSelect';
 import { PAPER_FUTURES, frontOn, type PaperIndex } from '../../data/paper/products';
 import { FUTURES_LIVE } from '../../data/paper/feed';
-import { REVIEW_NAMES } from '../../data/review/tape';
 import { ensureListed, isOptionRoot, optionSymbols, useListedRev } from '../../data/listedNames';
 import { askCompanyNames, companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 
@@ -63,16 +62,15 @@ const TickerPicker = ({ value, onChange, futuresOnly, day, futPrice, indexes, in
   const futures: Row[] = PAPER_FUTURES.map(p => ({ value: p.symbol, code: frontOn(p.symbol, day), name: CME_NAMES[p.symbol] ?? p.name, keywords: `${p.symbol} ${p.name} ${p.fund} futures`, price: open ? futPrice(p.symbol) : null, decimals: p.decimals }));
   const indexRows: Row[] = indexes.map(x => ({ value: x.symbol, code: x.symbol, name: `${x.name} options`, keywords: `${x.symbol} ${x.name} index options ${x.fund}`, price: open ? indexPrice(x.symbol) : null, decimals: 2 }));
   const stocks: Row[] = useMemo(() => {
-    const known = new Map(REVIEW_NAMES.map(n => [n.ticker, n.name]));
     const roots = optionSymbols();
     const skip = new Set(indexes.map(x => x.symbol));
     const label = (ticker: string) => {
       const named = companyName(ticker);
-      return named.toUpperCase() !== ticker ? named : (known.get(ticker) ?? named);
+      return named;
     };
     const toRow = (ticker: string): Row => ({ value: ticker, code: ticker, name: label(ticker), keywords: `${ticker} ${label(ticker)}`, price: null, decimals: 2 });
     const q = query.trim().toUpperCase();
-    if (!roots.length) return REVIEW_NAMES.filter(n => isOptionRoot(n.ticker)).map(n => toRow(n.ticker));
+    if (!roots.length) return ['SPY', 'QQQ', 'IWM'].map(toRow);
     if (!q) {
       const pinned = ['SPY', 'QQQ', 'IWM', 'SPX', 'NDX', 'RUT', 'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'AMD'];
       const out: string[] = [];

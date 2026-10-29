@@ -36,8 +36,8 @@ export interface FlipRead {
   beyond: 'long' | 'short' | null;
   /** The range searched, as a fraction of spot either side */
   range: number;
-  /** How the flip was found — 'repriced' (Black-Scholes at each leg's vol) or 'cumulative' (strike-ordered running net) */
-  method: 'repriced' | 'cumulative';
+  /** How the flip was found: always the re-priced profile (Black-Scholes at each leg's vol) — there is no second rule */
+  method: 'repriced';
   /** Every crossing inside the range, low to high — more than one when the profile crosses zero more than once (the
       flip is then chosen with hysteresis, data/flipLevel.ts) */
   crossings?: number[];
@@ -186,30 +186,4 @@ export function repricedFlip(legsIn: readonly GammaLeg[], spot: number, r?: numb
     }
   }
   return { flip: best, netAtSpot: net0, beyond: best == null ? null : net0 < 0 ? 'short' : 'long', range, method: 'repriced', crossings: all };
-}
-
-/** The fallback when no vol is on hand: the price where the strike-ordered running net (from the lowest strike up)
-    crosses zero, nearest spot inside the range */
-export function cumulativeFlip(points: readonly { strike: number; net: number }[], spot: number, range: number = RANGE): FlipRead {
-  const asc = [...points].sort((a, b) => a.strike - b.strike);
-  const net0 = asc.reduce((a, p) => a + p.net, 0);
-  let cum = 0;
-  let best: number | null = null;
-  let bestD = Infinity;
-  for (let i = 0; i < asc.length; i++) {
-    const prev = cum;
-    cum += asc[i].net;
-    if (i === 0 || prev === 0 || cum === 0 || Math.sign(prev) === Math.sign(cum)) continue;
-    /* linear inside the strike that tipped it */
-    const k0 = asc[i - 1].strike;
-    const k1 = asc[i].strike;
-    const x = k0 + ((k1 - k0) * Math.abs(prev)) / (Math.abs(prev) + Math.abs(cum));
-    if (Math.abs(x - spot) > spot * range) continue;
-    const d = Math.abs(x - spot);
-    if (d < bestD) {
-      bestD = d;
-      best = x;
-    }
-  }
-  return { flip: best, netAtSpot: net0, beyond: best == null ? null : net0 < 0 ? 'short' : 'long', range, method: 'cumulative' };
 }

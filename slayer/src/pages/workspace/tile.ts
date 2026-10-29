@@ -95,6 +95,9 @@ export interface WidgetDef {
   maxH: number;
   /** It follows a name — the head carries the scope chip. A tile about the whole market (the wire, your journal) does not */
   named: boolean;
+  /** It reads no dealer book, so it draws before the desk's book lands; its body must not read `ctx.snapshot` or
+      `ctx.exposure` (they are absent until the book is in) */
+  bookless?: boolean;
   defaults?: TileState;
   /** The settings as they stand, when a default is not a constant (the chart's interval opens on the desk's own, from
       Settings) — what the head's cards show and the body draws */

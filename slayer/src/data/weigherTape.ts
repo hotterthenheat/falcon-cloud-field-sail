@@ -1,19 +1,48 @@
-/* The Weigher's tape: one timeframe, one session, the vendor's own bars; an empty session stays empty.
-   ThetaData first; when it does not answer, Unusual Whales' stock bars (no index prices, no 15s, no overnight). */
+/* The Weigher's tape: one timeframe, one session, ThetaData's own bars (data/thetaTape.ts); an empty session stays
+   empty, and with the terminal down the last bars stay on screen stamped with when they were taken. A contract's
+   premium bars are read here too. */
 
 import { useEffect, useState } from 'react';
 import type { Candle } from '../types/market';
 import type { Timeframe } from './timeframe';
 import type { OptionRight } from '../types/compass';
-import { nyMinutes, nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
-import { minuteInSession, sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
-import { thetaCall } from './theta';
+import { nyMinutes } from '../core/nyTime';
 import { nyYmd } from '../core/calendar';
-import { whalesBars, whalesDailyLong, type UwBar, type UwDaily } from './whales';
-import { ensureQuote, peekQuote, useLiveQuote } from './liveQuote';
+import { sessionMeta, sessionOfMinute, type DeskSession } from './deskSession';
+import { noData, offlineWords, pageHidden, thetaGet } from './thetaFeed';
+import { dayClose, foldTo, grainStep, paintPrint, readEod, readOhlc, useThetaPrint, useThetaTape, tapeWords, weekClose, type TapeGrain } from './thetaTape';
 
-const INDEX = new Set(['SPX', 'VIX', 'RUT', 'NDX', 'XSP']);
+const GRAIN: Record<Timeframe, TapeGrain> = { '15s': '15s', '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '1D': 'day', '1W': 'week' };
 
+/** The live print joins the bar it belongs to. It never opens a bar in another session. */
+export function paintLive(bars: Candle[], price: number, atSec: number, tf: Timeframe, session: DeskSession): Candle[] {
+  return paintPrint(bars, price, atSec, grainStep(GRAIN[tf]), session);
+}
+
+/** The name's last print and the prior session's close, from ThetaData. Null until the first print lands. */
+export function useWeigherSpot(ticker: string): { spot: number; prev: number } | null {
+  const print = useThetaPrint(ticker);
+  return print ? { spot: print.price, prev: print.prev } : null;
+}
+
+interface WeigherTape {
+  bars: Candle[];
+  /** false while the first answer is still out */
+  ready: boolean;
+  /** Why the frame is empty, or that the bars on it are kept and not live */
+  note: string | null;
+}
+
+export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSession): WeigherTape {
+  const t = useThetaTape(ticker, GRAIN[tf], session);
+  const ready = t.state !== 'loading' || t.bars.length > 0;
+  return { bars: t.bars, ready, note: ready ? tapeWords(t, session) : null };
+}
+
+/* ---- one contract's premium bars ---- */
+
+const ymd = (at = Date.now()): string => nyYmd(at);
+const DAYS: Partial<Record<Timeframe, number>> = { '15s': 0, '1m': 5, '5m': 12, '15m': 25, '30m': 40, '1h': 60 };
 const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
   rth: [{ start: '09:30:00', end: '15:59:59' }],
   pre: [{ start: '04:00:00', end: '09:29:59' }],
@@ -24,404 +53,29 @@ const WINDOWS: Record<DeskSession, { start: string; end: string }[]> = {
   ],
 };
 
-const STEP: Partial<Record<Timeframe, number>> = {
-  '15s': 15,
-  '1m': 60,
-  '5m': 300,
-  '15m': 900,
-  '30m': 1800,
-  '1h': 3600,
-};
-
-interface Spec {
-  interval: string;
-  days: number;
-}
-
-function specOf(tf: Timeframe): Spec | 'day' | 'week' {
-  switch (tf) {
-    case '15s':
-      return { interval: '15s', days: 2 };
-    case '1m':
-      return { interval: '1m', days: 5 };
-    case '5m':
-      return { interval: '5m', days: 12 };
-    case '15m':
-      return { interval: '15m', days: 25 };
-    case '30m':
-      return { interval: '30m', days: 40 };
-    case '1h':
-      return { interval: '1h', days: 60 };
-    case '1W':
-      return 'week';
-    default:
-      return 'day';
+async function contractBars(symbol: string, exp: string, strike: number, right: OptionRight, tf: Timeframe, session: DeskSession): Promise<{ bars: Candle[]; offline: boolean }> {
+  const leg = `symbol=${encodeURIComponent(symbol)}&expiration=${exp}&strike=${strike}&right=${right === 'C' ? 'call' : 'put'}`;
+  const end = ymd();
+  if (tf === '1D' || tf === '1W') {
+    const got = await thetaGet(`/option/history/eod?${leg}&start_date=${ymd(Date.now() - 200 * 86_400_000)}&end_date=${end}&format=json`);
+    if (got.error) return { bars: [], offline: !noData(got) };
+    const days = readEod(got.data);
+    return { bars: tf === '1W' ? foldTo(days, weekClose) : days, offline: false };
   }
-}
-
-const ymd = (at = Date.now()): string => nyYmd(at);
-
-function num(v: unknown): number {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
-  return Number.isFinite(n) ? n : 0;
-}
-
-function flatRows(data: unknown): Record<string, unknown>[] {
-  const out: Record<string, unknown>[] = [];
-  const rows = Array.isArray(data) ? data : [];
-  for (const item of rows) {
-    if (!item || typeof item !== 'object') continue;
-    const row = item as { data?: unknown; close?: unknown };
-    if (Array.isArray(row.data)) out.push(...(row.data as Record<string, unknown>[]));
-    else out.push(item as Record<string, unknown>);
-  }
-  return out;
-}
-
-function dayClose(timeSec: number): number {
-  const p = nyParts(timeSec * 1000);
-  return Math.floor(nyWallTime(p.year, p.month, p.day, 16, 0) / 1000);
-}
-
-function weekClose(timeSec: number): number {
-  const p = nyParts(timeSec * 1000);
-  const back = (p.weekday + 6) % 7;
-  const utc = new Date(Date.UTC(p.year, p.month - 1, p.day));
-  utc.setUTCDate(utc.getUTCDate() - back);
-  return Math.floor(nyWallTime(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate(), 16, 0) / 1000);
-}
-
-function foldTo(bars: Candle[], keyOf: (timeSec: number) => number): Candle[] {
-  const map = new Map<number, Candle>();
-  for (const b of bars) {
-    const k = keyOf(b.time);
-    const cur = map.get(k);
-    if (!cur) map.set(k, { time: k, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume });
-    else {
-      cur.high = Math.max(cur.high, b.high);
-      cur.low = Math.min(cur.low, b.low);
-      cur.close = b.close;
-      cur.volume += b.volume;
-    }
-  }
-  return [...map.values()].sort((a, b) => a.time - b.time);
-}
-
-function readOhlc(data: unknown, session: DeskSession): Candle[] {
-  const bars = flatRows(data)
-    .map(b => {
-      const at = nyWallStamp(b.timestamp ?? b.time);
-      const close = num(b.close);
-      const open = num(b.open) || close;
-      const high = num(b.high) || close;
-      const low = num(b.low) || close;
-      if (!at || !(close > 0) || !(high > 0) || !(low > 0)) return null;
-      return { time: Math.floor(at / 1000), open, high, low, close, volume: num(b.volume) };
-    })
-    .filter((b): b is Candle => !!b && minuteInSession(nyMinutes(b.time * 1000), session));
-  bars.sort((a, b) => a.time - b.time);
-  return bars;
-}
-
-function readEod(data: unknown): Candle[] {
-  const bars = flatRows(data)
-    .map(b => {
-      const stamp = b.last_trade ?? b.created ?? b.timestamp;
-      const at = nyWallStamp(stamp);
-      const close = num(b.close);
-      const open = num(b.open) || close;
-      const high = num(b.high) || close;
-      const low = num(b.low) || close;
-      if (!at || !(close > 0)) return null;
-      return { time: dayClose(Math.floor(at / 1000)), open, high, low, close, volume: num(b.volume) };
-    })
-    .filter((b): b is Candle => !!b);
-  bars.sort((a, b) => a.time - b.time);
-  return bars;
-}
-
-function rootPath(symbol: string): 'index' | 'stock' {
-  return INDEX.has(symbol) ? 'index' : 'stock';
-}
-
-async function pullWindow(symbol: string, interval: string, start: string, end: string, session: DeskSession, option?: { exp: string; strike: number; right: OptionRight }): Promise<{ bars: Candle[]; error: boolean }> {
-  const wins = WINDOWS[session];
-  /* 15-second history is one day per call. A range is rejected, and a rejected range is not a reason to draw a minute bar. */
-  const days = interval === '15s' ? [ymd(Date.now() - 86400000), ymd()] : [null];
+  const days = tf === '15s' ? [ymd(Date.now() - 86_400_000), end].map(d => [d, d]) : [[ymd(Date.now() - (DAYS[tf] ?? 5) * 86_400_000), end]];
   const got = await Promise.all(
-    days.flatMap(day =>
-      wins.map(win => {
-        const time = `&start_time=${win.start}&end_time=${win.end}`;
-        const from = day ?? start;
-        const to = day ?? end;
-        const path = option
-          ? `/option/history/ohlc?symbol=${encodeURIComponent(symbol)}&expiration=${option.exp}&strike=${option.strike}&right=${option.right === 'C' ? 'call' : 'put'}&start_date=${from}&end_date=${to}&interval=${interval}${time}&format=json`
-          : `/${rootPath(symbol)}/history/ohlc?symbol=${encodeURIComponent(symbol)}&start_date=${from}&end_date=${to}&interval=${interval}${time}&format=json`;
-        return thetaCall(path);
-      }),
+    days.flatMap(([from, to]) =>
+      WINDOWS[session].map(w => thetaGet(`/option/history/ohlc?${leg}&start_date=${from}&end_date=${to}&interval=${tf}&start_time=${w.start}&end_time=${w.end}&format=json`)),
     ),
   );
-  const error = got.every(g => g.error != null);
-  const bars = got.flatMap(g => (g.error ? [] : readOhlc(g.data, session)));
-  bars.sort((a, b) => a.time - b.time);
-  const dedup: Candle[] = [];
-  for (const b of bars) {
-    const prev = dedup[dedup.length - 1];
-    if (prev && prev.time === b.time) dedup[dedup.length - 1] = b;
-    else dedup.push(b);
-  }
-  return { bars: dedup, error };
-}
-
-async function pullEod(symbol: string, start: string, end: string, option?: { exp: string; strike: number; right: OptionRight }): Promise<{ bars: Candle[]; error: boolean }> {
-  const path = option
-    ? `/option/history/eod?symbol=${encodeURIComponent(symbol)}&expiration=${option.exp}&strike=${option.strike}&right=${option.right === 'C' ? 'call' : 'put'}&start_date=${start}&end_date=${end}&format=json`
-    : `/${rootPath(symbol)}/history/eod?symbol=${encodeURIComponent(symbol)}&start_date=${start}&end_date=${end}&format=json`;
-  const got = await thetaCall(path);
-  if (got.error) return { bars: [], error: true };
-  return { bars: readEod(got.data), error: false };
-}
-
-async function loadBars(symbol: string, tf: Timeframe, session: DeskSession, option?: { exp: string; strike: number; right: OptionRight }): Promise<{ bars: Candle[]; error: boolean }> {
-  const end = ymd();
-  const kind = specOf(tf);
-  if (kind === 'day' || kind === 'week') {
-    if (session === 'rth') {
-      const daily = await pullEod(symbol, ymd(Date.now() - 200 * 86400000), end, option);
-      const today = await pullWindow(symbol, '5m', ymd(Date.now() - 86400000), end, 'rth', option);
-      const formed = foldTo(today.bars, dayClose);
-      const byTime = new Map(daily.bars.map(b => [b.time, b]));
-      for (const b of formed) byTime.set(b.time, b);
-      const days = [...byTime.values()].sort((a, b) => a.time - b.time);
-      return { bars: kind === 'week' ? foldTo(days, weekClose) : days, error: daily.error && today.error };
-    }
-    const intra = await pullWindow(symbol, '5m', ymd(Date.now() - 40 * 86400000), end, session, option);
-    const days = foldTo(intra.bars, dayClose);
-    return { bars: kind === 'week' ? foldTo(days, weekClose) : days, error: intra.error };
-  }
-  return pullWindow(symbol, kind.interval, ymd(Date.now() - kind.days * 86400000), end, session, option);
-}
-
-function openSec(atSec: number, session: DeskSession): number {
-  const p = nyParts(atSec * 1000);
-  const meta = sessionMeta(session);
-  const hour = Math.floor(meta.from / 60);
-  const minute = meta.from % 60;
-  if (session === 'overnight' && p.hour * 60 + p.minute < meta.to) {
-    const utc = new Date(Date.UTC(p.year, p.month - 1, p.day));
-    utc.setUTCDate(utc.getUTCDate() - 1);
-    return Math.floor(nyWallTime(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate(), hour, minute) / 1000);
-  }
-  return Math.floor(nyWallTime(p.year, p.month, p.day, hour, minute) / 1000);
-}
-
-/** The live print joins the bar it belongs to. It never opens a bar in another session. */
-export function paintLive(bars: Candle[], price: number, atSec: number, tf: Timeframe, session: DeskSession): Candle[] {
-  if (!(price > 0) || !(atSec > 0) || !minuteInSession(nyMinutes(atSec * 1000), session)) return bars;
-  const next = bars.slice();
-  const last = next[next.length - 1];
-  if (tf === '1D' || tf === '1W') {
-    const k = tf === '1W' ? weekClose(atSec) : dayClose(atSec);
-    if (last && last.time === k) next[next.length - 1] = { ...last, close: price, high: Math.max(last.high, price), low: Math.min(last.low, price) };
-    else next.push({ time: k, open: price, high: price, low: price, close: price, volume: 0 });
-    return next;
-  }
-  const step = STEP[tf] ?? 60;
-  const open = openSec(atSec, session);
-  const bucket = open + Math.floor(Math.max(0, atSec - open) / step) * step;
-  if (last && last.time === bucket) next[next.length - 1] = { ...last, close: price, high: Math.max(last.high, price), low: Math.min(last.low, price) };
-  else if (!last || bucket > last.time) next.push({ time: bucket, open: price, high: price, low: price, close: price, volume: 0 });
-  return next;
-}
-
-const UW_SIZE: Partial<Record<Timeframe, { size: '1m' | '5m' | '15m' | '1h'; limit: number; fold?: number }>> = {
-  '1m': { size: '1m', limit: 2500 },
-  '5m': { size: '5m', limit: 2500 },
-  '15m': { size: '15m', limit: 2500 },
-  '30m': { size: '15m', limit: 2500, fold: 1800 },
-  '1h': { size: '1h', limit: 1000 },
-};
-
-function readUwBars(rows: UwBar[], session: DeskSession): Candle[] {
-  const bars: Candle[] = [];
-  for (const b of rows) {
-    const at = Date.parse(b.start_time ?? '');
-    const close = num(b.close);
-    if (!Number.isFinite(at) || !(close > 0) || !minuteInSession(nyMinutes(at), session)) continue;
-    bars.push({ time: Math.floor(at / 1000), open: num(b.open) || close, high: num(b.high) || close, low: num(b.low) || close, close, volume: num(b.volume) });
-  }
-  return bars.sort((a, b) => a.time - b.time);
-}
-
-/** Unusual Whales' stock bars when ThetaData is down. Regular-session dailies are the vendor's `r` rows. */
-async function loadUwBars(symbol: string, tf: Timeframe, session: DeskSession): Promise<{ bars: Candle[]; error: boolean }> {
-  if (INDEX.has(symbol) || session === 'overnight') return { bars: [], error: true };
-  try {
-    const kind = specOf(tf);
-    if ((kind === 'day' || kind === 'week') && session === 'rth') {
-      const rows = (await whalesDailyLong(symbol)) as UwDaily[];
-      const days: Candle[] = [];
-      for (const r of Array.isArray(rows) ? rows : []) {
-        if (r.market_time !== 'r' || !r.date) continue;
-        const [y, m, d] = r.date.split('-').map(Number);
-        const close = num(r.close);
-        if (!(close > 0)) continue;
-        days.push({ time: Math.floor(nyWallTime(y, m, d, 16, 0) / 1000), open: num(r.open) || close, high: num(r.high) || close, low: num(r.low) || close, close, volume: num(r.volume) });
-      }
-      days.sort((a, b) => a.time - b.time);
-      return { bars: kind === 'week' ? foldTo(days, weekClose) : days, error: false };
-    }
-    const want = kind === 'day' || kind === 'week' ? { size: '5m' as const, limit: 2500 } : UW_SIZE[tf];
-    if (!want) return { bars: [], error: true };
-    const bars = readUwBars((await whalesBars(symbol, want.size, want.limit)) ?? [], session);
-    if (kind === 'day' || kind === 'week') {
-      const days = foldTo(bars, dayClose);
-      return { bars: kind === 'week' ? foldTo(days, weekClose) : days, error: false };
-    }
-    const step = 'fold' in want ? want.fold : undefined;
-    return { bars: step ? foldTo(bars, t => { const open = openSec(t, session); return open + Math.floor((t - open) / step) * step; }) : bars, error: false };
-  } catch {
-    return { bars: [], error: true };
-  }
-}
-
-async function loadTape(symbol: string, tf: Timeframe, session: DeskSession): Promise<{ bars: Candle[]; error: boolean; uw: boolean }> {
-  const theta = await loadBars(symbol, tf, session);
-  if (!theta.error || theta.bars.length) return { ...theta, uw: false };
-  const uw = await loadUwBars(symbol, tf, session);
-  return uw.error ? { ...theta, uw: false } : { ...uw, uw: true };
-}
-
-function uwPrint(symbol: string): { price: number; at: number } | null {
-  ensureQuote(symbol);
-  const q = peekQuote(symbol);
-  if (!q || !(q.spot > 0) || !(q.tapeAt > 0)) return null;
-  return { price: q.spot, at: Math.floor(q.tapeAt / 1000) };
-}
-
-interface WeigherTape {
-  bars: Candle[];
-  /** null while the first answer is still out */
-  ready: boolean;
-  note: string | null;
-}
-
-const EMPTY: WeigherTape = { bars: [], ready: false, note: null };
-const hist = new Map<string, { at: number; bars: Candle[]; uw: boolean }>();
-
-function noteFor(session: DeskSession, bars: Candle[], error: boolean): string | null {
-  if (error && bars.length === 0) return 'The tape did not answer.';
-  if (bars.length === 0) return `${sessionMeta(session).label} has no prints on this name.`;
-  return null;
-}
-
-async function pullPrint(symbol: string): Promise<{ price: number; at: number } | null> {
-  const path = INDEX.has(symbol)
-    ? `/index/snapshot/price?symbol=${encodeURIComponent(symbol)}&format=json`
-    : `/stock/snapshot/trade?symbol=${encodeURIComponent(symbol)}&format=json`;
-  const got = await thetaCall(path, true);
-  const row = Array.isArray(got.data) ? (got.data[0] as Record<string, unknown> | undefined) : undefined;
-  if (!row) return null;
-  const price = num(row.price ?? row.last ?? row.close);
-  const at = Math.floor(nyWallStamp(row.timestamp) / 1000);
-  if (!(price > 0) || !(at > 0)) return null;
-  return { price, at };
-}
-
-/** The name's last print and the prior session's close: ThetaData's print each second (every 15 s while it fails),
-    else the Unusual Whales quote. The close's day is read from the last eod row before today. */
-export function useWeigherSpot(ticker: string): { spot: number; prev: number } | null {
-  const symbol = ticker.trim().toUpperCase();
-  const uw = useLiveQuote(INDEX.has(symbol) ? null : symbol);
-  const [row, setRow] = useState<{ key: string; spot: number; prev: number } | null>(null);
-  useEffect(() => {
-    if (!symbol) return;
-    let dead = false;
-    let timer = 0;
-    let prev = 0;
-    let prevAt = 0;
-    const tick = async () => {
-      if (Date.now() - prevAt > 5 * 60_000) {
-        prevAt = Date.now();
-        const eod = await pullEod(symbol, ymd(Date.now() - 10 * 86400000), ymd());
-        const todayClose = dayClose(Math.floor(Date.now() / 1000));
-        const before = eod.bars.filter(b => b.time < todayClose);
-        if (before.length) prev = before[before.length - 1].close;
-      }
-      const print = await pullPrint(symbol);
-      if (dead) return;
-      if (print) setRow({ key: symbol, spot: print.price, prev });
-      timer = window.setTimeout(() => void tick(), print ? 1_000 : 15_000);
-    };
-    void tick();
-    return () => {
-      dead = true;
-      window.clearTimeout(timer);
-    };
-  }, [symbol]);
-  if (row && row.key === symbol && row.spot > 0) return { spot: row.spot, prev: row.prev };
-  if (uw && uw.spot > 0) return { spot: uw.spot, prev: uw.regularPrice > 0 ? uw.regularPrice / (1 + uw.changePct / 100) : 0 };
-  return null;
-}
-
-export function useWeigherTape(ticker: string, tf: Timeframe, session: DeskSession): WeigherTape {
-  const symbol = ticker.trim().toUpperCase();
-  const key = `${symbol}|${tf}|${session}`;
-  const [state, setState] = useState<{ key: string; tape: WeigherTape }>({ key: '', tape: EMPTY });
-  useEffect(() => {
-    if (!symbol) return;
-    let dead = false;
-    let fromUw = false;
-    const apply = (bars: Candle[], error: boolean) => {
-      if (dead) return;
-      setState({ key, tape: { bars, ready: true, note: noteFor(session, bars, error) } });
-    };
-    const run = () => {
-      const hit = hist.get(key);
-      const live = sessionOfMinute(nyMinutes()) === session;
-      if (hit && Date.now() - hit.at < (live ? 20_000 : 5 * 60_000)) {
-        fromUw = hit.uw;
-        apply(hit.bars, false);
-        return;
-      }
-      void loadTape(symbol, tf, session).then(got => {
-        if (dead) return;
-        if (got.error && got.bars.length === 0) {
-          apply(hit?.bars ?? [], true);
-          return;
-        }
-        fromUw = got.uw;
-        hist.set(key, { at: Date.now(), bars: got.bars, uw: got.uw });
-        apply(got.bars, false);
-      });
-    };
-    run();
-    const history = window.setInterval(run, 20_000);
-    const spot = window.setInterval(() => {
-      if (sessionOfMinute(nyMinutes()) !== session) return;
-      void (fromUw ? Promise.resolve(uwPrint(symbol)) : pullPrint(symbol)).then(print => {
-        if (dead || !print) return;
-        setState(prev => {
-          if (prev.key !== key || !prev.tape.ready) return prev;
-          const bars = paintLive(prev.tape.bars, print.price, print.at, tf, session);
-          const last = bars[bars.length - 1];
-          const was = prev.tape.bars[prev.tape.bars.length - 1];
-          if (was && last && was.time === last.time && was.close === last.close && was.high === last.high && was.low === last.low && bars.length === prev.tape.bars.length) return prev;
-          return { key, tape: { bars, ready: true, note: null } };
-        });
-      });
-    }, 1000);
-    return () => {
-      dead = true;
-      window.clearInterval(history);
-      window.clearInterval(spot);
-    };
-  }, [key, symbol, tf, session]);
-  return state.key === key ? state.tape : EMPTY;
+  const offline = got.some(g => g.error != null && !noData(g));
+  const bars = got.flatMap(g => (g.error ? [] : readOhlc(g.data, session))).sort((a, b) => a.time - b.time);
+  return { bars: foldTo(bars, b => b), offline };
 }
 
 const contracts = new Map<string, { at: number; bars: Candle[] }>();
 
+/** A contract's own bars in the timeframe and session on screen, re-read every 20 s while that session trades. */
 export function useWeigherContract(
   symbol: string,
   expiryIso: string,
@@ -438,19 +92,22 @@ export function useWeigherContract(
   useEffect(() => {
     if (!on || !root || exp.length !== 8 || !(strike > 0)) return;
     let dead = false;
-    const option = { exp, strike: Number(strike.toFixed(4)), right };
     const run = () => {
       const hit = contracts.get(key);
       const live = sessionOfMinute(nyMinutes()) === session;
       if (hit && Date.now() - hit.at < (live ? 20_000 : 5 * 60_000)) {
-        if (!dead) setState({ key, bars: hit.bars, note: noteFor(session, hit.bars, false) });
+        if (!dead) setState({ key, bars: hit.bars, note: hit.bars.length ? null : `${sessionMeta(session).label} has no prints on this contract.` });
         return;
       }
-      void loadBars(root, tf, session, option).then(got => {
+      if (pageHidden()) return;
+      void contractBars(root, exp, Number(strike.toFixed(4)), right, tf, session).then(got => {
         if (dead) return;
-        if (!got.error) contracts.set(key, { at: Date.now(), bars: got.bars });
-        const bars = got.error && got.bars.length === 0 ? (hit?.bars ?? []) : got.bars;
-        setState({ key, bars, note: noteFor(session, bars, got.error && bars.length === 0) });
+        if (got.offline && !got.bars.length) {
+          setState({ key, bars: hit?.bars ?? [], note: offlineWords(hit?.at ?? 0) });
+          return;
+        }
+        contracts.set(key, { at: Date.now(), bars: got.bars });
+        setState({ key, bars: got.bars, note: got.bars.length ? null : `${sessionMeta(session).label} has no prints on this contract.` });
       });
     };
     run();
@@ -463,3 +120,4 @@ export function useWeigherContract(
   if (!on) return { bars: null, note: null };
   return state.key === key ? { bars: state.bars, note: state.note } : { bars: null, note: null };
 }
+

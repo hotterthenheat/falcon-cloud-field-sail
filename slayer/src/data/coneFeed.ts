@@ -4,7 +4,7 @@
 import { RTH_MINUTES } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, SESSION_CLOSE_MIN } from '../core/nyTime';
 import { YEAR_MINUTES } from './measure';
-import { thetaCall } from './theta';
+import { thetaGet } from './thetaFeed';
 import { uwOnlyDesk } from './spotGexBook';
 import { uwCall } from './whales';
 
@@ -133,7 +133,7 @@ async function fromUw(ticker: string): Promise<Surface | null> {
 }
 
 async function atmIv(root: string, expiration: string): Promise<{ iv: number; under: number } | null> {
-  const got = await thetaCall(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(root)}&expiration=${expiration.replace(/-/g, '')}&strike_range=1&format=json`);
+  const got = await thetaGet(`/option/snapshot/greeks/first_order?symbol=${encodeURIComponent(root)}&expiration=${expiration.replace(/-/g, '')}&strike_range=1&format=json`);
   if (got.error) return null;
   let under = 0;
   const byStrike = new Map<number, { c: number; p: number }>();
@@ -170,7 +170,7 @@ async function atmIv(root: string, expiration: string): Promise<{ iv: number; un
 
 async function fromTheta(ticker: string): Promise<Surface | null> {
   const root = CHAIN[ticker] ?? ticker;
-  const got = await thetaCall(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`);
+  const got = await thetaGet(`/option/list/expirations?symbol=${encodeURIComponent(root)}&format=json`);
   if (got.error) return null;
   const today = nyIsoDate();
   const dates: string[] = [];

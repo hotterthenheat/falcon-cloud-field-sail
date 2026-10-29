@@ -1,5 +1,5 @@
-/* The terminal in a window on the landing page, playing recordings of the real pages; its bar says the data in
-   them is simulated. */
+/* The terminal in a window on the landing page, playing recordings of the real pages; its bar says it is a
+   recording, not live data. */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useReducedMotion } from 'framer-motion';
@@ -272,12 +272,12 @@ const TerminalWindow = ({ path, theme, desk, natural = false, film, boot, bootSw
       data-window-film={reels.length ? (rolling ? 'rolling' : 'held') : 'still'}
       className={`landing-window relative flex flex-col overflow-hidden rounded-[14px] border border-borderMuted bg-canvas text-textPrimary transition-[border-color,box-shadow] duration-500 ${className}`}
     >
-      {/* THE BAR — which page this is, and that its numbers are simulated */}
+      {/* THE BAR — which page this is, and that it is a recording */}
       <div className="shrink-0 h-10 pl-3.5 pr-3.5 flex items-center gap-1.5 sm:gap-3 border-b border-borderSubtle bg-panel font-mono transition-colors duration-500">
         
         <SlayerMark size={16} bare label="" />
         <Prompt path={drawn} />
-        <span className="ml-auto text-t95 uppercase tracking-[0.16em] text-textMuted whitespace-nowrap">simulated data</span>
+        <span className="ml-auto text-t95 uppercase tracking-[0.16em] text-textMuted whitespace-nowrap" title="A recording of the page, played back. The numbers in it are not live.">recording · not live</span>
       </div>
 
       {/* THE SCREEN */}
