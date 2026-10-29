@@ -446,7 +446,6 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
       calibrationRows: study.calibration.reduce((a, c) => a + c.n, 0),
       first: study.movers.slice().sort((a, b) => a.mark.localeCompare(b.mark) || a.contract.localeCompare(b.contract))[0] ?? null,
       xsp772p: xspMover,
-      parts: review.after,
     };
     if (existsSync(want8)) {
       const w = JSON.parse(readFileSync(want8, 'utf8')) as typeof got8;

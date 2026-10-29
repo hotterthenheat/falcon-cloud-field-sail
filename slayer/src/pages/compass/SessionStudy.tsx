@@ -88,7 +88,7 @@ const SessionStudy = () => {
             </ul>
           </Section>
           <Section title="Why the movers were missed">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
               <table className="w-full font-mono text-t11 tnum" data-study-reasons>
                 <tbody>
                   {doc.missReasons.map(r => (
