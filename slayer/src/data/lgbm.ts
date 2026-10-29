@@ -73,7 +73,7 @@ export function parseBoosters(text: string, trees: number): Tree[] | null {
   return out;
 }
 
-function goLeft(decision: number, raw: number, threshold: number): boolean {
+export function goLeft(decision: number, raw: number, threshold: number): boolean {
   const missingType = (decision >> 2) & 3;
   const defaultLeft = (decision & 2) !== 0;
   let val = raw;

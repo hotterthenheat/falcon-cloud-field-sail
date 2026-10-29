@@ -111,31 +111,77 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
   /* the click after a pull is the pull's, not the headline's */
   const pulledRef = useRef(false);
 
+  /* the loop's controls, for the handlers outside it: `settle` stops a running drift where it stands (into xRef),
+     `kick` runs the frame loop for a glide, a pull or a wheel, and `resume` lets the drift go on if nothing holds it */
+  const loopRef = useRef<{ settle: () => void; kick: () => void; resume: () => void } | null>(null);
+
+  /* The drift runs on the compositor (a linear Web Animation of the strip's transform), so the page draws no frames of
+     its own while the tape slides; the frame loop runs only while a step glides or a hand pulls. The drift pauses
+     while the tape is off screen or the tab is hidden, and rests after one loop. */
   useEffect(() => {
     const strip = stripRef.current;
-    if (!strip) return;
+    const half = halfRef.current;
+    const box = boxRef.current;
+    if (!strip || !half) return;
     const still = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
     let last = 0;
-    /* the half's width is read on resize, not per frame, so the loop never forces a layout */
+    /* the half's width is read on resize, not per frame, so nothing here forces a layout */
     let halfW = 0;
     /* how far the tape has drifted on its own; it rests after one loop */
     let drifted = 0;
-    let watched: Element | null = null;
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => (halfW = halfRef.current?.offsetWidth ?? 0)) : null;
+    let drift: Animation | null = null;
+    let driftFrom = 0;
+    let driftLen = 0;
+    let driftMs = 1;
+    let onScreen = true;
+    const tx = (x: number) => `translate3d(${x.toFixed(2)}px,0,0)`;
+    const paint = (x: number) => {
+      strip.style.transform = tx(x);
+    };
+    /* the two halves are identical, so a half's width is a full turn: x stays in (−halfW, 0] */
+    const wrap = (x: number) => {
+      if (halfW <= 0) return x;
+      let r = x % halfW;
+      if (r > 0) r -= halfW;
+      return r === 0 ? 0 : r;
+    };
+    const settle = () => {
+      if (!drift) return;
+      const t = drift.currentTime;
+      const moved = Math.min(driftLen, Math.max(0, ((typeof t === 'number' ? t : 0) / driftMs) * driftLen));
+      drifted += moved;
+      xRef.current = wrap(driftFrom - moved);
+      paint(xRef.current);
+      const a = drift;
+      drift = null;
+      a.cancel();
+    };
+    const resume = () => {
+      if (drift || raf || still || halfW <= 0 || drifted >= halfW - 0.5 || !onScreen || document.hidden) return;
+      const h = holdRef.current;
+      if (h.hover || h.focus || h.drag || targetRef.current != null || typeof strip.animate !== 'function') return;
+      const x0 = xRef.current;
+      const len = halfW - drifted;
+      const end = x0 - len;
+      /* past one half the strip jumps back a half, unseen, as the frame loop's wrap did */
+      const k = (x0 + halfW) / len;
+      const frames: Keyframe[] =
+        end > -halfW
+          ? [{ transform: tx(x0) }, { transform: tx(end) }]
+          : [{ transform: tx(x0), offset: 0 }, { transform: tx(-halfW), offset: k }, { transform: tx(0), offset: k }, { transform: tx(end + halfW), offset: 1 }];
+      driftFrom = x0;
+      driftLen = len;
+      driftMs = (len / halfW) * TAPE_SECONDS_PER_LOOP * 1000;
+      const a = strip.animate(frames, { duration: driftMs, easing: 'linear', fill: 'forwards' });
+      drift = a;
+      a.onfinish = () => {
+        if (drift === a) settle();
+      };
+    };
     const frame = (ts: number) => {
-      raf = requestAnimationFrame(frame);
       const dt = last ? Math.min(64, ts - last) : 16;
       last = ts;
-      const half = halfRef.current;
-      if (half !== watched || !ro) {
-        if (ro && watched) ro.unobserve(watched);
-        if (ro && half) ro.observe(half);
-        watched = half;
-        halfW = half?.offsetWidth ?? 0;
-      }
-      if (halfW <= 0) return;
-      const h = holdRef.current;
       let x = xRef.current;
       const target = targetRef.current;
       if (target != null) {
@@ -144,26 +190,60 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
           x = target;
           targetRef.current = null;
         }
-      } else if (!(h.hover || h.focus || h.drag) && !still && drifted < halfW && !document.hidden) {
-        const step = (halfW / TAPE_SECONDS_PER_LOOP) * (dt / 1000);
-        x -= step;
-        drifted += step;
       }
       /* the loop: the two halves are identical, so a half's width is a full turn */
-      if (x <= -halfW) {
+      if (halfW > 0 && x <= -halfW) {
         x += halfW;
         if (targetRef.current != null) targetRef.current += halfW;
-      } else if (x > 0) {
+      } else if (halfW > 0 && x > 0) {
         x -= halfW;
         if (targetRef.current != null) targetRef.current -= halfW;
       }
       xRef.current = x;
-      strip.style.transform = `translate3d(${x.toFixed(2)}px,0,0)`;
+      paint(x);
+      if (targetRef.current != null || holdRef.current.drag) raf = requestAnimationFrame(frame);
+      else {
+        raf = 0;
+        last = 0;
+        resume();
+      }
     };
-    raf = requestAnimationFrame(frame);
+    const kick = () => {
+      settle();
+      if (!raf) raf = requestAnimationFrame(frame);
+    };
+    loopRef.current = { settle, kick, resume };
+    paint(xRef.current);
+    const measure = () => {
+      const w = half.offsetWidth;
+      if (w === halfW) return;
+      settle();
+      halfW = w;
+      xRef.current = wrap(xRef.current);
+      paint(xRef.current);
+      resume();
+    };
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(half);
+    else measure();
+    const io =
+      box && typeof IntersectionObserver !== 'undefined'
+        ? new IntersectionObserver(es => {
+            onScreen = es.some(e => e.isIntersecting);
+            if (onScreen) resume();
+            else settle();
+          })
+        : null;
+    io?.observe(box!);
+    const onVisible = () => (document.hidden ? settle() : resume());
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
+      settle();
       cancelAnimationFrame(raf);
       ro?.disconnect();
+      io?.disconnect();
+      document.removeEventListener('visibilitychange', onVisible);
+      loopRef.current = null;
     };
   }, [tape.length > 0]);
 
@@ -176,7 +256,9 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
       if (!d) return;
       e.preventDefault();
       targetRef.current = null;
+      loopRef.current?.settle();
       xRef.current -= d;
+      loopRef.current?.kick();
     };
     box.addEventListener('wheel', onWheel, { passive: false });
     return () => box.removeEventListener('wheel', onWheel);
@@ -187,6 +269,7 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
     const half = halfRef.current;
     const halfW = half?.offsetWidth ?? 0;
     if (!half || halfW <= 0) return;
+    loopRef.current?.settle();
     const lefts = [...half.children].map(c => (c as HTMLElement).offsetLeft - TAPE_LEAD);
     if (!lefts.length) return;
     const cur = (((-xRef.current) % halfW) + halfW) % halfW;
@@ -200,13 +283,16 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
       dist = cur - prev;
     }
     targetRef.current = xRef.current - dir * dist;
+    loopRef.current?.kick();
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
+    loopRef.current?.settle();
     dragRef.current = { startX: e.clientX, x0: xRef.current, moved: false };
     holdRef.current.drag = true;
     targetRef.current = null;
+    loopRef.current?.kick();
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
@@ -235,15 +321,25 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
       ref={boxRef}
       className="relative h-[30px] border-b border-ink/[0.06] flex items-center gap-1 px-1.5"
       data-news-tape={tape.length}
-      onPointerEnter={() => (holdRef.current.hover = true)}
+      onPointerEnter={() => {
+        holdRef.current.hover = true;
+        loopRef.current?.settle();
+      }}
       onPointerLeave={() => {
         holdRef.current.hover = false;
         endDrag();
+        loopRef.current?.resume();
       }}
       /* a KEYBOARD focus holds it (a Tab onto a headline must not have it slide away); a click's
          focus does not, or the tape would stand still after every pick and every arrow */
-      onFocus={e => (holdRef.current.focus = e.target.matches(':focus-visible'))}
-      onBlur={() => (holdRef.current.focus = false)}
+      onFocus={e => {
+        holdRef.current.focus = e.target.matches(':focus-visible');
+        if (holdRef.current.focus) loopRef.current?.settle();
+      }}
+      onBlur={() => {
+        holdRef.current.focus = false;
+        loopRef.current?.resume();
+      }}
     >
       <button type="button" onClick={() => step(-1)} aria-label="Back one headline" title="Back one headline" className={arrow} data-news-tape-step="back">
         <ChevronLeft className="w-3.5 h-3.5" />
@@ -619,6 +715,90 @@ const News = () => {
     navigate('/pinpoint/map');
   };
 
+  /* the list's rows, drawn again only when the rows, the open story, the layout or the Board change — a hover on the
+     map, a tick of the clock or the tape's own moves leave a day's hundreds of rows alone */
+  const rowList = useMemo(
+    () =>
+      rows.map(e => {
+            const open = e.id === selectedId;
+            const faded = freshnessOf(e) === 'faded';
+            if (stacked) {
+              const move = e.item.prediction.measured ? e.item.prediction.expMove1dPct : null;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => pick(e)}
+                  className={`group w-full text-left px-4 py-2.5 flex flex-col gap-1 border-t border-borderSubtle/40 transition-colors ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+                  data-news-row={e.id}
+                  data-open={open || undefined}
+                >
+                  <span className="flex items-start gap-2 min-w-0">
+                    <span className="mt-[5px] shrink-0">
+                      <ImpactMark tier={tierOf(e.severity)} />
+                    </span>
+                    <span className={`min-w-0 line-clamp-2 text-t125 leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
+                  </span>
+                  <span className="min-w-0 flex items-center gap-1.5 font-mono text-t10 text-textMuted whitespace-nowrap overflow-hidden">
+                    <span className="tnum text-textSecondary">{e.item.time}</span>
+                    <span>·</span>
+                    {e.item.ticker ? (
+                      <span className="inline-flex items-center gap-1 font-bold text-textPrimary">
+                        <CompanyLogo ticker={e.item.ticker} size={12} />
+                        {e.item.ticker}
+                      </span>
+                    ) : (
+                      <span className="text-textSecondary">{storyNameWord(e.item)}</span>
+                    )}
+                    <span>·</span>
+                    <CatTag category={e.item.category} size={9} />
+                    {(e.item.major || onBoard(e)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} />}
+                    {(move != null || e.item.prediction.extMovePct != null || e.item.prediction.lastSession) && <span className="ml-auto tnum font-semibold"><PublishMove p={e.item.prediction} short /> <span className="font-normal text-textMuted">at publish</span></span>}
+                  </span>
+                </button>
+              );
+            }
+            return (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => pick(e)}
+                className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[900px] ${BAND_COLS} ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+                style={{ minHeight: NEWS_ROW_H }}
+                data-news-row={e.id}
+                data-open={open || undefined}
+              >
+                <span className="h-5 flex items-center font-mono text-t10 tnum text-textSecondary">{e.item.time}</span>
+                <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-t11 font-bold text-textPrimary">
+                  {e.item.ticker ? (
+                    <>
+                      <CompanyLogo ticker={e.item.ticker} size={14} />
+                      {e.item.ticker}
+                    </>
+                  ) : (
+                    <span className="text-textSecondary">{storyNameWord(e.item)}</span>
+                  )}
+                </span>
+                <span className="min-w-0 h-5 flex items-center lg:max-2xl:hidden">
+                  <CatTag category={e.item.category} size={9} />
+                </span>
+                <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} /></span>
+                <span className="min-w-0 flex items-center gap-2">
+                  <ImpactMark tier={tierOf(e.severity)} />
+                  <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
+                </span>
+                <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
+                <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate lg:max-2xl:hidden" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
+                  {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
+                </span>
+              </button>
+            );
+          }),
+    // pick, onBoard and similarRef read only stable setters, boardSet and the rows themselves
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, selectedId, stacked, boardSet],
+  );
+
   /* the kind pills, a rail over the list */
   const kindPills = CATEGORY_OPTIONS.map(o => {
       const on = o.value === category;
@@ -748,81 +928,7 @@ const News = () => {
             <span className="text-right lg:max-2xl:hidden" title="The other stocks the headline names">Also</span>
           </div>}
           {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
-          {rows.map(e => {
-            const open = e.id === selectedId;
-            const faded = freshnessOf(e) === 'faded';
-            if (stacked) {
-              const move = e.item.prediction.measured ? e.item.prediction.expMove1dPct : null;
-              return (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => pick(e)}
-                  className={`group w-full text-left px-4 py-2.5 flex flex-col gap-1 border-t border-borderSubtle/40 transition-colors ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
-                  data-news-row={e.id}
-                  data-open={open || undefined}
-                >
-                  <span className="flex items-start gap-2 min-w-0">
-                    <span className="mt-[5px] shrink-0">
-                      <ImpactMark tier={tierOf(e.severity)} />
-                    </span>
-                    <span className={`min-w-0 line-clamp-2 text-t125 leading-snug ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
-                  </span>
-                  <span className="min-w-0 flex items-center gap-1.5 font-mono text-t10 text-textMuted whitespace-nowrap overflow-hidden">
-                    <span className="tnum text-textSecondary">{e.item.time}</span>
-                    <span>·</span>
-                    {e.item.ticker ? (
-                      <span className="inline-flex items-center gap-1 font-bold text-textPrimary">
-                        <CompanyLogo ticker={e.item.ticker} size={12} />
-                        {e.item.ticker}
-                      </span>
-                    ) : (
-                      <span className="text-textSecondary">{storyNameWord(e.item)}</span>
-                    )}
-                    <span>·</span>
-                    <CatTag category={e.item.category} size={9} />
-                    {(e.item.major || onBoard(e)) && <NewsFlag major={e.item.major} onBoard={onBoard(e)} />}
-                    {(move != null || e.item.prediction.extMovePct != null || e.item.prediction.lastSession) && <span className="ml-auto tnum font-semibold"><PublishMove p={e.item.prediction} short /> <span className="font-normal text-textMuted">at publish</span></span>}
-                  </span>
-                </button>
-              );
-            }
-            return (
-              <button
-                key={e.id}
-                type="button"
-                onClick={() => pick(e)}
-                className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[900px] ${BAND_COLS} ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
-                style={{ minHeight: NEWS_ROW_H }}
-                data-news-row={e.id}
-                data-open={open || undefined}
-              >
-                <span className="h-5 flex items-center font-mono text-t10 tnum text-textSecondary">{e.item.time}</span>
-                <span className="min-w-0 h-5 inline-flex items-center gap-1.5 font-mono text-t11 font-bold text-textPrimary">
-                  {e.item.ticker ? (
-                    <>
-                      <CompanyLogo ticker={e.item.ticker} size={14} />
-                      {e.item.ticker}
-                    </>
-                  ) : (
-                    <span className="text-textSecondary">{storyNameWord(e.item)}</span>
-                  )}
-                </span>
-                <span className="min-w-0 h-5 flex items-center lg:max-2xl:hidden">
-                  <CatTag category={e.item.category} size={9} />
-                </span>
-                <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} /></span>
-                <span className="min-w-0 flex items-center gap-2">
-                  <ImpactMark tier={tierOf(e.severity)} />
-                  <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
-                </span>
-                <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
-                <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate lg:max-2xl:hidden" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
-                  {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
-                </span>
-              </button>
-            );
-          })}
+          {rowList}
         </div>
           </div>
           <div className="min-w-0 px-4 pt-3 pb-3 flex flex-col gap-3 overflow-y-auto lg:sticky lg:top-0 lg:self-start lg:max-h-[min(80vh,720px)] max-lg:border-t max-lg:border-borderSubtle" data-news-story={selected?.id}>

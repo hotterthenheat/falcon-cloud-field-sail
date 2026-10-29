@@ -38,6 +38,8 @@ const CompassLayout = lazy(() => import('./pages/compass/CompassLayout'));
 const CompassBoard = lazy(() => import('./pages/compass/Board'));
 const CompassSetup = lazy(() => import('./pages/compass/SetupPage'));
 const Blotter = lazy(() => import('./pages/compass/Blotter'));
+const CompassReview = lazy(() => import('./pages/compass/SessionReview'));
+const CompassStudy = lazy(() => import('./pages/compass/SessionStudy'));
 const Weigher = lazy(() => import('./pages/Weigher'));
 const Stocks = lazy(() => import('./pages/record/Stocks'));
 const News = lazy(() => import('./pages/record/News'));
@@ -186,6 +188,8 @@ const App = () => {
               <Route index element={<CompassBoard />} />
               <Route path="blotter" element={<Blotter />} />
               <Route path="tracker" element={<Tracker embedded />} />
+              <Route path="review" element={<CompassReview />} />
+              <Route path="study" element={<CompassStudy />} />
               <Route path=":id" element={<CompassSetup />} />
             </Route>
             <Route path="/weigher" element={<Weigher />} />

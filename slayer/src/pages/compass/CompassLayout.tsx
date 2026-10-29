@@ -23,11 +23,13 @@ export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day 
 /** The Tracker's line under the same head. Last page of Compass. */
 export const TRACKER_LINE = 'The signals in play, each on its own quotes since the call.';
 export const BLOTTER_LINE = 'The official record: every call the scan fired, the quote it fired on, the fill, the exit.';
+export const REVIEW_LINE = 'Every trade reviewed after the close: the entry, what happened after, and the cause.';
+export const STUDY_LINE = 'The session studied: what moved, what the model read, and what stopped it.';
 
 const CompassLayout = () => {
   const location = useLocation();
   const outlet = useOutlet();
-  const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : COMPASS_LINE;
+  const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : location.pathname.startsWith('/compass/review') ? REVIEW_LINE : location.pathname.startsWith('/compass/study') ? STUDY_LINE : COMPASS_LINE;
   const onBoard = location.pathname === '/compass' || location.pathname === '/compass/';
   /* every Compass page reads the server's board and record */
   useEffect(() => holdCompassFeed(), []);

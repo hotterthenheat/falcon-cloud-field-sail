@@ -119,19 +119,35 @@ const band = (west: number, east: number): GeoJSON.Feature => {
   return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } };
 };
 
-const landData = (pins: CityPing[], heat: HeatPoint[], reach: Reach | null): GeoJSON.FeatureCollection => {
-  const features: GeoJSON.Feature[] = [];
-  for (const f of countryFeatures()) {
-    if (String(f.id) === '010') continue;
-    let heatW = 0;
-    let touched = false;
-    for (const h of heat) if (geoContains(f, [h.lng, h.lat])) heatW += h.w;
-    for (const p of pins) if (!touched && geoContains(f, [p.lng, p.lat])) touched = true;
-    const open = !!(reach && geoContains(f, [reach.lng, reach.lat]));
-    const role = open ? 'open' : heatW > 0 ? 'heat' : touched ? 'news' : '';
-    if (!role || !f.geometry) continue;
-    features.push({ type: 'Feature', id: f.id, geometry: f.geometry, properties: { role } });
+/* Which countries hold a point, kept per point for the visit: the cut's cities come back on every pick, filter and
+   refresh, and the spherical point-in-polygon test over every country is what colouring the land costs. */
+const holders = new Map<string, number[]>();
+const countriesHolding = (lng: number, lat: number): number[] => {
+  const key = `${lng},${lat}`;
+  let hit = holders.get(key);
+  if (!hit) {
+    const fs = countryFeatures();
+    hit = [];
+    for (let i = 0; i < fs.length; i++) if (geoContains(fs[i], [lng, lat])) hit.push(i);
+    if (fs.length) holders.set(key, hit);
   }
+  return hit;
+};
+
+const landData = (pins: CityPing[], heat: HeatPoint[], reach: Reach | null): GeoJSON.FeatureCollection => {
+  const fs = countryFeatures();
+  const heatW = new Float64Array(fs.length);
+  const touched = new Uint8Array(fs.length);
+  for (const h of heat) for (const i of countriesHolding(h.lng, h.lat)) heatW[i] += h.w;
+  for (const p of pins) for (const i of countriesHolding(p.lng, p.lat)) touched[i] = 1;
+  const open = new Set(reach ? countriesHolding(reach.lng, reach.lat) : []);
+  const features: GeoJSON.Feature[] = [];
+  fs.forEach((f, i) => {
+    if (String(f.id) === '010') return;
+    const role = open.has(i) ? 'open' : heatW[i] > 0 ? 'heat' : touched[i] ? 'news' : '';
+    if (!role || !f.geometry) return;
+    features.push({ type: 'Feature', id: f.id, geometry: f.geometry, properties: { role } });
+  });
   return { type: 'FeatureCollection', features };
 };
 

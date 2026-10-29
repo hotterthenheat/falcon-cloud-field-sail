@@ -5,7 +5,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { importModelState, type ModelPack } from './compassModel';
-import { importSignals, type Signal } from './compassLedger';
+import { importSignals, importWould, type Signal } from './compassLedger';
 import { importMarks, setScanMeta, type MarkRow, type ScanMeta } from './compassScan';
 import { noteCompassCall } from './compassAlerts';
 import { feedHeaders } from './feedGate';
@@ -24,6 +24,8 @@ interface Served {
   model: ModelPack;
   earlier: { day: string; at: number; setups: Setup[] } | null;
   signals: Signal[];
+  /** What late marks would have called (not calls) */
+  would?: Signal[];
   marks: MarkRow[];
 }
 
@@ -61,6 +63,7 @@ let heard: Set<string> | null = null;
 function apply(s: Served, status: FeedStatus): void {
   importModelState(s.model, s.earlier);
   importSignals(s.signals);
+  importWould(s.would ?? []);
   importMarks(s.marks);
   setScanMeta(s.meta);
   /* a call this browser has not seen before chimes for the reader who asked to hear it (data/compassAlerts.ts);

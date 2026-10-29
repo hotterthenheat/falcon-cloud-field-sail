@@ -25,6 +25,7 @@
     "theta": "node theta/supervisor.mjs",
     "theta:relay": "node theta/relay.mjs",
     "theta:check": "node scripts/theta-check.mjs",
+    "compass:study": "tsx scripts/compass-study.ts",
     "proxy:proof": "node scripts/proxy-auth-proof.mjs",
     "hub:proof": "node scripts/hub-proof.mjs",
     "load:proof": "node scripts/load-proof.mjs"
