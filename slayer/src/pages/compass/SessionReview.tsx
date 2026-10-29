@@ -68,7 +68,7 @@ const SessionReview = () => {
           <DropdownSelect
             label="Show"
             value={kind}
-            options={[{ value: 'all', label: 'Calls and would-have' }, { value: 'calls', label: 'Live calls' }, { value: 'would', label: 'Would have called' }]}
+            options={[{ value: 'all', label: 'All trades' }, { value: 'calls', label: 'Live calls' }, { value: 'would', label: 'Would have called' }]}
             onChange={setKind}
             title="Which trades the review shows"
             testId="review-kind"
