@@ -388,13 +388,13 @@ export const ChainCard = memo(function ChainCard({
     });
   }, [sel, rows, ready]);
 
-  const viewport = () => {
+  const viewport = (): HTMLElement | null => {
     const all = wrapRef.current?.querySelectorAll<HTMLElement>('.ag-grid-viewport');
     if (!all?.length) return null;
     let best: HTMLElement | null = null;
-    all.forEach(el => {
+    for (const el of Array.from(all)) {
       if (!best || el.clientHeight > best.clientHeight) best = el;
-    });
+    }
     return best;
   };
   /* Pixel offset of the price row from the row heights we already know. AG Grid's
