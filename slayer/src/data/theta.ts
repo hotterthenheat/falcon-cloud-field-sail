@@ -55,8 +55,9 @@ function parseCsv(text: string): Record<string, string>[] {
   });
 }
 
-/* The terminal's own 47x codes (478: another terminal holds the session) mean it cannot answer anything. */
-const downStatus = (status: number) => status === 503 || (status >= 470 && status < 480);
+/* Only these mean the terminal can answer nothing: 474 disconnected from ThetaData, 478 another terminal holds the
+   session, 571 still starting. 472 is "no data for this request" and 471/473 are about the request itself. */
+const downStatus = (status: number) => status === 503 || status === 474 || status === 478 || status === 571;
 
 /* While the terminal is down every call would fail the same way: hold them all, 15 s at first and up to a minute. */
 let downUntil = 0;
@@ -75,7 +76,8 @@ function faultText(status: number, parsed: unknown, text: string): string {
   const o = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   const code = o && typeof o.code === 'string' ? o.code : '';
   const raw = o ? String(o.error || o.message || '') : typeof parsed === 'string' ? parsed : text;
-  if (code === 'terminal_down' || code === 'session_lost' || code === 'terminal_unavailable' || status === 503 || status === 0 || downStatus(status) || /not running|thetadata|invalid session/i.test(raw)) return 'terminal_down';
+  if (code === 'terminal_down' || code === 'session_lost' || code === 'terminal_unavailable' || status === 0 || downStatus(status) || /not running|invalid session/i.test(raw)) return 'terminal_down';
+  if (status === 472) return 'no_data';
   const msg = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
   return msg || `unavailable ${status}`;
 }
