@@ -471,7 +471,6 @@ const ProfilePanel = ({
      field portals them in, DayBox's way), the row wraps as the panel narrows, and the book starts under the row's
      MEASURED height — one line on a wide panel, two or three on a narrow one */
   const [stripSlot, setStripSlot] = useState<HTMLElement | null>(null);
-  const [bookView, setBookView] = useState<'flow' | 'oi' | 'gap'>('flow');
   const headRef = useRef<HTMLDivElement | null>(null);
   const [headH, setHeadH] = useState(HEAD_TOP);
   useEffect(() => {
@@ -486,16 +485,9 @@ const ProfilePanel = ({
   const bookRev = useBookRev();
   const gexSnap = useMemo<MarketSnapshot | null>(() => {
     if ((!onField && view !== 'greeks') || !ticker) return null;
-    const snap = snapshotOf(ticker);
-    if (!snap || bookView === 'flow') return snap;
-    const chain = snap.chain.map(n => {
-      if (n.oiNetGex == null) return n;
-      if (bookView === 'oi') return { ...n, netGex: n.oiNetGex, callGex: n.oiCallGex ?? n.callGex, putGex: n.oiPutGex ?? n.putGex };
-      return { ...n, netGex: n.netGex - n.oiNetGex, callGex: n.callGex - (n.oiCallGex ?? n.callGex), putGex: n.putGex - (n.oiPutGex ?? n.putGex) };
-    });
-    return { ...snap, chain };
+    return snapshotOf(ticker);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, ticker, gexTick, bookRev, bookView]);
+  }, [view, ticker, gexTick, bookRev]);
   /* where the rows start this frame — the head, plus the key when it is drawn */
   const headBandRef = useRef(HEAD_TOP);
   /* whether the rows PRINT their figures this frame — the card carries them only when they
@@ -1847,15 +1839,6 @@ const ProfilePanel = ({
         {/* on GEX the row WRAPS: the tabs, then the field's cards through the slot, the close door pinned at the right */}
         <div className={`flex items-center gap-1.5 min-w-0 ${onField ? 'flex-wrap gap-y-1 py-[3px] pr-7' : ''}`} style={onField ? { minHeight: HEAD_TOP } : { height: HEAD_TOP }}>
           {viewTabs}
-          {gexSnap?.chain.some(n => n.oiNetGex != null) && (
-            <span className="pointer-events-auto inline-flex items-center gap-1 font-mono text-t10" data-book-view={bookView}>
-              {(['flow', 'oi', 'gap'] as const).map(id => (
-                <button key={id} type="button" onClick={() => setBookView(id)} className={bookView === id ? 'text-textPrimary' : 'text-textMuted'} title={id === 'gap' ? 'Flow gamma minus open-interest gamma' : id === 'oi' ? 'Open interest only' : 'Signed flow, starting from open interest'}>
-                  {id === 'flow' ? 'Flow' : id === 'oi' ? 'OI' : 'Gap'}
-                </button>
-              ))}
-            </span>
-          )}
           {onField && <div ref={setStripSlot} className="contents" data-profile-head-slot />}
           {headCard && !onField && (
             <span className="pointer-events-auto shrink-0 inline-flex" data-profile-head-card>
@@ -1921,24 +1904,19 @@ const ProfilePanel = ({
             <>
               {([
                 ['netGex', 'Gamma $'],
-                ['oiNetGex', 'Open interest gamma $'],
                 ['netDex', 'Delta $'],
                 ['netVex', 'Vega $'],
                 ['netVanna', 'Vanna $'],
                 ['netCharm', 'Charm $'],
               ] as const).map(([key, label]) => {
                 const chain = gexSnap?.chain ?? [];
-                if (key === 'oiNetGex' && !chain.some(n => n.oiNetGex != null)) return null;
                 const sum = chain.reduce((a, n) => a + (Number(n[key]) || 0), 0);
                 return <p key={key}>{label}: {chain.length ? fmtUsd(sum) : 'unavailable'}</p>;
               })}
               {(() => {
-                const chain = gexSnap?.chain ?? [];
-                const gaps = chain.filter(n => n.bookGap);
                 const score = ticker ? nodeScore(ticker) : null;
                 return (
                   <>
-                    {gaps.length > 0 && <p>Disagree: {gaps.map(n => n.strike).join(' ')}</p>}
                     {score && score.unsigned != null && <p>No side on {Math.round(score.unsigned * 100)}% of the near volume.{score.unsigned >= 0.4 ? ' The flow book is thin.' : ''}</p>}
                     {score && ([['Flow', score.flowHeld, score.flowBroke], ['Nearby', score.nearHeld, score.nearBroke], ['OI', score.oiHeld, score.oiBroke]] as const).map(([name, held, broke]) => {
                       const n = held + broke;

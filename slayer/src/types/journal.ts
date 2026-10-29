@@ -6,7 +6,7 @@
 
 import type { ScannerKey, SleeveKey, Verdict } from './compass';
 /* Horizon is declared beside the weights it indexes; rows use that type, never a copy. */
-import type { Horizon } from '../core/contractScore';
+export type Horizon = 'SAMEDAY' | 'WEEKLIES' | 'SWINGS' | 'LEAPS';
 
 /** Engine build stamp ("compass@0.3.0"), bumped on any scoring, weight, threshold or candidate change so replays stay
     comparable. The current value is in core/journal.ts. */

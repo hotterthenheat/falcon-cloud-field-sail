@@ -85,9 +85,10 @@ import { bucketFlow, flowMaxLeg } from '../../data/flowBars';
 import { atrBarSeries, alignGamma, alignPremium, alignSides, bollingerSeries, emaSeries, flowVwapSeries, gammaEmaSeries, gammaVwapSeries, macdSeries, rsiSeries, sessionStarts, smaSeries, vwapSeries, vwapSigmaSeries } from '../../data/indicators';
 import { buildSessionLevels, type OpeningRange } from '../../data/sessionLevels';
 import { SessionLevelsPrimitive, sessionLines } from './sessionLevelsPrimitive';
-import { buildExpectedMoveCone } from '../../data/expectedMove';
+import { buildExpectedMoveCone, daySigmaOfIv } from '../../data/expectedMove';
 import { buildTapeEvents, macroWindow, type MarketEvent, type MacroDate } from '../../data/events';
-import { impliedDaySigma, sessionAtr } from '../../data/atr';
+import { sessionAtr } from '../../data/atr';
+import { uwOnlyDesk } from '../../data/spotGexBook';
 import { type EarningsEvent } from '../../data/earnings';
 import { ensureEarnings, peekEarningsEvent } from '../../data/earningsFeed';
 import { EventsPrimitive } from './eventsPrimitive';
@@ -480,7 +481,8 @@ export function displayBars(ticker: string, mins: number, alt?: AltBarSpec | nul
     noteThetaDraw(ticker, false);
     return aggregateCandles(book, mins);
   }
-  if (bookFailed(ticker)) {
+  /* ThetaData stands in only off Pinpoint and the Dossier, which read Unusual Whales alone (docs/DATA_SOURCES.md) */
+  if (bookFailed(ticker) && !uwOnlyDesk()) {
     const th = thetaCandles(ticker);
     const rows = th?.filter(c => minuteInSession(nyMinutes(c.time * 1000), session)) ?? [];
     if (rows.length >= 1) {
@@ -3271,7 +3273,7 @@ const StrikeChart = ({
     drawingsRef.current?.setDistanceScales({
       atr: sessionAtr(base),
       /* the vendor's implied move first — the one expected move the pages share (uwBook peekDaySigma) */
-      sigma: peekDaySigma(ticker) ?? impliedDaySigma(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
+      sigma: peekDaySigma(ticker) ?? daySigmaOfIv(base.length ? base[base.length - 1].close : 0, nameIv() ?? 0),
     });
 
     const loaded = loadedRef.current;
@@ -4112,7 +4114,7 @@ const StrikeChart = ({
   }, [ticker]);
 
   useEffect(() => {
-    if (peekEntry(ticker)?.status === 'error') {
+    if (peekEntry(ticker)?.status === 'error' && !uwOnlyDesk()) {
       markBookFailed(ticker);
       ensureThetaCandles(ticker);
     }

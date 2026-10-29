@@ -28,7 +28,7 @@ import { CALL_WALL, FLIP, PUT_WALL, SUPREME, THERMAL_COOL, THERMAL_WARM, alpha, 
 import { CLOCK_SCALE, DAY_SCALE_W, dayChartOptions, dayClock, daySurface, dayStartOf, feedSeries, syncDayScale } from './dayChart';
 import { biggestSwings, publishSwings, useChartFocus } from '../../data/chartMoves';
 import { KeyLevelsPrimitive, KEY_LEVEL_WORDS, type KeyLevelRung } from './keyLevelsPrimitive';
-import type { Candle, GexSnapshot, MarketSnapshot } from '../../types/market';
+import type { Candle, MarketSnapshot } from '../../types/market';
 
 const SILVER = 'rgb(var(--silver))';
 const INK_3 = 'rgb(var(--text-muted))';

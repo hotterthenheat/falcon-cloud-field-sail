@@ -207,17 +207,12 @@ async function paged<T>(path: string, limit: number, pages: number, onPage?: (so
 
 /* The vendor rejects limit=200 on headlines and 300 on congress; pages are zero-indexed. The first page is priority and
    handed up before the rest. */
-export const whalesNews = (onPage?: (soFar: UwNews[]) => void) => paged<UwNews>('/news/headlines', 50, 4, onPage);
-export const whalesCongress = () => paged<UwCongress>('/congress/recent-trades', 100, 3);
 export const whalesPoliticians = () => uw<UwPolitician[]>('/congress/politicians?last_traded_within_months=24');
-export const whalesInsiders = () => uw<UwInsider[]>('/insider/transactions');
 export const whalesEcon = () => uw<UwEcon[]>('/market/economic-calendar');
 export const whalesScreener = (tickers: string[], priority = false) =>
   uw<Record<string, unknown>[]>(`/screener/stocks?ticker=${tickers.map(t => encodeURIComponent(t)).join(',')}`, priority);
 export const whalesAnalysts = (ticker: string, priority = false) =>
   uw<Record<string, unknown>[]>(`/screener/analysts?ticker=${encodeURIComponent(ticker)}&limit=200`, priority);
-export const whalesFlow = () => uw<Record<string, unknown>[]>('/option-trades/flow-alerts');
-export const whalesDarkPool = () => uw<Record<string, unknown>[]>('/darkpool/recent');
 export const whalesEarnings = (ticker: string, priority = false) => uw<Record<string, unknown>[]>(`/earnings/${encodeURIComponent(ticker)}`, priority);
 export const whalesEarningsSlot = (slot: 'premarket' | 'afterhours', date: string, page = 0, limit = 100) =>
   uw<Record<string, unknown>[]>(`/earnings/${slot}?date=${encodeURIComponent(date)}&limit=${limit}&page=${page}`);
@@ -352,10 +347,10 @@ export interface UwDaily {
 export const whalesDaily = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(ticker)}/ohlc/1d?limit=900&timeframe=2Y`, true).then(rows => (Array.isArray(rows) ? rows.slice(0, 260) : rows));
 /* A daily row comes up to three times a day (pre, regular, post), so two years (timeframe=2Y, 900 rows) is about 300
    sessions: enough for a 200-day average. */
+/** The last few sessions' daily rows (pre, regular and post rows, newest first): enough for the regular closes the
+    day's change needs, without the two-year read */
+export const whalesDailyRecent = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(ticker)}/ohlc/1d?limit=18`, true);
 export const whalesDailyLong = (ticker: string) => uw<UwDaily[]>(`/stock/${enc(ticker)}/ohlc/1d?limit=900&timeframe=2Y`, true);
-export const whalesDarkTicker = (ticker: string) => uw<Record<string, unknown>[]>(`/darkpool/${enc(ticker)}?limit=80`, true);
-export const whalesFlowTicker = (ticker: string) =>
-  uw<Record<string, unknown>[]>(`/option-trades/flow-alerts?ticker_symbol=${enc(ticker)}&limit=40`, true);
 /** Every contract, paged: one expiry's, or (no expiry) every listed contract of the name, 500 at a time until a short
     page. Null when the first page fails; a later failed page ends the walk with an error, never a cut list. */
 /* The vendor's paging is unstable (rows repeat and go missing across pages). An expiry under 500 rows is one ask; a
@@ -521,10 +516,7 @@ export interface UwTide {
 
 export const whalesInstitutions = (limit = 10) => uw<UwInstitution[]>(`/institutions?limit=${limit}&order=total_value`);
 export const whalesHoldings = (name: string, limit = 30) => uw<UwHolding[]>(`/institution/${encodeURIComponent(name)}/holdings?limit=${limit}`);
-export const whalesShorts = (minDate: string) =>
-  uw<UwShort[]>(`/short_screener?limit=80&min_market_date=${encodeURIComponent(minDate)}&order_by=short_interest&order_direction=desc`);
 export const whalesEtfHoldings = (ticker: string) => uw<UwEtfHolding[]>(`/etfs/${enc(ticker)}/holdings`);
 export const whalesEtfFlow = (ticker: string) => uw<UwEtfFlow[]>(`/etfs/${enc(ticker)}/in-outflow`);
 export const whalesEtfInfo = (ticker: string) => uw<UwEtfInfo>(`/etfs/${enc(ticker)}/info`);
-export const whalesTide = () => uw<UwTide[]>('/market/market-tide');
 

@@ -8,6 +8,7 @@ import { vendorFault, type FeedFault } from '../components/ui/liveRead';
 import type { BookContract, FlowPrint } from '../types/trace';
 import type { DarkPoolIntent, DarkPoolLevel, DarkPoolPrint, DarkPoolView, LevelRole, Posture } from '../types/darkpool';
 import { isoDate, isTradingDay, sessionsBetween } from '../core/calendar';
+import { marketPhase } from '../core/marketPhase';
 import { nyParts, nyWallTime } from '../core/nyTime';
 import type { MoneynessKey, NetFlowSegment, SpreadKind, SpreadLeg, SpreadTrade } from './flowBook';
 import { leanOfSides, postureOfNet } from './traceLean';
@@ -63,26 +64,7 @@ export function sessionEndMin(ticker?: string | null): number {
 }
 /** "16:15 ET" or "16:00 ET" */
 export const sessionEndLabel = (ticker?: string | null) => (sessionEndMin(ticker) === 975 ? '16:15 ET' : '16:00 ET');
-export type SessionPhase = 'pre' | 'regular' | 'after' | 'closed';
-/** Where New York's clock stands against the stock session (pre-market from 04:00, after hours to 20:00) */
-export function sessionPhase(at: Date = new Date()): SessionPhase {
-  const p = nyParts(at);
-  if (!isTradingDay(new Date(p.year, p.month - 1, p.day))) return 'closed';
-  const m = p.hour * 60 + p.minute;
-  if (m >= 240 && m < 570) return 'pre';
-  if (m >= 570 && m < 960) return 'regular';
-  if (m >= 960 && m < 1200) return 'after';
-  return 'closed';
-}
-
-/** 'late' is 16:00–16:15 on a session day: stock options have closed, the late-closing index and ETF options have not */
-export type MarketPhase = SessionPhase | 'late';
-export function marketPhase(at: Date = new Date()): MarketPhase {
-  const ph = sessionPhase(at);
-  if (ph !== 'after') return ph;
-  const p = nyParts(at);
-  return p.hour * 60 + p.minute < 975 ? 'late' : 'after';
-}
+export { marketPhase, sessionPhase, type MarketPhase, type SessionPhase } from '../core/marketPhase';
 
 /** The last session that has ended at `endMin` (New York minute) — its day, open and close — or null while it runs */
 function lastCloseAt(at: Date, endMin: number): { iso: string; closeMs: number; openMs: number } | null {
