@@ -959,7 +959,7 @@ const RulerLane = ({ cmp, unit, reach, greek, want, onWant, focusA, focusB, onPi
             </>
           )
         ) : (
-          <span className="text-textMuted truncate">{compact ? (cards ? 'hover a strike · click for its card' : 'hover a strike') : `hover a strike on either side · ${cards ? 'click for its card' : 'click to keep it'}${scrollable ? ' · scroll or pull to move along the ruler · double-click to come back to spot' : ''}`}</span>
+          <span className="text-textMuted truncate" title="Hover a strike on either side to read it; click to keep it or open its card; scroll or pull to move along the ruler; double-click to come back to spot">{compact ? (cards ? 'hover a strike · click for its card' : 'hover a strike') : `hover a strike on either side · ${cards ? 'click for its card' : 'click to keep it'}${scrollable ? ' · scroll or pull to move along the ruler · double-click to come back to spot' : ''}`}</span>
         )}
       </div>
     </div>

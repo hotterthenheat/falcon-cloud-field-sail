@@ -65,8 +65,9 @@ interface Props {
 }
 
 const Cap = ({ children, aside, tip }: { children: ReactNode; aside?: ReactNode; tip?: string }) => (
-  <div className="flex items-end justify-between gap-2 pt-3 pb-1 border-b border-borderSubtle/60">
-    <span className="min-w-0 font-mono text-t10 uppercase tracking-[0.14em] text-textMuted whitespace-nowrap truncate" title={tip}>{children}</span>
+  /* a cap and its rail wrap onto two lines in a narrow panel rather than cut the cap ("HEAVIEST · G…") */
+  <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1 pt-3 pb-1 border-b border-borderSubtle/60">
+    <span className="min-w-0 font-mono text-t10 uppercase tracking-[0.1em] text-textMuted" title={tip}>{children}</span>
     {aside}
   </div>
 );
