@@ -15,7 +15,7 @@ import { heldWords, usd, dirInk } from '../../components/review/words';
 import { useSignals, type Signal } from '../../data/compassLedger';
 import { daySummary } from '../../data/compassOutcome';
 import { backlogLine, useCompassFeed } from '../../data/compassFeed';
-import { EmptyBox, LoadingBox, asOfText } from '../../components/ui/states';
+import { EmptyBox, ErrorBox, LoadingBox, asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
 
@@ -244,6 +244,8 @@ const Blotter = () => {
         <div className="border-t border-borderSubtle" data-blotter-empty>
           {feed.status === 'loading' && !lines.length ? (
             <LoadingBox shape="table" rows={4} label="Reading the record" />
+          ) : feed.status === 'offline' && !lines.length ? (
+            <ErrorBox what="The record did not load" detail={feed.error || 'The Compass server did not answer.'} />
           ) : (
             <EmptyBox
               title={q.trim() ? 'No match' : lines.length ? 'Nothing on this cut' : 'No call yet'}

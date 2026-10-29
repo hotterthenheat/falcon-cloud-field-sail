@@ -28,7 +28,7 @@ import {
   underAt,
   type ScoreResult,
 } from './compassModel';
-import { recordPicks, settleOpen } from './compassLedger';
+import { recordPicks, setSessionClose, settleOpen } from './compassLedger';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { nyYmd as ymd } from '../core/calendar';
 
@@ -695,6 +695,8 @@ async function readClose(day: string): Promise<void> {
   const type = String(row?.type ?? '');
   const m = /^(\d{2}):(\d{2})/.exec(String(row?.close ?? ''));
   closeMin = type === 'early_close' && m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  /* the calls recorded from now on settle against this session's close */
+  setSessionClose(closeMin);
 }
 
 /** On an early-close day nothing is scored after the close: the curb and the later marks do not exist. */

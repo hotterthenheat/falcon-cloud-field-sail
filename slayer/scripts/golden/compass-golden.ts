@@ -205,6 +205,9 @@ expectEqual('reversal exit', [o.exit?.why, o.exit?.px], ['Get out. Small loss. T
 /* Flat: the first quote at or after 15:55 */
 o = settleSignal({ book: 'B', right: 'P', runner: true, firedAt: fired }, [q(10, 31, 0.4, 0.42), q(15, 54, 0.45, 0.47), q(15, 55, 0.44, 0.46)], [], after);
 expectEqual('flat at 15:55', [o.exit?.why, o.exit?.px, o.exit?.at], ['15:55 flat', 0.44, at(15, 55)]);
+/* Early close (13:00 ET, minute 780): the flat is the first quote at or after 12:55 */
+o = settleSignal({ book: 'A', right: 'C', runner: false, firedAt: fired, closeMin: 780 }, [q(10, 31, 1.21, 1.25), q(12, 54, 1.3, 1.34), q(12, 55, 1.31, 1.35)], [], after);
+expectEqual('early close: flat at 12:55', [o.exit?.why, o.exit?.px, o.exit?.at], ['12:55 flat', 1.31, at(12, 55)]);
 /* Book C: 3× the 0.50 fill (1.50) inside 120 seconds sells at 1.50 */
 const firedC = at(15, 20, 5);
 o = settleSignal({ book: 'C', right: 'C', runner: false, firedAt: firedC }, [q(15, 21, 0.45, 0.5), q(15, 21, 1.2, 1.3, 40), q(15, 22, 1.55, 1.6, 30)], [], after);

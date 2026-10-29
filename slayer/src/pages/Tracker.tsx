@@ -10,7 +10,7 @@ import { nyClock, nyIsoDate } from '../core/nyTime';
 import { activeStop, useSignals, type Signal } from '../data/compassLedger';
 import { daySummary, optionFees } from '../data/compassOutcome';
 import { backlogLine, holdCompassFeed, useCompassFeed } from '../data/compassFeed';
-import { EmptyBox, asOfText } from '../components/ui/states';
+import { EmptyBox, ErrorBox, asOfText } from '../components/ui/states';
 import { useThetaStatus } from '../data/thetaQuote';
 import TraceBox, { Fact } from '../components/trace/TraceBox';
 import ContractLabel from '../components/ui/ContractLabel';
@@ -135,6 +135,9 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
     >
       {rows.live.length + rows.done.length === 0 ? (
         <div className="border-t border-borderSubtle" data-tracker-empty>
+          {feed.status === 'offline' && !record.length ? (
+            <ErrorBox what="The record did not load" detail={feed.error || 'The Compass server did not answer.'} />
+          ) : (
           <EmptyBox
             title="Nothing in play"
             reason={backlogLine(feed.marks) || 'When the scan fires a Book A, B or C call it shows here with the quote it fired on, its fill and its path, until it closes.'}
@@ -144,6 +147,7 @@ const Tracker = ({ embedded = false }: { embedded?: boolean } = {}) => {
               </button>
             ) : undefined}
           />
+          )}
         </div>
       ) : (
         <div className="border-t border-borderSubtle px-4 sm:px-5 py-4 flex flex-col gap-4">
