@@ -404,6 +404,23 @@
    same living-foil sheen. First/last stops match the flat token
    (#C7D3E8 family) so reduced-motion degrades to plain silver.
    ============================================================ */
+/* THE TEXT FLOOR (2026-10-29): the type steps under 11px (tailwind.config.ts t7–t105, meta) read these variables.
+   Inside the terminal (AppShell sets data-type-floor on <html>) every one of them is 11px, so a micro-label, a meta
+   line or a table cell is never under 11px; the marketing pages keep the drawn sizes. */
+html[data-type-floor] {
+  --t7: 11px;
+  --t75: 11px;
+  --t8: 11px;
+  --t85: 11px;
+  --t9: 11px;
+  --t95: 11px;
+  --t10: 11px;
+  --t105: 11px;
+}
+html[data-type-floor] .pal-label {
+  font-size: 11px;
+}
+
 :root {
   --holo-gradient: linear-gradient(
     115deg,

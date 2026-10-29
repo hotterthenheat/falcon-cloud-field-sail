@@ -115,19 +115,23 @@ export default {
         'xxs': '0.7rem',
         'xxxs': '0.6rem',
         /* Named steps so a room does not invent text-[10px] for chrome. */
-        meta: ['10px', { lineHeight: '14px', letterSpacing: '0.08em' }],
+        meta: ['var(--t10, 10px)', { lineHeight: '14px', letterSpacing: '0.08em' }],
         fine: ['11px', { lineHeight: '15px' }],
         ui: ['12.5px', { lineHeight: '16px' }],
         body: ['13px', { lineHeight: '18px' }],
-        /* Exact steps. A string, not a tuple, so line-height stays what it was. */
-        t7: '7px',
-        t75: '7.5px',
-        t8: '8px',
-        t85: '8.5px',
-        t9: '9px',
-        t95: '9.5px',
-        t10: '10px',
-        t105: '10.5px',
+        /* Exact steps. A string, not a tuple, so line-height stays what it was.
+           THE TEXT FLOOR (2026-10-29): inside the terminal nothing that must be read is under 11px. The steps under 11
+           read a variable (index.css `--t*`), raised to 11px on <html data-type-floor> (AppShell sets it), so the
+           marketing pages keep their sizes and every terminal page, its menus and its portals, meets the floor in
+           one place. */
+        t7: 'var(--t7, 7px)',
+        t75: 'var(--t75, 7.5px)',
+        t8: 'var(--t8, 8px)',
+        t85: 'var(--t85, 8.5px)',
+        t9: 'var(--t9, 9px)',
+        t95: 'var(--t95, 9.5px)',
+        t10: 'var(--t10, 10px)',
+        t105: 'var(--t105, 10.5px)',
         t11: '11px',
         t115: '11.5px',
         t12: '12px',
