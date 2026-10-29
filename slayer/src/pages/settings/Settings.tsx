@@ -330,7 +330,7 @@ const AccountPreview = () => {
               {d.thisOne && <Tag tone="silver">this machine</Tag>}
               <span className="ml-auto font-mono text-t10 tnum text-textMuted">{d.lastSeen}</span>
               {!d.thisOne && (
-                <button type="button" onClick={() => setProfile({ devices: p.devices.filter(x => x.id !== d.id) })} className="font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" data-settings-device-out={d.id}>
+                <button type="button" onClick={() => setProfile({ devices: p.devices.filter(x => x.id !== d.id) })} className="tap-40 font-mono text-t10 uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors" data-settings-device-out={d.id}>
                   Sign out
                 </button>
               )}
@@ -1157,7 +1157,7 @@ const Settings = () => {
                 key={s.id}
                 to={`/settings/${s.id}`}
                 aria-current={on ? 'page' : undefined}
-                className={`flex items-center gap-2 px-2.5 h-8 rounded-md text-t12 transition-colors text-left ${
+                className={`flex items-center gap-2 px-2.5 h-8 max-sm:h-10 rounded-md text-t12 transition-colors text-left ${
                   on ? 'bg-ink/[0.05] text-textPrimary' : s.soon ? 'text-textMuted hover:text-textSecondary' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.03]'
                 } ${s.gap ? 'xl:mt-2' : ''}`}
                 data-settings-nav={s.id}

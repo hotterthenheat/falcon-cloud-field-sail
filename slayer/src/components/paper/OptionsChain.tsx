@@ -1,6 +1,7 @@
 /* A name's options, traded from the chain: calls or puts at its head with the expiry and columns, then the
    Weigher's grid with the order opening inside a pressed strike. */
 
+import { AsOf } from '../ui/states';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import DropdownMulti from '../ui/DropdownMulti';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
@@ -68,9 +69,11 @@ interface ChainProps {
   full: boolean;
   /** The order, under a strike's weigh-up */
   order: (c: DeskContract) => ReactNode;
+  /** What the grid says while it has no chain (loading, the terminal away, nothing listed) */
+  empty?: ReactNode;
 }
 
-const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, onExpiry, sel, onSelect, held, full, order }: ChainProps) => {
+const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, onExpiry, sel, onSelect, held, full, order, empty }: ChainProps) => {
   const [cols, setColsRaw] = useState<string[]>(readCols);
   const setCols = (next: string[]) => {
     const ordered = CHAIN_COLUMNS.map(c => c.key).filter(k => next.includes(k));
@@ -89,6 +92,7 @@ const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, on
         <SideSwitch right={right} onRight={onRight} />
         {expiry && <DropdownSelect label="Expiry" bare value={expiry} options={expiryOptions} onChange={onExpiry} title="The expiry — those listed today; today’s leaves the list at 16:00" testId="paper-chain-expiry" />}
         <DropdownMulti label="Columns" values={cols} groups={COLUMN_GROUPS} onChange={setCols} emptyWord="Strike only" title="Which facts the chain shows" testId="paper-chain-columns" align="end" />
+        {chain?.kept && chain.takenAt ? <AsOf at={chain.takenAt} title="The last quotes this browser read; nothing fills on them" /> : null}
         {chain && (
           <span className="ml-auto font-mono text-t10 tnum text-textMuted" title="The move the chain is charging for by this expiry, either way">
             ±{chain.expectedMovePct.toFixed(1)}%
@@ -99,7 +103,7 @@ const OptionsChain = ({ ticker, chain, right, onRight, expiry, expiryOptions, on
         {chain ? (
           <ChainCard chain={chain} right={right} sel={sel} onSelect={onSelect} cols={shown} centerKey={`${ticker}|${expiry}|${right}`} inlineDrill drillExtra={order} held={held} />
         ) : (
-          <div className="h-full min-h-[200px] flex items-center justify-center font-mono text-t10 uppercase tracking-widest text-textMuted">No expiry is listed right now</div>
+          (empty ?? <div className="h-full min-h-[200px] flex items-center justify-center font-mono text-t10 uppercase tracking-widest text-textMuted">No expiry is listed right now</div>)
         )}
       </div>
     </div>

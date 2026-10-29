@@ -11,7 +11,7 @@ import { peekRegularCloses, phaseOf } from './dayChange';
 import { loadCloses } from './stockFile';
 import { screenerNeedsCloses, screenerRead } from './liveQuote';
 import { nyIsoDate, nyWallTime } from '../core/nyTime';
-import { uwCall, whalesEarnings, whalesEarningsSlot, whalesIvRank, whalesOptionContracts, whalesScreener } from './whales';
+import { uwCall, whalesEarnings, whalesEarningsSlot, whalesOptionContracts, whalesScreener } from './whales';
 import { body, createStore, keepFresh, keptRead, liveGet, type Get, type KeptRead } from './feedStore';
 
 interface SlotRow {
@@ -182,6 +182,8 @@ export function reportedNow(e: { ticker?: string; iso?: string; slot: ReportSlot
 const wireOut = new Set<string>();
 const wireAt = new Map<string, number>();
 const RESULTS = /\b(q[1-4]|quarter(ly)?|results|earnings|eps)\b/i;
+/* a notice of a coming report ("to report Q3 results on…", "sets date for", "conference call") is not the print */
+const PREVIEW = /\b(?:to (?:report|announce|release|host|hold)|will (?:report|announce|release|host)|sets? (?:the )?date|schedules?|scheduled|conference call|webcast|ahead of|preview|expected to)\b/i;
 const WIRE_EVERY = 5 * 60_000;
 function checkWire(tickers: readonly string[], iso: string): Promise<boolean> {
   const today = nyToday();
@@ -199,7 +201,7 @@ function checkWire(tickers: readonly string[], iso: string): Promise<boolean> {
         const rows = Array.isArray(res.data) ? (res.data as { created_at?: string; headline?: string; tickers?: string[] }[]) : [];
         const hit = rows.some(r => {
           const at = Date.parse(String(r.created_at ?? ''));
-          return Number.isFinite(at) && at >= midnight && (r.tickers ?? []).map(x => x.toUpperCase()).includes(t) && RESULTS.test(String(r.headline ?? ''));
+          return Number.isFinite(at) && at >= midnight && (r.tickers ?? []).map(x => x.toUpperCase()).includes(t) && RESULTS.test(String(r.headline ?? '')) && !PREVIEW.test(String(r.headline ?? ''));
         });
         if (hit) wireOut.add(`${t}|${iso}`);
         return hit;
@@ -546,13 +548,13 @@ function contractsFrom(ticker: string, rows: Record<string, unknown>[], spot: nu
   return { calls: calls.slice(0, 3), puts: puts.slice(0, 3) };
 }
 
+/* a name's IV rank is the screener's iv_rank, the board's own figure, so the two pages never disagree */
 async function pullIv(ticker: string, priority = false): Promise<void> {
   if (ivRank.has(ticker)) return;
   try {
-    const rows = await whalesIvRank(ticker, priority);
-    /* the latest day by its date (the series comes oldest first) */
-    const latest = (Array.isArray(rows) ? rows : []).filter(r => r?.date).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-    const raw = num(latest?.iv_rank_1y);
+    const rows = await whalesScreener([ticker], priority);
+    const row = (Array.isArray(rows) ? rows : []).find(r => String(r.ticker || '').toUpperCase() === ticker);
+    const raw = num(row?.iv_rank);
     ivRank.set(ticker, raw > 0 ? Math.round(Math.min(100, raw)) : 0);
   } catch {
     ivRank.set(ticker, 0);
@@ -616,7 +618,7 @@ export const reportDayLabelYear = (iso: string): string => {
   return day.slice(0, 4) === nyToday().slice(0, 4) ? labelFor(day) : `${labelFor(day)}/${day.slice(2, 4)}`;
 };
 
-function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | null {
+export function dossierFromRows(ticker: string, rows: SlotRow[]): EarningsDossier | null {
   const today = nyToday();
   const sym = ticker.toUpperCase();
   const stamped = rows.map(r => ({ ...r, symbol: r.symbol || sym }));

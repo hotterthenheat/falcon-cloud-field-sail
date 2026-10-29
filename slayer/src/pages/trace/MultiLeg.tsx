@@ -28,6 +28,7 @@ import RichRead from '../../components/ui/RichRead';
 import TraceBox, { Champion, endlessOf, Fact, PhoneRow, TraceGrid } from '../../components/trace/TraceBox';
 import { SavedCutsControl, SavedCutsList, useSavedCuts } from '../../components/trace/SavedCuts';
 import { isIsoDay, isQuery, oneOf, useAddressCut } from '../../components/trace/addressCut';
+import { PREM_FLOOR_OPTIONS, PREM_FLOORS, type PremFloor } from '../../components/trace/premFloor';
 import { createViewStore } from '../../data/savedViews';
 import { StructureGuide } from '../../components/trace/TraceGuide';
 import Modal from '../../components/ui/Modal';
@@ -47,7 +48,7 @@ const MONEY_OPTIONS: DropdownOption<'ALL' | 'DEBIT' | 'CREDIT'>[] = [
   { value: 'CREDIT', label: 'Collected', hint: 'Structures that paid the trader to put on' },
 ];
 /* the set at rest fits a 1440 box beside the pinned risk columns */
-const WIDTHS: Record<string, number> = { time: 112, ticker: 88, strikes: 150, exp: 112, size: 60, net: 136, prem: 140, legs: 56, kind: 160, maxloss: 92, maxprofit: 92 };
+const WIDTHS: Record<string, number> = { time: 100, ticker: 84, strikes: 136, exp: 104, size: 56, net: 124, prem: 124, legs: 56, kind: 160, maxloss: 88, maxprofit: 88 };
 /* who on the left, the risk at the right, both always on screen */
 const PIN_LEFT = ['time', 'ticker'];
 const PIN_RIGHT = ['maxloss', 'maxprofit'];
@@ -287,8 +288,10 @@ const MultiLeg = () => {
     paid: { def: 'ALL', valid: oneOf(['ALL', 'DEBIT', 'CREDIT']) },
     q: { def: '', valid: isQuery },
     exp: { def: '', valid: isIsoDay },
+    prem: { def: '0', valid: oneOf(PREM_FLOORS) },
   });
   const kind = addr.cut.shape as SpreadKind | 'ALL';
+  const prem = addr.cut.prem as PremFloor;
   const setKind = (v: SpreadKind | 'ALL') => addr.set({ shape: v });
   const money = addr.cut.paid as 'ALL' | 'DEBIT' | 'CREDIT';
   const setMoney = (v: 'ALL' | 'DEBIT' | 'CREDIT') => addr.set({ paid: v });
@@ -344,12 +347,14 @@ const MultiLeg = () => {
         t =>
           (kind === 'ALL' || t.kind === kind) &&
           (money === 'ALL' || (t.netKnown !== false && (money === 'DEBIT' ? t.netPremium > 0 : t.netPremium < 0))) &&
+          /* the floor reads the net paid or collected, the legs' gross when the vendor left the net out */
+          (prem === '0' || (t.netKnown !== false ? Math.abs(t.netPremium) : t.premium) >= Number(prem)) &&
           /* a structure matches on its ticker or any of its legs' contracts */
           (nq === '' || normSymbol(t.ticker).includes(nq) || t.legs.some(l => matchesContract(cutQuery, { ticker: t.ticker, strike: l.strike, right: l.right, expiry: l.expiry })))
       )
       /* newest first by the instant; ties keep a stable order by id */
       .sort((a, b) => timeOf(b) - timeOf(a) || a.id.localeCompare(b.id));
-  }, [trades, kind, money, cutQuery]);
+  }, [trades, kind, money, cutQuery, prem]);
   /* legs are read for the first screenful of the cut, then for the rows on screen as the reader scrolls */
   const [onScreen, setOnScreen] = useState<string[] | null>(null);
   const onVisible = useCallback((vis: SpreadTrade[]) => setOnScreen(prev => {
@@ -690,6 +695,7 @@ const MultiLeg = () => {
             <DropdownSelect label="Screen" value={kind} options={SHAPE_OPTIONS} onChange={setKind} title="Which structures" testId="multi-leg-shape" />
             {/* not "Money": that means moneyness on every other page */}
             <DropdownSelect label="Debit · credit" value={money} options={MONEY_OPTIONS} onChange={setMoney} title="Paid to put on, or collected" testId="multi-leg-money" />
+            <DropdownSelect label="Premium" value={prem} options={PREM_FLOOR_OPTIONS} onChange={v => addr.set({ prem: v })} title="The least net paid or collected" testId="multi-leg-premium" />
             <ExpiryCalendar value={chosen ? isoDate(chosen.date) : ''} expiries={expiries} onChange={e => setExpiry(isoDate(e.date))} onClear={() => setExpiry(null)} label="Expiry" icon={CalendarDays} steppers={false} title="Only structures whose near leg sits on one expiry" testId="multi-leg-expiry" />
             <SavedCutsControl store={ML_CUTS} query={addr.query} onOpen={addr.open} noun="cut" testId="multi-leg" onSay={cuts.say} open={cuts.open} onToggleOpen={cuts.toggle} />
             <div className="ml-auto">

@@ -18,7 +18,7 @@ import OptionsChain, { ChainOrder, type ChainOrderDesk } from '../../components/
 import type { ChartBracket, ChartEntry, ChartMark, ChartPosition } from '../../components/review/PositionLayer';
 import PnlBadges from '../../components/review/PnlBadges';
 import ThetaLine from '../../components/review/ThetaLine';
-import { AsOf } from '../../components/ui/states';
+import { AsOf, EmptyBox, LoadingBox } from '../../components/ui/states';
 import { feedRev, subscribeFeed } from '../../data/paper/thetaFeed';
 import { dirInk, rWords, usd, usdSigned } from '../../components/review/words';
 import AccountCard from '../../components/paper/AccountCard';
@@ -392,7 +392,8 @@ const PaperDesk = () => {
   const chainDesk: ChainOrderDesk = {
     refuse: d => optRefusalLive(account.id, d),
     locked: lock ?? (account.status !== 'open' ? 'This account is closed' : null),
-    quoteWith: (c, at) => m.optQuoteAt(c, at),
+    /* at the name's price now: the contract's live NBBO, what a press fills at; anywhere else, the what-if */
+    quoteWith: (c, at) => (Math.abs(at - spotOf(c.ticker)) < 1e-9 ? m.optQuote(c) : m.optQuoteAt(c, at)),
     spotForBid: (c, bid) => spotForBidNow(c, m.now, bid),
     fee: account.sandbox ? 0 : account.fee,
     free: v.free,
@@ -433,6 +434,15 @@ const PaperDesk = () => {
         held={heldStrikes}
         full={full}
         /* keyed by whether the strike is held: a buy that fills turns the dropdown to the position with a fresh price box */
+        empty={
+          feedOffline() ? (
+            <EmptyBox title="ThetaData offline — reconnecting" reason="The chain fills with each contract’s live NBBO once the terminal answers." />
+          ) : expiries.length ? (
+            <LoadingBox shape="table" rows={12} label="Loading the chain" />
+          ) : (
+            <LoadingBox shape="table" rows={12} label="Loading the listed expiries" />
+          )
+        }
         order={c => (exp && chain ? <ChainOrder key={`${name}|${exp}|${c.strike}|${c.right}|${heldStrikes.has(c.strike) ? 'held' : 'new'}`} c={c} ticker={name} expiry={exp} spot={chain.spot} desk={chainDesk} /> : null)}
       />
     </>

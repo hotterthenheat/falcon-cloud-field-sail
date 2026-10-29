@@ -412,16 +412,14 @@ function thinPremium(factors: Factor[], premium: number): Factor[] {
   return factors.map(f => ({ ...f, lean: 0, weight: 0, context: true, note: `${f.note} — only ${dollars3(premium)} of premium, too thin to read` }));
 }
 /* Earnings growth is read as a rate a year: the screener's one-, two- and three-year EPS changes, each turned into a
-   yearly rate, and the middle of them taken, so one odd quarter (a year-ago one-off, a tiny base) cannot decide it.
-   A change through a loss (EPS at or under zero at either end) has no rate and is shown, not read. */
+   yearly rate. When they agree in sign the one nearest zero is read (a tiny base inflates the others); when they
+   disagree there is no lean. A change through a loss (EPS at or under zero at either end) has no rate. */
 /** Growth of this much a year or more leans fully for the name; the same shrink fully against */
 export const GROWTH_FULL = 0.25;
 /** A total change over `years` as a rate a year; null when it ran through a loss */
 export const yearlyRate = (g: number | null, years: number): number | null => (g == null || !(1 + g > 0) ? null : Math.pow(1 + g, 1 / years) - 1);
-const middle = (xs: number[]): number => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
-};
+/** The rates' claim they all make: the one nearest zero when they share a sign, else 0 */
+export const agreedRate = (xs: readonly number[]): number => (xs.every(x => x >= 0) ? Math.min(...xs) : xs.every(x => x <= 0) ? Math.max(...xs) : 0);
 /** The numbers pillar: earnings growth as a rate a year, and the share count's change. Scored only when the growth is. */
 export function numberFactors(row: ScreenRow): Factor[] {
   const out: Factor[] = [];
@@ -429,15 +427,16 @@ export function numberFactors(row: ScreenRow): Factor[] {
   const rates = spans.map(x => yearlyRate(x.total, x.years)).filter((r): r is number => r != null);
   const spanWords = spans.map(x => `${x.years}y ${signedPct(x.total! * 100, 0)}`).join(' · ');
   if (rates.length) {
-    const rate = middle(rates);
+    const rate = agreedRate(rates);
+    const split = rates.some(r => r > 0) && rates.some(r => r < 0);
     out.push({
       key: 'growth',
       label: 'Earnings growth a year',
-      value: `${signedPct(rate * 100, 0)} a year · ${spanWords}`,
+      value: `${split ? 'mixed' : `${signedPct(rate * 100, 0)} a year`} · ${spanWords}`,
       lean: clamp(rate / GROWTH_FULL),
       /* one span alone is half the evidence */
       weight: rates.length >= 2 ? 0.7 : 0.35,
-      note: rate >= 0.03 ? 'earnings are growing' : rate <= -0.03 ? 'earnings are shrinking' : 'earnings are about flat',
+      note: split ? 'the spans disagree — no lean' : rate >= 0.03 ? 'earnings are growing on every span' : rate <= -0.03 ? 'earnings are shrinking on every span' : 'earnings are about flat',
     });
   } else if (spans.length) {
     out.push({ key: 'growth', label: 'Earnings growth a year', value: spanWords, lean: 0, weight: 0, context: true, note: 'earnings ran through a loss — no yearly rate to read' });

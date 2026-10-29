@@ -60,6 +60,7 @@ import SpotPrice from '../../components/gex/SpotPrice';
 import { CANDLE_THEMES, chartGround, pageDefaultCandleKey, usePageDefaultCandleKey, type CandleThemeKey } from '../../components/gex/candleTheme';
 import { TIMEFRAMES, type Timeframe } from '../../data/timeframe';
 import FrameMeter, { frameMeterOn } from '../../components/gex/FrameMeter';
+import { paneLevels } from './paneLevels';
 import { buildConfluence, type TrendState } from '../../data/confluence';
 import { OPENING_RANGES, type OpeningRange } from '../../data/sessionLevels';
 import { isBarClock } from '../../data/altBars';
@@ -160,48 +161,7 @@ type RailData = {
   maxAbs: number;
   spot: number;
   step: number;
-  levels: { spot: number; callWall: number; putWall: number; flip: number; supreme: number };
   legs: Map<number, { put: number; call: number }>;
-};
-/** Walls only where the live chain actually has them. A missing wall is not drawn at the spot. */
-const levelsOf = (rows: { strike: number; value: number }[], spot: number): RailData['levels'] => {
-  let supreme = Number.NaN;
-  let supremeAbs = 0;
-  let callWall = Number.NaN;
-  let cwAbs = 0;
-  let putWall = Number.NaN;
-  let pwAbs = 0;
-  for (const l of rows) {
-    const a = Math.abs(l.value);
-    if (!(a > 0)) continue;
-    if (a > supremeAbs) {
-      supremeAbs = a;
-      supreme = l.strike;
-    }
-    if (l.strike > spot && a > cwAbs) {
-      cwAbs = a;
-      callWall = l.strike;
-    }
-    if (l.strike < spot && a > pwAbs) {
-      pwAbs = a;
-      putWall = l.strike;
-    }
-  }
-  let flip = Number.NaN;
-  let flipDist = Infinity;
-  const asc = [...rows].sort((a, b) => a.strike - b.strike);
-  for (let i = 1; i < asc.length; i++) {
-    const prev = asc[i - 1].value;
-    const next = asc[i].value;
-    if (prev === 0 || next === 0 || Math.sign(prev) === Math.sign(next)) continue;
-    const mid = (asc[i - 1].strike + asc[i].strike) / 2;
-    const d = Math.abs(mid - spot);
-    if (d < flipDist) {
-      flipDist = d;
-      flip = mid;
-    }
-  }
-  return { spot, callWall, putWall, flip, supreme };
 };
 /** The rail's shape off rows in descending strike order: the near-spot core, its scale, the step */
 const railShape = (rows: { strike: number; value: number; callOI?: number }[], spot: number) => {
@@ -226,7 +186,6 @@ function railForCut(ticker: string, cut: RailCut): RailData {
     maxAbs: 1,
     spot: spot ?? Number.NaN,
     step: 1,
-    levels: { spot: spot ?? Number.NaN, callWall: Number.NaN, putWall: Number.NaN, flip: Number.NaN, supreme: Number.NaN },
     legs: new Map(),
   };
   const date = cut === 'book'
@@ -246,7 +205,7 @@ function railForCut(ticker: string, cut: RailCut): RailData {
       return { strike: n.strike, value: n.netGex, callOI: n.callOI };
     })
     .sort((a, b) => b.strike - a.strike);
-  return { ...railShape(rows, spot), levels: levelsOf(rows, spot), legs };
+  return { ...railShape(rows, spot), legs };
 }
 
 const TF_VALUES = new Set<string>(TIMEFRAMES.map(t => t.value));
@@ -701,12 +660,7 @@ const Pane = ({
      the cut's own expiry when the rail is cut to a later date, off the rows the rail already holds. */
   const levelsScope = useLevelsScope();
   const house = useLevelsFor(ticker, levelsScope, bookPick ? shownBook?.date ?? null : null);
-  const levels = useMemo(() => {
-    const own = railData.levels;
-    if (!house) return own;
-    const n = (v: number | null) => (v == null ? Number.NaN : v);
-    return { spot: own.spot, callWall: n(house.callWall), putWall: n(house.putWall), flip: n(house.flip), supreme: house.supreme };
-  }, [railData, house]);
+  const levels = useMemo(() => paneLevels(railData.spot, house), [railData, house]);
   // Deterministic per ticker, so the dark-pool lines do not wander on a tick
   const prints = useMemo(() => [] as { price: number; notional: number; date: string; size: number; time: string }[], []);
   /* The rail's rows come off the same snapshot `levels` was reduced from. The header's three-strike read uses them

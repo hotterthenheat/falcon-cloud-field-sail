@@ -564,16 +564,16 @@ const SideNav = ({ onOpenPalette }: SideNavProps) => {
 
       {/* The phone strip: the menu (MobileMenu.tsx, opened by the house mark), the subject and the search. */}
       <div className="md:hidden fixed inset-x-0 top-0 z-40 h-12 flex items-center gap-2.5 px-2.5 bg-canvas/80 backdrop-blur-md border-b border-borderSubtle">
-        <button type="button" onClick={() => setMenuOpen(true)} aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-md border border-borderSubtle text-textSecondary" data-mobile-menu-door>
+        <button type="button" onClick={() => setMenuOpen(true)} aria-label="Menu" aria-haspopup="dialog" aria-expanded={menuOpen} className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-md border border-borderSubtle text-textSecondary" data-mobile-menu-door>
           <Menu className="w-4 h-4" />
         </button>
         {/* The name's chip gives way, never the search door. */}
-        <button onClick={onOpenPalette} className="inline-flex items-center gap-2 rounded-md border border-borderMuted bg-chip px-2.5 py-1 min-w-0 overflow-hidden">
+        <button onClick={onOpenPalette} className="inline-flex items-center gap-2 h-10 rounded-md border border-borderMuted bg-chip px-2.5 min-w-0 overflow-hidden" data-phone-subject>
           <CompanyLogo ticker={activeTicker} size={16} />
           <span className="text-t12 font-semibold text-textPrimary">{activeTicker}</span>
           <NavPrice ticker={activeTicker} compact />
         </button>
-        <button onClick={onOpenPalette} aria-label="Search or jump to…" className="ml-auto shrink-0 p-1.5 rounded-md border border-borderSubtle text-textMuted">
+        <button onClick={onOpenPalette} aria-label="Search or jump to…" className="ml-auto shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-md border border-borderSubtle text-textMuted">
           <Search className="w-3.5 h-3.5" />
         </button>
       </div>

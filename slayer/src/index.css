@@ -2135,3 +2135,19 @@ html[data-theme='light'] [data-paper-chain-side-pick='P']:not([aria-pressed='tru
     opacity: 0.6;
   }
 }
+
+/* A small control keeps its drawn size; on a touch screen its hit area reaches 40px around its centre */
+@media (pointer: coarse) {
+  .tap-40 {
+    position: relative;
+  }
+  .tap-40::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 40px);
+    height: max(100%, 40px);
+    transform: translate(-50%, -50%);
+  }
+}

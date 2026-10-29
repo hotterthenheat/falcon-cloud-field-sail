@@ -1,7 +1,7 @@
 /* Compass's shell: one head over the board, the blotter, the tracker and a setup's page. The scan engine starts
    with the first Compass page (useThetaBook), so a visitor who never opens Compass never runs it. */
 
-import { Suspense, useMemo } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { Compass as CompassIcon } from 'lucide-react';
 import { CompassRouteSkeleton } from '../compassSkeleton';
@@ -14,6 +14,9 @@ import { parseSetupId, setupIdOf } from '../../data/compass';
 import { COMPASS_SET } from '../../data/compassUniverse';
 import { currentPicks } from '../../data/compassModel';
 import { useThetaBook } from '../../data/thetaBook';
+import { useCompassPings } from '../../data/compassAlerts';
+import { chime } from '../../core/sound';
+import { nyClock } from '../../core/nyTime';
 
 export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
@@ -42,6 +45,7 @@ const CompassLayout = () => {
           </div>
           <p className="mt-0.5 text-t11 text-textMuted break-words sm:whitespace-nowrap sm:truncate">{line}</p>
         </div>
+        <CallPing />
         <SessionBook />
       </header>
       {/* The tape is the scan's rail. A contract's page is the contract — the prints stay loaded for the way back. */}
@@ -63,6 +67,29 @@ const CompassLayout = () => {
         page
       )}
     </div>
+  );
+};
+
+/** A call the reader asked to hear: one chime and a chip for a minute, a click opens it. */
+const CallPing = () => {
+  const pings = useCompassPings();
+  const navigate = useNavigate();
+  const heard = useRef<Set<string>>(new Set(pings.map(p => p.id)));
+  const [, wake] = useState(0);
+  const last = pings[0];
+  const fresh = last && Date.now() - last.at < 60_000 ? last : null;
+  useEffect(() => {
+    if (!fresh || heard.current.has(fresh.id)) return;
+    heard.current.add(fresh.id);
+    chime();
+    const id = window.setTimeout(() => wake(n => n + 1), 60_000);
+    return () => window.clearTimeout(id);
+  }, [fresh]);
+  if (!fresh) return null;
+  return (
+    <button type="button" onClick={() => navigate(`/compass/${fresh.id}`)} className="slayer-chip normal-case" data-compass-ping={fresh.id}>
+      Called {fresh.contract} · {fresh.sleeve} · {nyClock(fresh.at, { zone: true })}
+    </button>
   );
 };
 

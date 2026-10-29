@@ -36,7 +36,7 @@ export const Row = ({ name, line, children, testId }: { name: string; line: stri
 export const Door = ({ children, onClick, to, href, title, tone = 'plain', testId, disabled = false }: { children: ReactNode; onClick?: () => void | Promise<unknown>; to?: string; href?: string; title?: string; tone?: 'plain' | 'bear' | 'silver'; testId: string; disabled?: boolean }) => {
   const [busy, run] = useBusy();
   const working = useWorking(busy);
-  const cls = `inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border font-mono text-t10 uppercase tracking-wider transition-colors whitespace-nowrap ${
+  const cls = `inline-flex items-center gap-1.5 h-7 max-sm:h-10 px-2.5 rounded-md border font-mono text-t10 uppercase tracking-wider transition-colors whitespace-nowrap ${
     tone === 'bear' ? 'border-bear/40 text-bear hover:bg-bear/10' : tone === 'silver' ? 'border-silver/50 bg-silver/[0.08] text-silver hover:bg-silver/[0.14]' : 'border-borderSubtle text-textSecondary hover:text-textPrimary hover:border-borderMuted'
   }`;
   if (to)
@@ -75,7 +75,7 @@ export const Field = ({ value, onSave, prefix, width = 200, type = 'text', testI
   const errId = `field-${testId}-problem`;
   return (
     <span className="inline-flex flex-col items-end gap-1">
-      <span className={`inline-flex items-center h-7 rounded-md border bg-chip transition-colors ${problem ? 'border-warn/70' : 'border-borderSubtle focus-within:border-borderMuted'}`} style={{ width }}>
+      <span className={`inline-flex items-center h-7 max-sm:h-10 max-sm:max-w-full rounded-md border bg-chip transition-colors ${problem ? 'border-warn/70' : 'border-borderSubtle focus-within:border-borderMuted'}`} style={{ width }}>
         {prefix && <span className="pl-2 font-mono text-t11 text-textMuted select-none">{prefix}</span>}
         <input
           value={v}

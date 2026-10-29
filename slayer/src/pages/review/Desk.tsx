@@ -431,7 +431,8 @@ const Desk = () => {
             desk={{
               refuse: d => refusal(session, d),
               locked: null,
-              quoteWith: (c, at) => quoteWith(c, cursor.day, cursor.minute, at),
+              /* at the name's price this minute: the recorded NBBO, what a press fills at; anywhere else, the what-if */
+              quoteWith: (c, at) => (Math.abs(at - spotAt(c.ticker, cursor.day, cursor.minute)) < 1e-9 ? quoteAt(c, cursor.day, cursor.minute) : quoteWith(c, cursor.day, cursor.minute, at)),
               spotForBid: (c, bid) => spotForBid(c, cursor.day, cursor.minute, bid),
               fee: session.fee,
               free: account.cash,

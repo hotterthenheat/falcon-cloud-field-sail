@@ -53,7 +53,13 @@ async function signingKey(url, kid) {
     }
   }
   const jwk = jwks.keys.find((k) => k.kid === kid);
-  return jwk ? crypto.createPublicKey({ key: jwk, format: 'jwk' }) : null;
+  if (!jwk) return null;
+  try {
+    return crypto.createPublicKey({ key: jwk, format: 'jwk' });
+  } catch {
+    /* a key the runtime cannot read: Auth answers for the token instead */
+    return null;
+  }
 }
 
 const VERIFY = {
@@ -104,7 +110,12 @@ export async function verifyAccessToken(cfg, token) {
   const verify = VERIFY[head.alg];
   const key = verify && head.kid ? await signingKey(cfg.url, head.kid) : null;
   if (!key) return userFromAuth(cfg, token);
-  const ok = verify(key, Buffer.from(`${parts[0]}.${parts[1]}`), Buffer.from(parts[2], 'base64url'));
+  let ok = false;
+  try {
+    ok = verify(key, Buffer.from(`${parts[0]}.${parts[1]}`), Buffer.from(parts[2], 'base64url'));
+  } catch {
+    ok = false;
+  }
   return ok ? claims.sub : null;
 }
 
@@ -162,6 +173,15 @@ const deny = (status, code, error, extra = {}) => ({ ok: false, status, body: { 
  * Resolves to { ok: true, user } or { ok: false, status, body, headers }.
  */
 export async function gate(req, feed) {
+  try {
+    return await check(req, feed);
+  } catch {
+    /* an unexpected failure in the check never opens the feed, and never takes the server down */
+    return deny(503, 'auth_error', 'The sign-in check failed. Try again shortly.');
+  }
+}
+
+async function check(req, feed) {
   if (process.env.UW_PROXY_OPEN === '1' && !isProduction()) {
     warnOpen('UW_PROXY_OPEN=1');
     return { ok: true, user: null };

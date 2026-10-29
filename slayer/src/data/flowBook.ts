@@ -212,11 +212,13 @@ export function reasonPhrase(key: WatcherKey, r: BookContract): string {
     case 'falling':
       return `Down ${Math.abs(r.chgPct).toFixed(0)}% on the previous close, ${Math.round(r.sweepPct)}% swept, leaning to the bid`;
     case 'fresh-size':
-      return `Volume ${r.volOverOI >= 10 ? r.volOverOI.toFixed(0) : r.volOverOI.toFixed(1)}× its open interest, on ${usd(r.premium)}`;
+      return `Volume ${r.volOverOI >= 10 ? r.volOverOI.toFixed(0) : r.volOverOI.toFixed(1)}× its open interest, on ${usd(r.premium)}${apartWords(r)}`;
     case 'hammering':
-      return `${r.volume.toLocaleString('en-US')} contracts, ${Math.round(r.sweepPct)}% of them swept`;
+      return `${r.volume.toLocaleString('en-US')} contracts, ${Math.round(r.sweepPct)}% of them swept${apartWords(r)}`;
   }
 }
+/** A day that is not a single bet says so beside its reason */
+const apartWords = (r: BookContract) => (floorPackaged(r) ? ' — floor packages, not a bet' : spreadLegDay(r) ? ' — spread legs, not a single bet' : crossDay(r) ? ' — crosses, no side' : '');
 
 /** A floor-package day: half or more on the floor and half or more in multi-leg packages (compression). Never
     crowned without saying so. */

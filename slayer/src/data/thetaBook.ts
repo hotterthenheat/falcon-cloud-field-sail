@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { thetaCall } from './theta';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
-import { indexLevel, indexRoot, liveSpotOf, noteIndex, noteSpot } from './traceRows';
+import { indexLevel, indexRoot, liveSpotOf, noteIndex, noteSpot } from './traceLive';
 import { setupIdOf } from './compass';
 import { GEX_CORE, inModelWindow, onScanGrid, weekdayDte } from './compassParams';
 import { deskPhase, odteAsleep, optionScanOpen, sessionIso, sessionYmd } from './compassSession';
@@ -395,7 +395,10 @@ function writeBook(spots: Record<string, number>): void {
 
 /** Score a slice of names. False when the terminal did not answer for any of them. */
 async function scoreSlice(symbols: string[], only: string, jump: boolean, spots: Record<string, number>, found: Setup[], freshMs = FRESH_MS, at = Date.now()): Promise<boolean> {
-  const got = await Promise.all(symbols.map(symbol => once(symbol, at, only, jump, freshMs)));
+  /* until the terminal has answered, one name asks first; the rest wait for its answer */
+  const lead = book.theta !== 'up' && symbols.length > 1 ? await once(symbols[0], at, only, jump, freshMs) : null;
+  if (lead && !lead.ok) return false;
+  const got = lead ? [lead, ...(await Promise.all(symbols.slice(1).map(symbol => once(symbol, at, only, jump, freshMs))))] : await Promise.all(symbols.map(symbol => once(symbol, at, only, jump, freshMs)));
   for (const row of got) {
     if (row.setups.length) {
       try { await scoreBook(row.setups, at, true); } catch { /* this name, not the rest */ }
@@ -792,7 +795,7 @@ async function refreshHeld(now: number): Promise<void> {
 
 /** Book A and Book B score on the 5-minute grid from 09:45 to 15:00 ET (the minutes the trees were trained on).
     Book C sweeps once at 15:20. Between scans only the cards' quotes move. */
-function bootCompass(): void {
+export function bootCompass(): void {
   if (SIM_DESK || typeof window === 'undefined') return;
   if (!armed && currentPicks().length) writeBook(book.spots);
   if (armed) return;
@@ -853,7 +856,7 @@ function bootCompass(): void {
 }
 
 /** Leaving Compass: the walk stops at its next slice, and only quotes a page still holds keep polling. */
-function stopCompass(): void {
+export function stopCompass(): void {
   if (!armed) return;
   armed = false;
   weeklyOn = false;

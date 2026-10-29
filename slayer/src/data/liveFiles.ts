@@ -778,11 +778,24 @@ export function wantFundHoldings(etf: string): void {
 export const fundHoldingsRead = (etf: string): boolean => etfHoldRead.has(etf.toUpperCase());
 
 /* One fund's page reads its own info, flows and holdings; its five-day flow is its own five newest dates. */
-const oneFund = new Map<string, { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null }>();
+const oneFund = new Map<string, { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null; keptAt?: number | null }>();
 function ensureOneFund(etf: string): void {
   if (!etf || oneFund.has(etf) || typeof window === 'undefined') return;
   oneFund.set(etf, { status: 'loading', row: null, holdings: [], cover: null });
   const e = ETF_LIST.find(x => x.etf === etf) ?? { etf, kind: 'broad' as EtfKind };
+  const k = keptRead();
+  const t = encodeURIComponent(etf);
+  void Promise.all([
+    body<UwEtfInfo>(k.get, `/etfs/${t}/info`).catch(() => null),
+    body<UwEtfHolding[]>(k.get, `/etfs/${t}/holdings`).catch(() => [] as UwEtfHolding[]),
+    body<UwEtfFlow[]>(k.get, `/etfs/${t}/in-outflow`).catch(() => [] as UwEtfFlow[]),
+  ]).then(reads => {
+    if (oneFund.get(etf)?.status !== 'loading' || k.at == null) return;
+    const got = fundRow(e, reads, [...flowDates(reads[2])].sort().reverse().slice(0, 5));
+    if (!got) return;
+    oneFund.set(etf, { status: 'live', row: got.row, holdings: got.held, cover: { lines: got.held.length, weight: got.held.reduce((a, h) => a + h.weight, 0), fundCount: got.row.holdingsCount > 0 ? got.row.holdingsCount : null }, keptAt: k.at });
+    emit({});
+  });
   void readFund(etf)
     .then(reads => {
       const common = [...flowDates(reads[2])].sort().reverse().slice(0, 5);
@@ -791,7 +804,7 @@ function ensureOneFund(etf: string): void {
       emit({});
     })
     .catch(() => {
-      oneFund.set(etf, { status: 'error', row: null, holdings: [], cover: null });
+      if (!oneFund.get(etf)?.keptAt) oneFund.set(etf, { status: 'error', row: null, holdings: [], cover: null });
       emit({});
     });
 }
@@ -984,17 +997,34 @@ export function useShorts(): { status: FileStatus; rows: ShortRow[]; keptAt: num
 }
 
 /* A name's short print is its own two newest settlements; the screen's row stands in only when the Shorts page has it. */
-const oneShort = new Map<string, { status: FileStatus; row: ShortRow | null }>();
+const oneShort = new Map<string, { status: FileStatus; row: ShortRow | null; keptAt?: number | null }>();
 const oneShortAsked = new Set<string>();
+const oneShortRow = (t: string, rows: UwShort[]): ShortRow | null => {
+  const own = rows
+    .filter(r => String(r.symbol ?? (r as { ticker?: string }).ticker ?? t).toUpperCase() === t)
+    .sort((a, b) => String(b.market_date ?? '').localeCompare(String(a.market_date ?? '')))
+    .slice(0, 2)
+    .map(r => shortFrom({ ...r, symbol: t }))
+    .filter((r): r is ShortRow => !!r);
+  const merged = own.length ? collapseShorts(own)[0] ?? null : null;
+  return merged ? { ...merged, borrowAsOf: merged.history[0]?.report } : null;
+};
 function ensureOneShort(t: string): void {
   if (!t || oneShortAsked.has(t)) return;
   oneShortAsked.add(t);
   oneShort.set(t, { status: 'loading', row: null });
-  void uwCall(`/short_screener?tickers=${encodeURIComponent(t)}&order_by=market_date&order_direction=desc&limit=2`)
+  const path = `/short_screener?tickers=${encodeURIComponent(t)}&order_by=market_date&order_direction=desc&limit=2`;
+  const k = keptRead();
+  void k.get(path).then(res => {
+    if (oneShort.get(t)?.status !== 'loading' || !Array.isArray(res.data) || k.at == null) return;
+    oneShort.set(t, { status: 'live', row: oneShortRow(t, res.data as UwShort[]), keptAt: k.at });
+    emit({});
+  });
+  void uwCall(path)
     .then(res => {
       const rows = Array.isArray(res.data) ? (res.data as UwShort[]) : [];
       if (res.error && !rows.length) {
-        oneShort.set(t, { status: 'error', row: null });
+        if (!oneShort.get(t)?.keptAt) oneShort.set(t, { status: 'error', row: null });
       } else {
         const own = rows
           .filter(r => String(r.symbol ?? (r as { ticker?: string }).ticker ?? t).toUpperCase() === t)
@@ -1012,7 +1042,7 @@ function ensureOneShort(t: string): void {
       emit({});
     });
 }
-export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow | null } {
+export function useShortRow(ticker: string): { status: FileStatus; row: ShortRow | null; keptAt?: number | null } {
   const s = useFiles();
   const t = ticker.toUpperCase();
   const fromScreen = s.shortStatus === 'live' ? s.shorts.find(r => r.ticker === t) ?? null : null;
@@ -1029,7 +1059,7 @@ export function useEtfs(): { status: FileStatus; rows: EtfRow[]; holdingsOf: (et
   return { status: s.etfStatus, rows: s.etfs, holdingsOf: etf => s.holdings[etf.toUpperCase()] ?? [], coverOf: etf => s.holdingsCover[etf.toUpperCase()] ?? null, keptAt: s.keptAt.etfs ?? null };
 }
 
-export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null } {
+export function useEtfFile(etf: string): { status: FileStatus; row: EtfRow | null; holdings: EtfHolding[]; cover: HoldingsCover | null; keptAt?: number | null } {
   /* the index's book when the ETFs page has read it; this one fund otherwise */
   const s = useFiles();
   const t = etf.toUpperCase();

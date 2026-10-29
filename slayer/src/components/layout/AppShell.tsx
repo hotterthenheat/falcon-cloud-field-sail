@@ -47,7 +47,7 @@ class RouteBoundary extends Component<{ children: ReactNode; resetKey: string },
         error={this.state.error}
         scope="page"
         back={
-          <Link to="/pulse" onClick={() => this.setState({ error: null })} className="inline-flex items-center h-9 px-4 rounded-md border border-borderMuted text-t125 font-medium text-textPrimary hover:bg-ink/[0.05]">
+          <Link to="/pulse" onClick={() => this.setState({ error: null })} className="inline-flex items-center h-10 px-4 rounded-md border border-borderMuted text-t125 font-medium text-textPrimary hover:bg-ink/[0.05]">
             Back to Pulse
           </Link>
         }

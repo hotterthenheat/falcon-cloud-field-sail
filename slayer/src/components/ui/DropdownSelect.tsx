@@ -81,7 +81,7 @@ const DropdownSelect = <T extends string | number>({ label, value, options, onCh
             className={
             flat
               ? `${FLAT_DOOR} ${FLAT_OPEN} group max-w-full text-left`
-              : `group inline-flex items-center gap-1.5 ${size === 'sm' ? 'h-6 px-2' : 'h-7 px-2.5'} rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none`
+              : `tap-40 group inline-flex items-center gap-1.5 ${size === 'sm' ? 'h-6 px-2' : 'h-7 px-2.5'} rounded-md border border-borderSubtle bg-chip hover:border-borderMuted data-[state=open]:border-silver/50 transition-colors font-mono select-none`
           }
           style={ink ? ({ '--ink': ink } as CSSProperties) : undefined}
         >

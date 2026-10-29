@@ -24,6 +24,7 @@ import { useTicker } from '../../context/MarketDataContext';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
 import { buildPrints, fmtUsd } from '../../data/gex';
 import { useLevelsFor } from '../../data/levelsFor';
+import { paneLevels } from '../terrain/paneLevels';
 import { useLevelsScope } from '../../data/levelsScope';
 import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
 import { wantSpotGex } from '../../data/spotGexBook';
@@ -731,10 +732,7 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [preset, scanQuotes.rev, topNet.rows]);
   /* The walls, flip and supreme are the house's (data/levelsFor.ts), the same as Pinpoint's and the Terrain's */
   const house = useLevelsFor(ticker, useLevelsScope());
-  const levels = useMemo(() => {
-    const n = (v: number | null | undefined) => (v == null ? Number.NaN : v);
-    return { spot: n(house?.spot), callWall: n(house?.callWall), putWall: n(house?.putWall), flip: n(house?.flip), supreme: n(house?.supreme) };
-  }, [house]);
+  const levels = useMemo(() => paneLevels(house?.spot ?? null, house), [house]);
   const under = printOf(ticker);
   const bookSession = useDeskSession();
   const tape = useWeigherSpot(under);

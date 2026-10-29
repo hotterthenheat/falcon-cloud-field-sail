@@ -239,7 +239,7 @@ const AccountCard = ({ account: a, accounts, view: v, ev, now, onPick, onPractic
           ) : ev ? (
             `Futures only · the floor follows ${ev.plan.trailing === 'eod' ? 'the best close' : 'the best moment, open trades in'} · flat by 16:59 New York`
           ) : (
-            `Options at live quotes · $${a.fee.toFixed(2)} an option each way · the account carries from day to day`
+            `Options at ThetaData’s live NBBO · $${a.fee.toFixed(2)} an option each way · the account carries from day to day`
           )}
         </p>
         <div className="grid grid-cols-3 gap-x-4 gap-y-3" data-paper-facts>

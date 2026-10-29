@@ -275,7 +275,7 @@ const Windows = () => {
           <>
             <LiveHold paused={hold.paused} onToggle={hold.toggle} heldAt={hold.heldAt} waitingFirst={hold.waitingFirst} />
             <SessionMark at={pack.at} fault={pack.fault} paused={hold.paused} ttlMs={45_000} kept={pack.kept} />
-            <ScopeChip ticker={name} quote closeOutside onPick={t => addr.set({ name: t, win: 'live' })} title="The name whose session is cut into quarter hours" />
+            <ScopeChip ticker={name} quote closeOutside arrive={false} onPick={t => addr.set({ name: t, win: 'live' })} title="The name whose session is cut into quarter hours" />
             <span className="inline-flex items-center gap-1.5 flex-wrap" data-windows-nav data-span>
               <button type="button" onClick={() => pos > 0 && setWin(quarters[pos - 1].idx)} disabled={pos <= 0} aria-label="Previous quarter hour" className={stepBtn}>
                 <ChevronLeft className="w-3.5 h-3.5" />

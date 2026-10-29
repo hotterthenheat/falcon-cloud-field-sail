@@ -2,8 +2,7 @@
    The prints under it are the tape's own row. */
 
 import { useEffect, useMemo, useRef } from 'react';
-import { useNameTape, useShelfPrints } from '../../data/traceLive';
-import { usd } from '../../data/traceRows';
+import { useNameTape, useShelfPrints, usd } from '../../data/traceLive';
 import { printInSession, sessionEmpty } from '../../data/compassSession';
 import { sessionMeta, type DeskSession } from '../../data/deskSession';
 import type { OptionRight } from '../../types/compass';

@@ -11,7 +11,7 @@ import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { CONTROLS_LINE } from '../../components/trace/TraceBox';
 import { GRID_MODULES, GRID_THEME, noRows } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
-import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
+import { RecordHead } from '../../components/record/RecordFrame';
 import { EtfsGuide, InstitutionsGuide, ShortsGuide } from '../../components/record/FileGuides';
 import { CongressGuide } from '../../components/record/CongressGuide';
 import { When } from '../../components/record/when';
@@ -134,7 +134,6 @@ export const HouseFile = () => {
   const house = bookLive.name;
   const [book, setBook] = useState<BookPick>('any');
   const [status, setStatus] = useState<StatusPick>('any');
-  const [guideOpen, setGuideOpen] = useState(false);
   const [focus, setFocus] = useState(line);
   const feed = bookLive.rows;
   const rows = useMemo(
@@ -169,18 +168,12 @@ export const HouseFile = () => {
     <>
     <WayBack to="/dossier/institutions" label="Institutions" />
     <Page testId={house}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the filing" testId="house-guide" viewport>
-        <InstitutionsGuide />
-      </GuideFocus>
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{house ? displayName(house) : house}</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a 13F line means" testId="house-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">This filing's {feed.length} largest lines by value. A call or a put is only the side.</p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
+      <RecordHead
+        title={house ? displayName(house) : house}
+        guide={{ title: 'How to read the filing', door: 'What a 13F line means', testId: 'house-guide', body: <InstitutionsGuide /> }}
+        status={<><p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">This filing's {feed.length} largest lines by value. A call or a put is only the side.</p></>}
+        facts={
+          <>
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title="The whole 13F as Unusual Whales totals it — every line the house reported, not only the ones below">Reported</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{bookLive.totalB != null ? moneyB(bookLive.totalB) : '—'}</dd>
@@ -202,8 +195,9 @@ export const HouseFile = () => {
             <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Changed")}>Changed</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{changed.length}</dd>
           </div>
-        </dl>
-      </div>
+          </>
+        }
+      />
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-house-controls>
         <DropdownSelect label="Side" value={book} options={BOOK_OPTIONS} onChange={setBook} title="Shares, call, or put. Not a contract." testId="house-book" />
         <DropdownSelect label="Change" value={status} options={STATUS_OPTIONS} onChange={setStatus} title="What happened versus the prior 13F" testId="house-status" />
@@ -309,7 +303,6 @@ export const ShortFile = () => {
       dead = true;
     };
   }, [ok, t]);
-  const [guideOpen, setGuideOpen] = useState(false);
   const [heavy, setHeavy] = useState<'any' | 'heavy'>('any');
   const [picks, setPicks] = useState<string[]>([]);
   const markets = useMemo(() => {
@@ -344,20 +337,15 @@ export const ShortFile = () => {
     <>
     <WayBack to="/dossier/shorts" label="Shorts" />
     <Page testId={t}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the short" testId="short-guide" viewport>
-        <ShortsGuide />
-      </GuideFocus>
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{t} short</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What interest, days to cover and the fee mean" testId="short-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
-            {[coName && coName !== t ? coName : row.name || '', row.sector && row.sector !== '—' ? row.sector : ''].filter(Boolean).concat(`short interest as of ${asOfDay(squeeze?.asOf)}${squeeze?.stale ? ' (stale)' : ''} — it settles twice a month`).join(' · ')}
-          </p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
+      <RecordHead
+        title={<>{t} short</>}
+        kept={shortLive.keptAt}
+        guide={{ title: 'How to read the short', door: 'What interest, days to cover and the fee mean', testId: 'short-guide', body: <ShortsGuide /> }}
+        status={<><p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
+            {[coName && coName !== t ? coName : row.name || '', row.sector && row.sector !== '—' ? row.sector : ''].filter(Boolean).concat(`short interest as of ${asOfDay(squeeze?.asOf)}${squeeze?.stale ? ' · the next settlement is not published yet' : ' · it settles twice a month'}`).join(' · ')}
+          </p></>}
+        facts={
+          <>
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title="The stock's price now: in the session the last print; outside it the regular close, with the pre-market or after-hours print beside it">Price</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap" data-short-price>
@@ -392,8 +380,9 @@ export const ShortFile = () => {
             <dd className="font-mono text-t9 text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'FINRA CNMS · by-market rows' : 'FINRA CNMS · short volume read'}</dd>
           </div>
           ) : null}
-        </dl>
-      </div>
+          </>
+        }
+      />
       {/* the squeeze word is held until the file's own reads settle */}
       {squeeze && fileWaiting && (
         <div className="mx-5 mb-3 rounded-md border border-borderMuted bg-card px-4 py-3" data-short-squeeze="reading">
@@ -510,7 +499,6 @@ export const FundFile = () => {
   const { etf = '' } = useParams();
   const fundLive = useEtfFile(etf.toUpperCase());
   const fund = fundLive.row;
-  const [guideOpen, setGuideOpen] = useState(false);
   const [sector, setSector] = useState('all');
   const [picks, setPicks] = useState<string[]>([]);
   const fundPaged = usePagedGrid<EtfHolding>();
@@ -583,20 +571,15 @@ export const FundFile = () => {
     <>
     <WayBack to="/dossier/etfs" label="ETFs" />
     <Page testId={fund.etf}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the fund" testId="fund-guide" viewport>
-        <EtfsGuide />
-      </GuideFocus>
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{fund.etf} · {fund.name}</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a weight, a flow and a holding mean" testId="fund-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
+      <RecordHead
+        title={<>{fund.etf} · {fund.name}</>}
+        kept={fundLive.keptAt}
+        guide={{ title: 'How to read the fund', door: 'What a weight, a flow and a holding mean', testId: 'fund-guide', body: <EtfsGuide /> }}
+        status={<><p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
             {fund.company} · {fund.domicile} · since {longDay(fund.inception)}{fund.holdingsAsOf ? ` · weights as of ${asOfDay(fund.holdingsAsOf)}` : ''}{coverWords ? ` · ${coverWords}` : ''}
-          </p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
+          </p></>}
+        facts={
+          <>
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Assets")}>Assets</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{moneyB(fund.aumB)}</dd>
@@ -618,8 +601,9 @@ export const FundFile = () => {
               <span className="text-bear">{fund.putVol == null ? '—' : fund.putVol.toLocaleString('en-US')}</span>
             </dd>
           </div>
-        </dl>
-      </div>
+          </>
+        }
+      />
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-fund-controls>
         <DropdownSelect label="Sector" value={sector} options={sectorOptions} onChange={setSector} title="Which sector of the book" testId="fund-sector" />
       </div>
@@ -801,7 +785,6 @@ export const MemberFile = () => {
   /* their own reports of trades made in the last year — not the latest 40 by name */
   const book = useMemberBook(id, member?.name ?? null);
   const coverage = useCongressCoverageQuiet();
-  const [guideOpen, setGuideOpen] = useState(false);
   const [kind, setKind] = useState<TypePick>('any');
   const [owner, setOwner] = useState<OwnerPick>('any');
   const [picks, setPicks] = useState<string[]>([]);
@@ -875,21 +858,15 @@ export const MemberFile = () => {
     <>
     <WayBack to="/dossier/congress" label="Congress" />
     <Page testId={member.id}>
-      <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the book" testId="member-guide" viewport>
-        <CongressGuide />
-      </GuideFocus>
-      <div className="px-5 pt-4 pb-3 flex items-start gap-6 flex-wrap">
-        <div className="min-w-[min(18rem,100%)] flex-1">
-          <div className="h-6 flex items-center gap-3">
-            <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{member.name}</h3>
-            <GuideDoor open={guideOpen} onClick={() => setGuideOpen(v => !v)} title="What a report, a bracket and a lag mean" testId="member-guide" />
-          </div>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
+      <RecordHead
+        title={member.name}
+        guide={{ title: 'How to read the book', door: 'What a report, a bracket and a lag mean', testId: 'member-guide', body: <CongressGuide /> }}
+        status={<><p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">
             {/* the seat once — "R-OK-1 · OK-1" said the district twice */}
             {seatLabel(member) || '—'} · {member.chamber}
-          </p>
-        </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
+          </p></>}
+        facts={
+          <>
           <div>
             <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Reports")}>Reports</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{reading ? dots : trades.length.toLocaleString('en-US')}{!reading && trades.length - purchases - sales > 0 ? <span className="text-textMuted"> · {(trades.length - purchases - sales).toLocaleString('en-US')} exchanged</span> : null}</dd>
@@ -906,8 +883,9 @@ export const MemberFile = () => {
             <dt className="text-t10 text-textMuted cursor-help" title={statHelp("Late")}>Late</dt>
             <dd className={`mt-0.5 font-mono text-t12 tnum ${late ? 'text-bear' : 'text-textPrimary'}`}>{reading ? dots : late}</dd>
           </div>
-        </dl>
-      </div>
+          </>
+        }
+      />
       <div className={`px-5 pb-2 ${CONTROLS_LINE}`} data-member-controls>
         <DropdownSelect label="Type" value={kind} options={TYPE_OPTIONS} onChange={setKind} title="Purchase, sale or exchange" testId="member-type" />
         <DropdownSelect label="Owner" value={owner} options={OWNER_FILE_OPTIONS} onChange={setOwner} title="Whose holding" testId="member-owner" />

@@ -1150,7 +1150,7 @@ const StockName = () => {
             </Fact>
             )}
             {growthFactor && (
-            <Fact label="Earnings growth a year" testId="growth" tip="The middle of the 1-, 2- and 3-year EPS changes, each as a rate a year — the figure the numbers pillar scores">
+            <Fact label="Earnings growth a year" testId="growth" tip="The 1-, 2- and 3-year EPS changes, each as a rate a year; the slowest of them is the figure the numbers pillar scores">
               <span className={growthFactor.context ? 'text-textSecondary' : growthFactor.lean >= 0 ? 'text-bull' : 'text-bear'}>{growthFactor.value.split(' · ')[0]}</span>
               <span className="block text-t9 font-sans text-textMuted">{growthFactor.context ? growthFactor.note : growthFactor.value.split(' · ').slice(1).join(' · ')}</span>
             </Fact>

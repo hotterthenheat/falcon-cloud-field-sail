@@ -19,6 +19,7 @@ import { bracketLabel, seatLabel } from '../../data/congress';
 import { useInsiderFlow, useTickerCongress } from '../../data/liveRecord';
 import { When } from '../../components/record/when';
 import { nyIsoDate } from '../../core/nyTime';
+import { KeptNote } from '../../components/record/RecordFrame';
 import { MIN_PRICED_PRINTS, reportDayLabel, reportedNow, useLiveDossier, useLiveReactions, useNextReport, useNextReportPending, useWireCheck } from '../../data/earningsFeed';
 import { useStockCard } from '../../data/liveFiles';
 import { FUND_TYPES } from '../../data/liveFiles';
@@ -493,6 +494,7 @@ const EarningsName = () => {
               <div className="h-6 flex items-center gap-2.5">
                 <h3 className="min-w-0 truncate text-t15 font-semibold leading-tight text-textPrimary">{e.name}</h3>
                 <span className="font-mono text-t11 font-bold text-textSecondary">{e.ticker}</span>
+                <KeptNote at={liveFile.keptAt} />
               </div>
               {/* an inline-flex line spills rather than truncates, so on a phone it folds */}
               <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate inline-flex items-center gap-1.5 max-xl:flex-wrap">

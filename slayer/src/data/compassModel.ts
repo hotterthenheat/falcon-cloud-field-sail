@@ -363,7 +363,7 @@ async function seedQuotes(list: Setup[], now: number): Promise<void> {
   const two = (v: number) => String(v).padStart(2, '0');
   const from = nyParts(now - 31 * 60_000);
   const to = nyParts(now);
-  const got = await thetaCall(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&interval=1m&start_time=${two(from.hour)}:${two(from.minute)}:00&end_time=${two(to.hour)}:${two(to.minute)}:00&format=json`);
+  const got = await thetaCall(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=16&interval=1m&start_time=${two(from.hour)}:${two(from.minute)}:00&end_time=${two(to.hour)}:${two(to.minute)}:00&format=json`);
   if (got.error) return;
   for (const item of Array.isArray(got.data) ? got.data : []) {
     if (!item || typeof item !== 'object') continue;

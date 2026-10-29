@@ -668,7 +668,7 @@ const Page = () => {
                   type="button"
                   onClick={() => setPeriod(p)}
                   aria-pressed={period === p}
-                  className={`h-8 px-4 rounded-full text-t13 font-medium transition-colors duration-200 ${period === p ? 'bg-textPrimary text-canvas' : 'text-textSecondary hover:text-textPrimary'}`}
+                  className={`h-8 max-sm:h-10 px-4 rounded-full text-t13 font-medium transition-colors duration-200 ${period === p ? 'bg-textPrimary text-canvas' : 'text-textSecondary hover:text-textPrimary'}`}
                   data-landing-period-pick={p}
                 >
                   {p === 'month' ? 'Monthly' : 'Yearly'}

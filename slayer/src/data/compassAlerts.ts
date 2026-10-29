@@ -96,3 +96,14 @@ export function noteCompassCall(pick: { id: string; ticker: string; contract: st
   pings = [{ id: pick.id, ticker: pick.ticker, contract: pick.contract, at: Date.now(), sleeve: odte ? '0DTE' : '1–7 DTE' }, ...pings].slice(0, 12);
   emit();
 }
+
+/** The calls the reader asked to hear, newest first. */
+export function useCompassPings(): CompassPing[] {
+  const [row, setRow] = useState(pings);
+  useEffect(() => {
+    const fn = () => setRow(pings);
+    listeners.add(fn);
+    return () => { listeners.delete(fn); };
+  }, []);
+  return row;
+}
