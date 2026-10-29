@@ -1459,6 +1459,12 @@ const StrikeChart = ({
         trails.chromeInset = inset;
         trails.requestUpdate?.();
       }
+      /* the levels' words sit under the floating chrome too */
+      const ladder = ladderRef.current;
+      if (ladder) {
+        ladder.chromeInset = inset;
+        ladder.requestUpdate?.();
+      }
     };
     const schedule = () => {
       cancelAnimationFrame(raf);

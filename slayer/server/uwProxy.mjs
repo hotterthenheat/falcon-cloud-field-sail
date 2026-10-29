@@ -278,6 +278,13 @@ const hub = createHub({
 /** The hub's counts, for the load check (scripts/load-proof.mjs). */
 export const uwHubStats = () => hub.stats();
 
+/** One answer for a reader inside this process (the Compass engine): the same hub, cache and three slots. */
+export async function uwDirect(path) {
+  if (!process.env.UNUSUAL_WHALES_API_KEY || !allowed(path)) return { status: 503, body: '{}' };
+  const got = await hub.get(path);
+  return { status: got.status, body: got.body.toString('utf8') };
+}
+
 /** Connect, Express and the Vercel Node function all hand over a Node request and response. */
 export async function proxyUw(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {

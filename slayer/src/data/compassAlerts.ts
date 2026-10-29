@@ -89,11 +89,11 @@ function hears(book: CompassAlertPref['odte'], ticker: string): boolean {
   return book.includes(ticker);
 }
 
-export function noteCompassCall(pick: { id: string; ticker: string; contract: string; expiry: string }): void {
+export function noteCompassCall(pick: { id: string; ticker: string; contract: string; expiry: string; at?: number }): void {
   const odte = pick.expiry === '0DTE';
   if (!hears(odte ? pref.odte : pref.swing, pick.ticker)) return;
   if (pings.some(p => p.id === pick.id)) return;
-  pings = [{ id: pick.id, ticker: pick.ticker, contract: pick.contract, at: Date.now(), sleeve: odte ? '0DTE' : '1–7 DTE' }, ...pings].slice(0, 12);
+  pings = [{ id: pick.id, ticker: pick.ticker, contract: pick.contract, at: pick.at ?? Date.now(), sleeve: odte ? '0DTE' : '1–7 DTE' }, ...pings].slice(0, 12);
   emit();
 }
 

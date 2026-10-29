@@ -7,7 +7,8 @@ import { nyClock } from '../../core/nyTime';
 import ContractLabel from '../ui/ContractLabel';
 import SessionSpark from './SessionSpark';
 import { MODELS_VALIDATED, UNVALIDATED_LINE, UNVALIDATED_WORD } from '../../data/compassParams';
-import { signalOf } from '../../data/compassLedger';
+import { activeStop, signalOf } from '../../data/compassLedger';
+import { optionFees } from '../../data/compassOutcome';
 import { P1_MIN } from '../../data/compassParams';
 import { STOP_KEEP } from '../../data/contractQuote';
 import { Tip } from '../ui/Tooltip';
@@ -77,8 +78,17 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
   const paid = signal?.outcome?.fill?.ask ?? 0;
   const entry = paid > 0 ? paid : setup.ask > 0 ? setup.ask : 0;
   const liveBid = priced && setup.bid > 0 && setup.ask >= setup.bid ? setup.bid : NaN;
-  const captured = entry > 0 && Number.isFinite(liveBid) ? ((liveBid - entry) / entry) * 100 : NaN;
-  const stopPx = priced && setup.band !== 'lottery' && entry > 0 ? Number((entry * STOP_KEEP).toFixed(2)) : 0;
+  const outcome = signal?.outcome ?? null;
+  const runner = setup.band === 'wing' || setup.runner === true;
+  /* the stop standing now: the ratchet's rung once the call has filled and run, else 0.4678 × the entry */
+  const standing = paid > 0 && outcome ? activeStop(paid, outcome.peak, runner) : null;
+  const stopPx = priced && setup.band !== 'lottery' && entry > 0 ? Number((standing ? standing.stop : entry * STOP_KEEP).toFixed(2)) : 0;
+  /* a non-runner Book A leaves at 1.50 × the fill; a runner and Book B ride the ratchet; Book C sells 3× or 2× */
+  const target = !priced || !(entry > 0) ? 0 : setup.band === 'lottery' ? Number((entry * 2).toFixed(2)) : runner ? 0 : Number((entry * 1.5).toFixed(2));
+  const away = (px: number) => (Number.isFinite(liveBid) && liveBid > 0 && px > 0 ? `${px >= liveBid ? '+' : '−'}${Math.abs((px / liveBid - 1) * 100).toFixed(0)}%` : '');
+  const closedOut = outcome?.status === 'closed' ? outcome : null;
+  const pnl = closedOut?.pnl ?? (paid > 0 && Number.isFinite(liveBid) ? (liveBid - paid) * 100 - optionFees(liveBid) : NaN);
+  const pnlWord = Number.isFinite(pnl) ? `${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(0)}` : '—';
   const place = placeWord(setup);
   const model = setup.p1 != null
     ? `${holdOf(setup)} Model 1 ${(setup.p1 * 100).toFixed(1)}%.${setup.prun != null ? ` Model 2 ${(setup.prun * 100).toFixed(0)}%.` : ''}${MODELS_VALIDATED ? '' : ` ${UNVALIDATED_LINE}`}`
@@ -86,12 +96,12 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
       ? holdOf(setup)
       : '';
   const when = [
-    ticket && setup.seenAt ? `Called ${nyClock(setup.seenAt, { zone: true })}` : '',
+    ticket && setup.late && setup.seenAt ? `Scored late from recorded quotes (${nyClock(setup.mark ?? setup.seenAt)} ET mark)` : '',
+    ticket && !setup.late && setup.seenAt ? `Called ${nyClock(setup.seenAt, { zone: true })}` : '',
     setup.quotedAt ? `Quote ${nyClock(setup.quotedAt, { seconds: true, zone: true })}` : '',
   ].filter(Boolean);
   const sigma = setup.greeks.iv > 0 && setup.sigmaMovePct > 0 ? `IV move ±${setup.sigmaMovePct}%` : '';
   const status = priced ? [place, sigma, ...when].filter(Boolean).join(' · ') : (setup.whyText || 'Not a ticket.');
-  const capturedWord = Number.isFinite(captured) ? `${captured >= 0 ? '+' : '−'}${Math.abs(captured).toFixed(1)}%` : '—';
 
   return (
     <Tip label={selected ? 'Selected. Click again for this contract.' : 'Select. Click again to open.'}>
@@ -117,8 +127,13 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
             <span className="font-mono text-t10 uppercase tracking-wider text-textPrimary border border-silver/40 rounded px-1.5 py-0.5">{tagOf(setup)}</span>
           </Tip>
         ) : null}
+        {ticket && setup.late ? (
+          <Tip label="The live scan missed this mark. It was scored afterwards from the quotes ThetaData recorded at the mark, never later ones.">
+            <span className="font-mono text-t10 uppercase tracking-wider text-warn border border-warn/40 rounded px-1.5 py-0.5" data-card-late>Late</span>
+          </Tip>
+        ) : null}
         {ticket ? (
-          <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textPrimary">Called</span>
+          <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textPrimary">{closedOut ? 'Closed' : 'Called'}</span>
         ) : closest ? (
           <span className="ml-auto font-mono text-t10 uppercase tracking-wider text-textSecondary">Not a call</span>
         ) : (
@@ -130,13 +145,20 @@ const SetupScanCard = ({ setup, rank, selected, onSelect, onAnalysis }: SetupSca
       </p>
 
       {priced ? (
-        <div className="flex items-start justify-between gap-2">
-          <Stat label="Model 1" value={setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : '—'} ink={setup.p1 != null && setup.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'} />
-          <Stat label={paid > 0 ? 'Filled' : 'Ask'} value={entry > 0 ? money(entry) : '—'} />
-          <span className="max-sm:hidden"><SessionSpark ticker={setup.ticker} points={signal?.spark.length ? signal.spark : undefined} width={72} height={30} /></span>
-          <Stat label="Bid" value={Number.isFinite(liveBid) ? money(liveBid) : '—'} />
-          <Stat label="Captured" value={capturedWord} ink={!Number.isFinite(captured) ? 'text-textMuted' : captured >= 0 ? 'text-bull' : 'text-bear'} right />
-        </div>
+        <>
+          <div className="grid grid-cols-4 gap-2 items-start" data-card-numbers>
+            <Stat label="Model 1" value={setup.p1 != null ? `${(setup.p1 * 100).toFixed(1)}%` : setup.band === 'lottery' ? 'None' : '—'} ink={setup.p1 != null && setup.p1 + 1e-12 >= P1_MIN ? 'text-bull' : 'text-textPrimary'} />
+            <Stat label={paid > 0 ? 'Filled' : 'Ask'} value={entry > 0 ? money(entry) : '—'} />
+            <Stat label={closedOut ? 'Exit' : 'Bid'} value={closedOut?.exit ? money(closedOut.exit.px) : Number.isFinite(liveBid) ? money(liveBid) : '—'} />
+            <Stat label="P&L" value={pnlWord} ink={!Number.isFinite(pnl) ? 'text-textMuted' : pnl >= 0 ? 'text-bull' : 'text-bear'} right />
+          </div>
+          <div className="flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-t10 text-textSecondary tnum" data-card-distances>
+            <span>{signal ? 'At call' : 'Quote'} <span className="text-textPrimary">{signal ? `${signal.bid.toFixed(2)} × ${signal.ask.toFixed(2)}` : setup.ask > 0 ? `${setup.bid.toFixed(2)} × ${setup.ask.toFixed(2)}` : '—'}</span></span>
+            <span>{stopPx > 0 ? <>{standing?.name ?? 'Stop'} <span className="text-warn font-semibold">{money(stopPx)}</span> {away(stopPx)}</> : setup.band === 'lottery' ? 'No stop' : 'Stop —'}</span>
+            <span>{target > 0 ? <>Target <span className="text-textPrimary font-semibold">{money(target)}</span> {away(target)}</> : runner ? 'Target: the ratchet' : ''}</span>
+            <span className="ml-auto max-sm:hidden"><SessionSpark ticker={setup.ticker} points={signal?.spark.length ? signal.spark : undefined} width={64} height={22} /></span>
+          </div>
+        </>
       ) : (
         <div className="flex items-center justify-between gap-2">
           <p className="font-mono text-t11 text-textSecondary whitespace-normal" data-card-status>{setup.whyText || 'Not a ticket.'}</p>

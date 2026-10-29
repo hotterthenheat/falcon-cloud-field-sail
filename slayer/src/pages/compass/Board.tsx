@@ -9,7 +9,9 @@ import { setupIdOf } from '../../data/compass';
 import { COMPASS_TICKERS, COMPASS_SET } from '../../data/compassUniverse';
 import { liveSpark, useThetaBook, alertUniverse, scanNames, setScanFocus } from '../../data/thetaBook';
 import { useSignals } from '../../data/compassLedger';
-import { bestByName, currentPicks, lastScanAt, lockReason, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
+import { bestByName, currentPicks, lastScanAt, scanBusy, scanReport, seatsNow } from '../../data/compassModel';
+import { compassFeed } from '../../data/compassFeed';
+import { asOfText } from '../../components/ui/states';
 import { MODELS_VALIDATED, P1_MIN, SEAT_CAP, UNVALIDATED_LINE, inModelWindow } from '../../data/compassParams';
 import { nyClock, nyDay, nyMinutes, nyWallTime } from '../../core/nyTime';
 import { setCompassView, useCompassView, type BoardLayout } from '../../data/compassView';
@@ -248,18 +250,27 @@ const Board = () => {
       ? `Last scan ${nyDay(live.earlier.at, { weekday: true })}, ${nyClock(live.earlier.at, { zone: true })}.`
       : 'No scan has run today.';
   const offline = live.theta === 'down';
+  /* the server's engine: unreachable (nothing kept), or this browser's last copy of it, stamped */
+  const lock = compassFeed().lock;
+  const serverLine = live.feed === 'offline'
+    ? `Compass server offline. ${live.feedError || 'Reconnecting.'}`
+    : live.feed === 'kept' && live.feedAt
+      ? `The board ${asOfText(live.feedAt)}. ${live.feedError || 'Reconnecting to the Compass server.'}`
+      : '';
   const inWindow = inModelWindow(nyMinutes() - (9 * 60 + 30));
   const windowLine = inWindow ? '' : ' Outside 09:45–15:00 ET the model’s minute input is outside the minutes it was trained on.';
   const sentence = (
     <RichRead text={
-      offline
+      serverLine
+        ? serverLine
+        : offline
         ? `ThetaData offline — reconnecting. ${asOf}`
         : dayOver
           ? 'Same-day calls are done for the session. A signal stays on the record until its stop, its target, the reversal, or the 15:55 flat.'
           : scanOff || clock.phase === 'halt'
             ? `${clock.line} ${asOf}`
-            : !called && !near && lockReason()
-              ? lockReason()
+            : !called && !near && lock
+              ? lock
               : `${scanBusy() && !called && !near
                 ? reading
                 : called || near
@@ -271,7 +282,9 @@ const Board = () => {
   const bests = bestByName(offered === 'weekly' ? 'weekly' : 'odte');
   const topBest = [...bests.values()].reduce((m, r) => Math.max(m, r.p1), -1);
   const seats = seatsNow().seats;
-  const emptyLabel = offline
+  const emptyLabel = live.feed === 'offline'
+    ? serverLine
+    : offline
     ? `ThetaData offline — reconnecting. ${asOf}`
     : bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.');
 

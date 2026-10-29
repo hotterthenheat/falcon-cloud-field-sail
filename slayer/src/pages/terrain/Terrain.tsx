@@ -41,6 +41,7 @@ import { useFadeClose } from '../../components/ui/useFadeClose';
 import CompareControl from '../../components/gex/CompareControl';
 import TickerTabStrip, { TAB_MAX } from '../../components/gex/TickerTabStrip';
 import FieldKey from '../../components/gex/FieldKey';
+import { dealerOf } from '../../core/dealerSign';
 import { useMaxPain } from '../../components/gex/levelExtras';
 import { composeSnapshot, snapshotName } from '../../components/gex/snapshot';
 import { readSessionClock } from '../../data/moc';
@@ -718,6 +719,9 @@ const Pane = ({
      the cut's own expiry when the rail is cut to a later date, off the rows the rail already holds. */
   const levelsScope = useLevelsScope();
   const house = useLevelsFor(ticker, levelsScope, bookPick ? shownBook?.date ?? null : null);
+  /* the field's cut: its net GEX off the house's rows for it, the figure Pinpoint prints for the same cut */
+  const fieldNodes = (railCut === 'book' ? chainForDate(ticker, 'book') : shownBook)?.nodes;
+  const fieldOiNet = useMemo(() => (fieldNodes ? dealerOf(fieldNodes.reduce((a, n) => a + n.netGex, 0)) : null), [fieldNodes]);
   /* the levels' own contracts: their largest strike sizes each wall, and their expiry names max pain */
   const levelsChain = house ? chainForDate(ticker, house.date ?? 'book') : null;
   const levelsNodes = levelsChain?.nodes;
@@ -1169,7 +1173,8 @@ const Pane = ({
                   cut={railCut === 'book' ? 'book' : shownBook?.date ?? null}
                   cutWords={railCut === 'book' ? 'every expiry' : shownBook?.label ?? '—'}
                   scale={fieldScale}
-                  compact={isPhone}
+                  oiNet={fieldOiNet}
+                  compact={isPhone || (paneCount > 1 && !expanded)}
                 />
               </div>
             )}

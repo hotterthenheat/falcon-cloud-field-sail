@@ -1,5 +1,6 @@
-/* The blotter: every signal Compass fired in this browser, with the quote it fired on, the fill a minute later and
-   the exit, all read off the contract's own one-minute NBBO from ThetaData. Return is the exit against the fill. */
+/* The blotter: the official record, every call the server's scan fired, with the quote it fired on, the fill a
+   minute later and the exit, all read off the contract's own one-minute NBBO from ThetaData. Return is the exit
+   against the fill. Every browser shows the same rows. */
 
 import { useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
@@ -12,6 +13,9 @@ import { isoDate, type Expiry, MONTHS as SHORT } from '../../core/calendar';
 import { nyClock } from '../../core/nyTime';
 import { heldWords, usd, dirInk } from '../../components/review/words';
 import { useSignals, type Signal } from '../../data/compassLedger';
+import { daySummary } from '../../data/compassOutcome';
+import { useCompassFeed } from '../../data/compassFeed';
+import { asOfText } from '../../components/ui/states';
 import { useThetaStatus } from '../../data/thetaQuote';
 import { Tip } from '../../components/ui/Tooltip';
 
@@ -46,6 +50,9 @@ interface Line {
   pnl: number | null;
   result: Result;
   why: string;
+  late: boolean;
+  mark: number;
+  sig: Signal;
 }
 
 const bookExpiry = (iso: string): Expiry => {
@@ -72,7 +79,8 @@ const lineOf = (s: Signal): Line => {
   const o = s.outcome;
   const status = o?.status ?? 'waiting';
   const paid = o?.fill?.ask ?? 0;
-  const result: Result = status === 'closed' ? (o?.exit && o.exit.px > paid ? 'win' : 'loss') : status;
+  /* a win is a gain after the round trip's fees, the same rule as the day's count */
+  const result: Result = status === 'closed' ? (o?.pnl != null && o.pnl > 0 ? 'win' : 'loss') : status;
   return {
     key: s.key,
     date: s.day,
@@ -91,6 +99,9 @@ const lineOf = (s: Signal): Line => {
     ret: o?.ret ?? null,
     pnl: o?.pnl ?? null,
     result,
+    late: s.how === 'late',
+    mark: s.mark ?? s.firedAt,
+    sig: s,
     why: status === 'closed'
       ? o?.exit?.why ?? ''
       : status === 'open'
@@ -103,7 +114,9 @@ const lineOf = (s: Signal): Line => {
 
 const COLUMNS: Column<Line>[] = [
   { key: 'day', header: 'Day', sortValue: r => r.date, render: r => <span className="text-textMuted">{dayCell(r.date)}</span> },
-  { key: 'fired', header: 'Called ET', sortValue: r => r.fired, render: r => <span className="tnum text-textPrimary">{nyClock(r.fired)}</span> },
+  { key: 'fired', header: 'Called ET', sortValue: r => r.fired, render: r => (r.late
+    ? <Tip label={`Scored late from recorded quotes (${nyClock(r.mark)} ET mark): the live scan missed it.`}><span className="tnum text-warn">{nyClock(r.mark)} late</span></Tip>
+    : <span className="tnum text-textPrimary">{nyClock(r.fired)}</span>) },
   { key: 'contract', header: 'Contract', sortValue: r => r.label, render: r => <ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" /> },
   { key: 'book', header: 'Book', sortValue: r => r.book, render: r => <span className="text-textPrimary">{r.book}</span> },
   { key: 'p1', header: 'Model 1', align: 'right', sortValue: r => r.p1 ?? -1, render: r => (r.p1 == null ? blank : <span className="tnum text-textPrimary">{(r.p1 * 100).toFixed(1)}%</span>) },
@@ -113,9 +126,10 @@ const COLUMNS: Column<Line>[] = [
   { key: 'out', header: 'Out ET', align: 'right', sortValue: r => r.out ?? 0, render: r => (r.out == null ? blank : <span className="tnum text-textSecondary">{nyClock(r.out)}</span>) },
   { key: 'held', header: 'Held', align: 'right', sortValue: r => r.held ?? -1, render: r => (r.held == null ? blank : <span className="tnum text-textSecondary">{heldWords(r.held)}</span>) },
   { key: 'ret', header: 'Return', align: 'right', sortValue: r => r.ret ?? -1e9, render: r => (r.ret == null ? blank : <span className={`tnum ${dirInk(r.ret)}`}>{pctWords(r.ret, 1)}</span>) },
+  { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => (r.pnl == null ? blank : <span className={`tnum ${dirInk(r.pnl)}`}>{`${r.pnl < 0 ? '−' : '+'}${usd(Math.abs(r.pnl))}`}</span>) },
   { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={RESULT_INK[r.result]}>{RESULT_WORD[r.result]}</span></Tip> },
 ];
-const WIDTHS: Record<string, number> = { day: 72, fired: 76, contract: 180, book: 64, p1: 84, quote: 116, paid: 80, exitPx: 80, out: 68, held: 80, ret: 84, result: 96 };
+const WIDTHS: Record<string, number> = { day: 72, fired: 92, contract: 180, book: 64, p1: 84, quote: 116, paid: 80, exitPx: 80, out: 68, held: 80, ret: 84, pnl: 88, result: 96 };
 const TOOLTIPS: Record<string, string> = {
   fired: 'When the scan sent the call, New York time.',
   p1: 'Model 1 at the call. Book C has no model.',
@@ -124,6 +138,7 @@ const TOOLTIPS: Record<string, string> = {
   exitPx: 'The bid it left on, or the take-profit price.',
   out: 'When it left, New York time.',
   ret: 'Exit against the fill. An open signal shows its last bid against the fill.',
+  pnl: 'Per contract, after an estimated $1.08 round trip plus the SEC fee.',
   result: 'Win or loss once it closed. Hover for why.',
 };
 
@@ -178,25 +193,34 @@ const Blotter = () => {
     });
   }, [iso, side, q, lines]);
   const cut = useMemo(() => resultOf(rows), [rows]);
+  const day = useMemo(() => daySummary(rows.map(r => r.sig)), [rows]);
+  const feed = useCompassFeed();
   const open = record.filter(s => !s.outcome || s.outcome.status === 'open' || s.outcome.status === 'waiting');
   const readAt = open.reduce((m, s) => Math.max(m, s.pathAt), 0);
-  const offlineLine = theta === 'down' && open.length
-    ? `ThetaData offline — reconnecting. Open signals as of ${readAt ? nyClock(readAt, { zone: true }) : 'their call'}.`
-    : '';
+  const offlineLine = feed.status === 'offline'
+    ? `Compass server offline. ${feed.error || 'Reconnecting.'}`
+    : feed.status === 'kept' && feed.at
+      ? `The record ${asOfText(feed.at)}. ${feed.error || 'Reconnecting to the Compass server.'}`
+      : theta === 'down' && open.length
+        ? `ThetaData offline — reconnecting. Open signals as of ${readAt ? nyClock(readAt, { zone: true }) : 'their call'}.`
+        : '';
+  const signed = (v: number) => `${v < 0 ? '−' : '+'}${usd(Math.abs(v))}`;
 
   return (
     <TraceBox
       title="Blotter"
-      sub={iso ? longDay(iso) : 'Every signal Compass fired in this browser, newest first'}
+      sub={iso ? longDay(iso) : 'Every call the scan fired, newest first. The same record in every browser.'}
       testId="blotter"
       foldOnPhone
       facts={
         <>
-          <Fact label="Signals" testId="n">{cut.n.toLocaleString('en-US')}</Fact>
-          <Fact label="Won" testId="won" title="Wins out of the signals that closed.">{cut.closed ? `${cut.wins.toLocaleString('en-US')} of ${cut.closed.toLocaleString('en-US')} · ${((cut.wins / cut.closed) * 100).toFixed(1)}%` : '—'}</Fact>
-          <Fact label="Avg win" testId="avg-win" title="Average return of the closed signals that left above the fill.">{cut.avgWin == null ? '—' : pctWords(cut.avgWin, 1)}</Fact>
-          <Fact label="Avg loss" testId="avg-loss" title="Average return of the closed signals that left at or below the fill.">{cut.avgLoss == null ? '—' : pctWords(cut.avgLoss, 1)}</Fact>
-          <Fact label="P&L" testId="pnl" title="Per contract: the sum over closed signals, one contract each, after an estimated $1.08 a round trip plus the SEC fee.">{cut.pnl == null ? '—' : <span className={dirInk(cut.pnl)}>{`${cut.pnl < 0 ? '−' : ''}${usd(cut.pnl)}`}</span>}</Fact>
+          <Fact label="Calls" testId="n">{day.calls.toLocaleString('en-US')}</Fact>
+          <Fact label="Won · lost · open" testId="won" title="Closed with a gain after fees, closed at or under the fill after fees, and still held. Filling and unavailable calls are in neither.">
+            <span className="text-bull">{day.won}</span> · <span className="text-bear">{day.lost}</span> · {day.open}
+          </Fact>
+          <Fact label="Net" testId="pnl" title="Per contract: the closed calls, one contract each, after an estimated $1.08 round trip plus the SEC fee.">{day.won + day.lost ? <span className={dirInk(day.net)}>{signed(day.net)}</span> : '—'}</Fact>
+          <Fact label="Open at bid" testId="open-mark" title="The open calls marked at their last bid, after the same round-trip cost.">{day.open ? <span className={dirInk(day.openMark)}>{signed(day.openMark)}</span> : '—'}</Fact>
+          <Fact label="Avg win · loss" testId="avg-win" title="Average return of the closed calls that won, and of those that lost.">{cut.avgWin == null && cut.avgLoss == null ? '—' : `${cut.avgWin == null ? '—' : pctWords(cut.avgWin, 1)} · ${cut.avgLoss == null ? '—' : pctWords(cut.avgLoss, 1)}`}</Fact>
           <Fact label="Avg hold" testId="hold" title="Average time from the fill to the exit.">{cut.avgHold == null ? '—' : heldWords(cut.avgHold)}</Fact>
         </>
       }
@@ -222,7 +246,9 @@ const Blotter = () => {
             ? `No signal matches “${q.trim()}”.`
             : lines.length
               ? 'No signal on this cut.'
-              : 'No signal has fired in this browser yet. Each Book A, B or C call is written here the moment it fires, with the quote it fired on, then filled and closed on the contract’s one-minute quotes from ThetaData.'}
+              : feed.status === 'loading'
+                ? 'Reading the record from the Compass server.'
+                : 'No call has fired yet. Each Book A, B or C call is written here the moment the scan fires it, with the quote it fired on, then filled and closed on the contract’s one-minute quotes from ThetaData.'}
         </div>
       ) : (
         <TraceGrid
@@ -242,9 +268,9 @@ const Blotter = () => {
               title={<ContractLabel contract={r.label} right={r.right} logo={r.ticker} size="sm" />}
               aside={<span className={r.ret == null ? RESULT_INK[r.result] : dirInk(r.ret)}>{r.ret == null ? RESULT_WORD[r.result] : pctWords(r.ret, 1)}</span>}
               figures={[
-                <span key="i">{dayCell(r.date)} · {nyClock(r.fired)} ET · Book {r.book}{r.p1 != null ? ` · ${(r.p1 * 100).toFixed(1)}%` : ''}</span>,
+                <span key="i">{dayCell(r.date)} · {r.late ? `${nyClock(r.mark)} ET mark, scored late` : `${nyClock(r.fired)} ET`} · Book {r.book}{r.p1 != null ? ` · ${(r.p1 * 100).toFixed(1)}%` : ''}</span>,
                 <span key="p">{r.paid > 0 ? `Filled ${usd(r.paid)}` : `Quote ${r.bid.toFixed(2)} × ${r.ask.toFixed(2)}`}{r.exitPx != null ? ` · exit ${usd(r.exitPx)}${r.out ? ` ${nyClock(r.out)}` : ''}` : ''}</span>,
-                <span key="h">{RESULT_WORD[r.result]}{r.held != null ? ` · ${heldWords(r.held)}` : ''}</span>,
+                <span key="h">{RESULT_WORD[r.result]}{r.held != null ? ` · ${heldWords(r.held)}` : ''}{r.pnl != null ? ` · ${signed(r.pnl)}` : ''}</span>,
               ]}
             />
           )}

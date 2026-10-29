@@ -44,6 +44,7 @@ function liveGamma(ticker: string, date: string | null, priority = false): Promi
           if (out.size) break;
           return hit?.rows ?? null;
         }
+        noteExposureRows(ticker, res.data, true);
         if (liveGammaRows(res.data, out, stamp) < 500) break;
       }
     }

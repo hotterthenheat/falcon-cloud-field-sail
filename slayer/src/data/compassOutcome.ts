@@ -29,6 +29,8 @@ export interface SignalCore {
   /** Model 2 at the call cleared 0.50, or Book B (the ratchet always runs there) */
   runner: boolean;
   firedAt: number;
+  /** The session's last regular minute on an early-close day (13:00 ET is 780): the flats move with it */
+  closeMin?: number;
 }
 
 export type OutcomeStatus = 'waiting' | 'open' | 'closed' | 'unavailable';
@@ -123,16 +125,21 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
   const lottery = sig.book === 'C';
   const runner = !lottery && (sig.book === 'B' || sig.runner);
   const day = dayOf(sig.firedAt);
+  /* 15:55 and 15:50 on a full day; five and ten minutes before an early close */
+  const early = sig.closeMin != null && sig.closeMin < 16 * 60 ? sig.closeMin : null;
+  const flatMin = early != null ? early - 5 : FLAT_MIN;
+  const lotteryFlatMin = early != null ? early - 10 : LOTTERY_FLAT_MIN;
+  const flatWord = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')} flat`;
   let peak = 0;
   let last: PathQuote = fill;
   for (let i = fillAt + 1; i < rows.length; i++) {
     const q = rows[i];
     if (!validQuote(q)) continue;
-    const late = dayOf(q.t) !== day || minuteOfDay(q.t) >= (lottery ? LOTTERY_FLAT_MIN : FLAT_MIN);
+    const late = dayOf(q.t) !== day || minuteOfDay(q.t) >= (lottery ? lotteryFlatMin : flatMin);
     if (lottery) {
       const hit = lotteryExit(paid, q.bid, (q.t - fill.t) / 1000);
       if (hit) return closed(fill, { at: q.t, px: hit.px, why: hit.why }, Math.max(peak, q.bid), 0, q);
-      if (late) return closed(fill, { at: q.t, px: q.bid, why: '15:50 flat' }, Math.max(peak, q.bid), 0, q);
+      if (late) return closed(fill, { at: q.t, px: q.bid, why: flatWord(lotteryFlatMin) }, Math.max(peak, q.bid), 0, q);
     } else {
       const hit = treeExit(paid, q.bid, peak, runner);
       if (hit) return closed(fill, { at: q.t, px: hit.px, why: hit.why === 'tp1' ? 'Take profit 1.50×' : 'Stop' }, peak, stopAfter(paid, peak, runner), q);
@@ -140,13 +147,13 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
         const line = reversalLine(paid, q.bid, sig.right, ret5At(under, q.t));
         if (line) return closed(fill, { at: q.t, px: q.bid, why: line }, peak, stopAfter(paid, peak, runner), q);
       }
-      if (late) return closed(fill, { at: q.t, px: q.bid, why: '15:55 flat' }, peak, stopAfter(paid, peak, runner), q);
+      if (late) return closed(fill, { at: q.t, px: q.bid, why: flatWord(flatMin) }, peak, stopAfter(paid, peak, runner), q);
     }
     peak = Math.max(peak, q.bid);
     last = q;
   }
   /* The session is over and no quote stood at the flat: the last quote printed is the exit. */
-  const over = dayOf(now) !== day || minuteOfDay(now) >= 16 * 60 + 5;
+  const over = dayOf(now) !== day || minuteOfDay(now) >= (early != null ? early : 16 * 60) + 5;
   if (over) {
     const p = nyParts(last.t);
     const why = `Last quote ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')} ET`;
@@ -164,4 +171,49 @@ export function settleSignal(sig: SignalCore, quotes: readonly PathQuote[], unde
     fees: null,
     heldMin: Math.max(0, Math.round((last.t - fill.t) / 60_000)),
   };
+}
+
+export interface DaySummary {
+  /** Calls fired */
+  calls: number;
+  /** Closed with a gain after fees */
+  won: number;
+  /** Closed at or under the fill after fees */
+  lost: number;
+  /** Filled and still held */
+  open: number;
+  /** Not filled yet (inside the first minutes after the call) */
+  waiting: number;
+  /** No valid quote in the three minutes after the call */
+  unavailable: number;
+  /** Closed calls, dollars per contract after the round trip's fees */
+  net: number;
+  /** Open calls marked at their last bid, dollars per contract after the round trip's fees */
+  openMark: number;
+  /** Round-trip fees inside `net` and `openMark` */
+  fees: number;
+}
+
+/** The day in one line: calls, won, lost, open, and the net per contract after the round-trip cost. */
+export function daySummary(rows: readonly { outcome: Outcome | null }[]): DaySummary {
+  const out: DaySummary = { calls: rows.length, won: 0, lost: 0, open: 0, waiting: 0, unavailable: 0, net: 0, openMark: 0, fees: 0 };
+  for (const { outcome: o } of rows) {
+    if (!o || o.status === 'waiting') out.waiting += 1;
+    else if (o.status === 'unavailable') out.unavailable += 1;
+    else if (o.status === 'closed' && o.pnl != null) {
+      if (o.pnl > 0) out.won += 1;
+      else out.lost += 1;
+      out.net += o.pnl;
+      out.fees += o.fees ?? 0;
+    } else if (o.status === 'open' && o.fill && o.last) {
+      out.open += 1;
+      const fees = optionFees(o.last.bid);
+      out.openMark += (o.last.bid - o.fill.ask) * 100 - fees;
+      out.fees += fees;
+    } else out.waiting += 1;
+  }
+  out.net = Number(out.net.toFixed(2));
+  out.openMark = Number(out.openMark.toFixed(2));
+  out.fees = Number(out.fees.toFixed(2));
+  return out;
 }

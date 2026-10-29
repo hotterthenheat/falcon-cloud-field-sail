@@ -1,15 +1,15 @@
-/* The record of Compass's signals: every Book A, B and C call the scan fired in this browser, with the quote it fired
-   on, kept in localStorage (slayer_compass_signals_v1). Its outcome is read off the contract's own one-minute NBBO
-   after the call (compassOutcome.ts) from ThetaData, and frozen once it closes. Nothing here is a stand-in: a signal
-   with no path yet says so. */
+/* The official record of Compass's signals: every Book A, B and C call the server's scan fired, with the quote it
+   fired on. The server keeps it (one file per session, data/compassServer.ts) and every browser shows the same rows
+   from /api/compass/state. Its outcome is read off the contract's own one-minute NBBO after the call
+   (compassOutcome.ts) from ThetaData, and frozen once it closes. Nothing here is a stand-in: a signal with no path
+   yet says so. */
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import type { OptionRight, Setup, SleeveKey } from '../types/compass';
 import { currentPicks, noteLeft, underCloses } from './compassModel';
-import { noteCompassCall } from './compassAlerts';
 import { settleSignal, type Outcome, type PathQuote, type SignalBook } from './compassOutcome';
 import { stopAfter } from './compassParams';
-import { thetaCall } from './theta';
+import { compassHost } from './compassHost';
 import { nyIsoDate, nyParts, nyWallStamp } from '../core/nyTime';
 
 export interface Signal {
@@ -41,41 +41,51 @@ export interface Signal {
   pathAt: number;
   /** The bid each minute after the call, for the line on a row */
   spark: number[];
+  /** 'live': fired by the scan at its mark. 'late': the scan missed the mark and scored it afterwards from the quotes
+      ThetaData recorded at that mark. Rows from before the field are live. */
+  how?: 'live' | 'late';
+  /** The mark the call belongs to, epoch ms of its minute */
+  mark?: number;
+  /** The session's last regular minute when it closes early (13:00 ET is 780); absent on a full day */
+  closeMin?: number;
 }
 
-const KEY = 'slayer_compass_signals_v1';
-const MAX_ROWS = 600;
-
-let rows: Signal[] = load();
+let rows: Signal[] = [];
 let rev = 0;
 const listeners = new Set<() => void>();
+const changeFns = new Set<() => void>();
 
 function emit(): void {
   rev += 1;
   for (const fn of listeners) fn();
 }
 
-function load(): Signal[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((r): r is Signal => {
-      if (!r || typeof r !== 'object') return false;
-      const s = r as Signal;
-      return typeof s.key === 'string' && typeof s.id === 'string' && (s.book === 'A' || s.book === 'B' || s.book === 'C') && s.firedAt > 0 && s.ask > 0;
-    });
-  } catch {
-    return [];
-  }
+function save(): void {
+  for (const fn of changeFns) fn();
 }
 
-function save(): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(rows.slice(0, MAX_ROWS)));
-  } catch {
-    /* the rows still stand in this tab */
-  }
+const validRow = (r: unknown): r is Signal => {
+  if (!r || typeof r !== 'object') return false;
+  const s = r as Signal;
+  return typeof s.key === 'string' && typeof s.id === 'string' && (s.book === 'A' || s.book === 'B' || s.book === 'C') && s.firedAt > 0 && s.ask > 0;
+};
+
+/** Called after every change to the record (the server writes it). */
+export function onSignalsChange(fn: () => void): () => void {
+  changeFns.add(fn);
+  return () => changeFns.delete(fn);
+}
+
+/** Replace the record with kept or served rows, newest first. */
+export function importSignals(next: readonly unknown[]): void {
+  rows = next.filter(validRow).slice().sort((a, b) => b.firedAt - a.firedAt);
+  emit();
+}
+
+/** The session's early close for the calls recorded from now on (minute of the day), or null on a full day. */
+let closeMinNow: number | null = null;
+export function setSessionClose(minute: number | null): void {
+  closeMinNow = minute;
 }
 
 const bookOf = (s: Setup): SignalBook | null => (s.band === 'top' ? 'A' : s.band === 'wing' ? 'B' : s.band === 'lottery' ? 'C' : null);
@@ -98,7 +108,8 @@ export function paidOf(id: string): number {
 
 /** Record the picks the scan just fired. Only a pick still holding its fire-time quote is written: a quote stamped
     after the call is not the one the model read. */
-export function recordPicks(now = Date.now()): void {
+export function recordPicks(now = Date.now()): Signal[] {
+  const fresh: Signal[] = [];
   let added = false;
   for (const pick of currentPicks()) {
     const book = bookOf(pick);
@@ -130,17 +141,21 @@ export function recordPicks(now = Date.now()): void {
         outcome: null,
         pathAt: 0,
         spark: [],
+        how: pick.late ? 'late' : 'live',
+        mark: pick.mark ?? Math.floor(pick.seenAt / 60_000) * 60_000,
+        ...(closeMinNow != null ? { closeMin: closeMinNow } : {}),
       },
       ...rows,
     ];
+    fresh.push(rows[0]);
     added = true;
-    noteCompassCall(pick);
   }
   if (added) {
     save();
     emit();
-    void readPaths(now);
+    void settleOpen(now);
   }
+  return fresh;
 }
 
 /* ---- the path after the call ---- */
@@ -185,20 +200,21 @@ const clockOf = (ms: number) => {
     minutes after its fill. */
 export async function contractPath(sig: Pick<Signal, 'ticker' | 'expiry' | 'strike' | 'right' | 'day' | 'book'>, fillAt: number | null): Promise<PathQuote[] | null> {
   const base = `/option/history/quote?symbol=${encodeURIComponent(sig.ticker)}&expiration=${ymd(sig.expiry)}&strike=${sig.strike}&right=${sig.right === 'C' ? 'call' : 'put'}&start_date=${ymd(sig.day)}&end_date=${ymd(sig.day)}`;
-  const got = await thetaCall(`${base}&interval=1m&format=json`);
+  const got = await compassHost().theta(`${base}&interval=1m&format=json`);
   if (got.error) return null;
   const minute = readQuotes(got.data);
   if (sig.book !== 'C' || !fillAt) return minute;
-  const fine = await thetaCall(`${base}&interval=1s&start_time=${clockOf(fillAt)}&end_time=${clockOf(fillAt + 125_000)}&format=json`);
+  const fine = await compassHost().theta(`${base}&interval=1s&start_time=${clockOf(fillAt)}&end_time=${clockOf(fillAt + 125_000)}&format=json`);
   if (fine.error) return minute;
   return [...minute, ...readQuotes(fine.data)].sort((a, b) => a.t - b.t);
 }
 
 let reading = false;
 
-/** Read the path of every signal still open and settle it. A closed outcome is frozen and never asked for again. */
-async function readPaths(now = Date.now()): Promise<void> {
-  if (reading) return;
+/** Read the path of every signal still open and settle it. A closed outcome is frozen and never asked for again. The
+    official engine runs this once a minute; a browser only shows the result. */
+export async function settleOpen(now = Date.now()): Promise<void> {
+  if (reading || !compassHost().server) return;
   reading = true;
   try {
     for (const sig of rows) {
@@ -226,34 +242,8 @@ async function readPaths(now = Date.now()): Promise<void> {
   }
 }
 
-/* While a Compass page is open and the tab is showing, open signals are read once a minute. */
-let readers = 0;
-let timer: number | null = null;
-
-function arm(): void {
-  if (timer != null || typeof window === 'undefined') return;
-  void readPaths();
-  timer = window.setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return;
-    void readPaths();
-  }, 60_000);
-}
-
-function disarm(): void {
-  if (timer != null) window.clearInterval(timer);
-  timer = null;
-}
-
-/** The record, newest first. Mounting it keeps open signals' paths reading. */
+/** The record, newest first (the server's, as the last state read handed it over). */
 export function useSignals(): Signal[] {
-  useEffect(() => {
-    readers += 1;
-    arm();
-    return () => {
-      readers -= 1;
-      if (readers === 0) disarm();
-    };
-  }, []);
   useSyncExternalStore(
     fn => {
       listeners.add(fn);

@@ -1,5 +1,5 @@
-/* Compass's shell: one head over the board, the blotter, the tracker and a setup's page. The scan engine starts
-   with the first Compass page (useThetaBook), so a visitor who never opens Compass never runs it. */
+/* Compass's shell: one head over the board, the blotter, the tracker and a setup's page. The scan runs on the server
+   for everyone (data/compassServer.ts); these pages read its board and record (useThetaBook, data/compassFeed.ts). */
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
@@ -14,6 +14,7 @@ import { parseSetupId, setupIdOf } from '../../data/compass';
 import { COMPASS_SET } from '../../data/compassUniverse';
 import { currentPicks } from '../../data/compassModel';
 import { useThetaBook } from '../../data/thetaBook';
+import { holdCompassFeed } from '../../data/compassFeed';
 import { useCompassPings } from '../../data/compassAlerts';
 import { chime } from '../../core/sound';
 import { nyClock } from '../../core/nyTime';
@@ -21,13 +22,15 @@ import { nyClock } from '../../core/nyTime';
 export const COMPASS_LINE = 'Book A and Book B, 0 to 7 days. Book C is same-day only.';
 /** The Tracker's line under the same head. Last page of Compass. */
 export const TRACKER_LINE = 'The signals in play, each on its own quotes since the call.';
-export const BLOTTER_LINE = 'Every signal fired in this browser: the quote it fired on, the fill, the exit.';
+export const BLOTTER_LINE = 'The official record: every call the scan fired, the quote it fired on, the fill, the exit.';
 
 const CompassLayout = () => {
   const location = useLocation();
   const outlet = useOutlet();
   const line = location.pathname.startsWith('/compass/blotter') ? BLOTTER_LINE : location.pathname.startsWith('/compass/tracker') ? TRACKER_LINE : COMPASS_LINE;
   const onBoard = location.pathname === '/compass' || location.pathname === '/compass/';
+  /* every Compass page reads the server's board and record */
+  useEffect(() => holdCompassFeed(), []);
   const page = (
     <div className={`flex flex-col min-w-0 ${onBoard ? 'xl:h-full xl:min-h-0' : 'gap-4 mt-4'}`}>
       <Suspense fallback={<CompassRouteSkeleton pathname={location.pathname} />}>{outlet}</Suspense>

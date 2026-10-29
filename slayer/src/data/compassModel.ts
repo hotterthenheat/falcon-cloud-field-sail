@@ -2,10 +2,9 @@
    tree-count miss scores nothing. */
 
 import { parseBoosters, predict, type Tree } from './lgbm';
-import { thetaCall } from './theta';
+import { compassHost } from './compassHost';
 import { nyParts, nyWallStamp, nyWallTime } from '../core/nyTime';
 import { nyYmd as ymd, sessionBefore } from '../core/calendar';
-import { econReleases } from './monthCalendar';
 import {
   DO_NOT_REQUEST,
   ENTRY_SHA,
@@ -64,9 +63,8 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
 }
 
 async function loadOne(url: string, expect: string): Promise<Tree[] | null> {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const bytes = await res.arrayBuffer();
+  const bytes = await compassHost().asset(url);
+  if (!bytes) return null;
   if (await sha256Hex(bytes) !== expect) return null;
   return parseBoosters(new TextDecoder().decode(bytes), TREE_N);
 }
@@ -76,12 +74,11 @@ async function ensureModels(): Promise<boolean> {
   if (loading) return loading;
   loading = (async () => {
     try {
-      const uni = await fetch('/config/universe_458.json');
-      if (!uni.ok) {
+      const raw = await compassHost().asset('/config/universe_458.json');
+      if (!raw) {
         lockText = 'Universe file missing. Scoring is closed.';
         return false;
       }
-      const raw = await uni.arrayBuffer();
       if (await sha256Hex(raw) !== UNIVERSE_SHA) {
         lockText = 'Universe hash does not match. Scoring is closed.';
         return false;
@@ -122,7 +119,7 @@ const seenRootA = new Set<string>();
 const seenRootB = new Set<string>();
 const seenRootC = new Set<string>();
 
-interface LeftRow { id: string; ticker: string; contract: string; why: string; at: number }
+export interface LeftRow { id: string; ticker: string; contract: string; why: string; at: number }
 
 
 function minuteOf(ms: number): number {
@@ -180,7 +177,7 @@ async function loadBars(symbol: string, day: string): Promise<Bar[]> {
   const path = index
     ? `/index/history/ohlc?symbol=${root}&start_date=${day}&end_date=${day}&interval=1m&format=json`
     : `/stock/history/ohlc?symbol=${root}&start_date=${day}&end_date=${day}&interval=1m&format=json`;
-  const got = await thetaCall(path);
+  const got = await compassHost().theta(path);
   const bars = got.error ? [] : barsOf(got.data);
   barMemo.set(key, { at: Date.now(), bars });
   return bars;
@@ -208,6 +205,19 @@ export async function sessionBars(ticker: string, now = Date.now()): Promise<{ d
     if (got.length) return { day, bars: got.map(b => ({ t: nyWallTime(Number(b.d.slice(0, 4)), Number(b.d.slice(4, 6)), Number(b.d.slice(6, 8)), Math.floor(b.m / 60), b.m % 60), h: b.h, l: b.l, c: b.c })) };
   }
   return null;
+}
+
+/** The underlying at an instant: the first print of that minute, else the last close before it (the scan's own bar
+    read). NaN when the day has no bars yet. */
+export async function underAt(ticker: string, at: number): Promise<number> {
+  const bars = await loadBars(UNDER[ticker] ?? printOf(ticker), ymd(at));
+  const minute = minuteOf(at);
+  let last = NaN;
+  for (const b of bars) {
+    if (b.m === minute && b.o > 0) return b.o;
+    if (b.m < minute) last = b.c;
+  }
+  return last;
 }
 
 /** The underlying's one-minute closes on a session day (YYYYMMDD), from the scan's own bar read. */
@@ -239,7 +249,7 @@ async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
   const path = index
     ? `/index/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`
     : `/stock/history/ohlc?symbol=${root}&start_date=${start}&end_date=${end}&interval=1m&format=json`;
-  const got = await thetaCall(path);
+  const got = await compassHost().theta(path);
   return curveFrom(got.error ? [] : barsOf(got.data));
 }
 
@@ -279,7 +289,7 @@ async function pinOf(ticker: string, expiry: string, spot: number): Promise<PinB
   const key = `${ticker}|${expiry}`;
   const hit = pinCache.get(key);
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.book;
-  const got = await thetaCall(`/option/snapshot/open_interest?symbol=${encodeURIComponent(ticker)}&expiration=${expiry.replace(/-/g, '').slice(0, 8)}&format=json`);
+  const got = await compassHost().theta(`/option/snapshot/open_interest?symbol=${encodeURIComponent(ticker)}&expiration=${expiry.replace(/-/g, '').slice(0, 8)}&format=json`);
   const byStrike = new Map<number, { strike: number; call: number; put: number }>();
   if (!got.error) {
     for (const item of Array.isArray(got.data) ? got.data : []) {
@@ -312,6 +322,16 @@ async function pinOf(ticker: string, expiry: string, spot: number): Promise<PinB
   };
   pinCache.set(key, { at: Date.now(), book });
   return book;
+}
+
+/** One scored row: the contract, the minute, the 56 inputs as the trees read them, and both models' answers. */
+export interface ScoredRow { setup: Setup; minute: number; x: number[]; p1: number; prun: number; late: boolean }
+const rowFns = new Set<(row: ScoredRow) => void>();
+
+/** Every row the scan scores (the server's input check, scripts/compass-validate.ts). */
+export function onScoredRow(fn: (row: ScoredRow) => void): () => void {
+  rowFns.add(fn);
+  return () => rowFns.delete(fn);
 }
 
 const seenAsks = new Map<string, { minute: number; bid: number; ask: number }[]>();
@@ -375,7 +395,7 @@ async function seedQuotes(list: Setup[], now: number): Promise<void> {
   const byContract = new Map<string, string>();
   for (const s of list) byContract.set(`${s.strike}|${s.right}`, s.id);
   const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`;
-  const got = await thetaCall(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=16&interval=1m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
+  const got = await compassHost().theta(`/option/history/quote?symbol=${encodeURIComponent(first.ticker)}&expiration=${first.expiryDate.replace(/-/g, '').slice(0, 8)}&start_date=${ymd(now)}&end_date=${ymd(now)}&strike_range=16&interval=1m&start_time=${hm(Math.max(0, mark - 30))}&end_time=${hm(mark)}&format=json`);
   if (got.error) return;
   for (const item of Array.isArray(got.data) ? got.data : []) {
     if (!item || typeof item !== 'object') continue;
@@ -412,7 +432,7 @@ const wingPicks = new Map<string, Setup>();
 const lotteryPicks = new Map<string, Setup>();
 const left = new Map<string, LeftRow>();
 
-interface ScanReport { best: number; prun: number; contract: string; ticker: string; scored: number; quiet: number; setup: Setup | null }
+export interface ScanReport { best: number; prun: number; contract: string; ticker: string; scored: number; quiet: number; setup: Setup | null }
 const emptyReport = (): ScanReport => ({ best: 0, prun: 0, contract: '', ticker: '', scored: 0, quiet: 0, setup: null });
 const reports: Record<'odte' | 'weekly', ScanReport> = { odte: emptyReport(), weekly: emptyReport() };
 
@@ -424,12 +444,16 @@ export function resetScanReport(sleeve: 'odte' | 'weekly'): void {
   reports[sleeve] = emptyReport();
 }
 
+/** Put a report back (a late mark's scoring does not replace the last live scan's report). */
+export function setScanReport(sleeve: 'odte' | 'weekly', report: ScanReport): void {
+  reports[sleeve] = report;
+}
+
 const nearPicks = new Map<string, Setup>();
 const misses = new Map<string, { setup: Setup; p1: number; prun: number }>();
 const kept = new Map<string, Setup>();
-const CALLS_KEY = 'slayer_compass_calls_v1';
 
-interface PassLine {
+export interface PassLine {
   ticker: string;
   contract: string;
   p1: number;
@@ -480,7 +504,9 @@ export function noteScanned(sleeve: 'odte' | 'weekly', at = Date.now()): void {
   persistCalls();
 }
 
-type Pack = {
+/** The engine's state for one session: the cards, the passes, the seats taken and every contract already called.
+    The server keeps it in the day's record file (data/compassServer.ts); a browser takes it from /api/compass/state. */
+export type ModelPack = {
   day?: string;
   picks?: [string, Setup][];
   wings?: [string, Setup][];
@@ -493,12 +519,14 @@ type Pack = {
   rootB?: string[];
   rootC?: string[];
   scanned?: { odte?: number; weekly?: number };
+  misses?: [string, { setup: Setup; p1: number; prun: number }][];
+  left?: LeftRow[];
+  passed?: [string, string[]][];
+  reports?: { odte?: ScanReport; weekly?: ScanReport };
 };
 
-const dayKey = (at = Date.now()) => {
-  const p = nyParts(at);
-  return `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
-};
+/** The session the engine's state belongs to: after 20:15 ET it is the next trading day's. */
+const dayKey = (at = Date.now()) => sessionYmd(at);
 
 /** The last session's scan, kept to show (stamped) until today's first pass lands. It is never scored or traded. */
 let earlier: { day: string; at: number; setups: Setup[] } | null = null;
@@ -507,12 +535,26 @@ export function earlierScan(): { day: string; at: number; setups: Setup[] } | nu
   return earlier;
 }
 
+let stateDay = dayKey();
+const changeFns = new Set<() => void>();
+
+/** Called after every change the engine makes to its state (the server writes the record). */
+export function onModelChange(fn: () => void): () => void {
+  changeFns.add(fn);
+  return () => changeFns.delete(fn);
+}
+
 function persistCalls(): void {
-  if (typeof localStorage === 'undefined') return;
-  const today = dayKey();
-  if (!picks.size && !wingPicks.size && !lotteryPicks.size && !nearPicks.size && !scannedAt.odte && !scannedAt.weekly && earlier) return;
-  const pack: Pack = {
-    day: today,
+  for (const fn of changeFns) fn();
+}
+
+export function modelDay(): string {
+  return stateDay;
+}
+
+export function exportModelState(): ModelPack {
+  return {
+    day: stateDay,
     picks: [...picks.entries()],
     wings: [...wingPicks.entries()],
     lottery: [...lotteryPicks.entries()],
@@ -524,22 +566,28 @@ function persistCalls(): void {
     rootB: [...seenRootB],
     rootC: [...seenRootC],
     scanned: { ...scannedAt },
+    misses: [...misses.entries()],
+    left: [...left.values()],
+    passed: [...passed.entries()],
+    reports: { odte: reports.odte, weekly: reports.weekly },
   };
-  try { localStorage.setItem(CALLS_KEY, JSON.stringify(pack)); } catch { /* the maps still hold this tab */ }
 }
 
-function restoreCalls(): void {
-  if (typeof localStorage === 'undefined') return;
-  let raw: unknown = null;
-  try { raw = JSON.parse(localStorage.getItem(CALLS_KEY) || 'null'); } catch { raw = null; }
-  const pack = raw && typeof raw === 'object' ? raw as Pack : null;
+function clearState(): void {
+  for (const m of [picks, wingPicks, lotteryPicks, kept, nearPicks, passBook, misses, left, passed]) m.clear();
+  for (const set of [seen, seenRootA, seenRootB, seenRootC]) set.clear();
+  scannedAt.odte = 0;
+  scannedAt.weekly = 0;
+  reports.odte = emptyReport();
+  reports.weekly = emptyReport();
+}
+
+/** Replace the state with a kept or served one. A pack from another session is shown as the earlier scan only. */
+export function importModelState(pack: ModelPack | null, earlierScanned: { day: string; at: number; setups: Setup[] } | null = earlier): void {
+  clearState();
+  earlier = earlierScanned;
   if (!pack) return;
-  if (pack.day !== dayKey()) {
-    const setups = [...(pack.picks ?? []), ...(pack.wings ?? []), ...(pack.lottery ?? []), ...(pack.near ?? [])].map(([, v]) => v).filter(v => v && v.id);
-    const at = Math.max(pack.scanned?.odte ?? 0, pack.scanned?.weekly ?? 0);
-    if (pack.day && (setups.length || at)) earlier = { day: pack.day, at, setups };
-    return;
-  }
+  if (pack.day) stateDay = pack.day;
   for (const [k, v] of pack.picks ?? []) if (v && v.id) picks.set(k, v);
   for (const [k, v] of pack.wings ?? []) if (v && v.id) wingPicks.set(k, v);
   for (const [k, v] of pack.lottery ?? []) if (v && v.id) lotteryPicks.set(k, v);
@@ -550,11 +598,27 @@ function restoreCalls(): void {
   for (const t of pack.rootA ?? []) seenRootA.add(t);
   for (const t of pack.rootB ?? []) seenRootB.add(t);
   for (const t of pack.rootC ?? []) seenRootC.add(t);
+  for (const [k, v] of pack.misses ?? []) if (v && v.setup) misses.set(k, v);
+  for (const row of pack.left ?? []) if (row && row.id) left.set(row.id, row);
+  for (const [k, v] of pack.passed ?? []) if (Array.isArray(v)) passed.set(k, v);
+  if (pack.reports?.odte) reports.odte = pack.reports.odte;
+  if (pack.reports?.weekly) reports.weekly = pack.reports.weekly;
   scannedAt.odte = pack.scanned?.odte ?? 0;
   scannedAt.weekly = pack.scanned?.weekly ?? 0;
 }
 
-restoreCalls();
+/** A new session: nothing called, every seat free. The session that ended is kept to show until the first pass. */
+export function rollModelDay(day: string): void {
+  if (day === stateDay) return;
+  const setups = [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values(), ...nearPicks.values()];
+  const at = Math.max(scannedAt.odte, scannedAt.weekly);
+  const was = setups.length || at ? { day: stateDay, at, setups } : earlier;
+  importModelState(null, was);
+  stateDay = day;
+  seenAsks.clear();
+  seenMids.clear();
+  persistCalls();
+}
 
 /** The card and the contract read this. A pick's quote follows the live book; its signal keeps the one it fired on. */
 export function stampPickQuote(ticker: string, expiry: string, strike: number, right: string, q: { bid: number; ask: number; at: number; under: number; iv: number; delta: number; theta: number; vega: number }): void {
@@ -616,7 +680,7 @@ function noteMiss(s: Setup, p1: number, prun: number): void {
 const CLOSEST_CAP = 8;
 
 /** The eight highest misses on this sleeve that are not already a call. They stay until an exit. */
-export function commitClosest(sleeve: 'odte' | 'weekly'): void {
+export function commitClosest(sleeve: 'odte' | 'weekly', at = Date.now()): void {
   const taken = new Set<string>();
   for (const p of [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values(), ...nearPicks.values()]) {
     if (p.sleeve === sleeve) taken.add(p.ticker);
@@ -637,7 +701,7 @@ export function commitClosest(sleeve: 'odte' | 'weekly'): void {
       better: 'entry',
       band: 'closest',
       strength: false,
-      seenAt: Date.now(),
+      seenAt: at,
       verdict: 'WATCH',
       score: 0,
       takeProfits: [],
@@ -689,20 +753,24 @@ function releaseShut(now: number): boolean {
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));
-  for (const ev of econReleases()) {
+  for (const ev of compassHost().econ()) {
     const parts = String(ev.time || '').split(':');
     const hh = Number(parts[0]);
     const mm = Number(parts[1] ?? 0);
     if (!Number.isFinite(hh)) continue;
     if (!(ev.date instanceof Date) || Number.isNaN(ev.date.getTime())) continue;
-    const evDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ev.date);
+    /* the release's New York wall date is held in the Date's local fields (data/monthCalendar.ts) */
+    const evDay = `${ev.date.getFullYear()}-${String(ev.date.getMonth() + 1).padStart(2, '0')}-${String(ev.date.getDate()).padStart(2, '0')}`;
     if (evDay === today && releaseBlocks(ev.title, hh * 60 + mm, minute)) return true;
   }
   return false;
 }
 
-async function scoreAll(setups: Setup[], now: number, merge = false): Promise<void> {
+async function scoreAll(setups: Setup[], now: number, merge = false, late = false): Promise<void> {
   if (!(await ensureModels()) || !modelsLocked()) return;
+  /* a live call is stamped when it is made; a late one at its mark. Both carry the mark they belong to. */
+  const stamp = () => (late ? now : Date.now());
+  const mark = Math.floor(now / 60_000) * 60_000;
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
   if (!merge && !sessionScanOpen(minute, clock.weekday)) return;
@@ -784,7 +852,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
     const { iv, skew } = atmPair(list, tape.S, horizon);
     const etf = ticker === 'SPXW' ? '' : (SECTOR_OF[ticker] ?? SECTOR_OF[under] ?? '');
     const sec = etf ? secBars.get(etf) ?? [] : [];
-    const curve = curveOf(under);
+    const curve = curveOf(under, now);
     const notes: string[] = [];
     for (const s of list) {
       const word = s.contract;
@@ -815,6 +883,7 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
       const x = f32(raw);
       const p1 = predict(ENTRY, x);
       const prun = predict(RUNNER, x);
+      for (const fn of rowFns) fn({ setup: s, minute, x, p1, prun, late });
       report.scored += 1;
       if (p1 > report.best) {
         report.best = p1;
@@ -918,7 +987,9 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
         better: run ? 'runner' : 'entry',
         band: 'top',
         strength: false,
-        seenAt: Date.now(),
+        seenAt: stamp(),
+        mark,
+        ...(late ? { late: true } : {}),
         verdict: 'ENTER',
         score: 0,
         takeProfits: [],
@@ -939,7 +1010,9 @@ async function scoreAll(setups: Setup[], now: number, merge = false): Promise<vo
         better: 'runner',
         band: 'wing',
         strength: false,
-        seenAt: Date.now(),
+        seenAt: stamp(),
+        mark,
+        ...(late ? { late: true } : {}),
         verdict: 'ENTER',
         score: 0,
         takeProfits: [],
@@ -1011,7 +1084,7 @@ export function paintQuotes(setups: Setup[]): void {
 }
 
 /** Book C. No booster. A missing tree does not close this window. No new ticket inside a high-impact release. */
-export async function scoreLottery(setups: Setup[], now = Date.now()): Promise<void> {
+export async function scoreLottery(setups: Setup[], now = Date.now(), late = false): Promise<void> {
   const clock = nyParts(now);
   const minute = clock.hour * 60 + clock.minute;
   if (!inLottery(minute, clock.second)) return;
@@ -1057,7 +1130,9 @@ export async function scoreLottery(setups: Setup[], now = Date.now()): Promise<v
       better: 'entry',
       band: 'lottery',
       strength: false,
-      seenAt: Date.now(),
+      seenAt: late ? now : Date.now(),
+      mark: Math.floor(now / 60_000) * 60_000,
+      ...(late ? { late: true } : {}),
       verdict: 'ENTER',
       score: 0,
       takeProfits: [],
@@ -1071,8 +1146,8 @@ export async function scoreLottery(setups: Setup[], now = Date.now()): Promise<v
   persistCalls();
 }
 
-export async function scoreBook(setups: Setup[], now = Date.now(), merge = false): Promise<void> {
-  await scoreAll(setups, now, merge);
+export async function scoreBook(setups: Setup[], now = Date.now(), merge = false, late = false): Promise<void> {
+  await scoreAll(setups, now, merge, late);
 }
 
 let claimedSlot = -2;
