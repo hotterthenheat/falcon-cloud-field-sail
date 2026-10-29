@@ -1,13 +1,16 @@
-/* The paper account's rules in code: pure functions over an account that is its orders and fills, so everything
-   the desk shows is read off them. The market comes in through PaperMarket (feed.ts). */
+/* The paper account in code: pure functions over an account that is its orders and fills, so everything the desk
+   shows is read off them. The market comes in through PaperMarket (feed.ts). Options only — a prop firm's plan is
+   judged by rules.ts on every order and every tick. Futures were taken out of the product: an account from before
+   keeps its closed futures trades (futBookOf reads them for the journal), and nothing new is traded on them. */
 
 import { MULT, nameGoesUp, type Bracket, type OrderKind, type Side } from '../review/engine';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
 import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
 import type { Candle } from '../../types/market';
-import { bellOf, dayEndsAt, flatByOf, nyAt, tradingDayOf } from './clock';
-import { bigOf, frontOn, futWords, isPaperFuture, onTick, paperFut } from './products';
+import { bellOf, nyAt, tradingDayOf } from './clock';
+import { paperFut } from './products';
+import { judgeRoll, judgeTick, mustBeFlat, peakAfterRoll, peakAfterTick, phaseOf, ruleRefusal, type EarningsWhen, type PaperPlan, type RuleId } from './rules';
 
 /* ================================================================== */
 /*  TYPES                                                              */
@@ -27,14 +30,16 @@ export interface PaperMarket {
   optQuote: (c: ContractId) => Quote;
   /** The same contract with the name at `spot`, now */
   optQuoteAt: (c: ContractId, spot: number) => Quote;
-  /** A future's price now */
-  fut: (symbol: string) => number;
-  /** The chart's moment (seconds) for what a chart of this draws — a name, or a future */
+  /** The chart's moment (seconds) for what a chart of the name draws */
   bar: (ticker: string) => number;
-  /** The candles a closed trade's chart is written down from — a name's, or a future's */
+  /** The candles a closed trade's chart is written down from */
   candles: (ticker: string) => Candle[];
-  /** Does the market take an order of this kind now */
-  open: (kind: 'option' | 'future') => boolean;
+  /** Does the options market take an order now (09:30–16:00 ET on a session) */
+  open: () => boolean;
+  /** Is the contract's quote a fresh live read — the rules judge an account only on fresh quotes (none: always) */
+  fresh?: (c: ContractId) => boolean;
+  /** When a name next reports — undefined while it is not known yet (none: no earnings calendar is read) */
+  earnings?: (ticker: string) => EarningsWhen | undefined;
   /** The name's 16:00 close on a past or today's date (what an expiring contract settles on) — NaN until it is known */
   closeOf?: (ticker: string, day: string) => number;
   /** A replayed minute of the history (store.ts catch-up), not the live market */
@@ -150,35 +155,17 @@ export interface FutFill {
 }
 
 /* ---- the account ---- */
+/** 'practice': plain, cash is the only limit · 'evaluation': a prop firm's plan (or the reader's own rules), judged by
+    rules.ts. The word stays 'evaluation' so accounts saved before keep loading. */
 export type AccountKind = 'practice' | 'evaluation';
-export type EvalTrailing = 'eod' | 'intraday';
-export interface EvalPlan {
-  label: string;
-  size: number;
-  target: number;
-  /** The most it may lose, measured from the high mark (the floor trails it) */
-  maxLoss: number;
-  /** The most a day may lose, from the day's start */
-  dayLoss: number;
-  /** Big contracts at once — ten micros are one */
-  contracts: number;
-  trailing: EvalTrailing;
-  /** Trading days with a closed trade before the target counts */
-  minDays: number;
-  /** The best day's profit at most this share of the whole — null: the rule is off */
-  bestDayShare: number | null;
-}
-/** The rules page's table */
-export const EVAL_PLANS: EvalPlan[] = [
-  { label: '50K', size: 50_000, target: 3_000, maxLoss: 2_000, dayLoss: 1_000, contracts: 5, trailing: 'eod', minDays: 2, bestDayShare: 0.5 },
-  { label: '100K', size: 100_000, target: 6_000, maxLoss: 3_000, dayLoss: 2_000, contracts: 10, trailing: 'eod', minDays: 2, bestDayShare: 0.5 },
-  { label: '150K', size: 150_000, target: 9_000, maxLoss: 4_500, dayLoss: 3_000, contracts: 15, trailing: 'eod', minDays: 2, bestDayShare: 0.5 },
-];
+export type { PaperPlan } from './rules';
 export const PRACTICE_SIZES = [10_000, 25_000, 50_000, 100_000];
 
 /** One trading day of the account: what it was worth when the day began, when it ended, and its high and low */
 export interface PaperDay {
   open: number;
+  /** The day's start balance — what it was worth less what was open (closed trades only) */
+  bal?: number;
   close?: number;
   hi: number;
   lo: number;
@@ -218,24 +205,33 @@ export interface PaperAccount {
   createdAt: number;
   touchedAt: number;
   seq: number;
-  plan?: EvalPlan;
+  /** The plan an evaluation runs on (rules.ts) — none on a practice account */
+  plan?: PaperPlan;
   status: 'open' | 'passed' | 'failed' | 'ended';
   statusAt?: number;
   statusWhy?: string;
+  /** The rule that passed or failed it */
+  statusRule?: RuleId;
+  /** Taken off the Accounts page's main list (kept, and still in the journal) */
+  archived?: boolean;
+  /** The plan's phase it is in (0: the first), and what that phase started from */
+  phase?: number;
+  phaseStart?: { at: number; day: string; equity: number };
   /** The trading day the account last rolled into, and every day it has been on */
   day: string;
   ledger: Record<string, PaperDay>;
-  /** The high mark an evaluation's floor trails */
+  /** The high mark a trailing floor follows */
   peak: number;
-  /** The day's limit was reached: no way in until the day rolls */
+  /** The day's loss limit was reached: no way in until the day rolls */
   dayOver?: { day: string; why: string };
   /** Options' fee, a contract each way */
   fee: number;
-  /** Practice only: fees off, futures fill at the price (the rules page, "The sandbox") */
+  /** Practice only: fees off (the rules page, "The sandbox") */
   sandbox?: boolean;
   /** 'live': opened on the live feed. Accounts from the old simulated feed carry nothing here and are ended on load. */
   feed?: 'live';
   opt: { orders: OptOrder[]; fills: OptFill[] };
+  /** Futures, from before options-only: read for the history, never added to */
   fut: { orders: FutOrder[]; fills: FutFill[] };
   /** The last price seen for each thing held — what a position left open by a page that could not close it is closed at */
   marks: Record<string, number>;
@@ -275,16 +271,14 @@ const LOG_KEPT = 60;
 const nextId = (a: PaperAccount, p: string): [string, PaperAccount] => [`${p}${a.seq + 1}`, { ...a, seq: a.seq + 1 }];
 const logged = (a: PaperAccount, at: number, words: string, kind: PaperLogLine['kind']): PaperAccount => ({ ...a, log: [{ at, words, kind }, ...a.log].slice(0, LOG_KEPT) });
 const optFee = (a: PaperAccount, c: ContractId, qty: number) => (a.sandbox ? 0 : cents(a.fee * qty * legsOf(c)));
-const futFee = (a: PaperAccount, symbol: string, qty: number) => (a.sandbox ? 0 : cents(paperFut(symbol).fee * qty));
-/** A market order's price for a future: a tick against you (none in the sandbox) */
-const futMarketPx = (a: PaperAccount, symbol: string, last: number, side: Side) => {
-  const p = paperFut(symbol);
-  return onTick(p, last + (a.sandbox ? 0 : side === 'buy' ? p.tick : -p.tick));
-};
+/** The house's fee, a contract each way, where a plan names none */
+export const HOUSE_FEE = 0.65;
 
-export function newAccount(o: { id: string; kind: AccountKind; name: string; startCash: number; plan?: EvalPlan; now: number; fee?: number; sandbox?: boolean }): PaperAccount {
+export function newAccount(o: { id: string; kind: AccountKind; name: string; startCash: number; plan?: PaperPlan; now: number; fee?: number; sandbox?: boolean }): PaperAccount {
   const day = tradingDayOf(o.now);
   const start = o.plan ? o.plan.size : o.startCash;
+  const plan = o.plan;
+  const phases = plan?.rules.phases ?? [];
   return {
     id: o.id,
     kind: o.kind,
@@ -293,12 +287,14 @@ export function newAccount(o: { id: string; kind: AccountKind; name: string; sta
     createdAt: o.now,
     touchedAt: o.now,
     seq: 0,
-    plan: o.plan,
+    plan,
     status: 'open',
+    phase: plan ? 0 : undefined,
+    phaseStart: plan ? { at: o.now, day, equity: start } : undefined,
     day,
-    ledger: { [day]: { open: start, hi: start, lo: start } },
+    ledger: { [day]: { open: start, bal: start, hi: start, lo: start } },
     peak: start,
-    fee: o.fee ?? 0.65,
+    fee: o.fee ?? plan?.rules.fee ?? HOUSE_FEE,
     sandbox: o.kind === 'practice' ? o.sandbox || undefined : undefined,
     feed: 'live',
     opt: { orders: [], fills: [] },
@@ -306,7 +302,7 @@ export function newAccount(o: { id: string; kind: AccountKind; name: string; sta
     marks: {},
     held: {},
     paths: {},
-    log: [{ at: o.now, words: o.plan ? `The ${o.plan.label} evaluation began at ${money(start, 0)}` : `The account began at ${money(start, 0)}`, kind: 'info' }],
+    log: [{ at: o.now, words: plan ? `${plan.firm ?? 'Your own rules'} ${plan.label}${phases.length > 1 ? ` · ${phases[0].name}` : ''} began at ${money(start, 0)}` : `The account began at ${money(start, 0)}`, kind: 'info' }],
     notes: {},
   };
 }
@@ -628,25 +624,25 @@ export function bankedOf(a: PaperAccount, name: string, before = Infinity): numb
 /* ================================================================== */
 
 export type MarkedOpt = OptPosition & { quote: Quote; value: number; pnl: number; r: number };
-export type MarkedFut = FutPosition & { last: number; pnl: number; r: number | null; margin: number };
 export interface PaperView {
   /** The start, plus everything closed, less every fee — with an option's price paid out of it */
   cash: number;
-  /** Cash + the options at the mark + what the futures are up or down */
+  /** Cash + the options at the mark */
   equity: number;
+  /** What it is worth less what is open, up or down: the start and every closed trade (a firm's "balance") */
+  balance: number;
   /** What is open, up or down */
   openPnl: number;
   optValue: number;
-  marginHeld: number;
-  /** What can pay for an option or margin a future */
+  /** What can pay for an option */
   free: number;
   /** What the trading day began at, and the account against it */
   dayOpen: number;
   today: number;
   allTime: number;
   opt: MarkedOpt[];
-  fut: MarkedFut[];
   optTrades: OptTrade[];
+  /** Futures trades closed before options-only — history */
   futTrades: FutTrade[];
   /** Every closed trade's result, added up */
   closed: number;
@@ -663,130 +659,26 @@ export function viewOf(a: PaperAccount, m: PaperMarket): PaperView {
     const cost = p.avg * MULT * p.qty + p.fees;
     return { ...p, quote, value, pnl: cents(value - cost), r: cost > 0 ? (value - cost) / cost : 0 };
   });
-  let gross = 0;
-  let marginHeld = 0;
-  const fut = fb.positions.map(p => {
-    const prod = paperFut(p.symbol);
-    const last = m.fut(p.symbol);
-    const up = (last - p.avg) * (p.long ? 1 : -1) * prod.pointValue * p.qty;
-    gross += up;
-    const margin = a.kind === 'evaluation' ? 0 : prod.margin * p.qty;
-    marginHeld += margin;
-    const risk = p.plannedStop != null ? Math.abs(p.avg - p.plannedStop) * prod.pointValue * p.qty : null;
-    const pnl = cents(up - p.fees);
-    return { ...p, last, pnl, r: risk && risk > 0 ? pnl / risk : null, margin };
-  });
   const optValue = cents(opt.reduce((x, p) => x + p.value, 0));
-  const equity = cents(cash + optValue + gross);
+  const equity = cents(cash + optValue);
+  const openPnl = cents(opt.reduce((x, p) => x + p.pnl, 0));
   const dayOpen = a.ledger[a.day]?.open ?? a.startCash;
   const closed = cents(ob.trades.reduce((x, t) => x + t.pnl, 0) + fb.trades.reduce((x, t) => x + t.pnl, 0));
   return {
     cash,
     equity,
-    openPnl: cents(opt.reduce((x, p) => x + p.pnl, 0) + fut.reduce((x, p) => x + p.pnl, 0)),
+    balance: cents(equity - openPnl),
+    openPnl,
     optValue,
-    marginHeld,
-    free: cents(cash + gross - marginHeld),
+    free: cash,
     dayOpen,
     today: cents(equity - dayOpen),
     allTime: cents(equity - a.startCash),
     opt,
-    fut,
     optTrades: ob.trades,
     futTrades: fb.trades,
     closed,
   };
-}
-
-/* ================================================================== */
-/*  AN EVALUATION                                                      */
-/* ================================================================== */
-
-export interface EvalRead {
-  plan: EvalPlan;
-  /** The floor, and what is between the account and it */
-  floor: number;
-  room: number;
-  /** The high mark the floor trails — and whether the floor has reached the start and stopped */
-  high: number;
-  floorStopped: boolean;
-  /** The day's own floor, and the room to it */
-  dayFloor: number;
-  dayRoom: number;
-  /** The level the target is, and how far off it stands */
-  targetAt: number;
-  toTarget: number;
-  /** Big contracts open, of the plan's */
-  contractsOpen: number;
-  /** Trading days with a closed trade, the best of them, and the whole profit so far (closed days) */
-  daysTraded: number;
-  bestDay: number;
-  profit: number;
-  /** The best-day rule holds (or is off) */
-  bestDayOk: boolean;
-  /** Where the best-day rule would put the target in effect: the whole profit it needs for the best day to be the share */
-  targetNeeded: number;
-  dayOver: string | null;
-  flatBy: number;
-  inFlatWindow: boolean;
-}
-/** The floor: the high mark less the allowance — never above the starting balance, where it stops */
-const floorOf = (a: PaperAccount): number => (a.plan ? Math.min(a.peak - a.plan.maxLoss, a.plan.size) : -Infinity);
-/** Trading days with a closed trade on them — what "days traded" counts */
-function daysTradedOf(a: PaperAccount): string[] {
-  const days = new Set<string>();
-  for (const f of a.fut.fills) if (f.exit) days.add(f.at.day);
-  for (const f of a.opt.fills) if (f.side === 'sell') days.add(f.at.day);
-  return [...days].sort();
-}
-/** A closed day's result: its close less its open */
-const dayResult = (d: PaperDay | undefined): number | null => (d && d.close != null ? d.close - d.open : null);
-export function evalRead(a: PaperAccount, v: PaperView, now: number): EvalRead | null {
-  const plan = a.plan;
-  if (a.kind !== 'evaluation' || !plan) return null;
-  const floor = floorOf(a);
-  const dayFloor = (a.ledger[a.day]?.open ?? plan.size) - plan.dayLoss;
-  const days = daysTradedOf(a);
-  const results = Object.values(a.ledger).map(dayResult).filter((x): x is number => x != null);
-  /* today counts too, as it stands — the rule is judged at the day's close, but the page says where it is heading */
-  const today = v.equity - (a.ledger[a.day]?.open ?? plan.size);
-  const bestDay = Math.max(0, today, ...results);
-  const profit = v.equity - plan.size;
-  const share = plan.bestDayShare;
-  const bestDayOk = share == null || profit <= 0 || bestDay <= share * profit + 1e-9;
-  const flatBy = flatByOf(a.day);
-  return {
-    plan,
-    floor,
-    room: cents(v.equity - floor),
-    high: a.peak,
-    floorStopped: a.peak - plan.maxLoss >= plan.size,
-    dayFloor,
-    dayRoom: cents(v.equity - dayFloor),
-    targetAt: plan.size + plan.target,
-    toTarget: cents(plan.size + plan.target - v.equity),
-    contractsOpen: v.fut.reduce((x, p) => x + bigOf(p.symbol, p.qty), 0),
-    daysTraded: days.length,
-    bestDay: cents(bestDay),
-    profit: cents(profit),
-    bestDayOk,
-    targetNeeded: share == null ? plan.target : Math.max(plan.target, cents(bestDay / share)),
-    dayOver: a.dayOver && a.dayOver.day === a.day ? a.dayOver.why : null,
-    flatBy,
-    inFlatWindow: now >= flatBy && now < dayEndsAt(a.day),
-  };
-}
-
-/** Why an evaluation (or an account that is over) refuses a WAY IN, before the kind's own rules — or null */
-function accountRefusal(a: PaperAccount, now: number, kind: 'option' | 'future', bigIn: number, v: () => PaperView): string | null {
-  if (a.status !== 'open') return a.kind === 'evaluation' ? `This evaluation is over — it ${a.status === 'passed' ? 'passed' : a.status === 'failed' ? 'failed' : 'was ended'}` : 'This account is closed';
-  if (a.kind !== 'evaluation' || !a.plan) return null;
-  if (kind === 'option') return 'This evaluation trades futures only — options are not part of it';
-  if (a.dayOver && a.dayOver.day === a.day) return `The day’s limit was reached (${a.dayOver.why}) — no new positions until the next trading day begins at 17:00 New York`;
-  if (now >= flatByOf(a.day) && now < dayEndsAt(a.day)) return 'It is past 16:59 New York — an evaluation is flat into the close; the next trading day begins at 17:00';
-  const open = v().fut.reduce((x, p) => x + bigOf(p.symbol, p.qty), 0);
-  if (open + bigIn > a.plan.contracts + 1e-9) return `No more than ${a.plan.contracts} contracts at once in this evaluation (ten micros are one) — this would be ${+(open + bigIn).toFixed(1)}`;
-  return null;
 }
 
 /* ================================================================== */
@@ -844,22 +736,23 @@ export function optRefusal(a: PaperAccount, m: PaperMarket, d: OptDraft): string
   if (d.kind !== 'market' && !(d.price && d.price > 0)) return 'Enter a price';
   if (d.kind === 'stop' && d.side === 'buy') return 'A stop is a way out — it sells';
   if (d.on === 'name' && (d.side === 'buy' || d.kind === 'market')) return 'Only a sell that waits can be set on the name’s price';
-  if (d.kind === 'market' && !m.open('option')) return 'The market is shut — options trade 09:30 to 16:00 New York. Leave a limit that waits for the open';
+  if (d.kind === 'market' && !m.open()) return 'The market is shut — options trade 09:30 to 16:00 New York. Leave a limit that waits for the open';
   const q = m.optQuote(d.contract);
   const name = d.contract.ticker;
   if (d.side === 'buy') {
-    const ruled = accountRefusal(a, m.now, 'option', 0, () => viewOf(a, m));
-    if (ruled) return ruled;
     const px = d.kind === 'limit' ? Math.min(d.price!, q.ask) : q.ask;
     const need = px * MULT * d.qty + optFee(a, d.contract, d.qty);
     const v = viewOf(a, m);
+    /* the account's own state and its plan's hard rules first (rules.ts) */
+    const ruled = ruleRefusal(a, m, d, v, px);
+    if (ruled) return ruled;
     if (need > v.free + 1e-9) return `Not enough free money — this needs ${money(need)}, and ${money(Math.max(0, v.free))} is free`;
     if (d.kind === 'market' && q.dead) return 'No market in that contract right now';
     /* our ceiling (a buy of a contract already held adds to it) */
     const held = new Set(v.opt.map(p => p.key));
     if (!held.has(contractKey(d.contract))) {
       const pending = new Set(a.opt.orders.filter(o => o.status === 'working' && o.side === 'buy' && !held.has(contractKey(o.contract))).map(o => contractKey(o.contract)));
-      const open = held.size + v.fut.length + pending.size - (pending.has(contractKey(d.contract)) ? 1 : 0);
+      const open = held.size + pending.size - (pending.has(contractKey(d.contract)) ? 1 : 0);
       if (open >= OPEN_CEILING) return `No more than ${OPEN_CEILING} positions open at once — close one first`;
     }
     const shape = ladderShapeRefusal(d.bracket, d.qty);
@@ -1064,316 +957,77 @@ export function optClose(a: PaperAccount, m: PaperMarket, c: ContractId, qty: nu
 }
 
 /* ================================================================== */
-/*  FUTURES: ORDERS                                                    */
-/* ================================================================== */
-
-export interface FutDraft {
-  symbol: string;
-  side: Side;
-  qty: number;
-  kind: OrderKind;
-  price?: number;
-  tif?: 'day' | 'gtc';
-  bracket?: LadderBracket;
-  tag?: string;
-}
-const setFut = (a: PaperAccount, orders: FutOrder[], fills = a.fut.fills): PaperAccount => ({ ...a, fut: { orders, fills } });
-const workingExits = (a: PaperAccount, symbol: string) => a.fut.orders.filter(o => o.status === 'working' && o.exit && o.symbol === symbol);
-const futReserved = (a: PaperAccount, symbol: string) => {
-  const byGroup = new Map<string, { limit: number; stop: number }>();
-  let loose = 0;
-  for (const o of workingExits(a, symbol)) {
-    if (!o.oco || o.kind === 'market') loose += o.qty;
-    else {
-      const g = byGroup.get(o.oco) ?? { limit: 0, stop: 0 };
-      g[o.kind] += o.qty;
-      byGroup.set(o.oco, g);
-    }
-  }
-  return loose + [...byGroup.values()].reduce((x, g) => x + Math.max(g.limit, g.stop), 0);
-};
-const futFarness = (o: FutOrder, last: number) => Math.abs((o.price ?? last) - last);
-const futResize = (a: PaperAccount, left: Map<string, number>, at: PaperMoment, why: string): PaperAccount =>
-  setFut(
-    a,
-    a.fut.orders.map(x => {
-      const q = left.get(x.id);
-      if (q == null || x.status !== 'working' || q === x.qty) return x;
-      return q <= 0 ? { ...x, status: 'cancelled' as const, done: at, why } : { ...x, qty: q };
-    })
-  );
-const futTrailFrom = (price: number, ref: number): { trail: number; peak: number } => ({ trail: Math.abs(ref - price), peak: ref });
-
-function futAfterExit(a: PaperAccount, out: FutOrder, price: number, at: PaperMoment): PaperAccount {
-  let next = a;
-  if (out.oco) {
-    const other = workingExits(next, out.symbol).filter(o => o.oco === out.oco && o.kind !== out.kind);
-    next = futResize(next, giveUp(other, out.qty, o => futFarness(o, price)), at, 'its pair filled');
-    const firstTarget = out.kind === 'limit' && !a.fut.orders.some(o => o.oco === out.oco && o.kind === 'limit' && o.status === 'filled' && o.id !== out.id);
-    const pos = futBookOf(next).positions.find(p => p.symbol === out.symbol);
-    if (firstTarget && pos) {
-      const cost = onTick(paperFut(out.symbol), pos.avg);
-      next = setFut(
-        next,
-        next.fut.orders.map(o => {
-          if (o.status !== 'working' || o.oco !== out.oco || o.kind !== 'stop' || !o.breakeven || o.price == null) return o;
-          const tighter = pos.long ? cost > o.price && cost < price : cost < o.price && cost > price;
-          return tighter ? { ...o, price: cost, breakeven: false, moved: at, ...(o.trail != null ? futTrailFrom(cost, price) : {}) } : { ...o, breakeven: false };
-        })
-      );
-    }
-  }
-  const held = futBookOf(next).positions.find(p => p.symbol === out.symbol)?.qty ?? 0;
-  const mine = workingExits(next, out.symbol);
-  if (held === 0) return futResize(next, new Map(mine.map(o => [o.id, 0])), at, 'the position was closed');
-  const loose = mine.filter(o => !o.oco).reduce((x, o) => x + o.qty, 0);
-  const cover = Math.max(0, held - loose);
-  for (const kind of ['limit', 'stop'] as const) {
-    const side = workingExits(next, out.symbol).filter(o => o.oco && o.kind === kind);
-    const over = side.reduce((x, o) => x + o.qty, 0) - cover;
-    if (over > 0) next = futResize(next, giveUp(side, over, o => futFarness(o, price)), at, 'its contracts were taken out');
-  }
-  return next;
-}
-
-/** Why a futures draft cannot be taken, or null */
-export function futRefusal(a: PaperAccount, m: PaperMarket, d: FutDraft): string | null {
-  if (!Number.isInteger(d.qty) || d.qty < 1) return 'Enter a whole number of contracts';
-  if (!isPaperFuture(d.symbol)) return 'That product is not traded here';
-  if (d.kind !== 'market' && !(d.price && d.price > 0)) return 'Enter a price';
-  if (d.kind === 'market' && !m.open('future')) return 'The futures market is shut — 18:00 to 17:00 New York, Sunday to Friday. Leave an order that waits for the open';
-  const prod = paperFut(d.symbol);
-  const last = m.fut(d.symbol);
-  const { positions } = futBookOf(a);
-  const pos = positions.find(p => p.symbol === d.symbol);
-  const buy = d.side === 'buy';
-  const against = !!pos && pos.long !== buy;
-  if (d.kind === 'stop' && (buy ? d.price! <= last : d.price! >= last)) return against ? `The stop has to be ${buy ? 'over' : 'under'} where it trades — it would go at once` : `A ${buy ? 'buy' : 'sell'} stop waits ${buy ? 'above' : 'under'} the price — it ${buy ? 'buys the break' : 'sells the breakdown'}`;
-  let qtyIn = d.qty;
-  let freed = 0;
-  const reversal = against && d.qty > pos!.qty;
-  if (against) {
-    const free = pos!.qty - futReserved(a, d.symbol);
-    if (d.kind !== 'market' && Math.min(d.qty, pos!.qty) > free) return reversal ? 'Those contracts are already spoken for by a working order — a reversal that waits needs every one of them free' : 'Those contracts are already spoken for by a working order';
-    if (!reversal) return null;
-    qtyIn = d.qty - pos!.qty;
-    freed = (a.kind === 'evaluation' ? 0 : prod.margin) * pos!.qty;
-  }
-  /* A WAY IN — for a reversal, the part that opens the other way (the reversal's close takes its contracts off the count) */
-  const ruled = accountRefusal(a, m.now, 'future', bigOf(d.symbol, qtyIn) - (reversal ? bigOf(d.symbol, pos!.qty) : 0), () => viewOf(a, m));
-  if (ruled) return ruled;
-  const ref = d.kind === 'market' ? last : d.price!;
-  const shape = ladderShapeRefusal(d.bracket, qtyIn);
-  if (shape) return shape;
-  const { targets, stops } = rungsOf(d.bracket, qtyIn);
-  const many = (n: number, word: string) => (n > 1 ? `Every ${word}` : `The ${word}`);
-  if (targets.some(r => (buy ? r.price <= ref : r.price >= ref))) return `${many(targets.length, 'target')} has to be ${buy ? 'above' : 'below'} where you get in`;
-  if (stops.some(r => (buy ? r.price >= ref : r.price <= ref))) return `${many(stops.length, 'stop')} has to be ${buy ? 'below' : 'above'} where you get in`;
-  if (a.kind !== 'evaluation') {
-    const v = viewOf(a, m);
-    const need = prod.margin * qtyIn;
-    if (need > v.free + freed + 1e-9) return `Not enough free money to margin this — it needs ${money(need)}, and ${money(Math.max(0, v.free + freed))} is free${reversal ? ' once the other side is closed' : ''}`;
-  }
-  if (!pos) {
-    const v = viewOf(a, m);
-    const held = new Set(positions.map(p => p.symbol));
-    const pending = new Set(a.fut.orders.filter(o => o.status === 'working' && !o.exit && !held.has(o.symbol)).map(o => o.symbol));
-    const open = held.size + v.opt.length + pending.size - (pending.has(d.symbol) ? 1 : 0);
-    if (open >= OPEN_CEILING) return `No more than ${OPEN_CEILING} positions open at once — close one first`;
-  }
-  return null;
-}
-
-function futFillNow(a: PaperAccount, o: FutOrder, price: number, how: FutFillHow, m: PaperMarket, note?: string): PaperAccount {
-  const prod = paperFut(o.symbol);
-  const at = momentAt(m.now);
-  let [id, next] = nextId(a, 'f');
-  const { targets, stops } = rungsOf(o.exit ? undefined : o.bracket, o.qty);
-  const covered = stops.reduce((x, r) => x + r.qty, 0);
-  const plannedStop = stops.length && covered === o.qty ? stops.reduce((x, r) => x + r.price * r.qty, 0) / covered : undefined;
-  const fill: FutFill = { id, orderId: o.id || null, at, symbol: o.symbol, contract: o.contract, side: o.side, qty: o.qty, price: onTick(prod, price), fee: futFee(a, o.symbol, o.qty), how, exit: o.exit, plannedStop, tag: o.tag, bar: m.bar(o.symbol), life: m.life, note };
-  next = setFut(next, next.fut.orders.map(x => (x.id === o.id ? { ...x, status: 'filled' as const, done: at, fillPrice: fill.price } : x)), [...next.fut.fills, fill]);
-  if (o.exit) next = futAfterExit(next, o, fill.price, at);
-  if (targets.length || stops.length) {
-    const [oco, n2] = nextId(next, 'g');
-    next = n2;
-    for (const [kind, rungs] of [['limit', targets], ['stop', stops]] as const) {
-      for (const r of rungs) {
-        const [oid, n3] = nextId(next, 'o');
-        const px = onTick(prod, r.price);
-        const switches = kind === 'stop' ? { breakeven: o.bracket?.breakeven || undefined, ...(o.bracket?.trail ? (o.bracket.trailBy ? { trail: o.bracket.trailBy, peak: fill.price } : futTrailFrom(px, fill.price)) : {}) } : {};
-        next = setFut(n3, [...n3.fut.orders, { id: oid, placed: at, symbol: o.symbol, contract: o.contract, side: o.side === 'buy' ? 'sell' : 'buy', qty: r.qty, kind, price: px, exit: true, tif: 'gtc', status: 'working', oco, tag: o.tag, life: m.life, ...switches }]);
-      }
-    }
-  }
-  return next;
-}
-
-/** Take a futures order. A market order fills now, a tick against you; the rest wait. Past flat it is a reversal. */
-export function futPlace(a: PaperAccount, m: PaperMarket, d: FutDraft): PaperAccount {
-  const prod = paperFut(d.symbol);
-  const at = momentAt(m.now);
-  const pos = futBookOf(a).positions.find(p => p.symbol === d.symbol);
-  const exit = !!pos && pos.long !== (d.side === 'buy');
-  const why = futRefusal(a, m, d);
-  const order = (next: PaperAccount, qty: number, out: boolean, bracket: LadderBracket | undefined): [FutOrder, PaperAccount] => {
-    const [id, n2] = nextId(next, 'o');
-    return [{ id, placed: at, symbol: d.symbol.toUpperCase(), contract: frontOn(d.symbol, at.day), side: d.side, qty, kind: d.kind, price: d.kind === 'market' || d.price == null ? undefined : onTick(prod, d.price), exit: out, tif: d.tif ?? (d.kind === 'market' ? 'day' : 'gtc'), status: 'working', bracket: out ? undefined : bracket, tag: d.tag, life: m.life }, n2];
-  };
-  const px = futMarketPx(a, d.symbol, m.fut(d.symbol), d.side);
-  if (!why && exit && pos && d.qty > pos.qty) {
-    const [out, n1] = order(a, pos.qty, true, undefined);
-    const [inn, n2] = order(n1, d.qty - pos.qty, false, d.bracket);
-    const next = setFut({ ...n2, touchedAt: m.now }, [...n2.fut.orders, out, inn]);
-    if (d.kind !== 'market') return next;
-    return futFillNow(futFillNow(next, out, px, 'market', m), inn, px, 'market', m);
-  }
-  const [base, next] = order(a, d.qty, exit, d.bracket);
-  const placed = setFut({ ...next, touchedAt: m.now }, [...next.fut.orders, why ? { ...base, status: 'refused' as const, why, done: at } : base]);
-  if (why || d.kind !== 'market') return placed;
-  return futFillNow(placed, base, px, 'market', m);
-}
-export function futCancel(a: PaperAccount, m: PaperMarket, orderId: string, why = 'cancelled by you'): PaperAccount {
-  const at = momentAt(m.now);
-  return { ...setFut(a, a.fut.orders.map(o => (o.id === orderId && o.status === 'working' ? { ...o, status: 'cancelled', done: at, why } : o))), touchedAt: m.now };
-}
-export function futAmend(a: PaperAccount, m: PaperMarket, orderId: string, price: number): PaperAccount {
-  const o = a.fut.orders.find(x => x.id === orderId);
-  if (!o || o.status !== 'working' || !(price > 0)) return a;
-  const last = m.fut(o.symbol);
-  if (o.kind === 'stop' && (o.side === 'sell' ? price >= last : price <= last)) return a;
-  if (o.kind === 'limit' && o.exit && (o.side === 'sell' ? price <= last : price >= last)) return a;
-  const px = onTick(paperFut(o.symbol), price);
-  const trail = o.exit && o.kind === 'stop' && o.trail != null ? futTrailFrom(px, last) : {};
-  return { ...setFut(a, a.fut.orders.map(x => (x.id === orderId ? { ...x, price: px, ...trail } : x))), touchedAt: m.now };
-}
-export function futLadderRoom(a: PaperAccount, m: PaperMarket, symbol: string): Record<'target' | 'stop', 'first' | 'more' | null> {
-  const pos = futBookOf(a).positions.find(p => p.symbol === symbol);
-  const last = m.fut(symbol);
-  const mine = workingExits(a, symbol);
-  const cover = (pos?.qty ?? 0) - mine.filter(o => !o.oco).reduce((x, o) => x + o.qty, 0);
-  const room = (kind: 'limit' | 'stop') => {
-    const rungs = mine.filter(o => o.oco && o.kind === kind);
-    if (!pos || cover < 1) return null;
-    if (!rungs.length) return 'first' as const;
-    return nextRung(rungs, cover, kind === 'limit' ? MAX_TARGETS : MAX_STOPS, o => futFarness(o, last)) ? ('more' as const) : null;
-  };
-  return { target: room('limit'), stop: room('stop') };
-}
-export function futLadderTake(a: PaperAccount, m: PaperMarket, symbol: string): Record<'target' | 'stop', number> {
-  const pos = futBookOf(a).positions.find(p => p.symbol === symbol);
-  const last = m.fut(symbol);
-  const mine = workingExits(a, symbol);
-  const cover = (pos?.qty ?? 0) - mine.filter(o => !o.oco).reduce((x, o) => x + o.qty, 0);
-  const take = (kind: 'limit' | 'stop') => {
-    const rungs = mine.filter(o => o.oco && o.kind === kind);
-    if (!pos || cover < 1) return 0;
-    return rungs.length ? (nextRung(rungs, cover, kind === 'limit' ? MAX_TARGETS : MAX_STOPS, o => futFarness(o, last))?.qty ?? 0) : cover;
-  };
-  return { target: take('limit'), stop: take('stop') };
-}
-export function futAttach(a: PaperAccount, m: PaperMarket, symbol: string, kind: 'target' | 'stop', price: number): PaperAccount {
-  const pos = futBookOf(a).positions.find(p => p.symbol === symbol);
-  if (!pos || !(price > 0)) return a;
-  const last = m.fut(symbol);
-  const above = price > last;
-  if (kind === 'target' ? above !== pos.long : above === pos.long) return a;
-  const orderKind: OrderKind = kind === 'target' ? 'limit' : 'stop';
-  const mine = workingExits(a, symbol);
-  const group = mine.find(o => o.oco)?.oco;
-  const rungs = mine.filter(o => o.oco && o.kind === orderKind);
-  const cover = pos.qty - mine.filter(o => !o.oco).reduce((x, o) => x + o.qty, 0);
-  if (cover < 1) return a;
-  const take = rungs.length ? nextRung(rungs, cover, kind === 'target' ? MAX_TARGETS : MAX_STOPS, o => futFarness(o, last)) : { qty: cover, from: null };
-  if (!take || take.qty < 1) return a;
-  let next = a;
-  let oco = group;
-  if (!oco) [oco, next] = nextId(next, 'g');
-  const [oid, n2] = nextId(next, 'o');
-  const px = onTick(paperFut(symbol), price);
-  const sibling = mine.find(o => o.oco === oco && o.kind === 'stop');
-  const switches = kind === 'stop' ? { breakeven: sibling?.breakeven || undefined, ...(sibling?.trail != null ? futTrailFrom(px, last) : {}) } : {};
-  const orders = n2.fut.orders.map(x => (take.from && x.id === take.from.id ? { ...x, qty: x.qty - take.qty } : x));
-  return { ...setFut(n2, [...orders, { id: oid, placed: momentAt(m.now), symbol, contract: pos.contract, side: pos.long ? 'sell' : 'buy', qty: take.qty, kind: orderKind, price: px, exit: true, tif: 'gtc', status: 'working', oco, tag: pos.tag, life: m.life, ...switches }]), touchedAt: m.now };
-}
-export function futSetTrail(a: PaperAccount, m: PaperMarket, orderId: string, on: boolean, by?: number): PaperAccount {
-  const o = a.fut.orders.find(x => x.id === orderId);
-  if (!o || o.status !== 'working' || !o.exit || o.kind !== 'stop' || o.price == null) return a;
-  if (on && by != null && !(by > 0)) return a;
-  const last = m.fut(o.symbol);
-  return { ...setFut(a, a.fut.orders.map(x => (x.id !== orderId ? x : on ? { ...x, ...(by != null ? { trail: by, peak: last } : futTrailFrom(o.price!, last)) } : { ...x, trail: undefined, peak: undefined }))), touchedAt: m.now };
-}
-export function futSetBreakeven(a: PaperAccount, m: PaperMarket, orderId: string, on: boolean): PaperAccount {
-  const o = a.fut.orders.find(x => x.id === orderId);
-  if (!o || o.status !== 'working' || o.kind !== 'stop') return a;
-  return { ...setFut(a, a.fut.orders.map(x => (x.status === 'working' && x.kind === 'stop' && x.exit && (x.id === orderId || (o.oco && x.oco === o.oco)) ? { ...x, breakeven: on || undefined } : x))), touchedAt: m.now };
-}
-/** Flat, now: whatever is working to take it out goes first, then the lot goes at the market */
-export function futClose(a: PaperAccount, m: PaperMarket, symbol: string): PaperAccount {
-  const pos = futBookOf(a).positions.find(p => p.symbol === symbol);
-  if (!pos) return a;
-  let next = a;
-  for (const o of a.fut.orders) if (o.status === 'working' && o.exit && o.symbol === symbol) next = futCancel(next, m, o.id);
-  return futPlace(next, m, { symbol, side: pos.long ? 'sell' : 'buy', qty: pos.qty, kind: 'market' });
-}
-
-/* ================================================================== */
 /* Everything at once: The rules' hand and the page's */
 /* ================================================================== */
 
-/** Close everything open at the market and cancel everything working — the rules' hand (`rule`) or the page's (`page`).
-    `at`: a price to close each at in place of the market's (a page that did not get to close its own: its last marks). */
-export function flattenAll(a: PaperAccount, m: PaperMarket, how: 'rule' | 'page', note: string, at?: (key: string) => number | undefined): PaperAccount {
+/** Close what is open at the market and cancel what is working — the rules' hand (`rule`) or the page's (`page`).
+    `at`: a price to close each at in place of the market's (a page that did not get to close its own: its last marks).
+    `only`: just these positions (and the orders on them) — every one where it is not given. */
+export function flattenAll(a: PaperAccount, m: PaperMarket, how: 'rule' | 'page', note: string, at?: (key: string) => number | undefined, only?: Set<string>): PaperAccount {
   let next = a;
   const when = momentAt(m.now);
-  const cancelled = (why: string) => ({ status: 'cancelled' as const, done: when, why });
-  next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' ? { ...o, ...cancelled(note) } : o)));
-  next = setFut(next, next.fut.orders.map(o => (o.status === 'working' ? { ...o, ...cancelled(note) } : o)));
+  const mine = (key: string) => !only || only.has(key);
+  next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && mine(contractKey(o.contract)) ? { ...o, status: 'cancelled' as const, done: when, why: note } : o)));
   for (const p of optBookOf(next).positions) {
+    if (!mine(p.key)) continue;
     const live = m.optQuote(p.contract);
     const px = at?.(p.key) ?? live.bid;
     next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: 'sell', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life }, px, how, at ? { ...live, bid: px, spot: p.spotIn } : live, m, note);
-  }
-  for (const p of futBookOf(next).positions) {
-    const side: Side = p.long ? 'sell' : 'buy';
-    const px = at?.(p.key) ?? futMarketPx(next, p.symbol, m.fut(p.symbol), side);
-    next = futFillNow(next, { id: '', placed: when, symbol: p.symbol, contract: p.contract, side, qty: p.qty, kind: 'market', exit: true, tif: 'day', status: 'working', tag: p.tag, life: m.life }, px, how, m, note);
   }
   return { ...next, touchedAt: m.now };
 }
 
 /** Flat by the reader's hand, at once: everything working cancelled, then every position out at the market — the
-    reader's own closes (a trade ends "Sold by you" / "Closed by you"), never the rules' */
+    reader's own closes (a trade ends "Sold by you"), never the rules' */
 export function flattenByHand(a: PaperAccount, m: PaperMarket): PaperAccount {
   let next = a;
   for (const o of a.opt.orders) if (o.status === 'working') next = optCancel(next, m, o.id);
-  for (const o of a.fut.orders) if (o.status === 'working') next = futCancel(next, m, o.id);
   for (const p of optBookOf(next).positions) next = optPlace(next, m, { contract: p.contract, side: 'sell', qty: p.qty, kind: 'market' });
-  for (const p of futBookOf(next).positions) next = futPlace(next, m, { symbol: p.symbol, side: p.long ? 'sell' : 'buy', qty: p.qty, kind: 'market' });
   return next;
 }
 
-/** An evaluation the reader ends: everything closed, and it is written down as ended */
-export function endEvaluation(a: PaperAccount, m: PaperMarket): PaperAccount {
+/** An account the reader ends: everything closed at the market (at the last price seen, where nothing can be sold
+    now), and it is written down as ended — not passed, not failed */
+export function endAccount(a: PaperAccount, m: PaperMarket, why = 'Ended by you'): PaperAccount {
   if (a.status !== 'open') return a;
-  const next = flattenAll(a, m, 'rule', 'the evaluation was ended');
-  return logged({ ...next, status: 'ended', statusAt: m.now, statusWhy: 'Ended by you' }, m.now, 'The evaluation was ended by you', 'info');
+  const last = (key: string) => {
+    const p = optBookOf(a).positions.find(x => x.key === key);
+    return p && m.optQuote(p.contract).dead ? (a.marks[key] ?? p.avg) : undefined;
+  };
+  const next = flattenAll(a, m, 'rule', 'the account was ended', last);
+  return logged({ ...next, status: 'ended', statusAt: m.now, statusWhy: why }, m.now, `${why} — the account was ended`, 'info');
 }
 
 /** What was left open by a page that did not get to close it (the simulated feed: a new market every load) — closed at the
     last price THAT page saw, in its words */
 export function closeStale(a: PaperAccount, m: PaperMarket): PaperAccount {
-  const stale = [...optBookOf(a).positions.filter(p => p.life !== m.life), ...futBookOf(a).positions.filter(p => p.life !== m.life)];
-  const staleOrders = [...a.opt.orders, ...a.fut.orders].some(o => o.status === 'working' && o.life !== m.life);
+  const stale = optBookOf(a).positions.filter(p => p.life !== m.life);
+  const staleOrders = a.opt.orders.some(o => o.status === 'working' && o.life !== m.life);
   if (!stale.length && !staleOrders) return a;
   const keys = new Set(stale.map(p => p.key));
-  const avgOf = (key: string) => {
-    const o = optBookOf(a).positions.find(p => p.key === key);
-    if (o) return o.avg;
-    return futBookOf(a).positions.find(p => p.key === key)?.avg;
-  };
+  const avgOf = (key: string) => optBookOf(a).positions.find(p => p.key === key)?.avg;
   let next = flattenAll(a, m, 'page', 'the page closed before it could close this — at the last price it saw', key => (keys.has(key) ? (a.marks[key] ?? avgOf(key)) : undefined));
   next = logged(next, m.now, `${stale.length} ${stale.length === 1 ? 'position' : 'positions'} left open by a closed page ${stale.length === 1 ? 'was' : 'were'} closed at the last price it saw`, 'page');
+  return next;
+}
+
+/** An account from before options-only, on a futures plan or holding futures: its futures are closed at the last
+    price it saw (its entry, where it saw none), its working futures orders cancelled, and an evaluation on a futures
+    plan is ended with a note. Its trades stay — for the journal. Nothing on it is invented: no new price is read. */
+export function retireFutures(a: PaperAccount, now: number): PaperAccount {
+  const futPlan = !!a.plan?.legacy;
+  const open = futBookOf(a).positions;
+  const working = a.fut.orders.some(o => o.status === 'working');
+  if (!futPlan && !open.length && !working) return a;
+  let next: PaperAccount = { ...a, fut: { ...a.fut, orders: a.fut.orders.map(o => (o.status === 'working' ? { ...o, status: 'cancelled' as const, done: momentAt(now), why: 'futures were taken out of the product' } : o)) } };
+  for (const p of open) {
+    const [id, n2] = nextId(next, 'f');
+    const px = a.marks[p.key] ?? p.avg;
+    const fill: FutFill = { id, orderId: null, at: momentAt(now), symbol: p.symbol, contract: p.contract, side: p.long ? 'sell' : 'buy', qty: p.qty, price: px, fee: 0, how: 'rule', exit: true, bar: Math.floor(now / 1000), life: 'retired', note: 'futures were taken out of the product — closed at the last price this account saw' };
+    next = { ...n2, fut: { ...n2.fut, fills: [...n2.fut.fills, fill] } };
+  }
+  if (open.length) next = logged(next, now, `Futures were taken out of the product: ${open.length} futures ${open.length === 1 ? 'position was' : 'positions were'} closed at the last price this account saw`, 'rule');
+  if (futPlan && next.status === 'open') next = logged({ ...next, status: 'ended', statusAt: now, statusWhy: 'A futures evaluation — futures were taken out of the product, so it was ended. Its trades stay in the journal.' }, now, 'Ended: futures evaluations were retired (options only now)', 'info');
   return next;
 }
 
@@ -1410,22 +1064,32 @@ function roll(a: PaperAccount, m: PaperMarket, events: PaperEvent[]): PaperAccou
   const when = momentAt(m.now);
   /* a day order with minutes still to replay waits for them: the replay ends it at its own day's bell */
   next = setOpt(next, next.opt.orders.map(o => (o.status === 'working' && o.tif === 'day' && gapOf(o, m.now) == null ? { ...o, status: 'cancelled' as const, done: when, why: 'the day ended' } : o)));
-  next = setFut(next, next.fut.orders.map(o => (o.status === 'working' && o.tif === 'day' ? { ...o, status: 'cancelled' as const, done: when, why: 'the day ended' } : o)));
-  if (next.kind === 'evaluation' && next.plan && next.status === 'open' && ledger[was]) {
-    const plan = next.plan;
+  /* the plan's day-end rules (rules.ts): an end-of-day floor follows the close up; the target, the days, the best-day
+     rule and the time limit are judged on it */
+  const plan = next.plan;
+  let phaseUp: { at: number; day: string; equity: number } | null = null;
+  if (plan && next.status === 'open' && ledger[was]) {
     const close = v.equity;
-    if (plan.trailing === 'eod') next = { ...next, peak: Math.max(next.peak, close) };
-    const days = daysTradedOf(next).length;
-    const results = Object.values(ledger).map(dayResult).filter((x): x is number => x != null);
-    const best = Math.max(0, ...results);
-    const profit = close - plan.size;
-    const bestOk = plan.bestDayShare == null || best <= plan.bestDayShare * profit + 1e-9;
-    if (profit >= plan.target - 1e-9 && days >= plan.minDays && bestOk) {
-      next = logged({ ...next, status: 'passed', statusAt: m.now, statusWhy: `Closed ${money(close, 0)} — ${money(profit, 0)} made over ${days} trading ${days === 1 ? 'day' : 'days'}` }, m.now, `Passed — closed the day at ${money(close, 0)}, the target was ${money(plan.size + plan.target, 0)}`, 'pass');
-      events.push({ kind: 'passed', at: m.now, words: `The ${plan.label} evaluation passed — ${money(profit, 0)} made` });
+    next = { ...next, peak: peakAfterRoll(next, close) };
+    const verdict = judgeRoll(next, close, m.now);
+    const label = `${plan.firm ?? 'Your own rules'} ${plan.label}`;
+    if (verdict?.kind === 'pass') {
+      next = logged({ ...next, status: 'passed', statusAt: m.now, statusRule: 'target', statusWhy: `Passed — ${verdict.why}` }, m.now, `Passed — ${verdict.why}`, 'pass');
+      events.push({ kind: 'passed', at: m.now, words: `${label} passed — ${verdict.why}` });
+    } else if (verdict?.kind === 'next') {
+      const ph = phaseOf(next);
+      phaseUp = { at: m.now, day, equity: close };
+      next = logged({ ...next, phase: ph.index + 1, peak: close }, m.now, verdict.why, 'pass');
+      events.push({ kind: 'passed', at: m.now, words: `${label} · ${verdict.why}` });
+    } else if (verdict?.kind === 'fail') {
+      const seen = next.marks;
+      next = flattenAll(next, m, 'rule', verdict.why, key => (m.open() ? undefined : seen[key]));
+      next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
+      events.push({ kind: 'failed', at: m.now, words: `${label} failed — ${verdict.why}` });
     }
   }
-  next = { ...next, day, dayOver: undefined, ledger: { ...next.ledger, [day]: next.ledger[day] ?? { open: v.equity, hi: v.equity, lo: v.equity } } };
+  const bal = Number.isFinite(v.balance) ? v.balance : v.equity;
+  next = { ...next, day, dayOver: undefined, ...(phaseUp ? { phaseStart: phaseUp } : {}), ledger: { ...next.ledger, [day]: next.ledger[day] ?? { open: v.equity, bal, hi: v.equity, lo: v.equity } } };
   events.push({ kind: 'roll', at: m.now, words: `A new trading day began at ${money(v.equity, 0)}` });
   return next;
 }
@@ -1461,8 +1125,9 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
       continue;
     }
     if (live.kind === 'limit' && live.side === 'buy' && q.ask <= live.price!) {
-      const blocked = accountRefusal(next, m.now, 'option', 0, () => viewOf(next, m));
-      if (blocked) next = optCancel(next, m, live.id, blocked);
+      /* a resting buy is asked the plan's rules again on the tick it would fill */
+      const blocked = ruleRefusal(next, m, { contract: live.contract, side: 'buy', qty: live.qty, kind: 'limit', price: live.price }, viewOf(next, m), Math.min(live.price!, q.ask), live.id);
+      if (blocked) next = optCancel(next, m, live.id, blocked.charAt(0).toLowerCase() + blocked.slice(1));
       else if (live.price! * MULT * live.qty + optFee(next, live.contract, live.qty) > viewOf(next, m).free + 1e-9) next = optCancel(next, m, live.id, 'the free money was gone by then');
       else next = optFillNow(next, live, Math.min(live.price!, q.ask), 'limit', q, m);
     } else if (live.kind === 'limit' && live.side === 'sell' && q.bid >= live.price!) next = optFillNow(next, live, Math.max(live.price!, q.bid), 'limit', q, m);
@@ -1493,63 +1158,11 @@ function optTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
   return next;
 }
 
-function futTickOrders(a: PaperAccount, m: PaperMarket): PaperAccount {
-  let next = a;
-  /* STOPS FIRST — the backtest's rule, where a target and a stop are both reached on one tick */
-  for (const pass of ['stop', 'limit'] as const) {
-    for (const o of a.fut.orders) {
-      if (o.kind !== pass || o.status !== 'working' || !lookable(o.placed, m.now)) continue;
-      const live = next.fut.orders.find(x => x.id === o.id);
-      if (!live || live.status !== 'working') continue;
-      const prod = paperFut(live.symbol);
-      const last = m.fut(live.symbol);
-      const price = live.price!;
-      const buy = live.side === 'buy';
-      const slip = next.sandbox ? 0 : prod.tick;
-      let px: number | null = null;
-      if (pass === 'stop') {
-        if (buy ? last >= price : last <= price) px = buy ? Math.max(price, last) + slip : Math.min(price, last) - slip;
-      } else if (buy ? last <= price - prod.tick + 1e-9 : last >= price + prod.tick - 1e-9) px = price;
-      if (px == null) continue;
-      if (live.exit) {
-        const pos = futBookOf(next).positions.find(p => p.symbol === live.symbol);
-        if (!pos || pos.long === buy) {
-          next = futCancel(next, m, live.id, 'the position was closed');
-          continue;
-        }
-        next = futFillNow(next, { ...live, qty: Math.min(live.qty, pos.qty) }, px, pass, m);
-        continue;
-      }
-      /* a resting way in: the account's rules and the margin are asked again on the tick it would fill */
-      const blocked = accountRefusal(next, m.now, 'future', bigOf(live.symbol, live.qty), () => viewOf(next, m));
-      if (blocked) next = futCancel(next, m, live.id, blocked.charAt(0).toLowerCase() + blocked.slice(1));
-      else if (next.kind !== 'evaluation' && prod.margin * live.qty > viewOf(next, m).free + 1e-9) next = futCancel(next, m, live.id, 'the free money was gone by then');
-      else next = futFillNow(next, live, px, pass, m);
-    }
-  }
-  if (next.fut.orders.some(o => o.status === 'working' && o.trail != null)) {
-    next = setFut(
-      next,
-      next.fut.orders.map(o => {
-        if (o.status !== 'working' || o.kind !== 'stop' || o.trail == null || o.price == null || !lookable(o.placed, m.now)) return o;
-        const prod = paperFut(o.symbol);
-        const last = m.fut(o.symbol);
-        const long = o.side === 'sell';
-        const peak = long ? Math.max(o.peak ?? last, last) : Math.min(o.peak ?? last, last);
-        const level = onTick(prod, long ? peak - o.trail : peak + o.trail);
-        return { ...o, peak, price: long ? Math.max(o.price, level) : Math.min(o.price, level) };
-      })
-    );
-  }
-  return next;
-}
-
 /** While it is held: what each open trade is worth on this tick — its best and worst every tick, a point every few
     seconds */
 function keepHeld(a: PaperAccount, m: PaperMarket): PaperAccount {
   const ob = optBookOf(a).positions;
-  const fb = futBookOf(a).positions;
-  if (!ob.length && !fb.length) return a;
+  if (!ob.length) return a;
   const held = { ...a.held };
   const marks = { ...a.marks };
   const note = (tradeId: string, pnl: number, value: number, name: number) => {
@@ -1568,12 +1181,6 @@ function keepHeld(a: PaperAccount, m: PaperMarket): PaperAccount {
     /* at the bid it could be sold into, less the fee to sell it — "fees in", the backtest's walk */
     note(p.tradeId, p.flow + q.bid * MULT * p.qty - optFee(a, p.contract, p.qty), q.bid, q.spot);
     marks[p.key] = q.bid;
-  }
-  for (const p of fb) {
-    const last = m.fut(p.symbol);
-    const pv = paperFut(p.symbol).pointValue;
-    note(p.tradeId, p.flow + (p.long ? 1 : -1) * last * pv * p.qty - futFee(a, p.symbol, p.qty), last, last);
-    marks[p.key] = last;
   }
   return { ...a, held, marks };
 }
@@ -1605,10 +1212,9 @@ export const candlesOfPath = (p: TradePath): Candle[] => p.o.map((_, i) => ({ ti
 
 /** Every trade that closed between two states of the account: its candles written down, its last point added */
 function keepClosed(before: PaperAccount, after: PaperAccount, m: PaperMarket): PaperAccount {
-  const had = new Set([...optBookOf(before).trades.map(t => t.id), ...futBookOf(before).trades.map(t => t.id)]);
+  const had = new Set(optBookOf(before).trades.map(t => t.id));
   const ot = optBookOf(after).trades.filter(t => !had.has(t.id));
-  const ft = futBookOf(after).trades.filter(t => !had.has(t.id));
-  if (!ot.length && !ft.length) return after;
+  if (!ot.length) return after;
   const paths = { ...after.paths };
   const held = { ...after.held };
   const write = (id: string, ticker: string, unit: number, barIn: number, barOut: number, pnl: number, value: number, name: number) => {
@@ -1623,11 +1229,10 @@ function keepClosed(before: PaperAccount, after: PaperAccount, m: PaperMarket): 
     held[id] = { ...h, pts, best: Math.max(h.best, pnl), bestAt: pnl > h.best ? m.now : h.bestAt, worst: Math.min(h.worst, pnl), worstAt: pnl < h.worst ? m.now : h.worstAt };
   };
   for (const t of ot) write(t.id, t.contract.ticker, 0.01, t.legs[0].bar, t.legs[t.legs.length - 1].bar, t.pnl, t.avgOut, t.spotOut);
-  for (const t of ft) write(t.id, t.symbol, paperFut(t.symbol).tick, t.legs[0].bar, t.legs[t.legs.length - 1].bar, t.pnl, t.avgOut, t.avgOut);
   /* at most PATHS_KEPT trades' candles: the oldest go first */
   const ids = Object.keys(paths);
   if (ids.length > PATHS_KEPT) {
-    const order = [...optBookOf(after).trades, ...futBookOf(after).trades].sort((x, y) => x.closed.at - y.closed.at).map(t => t.id);
+    const order = optBookOf(after).trades.sort((x, y) => x.closed.at - y.closed.at).map(t => t.id);
     for (const id of order.slice(0, ids.length - PATHS_KEPT)) {
       delete paths[id];
       delete held[id];
@@ -1639,30 +1244,24 @@ function keepClosed(before: PaperAccount, after: PaperAccount, m: PaperMarket): 
 /** Say each new fill, in the house's words */
 function fillEvents(before: PaperAccount, after: PaperAccount, events: PaperEvent[]): void {
   const hadO = new Set(before.opt.fills.map(f => f.id));
-  const hadF = new Set(before.fut.fills.map(f => f.id));
   /* the trade a fill closed: the one whose last leg it is */
-  const closedBy = new Map<string, number>([...optBookOf(after).trades, ...futBookOf(after).trades].map(t => [t.legs[t.legs.length - 1].id, t.pnl]));
-  const targetIds = new Set([...after.opt.orders, ...after.fut.orders].filter(o => o.oco && o.kind === 'limit').map(o => o.id));
+  const closedBy = new Map<string, number>(optBookOf(after).trades.map(t => [t.legs[t.legs.length - 1].id, t.pnl]));
+  const targetIds = new Set(after.opt.orders.filter(o => o.oco && o.kind === 'limit').map(o => o.id));
   for (const f of after.opt.fills) {
     if (hadO.has(f.id)) continue;
     const what = f.how === 'expired' ? 'Expired' : f.how === 'stop' ? 'Stop filled' : f.orderId && targetIds.has(f.orderId) ? 'Target filled' : f.how === 'limit' ? 'Limit filled' : f.how === 'rule' ? 'Closed by the rules' : f.how === 'page' ? 'Closed' : 'Filled';
     events.push({ kind: f.how === 'expired' ? 'expired' : f.how === 'rule' ? 'rule' : 'fill', at: f.at.at, words: `${what} · ${f.side === 'buy' ? 'bought' : 'sold'} ${f.qty} ${contractWords(f.contract)} at ${f.price.toFixed(2)}`, pnl: closedBy.get(f.id), key: contractKey(f.contract) });
   }
-  for (const f of after.fut.fills) {
-    if (hadF.has(f.id)) continue;
-    const what = f.how === 'stop' ? 'Stop filled' : f.orderId && targetIds.has(f.orderId) ? 'Target filled' : f.how === 'limit' ? 'Limit filled' : f.how === 'rule' ? 'Closed by the rules' : f.how === 'page' ? 'Closed' : 'Filled';
-    events.push({ kind: f.how === 'rule' ? 'rule' : 'fill', at: f.at.at, words: `${what} · ${f.side === 'buy' ? 'bought' : 'sold'} ${f.qty} ${f.contract} at ${futWords(f.symbol, f.price)}`, pnl: closedBy.get(f.id), key: f.symbol });
-  }
 }
 
-/** One tick of the feed: the day rolls, what expired settles, an evaluation is flat by 16:59, working orders meet
-    the price, trailing stops follow it, an evaluation's floor and day are kept, and every open trade is written
-    down as it stands. */
+/** One tick of the feed: the day rolls, what expired settles, what the plan says must be flat is closed, working
+    orders meet the price, trailing stops follow it, the plan's floor and day's limit are judged, and every open trade
+    is written down as it stands. */
 export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; events: PaperEvent[] } {
   const events: PaperEvent[] = [];
   const before = a;
   /* nothing open, nothing working, the same day: nothing to do — the same account back */
-  if (a.day === tradingDayOf(m.now) && !optBookOf(a).positions.length && !futBookOf(a).positions.length && ![...a.opt.orders, ...a.fut.orders].some(o => o.status === 'working')) return { account: a, events };
+  if (a.day === tradingDayOf(m.now) && !optBookOf(a).positions.length && !a.opt.orders.some(o => o.status === 'working')) return { account: a, events };
   let next = roll(a, m, events);
   if (next.status === 'open') {
     /* 16:00 on its date: an expiring contract settles at what it is worth in the money */
@@ -1678,37 +1277,46 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
       const q = { ...m.optQuote(p.contract), spot: close };
       next = optFillNow(next, { id: '', placed: when, contract: p.contract, side: 'sell', qty: p.qty, kind: 'market', tif: 'day', status: 'working', tag: p.tag, life: m.life }, settleValue(p.contract, close), 'expired', q, m);
     }
-    /* an evaluation is flat by 16:59 */
-    if (next.kind === 'evaluation' && m.now >= flatByOf(next.day) && m.now < dayEndsAt(next.day)) {
-      const open = optBookOf(next).positions.length + futBookOf(next).positions.length;
-      const working = [...next.opt.orders, ...next.fut.orders].some(o => o.status === 'working');
-      if (open || working) {
-        next = flattenAll(next, m, 'rule', `16:59 — an evaluation holds nothing into the close`);
-        if (open) {
-          next = logged(next, m.now, `16:59 New York — ${open} ${open === 1 ? 'position' : 'positions'} closed; nothing is held into the next day`, 'rule');
-          events.push({ kind: 'flat', at: m.now, words: `16:59 — ${open} ${open === 1 ? 'position' : 'positions'} closed. An evaluation holds nothing into the next day` });
-        }
-      }
+    /* the plan's holding rules (rules.ts): flat by its time, nothing past the close, over a weekend, or through a
+       report — closed at the bid, or at the last bid seen where there is none to sell into now */
+    const flat = mustBeFlat(next, m, viewOf(next, m));
+    if (flat) {
+      const seen = next.marks;
+      const held = optBookOf(next).positions;
+      const n = flat.keys.size;
+      next = flattenAll(
+        next,
+        m,
+        'rule',
+        flat.why,
+        key => {
+          const p = held.find(x => x.key === key);
+          return p && m.optQuote(p.contract).dead ? seen[key] : undefined;
+        },
+        flat.keys
+      );
+      next = logged(next, m.now, `${n} ${n === 1 ? 'position' : 'positions'} closed by the rules — ${flat.why}`, 'rule');
+      events.push({ kind: 'flat', at: m.now, words: `${n} ${n === 1 ? 'position' : 'positions'} closed — ${flat.why}` });
     }
     next = optTickOrders(next, m);
-    next = futTickOrders(next, m);
-    /* The evaluation's floor and its day, as it happens */
-    if (next.kind === 'evaluation' && next.plan && next.status === 'open') {
-      const plan = next.plan;
+    /* the plan's floor and its day's limit, as it happens — judged only on fresh quotes in the session, or with nothing open */
+    const plan = next.plan;
+    if (plan && !plan.legacy && next.status === 'open') {
       const v = viewOf(next, m);
-      if (plan.trailing === 'intraday' && v.equity > next.peak) next = { ...next, peak: v.equity };
-      const floor = floorOf(next);
-      const dayFloor = (next.ledger[next.day]?.open ?? plan.size) - plan.dayLoss;
-      if (v.equity <= floor + 1e-9) {
-        const why = `worth ${money(v.equity, 0)} reached the floor at ${money(floor, 0)}`;
-        next = flattenAll(next, m, 'rule', 'the floor was reached');
-        next = logged({ ...next, status: 'failed', statusAt: m.now, statusWhy: why.charAt(0).toUpperCase() + why.slice(1) }, m.now, `Failed — ${why}`, 'fail');
-        events.push({ kind: 'failed', at: m.now, words: `The ${plan.label} evaluation failed — ${why}` });
-      } else if (!next.dayOver && v.equity <= dayFloor + 1e-9) {
-        const why = `down ${money(v.dayOpen - v.equity, 0)} on the day, the limit is ${money(plan.dayLoss, 0)}`;
-        next = flattenAll(next, m, 'rule', 'the day’s limit was reached');
-        next = logged({ ...next, dayOver: { day: next.day, why } }, m.now, `The day is over — ${why}`, 'rule');
-        events.push({ kind: 'day-over', at: m.now, words: `The day is over — ${why}. No new positions until 17:00` });
+      const fresh = v.opt.every(p => m.fresh?.(p.contract) ?? true);
+      if (!v.opt.length || (fresh && m.open())) {
+        next = { ...next, peak: peakAfterTick(next, v) };
+        const verdict = judgeTick(next, v);
+        const label = `${plan.firm ?? 'Your own rules'} ${plan.label}`;
+        if (verdict?.kind === 'fail') {
+          next = flattenAll(next, m, 'rule', verdict.why);
+          next = logged({ ...next, status: 'failed', statusAt: m.now, statusRule: verdict.rule, statusWhy: `Failed — ${verdict.why}` }, m.now, `Failed — ${verdict.why}`, 'fail');
+          events.push({ kind: 'failed', at: m.now, words: `${label} failed — ${verdict.why}` });
+        } else if (verdict?.kind === 'pause') {
+          next = flattenAll(next, m, 'rule', 'the day’s loss limit was reached');
+          next = logged({ ...next, dayOver: { day: next.day, why: verdict.why } }, m.now, `The day is over — ${verdict.why}`, 'rule');
+          events.push({ kind: 'day-over', at: m.now, words: `The day is over — ${verdict.why}. No new positions until the next trading day` });
+        }
       }
     }
   }
@@ -1716,7 +1324,7 @@ export function tick(a: PaperAccount, m: PaperMarket): { account: PaperAccount; 
   next = keepClosed(before, next, m);
   /* the day's high and low of what the account is worth */
   const d = next.ledger[next.day];
-  if (d && (optBookOf(next).positions.length || futBookOf(next).positions.length)) {
+  if (d && optBookOf(next).positions.length) {
     const eq = viewOf(next, m).equity;
     if (Number.isFinite(eq) && (eq > d.hi || eq < d.lo)) next = { ...next, ledger: { ...next.ledger, [next.day]: { ...d, hi: Math.max(d.hi, eq), lo: Math.min(d.lo, eq) } } };
   }

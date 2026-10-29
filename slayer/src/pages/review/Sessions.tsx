@@ -1,10 +1,11 @@
 /* Where a backtest session starts and is come back to: the cards that make a session (name, cash, day, fee, the
-   reader's rules) and every session kept on this machine. A session replays ThetaData's recorded quotes for the days
-   its history reaches. */
+   reader's rules) and every session kept on this machine — opened again where its clock stands, copied as it stands,
+   run again from its first day, or deleted. A session replays ThetaData's recorded quotes for the days its history
+   reaches. */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { Copy, Play, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import RenameDoor from '../../components/review/RenameDoor';
 import TraceBox, { Fact, TraceGrid } from '../../components/trace/TraceBox';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
@@ -13,36 +14,38 @@ import CompanyLogo from '../../components/ui/CompanyLogo';
 import DayCard from '../../components/review/DayCard';
 import type { Column } from '../../components/ui/DataTable';
 import { accountOf, namesOf, statsOf, DEFAULT_FEE, type SessionRules } from '../../data/review/engine';
-import { createSession, deleteSession, renameSession, runAgain, useSessions } from '../../data/review/store';
+import { createSession, deleteSession, duplicateSession, renameSession, runAgain, useSessions } from '../../data/review/store';
 import type { Session } from '../../data/review/engine';
-import { dayWords, ensureWindow, historyOffline, historyRev, lastReplayDay, prevDay, replayWindow, subscribeHistory } from '../../data/review/history';
+import { CASH_INDEX_ROOTS, dayWords, ensureWindow, historyOffline, historyRev, lastReplayDay, prevDay, replayWindow, subscribeHistory } from '../../data/review/history';
 import { ensureListed, optionSymbols, useListedRev } from '../../data/listedNames';
 import ThetaLine from '../../components/review/ThetaLine';
 import { companyName, companyNamesRev, subscribeCompanyNames } from '../../data/tickers';
 import { dirInk, momentWords, pct, usd, usdSigned } from '../../components/review/words';
 
 const SILVER_FILL = 'rgb(var(--silver-fill))';
-const CASH: DropdownOption<number>[] = [5000, 10000, 25000, 50000, 100000].map(v => ({ value: v, label: usd(v, 0), hint: v === 25000 ? 'The size most day-trading rules start at' : undefined }));
+/* `short`: the trigger's words — a phone's two-column line of cards has about 170 px a card */
+const CASH: DropdownOption<number>[] = [5000, 10000, 25000, 50000, 100000].map(v => ({ value: v, label: usd(v, 0), short: `$${v / 1000}K`, hint: v === 25000 ? 'The size most day-trading rules start at' : undefined }));
 const FEES: DropdownOption<number>[] = [
-  { value: DEFAULT_FEE, label: '$0.65 a contract', hint: 'What most brokers charge, each way' },
-  { value: 0, label: 'No fee', hint: 'A broker that charges nothing for contracts' },
-  { value: 1, label: '$1.00 a contract', hint: 'A dearer broker, or exchange fees on top' },
+  { value: DEFAULT_FEE, label: '$0.65 a contract', short: '$0.65', hint: 'What most brokers charge, each way' },
+  { value: 0, label: 'No fee', short: 'None', hint: 'A broker that charges nothing for contracts' },
+  { value: 1, label: '$1.00 a contract', short: '$1.00', hint: 'A dearer broker, or exchange fees on top' },
 ];
-/* index roots replay on the index's own price, which the backtest does not load: funds and stocks only */
-const INDEX_ROOTS = new Set(['SPX', 'SPXW', 'NDX', 'NDXP', 'RUT', 'RUTW', 'VIX', 'VIXW', 'XSP', 'DJX', 'OEX', 'XEO']);
-const FUNDS = ['SPY', 'QQQ', 'IWM'];
+/* Index roots: only those settled in cash on the index's CLOSE (SPXW, NDXP, RUTW — replayed on the index's own price).
+   The AM-settled roots (SPX, NDX, RUT monthlies, VIX) settle on an opening quotation the vendor does not carry. */
+const INDEX_ROOTS = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'VIXW', 'XSP', 'DJX', 'OEX', 'XEO']);
+const FUNDS = ['SPY', 'QQQ', 'IWM', ...Object.keys(CASH_INDEX_ROOTS)];
 /* The reader's own rules — 0 is "no rule". Hard blocks on a way in, never on a way out (data/review/engine). */
 const OPEN_RULES: DropdownOption<number>[] = [
-  { value: 0, label: 'No limit', hint: 'As many positions as the cash pays for' },
-  ...[1, 2, 3, 5].map(v => ({ value: v, label: v === 1 ? '1 position' : `${v} positions`, hint: v === 1 ? 'One trade at a time, across both names' : `A buy that would open a ${v === 2 ? 'third' : v === 3 ? 'fourth' : 'sixth'} is refused` })),
+  { value: 0, label: 'No limit', short: 'Any', quiet: true, hint: 'As many positions as the cash pays for' },
+  ...[1, 2, 3, 5].map(v => ({ value: v, label: v === 1 ? '1 position' : `${v} positions`, short: String(v), hint: v === 1 ? 'One trade at a time, across both names' : `A buy that would open a ${v === 2 ? 'third' : v === 3 ? 'fourth' : 'sixth'} is refused` })),
 ];
 const RISK_RULES: DropdownOption<number>[] = [
-  { value: 0, label: 'No limit', hint: 'A trade may cost whatever the cash pays for' },
-  ...[0.01, 0.02, 0.05, 0.1].map(v => ({ value: v, label: `${v * 100}% of the account`, hint: 'The premium and the fees of one trade — for a bought option, that is its risk' })),
+  { value: 0, label: 'No limit', short: 'Any', quiet: true, hint: 'A trade may cost whatever the cash pays for' },
+  ...[0.01, 0.02, 0.05, 0.1].map(v => ({ value: v, label: `${v * 100}% of the account`, short: `${v * 100}%`, hint: 'The premium and the fees of one trade — for a bought option, that is its risk' })),
 ];
 const DAY_RULES: DropdownOption<number>[] = [
-  { value: 0, label: 'No stop', hint: 'A bad day can go on' },
-  ...[0.02, 0.03, 0.05, 0.1].map(v => ({ value: v, label: `Down ${v * 100}%`, hint: 'Measured from what the account was worth at the open — no new positions until the next one' })),
+  { value: 0, label: 'No stop', short: 'None', quiet: true, hint: 'A bad day can go on' },
+  ...[0.02, 0.03, 0.05, 0.1].map(v => ({ value: v, label: `Down ${v * 100}%`, short: `−${v * 100}%`, hint: 'Measured from what the account was worth at the open — no new positions until the next one' })),
 ];
 
 interface Row {
@@ -57,6 +60,13 @@ interface Row {
 const Sessions = () => {
   const navigate = useNavigate();
   const sessions = useSessions();
+  /** A delete asks once more: the session whose bin was pressed, for a few seconds */
+  const [armed, setArmed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const t = window.setTimeout(() => setArmed(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [armed]);
   useSyncExternalStore(subscribeHistory, historyRev, historyRev);
   const [ticker, setTicker] = useState('SPY');
   const [second, setSecond] = useState('');
@@ -135,11 +145,11 @@ const Sessions = () => {
           </span>
         ),
       },
-      { key: 'clock', header: 'The clock stands at', sortValue: r => r.s.cursor.day, render: r => <span className="text-textSecondary">{momentWords(r.s.cursor)}</span> },
-      { key: 'start', header: 'Started with', align: 'right', sortValue: r => r.s.startCash, render: r => <span className="text-textSecondary">{usd(r.s.startCash, 0)}</span> },
+      { key: 'clock', header: 'Clock', sortValue: r => r.s.cursor.day, render: r => <span className="text-textSecondary">{momentWords(r.s.cursor)}</span> },
+      { key: 'start', header: 'Start', align: 'right', sortValue: r => r.s.startCash, render: r => <span className="text-textSecondary">{usd(r.s.startCash, 0)}</span> },
       { key: 'equity', header: 'Worth now', align: 'right', sortValue: r => r.equity, render: r => (Number.isFinite(r.equity) ? <span className="text-textPrimary">{usd(r.equity)}</span> : <span className="text-textMuted" title="Its open contracts are marked once the desk loads their day">—</span>) },
-      { key: 'net', header: 'Up or down', align: 'right', sortValue: r => r.net, render: r => (Number.isFinite(r.net) ? <span className={`font-semibold ${dirInk(r.net)}`}>{usdSigned(r.net)}</span> : <span className="text-textMuted">—</span>) },
-      { key: 'trades', header: 'Closed trades', align: 'right', sortValue: r => r.trades, render: r => <span className="text-textPrimary">{r.trades}</span> },
+      { key: 'net', header: 'P&L', align: 'right', sortValue: r => r.net, render: r => (Number.isFinite(r.net) ? <span className={`font-semibold ${dirInk(r.net)}`}>{usdSigned(r.net)}</span> : <span className="text-textMuted">—</span>) },
+      { key: 'trades', header: 'Trades', align: 'right', sortValue: r => r.trades, render: r => <span className="text-textPrimary">{r.trades}</span> },
       { key: 'win', header: 'Won', align: 'right', sortValue: r => r.winRate, render: r => (r.trades ? <span className="text-textPrimary">{pct(r.winRate)}</span> : <span className="text-textMuted">—</span>) },
       { key: 'open', header: 'Open', align: 'right', sortValue: r => r.open, render: r => (r.open ? <span className="text-textPrimary">{r.open}</span> : <span className="text-textMuted">—</span>) },
       {
@@ -158,24 +168,64 @@ const Sessions = () => {
               type="button"
               onClick={e => {
                 e.stopPropagation();
+                const copy = duplicateSession(r.s.id);
+                if (copy) navigate(`/practice/backtest/${copy.id}`);
+              }}
+              title="Copy it as it stands — the same book, orders and clock — to try another way from here; this one is kept"
+              aria-label={`Copy ${r.s.name}`}
+              className="tap-40 inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+              data-session-copy={r.s.id}
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
                 const again = runAgain(r.s.id);
                 if (again) navigate(`/practice/backtest/${again.id}`);
               }}
               title="Run it again — a new session on the same names, money, start day and rules, with a fresh book"
               aria-label={`Run ${r.s.name} again`}
-              className="inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
+              className="tap-40 inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-textPrimary hover:bg-ink/[0.06] transition-colors"
               data-session-again={r.s.id}
             >
               <RotateCcw className="w-3 h-3" />
             </button>
-            <button type="button" onClick={() => deleteSession(r.s.id)} title="Delete this session and its trades" aria-label={`Delete ${r.s.name}`} className="inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-bear hover:bg-ink/[0.06] transition-colors" data-session-delete={r.s.id}>
-              <Trash2 className="w-3 h-3" />
-            </button>
+            {armed === r.s.id ? (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setArmed(null);
+                  deleteSession(r.s.id);
+                }}
+                title="Press again to delete it, its trades and its journal notes — this cannot be undone"
+                className="tap-40 inline-flex items-center h-6 px-2 rounded-md border border-bear/50 font-mono text-t10 font-semibold text-bear hover:bg-bear/[0.10] transition-colors"
+                data-session-delete-confirm={r.s.id}
+              >
+                Delete?
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setArmed(r.s.id);
+                }}
+                title="Delete this session and its trades"
+                aria-label={`Delete ${r.s.name}`}
+                className="tap-40 inline-flex items-center justify-center w-6 h-6 rounded text-textMuted hover:text-bear hover:bg-ink/[0.06] transition-colors"
+                data-session-delete={r.s.id}
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
           </span>
         ),
       },
     ],
-    [navigate]
+    [navigate, armed]
   );
 
   const nameWords = (t: string) => {
@@ -227,9 +277,9 @@ const Sessions = () => {
           <DayCard label="From" value={startDay} onChange={setStartDay} title="The day the clock starts on" testId="review-start" />
           <DropdownSelect label="Fee" value={fee} options={FEES} onChange={setFee} title="What each contract costs to trade, each way" testId="review-fee" />
           {/* YOUR RULES — hard blocks, chosen here and nowhere else */}
-          <DropdownSelect label="Open at once" value={maxOpen} options={OPEN_RULES} onChange={setMaxOpen} title="Your rule: how many positions may be open at once — a buy past it is refused" testId="review-rule-open" />
-          <DropdownSelect label="A trade may cost" value={maxRisk} options={RISK_RULES} onChange={setMaxRisk} title="Your rule: the most one trade may cost, as a share of what the account is worth" testId="review-rule-risk" />
-          <DropdownSelect label="Stop the day at" value={dayStop} options={DAY_RULES} onChange={setDayStop} title="Your rule: down this much since the open, the day is over — no new positions until the next one" testId="review-rule-day" />
+          <DropdownSelect label="Max open" value={maxOpen} options={OPEN_RULES} onChange={setMaxOpen} title="Your rule: how many positions may be open at once — a buy past it is refused" testId="review-rule-open" />
+          <DropdownSelect label="Max a trade" value={maxRisk} options={RISK_RULES} onChange={setMaxRisk} title="Your rule: the most one trade may cost, premium and fees, as a share of what the account is worth" testId="review-rule-risk" />
+          <DropdownSelect label="Day stop" value={dayStop} options={DAY_RULES} onChange={setDayStop} title="Your rule: down this much since the open, the day is over — no new positions until the next one" testId="review-rule-day" />
           <button type="button" onClick={start} className="inline-flex items-center gap-1.5 h-7 px-3.5 rounded-full text-t11 font-semibold transition-opacity hover:opacity-90" style={{ background: SILVER_FILL, color: '#0a0a0a' }} data-review-start>
             <Play className="w-3 h-3" /> Start the session
           </button>
@@ -244,13 +294,13 @@ const Sessions = () => {
               Your rules: <span className="text-textPrimary font-semibold">{ruleWords.join(' · ')}</span>. A buy that breaks one is refused, a way out never is — and they cannot be changed once the session starts.
             </>
           ) : (
-            'No rules of your own on this one: set them in the three cards at the right, before it starts — they cannot be added later.'
+            'No rules of your own on this one — Max open, Max a trade and Day stop are set before it starts, and cannot be added later.'
           )}
         </>
       }
     >
       <ThetaLine since={offline} className="px-5 pb-2" what="ThetaData offline — reconnecting · a session opens on the recorded quotes once it answers" />
-      <TraceGrid rows={rows} columns={columns} rowKey={r => r.s.id} onRowClick={r => navigate(`/practice/backtest/${r.s.id}`)} autoHeight animate={false} widths={{ doors: 176, start: 120, equity: 130, net: 130, trades: 120, win: 80, open: 80 }} emptyText="No sessions yet — start one above" testId="review-sessions" />
+      <TraceGrid rows={rows} columns={columns} rowKey={r => r.s.id} onRowClick={r => navigate(`/practice/backtest/${r.s.id}`)} autoHeight animate={false} widths={{ doors: 200, clock: 150, start: 90, equity: 120, net: 110, trades: 80, win: 70, open: 70 }} emptyText="No sessions yet — start one above" testId="review-sessions" />
     </TraceBox>
   );
 };

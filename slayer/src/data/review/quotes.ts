@@ -4,7 +4,7 @@
 
 import { sessionsBetween } from '../../core/calendar';
 import { blackScholesGreeks, blackScholesPrice, impliedVolFromPrice } from '../../core/greeks';
-import { DAY_MIN, LAST_MIN, dateOf, dayWords, listingOf, midsUpTo, nbboAt, spotAt, tradesUpTo } from './history';
+import { CASH_INDEX_ROOTS, DAY_MIN, LAST_MIN, closePrintOf, dateOf, dayWords, lastTwoSidedAt, listingOf, midsUpTo, nbboAt, spotAt, tradesUpTo, underOf } from './history';
 
 export type Right = 'C' | 'P';
 export interface ContractId {
@@ -120,6 +120,48 @@ export function quoteAt(c: ContractId, iso: string, minute: number): Quote {
   };
 }
 
+/* ---- what an open contract is marked at ---- */
+export interface Mark {
+  /** Dollars a share: the minute's mid, or — in a minute that is no market — the last two-sided mid that day */
+  mark: number;
+  /** The mark is an earlier minute's, and which */
+  staleFrom?: number;
+}
+/** The contract's mark at the end of a minute. A minute that is no market keeps the last two-sided mid recorded that day,
+    said as such; with none that day, NaN (shown as —). A spread is its legs' marks, inside its width. */
+export function markAt(c: ContractId, iso: string, minute: number): Mark {
+  const q = quoteAt(c, iso, minute);
+  if (Number.isFinite(q.mark)) return { mark: q.mark };
+  const one = (k: ContractId): { mid: number; from: number } | null => {
+    const now = nbboAt(k, iso, minute);
+    if (now && now.ask > 0 && now.bid >= 0) return { mid: (now.bid + now.ask) / 2, from: minute };
+    const last = lastTwoSidedAt(k, iso, minute);
+    return last ? { mid: (last.bid + last.ask) / 2, from: last.minute } : null;
+  };
+  const a = one(longLeg(c));
+  if (!a) return { mark: NaN };
+  if (c.short == null) return { mark: cents(a.mid), staleFrom: a.from };
+  const b = one({ ...longLeg(c), strike: c.short });
+  if (!b) return { mark: NaN };
+  return { mark: cents(Math.max(0, Math.min(spreadWidth(c), a.mid - b.mid))), staleFrom: Math.min(a.from, b.from) };
+}
+
+/* ---- the bell of an expiry: how a contract settles ---- */
+export type SettleStyle = 'cash' | 'exercise';
+/** A contract on a cash index (SPXW, NDXP, RUTW) settles in cash on the index's close; one on a stock or a fund is
+    exercised at the close when it is in the money (a long option is only ever cash here: the shares it would deliver
+    are taken as sold at the same close, so it lands as what it is worth in the money). */
+export const settleStyleOf = (ticker: string): SettleStyle => (CASH_INDEX_ROOTS[ticker.toUpperCase()] ? 'cash' : 'exercise');
+/** What a contract settles at on its expiry day: what it is worth in the money on the name's close (the 16:00 closing
+    print where recorded, else the last bar) — a spread inside its width — or null while that close is not known */
+export function settlementAt(c: ContractId, expiryDay: string): { price: number; spot: number; style: SettleStyle; index: string } | null {
+  const spot = closePrintOf(c.ticker, expiryDay);
+  if (!(spot > 0)) return null;
+  const inMoney = (k: number) => Math.max(0, c.right === 'C' ? spot - k : k - spot);
+  const price = c.short == null ? inMoney(c.strike) : Math.max(0, Math.min(spreadWidth(c), inMoney(c.strike) - inMoney(c.short)));
+  return { price: cents(price), spot, style: settleStyleOf(c.ticker), index: underOf(c.ticker) };
+}
+
 /* ---- the what-if: a contract with the name somewhere else this minute ---- */
 /** One leg's model value with the name at `spot`, at the vol its recorded mid implies this minute — NaN without a quote */
 function legWhatIf(c: ContractId, iso: string, minute: number, spot: number): number {
@@ -157,7 +199,7 @@ const isMonthly = (iso: string) => {
   return d.getDate() >= 15 && d.getDate() <= 21 && (d.getDay() === 5 || d.getDay() === 4);
 };
 /** The expiries quoted on a day, nearest first (empty until the day's listing is loaded) */
-export function expiriesAt(ticker: string, iso: string, upTo = 24): ListedExpiry[] {
+export function expiriesAt(ticker: string, iso: string, upTo = Infinity): ListedExpiry[] {
   const l = listingOf(ticker, iso);
   if (!l) return [];
   return l.expiries.slice(0, upTo).map(e => ({ iso: e, label: dayWords(e), dte: dteAt(iso, e), kind: isMonthly(e) ? 'monthly' : dateOf(e).getDay() === 5 ? 'weekly' : 'daily' }));

@@ -186,16 +186,31 @@ interface DayBars {
   bars: Candle[];
   /** The index of the session's last real bar (an early close stops before 389) */
   last: number;
+  /** The closing print: the price stamped 16:00:00 (the closing cross of a stock or fund, the index's closing value)
+      where the vendor recorded one — what an expiring contract settles on. Absent on an answer kept before it was read. */
+  closePrint?: number;
 }
 const bars = new Map<string, DayBars | null>();
 const barsWant = new Map<string, Need>();
 const INDEXES = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP']);
+/** Option roots on a cash index, settled in cash on the index's close (PM-settled) — the name's price is the index's.
+    The AM-settled roots (SPX, NDX and RUT monthlies, VIX) settle on a special opening quotation the vendor does not
+    carry, so they are not offered. */
+export const CASH_INDEX_ROOTS: Record<string, string> = { SPXW: 'SPX', NDXP: 'NDX', RUTW: 'RUT' };
+/** The symbol whose price a name's contracts are written on: an index root's index, else the name itself */
+export const underOf = (ticker: string): string => {
+  const t = ticker.toUpperCase();
+  return CASH_INDEX_ROOTS[t] ?? t;
+};
 
 export function parseBars(day: string, rows: Row[]): DayBars | null {
   const at = new Array<Candle | null>(DAY_MIN).fill(null);
+  let closePrint = NaN;
   for (const r of rows) {
     const m = minuteOfStamp(r.timestamp);
     const close = num(r.close ?? r.price);
+    /* the 16:00:00 row is not a minute of the session: it is the closing print */
+    if (m === DAY_MIN && close > 0) closePrint = close;
     if (!(m >= 0 && m < DAY_MIN) || !(close > 0)) continue;
     const open = num(r.open);
     const high = num(r.high);
@@ -216,12 +231,12 @@ export function parseBars(day: string, rows: Row[]): DayBars | null {
       flat = b.close;
     } else out.push({ time: barTime(day, m), open: flat, high: flat, low: flat, close: flat, volume: 0 });
   }
-  return { bars: out, last };
+  return Number.isFinite(closePrint) ? { bars: out, last, closePrint } : { bars: out, last };
 }
 
 /** Load a name's bars for a day. Resolves true when they are here. */
 export async function ensureBars(ticker: string, day: string): Promise<boolean> {
-  const t = ticker.toUpperCase();
+  const t = underOf(ticker);
   const key = `bars|${t}|${day}`;
   if (bars.has(key)) return bars.get(key) != null;
   barsWant.set(key, 'loading');
@@ -242,7 +257,7 @@ export async function ensureBars(ticker: string, day: string): Promise<boolean> 
 }
 /** Load a name's bars for every session from `from` to `to` in one ask (the chart's days behind the clock) */
 export async function ensureBarsRange(ticker: string, from: string, to: string): Promise<void> {
-  const t = ticker.toUpperCase();
+  const t = underOf(ticker);
   const days = daysBetween(from, to).filter(d => !bars.has(`bars|${t}|${d}`));
   if (!days.length) return;
   /* what this browser kept, day by day */
@@ -296,12 +311,19 @@ export async function ensureBarsRange(ticker: string, from: string, to: string):
   }
 }
 /** Has the day's bars been answered (with bars, or with none) */
-export const barsKnown = (ticker: string, day: string): boolean => bars.has(`bars|${ticker.toUpperCase()}|${day}`);
-export const barsNeed = (ticker: string, day: string): Need => barsWant.get(`bars|${ticker.toUpperCase()}|${day}`) ?? 'loading';
+export const barsKnown = (ticker: string, day: string): boolean => bars.has(`bars|${underOf(ticker)}|${day}`);
+export const barsNeed = (ticker: string, day: string): Need => barsWant.get(`bars|${underOf(ticker)}|${day}`) ?? 'loading';
 /** The name's bars for a day, oldest first — empty until they are loaded */
-export const dayBars = (ticker: string, day: string): Candle[] => bars.get(`bars|${ticker.toUpperCase()}|${day}`)?.bars ?? [];
+export const dayBars = (ticker: string, day: string): Candle[] => bars.get(`bars|${underOf(ticker)}|${day}`)?.bars ?? [];
 /** The last minute the name traded that day (389 on a full session) — or −1 until loaded */
-export const closeMinOf = (ticker: string, day: string): number => bars.get(`bars|${ticker.toUpperCase()}|${day}`)?.last ?? -1;
+export const closeMinOf = (ticker: string, day: string): number => bars.get(`bars|${underOf(ticker)}|${day}`)?.last ?? -1;
+/** What the name closed at that day — the 16:00:00 closing print where one was recorded, else its last bar's close (an
+    early close's 13:00) — NaN until the day's bars are loaded, or where there were none */
+export function closePrintOf(ticker: string, day: string): number {
+  const d = bars.get(`bars|${underOf(ticker)}|${day}`);
+  if (!d) return NaN;
+  return d.closePrint != null && d.closePrint > 0 ? d.closePrint : (d.bars[d.bars.length - 1]?.close ?? NaN);
+}
 /** Where the name stood at the end of a minute (NaN until its bars are loaded) */
 export function spotAt(ticker: string, day: string, minute: number): number {
   const b = dayBars(ticker, day);
@@ -487,6 +509,14 @@ export function standingAt(d: { bid: number[]; ask: number[] }, m: number): { bi
   }
   return null;
 }
+/** The last two-sided quote recorded on the day at or before a minute — what an open contract is marked at in a minute
+    that is no market (a one-sided or crossed row, or before its first row): the mid it last had, and when */
+export function lastTwoSidedAt(c: Leg, day: string, minute: number): { bid: number; ask: number; minute: number } | null {
+  const d = legs.get(`leg|${legKey(c)}|${day}`);
+  if (!d) return null;
+  for (let k = Math.max(0, Math.min(LAST_MIN, minute)); k >= 0; k--) if (d.ask[k] > 0 && d.bid[k] >= 0 && d.ask[k] >= d.bid[k]) return { bid: d.bid[k], ask: d.ask[k], minute: k };
+  return null;
+}
 /** The leg's mid through the day up to a minute (for the day's high and low so far) */
 export function midsUpTo(c: Leg, day: string, minute: number): number[] {
   const d = legs.get(`leg|${legKey(c)}|${day}`);
@@ -596,9 +626,9 @@ export function ensureWindow(): Promise<void> {
 }
 
 /* ---- the test seam: the proofs put a day in by hand ---- */
-export function putBars(ticker: string, day: string, candles: Candle[]): void {
-  const t = ticker.toUpperCase();
-  bars.set(`bars|${t}|${day}`, { bars: candles, last: candles.length - 1 });
+export function putBars(ticker: string, day: string, candles: Candle[], closePrint?: number): void {
+  const t = underOf(ticker);
+  bars.set(`bars|${t}|${day}`, closePrint != null ? { bars: candles, last: candles.length - 1, closePrint } : { bars: candles, last: candles.length - 1 });
   barsWant.set(`bars|${t}|${day}`, 'ready');
 }
 export function putListing(ticker: string, day: string, l: Listing): void {

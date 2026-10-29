@@ -8,6 +8,7 @@ import { barTime, clockWords, dayWords } from './history';
 import { futBookOf as paperFutBookOf, optBookOf as paperOptBookOf, type FutTrade as PaperFutTrade, type OptTrade as PaperOptTrade, type PaperAccount, type PaperMoment } from '../paper/engine';
 import { nyMomentWords } from '../paper/clock';
 import { futWords } from '../paper/products';
+import { pickOf } from './journalBooks';
 
 export interface JournalEntry {
   /** One of the reader's setups */
@@ -139,7 +140,8 @@ export function cutFromQuery(search: string): JournalCut {
   const q = new URLSearchParams(search);
   const one = <T extends string>(k: string, allowed: readonly T[], rest: T): T => (allowed.includes(q.get(k) as T) ? (q.get(k) as T) : rest);
   return {
-    session: q.get('session') ?? 'all',
+    /* the journal the address is on (`?journal=paper:<id>`, or the older `?session=`) is the walk's container */
+    session: q.has('journal') ? (pickOf(search).id ?? 'all') : (q.get('session') ?? 'all'),
     name: q.get('name') ?? 'all',
     kind: one('kind', ['all', 'options', 'futures'] as const, 'all'),
     way: one('way', ['all', 'up', 'down'] as const, 'all'),

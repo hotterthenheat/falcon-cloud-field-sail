@@ -1,7 +1,8 @@
 /* Everything the paper account knows about the market, live from ThetaData (thetaFeed.ts): each name's NBBO, the
    expiries listed today, every contract's NBBO. Fills need a two-sided quote read in the last few seconds, in the
    options session; a kept quote from an earlier visit is shown, stamped, and never fills. The greeks and the IV are
-   computed from the quote's mid. The chart's candles are the house's live book. No futures: neither key carries them. */
+   computed from the quote's mid. The chart's candles are the house's live book. Options only: neither key carries
+   futures, and they are not in the product. */
 
 import type { Candle } from '../../types/market';
 import type { DeskChain, DeskContract } from '../weigherDesk';
@@ -17,9 +18,6 @@ import { bookOf, feedOffline, isFresh, legQuoteOf, listedExpiries, nameQuote } f
 export const SIM_FEED = false;
 /** This page load's name — a fill carries it so the chart can tell this load's arrows from another's */
 export const LIFE = `${Date.now().toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`;
-/** The keys carry no futures feed: the paper desk trades options only */
-export const FUTURES_LIVE = false;
-export const FUTURES_OFF_WORDS = 'Evaluations trade futures, and neither data key carries a futures feed, so they are not offered.';
 export { feedOffline };
 
 const cents = (v: number) => Math.round(v * 100) / 100;
@@ -274,11 +272,13 @@ export function liveDeskChain(ticker: string, expiry: string, ms: number, each =
   };
 }
 
-/* ---- futures: not carried ---- */
-export { PAPER_INDEXES, isPaperFuture, isPaperIndex, paperFut, paperIndex } from './products';
-/** No live futures price */
-export const futNow = (_symbol: string): number => NaN;
-/** No live futures candles */
-export const futCandles = (_symbol: string): Candle[] => [];
-/** Live books only. Theta and Unusual Whales answer; nothing is invented in their place. */
-export const SIM_DESK = false;
+export { PAPER_INDEXES, isPaperIndex, paperIndex } from './products';
+
+/** Is the contract's quote (each leg of a spread) a fresh live read — what a fill, and a rule's judgment, need */
+export function optionFresh(c: ContractId, ms: number): boolean {
+  const legs = c.short == null ? [longLeg(c)] : [longLeg(c), { ...longLeg(c), strike: c.short }];
+  return legs.every(k => {
+    const q = legQuoteOf(k.ticker, k.expiry, k.strike, k.right);
+    return !!q && isFresh(q.takenAt, q.kept, ms);
+  });
+}
