@@ -37,7 +37,7 @@ import { crossDay, floorPackaged, FRESH_VOL_OI, notABet, notABetHint, notABetLab
 import { dayAdv, shortDay, spanWords } from '../../components/trace/dayWords';
 import { useIsPhone } from '../../components/ui/useMediaQuery';
 
-/* the chooser stores the HIDDEN set; the old key held the visible one */
+/* the chooser stores the hidden set; the old key held the visible one */
 const COLS_KEY = 'slayer_tape_hidden_v2';
 
 type FlowFilter = 'ALL' | PrintKind;

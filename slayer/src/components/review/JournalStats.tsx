@@ -1,34 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE PERIOD'S FIGURES
-  (components/review/JournalStats.tsx)
-
-  The card beside the month (the partner's journal kept
-  its figures there, and Noah keeps that): what the
-  period made, then its figures in rows — a label at the
-  left, the figure at the right, hairlines between the
-  groups. Every figure a plain word:
-
-    won · lost           how many each, and the rate
-    winners made         what the winners made, added up
-    losers lost          what the losers lost
-    average win · loss
-    best · worst trade
-    best · worst day
-    longest run          of wins, of losses — and the run
-                         you stand in
-    profit factor        the winners' dollars over the
-                         losers'
-    a trade was worth    the period's total over its
-                         trades
-    worst drop from a    the most the running total fell
-    high                 from its best
-    kept of the best     of all your trades were up at
-                         their best, added, what you took
-    held on average
-
-  THESE ARE THE READER'S NUMBERS about their own trades.
-==================================================
+  The period's figures beside the month: what it made, won and lost, average win and loss, best and worst trade and
+  day, runs, profit factor, expectancy and the deepest drawdown.
 */
 
 import type { ReactNode } from 'react';

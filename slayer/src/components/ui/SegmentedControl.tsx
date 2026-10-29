@@ -7,9 +7,7 @@ interface SegmentedControlProps<V extends string> {
   ariaLabel?: string;
 }
 
-/** Alias of FilterTabs — the boxed segmented look was retired (2026-07-19,
-    Noah: "too common"). Every legacy call site now renders the soft rail +
-    sliding white pill. New code should import FilterTabs directly. */
+/** Alias of FilterTabs for older call sites; new code imports FilterTabs. */
 const SegmentedControl = <V extends string>(props: SegmentedControlProps<V>) => <FilterTabs {...props} />;
 
 export default SegmentedControl;

@@ -1,39 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE ALERTS DRAWER (components/alerts/AlertsDrawer.tsx)
-
-  Every alert the reader has, in one place, over
-  any page (the rule, Noah, 2026-09-10 — "why is
-  the alerts page just the targets page?"):
-
-    set in place · SEE IN ONE PLACE · hear it everywhere
-
-  The sidebar's bell opens it at the right, on the
-  draw rail's glass (Noah: "translucent"). Two
-  shelves: SET (waiting, one hairline card per name
-  with the name's logo at its head, one row per
-  alert inside) and ALERTED (the session's log,
-  newest first, one card) — the word is ALERTED,
-  never "fired" or "rang" (Noah, 2026-09-10).
-
-  THE ROW (redrawn 2026-09-10, Noah: "i dont like
-  the looks of this aside from the translucentness
-  … maybe a lack of icons, borders"): a lucide icon
-  for the KIND at the left, muted while waiting and
-  in the alert orange once it alerted; the thing in
-  plain words on the first line; the state and its
-  time on a muted second line; a small bordered pill
-  for the door back to the surface that shows it;
-  the one action as an icon button (take it off, or
-  set it again). "This name" is a filter card,
-  never a different list: alerts belong to a name
-  and a thing, not a page.
-
-  Opening it marks every firing seen — the bell
-  goes quiet because the reader looked. Esc and a
-  click outside close it; the innermost rule holds
-  (a menu open inside takes the key first).
-==================================================
+  Every alert in one place, over any page: what is set (a card per name, a row per alert) and what has alerted this
+  session, newest first. The sidebar's bell opens it.
 */
 
 import { useEffect, useState } from 'react';

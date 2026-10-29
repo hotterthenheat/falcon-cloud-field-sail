@@ -1,32 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE MONTH
-  (components/record/NewsCalendar.tsx)
-
-  The Day's calendar as a month — the partner's,
-  ported 2026-09-13 (Noah, with his screenshot: "i
-  love it. i want that as well but it needs to
-  match our type design and our already existing
-  code").
-
-  Left, the month: Sunday to Saturday, every day a
-  cell, what prints on it as pills — the macro
-  releases in their impact's ink, the earnings as
-  the name with its slot in silver, the market's
-  own dates in magenta — three to a cell and the
-  rest counted. Right, the day in hand: everything
-  on it in order, with the figures. Arrows walk the
-  months; Today comes home; a click on a day opens
-  it. The data is data/monthCalendar.ts.
-
-  The house's inks, not the partner's: the pills'
-  washes go through `alpha` (a token ink cannot
-  take a hex suffix — the theme memory's trap), the
-  picked day wears the silver edge every open row
-  wears, today's number sits in the primary ink's
-  round, and it all holds on the light terminal.
-==================================================
-*/
+/* The day's calendar as a month: every day a cell with its pills (releases in their impact's ink, earnings in silver,
+   the market's own dates in magenta), the day in hand beside it. The data is monthCalendar.ts. */
 
 import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -124,23 +97,20 @@ const NewsCalendar = () => {
   const [kind, setKind] = useState<KindPick>('all');
   const fdaRev = useSyncExternalStore(subscribeFda, fdaStamp, fdaStamp);
   /* the earnings are the Earnings page's own fortnight — one date per name across the Dossier */
-  /* THE FORTNIGHT ONCE THE CALENDAR IS ON SCREEN (round 9: the News page read ~25 earnings-calendar pages at load, mostly
-     for the "Next print" chip, which now reads only today's and the next session's lists) */
+  /* the fortnight's reports are read once the calendar is on screen */
   const [calRef, calSeen] = useSeen<HTMLDivElement>();
   useEffect(() => {
     if (calSeen) ensureEarnings();
   }, [calSeen]);
   const reportsQ = useEveryReportQuiet();
   const reports = reportsQ.events;
-  /* the day's empty line waits for the fortnight's reports to land (audit round 7: "nothing" before the read was in) */
+  /* the day's empty line waits for the fortnight's reports to land */
   const reportsPending = reportsQ.status === 'loading';
-  /* the reports whose reacting session is today carry their move, as on the Earnings page (audit round 10: AXP at
-     15:00 still read "reports before the open · ±3.2% priced") — the known names, the board's own read */
+  /* reports whose reacting session is today carry their move, as on the Earnings page */
   const reacting = useMemo(() => reports.filter(r => r.known && r.reported && r.reactionIso === nyIsoDate()), [reports]);
   useLiveReactions(reacting);
   useEffect(() => {
-    /* EVERY REPORT ON THE LISTS (audit round 10: the known names only, so RCBC — today's one after-close report — was
-       missing beside the Earnings page's grid); the known and the largest first within a day */
+    /* every report on the lists; the known and the largest first within a day */
     setLiveEarnings(
       reports
         .filter(r => r.iso)
@@ -191,7 +161,7 @@ const NewsCalendar = () => {
   const postCount = cal.events.filter(e => e.kind === 'post').length;
   const dayEvents = picked.events.filter(keep);
 
-  /* The day beside the month from md; under it on a phone, where the head row wraps too (the phone pass, 2026-09-13) */
+  /* the day beside the month from md; under it on a phone */
   return (
     <div
       ref={calRef}
@@ -207,7 +177,6 @@ const NewsCalendar = () => {
           <ImpactLegend />
         </span>
       </div>
-      {/* THE MONTH */}
       <div className="min-w-0 border-r border-borderSubtle max-lg:border-r-0 max-lg:border-b">
         <div className="px-4 h-[40px] flex items-center gap-2 border-b border-borderSubtle max-lg:h-auto max-lg:py-2 max-lg:flex-wrap">
           <button type="button" onClick={() => shift(-1)} className="inline-flex items-center justify-center w-6 h-6 rounded text-textSecondary hover:text-textPrimary hover:bg-ink/[0.06] transition-colors" title="The month before" aria-label="The month before" data-cal-prev>
@@ -266,7 +235,6 @@ const NewsCalendar = () => {
         ))}
       </div>
 
-      {/* THE DAY IN HAND */}
       <div className="min-w-0 flex flex-col" data-cal-day-panel={picked.key}>
         <div className="px-4 h-[40px] flex items-center gap-2 border-b border-borderSubtle">
           <span className="text-t13 font-semibold text-textPrimary">{longDay(picked.date)}</span>

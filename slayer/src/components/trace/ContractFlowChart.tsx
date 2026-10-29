@@ -1,33 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - CONTRACT FLOW PANELS
-  Two strips of ONE instrument — the drilldown stacks
-  them on a shared clock:
-
-    FlowPanel   — the flow of the CONTRACT itself as
-                  THE LEDGER: every print is a brick,
-                  stacked per bar interval — buyers
-                  who paid the offer stack up, sellers
-                  who hit the bid stack down, mid
-                  fills straddle the zero line. Top
-                  strip: its x-axis is present but
-                  unlabelled, because the strip below
-                  prints the clock once.
-    NetPanel    — the UNDERLYING's cumulative net
-                  call vs put premium with price on
-                  top, and the four books that make
-                  it up. Bottom strip: owns the axis.
-
-  Both accept a printMin: the minute of the print the
-  drilldown was opened from, drawn as one lime line
-  through BOTH strips — the terminal pointing at the
-  moment you clicked. Window controls (range, bars,
-  single-leg) live in the drilldown's shared toolbar,
-  not here. Every label is spelled out — the
-  competition ships "NCP / NPP / RVOL" and expects
-  you to already know.
-==================================================
-*/
+/* Two stacked strips on one clock: the contract's ledger (paid the offer up, hit the bid down) and the underlying's
+   net call and put premium, a marker at the opened print's minute. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
@@ -54,13 +26,7 @@ import { BULL, SUPREME } from '../gex/paletteInk';
 import { useResolvedTheme } from '../../theme/theme';
 
 const ASK = BULL; // lifted the offer — the market's bull colour
-/* EVERY INK A TOKEN (the light sweep, 2026-09-19 — Noah on Trace: "first thing i notice already is the background color of
-   these 2 cards"). The two strips were black islands with typed whites, whatever the page wore. Each ink below is a
-   token, so the box's own theme stamp re-inks the whole chart (a var() in an SVG fill or stroke is read like any CSS
-   value) — and the stamp follows THE PAGE, never the candle pick: on the dark terminal it is the black island it always
-   was; on the light page it is part of the page, and the grey box that holds it shows through ("i see a light gray
-   holding a inner dark gray. make it all light gray"). It followed the candle store for an hour and turned grey on a
-   dark page that held a Stone pick — a light-theme change must never move the dark theme. */
+/* Every ink is a token, so the box's theme stamp (the page's, never the candle pick) re-inks the whole chart. */
 const BID = 'rgb(var(--bear))';
 const FENCE = 'rgb(var(--text-primary) / 0.3)'; // mid fills — undecided, sits ON the zero line
 const PRICE_LINE = 'rgb(var(--text-primary))'; // neutral "where the market is"
@@ -70,16 +36,13 @@ const GRID = 'rgb(var(--ink) / 0.05)';
 const HOVER_WASH = 'rgb(var(--ink) / 0.04)';
 const ZERO_LINE = 'rgb(var(--ink) / 0.2)';
 
-/* Stacked strips only read as one instrument if their plot areas align to the
-   pixel. Same left axis width, and the right gutter is reserved even when the
-   optional right axis is off — otherwise toggling IV or price shears the two
-   clocks apart. */
+/* Stacked strips read as one instrument only if their plots align to the pixel, so the right gutter is reserved even
+   when its axis is off. */
 const Y_LEFT_W = 56;
 const Y_RIGHT_W = 44;
 const RIGHT_PAD = 6;
 
-/** The moment-marker — the print the drilldown was opened from. White, not
-    lime (Noah, 2026-08-18): white = "where", the same voice as the spot rule. */
+/** The marker for the print the card was opened from: white means "where", like the spot rule. */
 const printLine = (offset: number, yAxisId: string, withLabel: boolean, windowMin = Infinity, at = offset) => (
   <ReferenceLine
     x={at}
@@ -89,8 +52,7 @@ const printLine = (offset: number, yAxisId: string, withLabel: boolean, windowMi
     strokeDasharray="4 3"
     label={
       withLabel
-        ? /* the label reads INTO the plot: right of a line in the window's first half, left of it after — at the right edge
-             it ran under the price axis as "This prin" (the ship pass, 2026-10-22) */
+        ? /* the label reads into the plot: right of the line in the window's first half, left of it after */
           { value: 'This print', position: offset > windowMin * 0.5 ? 'insideTopRight' : 'insideTopLeft', fill: PRICE_LINE, fontSize: 11, fontFamily: "'Inter', sans-serif", offset: 8 }
         : undefined
     }
@@ -105,10 +67,9 @@ const Box = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
-/** Bid / mid / ask as three named parts of one bar — never a two-way split that folds the mid into a side (the audit,
-    2026-10-22: "HIT THE BID 51%" counted the mid volume as hit) */
+/** Bid, mid and ask as three named parts of one bar, never a two-way split that folds the mid into a side */
 export const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bid: number; mid: number; ask: number; unit: string; caption?: string; className?: string }) => {
-  /* ONE ROUNDING with the card's own side figure (traceLive sideShares — the third audit: "bid 44%" beside "BID 43%") */
+  /* one rounding with the card's own side figure (traceLive sideShares) */
   const sh = sideShares(bid, mid, ask);
 
   const fmt = (v: number) => (unit === '$' ? fmtUsd(v) : v.toLocaleString('en-US'));
@@ -129,8 +90,6 @@ export const SideSplit = ({ bid, mid, ask, unit, caption, className = '' }: { bi
   );
 };
 
-// Moved to ui/Chip so light callers don't pull recharts; re-exported for compat.
-export { default as Chip } from '../ui/Chip';
 
 /** One figure in a panel's stat strip. */
 const Stat = ({ label, value, tone = 'text-textPrimary' }: { label: string; value: string; tone?: string }) => (
@@ -138,43 +97,6 @@ const Stat = ({ label, value, tone = 'text-textPrimary' }: { label: string; valu
     <span className="font-mono text-t11 uppercase tracking-wider text-textMuted truncate">{label}</span>
     <span className={`font-mono text-t12 font-semibold tnum ${tone} truncate`}>{value}</span>
   </span>
-);
-
-/**
- * A two-sided share bar with both ends named. Same tug grammar as the earnings
- * slate and the news tape — the label says which side is which, so the colour
- * never has to be decoded.
- */
-const TugBar = ({
-  leftLabel,
-  rightLabel,
-  leftPct,
-  caption,
-  className = '',
-}: {
-  leftLabel: string;
-  rightLabel: string;
-  leftPct: number;
-  caption?: string;
-  /** Width restraint — at full modal width an unconstrained bar becomes a
-      1600px colour band that shouts over the chart it annotates. */
-  className?: string;
-}) => (
-  <div className={`flex flex-col gap-1 ${className}`}>
-    <div className="flex items-baseline justify-between gap-3 font-mono text-t11 uppercase tracking-wider">
-      <span className={leftPct >= 50 ? 'text-bear font-semibold' : 'text-textSecondary'}>
-        {leftLabel} {Math.round(leftPct)}%
-      </span>
-      {caption && <span className="text-textMuted normal-case tracking-normal">{caption}</span>}
-      <span className={leftPct < 50 ? 'text-bull font-semibold' : 'text-textSecondary'}>
-        {rightLabel} {100 - Math.round(leftPct)}%
-      </span>
-    </div>
-    <span className="flex h-1.5 rounded-full overflow-hidden bg-ink/[0.06]">
-      <span className="h-full bg-bear/80 transition-[width] duration-500" style={{ width: `${leftPct}%` }} />
-      <span className="h-full bg-bull transition-[width] duration-500" style={{ width: `${100 - leftPct}%` }} />
-    </span>
-  </div>
 );
 
 // ---- the contract's minutes -----------------------------------------------------------------------------------
@@ -191,12 +113,8 @@ export interface FlowPanelProps {
   syncId?: string;
 }
 
-/*
-  THE LEDGER, ON THE VENDOR'S MINUTES: each bar is one bucket of the contract's session (the toolbar's interval), its
-  money that paid the offer stacked up, its money that hit the bid stacked down, and the mid / no-side money as one
-  grey block on the zero line. Every figure is /option-contract/{occ}/intraday — the whole session, by side — so the
-  strip can never disagree with the day's totals above it. The heaviest bucket is named on the canvas.
-*/
+/* Each bar is one bucket of the contract's session from its intraday route, by side, so the strip never disagrees
+   with the day's totals; the heaviest bucket is named. */
 const LedgerLayer = ({ bins, intervalMin, heaviest, from = 0, to = SESSION_MIN }: { bins: LedgerBin[]; intervalMin: number; heaviest: LedgerBin | null; from?: number; to?: number }) => {
   const xScale = useXAxisScale();
   const yScale = useYAxisScale('prem');
@@ -285,8 +203,7 @@ export const FlowPanel = ({ tape, intervalMin, showAvg, onShowAvg, showIv, onSho
   const binRows = useMemo(() => bins.map(b => ({ min: b.min + intervalMin / 2, up: b.askPrem, down: b.bidPrem, mid: b.midPrem, vol: b.vol, hover: b.midPrem / 2 + b.askPrem })), [bins, intervalMin]);
   const premDomain = useMemo(() => [-maxSide * 1.08, maxSide * 1.08], [maxSide]);
   const totals = useMemo(() => tape.minutes.reduce((a, m) => ({ ask: a.ask + m.askVol, bid: a.bid + m.bidVol, mid: a.mid + m.midVol, prem: a.prem + m.askPrem + m.bidPrem + m.midPrem }), { ask: 0, bid: 0, mid: 0, prem: 0 }), [tape.minutes]);
-  /* ONE WINDOW (the re-audit, 2026-10-22: the avg paid and the side bar were the regular session's while the dollars and
-     the print count were the whole day's) — every figure here is the strip's own minutes, and the label says which */
+  /* One window: every figure here is the strip's own minutes, and the label says which */
   const w = tape.window;
   const vwap = avg.length ? avg[avg.length - 1].price : 0;
   const summary = [
@@ -495,7 +412,7 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
         <span className="font-mono text-t11 uppercase tracking-widest text-textSecondary">{ticker} net premium · every expiry · the same window</span>
         <MetricPicker value={metric} onChange={onMetric} />
         {metric === 'netPremium' ? (
-          <span className="font-mono text-t11 text-textMuted tnum" data-net-summary title="Net premium is premium at the ask less premium at the bid. Net calls bought lean bullish; net puts bought lean bearish. The net is net calls less net puts.">
+          <span className="font-mono text-t11 text-textMuted tnum" data-net-summary title="Premium at the ask less at the bid. Net calls bought lean bullish, net puts bought bearish; the net is calls less puts">
             net <span className={net >= 0 ? 'text-bull font-semibold' : 'text-bear font-semibold'}>{signedUsd(net)}</span> · net calls{' '}
             <span className={n.netCall >= 0 ? 'text-bull font-semibold' : 'text-bear font-semibold'}>{signedUsd(n.netCall)}</span> · net puts{' '}
             <span className={n.netPut >= 0 ? 'text-bear font-semibold' : 'text-bull font-semibold'}>{signedUsd(n.netPut)}</span>
@@ -526,9 +443,8 @@ export const NetPanel = ({ tape, ticker, intervalMin, metric, onMetric, showCall
               <XAxis dataKey="min" type="number" domain={[tape.window.from, tape.window.to]} ticks={ticksFor(tape.window.from, tape.window.to)} tickFormatter={xFmt} tick={axisTick} stroke={AXIS} tickLine={false} allowDataOverflow />
               <YAxis yAxisId="prem" tick={axisTick} stroke={AXIS} tickLine={false} width={Y_LEFT_W} domain={[-premAbs, premAbs]} tickFormatter={(v: number) => `${v < 0 ? '−' : ''}${fmtUsd(Math.abs(v))}`} />
               <Tooltip content={<NetTooltip />} isAnimationActive={false} cursor={{ stroke: 'rgb(var(--ink) / 0.15)' }} />
-              {/* EACH LINE WEARS ITS MEANING (the retail pass, 2026-10-22: a put line below zero — puts sold, bullish — drew red):
-                  the axis is symmetric about zero, so a gradient split at the middle inks calls green above and red below,
-                  puts red above (bought, bearish) and green below (sold, bullish); the puts are dashed */}
+              {/* Each line wears its meaning: a gradient split at zero inks calls green above and red below, puts red
+                 above (bought) and green below; puts are dashed. */}
               <defs>
                 <linearGradient id="cf-calls" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="50%" stopColor={ASK} />

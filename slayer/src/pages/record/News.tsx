@@ -34,6 +34,10 @@ import NewsFeedTabs, { keepInWindow, nameWord } from '../../components/record/Ne
 import NewsCalendar from '../../components/record/NewsCalendar';
 import { useMediaQuery } from '../../components/ui/useMediaQuery';
 import { NEWS_ROW_H, NEWS_WINDOW_H, NEWS_WINDOW_ROWS } from './recordSkeletons';
+import { signedPct } from './money';
+import { Door, Fact as RecordFact, ago } from '../../components/record/ui';
+
+const Fact = (p: Omit<Parameters<typeof RecordFact>[0], 'scope'>) => <RecordFact scope="news" {...p} />;
 
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
@@ -57,19 +61,17 @@ const NAMES_OPTIONS: DropdownOption<NamesPick>[] = [
   { value: 'board', label: 'Your board', hint: 'Stories on the names on your Board' },
   { value: 'macro', label: 'Macro only', hint: 'The economy, the Fed, markets and policy — stories with no company as their subject' },
 ];
+/* beside the story card (lg to 2xl) the rows drop the kind and also columns so the headline keeps its width */
+const BAND_COLS = 'grid-cols-[72px_104px_96px_72px_minmax(0,1fr)_76px_72px] lg:max-2xl:grid-cols-[60px_92px_64px_minmax(0,1fr)_72px]';
 const SORT_OPTIONS: DropdownOption<Sort>[] = [
-  { value: 'matters', label: 'What matters', hint: 'Major stories on your Board first, then the rest of your Board, then other major stories, then stories with a named stock or about the economy, then the rest — newest first inside each. Routine notices the wire flags major (a dividend declared, a results date, a conference slot) and unlisted press releases are not lifted' },
+  { value: 'matters', label: 'What matters', hint: 'Major stories on your Board first, then your Board, other major stories, named stocks, the rest; newest first in each' },
   { value: 'newest', label: 'Newest', hint: 'The latest story first' },
-  { value: 'move', label: 'Biggest move', hint: 'The named stock that had moved most on the session when its story crossed, first; a story that crossed before the open is ranked by its stock\'s last-session move, the move its row shows' },
+  { value: 'move', label: 'Biggest move', hint: 'The named stock that had moved most when its story crossed, first' },
   { value: 'loud', label: 'Loudest', hint: 'Major stories and big movers first' },
 ];
 
-
-/** A notice, not news: dividends declared, results dates and calls scheduled, conference slots, tokenized listings */
-/* a figure's decimal point ("$15.63/share") is not the end of a sentence */
 /* sport, fashion and lifestyle — press releases that are not market news */
 const LIFESTYLE_RE = /\b(?:fc|football|soccer|bundesliga|premier league|la liga|serie a|champions league|world cup|nba|nfl|mlb|nhl|wnba|formula (?:1|one)|f1|grand prix|nascar|olympics?|tennis|golf|pga|ufc|esports?|stadium|jersey|kit sponsor|bayern|real madrid|barcelona|manchester united|fashion|runway|couture|apparel collection|capsule collection|handbags?|sneakers?|fragrance|cosmetics|skincare|beauty|lifestyle|wellness|recipes?|celebrity|red carpet|film festival|concert|album|music video|call of duty|modern warfare)\b/i;
-const ROUTINE_RE = /\bdeclares?\b(?:[^.]|\.(?=\d)){0,40}\bdividends?\b|\bdividends?\b(?:[^.]|\.(?=\d)){0,20}\bdeclared\b|\b(?:to (?:announce|report|release|host)|announces?|schedules?|sets?)\b(?:[^.]|\.(?=\d)){0,60}\b(?:results|earnings release|conference call|webcast)\b(?:[^.]|\.(?=\d)){0,40}\b(?:on|date|dates|for)\b|\b(?:to )?(?:participate|present) (?:in|at)\b(?:[^.]|\.(?=\d)){0,40}\bconferences?\b|\btokeni[sz]ed\b|\bbinance futures\b|\belected\b(?:[^.]|\.(?=\d)){0,40}\bdirector\b/i;
 
 /* Not lifted whatever the flag: a preview is not a result, a product release is not the lead, and on the Macro beat only
    the hard economy (the Fed, the data, rates, the indexes) leads. */
@@ -87,8 +89,6 @@ const dupClose = (a: Set<string>, b: Set<string>): boolean => {
   return both / Math.min(a.size, b.size) >= 0.6 && both >= 3;
 };
 
-const ago = (m: number) => (m < 1 ? 'just now' : m < 60 ? `${Math.round(m)}m ago` : `${Math.floor(m / 60)}h ${Math.round(m % 60)}m ago`);
-const signed = (v: number, d = 1) => `${v >= 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
 
 /* The tape: the newest headlines on the cut in a seamless loop over the map. It holds still under the pointer, can be
    pulled by wheel or drag, steps with its arrows, and stands still under reduced motion. */
@@ -286,19 +286,6 @@ const NewsTape = ({ tape, selectedId, onPick }: { tape: GeoNewsEvent[]; selected
   );
 };
 
-/** A door out — small, labelled, never a naked icon; warms the name on hover so the landing is instant */
-const Door = ({ onClick, onWarm, children }: { onClick: () => void; onWarm?: () => void; children: React.ReactNode }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    onMouseEnter={onWarm}
-    className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-borderSubtle bg-chip hover:border-borderMuted font-mono text-t9 uppercase tracking-widest text-textSecondary hover:text-textPrimary transition-colors"
-  >
-    <ArrowUpRight className="w-3 h-3" />
-    {children}
-  </button>
-);
-
 /** A name's news alert, set from the story card: the bell rings when a headline lands on this name (alertStore armNews). */
 const NewsAlertDoor = ({ ticker }: { ticker: string }) => {
   const alerts = useAlerts(ticker);
@@ -324,16 +311,6 @@ const weekdayDay = (iso: string): string => {
   const wd = new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12)).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
   return `${wd} ${shortDay(iso)}`;
 };
-
-/** A head figure; `partial` greys it while the read is still landing */
-const Fact = ({ label, children, testId, tip, partial, wrap }: { label: string; children: React.ReactNode; testId?: string; tip?: string; partial?: boolean; wrap?: boolean }) => (
-  <div>
-    <dt className="text-t10 text-textMuted whitespace-nowrap cursor-help" title={tip}>{label}</dt>
-    <dd className={`mt-0.5 font-mono text-t12 tnum whitespace-normal break-words ${partial ? 'text-textMuted' : 'text-textPrimary'}`} data-news-fact={testId} data-partial={partial ? '' : undefined}>
-      {children}
-    </dd>
-  </div>
-);
 
 /** A figure on the story card — label over value, the card's own smaller scale */
 /* the figure wraps inside its own column */
@@ -484,7 +461,7 @@ const News = () => {
         /* a routine notice the vendor flags major (a dividend, a results date, a conference slot) is not lifted for the flag */
         /* a press release from a company the page does not list never leads the wire */
         const lifted = (e: GeoNewsEvent) =>
-          e.item.major && !ROUTINE_RE.test(e.item.headline) && !PREVIEW_RE.test(e.item.headline) && !(e.item.ticker == null && e.item.category !== 'Macro') &&
+          e.item.major && !PREVIEW_RE.test(e.item.headline) && !(e.item.ticker == null && e.item.category !== 'Macro') &&
           (LIFT_BEATS.has(e.item.category) || (e.item.category === 'Macro' && HARD_MACRO_RE.test(e.item.headline)));
         /* a sport, fashion or lifestyle release ranks last off the Board */
         const rank = (e: GeoNewsEvent) => (onBoard(e) ? (lifted(e) ? 0 : 1) : LIFESTYLE_RE.test(e.item.headline) && e.item.category !== 'Earnings' && e.item.category !== 'M&A' ? 5 : lifted(e) ? 2 : e.item.ticker || e.item.category === 'Macro' ? 3 : 4);
@@ -688,14 +665,14 @@ const News = () => {
                 <span className="text-textMuted">reading {coverage.today ? "today's" : `${wireDayWord}'s`} stories{namesSoFar ? ` · ${namesSoFar} names so far` : ''}</span>
               ) : biggest ? (
                 <>
-                  {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signed(biggest.pct)}</span>
+                  {biggest.ticker} <span className={biggest.pct >= 0 ? 'text-bull' : 'text-bear'}>{signedPct(biggest.pct)}</span>
                   <span className="text-textMuted"> · of {setMoves.screened} {setMoves.screened === 1 ? "name" : "names"}</span>
                 </>
               ) : (
                 <span className="text-textMuted">{moveNames.length ? (setMoves.complete ? 'no regular close on these names' : `reading ${Math.min(setMoves.screened, moveNames.length)} of ${moveNames.length} names`) : 'no named stories yet'}</span>
               )}
             </Fact>
-            <Fact label="Next print" testId="next" wrap tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
+            <Fact label="Next print" testId="next" tip="The next economic release on the calendar — today's or a later day's, the high-impact ones first; with none ahead, the next earnings report">
               {nextPrint ? (
                 <>
                   {nextPrint.title} <span className={nextPrint.inMinutes < 90 ? 'text-warn' : 'text-textMuted'}>· {nextPrint.dayLabel} {nextPrint.timeLabel} · in {nextPrint.inMinutes < 60 ? `${nextPrint.inMinutes}m` : `${Math.floor(nextPrint.inMinutes / 60)}h ${nextPrint.inMinutes % 60}m`}</span>
@@ -742,27 +719,24 @@ const News = () => {
         {/* the story list first, the story in hand beside it; the map loads below, once it is near the screen */}
         <div className="px-5 py-2 border-t border-borderSubtle flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:shrink-0" role="group" aria-label="What kind of story" data-news-kinds={category}>
           {kindPills}
+          <span className="ml-auto pl-3 shrink-0 max-sm:hidden">
+            <ImpactLegend />
+          </span>
         </div>
-        <div className="grid border-t border-borderSubtle grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,400px)]" data-news-band>
+        <div className="grid border-t border-borderSubtle grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]" data-news-band>
           <div className="min-w-0 lg:border-r lg:border-borderSubtle">
         {/* every story on the cut, in the chosen order */}
         {/* below lg the rows scroll sideways at a readable width */}
         {/* a day of the wire is hundreds of rows, so the list scrolls inside a window with its head pinned */}
         <div ref={rowsRef} className={`relative overflow-y-auto overscroll-contain ${stacked ? '' : 'max-lg:overflow-x-auto'}`} style={{ maxHeight: NEWS_WINDOW_H }} data-news-rows data-news-window={rows.length > NEWS_WINDOW_ROWS || undefined} data-news-stacked={stacked || undefined}>
-          {!stacked && <div className="sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted max-lg:min-w-[900px]" style={{ gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}>
+          {!stacked && <div className={`sticky top-0 z-10 bg-panel px-5 h-[22px] grid items-center gap-x-3 text-t9 uppercase tracking-widest text-textMuted max-lg:min-w-[900px] ${BAND_COLS}`}>
             <span title="When the headline crossed, New York time">Time</span>
-            <span title="The first stock the headline names — the wire's tag, or the listed company the headline names; MACRO for a story about the economy, markets, policy or the world that names none; NO NAME for a company-beat story that names no listed company">Name</span>
-            <span title="What sort of story it is, read from the headline">Kind</span>
+            <span title="The first stock the headline names; MACRO for an economy or market story; NO NAME for an unlisted company's story">Name</span>
+            <span className="lg:max-2xl:hidden" title="What sort of story it is, read from the headline">Kind</span>
             <span title={NEWS_FLAG_TIP}>Flag</span>
-            <span className="flex items-center gap-4">
-              <span>Headline</span>
-              {/* the legend sits under the cards line on a narrow page (the head's column has no room for it) */}
-              <span className="max-lg:hidden">
-                <ImpactLegend />
-              </span>
-            </span>
+            <span>Headline</span>
             <span className="text-right" title="How the named stock had moved on the session when the story crossed — a snapshot at publish, not today's move now">At publish</span>
-            <span className="text-right" title="The other stocks the headline names">Also</span>
+            <span className="text-right lg:max-2xl:hidden" title="The other stocks the headline names">Also</span>
           </div>}
           {rows.length === 0 && <div className="px-5 py-6 text-center font-mono text-t10 uppercase tracking-widest text-textMuted">{news.status === 'loading' || coverage.reading ? 'Reading the wire' : news.status === 'sim' ? 'This read did not land' : 'Nothing on the tape for these cards'}</div>}
           {rows.map(e => {
@@ -809,8 +783,8 @@ const News = () => {
                 key={e.id}
                 type="button"
                 onClick={() => pick(e)}
-                className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[900px] ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
-                style={{ minHeight: NEWS_ROW_H, gridTemplateColumns: '72px 104px 96px 72px minmax(0, 1fr) 76px 72px' }}
+                className={`group w-full text-left px-5 py-2 grid items-start gap-x-3 border-t border-borderSubtle/40 transition-colors max-lg:min-w-[900px] ${BAND_COLS} ${open ? 'bg-silver/[0.06] shadow-[inset_2px_0_0_0_rgba(199,211,232,0.7)]' : 'hover:bg-silver/[0.05]'} ${faded && !open ? 'opacity-60' : ''}`}
+                style={{ minHeight: NEWS_ROW_H }}
                 data-news-row={e.id}
                 data-open={open || undefined}
               >
@@ -825,7 +799,7 @@ const News = () => {
                     <span className="text-textSecondary">{storyNameWord(e.item)}</span>
                   )}
                 </span>
-                <span className="min-w-0 h-5 flex items-center">
+                <span className="min-w-0 h-5 flex items-center lg:max-2xl:hidden">
                   <CatTag category={e.item.category} size={9} />
                 </span>
                 <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} /></span>
@@ -834,7 +808,7 @@ const News = () => {
                   <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>
                 </span>
                 <span className="h-5 flex items-center justify-end font-mono text-t11 font-semibold tnum whitespace-nowrap"><PublishMove p={e.item.prediction} short /></span>
-                <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
+                <span className="h-5 flex items-center justify-end font-mono text-t10 text-textSecondary truncate lg:max-2xl:hidden" data-news-row-also title={(e.item.tickers ?? []).slice(1).join(', ') || undefined}>
                   {(e.item.tickers ?? []).length > 1 ? `${e.item.tickers![1]}${e.item.tickers!.length > 2 ? ` +${e.item.tickers!.length - 2}` : ''}` : '—'}
                 </span>
               </button>
@@ -889,11 +863,11 @@ const News = () => {
                   {selected.item.ticker ? (
                     selectedQuote?.phase === 'pre' && selectedQuote.lastSessionPct != null ? (
                       <Figure label={`Last session${selectedQuote.regDate ? ` · ${shortDay(selectedQuote.regDate)}` : ''}`} title={`Before the open: the last regular session's change${extendedLine(selectedQuote) ? ` · ${extendedLine(selectedQuote)}, kept apart` : ''}`} tone={selectedQuote.lastSessionPct >= 0 ? 'text-bull' : 'text-bear'}>
-                        {signed(selectedQuote.lastSessionPct)}
+                        {signedPct(selectedQuote.lastSessionPct)}
                       </Figure>
                     ) : (
                       <Figure label={selectedQuote && selectedQuote.phase !== 'regular' ? 'The session' : 'Today'} title={`The regular session's change${extendedLine(selectedQuote) ? ` · ${extendedLine(selectedQuote)}, kept apart` : ''}`} tone={selectedQuote ? (selectedQuote.changePct >= 0 ? 'text-bull' : 'text-bear') : 'text-textMuted'}>
-                        {selectedQuote ? signed(selectedQuote.changePct) : '—'}
+                        {selectedQuote ? signedPct(selectedQuote.changePct) : '—'}
                       </Figure>
                     )
                   ) : null}
@@ -999,7 +973,7 @@ const News = () => {
       <div className="border border-borderSubtle rounded-md bg-panel" data-news-all>
         <div className="px-5 pt-4 pb-3">
           <h3 className="text-t15 font-semibold leading-tight text-textPrimary">All news</h3>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The same wire as above, a tab per kind — it opens on the earnings stories; All repeats the list above · follow a name and ring the bell on it · a click opens the story beside the map</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The same wire, a tab per kind · follow a name and ring the bell on it</p>
         </div>
         <div className="border-t border-borderSubtle">
           <NewsFeedTabs events={events} calendar={calendar} selectedId={selectedId} onPick={pick} wire={news.status === 'loading' || coverage.reading ? 'reading' : news.status === 'sim' ? 'failed' : 'read'} />
@@ -1010,7 +984,7 @@ const News = () => {
       <div className="border border-borderSubtle rounded-md bg-panel" data-news-day>
         <div className="px-5 pt-4 pb-3">
           <h3 className="text-t15 font-semibold leading-tight text-textPrimary">The day</h3>
-          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The month — data, earnings, the FDA, the public schedule, the posts — and what the wire adds up to</p>
+          <p className="mt-0.5 text-t11 text-textMuted whitespace-nowrap truncate">The month: data, earnings, the FDA, the schedule and the posts</p>
         </div>
         <div className="border-t border-borderSubtle">
           {/* the month is read once the wire's first page is in, so the headlines land first */}

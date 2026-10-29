@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - POPOVER CARD
-  (components/ui/PopoverCard.tsx)
-
-  A card that opens from a control and holds a
-  small tool — a list of switches, a key, a form —
-  rather than a row of chips on the toolbar. Radix
-  Popover underneath (focus trap, outside-click,
-  Escape, portal, collision placement); the same
-  card surface every dropdown on the terminal
-  wears.
-==================================================
-*/
+/* A card opened from a control that holds a small tool (switches, a key, a form), on Radix Popover with the shared
+   dropdown card surface. */
 
 import * as Popover from '@radix-ui/react-popover';
 import type { ReactNode } from 'react';

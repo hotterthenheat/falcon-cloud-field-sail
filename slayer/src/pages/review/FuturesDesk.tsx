@@ -1,33 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW › BACKTEST · THE FUTURES DESK
-  (pages/review/FuturesDesk.tsx)
-
-  The same desk as an option's — the SHELL is one file
-  for both (components/review/DeskShell.tsx: the account
-  strip, the house chart and its top row, the measured
-  heights, the takeover with its panel, two charts side
-  by side, the clock's bar, the keys; every ruling made
-  on it is in its head note). This file says what a
-  FUTURE is (docs/review-futures-rules.md,
-  data/review/futuresEngine.ts):
-
-    no chain            one price. Where the chain was
-                        is THE CONTRACT: what a point
-                        and a tick are worth, the margin,
-                        the day so far by its three
-                        sessions, and what a stop of so
-                        many points lets you hold
-    long and short      the ticket says what a press
-                        DOES to the position
-    a plain chart layer a way out's price IS its line —
-                        nothing drifts, nothing to pin
-    a 23-hour day       18:00 to 17:00 New York; jumps to
-                        09:30 (the key 9) and to the next
-                        day's open; no 16:00 bell; the
-                        clock's bar carries the day's own
-                        marks, not an hour a mark
-==================================================
+  The futures backtest desk, on the same shell as the options desk: the contract card where the chain would be,
+  the order card, and brackets in points from the fill.
 */
 
 import { useMemo, useState } from 'react';

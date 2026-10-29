@@ -1,21 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - TRACE, ON ITS OWN PAGE
-  (pages/landing/products/TracePage.tsx)
-
-  The product page for the tape (Noah, 2026-10-02:
-  "now do trace"). Eleven pages in the terminal,
-  one page here: the live tape and a print's card,
-  the ONE recording (the tour's own film of the
-  tape — held, a row opened, let run), the dark
-  pool, then the day's book read every way the
-  room reads it — the screener, net flow, the
-  same-day money, the footprints, the quarter
-  hours, the watchers, the structures, two names
-  side by side — and the tracker in a line. Every
-  picture is the real page (scripts/
-  make-product-shots.mjs, `trace`).
-==================================================
+  Trace's product page: the live tape and a print's card, one recording, and the other tape pages.
 */
 
 import { useGround } from '../ground';

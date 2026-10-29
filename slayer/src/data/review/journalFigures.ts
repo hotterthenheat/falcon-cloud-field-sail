@@ -1,44 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE JOURNAL'S FIGURES
-  (data/review/journalFigures.ts)
-
-  What the journal's front page draws (Noah, 2026-09-25,
-  on the partner's journal: "i love the calendar view as
-  the first thing that greets you … i want cool but not
-  over the top charts or graphs or any visual thing that
-  can showcase the users pnl in many formats, alltime,
-  this month, etc. when clicking on a certain calendar
-  date you should be able to see all of the trades you
-  took with accounts etc."):
-
-    the period         today · this week · this month ·
-                       this year · all time — the trading
-                       days a trade's close must fall in
-    the month          Sunday to Saturday, week by week — a
-                       day is THE CALENDAR DAY the trade
-                       closed on, New York's (the desk's
-                       RP&L counts a trading day that turns
-                       at 17:00; a journal's calendar is a
-                       calendar: a Friday-night future is
-                       Friday's here, Monday's there — the
-                       redesign of 2026-09-26, after the
-                       first cut called Sep 28 "today" on a
-                       Friday night)
-    each day           what it made, how many closed, how
-                       many won
-    the running total  a point a trade in the order they
-                       closed, and how far it stood under
-                       the best it had reached
-    five cuts          the hour it was opened (New York) ·
-                       the weekday · the name · long or
-                       short · the size of the result
-
-  Pure: rows in, figures out — the page and the proof
-  read the same functions. THESE ARE THE READER'S NUMBERS
-  about their own trades (the no-public-grades ruling is
-  about OUR reads of the market).
-==================================================
+  The journal's figures over a period: the month's days, the running total, the lanes and the period's stats.
 */
 
 import { directionOf, entryOf, instantOf, nameOf, type JournalRow } from './journal';
@@ -145,9 +106,6 @@ export function dayTotals(rows: JournalRow[]): Map<string, DayTotal> {
 /** A calendar day as a moment on a day-clock chart: its noon in New York, in seconds (16:00 UTC is noon or 11:00 there — the
     same date either way) */
 export const dayTime = (day: string): number => Math.floor(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), 16) / 1000);
-/** WHAT EACH DAY MADE — a bar a day that closed anything, oldest first */
-export const dailyOf = (days: Map<string, DayTotal>): { time: number; value: number; day: string }[] =>
-  [...days.values()].sort((a, b) => (a.day < b.day ? -1 : 1)).map(d => ({ time: dayTime(d.day), value: d.net, day: d.day }));
 
 /* ---- the running total ---- */
 export interface RunPoint {

@@ -1,29 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PINPOINT, ON ITS OWN PAGE
-  (pages/landing/products/PinpointPage.tsx)
-
-  The product page for the book (Noah, 2026-10-02:
-  "now do the same for pinpoint"). Five pages in the
-  terminal (Ahead and At the wall were two more until
-  2026-10-14, when Noah had them deleted), one page
-  here: the Map (the matrix, the calendar, the
-  trader's clock, how the levels held),
-  Building (what's being built, where the walls are
-  heading), Targets (and where they
-  sit), the Board, Compare (head to head, one ruler,
-  since the open, the pair). ONE recording — the
-  tour's own film of the Map. Every picture is the
-  real page (scripts/make-product-shots.mjs,
-  `pinpoint`).
-
-  THE WORDS ARE PINPOINT'S OWN RULE (2026-09-05:
-  not a buzzword on it): the options words a
-  reader must know stay — gamma, the walls, the
-  flip, the supreme, open interest — and every
-  figure says what it is made of. Never a sigma;
-  never a grade of ours.
-==================================================
+  Pinpoint's product page: the Map, the board, the building, the agenda and the pair, with one recording.
 */
 
 import { useGround } from '../ground';

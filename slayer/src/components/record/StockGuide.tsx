@@ -1,15 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ A NAME
-  (components/record/StockGuide.tsx)
-
-  The stock overview page's guide, in the house
-  pattern: a sentence a section, figures drawn in
-  the page's own grammar (the pillar bar against
-  the 50 line, a factor's lean from the middle),
-  and "Today" from the figures on screen.
-==================================================
-*/
+/* A name page's guide: a sentence a section, figures in the page's own grammar, and "Today" from the figures on screen. */
 
 import type { ReactNode } from 'react';
 import type { StockOverview } from '../../data/stockOverview';
@@ -38,7 +27,7 @@ const Figure = ({ children, label, h = 150 }: { children: ReactNode; label: stri
   </figure>
 );
 
-/** The four pillars as words on the three-step meter, the read under them (no figure of ours: Noah, 2026-09-19) */
+/** the pillars as words on the meter, the read under them */
 const WARN = 'rgb(var(--warn))';
 const GRADE_FILL: Record<Grade, string> = { strong: BULL, good: BULL, caution: WARN, poor: BEAR };
 const PillarsFigure = () => {

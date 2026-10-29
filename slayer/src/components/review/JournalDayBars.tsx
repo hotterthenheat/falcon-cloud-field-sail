@@ -1,33 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - WHAT EACH DAY MADE
-  (components/review/JournalDayBars.tsx)
-
-  The period's days as SLIM BARS (Noah, 2026-09-26, on a
-  library histogram that painted two days as two slabs:
-  "i hate the 'what each day made' looks. try to go for a
-  more modern way of visualizing it. this looks old
-  school"). A bar a day, rounded, a breath between them,
-  green up from the baseline and red down, the tallest
-  the period's biggest day; the figure's ceiling and
-  floor said at the right, the first and last days and a
-  few between named underneath.
-
-  THE POINTER ON A BAR lifts it and says the day in a
-  card BESIDE it — never over it (Noah, 2026-09-26: "the
-  hover effect on this is covering the actual section
-  that is being hovered over"): to the right of a bar in
-  the left half, to the left of one in the right half,
-  its head at an up bar's tip and its foot at a down
-  bar's, kept inside the box — what it made, how many
-  closed and won; a press opens the day. The open day's bar stays at
-  full strength and wears NO ring or border (Noah,
-  2026-09-26: "shouldnt have a click colored border" —
-  the day open under the calendar says which it is).
-  Drawn in the house's row grammar (the cut cards,
-  the Map's net bars), not the chart library: a figure
-  of a handful of days is a row of marks, not a tape.
-==================================================
+  What each day of the period made, as slim bars from a baseline, green up and red down; the pointer lifts a bar
+  and says the day in a card beside it.
 */
 
 import { useState } from 'react';

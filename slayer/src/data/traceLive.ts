@@ -193,12 +193,8 @@ export function dteFrom(iso: string, fromIso: string = tapeSessionIso()): number
 /** Days to expiry from the tape's session */
 const dteOf = (iso: string): number => dteFrom(iso);
 
-/* ONE READ PER REQUEST, SHARED (audit round 8: Compare's head said SPY −$13.3M while its own pane said −$14.0M — the
-   same /net-prem-ticks read by two hooks polling 2s apart; and every page opened cold, re-asking what the page before had
-   just read — Watchers 28s, Dark Pool 25s, Footprints 20s, Net Flow 18s). Every hook asking the same key now shares one
-   box and one poll: two figures off one route are one snapshot, and a page opened a minute after another that read the
-   same route draws that answer at once — stamped with its time (StaleMark) — while the fresh one is asked for. An answer
-   older than LIVE_KEEP_MS is not shown on a new page; it waits for the fresh read like a first visit. */
+/* One read per key, shared: hooks asking the same key share one box and one poll, so a page opened after another
+   draws its answer at once (stamped); one older than LIVE_KEEP_MS waits for a fresh read. */
 interface LiveShared {
   box: CacheBox<unknown> | null;
   subs: Set<() => void>;
@@ -231,27 +227,16 @@ function liveRun(key: string) {
       liveNotify(sh);
     });
 }
-/* PAUSE STOPS THE READS (audit round 9, minor 6: the Live Tape kept polling /option-trades under Pause, its "Today so far"
-   line and whole-day panel still moving): while any Trace page holds (LiveHold's useHold), no shared read polls again —
-   a read that has not landed yet still lands (a page paused before its first read holds at it), and a card opened under
-   the pause reads once. Resume and the polls pick up on their next beat. */
+/* While any Trace page holds, no shared read polls again; a read already in flight still lands, and a card opened
+   under the pause reads once. */
 let holdsPaused = 0;
 export function noteTraceHold(paused: boolean): void {
   holdsPaused = Math.max(0, holdsPaused + (paused ? 1 : -1));
 }
 export const traceHeld = () => holdsPaused > 0;
 
-/* ---- THE POLL FOLLOWS THE CLOCK (audit round 10, major 4: a 3-slot key, and after the close Compare made 150 calls a
-   minute, Multi-Leg 88, Net Flow 53 — re-asking a day that could no longer change) ---------------------------------------
-   - A DAY read (the default: the screener, the tides and minute ticks, a name's expiries, the structures, the alerts
-     walked back from the close) is read ONCE after the session has ended — from 16:15 New York through the night, the
-     weekend and a holiday — and held: a box read at least SETTLE_MS after the close stands until the next session. In
-     the pre-market (04:00–09:30) it is re-read every PRE_POLL_MS, since the vendor's next day and the morning's open
-     interest arrive then.
-   - A LIVE read (the newest prints after hours, the newest dark-pool crosses, a stock's last trade) keeps moving after
-     the close, slowly: outside the session it is re-read at most every QUIET_POLL_MS.
-   - A hidden tab (document.visibilityState) asks nothing; the next beat after it shows again catches up.
-   - A failed read is retried on its beat, in every phase. */
+/* The poll follows the clock: a day read is read once after the session and held to the next (re-read pre-market,
+   when the next day and OI arrive); a live read keeps moving slowly outside it. */
 export type ReadKind = 'day' | 'live';
 const SETTLE_MS = 5 * 60_000;
 const PRE_POLL_MS = 120_000;
@@ -313,7 +298,7 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
       if (due(true)) liveRun(key);
       me.timer = window.setInterval(() => {
         if (due(false)) liveRun(key);
-        /* checked often, cheaply: the beat runs from the last ANSWER, so a check on the poll's own period would skip one
+        /* checked often, cheaply: the beat runs from the last answer, so a check on the poll's own period would skip one
            beat in two (a read that took 1.5s is 6.5s old at the next 8s tick) */
       }, Math.max(1_000, Math.min(pollMs / 4, 5_000)));
     }
@@ -328,8 +313,7 @@ export function useLive<T>(key: string, load: () => Promise<T>, empty: T, enable
     // `key` is the request. `load` closes over the same key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled, pollMs, kind]);
-  /* A NEW KEY NEVER WEARS THE OLD KEY'S ROWS (the ship pass, 2026-10-22): the box outlived its request, so a Net Flow pane
-     moved from SPY to META drew SPY's minutes under META's name until the next answer landed */
+  /* a new key never wears the old key's rows */
   const sh = enabled ? liveShared.get(key) : undefined;
   const kept = sh && sh.box && sh.box.key === key && (sh.subs.size > 0 || (sh.box.at != null && (Date.now() - sh.box.at <= LIVE_KEEP_MS || (kind === 'day' && !sh.box.fault && heldFresh(sh.box.at))))) ? sh.box : null;
   const mine = kept as CacheBox<T> | null;
@@ -354,14 +338,10 @@ async function getRows(path: string): Promise<Record<string, unknown>[]> {
   return rowsOf(got.data);
 }
 
-/** The print's own side, as the vendor tags it (ask_side / bid_side / mid_side) — the side every Trace surface reads.
-    "Mid" is the vendor's mid_side or no side at all, never our own reading of the quote (the audit, 2026-10-22: 757 of
-    2,700 prints the vendor tags bid_side or ask_side fill a cent inside the spread, and the tape called them NEUTRAL
-    while the card called them bought or sold). Falls back to the quote only when the row carries no side tag. */
-/** THE QUOTE GIVES NO READ (audit round 9, minor 1: AAPL261023C00347500 filled 0.51 against a bid of 0.85 — that bid
-    stamped 16:11Z, over an hour before the fill — and an ask of 0.51; the vendor's bid_side tag stood and the print read
-    BEARISH). A crossed quote (bid at or over the ask) or a side quoted more than five minutes before the fill is not a
-    quote the fill can be read against: no side, whatever the tag says — "quote crossed · no read". */
+/** The print's own side as the vendor tags it (ask_side / bid_side / mid_side), the side every Trace surface reads;
+    the quote is the fallback only when the row carries no tag. */
+/** A crossed quote, or a side quoted more than five minutes before the fill, gives no read whatever the tag says
+    ("quote crossed · no read"). */
 const STALE_QUOTE_MS = 5 * 60_000;
 export function quoteNoReadOf(row: Record<string, unknown>, price: number, bid: number, ask: number, atMs: number): 'crossed' | 'stale' | null {
   if (!(price > 0)) return null;
@@ -378,9 +358,8 @@ export function quoteNoReadOf(row: Record<string, unknown>, price: number, bid: 
 export const quoteNoReadWords = (k: 'crossed' | 'stale') => (k === 'crossed' ? 'quote crossed · no read' : 'quote stale · no read');
 export function sideOfTags(tags: unknown, price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' {
   const t = Array.isArray(tags) ? tags.map(String) : [];
-  /* A TAG THE QUOTE AT THE PRINT CONTRADICTS loses to the quote: an "ask_side" fill at or under the bid was a sale, a
-     "bid_side" fill at or over the ask a purchase (the retail pass, 2026-10-22: a fill a cent inside the spread keeps its
-     tag — 757 such prints — but a tag on the far side of the quote is the vendor's error, not the print's side) */
+  /* A tag the quote at the print contradicts loses to the quote: an "ask_side" fill at or under the bid was a sale.
+     A fill a cent inside the spread keeps its tag. */
   /* a crossed quote (bid at or over the ask) says nothing about the side — no read (quoteNoReadOf) */
   if (price > 0 && bid > 0 && ask > 0 && bid >= ask) return 'MID';
   const quoted = price > 0 && bid > 0 && ask > bid;
@@ -390,19 +369,10 @@ export function sideOfTags(tags: unknown, price: number, bid: number, ask: numbe
   return execOf(price, bid, ask) ?? 'MID';
 }
 
-/* THE PRINT'S OWN CONDITION CODE (OPRA, upstream_condition_detail) says what it was: ISOI is an intermarket sweep;
-   ML?T / TL?T and the ?ESL / ?ASL / ?FSL family are legs of a multi-leg order. `stock_multi_vol` / `multi_vol` are the
-   CONTRACT's day volumes, never this print's kind (the audit, 2026-10-22: reading them made every print on a contract
-   that had ever traded in a spread a "×2 legs · CUSTOM"). */
-/* COMPRESSION IS NOT A BET (the third audit, 2026-10-22: "Largest in window SPX 7000C bought · $642.0M" was one OPRA
-   `cbmo` print, paired in the same millisecond with an SPX 8000P sold, and 154 such prints — $2.69B — drove "bullish
-   premium leads by $2.0B"). OPRA's CBMO is a multi-leg floor trade of proprietary products and MCTP a multilateral
-   compression trade of proprietary products: SPX/XSP packages that net open interest down between members (conversions,
-   reversals, boxes — a call bought against a put sold at one strike), whatever side each leg prints on. UW's own
-   `arbitrage` tag marks the same kind of package. These carry no direction: they are labelled, counted on their own,
-   and kept out of every bullish/bearish total, the largest/top-bull/top-bear facts and the sentiment. (The vendor's
-   `futures_floor` flag rides on EVERY floor trade — slft, mlft, mfsl, tlft as well as cbmo, 1,713 of the 2,000 newest
-   $1M prints — so it alone is not compression; the condition code is.) */
+/* The print's OPRA condition says what it was: ISOI a sweep; ML?T / TL?T and the ?ESL / ?ASL / ?FSL family legs of a
+   multi-leg order. `multi_vol` is the contract's day, never this print's kind. */
+/* Compression is not a bet: OPRA cbmo / mctp (and UW's `arbitrage` tag) are floor packages that net open interest
+   down. Labelled, counted apart, and kept out of every directional total, crown and sentiment. */
 const COMPRESSION_CODES = new Set(['cbmo', 'mctp']);
 export function printCondition(row: Record<string, unknown>): { multi: boolean; sweep: boolean; floor: boolean; compression: boolean; cross: boolean } {
   const cond = String(row.upstream_condition_detail || '').toLowerCase();
@@ -413,21 +383,16 @@ export function printCondition(row: Record<string, unknown>): { multi: boolean; 
     sweep: cond === 'isoi' || /sweep/i.test(flags),
     floor: /floor/i.test(flags) || /^(ml|tl)ft$|^[mt]fsl$/.test(cond),
     compression: COMPRESSION_CODES.has(cond) || tags.includes('arbitrage'),
-    /* a cross trade (report_flags "cross_trade") is pre-arranged between two parties at one price — no side taken on the
-       screen (audit round 9: a 25,000-lot PLTR 175C cross was crowned "largest") */
+    /* a cross trade (report_flags "cross_trade") is pre-arranged at one price: no side taken */
     cross: /cross_trade/i.test(flags),
   };
 }
 
-/** A cancelled print never traded (the third audit, 2026-10-22: 14 of 2,000 prints, $68.4M, sat on the Live Tape and in
-    every total — SPXW 270930P 8125 37 × $560.81 = $2.07M read "PAID OFFER"). Every option-trade route goes through here. */
+/** A cancelled print never traded; every option-trade route drops it here. */
 export const liveTrades = (rows: Record<string, unknown>[]) => rows.filter(r => r.canceled !== true && r.canceled !== 'true');
 
-/* ---- the index level (SPX, NDX, XSP, RUT, VIX) -------------------------------------------------------------------
-   The vendor sends no underlying price on a CBOE index's prints (`underlying_price: null`, "missing_periscope") and
-   refuses the index quote on this key — but its spot-exposure minutes for the index carry the level each minute
-   (whole points). The newest minute is the index level the moneyness is read against; a weekly root reads its index
-   (SPXW → SPX). Asked at most every 30s per index, and only for an index that is on the screen. */
+/* The index level (SPX, NDX, XSP, RUT, VIX): index prints carry no underlying price, but the vendor's spot-exposure
+   minutes carry the level; read at most every 30s, only for an index on screen. */
 const INDEX_ROOT: Record<string, string> = { SPX: 'SPX', SPXW: 'SPX', NDX: 'NDX', NDXP: 'NDX', XSP: 'XSP', RUT: 'RUT', RUTW: 'RUT', VIX: 'VIX', VIXW: 'VIX', XND: 'XND', DJX: 'DJX', MRUT: 'MRUT' };
 const indexLevels = new Map<string, { at: number; level: number }>();
 const indexFrom = new Map<string, 'quote' | 'book'>();
@@ -435,9 +400,6 @@ const indexAsks = new Map<string, Promise<void>>();
 export function indexRoot(ticker: string): string | null {
   return INDEX_ROOT[ticker.toUpperCase()] ?? null;
 }
-/** An index's distance from its level is approximate (audit round 10: SPXW read "0.0%" / "+0.3%" exact on Watchers,
-    Footprints and the Screener) — the level is the vendor's, not a live quote: marked "≈" with this hover, as on the tape */
-export const INDEX_OTM_TITLE = "An index: its level comes from the vendor's figures, not a live quote, so this distance is approximate";
 /** The newest index level we hold for this ticker's index, 0 when none */
 export function indexLevel(ticker: string): number {
   const root = indexRoot(ticker);
@@ -464,8 +426,7 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
     const hit = indexLevels.get(root);
     if (hit && indexFrom.get(root) === 'quote' && Date.now() - hit.at < 60_000) continue;
     if (hit && (Date.now() - hit.at < 30_000 || heldFresh(hit.at))) continue;
-    /* STALE WHILE IT REFRESHES (audit round 8, load time): a level in hand is used while the new one is asked for — only a
-       root with no level at all holds the rows back (every 30s the book's poll waited on /spot-exposures behind it) */
+    /* a level in hand is used while the new one is asked for; only a root with no level holds its rows back */
     const waitFor = !hit;
     let job = indexAsks.get(root);
     if (!job) {
@@ -497,16 +458,8 @@ async function ensureIndexLevels(tickers: Iterable<string>): Promise<void> {
 }
 const tickerOfRow = (r: Record<string, unknown>) => String(r.underlying_symbol || r.ticker || r.ticker_symbol || '').toUpperCase();
 
-/* ---- THE LIVE SPOT, ONE PER NAME (audit round 9, major 1) ----------------------------------------------------------
-   The screener's `stock_price` is the vendor's stock-state, and on Oct 23 that sat at its 10:35 print all day: NVDA
-   212.745 against a live 211.67, so NVDA 212.5C read "−0.1%" in the money (it was +0.4% out), Compare's 0DTE + OTM cut
-   dropped it, TSLA 370C/P stood on the wrong side, and the Tracker stored 212.75 as "spot then". Every Trace grid and card
-   now takes one spot per name, the NEWEST of:
-     - the live quote (data/liveQuote: the quote's last trade, or the book's newest bar, when the state has stalled);
-     - the newest option print's `underlying_price` the tape has handed us (stamped by its own fill time);
-     - the stock screener's `close` (/screener/stocks, sixty names a call — live while the state is frozen), read at most
-       once a minute for the names on the page;
-   and the screener row's own stock_price only when none of those is in hand. */
+/* One live spot per name, the newest of the live quote, the newest print's underlying price and the stock screener's
+   close (read at most once a minute for names on the page): the vendor's stock state can sit frozen for hours. */
 interface SeenSpot {
   spot: number;
   at: number;
@@ -591,9 +544,8 @@ export async function ensureSpots(tickers: Iterable<string>): Promise<void> {
 }
 const SPOT_WAIT_MS = 2_000;
 
-/* AN INDEX LEVEL IN WHOLE POINTS IS TOO COARSE FOR A DISTANCE ON A SMALL INDEX (the re-audit, 2026-10-22: "VIX 19 put ·
-   0.0%"): a point is 5% of VIX and 0.13% of XSP, so the distance is not stated there. SPX, NDX and RUT (thousands of
-   points) keep theirs, marked "≈" where it is drawn. */
+/* A whole-point level is too coarse for a distance on a small index (a point is 5% of VIX), so none is stated there;
+   SPX, NDX and RUT keep theirs, marked "≈". */
 export function otmOf(right: 'C' | 'P', strike: number, spot: number, fromIndex: boolean): number {
   if (!(spot > 0) || !(strike > 0)) return NaN;
   if (fromIndex && spot < 2000) return NaN;
@@ -625,13 +577,12 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const right: 'C' | 'P' = String(row.option_type || row.type || '').toLowerCase().startsWith('p') ? 'P' : 'C';
   /* (a flow alert's side is its money's split, not one quote — the check is a print's) */
   const quoteNoRead = row.__aggregate ? null : quoteNoReadOf(row, fill, bid, ask, when.ms);
-  /* a cross trade takes no side on the screen — no read either (audit round 9) */
+  /* a cross takes no side on the screen, so no read */
   const crossPrint = /cross_trade/i.test(Array.isArray(row.report_flags) ? row.report_flags.join(' ') : String(row.report_flags || ''));
   const side = quoteNoRead || crossPrint ? 'MID' : sideOfTags(row.tags, fill, bid, ask);
   /* the vendor's flag, else the clock: a fill outside the name's regular session (09:30 to 16:00, 16:15 for the index
-     and ETF options) is an extended-hours print whether or not it came flagged (a HIVE call at 17:11:50 did not) */
-  /* BY THE PRINT, NOT THE WALL CLOCK (the third audit): between 16:00 and 16:15 the vendor's own flag decides — SPY, QQQ,
-     SOXL or IBIT options at 16:14 are regular-session prints, a stock's are flagged extended_hours; before 09:30 and from
+     and ETF options) is an extended-hours print whether or not it came flagged (a hive call at 17:11:50 did not) */
+  /* By the print, not the wall clock: between 16:00 and 16:15 the vendor's own flag decides; before 09:30 and from
      16:15 nothing is regular */
   const flagged = Array.isArray(row.report_flags) || row.trading_hours != null;
   const m = when.minute;
@@ -642,7 +593,7 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const premium = num(row.premium) || fill * size * 100;
   const volume = num(row.volume);
   const oi = num(row.open_interest);
-  /* the CONTRACT's day by side (the vendor's ask_vol / bid_vol / mid_vol sum to its volume) — the row's day lean */
+  /* the contract's day by side (the vendor's ask_vol / bid_vol / mid_vol sum to its volume) — the row's day lean */
   const askVol = num(row.ask_vol);
   const bidVol = num(row.bid_vol);
   const volSum = askVol + bidVol;
@@ -658,8 +609,7 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
     right,
     otmPct: otmOf(right, strike, spot, spotIsIndexLevel(row, ticker)),
     expiry: expiryLabel(expiryIso),
-    /* from the print's own trade date, never the clock (audit round 6: at 04:15 on Oct 23 the Oct 22 and Oct 23 expiries
-       both read "0d" and the 0DTE share counted Oct 23's) — the vendor's own dte where the row carries one */
+    /* days to run from the print's own trade date (the vendor's dte where the row carries one), never the clock's */
     dte: row.dte != null && row.dte !== '' && Number.isFinite(Number(row.dte)) ? Math.max(0, Number(row.dte)) : dteFrom(expiryIso, when.ms > 0 ? nyDateOf(when.ms) : tapeSessionIso()),
     fill,
     bid,
@@ -694,11 +644,8 @@ function tradeToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   };
 }
 
-/* A FLOW ALERT IS AN AGGREGATE (the audit, 2026-10-22): `trade_count` prints on one contract inside a window, its money
-   split by side in total_ask_side_prem / total_bid_side_prem, its quote in `bid` / `ask` and its last fill in `price`.
-   Handed to the print mapper as a trade it read MID 0.00 × 0.00, NEUTRAL, "ASK 100%" on every row — the mapper looked
-   for nbbo_bid / nbbo_ask and a side tag. The side is the alert's own: the side that carried 60% or more of its money,
-   else mid. */
+/* A flow alert is an aggregate (`trade_count` prints on one contract in a window): its side is the one that carried
+   60% or more of its money, else mid; its quote is `bid` / `ask` and its last fill `price`. */
 function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   const askPrem = num(row.total_ask_side_prem);
   const bidPrem = num(row.total_bid_side_prem);
@@ -718,8 +665,7 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
       nbbo_ask: row.ask,
       premium: row.total_premium ?? row.premium,
       size: row.total_size ?? row.size,
-      /* THE FILLS' OWN TIME (the re-audit, 2026-10-22: "Filled 16:44:12" was created_at — the alert's filing — while
-         its fills were at 16:43:37): start_time … end_time is the window the alert's prints filled in */
+      /* start_time … end_time is the window the alert's prints filled in; created_at is only its filing */
       executed_at: row.start_time ?? row.end_time ?? row.created_at,
       underlying_price: row.underlying_price,
       option_type: row.type ?? row.option_type,
@@ -754,10 +700,8 @@ function alertToPrint(row: Record<string, unknown>, i = 0): FlowPrint {
   };
 }
 
-/** A FLOOR PACKAGE FILED AS ALERTS (audit round 6: "Largest flow alerts on Oct 22" led with SPX 7000C / 8000C / 8000P,
-    4,500 lots each, no side, all filed in one millisecond — the legs of one floor package, and the card called one "a
-    block", "whale-sized"). The alert route carries no floor flag, so the package is known by its shape: an alert with no
-    side whose fills started in the same millisecond as a no-side alert on another contract of the same root. */
+/** A floor package filed as alerts: no-side alerts on one root whose fills started in the same millisecond, known by
+    shape since the route carries no floor flag. */
 export function markAlertPackages(rows: FlowPrint[]): FlowPrint[] {
   const rootOf = (p: FlowPrint) => (indexRoot(p.ticker) ?? p.ticker).toUpperCase();
   const by = new Map<string, Set<string>>();
@@ -787,9 +731,8 @@ export function useOptionTape(limit = 200): LivePack<FlowPrint[]> {
   return useLive(`tape:${limit}`, async () => mapWithIndex(liveTrades(await getRows(`/option-trades?limit=${limit}`)), tradeToPrint), [], true, POLL_MS, 'live');
 }
 
-/* ONE NAME'S TAPE AND STRUCTURES (Trace › Compare, 2026-10-22): the market-wide windows are the market's latest prints
-   — after the close almost all index — so a name like SPY read "0 prints" beside a full book. Additive: the vendor's
-   ticker_symbol filter on the same routes. */
+/* One name's tape and structures, via the vendor's ticker_symbol filter: the market-wide windows after the close are
+   almost all index prints. */
 export function useNameTape(ticker: string | null, limit = 200): LivePack<FlowPrint[]> {
   const name = (ticker || '').trim().toUpperCase();
   const pack = useLive(name ? `tape:${name}:${limit}` : 'tape:name:off', async () => mapWithIndex(liveTrades(await getRows(`/option-trades?ticker_symbol=${encodeURIComponent(name)}&limit=${limit}`)), tradeToPrint), [], !!name);
@@ -799,11 +742,8 @@ export function useNameTape(ticker: string | null, limit = 200): LivePack<FlowPr
   return pack;
 }
 
-/** ONE NAME'S STRUCTURES ON THE SESSION (audit round 6: Compare's "Structures 80 · the same" was the fetch cap over a
-    window the page never stated, with no session cut): the vendor's newest `limit` per page, paged back with older_than
-    to the tape's session's start — at most `pages` pages — and only the session's own. `complete` says the pages reached
-    the session's first structure; else `from` is the earliest one in hand. Legs are asked for only for the heaviest
-    `legsFor` by net (the ones a page lists), never for every structure. */
+/** One name's structures on the session: the vendor's newest `limit` a page, paged back to the session's start (at
+    most `pages`); `complete` says it got there. Legs are read only for the heaviest `legsFor` by net. */
 export interface NameSpreads extends LivePack<SpreadTrade[]> {
   session: string;
   complete: boolean;
@@ -826,7 +766,7 @@ export function useNameSpreads(ticker: string | null, limit = 80, pages = 3, leg
           complete = true;
           break;
         }
-        /* inclusive of the oldest's whole second, the overlap dropped by id (dedupeSpreads) — audit round 11, major 4 */
+        /* inclusive of the oldest's whole second, the overlap dropped by id (dedupeSpreads) */
         older = new Date(Date.parse(oldest) + 1000).toISOString();
       }
       const rows = dedupeSpreads(all)
@@ -836,7 +776,7 @@ export function useNameSpreads(ticker: string | null, limit = 80, pages = 3, leg
     },
     { rows: [] as SpreadTrade[], complete: false },
     !!name,
-    /* up to three pages a read — every half minute, not every four seconds (audit round 9, major 3) */
+    /* up to three pages a read, every half minute */
     30_000
   );
   const rev = useLegRev();
@@ -847,9 +787,7 @@ export function useNameSpreads(ticker: string | null, limit = 80, pages = 3, leg
   return { rows, at: pack.at, fault: pack.fault, waiting: pack.waiting, session, complete: pack.rows.complete, from };
 }
 
-/** One contract's real last trade — /option-contract/{occ}/flow (the vendor's "last trades"). The contract card anchors
-    on it: a book row's card had stood on an invented clip (a hashed size and spread), "$1.2M BOUGHT × 205" on a contract
-    whose last print was 2 lots on the bid. */
+/** One contract's real last trade (/option-contract/{occ}/flow): the card anchors on it. */
 export interface ContractLast {
   size: number;
   fill: number;
@@ -868,10 +806,8 @@ export interface ContractLast {
   /** The contract's day volume as of this print (the vendor's running `volume`) */
   volume?: number;
 }
-/** THE LATEST REGULAR-SESSION PRINT (audit round 4: a screener row, NVDA 220C, opened "AFTER HOURS 16:12:34 · SINGLE PRINT ·
-    $18 BOUGHT"): once the session has closed, the contract's prints walked back from the 16:15 close (/option-trades with
-    option_contracts[] and older_than), the after-hours ones left for the tape; in the session, its newest prints off
-    /option-contract/{occ}/flow, the first regular one taken */
+/** The latest regular-session print: after the close, the contract's prints walked back from 16:15; in the session,
+    its newest prints, the first regular one taken. */
 export function useContractLast(occ: string | null | undefined): LivePack<ContractLast | null> {
   const sym = (occ || '').trim().toUpperCase();
   const closed = lastRegularClose();
@@ -895,10 +831,9 @@ export function useContractLast(occ: string | null | undefined): LivePack<Contra
   );
 }
 
-/* ENDLESS (the owner, 2026-10-23): the tape opens on its newest BOOT_FILL prints and pages older ones in as the reader
-   scrolls, to the session's start — held in memory to TAPE_CAP, then said so */
-/* MEMORY STAYS BOUNDED (audit round 11, major 2): 20,000 prints are held at once; scrolling past that keeps going older and
-   lets the NEWEST go (the far end from where the reader is), said in the foot with a way back to the latest */
+/* The tape opens on its newest BOOT_FILL prints and pages older ones in on scroll, to the session's start, held to
+   TAPE_CAP */
+/* Past TAPE_CAP, scrolling older lets the newest go (the far end from the reader), said in the foot with a way back */
 const TAPE_CAP = 20_000;
 const BOOT_FILL = 2_000;
 /** The route's largest page (the spec: limit max 500) */
@@ -908,7 +843,7 @@ const GAP_PAGES = 4;
 /** Late prints land in the vendor's store a few ms behind their fill time — each poll re-reads this far back (and drops
     the repeats by trade id) so a print stamped just before the newest one in hand is never skipped */
 const LATE_MS = 2_000;
-/** The stream's beats (audit round 10): a full tape every 8s (4 until then), a light one every 10s on a small page */
+/** The stream's beats: a full tape every 8s, a light one every 10s on a small page */
 const STREAM_BUSY_MS = 8_000;
 const STREAM_IDLE_MS = 10_000;
 const STREAM_IDLE_PAGE = 100;
@@ -916,8 +851,7 @@ export { TAPE_CAP };
 
 export interface TapeQuery {
   ticker?: string;
-  /** ONE CONTRACT, ASKED OF THE VENDOR (retail, round 11: "NVDA 220C 11/20" cut the name's newest 2,426 prints to 6 while
-      the contract printed 1,017 times that day) — its OCC symbol, sent as option_contracts[] */
+  /** one contract is asked of the vendor by its OCC symbol (option_contracts[]) */
   contract?: string;
   /** One strike (min_strike = max_strike) and one expiry (expiry_dates[]) of the name — a contract typed without its date,
       or a name and a date */
@@ -937,11 +871,8 @@ export interface TapeQuery {
   otm?: boolean;
 }
 
-/** Query string the option tape actually accepts. Sweeps and compression go to the vendor as their OPRA codes
-    (trade_codes[]=isoi, cbmo, mctp — audit round 4: the Kind cards cut only the 23-second buffer), a block as one leg of
-    100 contracts and up (min_size, is_multi_leg=false); the `is_sweep`/`is_block` flags 400 this route.
-    The cursors are MILLISECONDS (the route takes seconds, milliseconds or ISO) — whole seconds skipped every print that
-    shared the cursor's second, and the market prints 150–300 a second. */
+/** The query string the option tape accepts: sweeps and compression go as OPRA codes (trade_codes[]), a block as
+    min_size with is_multi_leg=false. Cursors are milliseconds, since the market prints 150–300 a second. */
 export function tapeQueryString(q: TapeQuery, extra?: { newerThan?: number; olderThan?: number; limit?: number }): string {
   const p = new URLSearchParams();
   p.set('limit', String(extra?.limit ?? TAPE_PAGE));
@@ -994,10 +925,8 @@ function mergePrints(prev: FlowPrint[], incoming: FlowPrint[], where: 'front' | 
   if (!fresh.length) return prev;
   /* a late print can land behind prints already in hand: the list is kept newest first by the fill's millisecond */
   const next = (where === 'front' ? fresh.concat(prev) : prev.concat(fresh)).sort((a, b) => msOf(b) - msOf(a));
-  /* PAST THE CAP THE OLDEST GO, whichever end the batch joined (the re-audit, 2026-10-22: the 'back' branch kept the
-     OLDEST 2,000 — the first fill walked back four pages and then cut the newest ~497 prints away, a hole from 16:48:26 to
-     16:53:19 under a tooltip that promised an unbroken stretch). The list is newest first, so the newest contiguous
-     stretch is its head. */
+  /* Past the cap the oldest go, whichever end the batch joined: the list is newest first, so the kept stretch is
+     always its unbroken head. */
   return next.length > TAPE_CAP ? next.slice(0, TAPE_CAP) : next;
 }
 
@@ -1074,26 +1003,16 @@ export interface PrintStream extends LivePack<FlowPrint[]> {
   reset: () => void;
 }
 
-/**
- * The market tape as one growing list, LOSSLESS inside the window it holds (the audit, 2026-10-22: second-wide cursors
- * and 300-print pages skipped whole seconds of a tape that prints 150–300 a second).
- *  - every cursor is the fill's millisecond, and each page asks one millisecond INTO the last page (`older_than` its
- *    oldest + 1, `newer_than` the newest − 1), so prints sharing a millisecond are never skipped; the overlap is
- *    dropped by the vendor's trade id;
- *  - a poll walks back page by page until it meets the newest print in hand; when it cannot within the buffer's cap,
- *    the buffer is REPLACED by the newest prints rather than left with a hole in the middle — what is held is always
- *    one unbroken stretch of the tape.
- */
+/** The market tape as one growing list, lossless in its window: each page asks one millisecond into the last
+    (overlap dropped by id); a poll that cannot reach the newest in hand replaces the buffer. */
 export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs?: number | null; keep?: (p: FlowPrint) => boolean; startMs?: number | null }): PrintStream {
   /* `startMs`: the session's first instant — an older page asks nothing before it, and a page that comes back short there
      is the start of the session reached */
   const startMs = opts?.startMs ?? null;
   const startRef = useRef(startMs);
   startRef.current = startMs;
-  /* AN ANCHOR IN THE PAST (the third audit, 2026-10-22: after the close the tape held only after-hours prints, "Window
-     16:38:05–17:11:50 ET … all after hours" under a Regular session card, and the day's session could not be reached):
-     with `untilMs` the stream walks back from that instant — the last regular-session stretch — and does not poll, since
-     nothing newer belongs to it; `keep` drops the prints that do not (a stock's 16:00–16:15 extended prints) */
+  /* With `untilMs` the stream walks back from that instant (a closed session) and never polls; `keep` drops prints
+     that do not belong (a stock's 16:00–16:15 extended prints). */
   const untilMs = opts?.untilMs ?? null;
   const keepRef = useRef(opts?.keep);
   keepRef.current = opts?.keep;
@@ -1108,9 +1027,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
   const [pending, setPending] = useState<FlowPrint[]>([]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasOlder, setHasOlder] = useState(true);
-  /* THE ROWS SAY WHOSE QUESTION THEY ANSWER (audit round 8: typed NVDA, the market's rows stood one render under the new
-     question, cut to nothing, and the grid said "No prints on this cut" until NVDA's own landed) — under a new key the
-     stream reads as waiting, never as the old key's rows cut empty */
+  /* under a new key the stream reads as waiting, never as the old key's rows cut empty */
   const [rowsFor, setRowsFor] = useState(key);
   /** the newest fill in hand (rows or held) — the next poll's floor */
   const newest = useRef(0);
@@ -1134,7 +1051,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     setHasOlder(true);
     setWaiting(true);
     setFault(null);
-    /* a page's FULLNESS is the vendor's row count — a cancelled print dropped from a full page must not end the walk */
+    /* a page's fullness is the vendor's row count, so a cancelled print dropped from a full page never ends the walk */
     const page = async (cursor: { newerThan?: number; olderThan?: number }, limit = TAPE_PAGE): Promise<FlowPrint[] & { full?: boolean; oldest?: number }> => {
       const capped0 = untilMs && (!cursor.olderThan || cursor.olderThan > untilMs) ? { ...cursor, olderThan: untilMs } : cursor;
       /* nothing before the session's start (a name's 2,000 prints can reach into the day before) */
@@ -1212,10 +1129,8 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     };
     void boot();
     let polling = false;
-    /* THE BEAT FOLLOWS THE TAPE (audit round 10, major 4: 78 calls a minute in the session, 44 after the close, ~600 KB a
-       page): every STREAM_BUSY_MS while the last poll came back full, STREAM_IDLE_MS while it came back light (and then
-       asking a page of STREAM_IDLE_PAGE, not 500), QUIET_POLL_MS outside the session (the after-hours prints are few); a
-       hidden tab asks nothing. An anchored stream (untilMs — a closed session) never polls: nothing newer belongs to it. */
+    /* The beat follows the tape: STREAM_BUSY_MS while polls come back full, STREAM_IDLE_MS (and a smaller page)
+       while light, QUIET_POLL_MS outside the session; a hidden tab or an anchored stream asks nothing. */
     let lastCount = TAPE_PAGE;
     let timer = 0;
     const beat = () => {
@@ -1225,8 +1140,8 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
     };
     const tick = async () => {
       if (stop) return;
-      /* paused (any Trace hold): no poll — the tape asks again on resume (audit round 9, minor 6); a window walked back past
-         the cap (its newest let go) is not joined to the live end until "back to the latest" */
+      /* paused: no poll until resume; a window walked back past the cap is not rejoined to the live end until "back
+         to the latest" */
       if (untilMs || !newest.current || polling || holdsPaused > 0 || tabHidden() || trimmedRef.current) return beat();
       polling = true;
       try {
@@ -1276,8 +1191,8 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
 
   const [olderEnd, setOlderEnd] = useState<'start' | 'cap' | null>(null);
   useEffect(() => setOlderEnd(null), [key]);
-  /* ONE OLDER PAGE A CALL, ON DEMAND, IN THE LOW LANE (the owner's endless tape): from the oldest print in hand back to the
-     session's start (`newer_than` it), 500 at a time; a short page is the start reached */
+  /* One older page a call, on demand, in the low lane: from the oldest print in hand back to the session's start,
+     500 at a time; a short page is the start reached */
   const loadOlder = useCallback(() => {
     const oldest = oldestMs(rowsRef.current);
     if (filling.current || !oldest || loadingOlder || !hasOlder) return;
@@ -1301,7 +1216,7 @@ export function usePrintStream(query: TapeQuery, hold: boolean, opts?: { untilMs
           if (!fresh.length) return prev;
           const next = prev.concat(fresh).sort((a, b) => msOf(b) - msOf(a));
           if (next.length <= TAPE_CAP) return next;
-          /* past the cap the NEWEST go — the reader is at the old end; the live end is joined again by reset() */
+          /* past the cap the newest go — the reader is at the old end; the live end is joined again by reset() */
           trimmedRef.current = true;
           setTrimmed(true);
           return next.slice(next.length - TAPE_CAP);
@@ -1348,15 +1263,9 @@ function execOf(price: number, bid: number, ask: number): 'ASK' | 'BID' | 'MID' 
   return 'MID';
 }
 
-/* THE DARK-POOL READ, ONE RULE ACROSS TRACE (the re-audit, 2026-10-22: the page tagged prints over the mid at the ask
-   "DISTRIBUTION" in red while the Live Tape counts at-the-ask as bought): a print ABOVE the mid was paid up for — the
-   buyer crossed toward the offer, buyer-initiated — and reads ACCUMULATION (green); a print BELOW the mid was sold down
-   — seller-initiated — and reads DISTRIBUTION (red); a print at the mid (within half a cent) leans neither way. Any
-   distance from the mid counts: the Sized fact and the reads share one cut. Only a sized print, in the regular session,
-   priced at the quote, carries a read. */
-/** A SIZED CROSS IS DOLLARS, NOT SHARES (audit round 10, minor 7: the bar was 10,000 shares OR $500K, so RIVN 10,000 sh
-    for $119K read as distribution while GS 500 sh for $440K was "too small" — a share count means nothing across a $12 and
-    an $880 stock). A cross of $250K and up carries a read; below it, none. */
+/* The dark-pool read, one rule across Trace: a sized regular-session print over the mid was paid up (accumulation),
+   under it sold down (distribution), at the mid neither. Only sized prints at the quote carry a read. */
+/** A sized cross is dollars, not shares: $250K and up carries a read, below it none. */
 export const DARK_SIZED_USD = 250_000;
 function intentOf(cents: number, sized: boolean): DarkPoolIntent {
   if (!sized) return 'ROTATION';
@@ -1369,18 +1278,16 @@ function intentOf(cents: number, sized: boolean): DarkPoolIntent {
     on a fill a few cents through a tight spread, which is most of this tape. */
 export function quotePlace(pct: number, price: number): { text: string; cents: number } {
   const cents = (pct / 100) * price * 100;
-  /* a quarter cent, not a half (the third audit: NVDA $211.80 into 211.80 × 211.81 read "at the mid" beside "BID" — on a
-     one-cent spread the bid IS half a cent under the mid) */
+  /* a quarter cent, not a half: on a one-cent spread the bid is half a cent under the mid */
   if (!Number.isFinite(cents) || Math.abs(cents) < 0.25) return { text: 'at the mid', cents: 0 };
-  /* ONE UNIT, CENTS (audit round 5: the "vs mid" column mixed ¢ and % — "+0.5¢" beside "+3.04%") */
+  /* one unit, cents */
   const abs = Math.abs(cents);
   const n = abs >= 10 ? Math.round(abs).toLocaleString('en-US') : (Math.round(abs * 10) / 10).toFixed(1).replace(/\.0$/, '');
   return { text: `${cents > 0 ? '+' : '−'}${n}¢`, cents };
 }
 
-/** Where a cross printed in the quote, in the read's own terms (audit round 7: GCC −3¢ read "Print MID" beside
-    "DISTRIBUTION · sold 3¢ under the mid" — MID meant inside the spread). At the ask or on the bid as before; inside the
-    spread it is "MID" only within the read's ¼¢ band, else "UNDER MID" / "OVER MID", so the label and the read agree. */
+/** Where a cross printed in the read's own terms: at the ask, on the bid, or inside as MID (within ¼¢) / UNDER MID /
+    OVER MID. */
 export function execWord(p: { exec?: 'ASK' | 'BID' | 'MID' | null; vsSpotPct: number; price: number }): string | null {
   if (!p.exec) return null;
   if (p.exec !== 'MID') return p.exec;
@@ -1388,8 +1295,8 @@ export function execWord(p: { exec?: 'ASK' | 'BID' | 'MID' | null; vsSpotPct: nu
   return c === 0 ? 'MID' : c > 0 ? 'OVER MID' : 'UNDER MID';
 }
 
-/* WHERE A DARK PRINT IS REPORTED (the vendor's market_center): every off-exchange print is reported to a FINRA trade
-   reporting facility, which is all the code says — the dark venue itself is not disclosed. A letter is not a venue. */
+/* The vendor's market_center is the FINRA facility the print was reported to; the dark venue itself is not
+   disclosed. */
 const FACILITY: Record<string, string> = { L: 'FINRA/Nasdaq TRF Carteret', '2': 'FINRA/Nasdaq TRF Chicago', N: 'FINRA/NYSE TRF', D: 'FINRA ADF', B: 'FINRA/Nasdaq TRF' };
 const SPECIAL_WORD: Record<string, string> = {
   average_price_trade: 'average-price trade',
@@ -1398,9 +1305,7 @@ const SPECIAL_WORD: Record<string, string> = {
   derivative_priced: 'derivative-priced trade',
   prior_reference_price: 'prior-reference-price trade',
   stopped_stock: 'stopped-stock trade',
-  /* AUCTION PRINTS ARE NOT A READ (audit round 5, 2026-10-23: the lit lane's "largest lit print IEF $36.1M — read as
-     accumulation" was the Nasdaq official closing price, a cross priced in the closing auction, not against the quote).
-     The opening and closing crosses and the official open and close are matched in the auction: no side, no read. */
+  /* Auction prints (opening and closing crosses, official open and close) carry no side and no read. */
   cross_trade: 'auction cross',
   opening_print: 'opening-auction print',
   closing_print: 'closing-auction print',
@@ -1421,9 +1326,8 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const ask = num(row.nbbo_ask);
   const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : spot;
   const vs = mid > 0 ? ((price - mid) / mid) * 100 : 0;
-  /* A PRINT PRICED BY ITS OWN TERMS IS NOT A READ (the audit, 2026-10-22: QQQ 103,684 @ $725.39, 3% off the quote, an
-     average-price trade, drove the tape's intent): contingent, qualified-contingent, derivative-priced and average-price
-     prints — any sale condition or trade code — are shown, and never read for intent or posture */
+  /* A print priced by its own terms (contingent, average-price, derivative-priced, any sale condition) is shown,
+     never read for intent or posture */
   const codes = [row.sale_cond_codes, row.trade_code].flatMap(c => (Array.isArray(c) ? c : [c])).filter(c => c != null && c !== '').map(String);
   /* only the codes that price a trade by its own terms — an intermarket sweep or an odd lot is priced at the quote */
   const own = codes.filter(c => c in SPECIAL_WORD);
@@ -1432,13 +1336,12 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   const special = ownWords.length ? ownWords.join(', ') : null;
   const auction = own.some(c => AUCTION_CODES.has(c));
   const sized = notional >= DARK_SIZED_USD;
-  /* AFTER HOURS (the vendor's ext_hour_sold_codes "extended_hours_trade"): the quote it is set against is the thin
+  /* after hours (the vendor's ext_hour_sold_codes "extended_hours_trade"): the quote it is set against is the thin
      post-market one, so the print is shown and labelled, never read */
   const extended = row.ext_hour_sold_codes != null && row.ext_hour_sold_codes !== '';
   const placeCents = quotePlace(vs, price).cents;
   const intent = special || extended ? 'ROTATION' : intentOf(placeCents, sized);
-  /* an after-hours print's place in a thin post-market quote is shown in plain ink, never as a side (the third audit:
-     after-hours BID red / ASK green) — `exec` still says where it sat, the page draws it neutral */
+  /* an after-hours print's place in a thin quote is drawn neutral, never as a side; `exec` still says where it sat */
   const exec = special ? null : execOf(price, bid, ask);
   const when = clock(row.executed_at);
   /* the vendor's tracking_id is NOT unique — distinct prints (other sizes, other cumulative volumes) share one — so the
@@ -1470,7 +1373,7 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
     price,
     size,
     notional,
-    /* a lit print is an exchange's, never a FINRA facility's (the re-audit: the lit lane wore the dark wording) */
+    /* a lit print is an exchange's, never a FINRA facility's */
     venue: kind === 'lit' ? (center ? `exchange ${center}` : 'an exchange') : FACILITY[center] ?? (center ? `FINRA facility ${center}` : 'off-exchange'),
     vsSpotPct: vs,
     atLevel: false,
@@ -1488,12 +1391,8 @@ export function darkPrint(row: Record<string, unknown>, i: number, spot = 0, kin
   };
 }
 
-/* A PRICE THE LIT TAPE NEVER TRADED IS NOT A SHELF (audit round 4, 2026-10-22: QQQ's "Strongest shelf · RESISTANCE $725.00
-   · $5.6B (29%)" was the $725 bucket — `regular_volume: 0` — filled by one average-price / contingent print of 103,684
-   shares at $725.39 reported again and again, 3% over a market at $703; the same prints were ~$5.6B of "≈$19.4B dark dollars
-   today"). A bucket where no lit share traded holds only prints priced by their own terms (contingent, average-price,
-   prior-reference), never the market's: it is set apart — counted on its own, out of the shelves and the day's dark
-   dollars. */
+/* A price the lit tape never traded is not a shelf: such a bucket holds only own-terms prints, so it is counted
+   apart, out of the shelves and the day's dark dollars. */
 export const offMarketBucket = (r: Record<string, unknown>) => num(r.dark_pool_volume) > 0 && r.regular_volume != null && num(r.regular_volume) === 0;
 
 export function darkLevels(allRows: Record<string, unknown>[], spot: number, allPrints: DarkPoolPrint[] = []): DarkPoolLevel[] {
@@ -1501,9 +1400,7 @@ export function darkLevels(allRows: Record<string, unknown>[], spot: number, all
   /* own-terms prints are priced by their terms, not the market — they never count toward a shelf */
   const prints = allPrints.filter(p => !p.special);
   const buckets = rows.map(r => num(r.price)).filter(p => p > 0);
-  /* THE SHELF'S PRINTS ARE COUNTED (the re-audit, 2026-10-22: every shelf read "1 print", a constant): each dark print in
-     hand goes to its nearest price bucket — the route sends shares by price, not a count, so the count is the prints in
-     hand, and says so */
+  /* The route sends shares by price, not a count, so a shelf's count is the dark prints in hand nearest it */
   const count = new Map<number, number>();
   for (const p of prints) {
     let best = NaN;
@@ -1515,14 +1412,8 @@ export function darkLevels(allRows: Record<string, unknown>[], spot: number, all
     .filter(l => l.price > 0 && l.notional > 0)
     .sort((a, b) => b.notional - a.notional);
   const sum = raw.reduce((a, l) => a + l.notional, 0) || 1;
-  /* A price level within a third of a percent of the market is the pivot.
-     Anything further is support or resistance. The feed hands back its own
-     price levels — not whole dollars: NVDA's ran 211, 211.75, 212, 212.75 —
-     every one that printed. Two of each role is the shelf — the heaviest —
-     not a fence of the same word, and A SHELF HAS WEIGHT AND IS NEAR (the
-     third audit, 2026-10-22: a $24.0K level 5.7% under the market stood as
-     one of two supports): at least SHELF_MIN_SHARE of the day's dark dollars,
-     within SHELF_MAX_DIST of the market. */
+  /* Within a third of a percent of the market is the pivot, beyond it support or resistance. A shelf holds at least
+     SHELF_MIN_SHARE of the day's dark dollars within SHELF_MAX_DIST, the heaviest two of each role. */
   const SHELF_MIN_SHARE = 3;
   const SHELF_MAX_DIST = 5;
   const leveled = raw.map(l => {
@@ -1560,7 +1451,7 @@ export function postureOf(prints: DarkPoolPrint[]): { posture: Posture; net: num
         : read.length
           ? 'Sized dollars sit on both sides of the mid.'
           : 'No sized print in the regular session to read.';
-  /* `read` — how many prints carried a read: none is "nothing to read", never "Balanced" (the third audit) */
+  /* `read`: how many prints carried a read; none is "nothing to read", never Balanced */
   return { posture, net, note, read: read.length };
 }
 
@@ -1597,8 +1488,7 @@ function mergeDark(prev: DarkPoolPrint[], incoming: DarkPoolPrint[]): DarkPoolPr
 }
 
 /** Dark or lit prints, accumulating across polls. The recent route caps at 200 and has no older cursor. */
-/* `enabled` (audit round 11, minor 2: after the close the Dark Pool page polled /darkpool/recent and /lit-flow/recent twice
-   a minute though it showed neither — the day's regular-session cut stands there): nothing is read while it is off */
+/* `enabled`: nothing is read while it is off */
 export function useAccumTape(kind: 'dark' | 'lit', limit: number, enabled = true): LivePack<DarkPoolPrint[]> {
   const path = kind === 'dark' ? `/darkpool/recent?limit=${Math.min(200, limit)}` : `/lit-flow/recent?limit=${Math.min(200, limit)}`;
   const [rows, setRows] = useState<DarkPoolPrint[]>([]);
@@ -1625,7 +1515,7 @@ export function useAccumTape(kind: 'dark' | 'lit', limit: number, enabled = true
       }
     };
     void run();
-    /* the newest crosses: every 8s in the session (4s until audit round 10), every 30s outside it, never in a hidden tab */
+    /* the newest crosses: every 8s in the session, every 30s outside it, never in a hidden tab */
     let last = Date.now();
     const id = window.setInterval(() => {
       if (holdsPaused > 0 || !readDue(last, READ_POLL_MS, 'live')) return;
@@ -1640,10 +1530,8 @@ export function useAccumTape(kind: 'dark' | 'lit', limit: number, enabled = true
   return { rows, at, fault, waiting: waiting && rows.length === 0 };
 }
 
-/* THE DAY'S REGULAR-SESSION CROSSES, AFTER THE CLOSE (the third audit, 2026-10-22: after the bell the market's dark tape
-   was all "NO READ · AFTER HRS" — the recent feed is newest first and has no older cursor). The recent route can order
-   a DAY by dollars: its largest crosses, walked down by max_premium (three pages of 200), the extended-hours ones left
-   for the After hours view. What it holds is the day's LARGEST regular-session crosses, and the page says so. */
+/* The day's regular-session crosses after the close: the recent route ordered by dollars, walked down by max_premium
+   (three pages of 200). The page says it holds the day's largest. */
 export function useDarkRegularDay(iso: string | null): LivePack<DarkPoolPrint[]> {
   /* a closed session does not change: read once (three pages), and again only to retry a read that failed — never on the
      4s poll, which would spend the key's three upstream slots on a fixed answer */
@@ -1659,8 +1547,7 @@ export function useDarkRegularDay(iso: string | null): LivePack<DarkPoolPrint[]>
         for (let i = 0; i < 3; i++) {
           const got = await getRows(`/darkpool/recent?limit=200&date=${iso}&order_by=premium&order=desc${max != null ? `&max_premium=${max}` : ''}`);
           const live = got.filter(r => !r.canceled);
-          /* the session's own day only — a route's date filter is not trusted (audit round 5: the lit route returned the
-             day before's closing cross for "?date=") */
+          /* the session's own day only; a route's date filter is not trusted */
           out.push(...live.map((r, j) => darkPrint(r, out.length + j)).filter(p => !p.extended && (!p.dateIso || p.dateIso === iso)));
           if (got.length < 200) break;
           const last = num(got[got.length - 1].premium);
@@ -1688,10 +1575,8 @@ export function useDarkRegularDay(iso: string | null): LivePack<DarkPoolPrint[]>
   return { rows: mine?.rows ?? [], at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: !!iso && !mine };
 }
 
-/* THE DAY'S REGULAR-SESSION LIT PRINTS, AFTER THE CLOSE (audit round 4: Lit under Regular showed only after-hours prints).
-   The market's lit feed (/lit-flow/recent) is newest first with no older cursor — its date and premium filters still return
-   the newest prints — so the regular session is read name by name: each name's lit prints of $500K and up, walked back
-   from the 16:00 close (/lit-flow/{t}?older_than). The names are the page's — the heaviest in the dark today. Read once. */
+/* The day's regular-session lit prints after the close, name by name ($500K and up, walked back from 16:00) for the
+   names heaviest in the dark, since the lit feed has no older cursor. Read once. */
 export function useLitRegularDay(close: { iso: string; closeMs: number } | null, names: string[]): LivePack<DarkPoolPrint[]> {
   const key = close && names.length ? `${close.iso}:${names.join(',')}` : null;
   const [box, setBox] = useState<{ key: string; rows: DarkPoolPrint[]; at: number | null; fault: FeedFault | null } | null>(null);
@@ -1703,8 +1588,7 @@ export function useLitRegularDay(close: { iso: string; closeMs: number } | null,
         const out: DarkPoolPrint[] = [];
         for (const n of names) {
           const got = await getRows(`/lit-flow/${encodeURIComponent(n)}?date=${close.iso}&older_than=${close.closeMs}&min_premium=500000&limit=200`);
-          /* the session's NY day only (audit round 5, blocker: 15 of 57 "10/22" lit prints, $99.8M of $159.4M, were 10/21's
-             16:00 closing cross — `?date=` with `older_than` does not hold the route to the day) */
+          /* the session's New York day only: `?date=` with `older_than` does not hold the route to the day */
           out.push(...got.filter(r => !r.canceled).map((r, i) => darkPrint(r, out.length + i, 0, 'lit')).filter(p => !p.extended && p.dateIso === close.iso));
           if (stop) return;
         }
@@ -1724,9 +1608,8 @@ export function useLitRegularDay(close: { iso: string; closeMs: number } | null,
   return { rows: mine?.rows ?? [], at: mine?.at ?? null, fault: mine?.fault ?? null, waiting: !!key && !mine };
 }
 
-/** A name's whole day off-exchange — /darkpool/{t}/price-levels: its dark shares by $1 price bucket. The day's dark
-    dollars are the buckets' shares × their price (≈, to the bucket); the share is dark shares over the day's whole
-    volume (/stock/{t}/quote) — the route's own "regular_volume" covers only part of the lit tape (GEV: 0.4M beside 2.2M). */
+/** A name's whole day off-exchange (/darkpool/{t}/price-levels): dark dollars are each bucket's shares at its price
+    (≈); the share is dark shares over the day's whole volume from the quote. */
 export interface DarkDay {
   /** The session the figures are for, YYYY-MM-DD, when asked by date */
   iso?: string;
@@ -1781,8 +1664,7 @@ async function stockLastOf(name: string): Promise<StockLast> {
 async function dayVolumeOf(name: string): Promise<number> {
   return (await stockLastOf(name)).vol;
 }
-/** THE STOCK'S REAL PRICE (audit round 4: the cross card's "THE STOCK · QQQ $725.39" was the first cross's price — a stale
-    qualified-contingent print — while QQQ traded $703.29): the quote's last trade */
+/** the stock's real price: the quote's last trade, never a cross's */
 export function useStockLast(ticker: string | null): LivePack<StockLast | null> {
   const name = (ticker || '').trim().toUpperCase();
   return useLive(name ? `stock-last:${name}` : 'stock-last:off', async () => {
@@ -1790,8 +1672,7 @@ export function useStockLast(ticker: string | null): LivePack<StockLast | null> 
     return q.price > 0 ? q : null;
   }, null, !!name, READ_POLL_MS, 'live');
 }
-/** A name's dark day — with `dateIso`, that session's own (the cross's date: audit round 6, an Oct 22 cross read "Dark
-    dollars today" off whatever day the route held at 04:15 on Oct 23), its whole volume off that day's one-minute bars */
+/** A name's dark day: with `dateIso`, that session's own, its whole volume off that day's one-minute bars */
 export function useDarkDay(ticker: string | null, dateIso: string | null = null): LivePack<DarkDay | null> {
   const name = (ticker || '').trim().toUpperCase();
   return useLive(
@@ -1817,9 +1698,8 @@ export function useDarkDay(ticker: string | null, dateIso: string | null = null)
   );
 }
 
-/** IS THERE SUCH A TICKER (audit round 11, minor 5: "?q=ZZZZ" fired the name's quote, price levels and a dozen Pinpoint
-    routes, with a console 404, before saying "no crosses") — the vendor's stock-state answers 200 with no data for a name it
-    does not carry; an index root is always known. Asked once per name, kept. */
+/** Is there such a ticker: the vendor's stock state answers empty for a name it does not carry; an index root is
+    always known. Asked once per name, kept. */
 const knownTickers = new Map<string, Promise<boolean>>();
 export function tickerKnown(name: string): Promise<boolean> {
   const t = name.trim().toUpperCase();
@@ -1879,8 +1759,7 @@ export function useNameDark(ticker: string | null, untilMs: number | null = null
         getRows(`/lit-flow/${encodeURIComponent(name)}?limit=200${cut}`).catch(() => [] as Record<string, unknown>[]),
         stockLastOf(name),
       ]);
-      /* the session's NY day only — after the close the route walked back from the close runs into the day before when a
-         name printed fewer than 200 crosses (audit round 5) */
+      /* the session's New York day only: a name with few crosses walks back into the day before */
       const day0 = untilMs ? nyDateOf(untilMs) : nyIsoToday();
       const onDay = (p: DarkPoolPrint) => !p.dateIso || p.dateIso === day0;
       const mapped = prints.filter(r => !r.canceled).map((r, i) => darkPrint(r, i)).filter(onDay);
@@ -1974,11 +1853,8 @@ export function contractRow(row: Record<string, unknown>, _i = 0): BookContract 
   };
 }
 
-/** A contract whose expiry was the tape's session (or before it) and whose bell has rung: it settled, it no longer
-    stands (the re-audit, 2026-10-22: 64 of Footprints' 146 builds were Oct 22 contracts, read after the close as standing) */
-/** …ITS OWN BELL (audit round 10, major 3: from 16:00 to 16:15 SPY, QQQ and SPXW same-day contracts were dropped as expired
-    while they still traded — Compare's SPY book fell from 66 to 37 contracts at 16:02): 16:15 for the late-closing index
-    and ETF options (sessionEndMin), 16:00 for a stock's */
+/** A contract whose expiry was the tape's session (or before) and whose bell has rung no longer stands */
+/** Its own bell: 16:15 for the late-closing index and ETF options (sessionEndMin), 16:00 for a stock's. */
 export function expiredAtBell(expiryIso: string, ticker?: string | null): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryIso)) return false;
   const session = tapeSessionIso();
@@ -1995,9 +1871,8 @@ export function standing<T extends { expired?: boolean }>(rows: T[]): { rows: T[
   return { rows: out, expired: rows.length - out.length };
 }
 
-/* Open interest is counted the morning after a session trades. The screener's open_interest is the count its session
-   opened on; once the vendor publishes the count after the volume's session (oi-change?date=<next session>, else the
-   contract's /historic), the row takes it and says whose trading it reflects (oiDay, oiPending). */
+/* The screener's open_interest is the count its session opened on; once the next count is published the row takes it
+   and says whose trading it reflects (oiDay, oiPending). */
 export function nextSessionIso(iso: string): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return iso;
@@ -2256,12 +2131,10 @@ export function useAlertTrades(id: string | null): LivePack<FlowPrint[]> {
   return useLive(id ? `alert-trades:${id}` : 'alert-trades:off', async () => mapWithIndex(liveTrades(await getRows(`/option-trades/flow-alerts/${encodeURIComponent(id!)}`)), tradeToPrint), [], !!id);
 }
 
-/* No exchange / trade-code breakdown: /option-trades/exchange-breakdown is gated to the vendor's API Advanced plan
-   (422 on this key, verified 2026-10-22 — docs/DATA_SOURCES.md), so the Live Tape no longer asks for it. */
+/* No exchange breakdown: /option-trades/exchange-breakdown is not on this key (docs/DATA_SOURCES.md). */
 
-/* THE VENDOR NAMES THE SHAPE (put_vertical_spread, put_diagonal_spread, time_butterfly, iron_condor…): each name maps to
-   the shape it is — a diagonal is not "custom" (the audit, 2026-10-22), and a time butterfly is a calendar of three
-   legs, never a butterfly. The vendor's own name rides along, spelled out, so the row says exactly what it was told. */
+/* Each vendor shape name maps to the shape it is (a diagonal is not custom; a time butterfly is a calendar), and the
+   vendor's own name rides along spelled out. */
 function spreadKind(strategy: string): SpreadKind {
   const s = strategy.toLowerCase();
   if (s.includes('time_butterfly') || s.includes('calendar')) return 'calendar';
@@ -2284,9 +2157,8 @@ const shapeName = (strategy: string) => {
 
 function spreadLeg(leg: Record<string, unknown>, fallbackExpiry: string, structSize = 1): SpreadLeg {
   const expiryIso = String(leg.expiry || leg.expiration || fallbackExpiry || '').slice(0, 10);
-  /* THE LEGS ROUTE (/option-trades/multi-leg/{id}/legs) speaks its own way: `side` is where the leg's PRINT sat (ask,
-     bid, or "no"), `size` is the leg's contracts, and the strike is in thousandths (7780000 for 7780). The leg's
-     direction is settled by resolveLegs against the structure's own net premium, never guessed here. */
+  /* The legs route speaks its own way: `side` is where the leg's print sat, `size` its contracts, the strike in
+     thousandths. Direction is settled by resolveLegs, never guessed here. */
   const occ = String(leg.option_symbol || '').match(/(\d{8})$/);
   const rawStrike = num(leg.strike);
   const contracts = num(leg.size) || structSize;
@@ -2310,15 +2182,12 @@ function spreadLeg(leg: Record<string, unknown>, fallbackExpiry: string, structS
   };
 }
 
-/* WHICH WAY EACH LEG WENT (the audit, 2026-10-22: the card read "Buy ×1 93 put — · 0d @ $0.00" placeholders, and a leg
-   printed on the bid of a structure paid for at the ask was read "sold"). A leg's print side is not its direction, so
-   the directions are SETTLED BY THE MONEY: the combination of buys and sells whose fills add up to the structure's own
-   net premium (Σ ±fill × contracts × 100 within 3%). The print sides are tried first; failing them, every combination;
-   only one that fits — and only one — is taken. When nothing fits, or more than one does, the legs say no direction. */
+/* A leg's print side is not its direction: directions are settled by the one set of buys and sells whose fills add
+   up to the net (within 3%). None or several fits: no direction. */
 function resolveLegs(raw: Record<string, unknown>[], structSize: number, netPremium: number): SpreadLeg[] {
   const base = raw.map(l => spreadLeg(l, '', structSize));
   if (!base.length || !Number.isFinite(netPremium) || netPremium === 0) return base;
-  /* the route's leg `size` is the leg's contracts on most rows and its RATIO on some (a 2-lot fly's legs read 1 / 2 / 1);
+  /* the route's leg `size` is the leg's contracts on most rows and its ratio on some (a 2-lot fly's legs read 1 / 2 / 1);
      the money says which: both readings are tried */
   const readings: SpreadLeg[][] = [base];
   if (structSize > 1 && base.some(l => (l.contracts ?? 0) < structSize)) {
@@ -2347,11 +2216,8 @@ function resolveLegs(raw: Record<string, unknown>[], structSize: number, netPrem
 export function positionTheta(legs: SpreadLeg[]): number | null {
   return positionThetaCapped(legs)?.value ?? null;
 }
-/* A DAY OF THETA CANNOT TAKE MORE THAN THE POSITION IS WORTH (audit round 8, major 4: an SPY 767/772 0DTE bull call
-   spread, 3 units, $42 paid, max loss $42, read THETA −$293.86 a day). The vendor's theta is a per-share RATE, and in an
-   option's last hours it runs far past the option's price (SPY 765C 0DTE: theta −2.05 on a $0.27 fill) — the single-print
-   card's rule (PrintDrilldown thetaWords): a day takes at most what is left. Each leg's day is capped at its own fill, and
-   the position's at what it is worth — the debit paid for a bought structure, the credit collected for a sold one. */
+/* A day of theta cannot take more than the position is worth: each leg's day is capped at its own fill, and the
+   position's at the debit paid or credit collected. */
 export function positionThetaCapped(legs: SpreadLeg[], netPremium?: number): { value: number; capped: boolean } | null {
   if (!legs.length || legs.some(l => l.side == null || l.theta == null)) return null;
   let capped = false;
@@ -2397,23 +2263,12 @@ export function payoffRange(legs: SpreadLeg[], netPremium: number): { maxLoss: n
   };
 }
 
-/* ---- one structure, settled from its own legs ----------------------------------------------------------------------
-   THE ROW IS THE LEGS' (the re-audit, 2026-10-22): the vendor's net_price is wrong on ratio'd shapes — SPX 7690/7720/7750
-   read "10× · $12.57 credit" where the legs were S5/B10/S5 and the credit $2,350 on 5 flies, $4.70 a fly — and 45 of 159
-   rows had |net_price| × size × 100 ≠ |net_premium|. The row's size is the number of UNITS (the GCD of its legs'
-   contracts), its net is net_premium over units × 100, and its max loss and max profit are the expiry payoff of the
-   legs as they were bought and sold — one function for the row, the card and the Tracker. Each structure's legs are read
-   once (/option-trades/multi-leg/{id}/legs, two at a time beside the page's own calls) and kept. */
+/* One structure from its own legs (net_price is wrong on ratio'd shapes): size is units (the legs' GCD), net is net
+   premium over units × 100, risk the legs' expiry payoff. */
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
-/* LEGS ARE READ ON A BUDGET (audit round 9, major 3: one Multi-Leg view made 451 legs calls in ~25s — every poll's 200
-   structures went to the back of an endless queue while the feed's 200 cover ~10s, so the queue never drained and the
-   page's own rows still read "…"). Now:
-   - a structure's legs are read once and kept for good (an id's legs never change);
-   - the PAGE asks for the rows it shows and the few that can be its largest — each asker's list REPLACES its last one, so
-     a structure that has scrolled off or aged out of the feed is never read;
-   - the page's asks go one at a time, at most one every LEG_GAP_MS, in the key's low-priority lane (beside, never ahead
-     of, the page's own reads); an opened card's structure is read at once, ahead of everything. */
+/* Legs are read on a budget: once per structure and kept; each asker's list (the rows on screen, the largest nets)
+   replaces its last; one at a time every LEG_GAP_MS in the low lane; an opened card's structure goes first. */
 const legRaw = new Map<string, Record<string, unknown>[] | 'none'>();
 const legFails = new Map<string, number>();
 const legCard: string[] = [];
@@ -2528,9 +2383,8 @@ export function payoffAt(legs: SpreadLeg[], netPremium: number): (S: number) => 
     }, 0) - netPremium;
 }
 
-/* THE SHAPE'S CANONICAL SIGNS — used only when the vendor left the net out and no leg can be settled by the money: the
-   magnitude of a vertical's, a straddle's, a 1:2:1 fly's or a one-wing-each condor's net is the same whichever way it
-   went, so the row can still say what changed hands. The way (debit or credit) stays unknown. */
+/* The shape's canonical signs, used only when the vendor left the net out and no leg settles: the net's size is the
+   same either way round, so the row can still say it; the way stays unknown. */
 function canonicalDirs(kind: SpreadKind, legs: SpreadLeg[]): number[] | null {
   const n = legs.length;
   if (n === 2) return kind === 'straddle' || kind === 'strangle' ? [1, 1] : kind === 'ratio' || kind === 'custom' ? null : [1, -1];
@@ -2569,9 +2423,8 @@ function whereOf(at: { kind: 'below' | 'above' | 'strikes' | 'falls' | 'rises' |
   return at.a === at.b ? `at ${strikeWord(at.a!)}` : `between ${strikeWord(at.a!)} and ${strikeWord(at.b!)}`;
 }
 
-/* THE SENTENCE IS THE LEGS' (the re-audit, 2026-10-22: a fixed line per vendor shape called a SHORT fly "wings bought,
-   body sold" and a condor that profits on a fall "collects if the name goes nowhere"). Said from the settled legs: what
-   was bought and sold, the money, where the expiry payoff is best and worst, and which way it gains. */
+/* The sentence comes from the settled legs: what was bought and sold, the money, where the expiry payoff is best and
+   worst, and which way it gains. */
 /** A shape's name without its directional verdict — "bull put spread" → "put spread", "bullish risk reversal" → "risk
     reversal" — for a structure that is shown but not read (a compression package, an after-hours fill) */
 export function neutralShape(name: string): string {
@@ -2596,8 +2449,7 @@ export function describeStructure(legs: SpreadLeg[], netPremium: number, units: 
     if (wingsBought && bodySold) lead = `A long ${one} butterfly — the ${strikeWord(lo)} and ${strikeWord(hi)} wings bought, the ${strikeWord(strikes[1])} body sold`;
     else if (!wingsBought && !bodySold && legs.filter(l => l.strike === lo || l.strike === hi).every(l => l.side === 'SELL')) lead = `A short ${one} butterfly — the ${strikeWord(lo)} and ${strikeWord(hi)} wings sold, the ${strikeWord(strikes[1])} body bought`;
   }
-  /* THE MONEY IN WORDS, NEVER A SIGN TO DECODE (the third audit: "$3.90 credit … −$780" read as a loss) — "collected
-     $3.90 a unit ($780 in all)", "paid $29.80 a unit" */
+  /* the money in words, never a sign to decode: "collected $3.90 a unit ($780 in all)", "paid $29.80 a unit" */
   const money = netPremium === 0 ? '' : ` — ${netPremium > 0 ? 'paid' : 'collected'} $${(Math.abs(netPremium) / (Math.max(1, units) * 100)).toFixed(2)}${units > 1 ? ` a unit on ${units} units (${usd(Math.abs(netPremium))} in all)` : ''}`;
   if (new Set(legs.map(l => l.expiry)).size !== 1) {
     return `${lead}${money}. Its legs run to different expiries, so what it is worth at the near one depends on the far leg's price then — no expiry payoff is drawn.`;
@@ -2641,10 +2493,8 @@ export function describeStructure(legs: SpreadLeg[], netPremium: number, units: 
       : worstAt.kind === 'rises' || worstAt.kind === 'falls'
         ? `loses without a cap ${whereOf(worstAt)}`
         : `loses most (${sign(worst)}) ${whereOf(worstAt)}`;
-  /* the shape's own way first: a payoff that peaks inside its strikes is a bet on where it settles; one that troughs
-     inside them pays on a move — but only on the side where the payoff past the wing is a GAIN (the third audit, 2026-10-22:
-     S7655P / B7705P / B7705C / S7715C read "a move away, either way" while a rise to 7715 still lost 66% of its max loss).
-     The payoff at the low wing, the high wing and the middle say which way it pays. */
+  /* The shape's way first: a payoff that peaks inside its strikes bets on where it settles, one that troughs pays on
+     a move, but only on a side where the payoff past the wing is a gain. */
   const pctOfLoss = (v: number) => (worst < 0 ? `${Math.round((Math.abs(v) / Math.abs(worst)) * 100)}% of the max loss` : '');
   const way = (() => {
     if (best > Math.max(deep, top) + eps) return `a bet that the name settles ${bestAt.kind === 'strikes' ? (bestAt.a === bestAt.b ? `near ${strikeWord(bestAt.a!)}` : whereOf(bestAt)) : `near ${strikeWord(lo)}`}`;
@@ -2664,10 +2514,8 @@ export function describeStructure(legs: SpreadLeg[], netPremium: number, units: 
   return unread ? `${lead}${money}. At expiry it ${bestWords} and ${worstWords}.` : `${lead}${money}. At expiry it ${bestWords} and ${worstWords} — ${way}.`;
 }
 
-/* THE NAME IS THE LEGS' (the third audit, 2026-10-22: an "iron condor 7650/7675" was S7650C / S7650P / B7675C / B7675P —
-   a call spread sold and a put spread bought, both bearish, $5.8K if it falls and −$4.2K if it rises; the vendor's
-   shape label is kept beside it when the two disagree). Named only from settled legs on one expiry (or a two-leg
-   calendar / diagonal); anything else keeps the vendor's name. */
+/* The name comes from settled legs on one expiry (or a two-leg calendar / diagonal); otherwise the vendor's, kept
+   beside the legs' name when the two disagree. */
 export function nameFromLegs(legs: SpreadLeg[]): { name: string; kind: SpreadKind } | null {
   if (!legs.length || legs.some(l => l.side == null)) return null;
   const B = (l: SpreadLeg) => l.side === 'BUY';
@@ -2734,19 +2582,16 @@ export function nameFromLegs(legs: SpreadLeg[]): { name: string; kind: SpreadKin
   return null;
 }
 
-/** A double calendar is a shape whatever way it went: two strikes, each on a near and a far expiry, one right, equal
-    sizes — named so even when its legs cannot be settled (the third audit: such rows read "Custom" and all dashes) */
+/** A double calendar is a shape whatever way it went (two strikes, near and far, one right, equal sizes), so it is
+    named even unsettled */
 function doubleCalendarOf(legs: SpreadLeg[]): { name: string; kind: SpreadKind } | null {
   if (legs.length !== 4 || new Set(legs.map(l => l.right)).size !== 1 || new Set(legs.map(l => l.expiry)).size !== 2 || new Set(legs.map(l => l.strike)).size !== 2) return null;
   if (new Set(legs.map(l => l.contracts ?? 1)).size !== 1) return null;
   return { name: `${legs[0].right === 'C' ? 'call' : 'put'} double calendar`, kind: 'calendar' };
 }
 
-/* THE VENDOR'S NAME, CHECKED AGAINST THE LEGS (audit round 8: "put butterfly 7535/7585/7625" had wings of 50 and 40;
-   "XSP iron condor … paid $133" was bought — a short iron condor is a credit; AMD "put diagonal" 620/622.5 was both legs
-   bought at the ask). When the legs name no textbook shape, a settled set says what it did ("2 puts bought"); an unsettled
-   one keeps the vendor's word, corrected where the strikes or the money alone say it is wrong, and marked as the
-   vendor's. */
+/* The vendor's name checked against the legs: a settled set with no textbook shape says what it did ("2 puts
+   bought"); an unsettled one keeps the vendor's word, corrected where strikes or money prove it wrong. */
 function vendorChecked(vendor: string, legs: SpreadLeg[], net: number): { name: string; kind?: SpreadKind; by: 'legs' | 'vendor' } | null {
   if (!legs.length) return null;
   const v = vendor === 'unnamed' ? '' : vendor;
@@ -2808,9 +2653,7 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
   const checked = fromLegs ? null : vendorChecked(vendor0, legs, known ? t.netPremium : 0);
   const named0 = fromLegs ?? (checked ? { name: checked.name, kind: checked.kind ?? t.kind } : null);
   const namedBy: 'legs' | 'vendor' = fromLegs || checked?.by === 'legs' ? 'legs' : 'vendor';
-  /* A COMPRESSION PACKAGE OR AN AFTER-HOURS FILL KEEPS ITS SHAPE, NOT ITS VERDICT (audit round 5: "Largest · SPX bullish
-     risk reversal · $271.0K" was an OPRA cbmo floor package; an after-hours "bull put spread" was read against thin
-     post-market quotes) — the shape's name without bull / bear */
+  /* A compression package or an after-hours fill keeps its shape's name without bull or bear */
   const unread = !!t.compression || !!t.extended;
   const named = named0 && unread ? { ...named0, name: neutralShape(named0.name) } : named0;
   const vendor = t.shapeOfVendor ?? t.shape;
@@ -2837,8 +2680,7 @@ function settleSpread(t: SpreadTrade): SpreadTrade {
       const th = positionThetaCapped(legs, known ? t.netPremium : undefined);
       return { theta: th ? th.value : NaN, thetaCapped: th?.capped || undefined };
     })(),
-    /* WHAT THE LEGS' TAGS ACTUALLY SAY (the third audit: an SPX 7630/7640 card said "its legs print no side" while three
-       of its four legs carried one): the count, and why a partial set cannot settle it */
+    /* what the legs' side tags say: the count, and why a partial set cannot settle it */
     read: known
       ? `${describeStructure(legs, t.netPremium, units, unread)}${t.compression ? ` A compression package (OPRA ${t.code ?? 'cbmo'}) — a floor package that nets open interest down between members, not a bet: shown, never read bullish or bearish.` : t.extended ? ' Filled after hours, against thin post-market quotes — the shape is shown, not read for direction.' : ''}`
       : `The vendor left the net out${sideTagged === 0 ? ' and its legs print no side' : sideTagged < raw.length ? `, and only ${sideTagged} of its ${raw.length} legs print a side` : ''}, so which way it went is not known — a leg's print side is where it filled, not whether the structure was bought or sold.${netAbs != null ? ` Its legs net ${usd(netAbs)}${units > 1 ? ` (${units} units, $${(netAbs / (units * 100)).toFixed(2)} a unit)` : ''} either way — paid if it was bought, collected if it was sold.` : ' What it risks is not on the record. Read the legs.'}`,
@@ -2866,13 +2708,12 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
   /* the vendor's max_loss is negative dollars; a null max_profit beside a stated loss is uncapped */
   const vLoss = row.max_loss != null && row.max_loss !== '' ? Math.abs(num(row.max_loss)) : null;
   const vendorRisk = vendorDirection && vendorDirection !== 'unknown' && vLoss != null ? { loss: vLoss, profit: row.max_profit != null && row.max_profit !== '' ? Math.abs(num(row.max_profit)) : ('uncapped' as const) } : null;
-  /* the far leg (audit round 10, minor 4: a diagonal showed only its near leg, "10/23/2026 · 0d" for min_dte 0 / max_dte 7) */
+  /* the far leg's expiry, from max_dte */
   const farDte = row.max_dte != null && row.max_dte !== '' ? num(row.max_dte) : dteAtTrade;
   const farIso = tradeDay && farDte > dteAtTrade ? new Date(Date.parse(`${tradeDay}T00:00:00Z`) + farDte * 86_400_000).toISOString().slice(0, 10) : '';
   return {
     id: String(row.id || `${ticker}-${when.epoch}-${strikes.join('-')}`),
-    /* OPRA's condition on the structure (mlet, mlat, cbmo…) — cbmo / mctp is a compression package, not a bet (audit
-       round 5: spreadOf never read it, and Multi-Leg crowned one "Largest", read bullish) */
+    /* OPRA's condition on the structure (mlet, mlat, cbmo…); cbmo / mctp is a compression package, not a bet */
     code: code || undefined,
     compression: COMPRESSION_CODES.has(code) || undefined,
     minute: when.minute,
@@ -2891,10 +2732,9 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
     expiry: expiryIso ? expiryLabel(expiryIso) : '—',
     farExpiry: farIso ? expiryLabel(farIso) : undefined,
     farDte: farIso ? farDte : undefined,
-    /* the vendor's min_dte — counted from the trade's own day (audit round 6: XSP Oct 26 read "3d" against min_dte 4,
-       SPY Nov 20 "28d" against 29 — counted from the clock's Oct 23) */
+    /* the vendor's min_dte, counted from the trade's own day */
     dte: row.min_dte != null && row.min_dte !== '' ? dteAtTrade : expiryIso ? dteFrom(expiryIso, tradeDay || tapeSessionIso()) : 0,
-    /* the vendor's size is its LARGEST leg — the units come from the legs (settleSpread) */
+    /* the vendor's size is its largest leg — the units come from the legs (settleSpread) */
     size,
     net: 0,
     netKnown,
@@ -2917,12 +2757,7 @@ function spreadOf(row: Record<string, unknown>): SpreadTrade {
 /** Rows with their legs settled as they land; the legs are asked for in the rows' order */
 function useSettled(pack: LivePack<SpreadTrade[]>): LivePack<SpreadTrade[]> {
   const rev = useLegRev();
-  /* THE BIGGEST NETS, AND THE NEWEST SCREENFUL (audit round 8 / retail round 7) — but only those (audit round 9, major 3:
-     asking for every structure of every poll made 451 legs calls in 25s): the newest LEGS_FIRST and the LEGS_TOP largest
-     by net, the page's own visible rows ahead of both (useLegsFirst) */
-  /* …and since audit round 10 (major 4: 74 legs reads a minute on a closed day — the page's "first screenful" was its first
-     twenty PENDING rows, so each one that settled let the next twenty in until every structure was read) only the LEGS_TOP
-     largest by net here; the rows on screen are the page's own ask (useLegsFirst, the first screenful of its cut and order) */
+  /* legs for the LEGS_TOP largest nets here; the rows on screen are the page's own ask (useLegsFirst) */
   useLegAsker(
     useMemo(() => [...pack.rows].sort((a, b) => Math.abs(b.netPremium) - Math.abs(a.netPremium)).slice(0, LEGS_TOP).map(t => t.id), [pack.rows]),
     1
@@ -2937,10 +2772,8 @@ export function useLegsFirst(ids: string[]): void {
   useLegAsker(useMemo(() => ids.slice(0, LEGS_FIRST), [ids.slice(0, LEGS_FIRST).join(',')]), 0); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-/* ONE STRUCTURE ONCE (audit round 4: "SPX short call butterfly 7690/7720/7750 16:59:23" and "put double calendar 7630/7640
-   16:58:18" each stood twice — the vendor sent the same structure under two ids, 01a16569-5e12… and 01a16569-5a29…, with the
-   same legs, size, net and second). Folded by the vendor's id, then by ticker, second, strategy, strikes, size and money;
-   the repeat count rides on the row. */
+/* One structure once: the vendor can send the same structure under two ids, so rows fold by id, then by ticker,
+   second, strategy, strikes, size and money; the repeat count rides on the row. */
 function dedupeSpreads(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   const byKey = new Map<string, Record<string, unknown>>();
   const ids = new Set<string>();
@@ -2956,14 +2789,13 @@ function dedupeSpreads(rows: Record<string, unknown>[]): Record<string, unknown>
   return [...byKey.values()];
 }
 
-/** The newest structures, `limit` of them (the vendor's feed is newest first). THE SESSION (audit round 4: under "Regular"
-    after the close the page showed only 16:28–16:59 structures, unmarked): `regular` keeps the regular session's — after
-    the close walked back from the 16:15 close (`untilMs`) — and `extended` the ones outside it */
+/** The newest structures, `limit` of them: `regular` keeps the regular session's (after the close, walked back from
+    16:15 via `untilMs`), `extended` the ones outside it */
 export function useSpreads(limit = 80, opts?: { untilMs?: number | null; session?: 'regular' | 'extended'; sinceMs?: number | null; ticker?: string | null }): LivePack<SpreadTrade[]> & { older: OlderPages<SpreadTrade> } {
   const until = opts?.untilMs ?? null;
   const session = opts?.session ?? null;
   const since = opts?.sinceMs ?? null;
-  /* A NAME SEARCHED IS A NAME ASKED (audit round 11, major 5): the name's own structures (ticker_symbol), paged the same way */
+  /* a searched name reads its own structures (ticker_symbol), paged the same way */
   const ticker = (opts?.ticker || '').trim().toUpperCase() || null;
   const key = `spreads:${limit}:${until ?? 'live'}:${session ?? 'any'}:${ticker ?? 'mkt'}`;
   const pack = useLive(key, async () => {
@@ -2971,14 +2803,14 @@ export function useSpreads(limit = 80, opts?: { untilMs?: number | null; session
       const rows = await mapWithIndex(dedupeSpreads(raw), r => ({ ...spreadOf(r), repeats: num(r.__repeats) || undefined }));
       return session ? rows.filter(t => (session === 'regular' ? !t.extended : !!t.extended)) : rows;
     }, [], true, SPREADS_POLL_MS, until ? 'day' : 'live');
-  /* ENDLESS (the owner, 2026-10-23): older structures of the session, 200 a page, as the reader scrolls */
+  /* older structures of the session, 200 a page, as the reader scrolls */
   const older = useOlderPages<SpreadTrade>(key, pack.rows, spreadIdOf, inHand => olderSpreads(inHand, since, session, ticker));
   const settled = useSettled({ ...pack, rows: older.rows });
   return { ...settled, older };
 }
 const spreadIdOf = (t: SpreadTrade) => t.id;
-/* THE STRUCTURES' FEED EVERY 15 SECONDS (audit round 9, major 3): the vendor's newest 200 cover about ten seconds of a busy
-   session, so a four-second poll replaced the page wholesale every beat and re-asked legs for rows no one could read */
+/* The feed every 15 seconds: its newest 200 cover about ten seconds of a busy session, so a faster poll only re-asks
+   legs no one can read */
 const SPREADS_POLL_MS = 20_000;
 
 /** One structure, settled from its own legs (the card) — read ahead of the page's queue */
@@ -3020,8 +2852,8 @@ export function useTide(kind: TideKind, name: string, enabled = true): LivePack<
     })).filter(p => p.time > 0);
   }, [], enabled, MINUTE_POLL_MS);
 }
-/** The vendor's per-minute series (tides, ticks, one-minute bars) are re-read every 30 seconds in the session — the vendor
-    writes them once a minute (15s until audit round 10; 4s before round 9) — and held after the close (readDue) */
+/** The vendor writes its per-minute series once a minute, so they are re-read every 30 seconds in the session and
+    held after the close (readDue) */
 const MINUTE_POLL_MS = 30_000;
 
 /** One expiry of a name's day — /stock/{t}/flow-per-expiry: premium and contracts by side */
@@ -3119,7 +2951,7 @@ export function useNameMinutes(ticker: string | null): LivePack<NameMinute[]> {
             netPut: num(r.net_put_premium),
           };
         })
-        /* the regular session — to 16:15 for the index and ETF options that trade then (sessionEndMin) */
+        /* the regular session: to 16:15 for the index and ETF options that trade then (sessionEndMin) */
         .filter(r => r.min >= 0 && r.min < sessionEndMin(name) - SESSION_OPEN)
         .sort((a, b) => a.min - b.min),
     [],
@@ -3148,23 +2980,15 @@ const minuteOf = (iso: unknown) => {
   return e > 0 ? Math.floor(e / 60) * 60 : 0;
 };
 
-/** THE PANE'S LINES ARE THE VENDOR'S MINUTES (the ship pass, 2026-10-22): the pane drew a day spread from each
-    contract's daily total through a hashed clip table — real end totals, an invented shape — and on Net Flow it was
-    handed the WHOLE MARKET's tide under a single name's header. Now:
-    - a name: /stock/{t}/net-prem-ticks (per-minute net call and put premium, every expiry) summed into the running
-      line, priced by the name's own one-minute closes;
-    - a cut: /net-flow/expiry (already running) — tide_type from the segment, moneyness from the card, expiration
-      zero_dte for a same-day pane and weekly otherwise; a sector cut reads that sector's tide. */
+/** The pane's lines are the vendor's minutes: a name's net-prem-ticks priced by its one-minute closes; a cut's
+    /net-flow/expiry; a sector its own tide. */
 export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; mny: MoneynessKey; zeroDte: boolean; enabled: boolean }): LivePack<PaneFlowPoint[]> {
   const { ticker, seg, mny, zeroDte, enabled } = opts;
   const name = (ticker || '').trim().toUpperCase();
   const key = name ? `pane:${name}` : `pane:${seg}:${mny}:${zeroDte ? '0' : 'w'}`;
-  /* THE TICKS NEVER WAIT ON THE BARS (audit round 6: in one Promise.all the minute ticks sat behind /ohlc/1m for 36s and
-     more while the key's three slots were busy, and Compare stood a by-expiry figure under the ticks' label): the ticks
-     and the one-minute closes are fetched on their own, and the line draws from the ticks the moment they land — priced
-     by the closes once those are in */
-  /* MINUTE SERIES, READ EVERY 15 SECONDS (audit round 9: four 0DTE panes made 66 /net-flow/expiry calls a minute for
-     figures the vendor writes once a minute) */
+  /* The ticks never wait on the bars: the line draws from the ticks the moment they land, priced by the closes once
+     those are in */
+  /* minute series, read every 15 seconds */
   const ticks = useLive(name ? `pane-ticks:${name}` : 'pane-ticks:off', async () => getRows(`/stock/${encodeURIComponent(name)}/net-prem-ticks`), [] as Record<string, unknown>[], enabled && !!name, MINUTE_POLL_MS);
   const bars = useLive(name ? `pane-bars:${name}` : 'pane-bars:off', async () => getRows(`/stock/${encodeURIComponent(name)}/ohlc/1m?limit=1000`).catch(() => [] as Record<string, unknown>[]), [] as Record<string, unknown>[], enabled && !!name, MINUTE_POLL_MS);
   const named = useMemo<PaneFlowPoint[]>(() => {
@@ -3178,9 +3002,8 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
     for (const r of [...ticks.rows].sort((a, b) => minuteOf(a.tape_time) - minuteOf(b.tape_time))) {
       const t = minuteOf(r.tape_time);
       if (!t) continue;
-      /* THE REGULAR SESSION, 09:30–16:00 New York (the audit, 2026-10-22: a name's pane opened at 07:30 under a
-         "Regular" desk) — the running line starts at the bell; to 16:15 for the index and ETF options that trade then
-         (the re-audit: SPY's line stopped at 16:00, +$6.90M of net puts against a day of +$17.27M) */
+      /* The regular session: the running line starts at 09:30 and runs to 16:15 for the index and ETF options that
+         trade then */
       const m = clock(r.tape_time).minute;
       if (m < SESSION_OPEN || m >= sessionEndMin(name)) continue;
       c += num(r.net_call_premium);
@@ -3209,9 +3032,8 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
       const tide = seg === 'stocks' ? 'equity_only' : seg === 'index-funds' ? 'etf_only' : seg === 'indexes' ? 'index_only' : 'all';
       const got = await getRows(`/net-flow/expiry?moneyness=${encodeURIComponent(mny)}&tide_type=${tide}&expiration=${zeroDte ? 'zero_dte' : 'weekly'}`);
       /* the series sits one level down: { data: [ { data: [minutes…], moneyness, tide_type } ] } */
-      /* FUTURE MINUTES ARE NOT ZERO (the audit, 2026-10-22): the vendor hands all 390 of the session's minutes, the ones
-         still to come with `net_call_premium: null` — read as 0 they drew a flat $0 line to 15:58 and the head took the
-         last row's "$0". A minute with no figure is dropped, so the line ends at the last real minute. */
+      /* Future minutes come with null figures; they are dropped, so the line ends at the last real minute instead of
+         a flat $0 */
       const rows = got
         .flatMap(g => (Array.isArray(g.data) ? (g.data as Record<string, unknown>[]) : [g]))
         .filter(r => r.net_call_premium != null && r.net_put_premium != null);
@@ -3233,10 +3055,8 @@ export function usePaneFlow(opts: { ticker: string | null; seg: NetFlowSegment; 
 }
 
 
-/* ---- one name's biggest contracts today (the Live Tape's per-name answer) ------------------------------------------
-   THE TAPE IS A WINDOW, THE QUESTION IS THE DAY (the retail pass, 2026-10-22: "biggest NVDA bets today" — the tape cut to
-   NVDA covered 15:58–16:14 and named a $253.7K 220C, while the Screener held an $18.1M 215C). The screener for the one
-   name, by the day's premium: every contract's whole day, heaviest first. */
+/* One name's biggest contracts today: the tape is a window, the question is the day, so the screener for the one
+   name by the day's premium */
 export function useNameTopContracts(ticker: string | null, limit = 3): LivePack<BookContract[]> {
   const name = (ticker || '').trim().toUpperCase();
   return useLive(
@@ -3247,10 +3067,8 @@ export function useNameTopContracts(ticker: string | null, limit = 3): LivePack<
   );
 }
 
-/* ---- THE WHOLE DAY, MARKET-WIDE (audit round 4, 2026-10-22) -------------------------------------------------------
-   After the close the Live Tape's buffer held 23 seconds ("Window 16:14:36–16:14:59 ET") and its top bear, largest and P/C
-   described those seconds. The day is in day-level routes: the screener's contracts by the day's premium (each with its
-   sides), the day's largest flow alerts, and the market tide's running net call and put premium. */
+/* The whole day, market-wide: the screener's contracts by the day's premium, the day's largest flow alerts, and the
+   market tide's running net. */
 
 /** The market's contracts with the most premium today — the screener, the whole day */
 export function useDayTopContracts(limit = 5, enabled = true): LivePack<BookContract[]> {
@@ -3299,9 +3117,7 @@ export interface StockMinute {
   /** The minute's shares, every venue */
   volume?: number;
 }
-/** The name's one-minute bars for one New York day — `dateIso`, the cross's own date (audit round 6: an Oct 22 cross read
-    "No session bars for USHY yet" at 04:15 on Oct 23 — the hook kept only the clock's session, and once Oct 23's
-    pre-market bars came they would have stood in); the tape's session when none is given */
+/** The name's one-minute bars for one New York day: `dateIso` (a cross's own date), else the tape's session */
 export function useStockMinutes(ticker: string | null, dateIso: string | null = null): LivePack<StockMinute[]> {
   const name = (ticker || '').trim().toUpperCase();
   const day = dateIso ?? tapeSessionIso();
@@ -3324,10 +3140,8 @@ export function useStockMinutes(ticker: string | null, dateIso: string | null = 
   );
 }
 
-/* ---- a marked contract's own day (the Tracker) ----------------------------------------------------------------------
-   THE TRACKER READS EACH MARK BY ITS OWN CONTRACT (the re-audit, 2026-10-22: a contract marked from the Screener read
-   "off today's book" because the Tracker looked for it in another page's book) — /option-contract/{occ}/historic, its
-   newest session: volume, open interest, last price, and the day's contracts by side. */
+/* The Tracker reads each mark by its own contract (/option-contract/{occ}/historic, newest session): volume, open
+   interest, last price and the day by side. */
 export interface ContractDayNow {
   iso: string;
   volume: number;
@@ -3379,13 +3193,8 @@ export function useContractDays(occs: string[]): LivePack<Record<string, Contrac
   );
 }
 
-/* ---- what a mark is now, LIKE WITH LIKE (the Tracker) -------------------------------------------------------------
-   THE THEN AND THE NOW FROM ONE SOURCE AND ONE FIELD (the third audit, 2026-10-22: NVDA 220C "Moved most +28.6%" was the
-   screener's close, 0.14, against the contract's historic last, 0.18 — an after-hours fill; SPX 7700C read "Vol added
-   −200" across two sources). A contract marked off a book row (the screener's) is read again off the screener's row for
-   that exact contract — close against close, day volume against day volume, open interest against open interest. A
-   marked print is read against the contract's newest real trade on the tape route — a fill against a fill, the trade's
-   day volume against the print's. */
+/* What a mark is now, like with like: a contract marked off a screener row is read again off that row (close against
+   close); a marked print against the contract's newest real trade (fill against fill). */
 export interface MarkNow {
   /** The contract's screener row now (close, volume, open interest, sides) */
   book: BookContract | null;
@@ -3452,11 +3261,8 @@ export function occOf(root: string, strike: number, right: 'C' | 'P', expiry: st
   return `${root.toUpperCase()}${d[1].slice(2)}${d[2]}${d[3]}${right}${String(Math.round(strike * 1000)).padStart(8, '0')}`;
 }
 
-/* ---- ENDLESS LISTS (the owner, 2026-10-23: "make it infinite") ------------------------------------------------------
-   A list read by useLive is its NEWEST page, polled. Older pages are asked only when the reader scrolls near the bottom —
-   one at a time, in the key's low-priority lane — appended under it, and kept until the question changes. `fetchOlder`
-   is handed every row in hand (to find its cursor: an older_than instant, a page number) and says when the route has no
-   more. Rows are kept to `cap`, then said so. */
+/* Endless lists: the newest page is polled; older pages are asked only near the bottom, one at a time in the low
+   lane, appended and kept to `cap` until the question changes. */
 export interface OlderPages<T> {
   rows: T[];
   state: 'more' | 'loading' | 'end' | 'cap' | 'idle';
@@ -3507,9 +3313,8 @@ export function useOlderPages<T>(key: string, base: T[], idOf: (r: T) => string,
 export async function olderAlerts(inHand: FlowPrint[], sinceMs: number | null, session: 'regular' | 'extended' | null, limit = 100): Promise<{ rows: FlowPrint[]; end: boolean }> {
   const oldest = inHand.reduce((m, p) => Math.min(m, p.createdMs ?? p.epochMs ?? Infinity), Infinity);
   if (!Number.isFinite(oldest) || (sinceMs != null && oldest <= sinceMs)) return { rows: [], end: true };
-  /* THE CURSOR IS INCLUSIVE (audit round 11, major 3: alerts are filed in batches sharing one created_at, kept to the
-     microsecond, and a cursor at the oldest's millisecond skipped the rest of its batch — 9 alerts lost in 5 joins): one
-     millisecond INTO the oldest, the overlap dropped by id (useOlderPages) */
+  /* The cursor is inclusive: one millisecond into the oldest, since alerts are filed in batches sharing a
+     created_at; the overlap is dropped by id (useOlderPages) */
   const got = await getRowsLow(`/option-trades/flow-alerts?limit=${limit}&older_than=${new Date(oldest + 1).toISOString()}${sinceMs ? `&newer_than=${new Date(sinceMs).toISOString()}` : ''}`);
   const rows = markAlertPackages(await mapWithIndex(got, alertToPrint));
   return { rows: session ? rows.filter(p => (session === 'regular' ? !p.extended : !!p.extended)) : rows, end: got.length < limit };
@@ -3519,9 +3324,8 @@ export async function olderAlerts(inHand: FlowPrint[], sinceMs: number | null, s
 export async function olderSpreads(inHand: SpreadTrade[], sinceMs: number | null, session: 'regular' | 'extended' | null, ticker?: string | null, limit = 200): Promise<{ rows: SpreadTrade[]; end: boolean }> {
   const oldest = inHand.reduce((m, t) => Math.min(m, t.epochMs ?? Infinity), Infinity);
   if (!Number.isFinite(oldest) || (sinceMs != null && oldest <= sinceMs)) return { rows: [], end: true };
-  /* THE CURSOR TAKES IN THE OLDEST'S WHOLE SECOND (audit round 11, major 4): executed_at is written to the second but the
-     vendor's store keeps it finer, so a cursor at the oldest's second skipped the structures that shared it (7 lost in 5
-     joins) — the cursor is the second after, and the overlap is dropped by id (useOlderPages) */
+  /* The cursor takes in the oldest's whole second (the vendor keeps finer than it shows); the overlap is dropped by
+     id (useOlderPages) */
   const raw = await getRowsLow(`/option-trades/multi-leg?limit=${limit}${ticker ? `&ticker_symbol=${encodeURIComponent(ticker)}` : ''}&older_than=${new Date(oldest + 1000).toISOString()}`);
   const all = (await mapWithIndex(dedupeSpreads(raw), r => ({ ...spreadOf(r), repeats: num(r.__repeats) || undefined }))).filter(t => sinceMs == null || (t.epochMs ?? 0) >= sinceMs);
   const rows = session ? all.filter(t => (session === 'regular' ? !t.extended : !!t.extended)) : all;

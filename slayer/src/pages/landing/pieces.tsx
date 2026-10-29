@@ -1,16 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SITE'S PIECES
-  (pages/landing/pieces.tsx)
-
-  What the landing page and the products' own pages
-  share (2026-10-02, the day the products got pages
-  of their own): the bar with its Products menu and
-  its one door, the pills, the eyebrow and the
-  two-tone head, the page's width. They were the
-  landing's alone until then — every note on them
-  below is from Landing.tsx, kept with the code.
-==================================================
+  What the landing page and the product pages share: the bar with its Products menu, the pills, the eyebrow, the
+  two-tone head and the page's width.
 */
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';

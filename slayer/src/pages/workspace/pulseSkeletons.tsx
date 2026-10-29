@@ -1,18 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE'S SKELETONS
-  (pages/workspace/pulseSkeletons.tsx)
-
-  The desk standing in as itself (rebuilt 2026-09-30
-  with the desk): the one bar — the title, the desks,
-  the three buttons — then The session's four tiles,
-  each with its one-line head. A tile's own stand-in
-  for the frame it takes to mount is one of three
-  shapes: a tape, a list of rows over a read line, or
-  a drawn figure over a read line. And the board: the
-  back button and its title, then four name cards two
-  across. Imports nothing heavy.
-==================================================
+  Pulse standing in as itself while its code loads: the desk bar, then the first desk's tiles with their heads.
 */
 
 import type { ReactNode } from 'react';

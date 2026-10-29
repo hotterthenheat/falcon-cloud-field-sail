@@ -1,13 +1,5 @@
-/*
-  Names Theta lists, and which desk may offer them.
-  Equity (every listed stock): Terrain, Dossier, Stocks, Weigher.
-  Option roots only: Pinpoint, Trace, Paper, Backtest. Gamma and a chain
-  exist only where a root exists. Weekly roots (SPXW, RUTW, NDXP, VIXW) fold
-  into the cash index on those desks — one name, not two.
-  Compass: the locked 456, SPXW and SPX both kept. No fold.
-  Pulse keeps the bundled list and is not touched here.
-  This file stores the symbols only. It does not pull a chain, a quote or a candle.
-*/
+/* The listed names each desk may offer: every stock on the equity desks (Terrain, Dossier, Weigher), option roots on
+   Pinpoint, Trace, Paper and Backtest, the 456 on Compass. Bundled lists stand; Theta refreshes them off Dossier and Pinpoint. */
 
 import { useSyncExternalStore } from 'react';
 import { thetaCall } from './theta';
@@ -134,9 +126,12 @@ async function pull(kind: 'equity' | 'option'): Promise<void> {
   emit();
 }
 
+/* Dossier and Pinpoint read Unusual Whales only (docs/DATA_SOURCES.md): there the bundled lists stand. */
+const unusualWhalesOnly = (path = typeof location !== 'undefined' ? location.pathname : ''): boolean => path.startsWith('/dossier') || path.startsWith('/pinpoint');
+
 /** Ask Theta once for both lists. Safe to call from every picker. A cached copy shows immediately. */
 export function ensureListed(): void {
-  if (loading || (stockDone && optionDone)) return;
+  if (loading || (stockDone && optionDone) || unusualWhalesOnly()) return;
   loading = true;
   void (async () => {
     try {

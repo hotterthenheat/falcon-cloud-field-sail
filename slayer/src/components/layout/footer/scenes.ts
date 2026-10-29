@@ -1,19 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - EVERY PAGE'S PICTURE
-  (components/layout/footer/scenes.ts)
-
-  What the footer's screen shows on each page (2026-10-03
-  — the owner: "each page had its own art work similar to
-  that one but thats representive of its page … and then
-  the landing page one you go into more depth"), made of
-  the parts in parts/*.ts and set in the box the footer
-  marks for it ([data-footer-scene]). Every picture opens
-  with its address, top left, as the terminal's own
-  breadcrumb does; a narrow (phone) picture keeps the one
-  or two parts that say the page.
-==================================================
-*/
+/* Each page's footer scene, built from parts/*.ts inside the box the footer marks ([data-footer-scene]). Every
+   scene opens with its address at top left, like the breadcrumb; a phone scene keeps the one or two parts that say
+   the page. */
 
 import { box, compose, cut, type Box, type SceneMaker, type Stage } from './kit';
 import { book, cone } from './parts/book';
@@ -55,8 +42,8 @@ const pulse: SceneMaker = () => {
   );
 };
 
-/* TERRAIN — THE CHART AND ITS STRIKE FIELD: candles, a row of beads at every strike (the walls bright, the supreme in its
-   magenta, the flip a grey line), the price's tag between the chart and the ladder, and the ladder with its curve */
+/* Terrain: candles, a bead row per strike (walls bright, supreme magenta, flip grey), the price tag, the ladder and its
+   curve */
 const terrain: SceneMaker = () => {
   const ch = chart({ legend: 'SPY  15m', candles: 3, up: 'glacier', down: 'blue', gap: 3.4, kick: 1.5, volTop: 0.86 });
   return compose([crumb('terminal  /  terrain'), ch, field(ch), ladder({ seed: 47, curve: true, warm: true, gap: 6, run: false, share: 0.86 })], s => {
@@ -112,8 +99,8 @@ const compass: SceneMaker = () =>
     return [top(s), cut(b, 0, 0.07, 0.65, 1), h, inset(h, 10, 30, 10, 8)];
   });
 
-/* THE WEIGHER — THE CHAIN AND WHAT IT RETURNS: strikes and their figures, one opened, the market's line between; the
-   contract's money at every price, the curve today closing on the stick at expiry */
+/* Weigher: the chain with one strike opened and the market's line; the contract's value at every price, today's curve
+   closing on the expiry stick */
 const weigher: SceneMaker = () =>
   compose([crumb('terminal  /  weigher'), chain(), payoff()], s => {
     const b = s.box;
@@ -121,8 +108,7 @@ const weigher: SceneMaker = () =>
     return [top(s), cut(b, 0, 0.07, 0.48, 1), cut(b, 0.53, 0.06, 1, 1)];
   });
 
-/* PAPER — THE CHART WITH ITS ORDERS: the entry held, the target above, the stop below, each run out to its tag; the
-   open money's chip; the positions under it, the chain and the order pad beside it */
+/* Paper: the chart with entry, target and stop run out to tags, the open P&L chip, positions, chain and order pad */
 const paper: SceneMaker = () => {
   const ch = chart({ legend: 'SPY  1m', candles: 3, up: 'glacier', down: 'blue', band: [0.2, 0.62], gap: 3.4, kick: 1.5, volTop: 0.86 });
   return compose([crumb('terminal  /  practice  /  paper'), ch, orders(ch), positions(), chain({ cols: ['STRIKE', 'BID', 'ASK', 'DELTA'], rh: 16 }), orderPad({ side: 'SELL' })], s => {
@@ -133,8 +119,8 @@ const paper: SceneMaker = () => {
   });
 };
 
-/* THE BACKTEST — A PAST DAY REPLAYED: its candles drawn as the head reaches them, the target and the stop, the scrubber
-   under it with the replay's own clock; the chain as it stood, the order pad */
+/* Backtest: a past day's candles drawn as the head reaches them, target and stop, the scrubber with its clock, the
+   chain as it stood and the order pad */
 const backtest: SceneMaker = () =>
   compose([crumb('terminal  /  practice  /  backtest'), replay(), panel('The chain · as it stood', { grip: false }), chain({ cols: ['STRIKE', 'BID', 'ASK', 'DELTA'], rh: 16 }), orderPad()], s => {
     const b = s.box;
@@ -143,8 +129,7 @@ const backtest: SceneMaker = () =>
     return [top(s), cut(b, 0, 0.1, 0.69, 1), c, inset(c, 8, 26, 8, 6), cut(b, 0.73, 0.72, 1, 1)];
   });
 
-/* THE JOURNAL — EVERY TRADE ON ITS DAY: the month, each day washed in what it made or lost, the week's sum beside it,
-   today's cursor; the year's money walking, and its words */
+/* Journal: the month with each day washed by its P&L, weekly sums, today's cursor, and the year's equity line */
 const journal: SceneMaker = () =>
   compose([crumb('terminal  /  practice  /  journal'), calendar(), equity({ title: 'THIS YEAR' }), stats(['WON · LOST', 'BEST DAY', 'WORST DAY', 'LONGEST RUN', 'HELD ON AVERAGE'], { seed: 12 })], s => {
     const b = s.box;
@@ -152,8 +137,7 @@ const journal: SceneMaker = () =>
     return [top(s), cut(b, 0, 0.07, 0.7, 1), cut(b, 0.75, 0.1, 1, 0.44), cut(b, 0.75, 0.52, 1, 0.98)];
   });
 
-/* THE ALERTS — A LINE THAT SOUNDS: the chart and its alerts' lines, a bell at the end of each; the price crosses one and
-   it sounds; every alert listed beside it */
+/* Alerts: the chart with alert lines ending in bells; one sounds as price crosses it; the alert list beside */
 const alerts: SceneMaker = () => {
   const ch = chart({ legend: 'SPY  1m', band: [0.16, 0.74], volTop: 0.86 });
   return compose([crumb('terminal  /  alerts'), ch, alertLines(ch), alertList()], s => {
@@ -163,7 +147,7 @@ const alerts: SceneMaker = () => {
   });
 };
 
-/* SETTINGS — HOW THE TERMINAL LOOKS: the two grounds, the one in use ringed; the switches, a slider, the candles' inks */
+/* Settings: the two grounds with the current one ringed, switches, a slider, the candle inks */
 const settings: SceneMaker = () => compose([crumb('terminal  /  settings'), settingsPart()], s => [top(s), cut(s.box, 0, 0.07, 1, 1)]);
 
 /* THE ROOM — ONE CHART, OTHER READERS: their pointers resting on the line, each with its letters */
@@ -176,7 +160,7 @@ const community: SceneMaker = () => {
   });
 };
 
-/* THE PAGES OUTSIDE: quiet pictures, each its page's own — they open with the house's prompt */
+/* pages outside the terminal: quiet scenes opening with the house prompt */
 const statusScene: SceneMaker = () => compose([crumb('slayer:~ $ status'), status()], s => [top(s), cut(s.box, 0, 0.08, 1, 0.94)]);
 const about: SceneMaker = () => compose([crumb('slayer:~ $ about'), gather()], s => [top(s), cut(s.box, 0, 0.07, 1, 1)]);
 const legal: SceneMaker = () => compose([crumb('slayer:~ $ legal'), doc()], s => [top(s), cut(s.box, 0, 0.06, s.phone ? 1 : 0.82, 1)]);

@@ -1,20 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHEN, ON THE RECORD
-  (components/record/when.tsx)
-
-  A date on the record is a DATE, with the distance
-  beside it (the partner's review, 2026-09-13: "the
-  WHEN should not be '9d ago' cause who is naming
-  what 9 days ago was — have specific dates, or
-  '9/19 · 2 days ago'"). The engines carry days-ago
-  offsets; this turns one into the calendar day it
-  names on the terminal's own clock, and the words
-  that say how far back that is: "09/11 · 2d ago",
-  the date in the primary ink, the distance muted,
-  the weekday in the title.
-==================================================
-*/
+/* A date on the record is a date with the distance beside it ("09/11 · 2d ago"), on the terminal's own clock. */
 
 import { now } from '../../core/clock';
 import { nyParts } from '../../core/nyTime';

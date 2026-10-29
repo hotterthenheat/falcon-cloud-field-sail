@@ -260,7 +260,7 @@ interface TraceGridProps<T> {
   selectedKey?: string | null;
   /** A window's height — a screen less the chrome above it (a host that keeps a window) */
   height?: string;
-  /** No window: the grid grows with its rows and the PAGE scrolls — every Trace page since 2026-09-11 (the Compass board's rule) */
+  /** No window: the grid grows with its rows and the page scrolls */
   autoHeight?: boolean;
   /** The first sort: a column key and its direction */
   initialSort?: { key: string; dir: 'asc' | 'desc' };

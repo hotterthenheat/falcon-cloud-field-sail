@@ -1,25 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SCRIPT EDITOR (components/scripts/ScriptEditor.tsx)
-
-  Where a script is written — the panel the dock
-  holds (EditorDock.tsx), under the page column so
-  the chart stays live above the code. The house's
-  mark, then the script's NAME AS A MENU: Save,
-  Make a copy, Rename, Version history, Create new,
-  the scripts recently opened, Open from the library
-  (TradingView's menu, in the house's words — Noah,
-  2026-09-10). The text in a CodeMirror editor
-  dressed in the house's inks, and under it one
-  line that says what the script does right now —
-  "Runs · drew 5 plots, 1 fill over 309 bars in 14
-  ms", or "Line 12 · the plain reason" with the
-  line lit. Every keystroke is read again; nothing
-  runs until it reads clean.
-
-  Ctrl+S saves. Ctrl+Enter adds to the chart. A
-  closed dock keeps the draft.
-==================================================
+  Where a script is written: its name as a menu (save, copy, rename, versions, new), the code, and a status line
+  that compiles against the chart's bars.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

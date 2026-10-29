@@ -1,37 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - EARNED INK (trace tables)
-
-  Three registers per column, so a column is never
-  a wall of one colour (Noah, 2026-08-30: "make the
-  majority of the numbers be the same EXCEPT for
-  the outliers... should we have a supreme outlier
-  be magenta?" — yes, and 'supreme' is already the
-  house's own word for exactly that ink):
-
-    ordinary  the column's bulk — the primary ink
-              at regular weight (2026-10-13, the
-              partner's rule at Noah's word, and
-              Noah's own 2026-09-12: the grey "is
-              hard to see" — a figure is never grey
-              now; weight and hue still tell the
-              loud from the rest)
-    loud      the top quintile of what is actually
-              on screen — earns WEIGHT (bold white)
-              on magnitudes, DIRECTION ink on
-              signed facts (the PressureMatrix rule)
-    supreme   the single largest value in the
-              column on this screen — the magenta
-              standout family (#EA00FF: TOP PICK,
-              the whale, the largest print). One
-              champion per column, the way the tape
-              chart marks its one LARGEST PRINT.
-
-  Each column measures its OWN distribution over
-  the rows on screen — sharing one bar would let a
-  contracts column silently rank a percent column.
-==================================================
-*/
+/* Three registers per column, measured over the rows on screen: the bulk in the primary ink, the top quintile loud
+   (weight, or direction ink on signed facts), the single largest in magenta. */
 
 export interface InkMarks {
   /** The loud bar — 80th percentile of |value| among nonzero rows on screen */

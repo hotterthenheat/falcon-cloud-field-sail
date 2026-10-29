@@ -10,7 +10,6 @@ import type { TrackedSetup } from '../types/tracker';
 import { currentPicks, entryAsk, noteLeft, pinFill } from './compassModel';
 import { noteCompassCall } from './compassAlerts';
 import { nyClock, nyMinutes, nyParts } from '../core/nyTime';
-import { STOP_KEEP } from './contractQuote';
 import { lotteryExit, reversalLine, stopAfter, treeExit } from './compassParams';
 
 export type BookResult = 'win' | 'loss' | 'caution' | 'unavailable' | 'open';
@@ -136,10 +135,6 @@ export function closeOf(p: CloseInput): { result: BookResult; why: string; exitP
   }
   if (p.flat) return { result: moneyResult(paid, bid), why: 'end of day', exitPx: bid };
   return null;
-}
-
-export function stopFromAsk(ask: number): number {
-  return ask > 0 ? ask * STOP_KEEP : 0;
 }
 
 export function flatNow(at: number = Date.now()): boolean {

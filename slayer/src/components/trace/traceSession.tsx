@@ -1,29 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - TRACE'S SESSION CARD
-  (components/trace/traceSession.tsx)
-
-  Which session the Trace pages read (audit round 4,
-  2026-10-22: the shell's Session card sat on every
-  Trace page, but only the Live Tape read it, and its
-  Premarket and Overnight choices showed the live
-  feed). Two choices, both real on the option tape:
-
-    REGULAR    09:30 to the close — 16:15 for the
-               index and ETF options, 16:00 for a
-               stock's. After the close the pages
-               that read prints walk back to it.
-    EXTENDED   the prints outside it — after the
-               close (and before the open): shown,
-               labelled, never read.
-
-  Options do not trade a premarket session and the
-  overnight book is three index roots, so neither is
-  offered. The card stands only on the pages that
-  honour it (TraceLayout SESSION_PAGES); Pinpoint
-  keeps its own desk session.
-==================================================
-*/
+/* Which session the Trace pages read: Regular (09:30 to the close, 16:15 ET for index and ETF options) or Extended
+   (outside it, shown but never read). Options have no premarket session to offer. */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
@@ -76,8 +52,6 @@ export function useTraceSession(): TraceSession {
   const inSession = useInSession();
   return inSession ? 'regular' : picked;
 }
-
-export const TRACE_SESSION_WORD: Record<TraceSession, string> = { regular: 'Regular', extended: 'Extended hours' };
 
 /** The shell's card */
 export const TraceSessionCard = () => {

@@ -1,20 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE BOARD'S BODY (SetupScanBoard.tsx)
-  The ranked setups under the box's head: the cards
-  two across, or the same rows as THE GRID (the
-  Trace walk's AG Grid). The box GROWS with what
-  the sweep found and the page scrolls (Noah,
-  2026-09-11: "the board box should be a box that
-  can be lengthened when new cards are added") —
-  the rail beside it sticks, the page carries its
-  own door home.
-
-  The walk (2026-09-11): the old Panel head, its
-  Cards/Table tabs, the fixed window and the
-  20-a-page pager are gone — the head is the box's
-  (TraceBox), the layout is a card on the box's line.
-==================================================
+  The ranked calls under the board's head: cards two across, or the same rows as a grid. The box grows with what
+  the scan found and the page scrolls.
 */
 
 import { useEffect, useMemo, useState } from 'react';

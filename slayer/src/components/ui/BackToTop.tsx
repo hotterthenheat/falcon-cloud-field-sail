@@ -1,19 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DOOR HOME (components/ui/BackToTop.tsx)
-
-  The page's own way back to the top (Noah,
-  2026-09-11, the Compass walk: "a back to top
-  button should be then added like we have for
-  trace") — the same door TraceGrid keeps in its
-  window's corner, lifted to the page: it watches
-  the app's scroller (<main>), shows once the
-  reader is a screen or so deep, and glides home
-  on the house curve with absolute writes each
-  frame so a tick cannot shove the scroll
-  mid-glide; reduced motion jumps.
-==================================================
-*/
+/* Back to top for the page: watches the app scroller (<main>), shows a screen or so down, and glides home on the house
+   curve with absolute writes per frame so a tick cannot shove the scroll; reduced motion jumps. */
 
 import { useEffect, useState } from 'react';
 import { ArrowUp } from 'lucide-react';

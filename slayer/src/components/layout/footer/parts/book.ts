@@ -1,10 +1,5 @@
-/*
-  THE BOOK (components/layout/footer/parts/book.ts) — Pinpoint's: the strikes down the side, the dealers' exposure
-  across (a figure gone to a mark, and a bar under it in its side's ink: the puts warm, the calls cool), the walls bright
-  and named, the supreme in its magenta, the flip a grey line of dashes, the spot a line that drifts between the strikes
-  with the clock on its tag — and beside it the range into the close: the day so far, and from now to the bell a cone the
-  price is expected to keep inside.
-*/
+/* Pinpoint's book: strikes down the side, exposure bars across (puts warm, calls cool), walls bright, the supreme
+   magenta, the flip grey dashes, the drifting spot with a clock tag, and beside it the range into the close. */
 
 import { FONT, PIX, bar, box, clock, frame, keep, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
 
@@ -104,8 +99,7 @@ export const book = (o: { seed?: number; groups?: string[] } = {}): Part => {
         c.fillStyle = rgb(ink.line, sharp ? 0.6 : 0.7);
         if (keep(b, 0.55)) c.fillRect(at.x0, mid - 1, 12, 2);
         if (row.label && row.hue) type(b, row.label, at.x0 + 18, mid, { size: 6.5, hue: ink[row.hue], share: 0.65 });
-        /* THE STRIKE BARS: the puts warm to the left of the spine, the calls cool to its right; a wall bright, the supreme
-           in its magenta */
+        /* strike bars: puts warm left of the spine, calls cool right; a wall bright, the supreme magenta */
         const h = heavy ? 6 : 4;
         /* broken, a bar is whole or gone (the book's bars are what the picture is of) */
         c.fillStyle = rgb(row.hue === 'supreme' ? ink.supreme : ink.warn, heavy ? 1 : sharp ? 0.75 : 0.72);
@@ -202,7 +196,7 @@ export const book = (o: { seed?: number; groups?: string[] } = {}): Part => {
   };
 };
 
-/* ---- THE RANGE INTO THE CLOSE: the day so far, and from now to the bell the cone the price is expected to keep in -- */
+/* ---- the range into the close: the day so far, then the expected cone to the bell ---- */
 
 export const cone = (o: { seed?: number; now?: number } = {}): Part => {
   const wk = walk(o.seed ?? 727, { step: 420, gap: 3, kick: 0.8 });

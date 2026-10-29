@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE FLAT CONTROL (ui/flatDoor.ts)
-
-  The house's control grammar — the chart strip's
-  (ChartToolbar), Pulse's widget strips': mono,
-  tracked capitals at the 11px floor, no edge, a
-  wash under the pointer, the silver wash when armed.
-  The Pinpoint head and the Map's band wear it (the
-  owner, 2026-10-14, of the bordered label-and-value
-  pills in two rows under five stat cards: "this is
-  AI slop and i thought we dont allow that anymore").
-==================================================
-*/
+/* The flat control grammar (ChartToolbar, Pulse's widget strips): mono tracked capitals at 11px, no edge, a wash under
+   the pointer and the silver wash when armed. */
 
 /** A door: the words in tracked capitals, the figure beside them in the page's ink */
 export const FLAT_DOOR = 'hit inline-flex items-center gap-1.5 h-7 px-2 rounded font-mono text-t11 uppercase tracking-wider text-textMuted hover:text-textPrimary hover:bg-ink/[0.05] transition-colors select-none whitespace-nowrap';

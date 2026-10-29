@@ -1,13 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE SCREENS
-  (components/record/StocksGuide.tsx)
-
-  The Stocks page's guide in the house pattern: a
-  figure per thing, the surface drawn small in its
-  own inks, one sentence under each.
-==================================================
-*/
+/* The Stocks page's guide: a figure per thing, one sentence under each. */
 
 import type { ReactNode } from 'react';
 

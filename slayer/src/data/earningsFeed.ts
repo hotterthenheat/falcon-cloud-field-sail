@@ -1,7 +1,4 @@
-/*
-  The earnings calendar off Unusual Whales. A miss or an empty fortnight
-  stays empty — never a sample of invented names.
-*/
+/* The earnings calendar off Unusual Whales; a miss or an empty fortnight stays empty. */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Sector } from './universe';
@@ -836,7 +833,6 @@ export function useEarningsHistories(tickers: readonly string[]): void {
     startEnrich();
   }, [key]);
 }
-/** True when this name's past reports are not asked for on the board (read on its own page) */
 
 /* one call per day's slot: the route answers up to 500 rows a page */
 const SLOT_PAGE = 500;

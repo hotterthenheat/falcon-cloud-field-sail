@@ -1,24 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - A SETUP'S PAGE (pages/compass/SetupPage.tsx)
-
-  /compass/<id> — the setup the board's card opens
-  (the walk, 2026-09-11). The id is the setup's
-  address (name · strike · side · kind · tenor), so
-  the Tracker's door, the Weigher's, the tape's
-  drilldown and the browser's Back all land here
-  by URL; the trail Noah ruled on 2026-08-19 ("from
-  a driver contract, Back is the previous contract,
-  not the board — and the board gets its own door
-  beside it") rides in the navigation state: a
-  driver row opens the next contract with `from`
-  = the one it came from.
-
-  The setup is rebuilt live every tick from its
-  address (the engine's makeSetup — untouched); the
-  page's own history walks in behind the skeleton
-  when the name is new to the session.
-==================================================
+  A setup's page at /compass/<id>: the id is the setup's address, so the tracker, the tape and Back all land here.
+  A contract that left the board says why.
 */
 
 import { useEffect, useMemo } from 'react';

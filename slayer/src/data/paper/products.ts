@@ -1,17 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE FUTURES IT TRADES
-  (data/paper/products.ts)
-
-  The rules page's table (docs/paper-rules.md,
-  "Futures"), as data — apart from the feed so the
-  engine and its proof can read a product without
-  starting the simulator. The backtest's own rows where
-  it has them (ES, MES, NQ, MNQ: the same point, tick,
-  margin and fee), the Russell pair beside them. Each
-  says what live price it is made from: a fund, the
-  index's ratio to it, and a fixed carry.
-==================================================
+  The futures and indexes the paper desk knows, as data the engine can read without the feed.
 */
 
 import { FUT_PRODUCTS, frontContractOf, onTick, type FutProduct } from '../review/futuresTape';
@@ -54,8 +42,6 @@ export const PAPER_INDEXES: PaperIndex[] = [
 const INDEX_BY_SYMBOL = new Map(PAPER_INDEXES.map(x => [x.symbol, x]));
 export const isPaperIndex = (symbol: string): boolean => INDEX_BY_SYMBOL.has(symbol.toUpperCase());
 export const paperIndex = (symbol: string): PaperIndex | null => INDEX_BY_SYMBOL.get(symbol.toUpperCase()) ?? null;
-/** An index's level from its fund's price */
-export const indexOfFund = (x: PaperIndex, fund: number): number => Math.round(fund * x.ratio * 100) / 100;
 export const isPaperFuture = (symbol: string): boolean => BY_SYMBOL.has(symbol.toUpperCase());
 export const paperFut = (symbol: string): PaperFutProduct => BY_SYMBOL.get(symbol.toUpperCase()) ?? PAPER_FUTURES[0];
 /** A micro is a tenth of its big contract — what an evaluation's contract count reads */

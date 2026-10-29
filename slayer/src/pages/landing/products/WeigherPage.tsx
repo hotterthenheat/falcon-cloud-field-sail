@@ -1,24 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE WEIGHER, ON ITS OWN PAGE
-  (pages/landing/products/WeigherPage.tsx)
-
-  The product page for the Weigher (Noah,
-  2026-10-02: "now do weigher"; and earlier that
-  day, of this page: "for the detailed section of
-  the weigher we will have screenshots of the add
-  a position, and how to add to watchlist"). One
-  desk in the terminal, read here top to bottom:
-  the desk whole; the chain with a strike open and
-  the book at it; the ONE recording (the tour's own
-  film: the ruler dragged, by price and by date,
-  another position opened); the position card by
-  date and by price; the two lists; then the two
-  things he asked for as pictures — adding a
-  position, and adding a contract to the watchlist.
-  Every picture is the real page (scripts/
-  make-product-shots.mjs, `weigher`).
-==================================================
+  The Weigher's product page: the desk, the chain and its weigh-up, adding a position and the watchlist.
 */
 
 import { useGround } from '../ground';

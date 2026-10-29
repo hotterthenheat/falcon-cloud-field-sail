@@ -1,24 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE PHONE'S ONE CHART
-  (pages/workspace/PhoneChart.tsx)
-
-  On a phone Pulse is ONE chart holding the window,
-  not a stacked desk (ported 2026-08-27): there is no
-  tile head to change the name from and no room for a
-  desk around it, so this chart carries what the desk
-  would — the symbol picker, compare, the interval,
-  the overlays, the style and the indicators, the
-  alert door — on a strip of its own UNDER the tape,
-  every control 40px for a fingertip, every menu
-  opening upward.
-
-  It was the desk's Live chart widget with a
-  `soleChart` switch; the desk's chart is a plain
-  tile now (tiles/ChartTile.tsx — its door is
-  Terrain), so what was the phone's half of that
-  widget stands here alone.
-==================================================
+  On a phone Pulse is one chart holding the window, carrying the symbol picker, compare and the toolbar the desk
+  would.
 */
 
 import { useMemo, useRef, useState } from 'react';

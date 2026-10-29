@@ -1,31 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - SKELETONS AND DEFERRED MOUNTS
-  (components/ui/Skeleton.tsx)
-
-  The perf sweep (Noah, 2026-09-06: "if things need
-  to load then it should have the cool vercel lazy
-  loading screen look for the boxes but it doesnt.
-  it just pops"). Two tools:
-
-    Skeleton   a box in the shape of what is coming,
-               with a slow light passing over it —
-               the house's own dark surface, never a
-               grey card from a component library.
-
-    Deferred   renders the skeleton on the FIRST
-               paint and mounts the real thing a
-               frame or two later, staggered by index
-               when several sit on one page — so a
-               route opens on its next frame with
-               every box already in place, and the
-               charts, tables and canvases that cost
-               a hundred milliseconds each arrive one
-               per frame instead of all in the click.
-
-  Nothing here changes what a surface draws — only
-  WHEN it first draws.
-==================================================
+  Skeleton: a box in the shape of what is coming, with a slow passing light on the house surface.
+  Deferred: paints the skeleton first and mounts the real thing a frame or two later, staggered by index, so a route
+  opens with every box in place and costly charts arrive one per frame. Changes when a surface first draws, not what.
 */
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';

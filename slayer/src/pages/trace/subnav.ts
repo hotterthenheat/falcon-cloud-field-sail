@@ -1,6 +1,6 @@
 import { Radio, Bookmark, SlidersHorizontal, Footprints, Eye, EyeOff, Clock, Zap, Layers, Scale, Columns2, type LucideIcon } from 'lucide-react';
 
-/** Trace subpage registry — drives the sub-tab bar and command palette. */
+/** Trace subpage registry: drives the sidebar tree and the command palette. */
 export interface TraceSubpage {
   path: string;
   label: string;
@@ -15,17 +15,14 @@ export const TRACE_SUBPAGES: TraceSubpage[] = [
     subtitle: 'Streaming options prints, dark-pool crosses & session flow',
     icon: Radio,
   },
-  /* Back as its own page (2026-09-13, from the partner's page, in our grammar); the
-     tape's rail keeps the crosses too */
+  /* The market's dark-pool crosses; the tape's rail keeps them too */
   {
     path: '/trace/dark-pool',
     label: 'Dark Pool',
     subtitle: 'Off-exchange crosses with the read attached — who is behind them, the shelves they left & where the dark money went',
     icon: EyeOff,
   },
-  // Expansion phase (Noah, 2026-08-30): the flow family grows here — the
-  // screener first, net flow / OI explorer / alerts / interval / 0DTE /
-  // multi-leg to follow, all reading data/flowBook's one day book.
+  /* The book pages, all reading flowBook's one day book */
   {
     path: '/trace/screener',
     label: 'Screener',
@@ -51,7 +48,7 @@ export const TRACE_SUBPAGES: TraceSubpage[] = [
     icon: Layers,
   },
   {
-    /* "Intervals" since 2026-09-19 (Noah: "call the windows page Intervals"); /trace/windows redirects (App.tsx) */
+    /* /trace/windows redirects here (App.tsx) */
     path: '/trace/intervals',
     label: 'Intervals',
     subtitle: 'The day cut into quarter-hour intervals — where the volume actually landed',
@@ -67,18 +64,17 @@ export const TRACE_SUBPAGES: TraceSubpage[] = [
     path: '/trace/watchers',
     label: 'Watchers',
     subtitle: 'The desk watching the tape — a contract surfaces the moment there’s a reason to look',
-    /* the eye, not the bell — the bell is the reader's alerts (2026-09-11) */
+    /* the eye, not the bell: the bell is the reader's own alerts */
     icon: Eye,
   },
-  /* Two names side by side (2026-09-13, from the partner's page, in our grammar):
-     the same facts every other Trace page prints, for two names on one cut */
+  /* Two names side by side on one cut, with the same facts every other Trace page prints */
   {
     path: '/trace/compare',
     label: 'Compare',
     subtitle: 'Two names side by side — net flow, the same-day money, the book, the footprints, the structures & the tape, on one cut',
     icon: Columns2,
   },
-  // The Tracker is always last — a bookmark of what you already marked, not a place you start.
+  /* The Tracker is always last: what you already marked, not a place you start */
   {
     path: '/trace/tracker',
     label: 'Tracker',

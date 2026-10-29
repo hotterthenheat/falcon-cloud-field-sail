@@ -6,7 +6,7 @@ import { useTraceSession } from '../../components/trace/traceSession';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
-import { indexRoot, lastRegularClose, plural, tapeSessionIso, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
+import { fmtCount as num, indexRoot, lastRegularClose, plural, tapeSessionIso, usd as fmtUsd, useLegsFirst, useSpreads, useSpreadTrade } from '../../data/traceLive';
 import { nyWallTime } from '../../core/nyTime';
 import { FeedFallback, TickFigure } from '../../components/ui/liveRead';
 import { markSplitOrders, spreadLegRow, SPREAD_KINDS, type SpreadKind, type SpreadLeg, type SpreadTrade } from '../../data/flowBook';
@@ -34,7 +34,6 @@ import Modal from '../../components/ui/Modal';
 import { expiryLabel } from '../../core/format';
 import { dayAdv, spanWords } from '../../components/trace/dayWords';
 
-const num = (v: number) => v.toLocaleString('en-US');
 /** The structures the page holds: the feed's newest */
 const SPREADS_N = 200;
 /** The rows a screen shows: their legs are read first */

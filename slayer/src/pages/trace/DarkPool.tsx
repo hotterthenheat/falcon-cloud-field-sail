@@ -793,7 +793,7 @@ const DarkPool = () => {
               updated {leaders.updated}
             </span>
             <div className="ml-auto">
-              <ColumnChooser columns={leaderChooserCols} hidden={leaderChooser.hidden} onToggle={leaderChooser.toggle} onAll={leaderChooser.showAll} onNone={() => leaderChooser.hideAll(leaderColumns.map(c => c.key))} />
+              <ColumnChooser keepOnPhone columns={leaderChooserCols} hidden={leaderChooser.hidden} onToggle={leaderChooser.toggle} onAll={leaderChooser.showAll} onNone={() => leaderChooser.hideAll(leaderColumns.map(c => c.key))} />
             </div>
           </>
         }

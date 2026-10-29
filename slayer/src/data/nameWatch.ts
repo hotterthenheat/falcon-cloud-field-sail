@@ -1,25 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - ONE WATCHLIST OF NAMES (data/nameWatch.ts)
-
-  The shell keeps one list of NAMES — never contracts —
-  in sections the reader names, a name flagged or not.
-  The contract lists stay what they are (the Weigher's
-  watched contracts, Trace's bookmarks, Compass's
-  Tracker); a name's row in the drawer links to them.
-
-  TAKEN FROM THE PARTNER'S BUILD AT NOAH'S WORD
-  (2026-10-13: "add his watchlist section and its
-  functionality to our website" — hotterthenheat/newslyer,
-  data/nameWatch.ts): the store as he wrote it, since it is
-  plain function; the drawer that reads it is ours
-  (components/layout/WatchlistDrawer.tsx, the alerts
-  drawer's glass and grammar).
-
-  Kept on this machine (slayer_watch_names) and carried by
-  the account when signed in (data/sync.ts). The rail's
-  Watchlist door opens the drawer.
-==================================================
+  The shell's one watchlist of names (never contracts), in sections the reader names, each name flagged or not.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -132,13 +112,6 @@ const subscribe = (fn: () => void) => {
 };
 const get = () => state;
 export const useNameWatch = (): NameWatch => useSyncExternalStore(subscribe, get, get);
-export const getNameWatch = (): NameWatch => state;
-/** Read the key again — after the account's pull lands (data/sync.ts) */
-export const reloadNameWatch = (): void => {
-  state = load();
-  subs.forEach(fn => fn());
-};
-
 const count = (w: NameWatch) => w.sections.reduce((n, s) => n + s.names.length, 0);
 export const isWatchedName = (symbol: string, w: NameWatch = state): boolean => w.sections.some(s => s.names.some(n => n.symbol === symbol.toUpperCase()));
 /** The section a name stands in, or null */

@@ -1,21 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - COMPASS, ON ITS OWN PAGE
-  (pages/landing/products/CompassPage.tsx)
-
-  The product page for Compass (Noah, 2026-10-03:
-  "now create the compass product page"). One
-  product in the terminal, read top to bottom: the
-  board with its rail; the four choices over it;
-  the ONE recording (the tour's own film: the rail
-  ranked four ways, a card opened on its page, the
-  floor and the targets hovered, Setup and Contract,
-  the board on another kind and one name); the
-  setup's page; its chart with the marks; the card's
-  tabs; the contract and the ones around it; the
-  Tracker. Every picture is the real page
-  (scripts/make-product-shots.mjs, `compass`).
-==================================================
+  Compass's product page: the board with its rail, the choices over it, one recording, and the card and the rules.
 */
 
 import { useGround } from '../ground';
@@ -73,8 +57,8 @@ const CompassPage = () => (
       }
     >
       <p>
-        Four cards sit over the board and none of them leaves it. Expiry is a named choice — same day, this week, a six-week swing, a year out — because a trade’s length is a decision, not a date. Kind is the lens
-        that found the setup. Name narrows the board to one ticker. Layout turns the cards into a table with the same rows, sortable by any head.
+        The cards sit over the board and none of them leaves it. Expiry is same day or one to seven days out. Type is calls, puts or both. Name narrows the board to one ticker. Layout turns the cards into a table with the
+        same rows, sortable by any head. The Book A and Book B calls are marked unvalidated until the live model inputs are re-checked against training.
       </p>
     </Room>
 

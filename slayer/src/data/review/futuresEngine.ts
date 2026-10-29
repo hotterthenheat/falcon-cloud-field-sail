@@ -1,42 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE FUTURES ENGINE
-  (data/review/futuresEngine.ts)
-
-  docs/review-futures-rules.md, in code — and nothing
-  else. The options engine's twin (engine.ts): pure
-  functions over a session that is its orders and its
-  fills; everything the desk shows is READ off those.
-  Kept apart from it because almost every rule differs:
-
-    LONG AND SHORT      a position has a direction; an
-                        order against it is a way OUT,
-                        and never takes it past flat
-    MARGIN, NOT CASH    a contract sets its day margin
-                        aside; what is made or lost is
-                        points × the point's worth
-    ONE PRICE, A BAR    no bid and ask: a minute is an
-                        open, a high, a low, a close —
-                        so every fill LEANS AGAINST THE
-                        READER where the bar cannot say
-                        what happened inside it: a market
-                        order a tick worse than the
-                        close, a limit only when traded
-                        THROUGH, a stop a tick worse than
-                        its price (or the open, on a
-                        gap), and A TARGET AND A STOP IN
-                        ONE MINUTE = THE STOP
-    THE ROLL            a position is not carried into
-                        the next contract month: it is
-                        closed at the old one's last
-                        minute, and says so
-    1R IS THE PLANNED RISK  entry to stop. A trade with
-                        no stop has no R — the record
-                        says so rather than invent one.
-
-  The reader's own rules are the same three hard blocks
-  (engine.ts SessionRules), on a way in only.
-==================================================
+  The futures backtest's rules in code, the options engine's twin: pure functions over a session's orders and fills.
 */
 
 import { MAX_NAMES, OPEN_CEILING, stampOf, type Moment, type OrderKind, type SessionRules, type Side } from './engine';

@@ -1,9 +1,5 @@
-/*
-  THE WEIGHER'S DESK (components/layout/footer/parts/weigher.ts) — the chain (strikes down, a contract's figures across,
-  the market's line between two strikes with the clock on its tag, one strike opened to its figures), and what a contract
-  returns at every price: the curve today, the hockey stick at expiry it closes on as the days run out, the money made
-  above the line and lost below it, the spot riding the curve.
-*/
+/* The Weigher: the chain (one strike opened, the market's line between strikes) and the payoff at every price, today's
+   curve closing on the expiry stick, gains above the line and losses below, the spot riding the curve. */
 
 import { FONT, bar, box, chip, clamp, clock, keep, prose, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
 
@@ -166,7 +162,7 @@ export const chain = (o: { seed?: number; cols?: string[]; open?: boolean; rh?: 
   };
 };
 
-/* ---- WHAT IT RETURNS AT EVERY PRICE --------------------------------------------------------------------------------- */
+/* ---- the payoff at every price ---- */
 
 export const payoff = (o: { seed?: number; cycle?: number } = {}): Part => {
   const CYCLE = o.cycle ?? 18000;

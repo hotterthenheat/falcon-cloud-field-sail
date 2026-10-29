@@ -1,31 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE BOARD
-  (pages/pinpoint/Board.tsx)
-
-  Everything at a glance — every name the desk
-  covers, one row each, the reads the Map makes for
-  one name made for all of them. Click a row and the
-  Map becomes that name (the Pinpoint roadmap,
-  2026-09-05).
-
-  THE GRID IS AG GRID (community, MIT), not a table
-  of our own — Noah, 2026-09-05: "research any
-  libraries/ui designs that come prebuilt therefore
-  we don't look like a kid learning html/css for the
-  first time but an actual large scale company". AG
-  Grid is the data grid the large shops ship:
-  sorting, resizing, pinned columns, keyboard
-  navigation, virtualised rows, and a theming API
-  (v33+) that takes our tokens as parameters instead
-  of a stylesheet to fight. The cells that carry
-  meaning — the name with its logo, the regime word,
-  the walls in their inks, the bell's share, the
-  session sparkline — are React cell renderers, so
-  the house grammar rides inside the grid rather than
-  over it.
-==================================================
-*/
+/* The Board: every name the desk covers, one row each, the reads the Map makes for one name; click a row and the Map
+   becomes that name. The grid is AG Grid (sorting, resizing, pinned columns, virtualised rows, a token theme); the
+   meaningful cells are React renderers. */
 
 import { daySigmaOfIv } from '../../data/expectedMove';
 import { holdShort as holdShortOf } from '../../data/wall';
@@ -63,7 +38,7 @@ import { BOARD_TTL_MS, StaleMark, TickFigure } from '../../components/ui/liveRea
 import { ReadMiss } from './BookDown';
 import { kindTip } from '../../components/gex/glossary';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal */
 const ROLE_INK: Record<string, string> = { 'call wall': CALL_WALL, 'put wall': PUT_WALL, supreme: SUPREME, flip: FLIP };
 const WARM = THERMAL_WARM;
 
@@ -75,9 +50,7 @@ const THEME = GRID_THEME;
 const fmtStrike = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const fmtPct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}%`;
 
-/* THE BOARD READS THE RULER (the third audit, 2026-10-23: $, % and σ all printed "+1.46%"): a distance from price in
-   the desk's unit — dollars, percent, or the day's implied σ (the name's own IV). With no scale for the unit (no ATR on
-   this feed) it falls back to dollars rather than print a unit with no number. */
+/* The Board reads the Ruler: a distance in dollars, percent or the day's 1σ; with no scale for the unit, dollars. */
 const Dist = ({ ticker, spot, pct }: { ticker: string; spot: number; pct: number }) => {
   const unit = useNameUnit(ticker);
   /* within the one tolerance (core/walls.ts wallPlace, 0.05%) a level is AT price — never "−$0.00" */
@@ -94,10 +67,8 @@ interface BoardContext {
   remove: (ticker: string) => void;
 }
 
-/* The × that takes a name off the board. A NATIVE handler on the button, not a
-   React one: the grid's own row listeners hear the click before React's root
-   does, so only a native stopPropagation at the target keeps the row from
-   opening the name on the Map. Shown on the row's hover (index.css). */
+/* The × that takes a name off the board: a native handler, so stopPropagation at the target keeps the grid's own row
+   listener from opening the name. Shown on the row's hover (index.css). */
 const RemoveName = ({ ticker, remove }: { ticker: string; remove: (t: string) => void }) => {
   const ref = useCallback(
     (el: HTMLButtonElement | null) => {
@@ -117,8 +88,7 @@ const RemoveName = ({ ticker, remove }: { ticker: string; remove: (t: string) =>
   );
 };
 
-/* TODAY'S STRIKES NOT IN YET (the ship pass, 2026-10-22): until a name's front-date chain lands, its "Today" levels
-   would be the whole book's — the cells say they are loading instead of printing the wrong book */
+/* today's strikes not in yet: the cells say loading rather than print the whole book's levels */
 const Pending = ({ data }: { data: BoardRow }) => (
   <span className="font-mono text-t11 text-textMuted" title={data.scope === 'ALL' ? `Still loading every expiry's contracts on ${data.ticker}` : `Still loading ${data.ticker}'s front expiry`} data-board-pending>
     …
@@ -134,8 +104,7 @@ const NameCell = ({ data, context }: ICellRendererParams<BoardRow, unknown, Boar
     </span>
   ) : null;
 
-/* THE DAY'S CHANGE, NOT THE AFTER-HOURS MOVE (the second re-audit, 2026-10-22: SPY −0.00% on a −1.18% day): the regular
-   session's change, with the move outside the session on its own labelled line; a zero change is neutral, never green */
+/* the day's change, not the after-hours move (on its own labelled line); a zero change is neutral */
 const DayChange = ({ data, compact = false, lead = false, extOnly = false }: { data: BoardRow; compact?: boolean; /** the change alone */ lead?: boolean; /** the move outside the session alone */ extOnly?: boolean }) => {
   const w = dayMoveWords(data.day);
   if (!w) return null;
@@ -159,18 +128,16 @@ const DayChange = ({ data, compact = false, lead = false, extOnly = false }: { d
 
 const SpotCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
-  /* OUTSIDE THE SESSION THE PRICE IS THE CLOSE (the fourth audit: the after-hours $348.60 beside the session's change);
-     the after-hours or pre-market print is named in the hover */
+  /* outside the session the price is the close; the after-hours or pre-market print is named in the hover */
   const ext = peekExtLast(data.ticker);
   return (
-    /* TWO LINES OUTSIDE THE SESSION (the sixth audit's m11: the key columns cut at 1440): the price and the day's change,
-       then the pre-market or after-hours move under them — the words stay whole, the column narrows */
+    /* two lines outside the session: the price and the day's change, then the extended-hours move */
     <TickFigure value={data.spot} title={ext ? `${data.spot.toFixed(2)} regular close · ${ext.price.toFixed(2)} ${ext.word}. The levels, and every distance here, are read at the close` : undefined} className="flex flex-col justify-center leading-[14px] font-mono text-t12">
       <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
         <span className="text-textPrimary">${data.spot.toFixed(2)}</span>
         <DayChange data={data} lead />
       </span>
-      {/* THE PRICE'S OWN TIME (the ninth audit's m2) — when the price was printed, not when the board was built */}
+      {/* the price's own time — when the price was printed, not when the board was built */}
       {!ext && data.priceAt != null && (
         <span className="text-t10 text-textMuted tnum whitespace-nowrap" title={`The price as printed at ${nyClock(data.priceAt, { seconds: true, zone: true})} — ${sessionDay().open ? 'the board refreshes prices every 10s and the levels every 90s' : `the levels and the prices are ${cadenceWords()}`}`} data-price-at={data.priceAt}>
           as of {nyClock(data.priceAt)}
@@ -191,9 +158,7 @@ const YoursCell = ({ data }: ICellRendererParams<BoardRow>) => {
   );
 };
 
-/* A NAME WHOSE "TODAY" IS A LATER EXPIRY SAYS SO IN THE CELL (the eighth audit's m3: CROX read under "Supreme · today"
-   off its Nov 20 contracts — it has none expiring today). The Levels card's Today reads the front expiry; where that is
-   not today's (or the next session's), the date stands beside the figure. */
+/* A name whose "Today" is a later expiry says so in the cell: the date stands beside the figure. */
 const ExpiryMark = ({ data }: { data: BoardRow }) => {
   const dated = data.levelsDate;
   const word = data.scope === 'ALL' ? 'all expiries' : dated && !dayWordOf(dated) ? (expirySpan([dated]) ?? dated) : null;
@@ -212,7 +177,7 @@ const RegimeCell = ({ data }: ICellRendererParams<BoardRow>) => {
   const w = REGIME_WORDS[data.regime];
   /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
   if (data.flipDistPct != null && Math.abs(data.flipDistPct) < 0.05) return <span className="font-mono text-t11 text-textSecondary" title="Price is on the flip — dealer hedging can tip either way">on the flip</span>;
-  /* The shell's words, not "LONG GAMMA" (2026-09-09): plain English on Pinpoint */
+  /* the shell's words, plain English */
   return (
     <span className="inline-flex flex-col justify-center leading-[14px] font-mono text-t11 tnum tabular-nums" style={{ color: data.regime === 'SHORT' ? SHORT_GAMMA : LONG_GAMMA }} title={`${w.label.toLowerCase()} — ${w.blurb}${data.flip != null ? `; the flip at ${fmtStrike(data.flip)} is where that changes` : '; no flip within ±10%'}`}>
       {data.regime === 'SHORT' ? 'amplifying moves' : 'absorbing moves'}
@@ -237,9 +202,7 @@ const FlipCell = ({ data }: ICellRendererParams<BoardRow>) =>
     </span>
   ) : null;
 
-/* EVERY LEVEL THE NEAREST WALL IS, IN THE ONE ORDER (core/walls.ts levelRoles — supreme · call wall · put wall; the fourth
-   audit: "PUT WALL · SUPREME", and SOFI's All-expiries 15, both walls, read only one). Two lines when it is more than one
-   level, so the distance is never cut ("277 +$" at 1440) */
+/* every level the nearest wall is, in the one order (core/walls.ts levelRoles); two lines when it is more than one */
 /** The roles in the one order, the two walls on one strike said once: "supreme · call & put wall" */
 const shortRoles = (roles: readonly string[]): string[] => {
   if (!(roles.includes('call wall') && roles.includes('put wall'))) return [...roles];
@@ -256,8 +219,7 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (!data) return null;
   const roles = levelRoles(data.nearest.strike, { supreme: data.supreme, callWall: data.callWall, putWall: data.putWall });
   const ink = (r: string) => (r === 'supreme' ? SUPREME : r === 'call wall' ? CALL_WALL : PUT_WALL);
-  /* WHERE THE WALL SITS, IN WORDS (the sixth audit's retail test: "769 · supreme · put wall" above price beside "Watch
-     first 765" confused a new reader — a put wall above price is overhead hedging, not a floor; only Compare said so) */
+  /* where the wall sits, in words (a put wall above price is overhead hedging, not a floor) */
   const place = wallPlace(data.nearest.strike, data.spot);
   const placeWords = [
     `${fmtStrike(data.nearest.strike)} · ${roles.join(' · ')} · ${place === 'at' ? 'at price' : `${place} price`}`,
@@ -267,7 +229,7 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
   ].join('\n');
   const label = (
     <span className="text-t9 font-bold uppercase tracking-wide leading-[11px] whitespace-normal" title={placeWords}>
-      {/* both walls on one strike read "call & put wall" — the three roles fit the column at 1440 (the ninth audit) */}
+      {/* both walls on one strike read "call & put wall" */}
       {shortRoles(roles).map((r, i) => (
         <span key={r} style={{ color: ink(r === 'call & put wall' ? 'call wall' : r) }}>
           {i > 0 && <span className="text-textMuted"> · </span>}
@@ -282,7 +244,7 @@ const WallCell = ({ data }: ICellRendererParams<BoardRow>) => {
       <span className="text-t10 text-textSecondary"><Dist ticker={data.ticker} spot={data.spot} pct={data.nearest.distPct} /></span>
     </span>
   );
-  /* always two lines — the role words, then the strike and how far — so nothing cuts at 1440 (the sixth audit's m11) */
+  /* always two lines — the role words, then the strike and how far */
   return (
     <span className="flex flex-col justify-center leading-[14px] font-mono tnum tabular-nums min-w-0">
       {label}
@@ -297,8 +259,8 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
   if (data.pending) return <Pending data={data} />;
   const w = data.watch;
   if (!w) return <span className="font-mono text-t10 text-textMuted">—</span>;
-  /* every level the strike is, in the one order (the sixth audit's m5) */
-  /* ONE CLASSIFIER, THE AGENDA'S (the eighth audit's M1: 759 "TRAPDOOR" here, "too thin to be a trapdoor" on the Agenda) */
+  /* every level the strike is, in the one order */
+  /* one classifier, the Agenda's */
   const kind = strikeTag(w);
   const ink = w.roles?.length ? ROLE_INK[w.roles[0]] : w.role ? ROLE_INK[w.role] : kind === 'shelf' ? 'rgb(var(--text-muted))' : kind === 'trapdoor' ? WARM : undefined;
   /* TWO LINES, so nothing truncates ("$8(" at 1440): the strike and its kind, then the chance, the size and the dollars */
@@ -313,7 +275,7 @@ const WatchCell = ({ data }: ICellRendererParams<BoardRow>) => {
         )}
       </span>
       <span className="text-t10 leading-[12px] text-textSecondary whitespace-normal">
-        {/* a strike the session already traded through is reached, not a chance (the eighth audit) */}
+        {/* a strike the session already traded through is reached, not a chance */}
         {w.atPrice ? 'at price' : w.today ? <span title={`Today's session has already traded through ${fmtStrike(w.strike)}${w.today.tests != null ? ` — ${todayWords(w.today)}` : ''}; ${chanceLabel(w.reach)} to touch it again`}>reached today</span> : `${chanceLabel(w.reach)} ${w.horizon ? `reached ${w.horizon}` : 'reached'}`}
         {w.isShelf && (
           <>
@@ -337,10 +299,8 @@ const SupremeCell = ({ data }: ICellRendererParams<BoardRow>) =>
     </span>
   ) : null;
 
-/* NET GEX IN THE RETAIL SIGN (the ship pass, 2026-10-22): positive = dealers long gamma = hedging absorbs moves = green;
-   negative = short gamma = it amplifies them = red. The row carries the vendor's sign (data/board.ts retailNet). When
-   the book's net and the side of the flip disagree, the hover says so in words rather than leaving two reads that look
-   like a contradiction. */
+/* Net GEX in the retail sign: positive = dealers long gamma = absorbs (green), negative amplifies (red); when the net
+   and the side of the flip disagree, the hover says so. */
 const NetCell = ({ data }: ICellRendererParams<BoardRow>) =>
   data?.pending ? (
     <Pending data={data} />
@@ -401,9 +361,8 @@ const SparkCell = ({ data }: ICellRendererParams<BoardRow>) => {
   );
 };
 
-/* THE PHONE'S BOARD IS CARDS, NOT A GRID (the retail test, 2026-10-22: the phone showed Name / Price / Hedging and hid
-   the flip, the walls and the supreme behind a sideways scroll). One card a name, every read a phone needs first on it:
-   price and the day's change, the regime, the flip and how far, the nearest wall, the supreme, net GEX. */
+/* The phone's Board is cards, one a name, with every read a phone needs first: price and change, regime, flip and how
+   far, the nearest wall, the supreme, net GEX. */
 const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: string) => void; onRemove: (t: string) => void }) => {
   const label = (t: string, title?: string) => (
     <span className="text-t9 uppercase tracking-widest text-textMuted" title={title}>
@@ -426,7 +385,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
     >
       <div className="flex items-start gap-2 min-w-0">
         <CompanyLogo ticker={row.ticker} size={18} />
-        {/* the day's change wraps under the price rather than cut (the seventh audit's retail finding: "pre-market +") */}
+        {/* the day's change wraps under the price rather than cut */}
         <span className="min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="text-t13 font-bold text-textPrimary">{row.ticker}</span>
           <span className="text-t13 text-textPrimary tnum">${row.spot.toFixed(2)}</span>
@@ -479,8 +438,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
           </div>
           <div className="flex flex-col min-w-0">
             {label('Nearest wall', 'The nearer of the call wall (most call gamma) and the put wall (most put gamma)')}
-            {/* TWO LINES, NOTHING CUT (the fifth audit: "supreme · put wall 769 +0…" ran off a 390px card): the strike and
-                how far first, every level it is under it, wrapping */}
+            {/* two lines, nothing cut: the strike and how far first, every level it is under it, wrapping */}
             <span className="flex flex-col min-w-0" data-board-card-wall>
               <span>
                 <span className="font-semibold text-textPrimary">{fmtStrike(row.nearest.strike)}</span> <span className="text-textSecondary"><Dist ticker={row.ticker} spot={row.spot} pct={row.nearest.distPct} /></span>
@@ -514,8 +472,7 @@ const PhoneCard = ({ row, onOpen, onRemove }: { row: BoardRow; onOpen: (t: strin
 const Board = () => {
   const { changeTicker } = useTicker();
   const navigate = useNavigate();
-  /* THE NAMES ON THE BOARD — the list the user keeps (2026-09-09: twelve to
-     start, add any listing, take any off) */
+  /* the names on the board — the list the user keeps */
   const stored = useBoardNames();
   const listedRev = useListedRev();
   const names = useMemo(() => stored.filter(isOptionRoot), [stored, listedRev]);
@@ -525,10 +482,8 @@ const Board = () => {
   const [scanAt, setScanAt] = useState('');
   const lastRef = useRef(0);
   const runRef = useRef(0);
-  /* ONE NAME PER MACROTASK: a name the simulator has not seen walks its whole
-     history in (~0.6s), a seeded one takes ~20ms — twelve in one go would be
-     one long task on every scan. Rows land as they are built; a run that is
-     overtaken (the list changed, a new scan) stops where it is. */
+  /* One name per macrotask: rows land as they are built, and a run that is overtaken (the list changed, a new scan) stops
+     where it is. */
   const rebuild = useCallback((list: string[], fresh: boolean) => {
     const run = ++runRef.current;
     if (fresh) setRows(prev => prev.filter(r => list.includes(r.ticker)));
@@ -565,7 +520,7 @@ const Board = () => {
     return () => window.clearTimeout(id);
   }, [names, rebuild, bookRev]);
   useEffect(() => {
-    /* the prices every scan, in one call (uwBook refreshBoardPrices — the ninth audit's m2); the levels on their own cadence */
+    /* the prices every scan, in one call (uwBook refreshBoardPrices); the levels on their own cadence */
     refreshBoardPrices(names);
     const id = window.setInterval(() => {
       lastRef.current = Date.now();
@@ -575,9 +530,7 @@ const Board = () => {
     return () => window.clearInterval(id);
   }, [names, rebuild]);
 
-  /* THE FILTER takes as many names as you like (Noah, 2026-09-09: "the filter
-     only allows you to see one name at a time") — "SPY QQQ nvda" or commas;
-     a row stays if any token starts its symbol or sits in its company name */
+  /* the filter takes any number of names ("SPY QQQ nvda" or commas): a row stays if a token starts its symbol or name */
   const [quick, setQuick] = useState('');
   const tokens = useMemo(() => quick.toUpperCase().split(/[\s,]+/).filter(Boolean), [quick]);
   const tokensRef = useRef(tokens);
@@ -620,16 +573,10 @@ const Board = () => {
   }, [adding]);
   const gridContext = useMemo<BoardContext>(() => ({ remove: removeBoardName }), []);
 
-  /* THE COLUMNS FILL THE WIDTH — flex, not fixed pixels (Noah, 2026-09-05:
-     "look at all the empty space on the right"). The name stays pinned at a
-     fixed width; every other column takes its share of whatever is left.
-     Headers in plain English — no jargon on this page. */
-  /* EVERY HEAD EXPLAINS ITSELF ON HOVER (the lock walk, Noah, 2026-09-09: "certain
-     row headers like 'expires today' need a brief hover description") — one
-     sentence each, the grid's own tooltip, in the house clothes (index.css). */
-  /* ON A PHONE (the ship pass, 2026-10-22): the name stays pinned and narrow, and the reads a phone needs first — price,
-     the nearest wall and how far, the flip, the supreme, net GEX — come straight after it; the long ones (watch first,
-     the day's path, crossings, positions) leave the grid there. Anything past the screen scrolls inside the grid. */
+  /* The columns fill the width (flex); the name stays pinned at a fixed width. Headers in plain English. */
+  /* every head explains itself on hover, one sentence each */
+  /* On a phone the name stays pinned and narrow and the reads a phone needs first come straight after it; the long ones
+     leave the grid. Anything past the screen scrolls inside the grid. */
   const phone = useIsPhone();
   const anyMine = rows.some(r => r.yours.positions > 0);
   const recKey = `${recordDay().date}|${recordDay().isToday}|${recordDay().done}|${bellDay().head}|${todayScopeLabel()}`;
@@ -673,7 +620,7 @@ const Board = () => {
         comparator: (a: BoardRow['watch'], b: BoardRow['watch']) => (a ? a.reach * a.stake : -1) - (b ? b.reach * b.stake : -1),
       },
       { headerName: bellDay().head, field: 'bellShare', flex: 0.7, minWidth: 82, cellRenderer: BellCell, headerTooltip: `${bellDay().tip("the name")}. A dash means nothing on the name expires that day` },
-      /* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23): before today's open these are the last session's */
+      /* the session on record, named: before today's open these are the last session's */
       { headerName: recordDay().isToday ? 'Flip crossed today' : `Flip crossed · ${longDay(recordDay().date)}`, field: 'crossings', flex: 0.9, minWidth: 168, cellRenderer: CrossCell, headerTooltip: `How many times price crossed the flip in ${recordPossessive()} session: one-minute closes changing side of it — the same count the Map's report prints on its flip row ("crossed N×"). The flip is the one of the contracts that were live in that session (after the close, or before the next open, that session's own book, not the next session's). The more crossings, the less either side of it means` },
       { headerName: recordDay().isToday ? (recordDay().done ? 'Today' : 'Today so far') : longDay(recordDay().date), field: 'spark', flex: 0.5, minWidth: 80, cellRenderer: SparkCell, cellDataType: false, sortable: false, headerTooltip: recordDay().isToday ? 'The price path since the open' : `The price path through ${longDay(recordDay().date)}'s session` },
       {
@@ -687,16 +634,14 @@ const Board = () => {
         comparator: (a: BoardRow['yours'], b: BoardRow['yours']) => a.contracts - b.contracts,
       },
     ];
-    /* EVERY COLUMN ON SCREEN AT 1440 (the ninth audit: "SUPREME · CALL WALL · PU", the crossings column off-screen): the
-       columns are narrower, the long cells wrap to a second line, and "Your positions" is a column only once a name on
-       the board carries one */
+    /* every column on screen at 1440: narrower columns, long cells wrap, "Your positions" only once a name carries one */
     if (!phone) return anyMine ? cols : cols.filter(c => c.field !== 'yours');
     const order = ['ticker', 'spot', 'regime', 'netGex', 'flipDistPct', 'nearest', 'supreme', 'bellShare'];
     return order.map(f => cols.find(c => c.field === f)).filter((c): c is ColDef<BoardRow> => !!c).map(c => (c.field === 'ticker' ? c : { ...c, flex: undefined, width: c.minWidth }));
     // the heads name the session on record and the bell's day — they roll at the open and the close (recKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone, recKey, anyMine]);
-  /* a long head ("Supreme · all exp.", "Net GEX · today") wraps to two lines rather than cut (the sixth audit's m11) */
+  /* a long head wraps to two lines rather than cut */
   const defaultColDef = useMemo<ColDef<BoardRow>>(() => ({ sortable: true, resizable: true, suppressMovable: true, headerClass: 'bg-chip', wrapHeaderText: true, autoHeaderHeight: true, wrapText: true, autoHeight: true }), []);
 
   const open = (e: RowClickedEvent<BoardRow>) => {
@@ -727,8 +672,7 @@ const Board = () => {
   const bookAt = stamps.reduce<number | null>((best, e) => (e && e.at > 0 ? (best == null ? e.at : Math.min(best, e.at)) : best), null);
   const bookDown = names.length > 0 && stamps.length > 0 && stamps.every(e => e?.status === 'error');
   return (
-    /* THE BOARD IS AS TALL AS ITS ROWS (the ship pass, 2026-10-22): a fixed box showed ~15 of 20 names with a row cut
-       at its foot and empty page under it. Every name shows; the page scrolls, never the grid. */
+    /* the board is as tall as its rows: every name shows, the page scrolls, never the grid */
     <div className="border border-borderSubtle rounded-md overflow-clip flex flex-col" data-board>
       <div className="shrink-0 flex items-center gap-3 flex-wrap px-2 py-1.5 bg-panel border-b border-borderSubtle/70" data-board-toolbar>
         <span className="font-mono text-t9 uppercase tracking-widest text-textSecondary">The names on your board</span>
@@ -806,9 +750,7 @@ const Board = () => {
             ))}
         </div>
       ) : (
-      /* MORE TO THE RIGHT, SAID (the UI sweep, 2026-10-22): twelve columns run past a laptop's width and the last one
-         stood cut at the edge ("$354.9", "Net GEX to") as if broken — a fade now says the grid scrolls on, and the
-         scrollbar stays up */
+      /* more to the right, said: a fade says the grid scrolls on, and the scrollbar stays up */
       <div ref={boardWrapRef} className="slayer-board relative" data-more-right={moreRight || undefined}>
         {moreRight && <span aria-hidden className="pointer-events-none absolute top-0 right-0 bottom-3 w-16 z-20 bg-gradient-to-l from-panel via-panel/70 to-transparent" />}
         <AgGridProvider modules={MODULES}>
@@ -819,9 +761,7 @@ const Board = () => {
             rowData={rows}
             onRowDataUpdated={e => {
               if (e.api.getDisplayedRowCount() > 0) e.api.hideOverlay();
-              /* EVERY CELL REDRAWS WHEN A ROW LANDS (the audit's B1: the renderers read `pending` and the bell's reason, so
-                 a cell whose own field had not changed kept its "…" forever), and the sort is re-applied, so "closest to
-                 its flip first" stays true as flips arrive */
+              /* every cell redraws when a row lands (renderers read `pending` and the bell's reason), and the sort is re-applied */
               e.api.refreshCells({ force: true });
               e.api.onSortChanged();
             }}

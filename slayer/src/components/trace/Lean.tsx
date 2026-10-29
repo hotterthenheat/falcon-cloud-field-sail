@@ -1,9 +1,5 @@
-/*
-  A NET FIGURE IN ITS MEANING'S INK (2026-10-13, the partner's rule at Noah's word): net puts bought (+) lean bearish and
-  sold (−) lean bullish, so a figure inked by its sign alone paints put buying as bullish. `put` turns the ink round; a
-  zero is no lean at all, in the plain ink. Inked by direction it carries the mark too (`dir-up` / `dir-down`,
-  theme/tokens.css): ▲ or ▼ under the colour-vision choices, so a direction never rests on hue alone.
-*/
+/* A net figure in its meaning's ink: net puts bought lean bearish, so `put` turns the ink round; zero is plain. The
+   ▲/▼ mark carries direction under the colour-vision choices. */
 
 import { usd as fmtUsd } from '../../data/traceLive';
 

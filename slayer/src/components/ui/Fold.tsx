@@ -1,26 +1,7 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE FOLD (components/ui/Fold.tsx)
-
-  A control that STEPS DOWN from one row into
-  another (Noah, 2026-09-13, on the calendar's band
-  with names side by side: the ticker chip, the
-  supreme fact and the read "shouldn't exist" on the
-  band once every column carries its own — "the
-  exiting and entering of these things should be
-  smooth and quick, not jittery").
-
-  The fold keeps its child MOUNTED and folds its
-  track shut — a grid track going 1fr → 0fr, the
-  child clipped inside, the opacity with it — so the
-  neighbours slide over on real layout (no
-  transform, nothing scaled, nothing remounted), and
-  a fold opening elsewhere in the same 220ms reads
-  as the same control arriving there. Shut, it is
-  out of the tab order and off the pointer
-  (visibility flips at the fold's end), and the gap
-  it would leave beside itself is cancelled.
-==================================================
+  Folds a control in or out of a row while keeping it mounted: a grid track animates 1fr to 0fr with the child clipped
+  and faded, so neighbours slide on real layout (no transform or remount). Shut, it leaves the tab order and pointer
+  (visibility flips at the end) and its gap is cancelled.
 */
 
 import type { ReactNode } from 'react';

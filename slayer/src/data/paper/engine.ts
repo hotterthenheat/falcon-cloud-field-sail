@@ -1,57 +1,13 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE LIVE ACCOUNT'S ENGINE
-  (data/paper/engine.ts)
-
-  docs/paper-rules.md, in code — and nothing else.
-  Pure functions over an ACCOUNT that is its orders and
-  its fills, the way the backtest's two engines are:
-  everything the desk shows is READ off those, so it
-  cannot drift from them. What is new is the clock. Not
-  a replayed minute but THE MARKET AS IT STANDS: every
-  function that needs a price is handed one
-  (`PaperMarket`), so the proof hands it any market it
-  likes and the feed (feed.ts) hands it the live one.
-  Nothing here reads the simulator, the clock on the
-  wall, or storage.
-
-  TWO BOOKS, ONE ACCOUNT. Options — long calls and
-  puts, verticals bought for a debit, paid in cash
-  (engine.ts's rules) — and futures — long or short, on
-  margin (futuresEngine.ts's) — kept as two books on one
-  cash. A way in is paid for, or margined, from what is
-  FREE: cash, plus what the futures are up or down,
-  less the margin they hold.
-
-  THE LADDER OF WAYS OUT is data/review/ladder.ts, the
-  backtest's, unchanged: three targets and two stops a
-  position, one group, breakeven and trailing on a stop.
-
-  TICKS, NOT MINUTES. A working order is looked at on
-  every tick of the feed (`tick`), where a backtest
-  looks once a minute. An order is never looked at on
-  the tick it was placed on.
-
-  AN EVALUATION is this account with a plan — futures
-  only, a floor that trails the account's high mark, a
-  day's limit, flat by 16:59 New York, a target that
-  passes it. Its rules are HARD BLOCKS on a way in and
-  HARD STOPS on the account; none of them ever refuses
-  a way out.
-
-  WHAT A TRADE WAS, WRITTEN DOWN AS IT HAPPENS. A
-  simulated market cannot be walked again, so the
-  engine keeps, while a position is open, what it was
-  worth on the ticks (`held`), and when it closes, the
-  candles it was on (`paths`) — what the journal draws.
-==================================================
+  The paper account's rules in code: pure functions over an account that is its orders and fills, so everything
+  the desk shows is read off them. The market comes in through PaperMarket (feed.ts).
 */
 
 import { MULT, nameGoesUp, type Bracket, type OrderKind, type Side } from '../review/engine';
 import { onTick } from '../review/futuresTape';
 import type { DayNote, JournalEntry } from '../review/journal';
 import { MAX_STOPS, MAX_TARGETS, giveUp, ladderShapeRefusal, nextRung, rungsOf, type LadderBracket } from '../review/ladder';
-import { contractKey, contractWords, dteAt, legsOf, spreadWidth, type ContractId, type Quote } from '../review/quotes';
+import { contractKey, contractWords, dteAt, legsOf, type ContractId, type Quote } from '../review/quotes';
 import type { Candle } from '../../types/market';
 import { bellOf, dayEndsAt, flatByOf, nyAt, nyClockWords, tradingDayOf } from './clock';
 import { bigOf, frontOn, futWords, isPaperFuture, paperFut } from './products';
@@ -1736,6 +1692,4 @@ export function afterHand(before: PaperAccount, after: PaperAccount, m: PaperMar
 
 /** "the day" and "the time" of an instant, for a line in the log */
 export const whenWords = (ms: number): string => nyClockWords(ms);
-/** A spread's width in dollars a contract, for the ticket's line */
-export const widthOf = (c: ContractId): number => spreadWidth(c) * MULT;
 export { pctWords };

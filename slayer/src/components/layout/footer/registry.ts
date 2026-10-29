@@ -1,9 +1,5 @@
-/*
-  WHICH PICTURE A PAGE'S FOOTER SHOWS (components/layout/footer/registry.ts) — 2026-10-03, the owner: "each page had its
-  own art work similar to that one but thats representive of its page … and then the landing page one you go into more
-  depth". The address picks the scene; the scenes themselves (scenes.ts and its parts) are one chunk of their own, fetched
-  the first time a footer is drawn, so no page carries them in its first load.
-*/
+/* Which scene a page's footer shows, by address. The scenes (scenes.ts and parts/) are one chunk, fetched the first
+   time a footer draws, so no page carries them in its first load. */
 
 import type { SceneMaker } from './kit';
 
@@ -29,10 +25,8 @@ export type SceneName =
   | 'invite'
   | 'maintenance';
 
-/* THE PICTURES ARE HIS, THE ADDRESSES OURS (2026-10-07 — Noah: "for the footers my partner actually wants the other ones
-   and not the actual look of the website"): the scenes came over whole from his repo; this list maps them to OUR routes
-   (App.tsx). A product's own page of the site (/products/*) shows its room's picture; the legal pages are /terms and
-   /privacy; the account's page is /signin. His status, about, invite and maintenance pictures wait for pages of ours. */
+/* Scenes mapped to our routes (App.tsx): a product page (/products/*) shows its room's scene; /terms, /privacy and
+   /signin have their own. The status, about, invite and maintenance scenes have no page yet. */
 const BY_PATH: [RegExp, SceneName][] = [
   [/^\/(products\/)?pulse/, 'pulse'],
   [/^\/(products\/)?terrain/, 'terrain'],

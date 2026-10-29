@@ -1,17 +1,8 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE CALENDAR
-  (components/record/EarningsGuide.tsx)
-
-  The Earnings page's guide in the house pattern:
-  a figure per thing, the surface drawn small in
-  its own inks, one sentence under each.
-==================================================
-*/
+/* The Earnings page's guide: a figure per thing, one sentence under each. */
 
 import type { ReactNode } from 'react';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const BULL = 'rgb(var(--bull))';
 const BEAR = 'rgb(var(--bear))';
 const WARN = 'rgb(var(--warn))';

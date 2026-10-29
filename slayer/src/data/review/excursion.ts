@@ -1,52 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · WHILE YOU HELD IT
-  (data/review/excursion.ts)
-
-  The one thing a report cannot say about a trade:
-  what it did BETWEEN the way in and the way out. The
-  tape is seeded and stays put, so a closed trade can
-  be walked again, minute by minute, for as long as
-  the session is kept:
-
-    the path     what the trade was worth at each
-                 minute it was on, in dollars, fees in
-                 — an option at the BID it could have
-                 been sold into (so decay is in it), a
-                 future at the minute's close
-    the best     the most it was up, and when
-    the worst    the most it was down, and when
-    kept         what was taken of the best
-
-  and the ways out that rode it — the target and the
-  stop as they last stood — so the page can draw them.
-
-  HONEST ABOUT WHAT A BAR CANNOT SAY. A future's best
-  and worst read the HIGHS and LOWS inside each minute
-  (a stop lives there), but never a minute one of the
-  trade's own fills happened in: what came before a
-  fill, or after it, inside that bar was not the
-  trade's at that size. An option has one quote a
-  minute, so its best is the best bid a minute showed.
-
-  AT ITS TRUE SIZE (2026-09-20, the ladder): a trade
-  that scaled in or out is walked from its LEGS — every
-  fill, in order — so each minute is worth what had
-  been taken out by then plus what was still on, at
-  the size that was still on. The walk ends, to the
-  cent, on what the trade made.
-
-  Walked once, kept by the trade's key: a closed trade
-  never changes.
-
-  A PAPER TRADE CANNOT BE WALKED AGAIN (2026-09-22): its
-  market was the simulator's, and that market is gone.
-  So the paper account WROTE IT DOWN while it was held
-  (data/paper/engine.ts `held`): what it was worth on the
-  ticks, its best and its worst on every tick — read here
-  into the same shape. A trade older than the journal
-  keeps drawings for has its figures and no path.
-==================================================
+  What a closed trade did between the way in and the way out, walked again minute by minute on the tape it was
+  played on: its path, best and worst, and where each way out would have left.
 */
 
 import { MULT, stampOf, type Session, type Trade } from './engine';

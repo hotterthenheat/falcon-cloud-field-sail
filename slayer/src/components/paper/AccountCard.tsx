@@ -1,38 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE ACCOUNT
-  (components/paper/AccountCard.tsx)
-
-  The account in hand, at the head of the Live Chart's
-  right column (Noah, 2026-09-22: the strip that stood
-  over the chart "should be remigrated to cover 'the
-  contract' section of the right side panel … this
-  leaves more room for the chart to move closer to the
-  top"). What the strip said, as a card:
-
-    PRACTICE     WORTH first — cash, the options at the
-                 mark, the futures up or down — then
-                 today and all time in their direction's
-                 ink, what is free, what is open; and a
-                 bar of what is TIED UP (the options'
-                 worth and the margin held)
-    EVALUATION   the figure that INVERTS: ROOM TO THE
-                 FLOOR first (in the warn ink when a
-                 quarter of the allowance or less is
-                 left), then what it is worth, the day
-                 and the day's room, the contract count,
-                 the days traded, the clock to 16:59 —
-                 and one bar from the floor to the target
-
-  THE ACCOUNT IN HAND is the card's head: the picker
-  (the practice account, the evaluation running, the
-  finished ones — read-only), its status, Flatten, and
-  ONE door for what an account starts and ends with —
-  New: a practice account of a size, or an evaluation
-  on a plan, and the running evaluation ended. The
-  Evaluation page that held those went, with the paper
-  Journal, the same day ("we got too carried away").
-==================================================
+  The paper account in hand: what it is worth, today and all time, what is free and open, and a bar of what is tied
+  up. An evaluation leads with its room to the floor instead.
 */
 
 import { useState, type ReactNode } from 'react';

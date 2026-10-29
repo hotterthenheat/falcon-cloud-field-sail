@@ -1,25 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE TWO JOURNALS' ONE SEAM
-  (data/review/journalSource.ts)
-
-  Noah, 2026-09-22: "there should be 2 different
-  journals, 1 for the backtesting and 1 for the paper
-  trading". The journal's pages are one set (the list,
-  a trade's own page, the calendar, the tags); what
-  differs is WHERE THEIR TRADES COME FROM and WHERE
-  THEIR WORDS ARE KEPT — this file says it, for each:
-
-    backtest   every backtest session's closed trades
-               (data/review/store.ts), words kept with
-               the session
-    paper      every paper account's (data/paper/
-               store.ts), words kept under the journal's
-               own key — never another journal's rows
-
-  The reader's two lists of tags (setups, mistakes) are
-  shared: they are the reader's words, not a journal's.
-==================================================
+  The two journals' one seam: where the trades come from (paper accounts or backtest sessions), where their notes
+  are kept, and what the page's foot says about the prices.
 */
 
 import { useMemo } from 'react';
@@ -27,7 +8,6 @@ import { paperRowsOf, rowsOf, type DayNote, type JournalEntry, type JournalRow }
 import { setDayNote as setReviewDayNote, setEntry as setReviewEntry, useSessions } from './store';
 import { setPaperDayNote, setPaperEntry, usePaper, usePaperJournal } from '../paper/store';
 import { nyAt } from '../paper/clock';
-import { SAMPLE_JOURNAL, sampleAccounts, setSampleShown, useSampleShown } from '../paper/sample';
 import { calendarDayOf } from './journalFigures';
 
 export type JournalKind = 'backtest' | 'paper';
@@ -51,8 +31,6 @@ export interface JournalSource {
   today: string;
   /** The container in hand (the paper desk's account) — whose note a day with no trades on it takes */
   current: string | null;
-  /** The sample accounts (data/paper/sample.ts), while the switch is on: shown or hidden, and the door */
-  sample?: { shown: boolean; set: (on: boolean) => void };
   /** The line under a trade's page */
   foot: string;
 }
@@ -62,10 +40,9 @@ export function useJournalSource(kind: JournalKind): JournalSource {
   const sessions = useSessions();
   const paper = usePaper();
   const words = usePaperJournal();
-  const sampleShown = useSampleShown();
   return useMemo<JournalSource>(() => {
     if (kind === 'paper') {
-      const accounts = SAMPLE_JOURNAL && sampleShown ? [...paper.accounts, ...sampleAccounts()] : paper.accounts;
+      const accounts = paper.accounts;
       return {
             kind,
             base: '/practice/journal',
@@ -78,7 +55,6 @@ export function useJournalSource(kind: JournalKind): JournalSource {
             notesOf: id => ({ ...accounts.find(a => a.id === id)?.days, ...words.days[id] }),
             today: nyAt(Date.now()).date,
             current: paper.inHand,
-            sample: SAMPLE_JOURNAL ? { shown: sampleShown, set: setSampleShown } : undefined,
             foot: 'Paper trades fill at each contract’s live bid and ask — practice, not advice. Accounts named “· simulated prices” were traded on the old simulated feed. Every time on this page is New York’s.',
       };
     }
@@ -98,5 +74,5 @@ export function useJournalSource(kind: JournalKind): JournalSource {
               current: null,
               foot: 'Played on a seeded synthetic tape, not a past market — practice, not advice. Backtest is paused until real history is wired in. Every time on this page is New York’s.',
     };
-  }, [kind, kind === 'paper' ? paper.accounts : sessions, words, paper.inHand, sampleShown]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [kind, kind === 'paper' ? paper.accounts : sessions, words, paper.inHand]); // eslint-disable-line react-hooks/exhaustive-deps
 }

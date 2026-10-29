@@ -1,44 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - EVERYTHING IN IT
-  (pages/landing/Everything.tsx)
-
-  THE WHOLE TERMINAL, PAGE BY PAGE. The tour walks
-  the eight rooms a screen at a time; this is the
-  list it leaves out — every page and tool in every
-  room, one line each, and EACH ONE A DOOR into the
-  terminal. Noah brought it from his partner's
-  landing (2026-10-01, with a picture of it: "the two
-  images i just sent you but with a nicer touchup").
-  The arrangement is the picture's: the rooms down
-  the left with their counts, the picked room's pages
-  in two columns on the right, and under them the
-  line of what the terminal stands in place of.
-
-  THE LIST IS THE TERMINAL'S OWN where the terminal
-  keeps one: Pinpoint, Trace, Dossier and Practice
-  read the registries their own sub-bars read
-  (pages/<room>/subnav.ts), so a page added to a room
-  is listed here the day it is built. Pulse, Compass,
-  Terrain and the Weigher are written below, and
-  every line was read against the terminal as it
-  stands: what a line says is there.
-
-  THE TOUCH-UP, over the picture:
-  · the icons small (16px in a row), bare, in our inks
-  · the panel SWAPS SOFTLY when a room is picked —
-    out quickly, in a little slower, the house's swap
-  · a page's door shows its arrow under the pointer,
-    as the tour's rows do — not the word "Open" on
-    every line
-  · the two columns share their rows, so a rule on
-    the left meets its rule on the right
-  · a chip of "in place of" is a door too: it picks
-    the room that does that job
-
-  A room is a tab: the arrows walk them. On a phone
-  the rooms are a row that scrolls sideways.
-==================================================
+  Every page and tool in every room, one line each, each a link into the terminal.
 */
 
 import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';

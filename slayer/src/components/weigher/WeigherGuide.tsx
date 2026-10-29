@@ -1,12 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE WEIGHER
-  (components/weigher/WeigherGuide.tsx)
-
-  The desk's guide in the house pattern (the walk,
-  2026-09-11): a figure per thing, the surface drawn
-  small in its own inks, one sentence under each.
-==================================================
+  How to read the Weigher, one short paragraph per part.
 */
 
 import type { ReactNode } from 'react';

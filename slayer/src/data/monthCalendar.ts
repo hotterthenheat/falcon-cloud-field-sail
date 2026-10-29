@@ -1,20 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE MONTH ON THE RECORD
-  (data/monthCalendar.ts)
-
-  The Day's calendar as a MONTH: every day of a
-  month with what is on it, all of it off Unusual
-  Whales — the week's economic calendar, the day's
-  catalysts, the earnings fortnight (the same rows
-  the Earnings page reads, so a name has one date
-  everywhere), the FDA calendar, the public
-  schedule and the posts. Monthly options
-  expiration (the third Friday) is the one date the
-  page knows by rule. Nothing is seeded: a day the
-  vendor names nothing on stays empty.
-==================================================
-*/
+/* The day's calendar as a month, all off the vendor: the economic calendar, the catalysts, the earnings fortnight, the
+   FDA calendar, the schedule and the posts; monthly expiration (third Friday) is the one date known by rule. */
 
 import { now } from '../core/clock';
 import { type ReportSlot } from './earnings';
@@ -104,9 +89,7 @@ function ensureEcon(): void {
   void uwCall('/market/economic-calendar').then(res => {
     const rows = Array.isArray(res.data) ? (res.data as Record<string, unknown>[]) : [];
     const out: CalEvent[] = [];
-    /* ONE ROW PER RELEASE (audit round 5: every release showed twice — the vendor repeats each at the same minute): a
-       release at the same instant under the same title is the same release, kept once with the forecast and prior
-       either copy carries */
+    /* one row per release: the vendor repeats each at the same minute; the copy with the forecast and prior is kept */
     const byKey = new Map<string, CalEvent>();
     rows.forEach(r => {
       const at = nyParts(String(r.time ?? ''));
@@ -181,8 +164,7 @@ export function setLivePosts(events: CalEvent[]): void {
   bumpCalendar();
 }
 
-/** Econ lands on Data, earnings on Earnings — the day's own prints,
-    in place of the seeded ones on any day the feed actually names. */
+/** The day's own prints off the feed: econ on Data, earnings on Earnings */
 export function setLiveCatalysts(events: CalEvent[]): void {
   liveCatalysts = events;
   bumpCalendar();
@@ -220,10 +202,8 @@ export function buildMonthCalendar(year: number, month: number): MonthCalendar {
   const catalystMacro = liveCatalysts.filter(e => e.kind === 'macro' && inMonth(e));
   const seenMacro = new Set(catalystMacro.map(e => `${dayKeyOf(e.date)}|${bare(e.title)}`));
   const econ = liveEcon.filter(e => inMonth(e) && !seenMacro.has(`${dayKeyOf(e.date)}|${bare(e.title)}`));
-  /* THE EARNINGS LISTS ARE THE SOURCE OF TRUTH (audit round 10: the day's catalysts won over them, so RDY, TV, BANF read
-     "after the close · date confirmed" off a report_time of "unknown", and RCBC, on the after-hours list, was missing).
-     The fortnight's reports stand as the Earnings page lists them; a name only the daily catalysts carry is added
-     after them, time not set unless the catalyst says it, never "confirmed" */
+  /* The earnings lists are the source of truth; a name only the daily catalysts carry is added after them, time not set
+     unless the catalyst says it, never "confirmed". */
   const earn = liveEarnings.filter(inMonth);
   const seenEarn = new Set(earn.map(e => `${dayKeyOf(e.date)}|${e.ticker}`));
   const catalystEarn = liveCatalysts.filter(e => e.kind === 'earnings' && inMonth(e) && !seenEarn.has(`${dayKeyOf(e.date)}|${e.ticker}`));

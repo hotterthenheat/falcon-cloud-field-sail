@@ -1,43 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · A NAME'S OPTIONS, ORDERED
-  FROM THE CHAIN (components/paper/OptionsChain.tsx)
-
-  On the Live Chart a stock's or an index's options are
-  traded FROM THE CHAIN (Noah, 2026-09-22: "obviously the
-  order is not a buy limit or a sell limit but rather a
-  put or call and you would need the actual options chain
-  to see the vol, decay etc like we have for the dropdown
-  of the weigher options chain" — shown the plan: "build it
-  with the wider column"):
-
-    CALLS | PUTS   the switch that IS the direction, at the
-                   chain's head — filled green or red, the
-                   way Buy and Sell are on a future — with
-                   the expiry and the Columns card beside it
-    THE CHAIN      the Weigher's own grid (components/
-                   weigher/ChainGrid): its columns, the
-                   market's line between two strikes, the
-                   weigh-up (Stats · The Greeks) unfolding
-                   under a picked strike — on the Live
-                   Chart's quotes (feed.ts liveDeskChain), so
-                   the price in the chain is the price a
-                   press gets
-    THE ORDER      INSIDE that dropdown, under the stats and
-                   the greeks: the desk's one size, Buy at the
-                   ask or a limit (the middle, unless another
-                   price is typed), a spread sold against it,
-                   and a folded "+ Target / Stop". A strike
-                   the reader HOLDS says so on its row, and
-                   its dropdown turns to the position — what
-                   it is up or down, what it loses a day —
-                   with Sell to close at the bid or a limit,
-                   and Buy more.
-
-  A future keeps its Order card (components/paper/
-  OrderPanel), whose pieces this borrows: the size, the
-  two-way button, the price box.
-==================================================
+  A name's options, traded from the chain: calls or puts at its head with the expiry and columns, then the
+  Weigher's grid with the order opening inside a pressed strike.
 */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';

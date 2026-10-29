@@ -1,20 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE DESK'S LIST (components/weigher/PositionsList.tsx)
-
-  One list, two kinds of rows (Noah, 2026-09-14):
-  the contracts you WATCH (marked at the moment
-  they were added, data/watchlist) and the
-  positions you OWN or SOLD (what you paid,
-  data/positions — the Map's "Your positions",
-  moved here). Each row is tagged, the figures
-  read the same way: the mark now, today's move,
-  the total since it was added, in dollars then
-  in R. A row puts that contract on the desk; the
-  picked one wears the where-you-are selection.
-  The grid grows with its rows, the scanner's
-  clothes.
-==================================================
+  One list, two kinds of rows: contracts you watch (marked when added) and positions you own or sold (what you
+  paid), each marked at the live quote.
 */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';

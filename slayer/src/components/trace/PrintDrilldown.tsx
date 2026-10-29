@@ -32,10 +32,8 @@ const FlowPanels = lazy(() => import('./ContractFlowChart').then(m => ({ default
 const NetPanels = lazy(() => import('./ContractFlowChart').then(m => ({ default: m.NetPanel })));
 
 const SENT_TONE: Record<PrintSentiment, Tone> = { BULLISH: 'bull', BEARISH: 'bear', NEUTRAL: 'neutral' };
-/* NO FIGURE OF OURS ON THE CARD (the re-audit, 2026-10-22): "Spread + a day of theta" stood on a seeded IV (hRange) and a
-   spread formula on open interest, read off the simulator's snapshot — SPY 763P read 1.2% where its quote, 0.09 × 0.10,
-   is a 10.5% spread — and the Compass verdict and grade beside it were seeded the same way. Both are gone. The card's
-   cost of carry is the print's OWN quote and the feed's own theta (spreadAndTheta below). */
+/* The card's cost of carry is the print's own quote and the vendor's own theta (spreadAndTheta); no figure of ours
+   stands in. */
 
 /** The print's real cost to cross: its NBBO spread as a share of the mid, and a day of the feed's theta as a share of
     the fill — each null when the print does not carry it */
@@ -46,20 +44,15 @@ function spreadAndTheta(p: FlowPrint): { spreadPct: number | null; thetaPct: num
   return { spreadPct, thetaPct };
 }
 
-/* A DAY OF THETA CANNOT TAKE MORE THAN THE OPTION IS WORTH (the third audit, 2026-10-22: NVDA 220C read "210.7% of the
-   fill · $0.38 a share" on a $0.18 fill, a day from expiry). The vendor's theta is a per-share, per-day RATE — the slope
-   of the model's value at that instant — and in an option's last day the slope runs far past what is left, because the
-   value goes to zero by the bell. A share's day of decay is the smaller of the rate and the price; when the rate is the
-   larger, the card says so in words. */
+/* The vendor's theta is a per-share daily rate, which in an option's last day runs past what is left; a day's decay
+   is the smaller of the rate and the price, said in words when capped. */
 function thetaWords(p: FlowPrint, thetaPct: number | null, printIso: string = tapeSessionIso()): { text: string; warn: boolean; title?: string } {
   if (thetaPct == null || p.theta == null) return { text: '—', warn: false };
   const rate = Math.abs(p.theta);
   const dp = (v: number) => (v < 0.1 ? 3 : 2);
   if (rate < p.fill) return { text: `${thetaPct.toFixed(1)}% of the fill · $${rate.toFixed(dp(rate))} a share`, warn: false };
-  /* from New York's calendar day, not the tape's session (audit round 5: at 01:00 on Oct 23 an Oct 23 contract read
-     "expires tomorrow" and an Oct 22 one "expires today") */
-  /* AT THE PRINT, NOT THE CLOCK (audit round 6: an Oct 22 0DTE print read "expired yesterday (Oct 22) — what is left …
-     decays by then" at 04:15 on Oct 23): on a past session the words are the print's own day's */
+  /* from New York's calendar day, not the tape's session */
+  /* on a past session the words are the print's own day's, not the clock's */
   const live = isLiveDay(printIso);
   const n = dteFrom(isoOf(p.expiry), printIso);
   const when = live
@@ -67,7 +60,7 @@ function thetaWords(p: FlowPrint, thetaPct: number | null, printIso: string = ta
     : n <= 0
       ? `expired at the ${shortDay(printIso)} bell, the day of the print`
       : `${n} day${n === 1 ? '' : 's'} from expiry (${shortDay(p.expiry)}) at the ${shortDay(printIso)} print`;
-  return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share ${live ? 'decays' : 'decayed'} by then`, title: `The theta is a rate — $${rate.toFixed(dp(rate))} a share a day at this instant — and in an option's last days it runs past the price, because the value goes to zero at expiry. A day cannot take more than the $${p.fill.toFixed(2)} it is worth.`, warn: true };
+  return { text: `${when} — what is left of its $${p.fill.toFixed(2)} a share ${live ? 'decays' : 'decayed'} by then`, title: `Theta ($${rate.toFixed(dp(rate))} a share a day) runs past the price near expiry; a day cannot take more than the $${p.fill.toFixed(2)} left.`, warn: true };
 }
 
 const TABLE_TABS = [
@@ -86,9 +79,8 @@ const usd = (v: number | undefined | null): string => (Number.isFinite(v as numb
 
 const INTERVALS = [1, 5, 15, 30];
 
-/* The engine answers its own question. STATES, not adjectives left to the
-   reader: UNUSUAL / BUSY / ORDINARY, judged against the contract's own
-   median session — a lotto name that always churns should NOT light up. */
+/* The engine answers in states (unusual, busy, ordinary) judged against the contract's own median session, so a name
+   that always churns stays quiet. */
 type TapeState = 'UNUSUAL' | 'BUSY' | 'ORDINARY';
 const TAPE_TONE: Record<TapeState, Tone> = { UNUSUAL: 'warn', BUSY: 'neutral', ORDINARY: 'neutral' };
 
@@ -96,9 +88,7 @@ function tapeVerdict(rows: CardDay[], dateIso: string): { state: TapeState; read
   const i = rows.findIndex(r => r.iso === dateIso);
   if (i < 0) return null;
   const today = rows[i];
-  /* its last five sessions — a month back the contract was another animal (far from the money, far from expiry). A session
-     it did not trade is a session of zero, and counts (the third audit, 2026-10-22: SPXW 6250P read "18.8× its median
-     over the 3 sessions before" where the five sessions' median was 1 — the zero days had been dropped) */
+  /* Its last five sessions, a session it did not trade counting as zero. */
   const past = rows.slice(i + 1, i + 6);
   if (past.length < 3) return null;
   const med = (xs: number[]) => {
@@ -124,7 +114,7 @@ function tapeVerdict(rows: CardDay[], dateIso: string): { state: TapeState; read
 
 /** Plain-English summary of what this print actually was — what the print's own fields say, nothing more. */
 function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: number } | null): string {
-  /* THE DAY CARD SPEAKS FOR THE DAY (audit round 4) — its money, its lean by the one rule, and the print it is anchored on */
+  /* the day card speaks for the day: its money, its lean by the one rule, and the print it is anchored on */
   if (p.dayCard) {
     const lean = p.side === 'ASK' ? `leaned to the ask — ${sent === 'BULLISH' ? 'bullish' : 'bearish'} by the one rule` : p.side === 'BID' ? `leaned to the bid — ${sent === 'BULLISH' ? 'bullish' : 'bearish'} by the one rule` : 'had no lean — under 55% of its sided contracts on either side, or mostly mid';
     const vol = day && day.vol > 0 ? day.vol : p.volume;
@@ -133,7 +123,7 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
     return `The ${p.right === 'C' ? 'call' : 'put'}'s day: ${usd(p.premium)} across ${p.size.toLocaleString('en-US')} contracts (the screener's count), and it ${lean}.${p.dayCard.last ? ` Its last ${p.dayCard.session} print was ${p.dayCard.last.size.toLocaleString('en-US')} at $${fixed(p.dayCard.last.fill)}, ${p.dayCard.last.time} ET.` : ''}${oi > 0 ? ` The day's volume is ${fixed(ratio, ratio >= 1.5 ? 1 : 2)}× the open interest${ratio >= 1.5 ? ', so at least some of it is new positioning' : ' — it could be opening or closing'}.` : ''}`;
   }
   const who = p.side === 'ASK' ? 'paid the offer' : p.side === 'BID' ? 'hit the bid' : 'traded at the mid';
-  /* a floor package's leg is not sized as a bet (audit round 6: "a whale-sized" no-side SPX package leg) */
+  /* a floor package's leg is not sized as a bet */
   const size = p.floorPackage ? 'a floor-package' : p.premium >= 1_000_000 ? 'a whale-sized' : p.premium >= 250_000 ? 'a sizeable' : 'a modest';
   const kind = printKind(p);
   const right = p.right === 'C' ? 'call' : 'put';
@@ -141,14 +131,12 @@ function printRead(p: FlowPrint, sent: PrintSentiment, day?: { vol: number; oi: 
     p.trades && p.trades > 1
       ? `flow alert — ${p.trades} prints on this contract in one burst — that mostly ${who}${p.sweep ? ', with a sweep among them' : ''}`
       : `${right} print that ${who}${kind === 'SWEEP' ? ' and swept across exchanges — urgency, not patience' : kind === 'MULTI' ? ' as one leg of a multi-leg order' : ''}`;
-  /* THE DAY'S VOLUME FOR A DAY CLAIM (the re-audit, 2026-10-22: an alert's card said "the day's volume is 0.22× the open
-     interest" from the volume at the alert's moment — 107 — while the day closed at 452, 0.95×): the contract's own
-     session row when the card has it */
+  /* A day claim uses the day's volume: the contract's own session row when the card has it. */
   const ofDay = !!(day && day.vol > 0);
   const vol = ofDay ? day!.vol : p.volume;
   const oi = day && day.oi > 0 ? day.oi : p.oi;
   const ratio = oi > 0 ? vol / oi : 0;
-  /* without the session row the volume is the running figure AT the print or alert, and says so (audit round 6) */
+  /* without the session row the volume is the running figure at the print or alert, and says so */
   const volWho = ofDay ? "The day's volume" : `The volume at the ${p.trades && p.trades > 1 ? 'alert' : 'print'}`;
   const oiNote =
     oi > 0 && ratio >= 1.5
@@ -185,7 +173,7 @@ interface PrintDrilldownProps {
   onStep: (dir: -1 | 1) => void;
   hasPrev: boolean;
   hasNext: boolean;
-  /** The live tape buffer — THE SEQUENCE reads the same contract's other
+  /** The live tape buffer — THE sequence reads the same contract's other
       prints out of it (isolated trade, or one leg of a working order?) */
   tapeRows?: FlowPrint[];
   /** What the list you were watching holds — prints, or flow alerts */
@@ -200,15 +188,8 @@ const sameContract = (a: FlowPrint, b: FlowPrint) =>
 
 const SEQ_SHOWN = 6;
 
-/*
-  THE SEQUENCE — the open print among its siblings from the LIVE tape buffer
-  (Noah, 2026-08-19: "see whether it's an isolated trade or part of a larger
-  sequence"). Deliberately reads the buffer the user was just watching, NOT
-  the window history below (that is the contract's whole session; this is
-  "what else crossed the tape I saw"), and deliberately unfiltered — evidence
-  must not vanish because a tape filter is on. The verdict speaks first;
-  rows are doors that swap the drilldown to that print.
-*/
+/* The open print among its siblings in the live tape buffer the reader was watching, unfiltered so evidence never
+   vanishes behind a tape filter; rows swap the card to that print. */
 const SequenceStrip = ({
   print,
   siblings,
@@ -261,7 +242,7 @@ const SequenceStrip = ({
           {shown.map(p => {
             const self = p.id === print.id;
             const word = p.side === 'ASK' ? 'paid offer' : p.side === 'BID' ? 'hit bid' : 'mid';
-            /* the side in one ink (2026-10-13): the word says it, no direction hue */
+            /* the side in one ink: the word says it, no direction hue */
             const ink = p.side === 'MID' ? 'text-textMuted' : 'text-textPrimary';
             const row = (
               <>
@@ -327,9 +308,8 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
     [print, tapeRows]
   );
 
-  /* THE SESSION THE CARD SHOWS — the print's own session: its New York trade date, never the clock's (audit round 6: at
-     04:15 on Oct 23 every card asked for ?date=2026-10-23, an empty day, and read "Today · $0 traded · NO MINUTES"). A
-     day-book row carries no fill instant — the tape's session. `tapeIso` caps the next-session arrow. */
+  /* The session the card shows is the print's own New York trade date, never the clock's; a day-book row carries no
+     instant, so it takes the tape's session. */
   const tapeIso = tapeSessionIso();
   const printIso = printSessionIso(print);
   const [dateIso, setDateIso] = useState<string>(printIso);
@@ -352,16 +332,13 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
   const sent = print ? sentimentOf(print) : 'NEUTRAL';
   /* a DAY card's side is the day's lean (the one rule), never one print's — said as a lean */
   const sideLabel = print?.dayCard ? (print.side === 'ASK' ? 'DAY LEANS ASK' : print.side === 'BID' ? 'DAY LEANS BID' : 'NO DAY LEAN') : print?.side === 'ASK' ? 'BOUGHT' : print?.side === 'BID' ? 'SOLD' : 'MID';
-  /* THE SIDE IN ONE INK (2026-10-13, the partner's rule at Noah's word): "SOLD" wore bear red beside a green "BULLISH"
-     on a put sold — the side is not the direction; the sentiment line under it carries the direction */
+  /* The side in one ink: a put sold is not bearish, so the sentiment line under it carries the direction */
   const sideTone = print?.side === 'MID' ? 'text-textMuted' : 'text-textPrimary';
 
-  /* THE CONTRACT'S OWN TAPE (the audit, 2026-10-22): its prints, its minutes and its history off the feed's
-     per-contract routes, and the underlying's net premium minute by minute — data/contractflow.ts */
+  /* The contract's own prints, minutes and history off the vendor's per-contract routes (data/contractflow.ts) */
   const load = useContractTape(print?.occ, print?.ticker, dateIso);
   const cf: ContractTape | null = load.tape;
-  /* WHEN EACH VOLUME WAS READ (audit round 8: four day volumes on one card, 80,921 / 81,472 / 81,135 / 81,269, unlabelled
-     by time) — the session row's figure carries the minute it was read */
+  /* each day-volume figure carries the minute it was read */
   const cfAt = useMemo(() => (cf ? Date.now() : null), [cf]);
 
   /* The print's minute since the bell — the marker through both strips, only on the print's own session, and inside the
@@ -373,20 +350,16 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
     return w ? (m >= w.from && m <= w.to ? m : null) : m >= 0 && m <= SESSION_MIN ? m : null;
   }, [print, dateIso, printIso, load.tape]);
 
-  // Is this session unusual FOR THIS CONTRACT? Judged against its own history.
+  /* Is this session unusual for this contract, judged against its own history? */
   const verdict = useMemo(() => (cf ? tapeVerdict(cf.history, dateIso) : null), [cf, dateIso]);
-  /* THE DAY'S SIDE SPLIT IS THE STRIP'S (the third audit, 2026-10-22: "bid 44%" here off the vendor's history row and
-     "BID 43%" in the strip's bar off its minutes; and the history row's sides still held the cancelled contracts): one
-     source — the card's own window, its prints when all are in hand, else the vendor's regular-session minutes — and one
-     rounding (traceLive sideShares), the very figures the strip's bar draws */
+  /* The day's side split is the strip's own window and rounding (sideShares), so the card and the bar always agree. */
   const dayLean = cf ? (() => {
     const t = cf.minutes.reduce((a, m) => ({ ask: a.ask + m.askVol, bid: a.bid + m.bidVol, mid: a.mid + m.midVol }), { ask: 0, bid: 0, mid: 0 });
     if (!(t.ask + t.bid + t.mid > 0)) return null;
     const sh = sideShares(t.bid, t.mid, t.ask);
     return { text: `ask ${sh.ask}% · bid ${sh.bid}% · mid ${sh.mid}%`, title: `${(t.ask + t.bid + t.mid).toLocaleString('en-US')} contracts — ${cf.window.label}${cf.window.source === 'prints' ? ', cancelled prints left out' : ''}` };
   })() : null;
-  /* AN ALERT'S LAST FILL IS ITS LAST TRADE (the third audit: "last fill $X × N" put the alert's total_size beside its
-     last price) — the alert's own trades, newest last; its largest single trade says whether any one was a block */
+  /* an alert's last fill is its last trade; its largest single trade says whether any was a block */
   const isAlert = !!print?.trades && print.trades > 1 && !!print.alertId;
   const alertTrades = useAlertTrades(isAlert ? print!.alertId! : null);
   const alertFacts = useMemo(() => {
@@ -452,13 +425,10 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
       // The session drives every series in the modal, so it sits dead centre
       // rather than tucked in with the window controls.
       headerCenter={
-        /* The whole session box wears the holo foil — navigation hardware,
-           dark ink on the bright material (Noah: "the entire box"). The label
-           carries today-vs-past, so the material stays constant. */
+        /* The whole session box wears the holo foil; the label carries today-vs-past, so the material stays
+           constant. */
         <div className="group relative flex items-center gap-0.5 rounded holo-bg text-onfoil px-1 py-0.5">
-            {/* ONE hover for the WHOLE box (Noah, 2026-08-23: "the entire
-                button and not just the inner section") — a full-box wash on
-                group hover instead of per-segment tints */}
+            {/* One hover wash for the whole box rather than per-segment tints */}
             <span
               className="absolute inset-0 rounded bg-black/0 group-hover:bg-black/[0.12] transition-colors pointer-events-none"
               aria-hidden
@@ -541,9 +511,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
       header={
         print && (
           <div className="flex items-center gap-3 flex-wrap">
-            {/* THE MASTHEAD (Noah, 2026-09-28: "the slayer terminal … logo placed on the top right or left of the page so
-                when users take screenshots and post on twitter thats what shows") — the house's wordmark, first thing on
-                the card, the sidenav's own */}
+            {/* The house wordmark, first on the card, so a screenshot carries it */}
             <span className="inline-flex items-center gap-2 pr-3 border-r border-borderSubtle shrink-0" role="img" aria-label="Slayer Terminal" data-print-masthead>
               <SlayerMark size={18} bare label="" />
               <Wordmark height={11} label="" />
@@ -559,7 +527,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             <span className="font-mono text-t11 text-textSecondary tnum">
               {print.expiry} · {print.dte}d
             </span>
-            {/* White: a leg count is a fact, not a status — the tape's own rule (2026-08-30). */}
+            {/* A leg count is a fact, not a status: primary ink. */}
             {print.legs > 1 && (
               <span className="font-mono text-t11 text-textPrimary" title={print.trades ? 'The alert held multi-leg prints' : print.dayCard ? 'Half or more of the day traded as legs of multi-leg orders' : "The print's OPRA condition marks it a leg of a multi-leg order — how many legs it had is not on the print"}>
                 multi-leg
@@ -597,11 +565,10 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
     >
       {print && (
         <>
-          {/* THE HEAD OF THE CARD (2026-09-28, Noah: the three cards "look very AI generated and doesnt fit our design
-              pattern"): one quiet block in the house's grammar — the money on one line with the fill's rule, the read as
-              one sentence, the evidence as dot-leader rows with the Compass scale folded in; hairlines, no boxes */}
+          {/* The card's head in the house grammar: the money line with the fill's rule, the read as one sentence, the
+             evidence as dot-leader rows; hairlines, no boxes. */}
           <div className="flex flex-col border border-borderSubtle rounded-md bg-inset overflow-hidden" data-print-head>
-            {/* THE MONEY — the premium, the side, where between bid and ask it filled, the fill */}
+            {/* THE money — the premium, the side, where between bid and ask it filled, the fill */}
             <div className="flex items-center gap-x-5 gap-y-2 flex-wrap px-4 py-3" data-print-money>
               <span className="flex items-baseline gap-2.5">
                 <span className={`font-mono text-t22 font-bold tnum leading-none ${print.premium >= 1_000_000 ? 'text-supreme' : 'text-textPrimary'}`}>{usd(print.premium)}</span>
@@ -633,11 +600,11 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                 />
               </span>
             </div>
-            {/* THE READ — one sentence, the terminal talks first */}
+            {/* THE read — one sentence, the terminal talks first */}
             <p className="px-4 py-2.5 border-t border-borderSubtle/60 text-t12 leading-relaxed text-textSecondary" data-print-read>
               <RichRead text={printRead(print, sent, day)} />
             </p>
-            {/* THE EVIDENCE — the house's dot-leader rows; the Compass scale folded in, in words (no figure of ours in public) */}
+            {/* THE evidence — the house's dot-leader rows; the Compass scale folded in, in words (no figure of ours in public) */}
             <div className="px-4 pt-2.5 pb-3 border-t border-borderSubtle/60 grid gap-x-8 gap-y-1.5 md:grid-cols-2 xl:grid-cols-3" data-print-facts>
               {print.dayCard ? (
                 <Fact label={`Last ${print.dayCard.session} print`} value={print.dayCard.last ? `${print.dayCard.last.side === 'ASK' ? 'paid the offer' : print.dayCard.last.side === 'BID' ? 'hit the bid' : 'mid / no side'} · ${print.dayCard.last.time}` : '—'} valueCls={!print.dayCard.last || print.dayCard.last.side === 'MID' ? 'text-textMuted' : 'text-textPrimary'} />
@@ -646,8 +613,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               )}
               {/* the contract's whole session by side — the same history row the table reads, mid shown on its own */}
               <Fact label={isLiveDay(dateIso) ? "Today's volume by side" : `${shortDay(dateIso)} volume by side`} value={dayLean ? <span title={dayLean.title}>{dayLean.text}</span> : load.waiting ? '…' : '—'} valueCls={dayLean ? 'text-textPrimary' : 'text-textMuted'} />
-              {/* THE SIGNED DISTANCE, AND THE WORD (the re-audit, 2026-10-22: a 7600 put against 7,665 read "+0.8%" under
-                  "Strike vs spot" — that was how far out of the money it is, not strike less spot) */}
+              {/* the signed distance and the word: out of the money for calls and puts alike, not strike less spot */}
               <Fact
                 label="Strike − spot"
                 value={(() => {
@@ -660,15 +626,13 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
                   return `${dist} · ${idx ? '≈' : ''}${fixed(Math.abs(print.otmPct), 1)}% ${otm ? 'OTM' : 'ITM'}`;
                 })()}
               />
-              {/* ONE FIGURE, ITS SOURCE SAID (audit round 4: 146,691 on the Screener, 146,779 on the card, 146,713 elsewhere — three
-                  "today's volume"): the card's is the contract's session row (after-hours prints included); the Screener's is
-                  the screener's as of its row's last fill; the day volume at the last regular print is in the money line */}
-              {/* THE LABEL IS SHORT, ITS SOURCE ON HOVER (retail, round 11: "TODAY'S VOLUME · SESSION ROW, READ 20:18 ET, AFTER-HOURS
-                  PRINTS INCLUDED" ran over the Open interest beside it) */}
+              {/* One figure, its source said: the contract's session row here (after hours included); the Screener's
+                 is as of its row's last fill. */}
+              {/* the label stays short; its source is on the hover */}
               <Fact label={day && day.vol > 0 ? <span title={`The contract's session row${cfAt && isLiveDay(dateIso) ? `, read ${nyClock(cfAt, { zone: true })}` : ''}${isLiveDay(dateIso) && sessionPhase() !== 'after' && sessionPhase() !== 'closed' ? '' : ' — after-hours prints included'}`}>{isLiveDay(dateIso) ? "Today's volume" : `${shortDay(dateIso)} volume`}</span> : print.dayCard ? 'Volume' : `Volume at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={num(dayVol)} />
               <Fact label="Open interest" value={num(dayOi)} />
               <Fact label={day && day.vol > 0 ? 'Vol ÷ OI' : print.dayCard ? 'Vol ÷ OI' : `Vol ÷ OI · at the ${print.trades && print.trades > 1 ? 'alert' : 'print'}`} value={(() => {
-                  /* never "0.00x" for 21 on 5,164 (audit round 8) */
+                  /* under a hundredth says so, never "0.00x" */
                   const voi = dayOi > 0 ? dayVol / dayOi : print.volOverOI;
                   return Number.isFinite(voi) && voi > 0 && voi < 0.01 ? '<0.01x' : `${fixed(voi)}x`;
                 })()} valueCls={(dayOi > 0 ? dayVol / dayOi : print.volOverOI) >= 5 ? 'text-warn' : 'text-textPrimary'} />
@@ -686,16 +650,11 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
             </div>
           </div>
 
-          {/* THE SEQUENCE — siblings from the live buffer, before the window
-              history: "am I looking at a one-off or a series?" is the first
-              question after "what is it?" */}
+          {/* The sequence comes first: "a one-off or a series?" is the first question after "what is it?" */}
           {tapeRows && <SequenceStrip print={print} siblings={siblings} onOpenPrint={onOpenPrint} noun={tapeNoun} />}
 
-          {/* THE TAPE — the shape that is ours, not theirs: both instruments
-              stacked full-width on ONE clock, crosshairs synced, and a lime
-              line through both at the exact minute of the print you clicked.
-              The question this answers that two side-by-side dashboards
-              can't: where does THIS print sit in the day? */}
+          {/* Both instruments stacked full width on one clock, crosshairs synced, a line through both at the clicked
+             print's minute. */}
           <ErrorBoundary label="The flow panels" resetKey={`${print.id}-${intervalMin}-${dateIso}`}>
             <Suspense
               fallback={
@@ -754,12 +713,7 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3 flex-wrap">
               <FilterTabs ariaLabel="Table view" options={TABLE_TABS} value={tableTab} onChange={setTableTab} />
-              {/* The note travels WITH the table (Noah, 2026-08-30: "the
-                  transition needs to be smooth between them with the
-                  information as well"). Keyed on the tab so it re-enters on the
-                  house curve instead of being swapped out from under the
-                  reader — the pill already glides, and this used to snap
-                  while it did. */}
+              {/* The note is keyed on the tab so it re-enters on the house curve with the table. */}
               <span key={tableTab} className="animate-soft-in min-w-0">
                 {tableTab === 'orders' ? (
                   <span className="font-mono text-t11 uppercase tracking-wider text-textMuted" data-orders-note>
@@ -779,11 +733,8 @@ const PrintDrilldown = ({ print, onClose, isMarked, onToggleMark, onStep, hasPre
               </span>
             </div>
             <ErrorBoundary label="The table" resetKey={`${print.id}-${tableTab}-${dateIso}`}>
-              {/* Both views are capped scrollers of the SAME height, so the
-                  swap is a cross-fade in a slot that never moves. Animating a
-                  changing height here would have been the wrong answer: it
-                  costs a layout animation on every re-render, and this card
-                  already has enough moving parts. */}
+              {/* Both views are capped scrollers of the same height, so the swap is a cross-fade in a slot that never
+                 moves. */}
               <div key={tableTab} className="animate-soft-in">
                 {cf && (tableTab === 'orders' ? <OrdersTable tape={cf} /> : <HistoryTable rows={cf.history} dateIso={dateIso} unusual={!!verdict && verdict.volX >= 2.5} />)}
               </div>
@@ -883,8 +834,8 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
             <th className={`${th} text-left`}>Date</th>
             <th className={`${th} text-right`}>Volume</th>
             <th className={`${th} text-right`} title="Open interest standing at the session's open — counted after the session before traded">Open int.</th>
-            <th className={`${th} text-right`} title="What the session's own trading did to open interest: the next morning's count less its open's — beside its own volume. The newest session's is not counted until the next morning">OI change</th>
-            <th className={`${th} text-right`} title="The regular session's close — 16:15 for index and ETF options, 16:00 for stock options. This session's is read off its own prints; the other sessions show the last price, which can be an after-hours fill (marked ≈)">Close</th>
+            <th className={`${th} text-right`} title="The next morning's count less the open's: what this session's trading did. The newest session's is counted next morning">OI change</th>
+            <th className={`${th} text-right`} title="The regular-session close (16:15 ET for index options, 16:00 for stocks); other sessions show the last price, marked ≈ when after hours">Close</th>
             <th className={`${th} text-right`}>Avg</th>
             <th className={`${th} text-left`} title="The session's volume on the bid, at the mid or no side, and at the ask">Bid · mid · ask</th>
             <th className={`${th} text-right`}>Implied vol</th>
@@ -918,7 +869,7 @@ const HistoryTable = ({ rows, dateIso, unusual }: { rows: CardDay[]; dateIso: st
                 <td className="px-2 py-1.5">
                   <span
                     className="flex h-[3px] w-24 rounded-full overflow-hidden bg-ink/[0.14]"
-                    title={`${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).bid}% on the bid · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).mid}% mid or no side · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).ask}% at the ask${d.basis === 'prints' ? ' — off the session’s own prints, cancelled ones left out' : d.canceledVol > 0 ? ` — the sides, which still hold ${d.canceledVol.toLocaleString('en-US')} cancelled contracts it cannot attribute` : ''}`}
+                    title={`${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).bid}% on the bid · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).mid}% mid or no side · ${sideShares(d.bidVol, d.midVol + d.neutralVol, d.askVol).ask}% at the ask${d.basis === 'prints' ? ', off its own prints' : d.canceledVol > 0 ? `, ${d.canceledVol.toLocaleString('en-US')} cancelled still in the sides` : ''}`}
                   >
                     <span className="h-full bg-bear/80" style={{ width: `${pc(d.bidVol)}%` }} />
                     <span className="h-full bg-ink/30" style={{ width: `${pc(d.midVol + d.neutralVol)}%` }} />

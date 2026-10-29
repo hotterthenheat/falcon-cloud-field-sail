@@ -6,22 +6,13 @@ import { houseSlug } from '../../data/fileBooks';
 import { useShortRow } from '../../data/liveFiles';
 import { stockBookKey, useVendor, useVendorRow } from '../../data/vendorFeed';
 import { FILE_TTL_MS, FeedFallback, StaleMark, TickFigure, quietText, type FeedFault } from '../ui/liveRead';
-import { statHelp } from './statHelp';
 import { useSeen } from './CoName';
+import { Fact as RecordFact } from './ui';
 
-/*
-  Who is in the name. One box on the name's page: the largest house,
-  the short-interest print, the fund that holds the most. A row opens
-  that house, that short file, or that fund. The market tide is not
-  here. It is the same on every name, and it lives on the wire.
-*/
+const Fact = ({ label, children }: { label: string; children: ReactNode }) => <RecordFact label={label} nowrap>{children}</RecordFact>;
 
-const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
-  <div className="min-w-0">
-    <dt className="text-t10 text-textMuted cursor-help" title={statHelp(label)}>{label}</dt>
-    <dd className="mt-0.5 font-mono text-t12 tabular-nums text-textPrimary whitespace-nowrap truncate">{children}</dd>
-  </div>
-);
+/* Who is in the name: the largest house, the short print, the fund that holds the most; a row opens it. */
+
 
 const COLS = 'minmax(0,1.4fr) 104px 104px';
 
@@ -50,10 +41,7 @@ const Row = ({ onClick, testId, cells }: { onClick: () => void; testId: string; 
   </button>
 );
 
-/* THE FUND'S OWN WEIGHT (the retail pass, 2026-10-22). /etfs/{t}/exposure — "which funds hold the name" — carries a
-   weight that lags: SPY's AAPL read 5.80% there while SPY's own holdings file said 7.45% (updated 2026-10-20), and
-   179.2M shares × $345.80 over SPY's $823B is 7.5%. So each fund listed here reads its weight off that fund's own
-   holdings file (/etfs/{etf}/holdings), with the file's date; the exposure figure is only the fallback, marked as such. */
+/* Each fund's weight comes off its own holdings file (dated); the lagging exposure figure is only the fallback, marked. */
 const fundWeights = new Map<string, Promise<Map<string, { weight: number; asOf: string | null }>>>();
 const weightsOf = (etf: string) => {
   let hit = fundWeights.get(etf);
@@ -77,8 +65,7 @@ const shortDay = (iso: string | null) => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
-/* THE FUNDS' FILES WHEN THE FUNDS ARE ON SCREEN (audit round 10: five whole holdings files — VTI, VOO, SPY, IVV, VUG —
-   were read at page load for one "% of the fund" figure each) */
+/* the funds' files are read when the funds are on screen */
 function useOwnWeights(ticker: string, etfs: string[], seen: boolean): Record<string, { weight: number; asOf: string | null } | null> {
   const key = etfs.join(',');
   const [got, setGot] = useState<Record<string, { weight: number; asOf: string | null } | null>>({});
@@ -105,9 +92,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
   const own = useVendorRow(stockBookKey(ticker), 'inst-own');
   const held = useVendorRow(stockBookKey(ticker), 'etf-exposure');
   const shortLive = useShortRow(ticker);
-  /* THE NAME'S OWN SHORT PRINT (the re-audit, 2026-10-22: AAPL, TSLA, GME and SPY read "—" — only names on the Shorts
-     screen had one). /shorts/{t}/interest-float/v2 is already on this page's book; its newest settlement is the figure,
-     the Shorts screen's row only when the name's own read has not answered */
+  /* the name's own short print (interest-float v2, newest settlement); the Shorts screen's row only until it answers */
   const siRow = useVendorRow(stockBookKey(ticker), 'si');
   const own_si = (() => {
     const rows = siRow?.state === 'live' && Array.isArray(siRow.data) ? (siRow.data as Record<string, unknown>[]) : [];
@@ -129,9 +114,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
   const listed = houses.length + funds.length + (short ? 1 : 0);
   const waiting = !own || own.state === 'loading' || !held || held.state === 'loading' || shortLive.status === 'loading';
   const missed = listed === 0 && !waiting && (own?.state === 'error' || held?.state === 'error' || shortLive.status === 'error');
-  /* EVERY FACT ENDS IN AN ANSWER (the retail test, 2026-10-23: AAPL's four facts sat at "…" after 35s). A read in flight
-     is "…", then "still reading" once it has taken 20s (the feed answers three calls at a time, the options book first);
-     a read that failed says so; one that answered with nothing is a dash. */
+  /* Every fact ends in an answer: "…" in flight, "still reading" past 20s, a failure said, nothing a dash. */
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     setSlow(false);
@@ -169,8 +152,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
       {missed ? (
         <FeedFallback fault={fault} />
       ) : null}
-      {/* THREE BOOKS, EACH UNDER ITS OWN HEAD (the Dossier sweep, 2026-10-22): one "Weight · Value" head sat over houses,
-          the short print and the funds alike, and the houses' raw counts printed as "1162996939 336524794350" */}
+      {/* three books, each under its own head */}
       {houses.length > 0 && (
         <>
           <Head cols={['Houses', 'Shares', 'Value']} />
@@ -187,9 +169,7 @@ const NameBooks = ({ ticker }: { ticker: string }) => {
       )}
       {funds.length > 0 && (
         <>
-          {/* ONE ORDER, ITS OWN HEAD (round 8: SPY's funds came in shares-held order under a "Weight" head, and "Largest
-              fund" named a $436M fund): the funds holding the most shares of the name first, the shares beside each, then
-              the name's weight inside that fund */}
+          {/* the funds holding the most shares of the name first, the name's weight inside each beside it */}
           <Head cols={['Funds · most shares first', 'Shares held', 'Of the fund']} />
           {funds.map(f => {
             const mine = own_[f.etf];

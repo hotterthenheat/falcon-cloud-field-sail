@@ -1,25 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE DESK'S OWN DOORS
-  (components/paper/DeskDoors.tsx)
-
-  The doors in the tape's top row, where the desk puts
-  its own (DeskShell's `doors`), in the house toolbar's
-  button:
-
-    THE LADDER   a future's price ladder beside the chart,
-                 opened and closed here (silver while it
-                 stands) — its own X and Esc close it too
-
-    THE LAYOUT   one chart · two across · two down ·
-                 three (one tall) · four — a glyph each,
-                 the one in use in silver
-    THE DESK     which of the reader's desks is up, and
-                 in its card: the others, a new one (this
-                 one, copied), its name, and what keeps
-                 the panes in step (the name · the
-                 interval · the crosshair)
-==================================================
+  The paper desk's own buttons in the chart's top row: the futures ladder, the pane layout, and which desk is up.
 */
 
 import { useEffect, useRef, useState } from 'react';

@@ -1,20 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SCRIPTS ON A PANE (data/paneScripts.ts)
-
-  One reactive store per pane: which scripts sit on
-  it, with the reader's settings, resolved to the
-  scripts themselves. The chart reads it to draw,
-  the library reads it to tick the boxes, the
-  toolbar reads it for its count — one truth, so a
-  tick in the library draws on the chart at once.
-  Writes go through the ScriptStore door and come
-  back here as a fresh snapshot.
-
-  The pane's bars are kept beside it, so the editor
-  can run a script over the same bars the chart
-  shows and say "drew 5 plots over 309 bars".
-==================================================
+  Which scripts sit on each pane, with their settings, as one reactive store the chart, the library and the
+  toolbar all read.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -71,8 +57,6 @@ export function usePaneScripts(paneId?: PaneId): PaneScript[] {
     () => EMPTY
   );
 }
-
-export const getPaneScripts = (paneId: PaneId): PaneScript[] => snapshots.get(paneId) ?? EMPTY;
 
 export async function placeOnPane(paneId: PaneId, scriptId: string, inputs?: Record<string, ScriptInputValue>): Promise<ChartScript> {
   const cs = await scriptStore.place(paneId, scriptId, inputs);

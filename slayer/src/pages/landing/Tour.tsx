@@ -1,45 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE LANDING'S TOUR
-  (pages/landing/Tour.tsx)
-
-  ONE WINDOW BESIDE THE WORDS. Under the hero the
-  page walks the terminal tool by tool: the words on
-  the left, and on the right one window
-  (TerminalWindow) that stays put while they pass.
-  The words CHOOSE ITS PICTURE — the tool whose words
-  are on screen is the page it shows, and a row under
-  a tool shows that page of it. Since 2026-10-01 the
-  picture is a FILM of the page in use.
-
-  THE WINDOW NO LONGER TRAVELS. Until 2026-10-01 it
-  began wide under the headline and docked to the
-  right as the visitor scrolled. The first screen
-  holds the wall of all eight tools now (Wall.tsx —
-  Noah: "replace the big window with the wall"), so
-  the window simply stands in its place from the
-  tour's first words. Its box takes THE PICTURE'S OWN
-  SHAPE (see `measure`), so on a desk a picture is
-  never cropped or stretched. Below `lg` the window
-  pins under the bar and the words pass beneath it.
-
-  THE TURN (ground.tsx) happens here, between two
-  tools: a tall quiet stretch where the painted
-  ground goes from one theme to the other and the
-  window follows — the same page's film in the other
-  theme, picked up at the same second. Its position
-  is measured and handed to CSS as two variables —
-  the gradient is painted once, never per frame.
-
-  …AND THE TURN BACK. The page ends on the ground it
-  opened on (Noah, 2026-09-19: "the light theme
-  should begin but also end as a light theme and the
-  dark theme should begin but end as a dark theme"),
-  so after the last tool a second quiet stretch takes
-  the ground home the same slow way, and the terminal
-  in the window goes home with it. Two lines close
-  the tour there, one on each ground.
-==================================================
+  The landing's tour: the words on the left choose the picture in the one window that stays put on the right.
 */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';

@@ -1,44 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE JOURNAL · ONE TRADE
-  (pages/review/JournalTrade.tsx)
-
-  A closed trade's own page (Noah, 2026-09-20, on the
-  first journal — a list and a pop-up with one text
-  box: "a bit lacking in functionality"). A journal is
-  for what the numbers cannot say, so the page is built
-  round LOOKING AT THE TRADE AGAIN and SAYING SOMETHING
-  ABOUT IT:
-
-    the tape          the house chart over the days it
-                      was on, the way in and the way out
-                      marked, the rest of the last day
-                      after it (components/review/
-                      TradeTape) — and it can be drawn on
-    while you held it what it was worth each minute it
-                      was on, in dollars: the best, the
-                      worst, what was taken of the best —
-                      the one thing the report cannot say
-                      (data/review/excursion)
-    the trade         the facts the pop-up had
-    your tags         a setup · the mistakes · whether
-                      the plan was followed
-    your words        three questions, not one blank box:
-                      why I took it · what I saw while
-                      in it · what I would do again
-
-  A PAGE, NOT A POP-UP: ← and → walk the trades of the
-  cut the journal was showing (the cut rides the
-  address, so Back restores it and the walk is the
-  list's own order), Esc goes back to the list. A walk
-  REPLACES the address — Back leaves the trades, it
-  does not retrace them.
-
-  BOTH JOURNALS' (2026-09-22): the same page reads a
-  paper trade (data/review/journalSource.ts) — its
-  moments are real New York instants, its chart the one
-  its account wrote down when it closed.
-==================================================
+  A closed trade's own page: the trade on its chart, its shape, what it did while held, the reader's tags and
+  words, and three questions worth answering.
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';

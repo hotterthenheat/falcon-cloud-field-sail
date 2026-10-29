@@ -1,38 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE JOURNAL'S MONTH
-  (components/review/JournalMonth.tsx)
-
-  The first thing the journal shows (Noah, 2026-09-25:
-  "i love the calendar view as the first thing that
-  greets you and thats what i want"; 2026-09-26, on the
-  first cut: "the calendar should be the nice curved
-  corners … remember my previous say about how i wanted
-  to calendar to look"). His reference — the partner's
-  journal — laid the month as CARDS: a rounded box a day,
-  air between them, Sunday to Saturday, and a column for
-  each week's total. This is that, in the house's inks:
-
-    a day        a rounded card; its number top left; a
-                 day that closed something wears WHAT IT
-                 MADE — its figure in its ink, its ground
-                 and edge washed in it, deeper the bigger
-                 the day against the month's biggest — and
-                 how many closed and won; A SMALL PEN where
-                 it has words of its own (a dot at first —
-                 Noah, 2026-09-26: "why do some of these
-                 have a little circle on them" → "use the
-                 pen": a mark that is not a figure has to
-                 say what it is)
-    today        its edge in silver, and the word
-    the open day a silver ring
-    the week     its own card at the row's end, the week's
-                 total and how many closed
-
-  A day is THE CALENDAR DAY the trade closed on, New
-  York's (journalFigures.ts). The arrows walk the months,
-  "This month" comes home.
-==================================================
+  The journal's month as cards, Sunday to Saturday with a column for each week's total; a day that closed something
+  wears what it made in its ink.
 */
 
 import { ChevronLeft, ChevronRight, PenLine } from 'lucide-react';

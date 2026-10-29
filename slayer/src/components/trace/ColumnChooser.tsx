@@ -1,13 +1,5 @@
-/*
-  The column chooser — the Live Tape's "COLUMNS 17/17" door, promoted to a
-  shared component (Noah, 2026-08-30: "youve missed columns"). Same grammar:
-  a counted button, a popover with All · None, a checklist; groups optional.
-
-  State is kept as the HIDDEN set, not the visible one — a page's column list
-  is built inside its render, so a store that only names what to hide never
-  has to know the list up front, and a column added later is visible by
-  default instead of vanishing.
-*/
+/* The shared column chooser: a counted button, a popover with All · None and a checklist. State is the hidden set,
+   so a column added later shows by default. */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
@@ -60,7 +52,10 @@ const ColumnChooser = ({
   onAll,
   onNone,
   groupOrder,
+  keepOnPhone = false,
 }: {
+  /** A phone shows two-line rows, not columns, so the chooser hides there unless the grid keeps its columns */
+  keepOnPhone?: boolean;
   columns: ChooserColumn[];
   hidden: Set<string>;
   onToggle: (key: string) => void;
@@ -105,7 +100,7 @@ const ColumnChooser = ({
   };
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className={`relative ${keepOnPhone ? '' : 'max-sm:hidden'}`}>
       <button
         onClick={() => setOpen(o => !o)}
         className={`slayer-chip uppercase tracking-wider ${open ? 'border-borderMuted text-textPrimary' : ''}`}

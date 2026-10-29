@@ -1,8 +1,5 @@
-/*
-  PRACTICE'S PIECES (components/layout/footer/parts/practice.ts) — the Journal's month (every trade on its day, the day
-  washed in what it made or lost, the week's sum at the side), the money's curve walking, and Paper's foot: the
-  positions, orders and trades, the contract held; its order pad.
-*/
+/* Practice: the Journal's month (days washed by P&L, weekly sums), the equity curve, and Paper's foot (positions, orders,
+   trades) with its order pad. */
 
 import { box, chip, dayWord, frame, keep, prose, rgb, rng, tag, type, walk, type Box, type Part, type Pen, type Pill, type Stage } from '../kit';
 
@@ -224,7 +221,7 @@ export const stats = (words: string[], o: { seed?: number } = {}): Part => {
   };
 };
 
-/* ---- PAPER'S FOOT: positions, orders, trades — the contract held, what it was bought at and is worth, gone to marks --- */
+/* ---- Paper's foot: positions, orders, trades ---- */
 
 export const positions = (): Part => {
   let s: Stage | null = null;
@@ -260,7 +257,7 @@ export const positions = (): Part => {
   };
 };
 
-/* ---- THE ORDER PAD: how many, and the two doors (to buy at the ask, or at a limit) --------------------------------- */
+/* ---- the order pad: quantity and the two buttons (at the ask, or a limit) ---- */
 
 export const orderPad = (o: { side?: 'BUY' | 'SELL' } = {}): Part => {
   let s: Stage | null = null;

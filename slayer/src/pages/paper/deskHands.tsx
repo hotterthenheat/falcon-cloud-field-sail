@@ -1,34 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · WHAT THE DESK'S HANDS DO ON A CHART
-  (pages/paper/deskHands.tsx)
-
-  Round two's three ways of trading off the chart itself
-  (the partner's, which Noah liked), said once here for
-  every pane of the desk:
-
-    THE POSITION'S BAR   a line a position of the pane's
-                         name: in at, now, where it breaks
-                         even with the fees both ways, the
-                         ways out riding it and the reward
-                         to the risk — Reverse and Close
-    THE RIGHT-CLICK      what can be done AT A PRICE: a
-                         limit or a stop there, the market,
-                         a target or a stop put there on
-                         what is open, half or all of it
-                         closed, a reversal, what is working
-                         cancelled — at the quick size
-    A DRAWN LONG/SHORT   placed as an order: a future's at
-                         its entry (the market, a limit, or
-                         a stop that buys the break), the
-                         target and the stop riding it; an
-                         option's is a call or a put on the
-                         name, its target and its stop set
-                         ON THE NAME at the drawing's levels
-
-  Every one goes through the store's hands (data/paper/
-  store.ts), so the engine says no in its own words.
-==================================================
+  The ways to trade off the paper chart itself, for every pane: the position's bar, the brackets on the chart, and
+  drawing a long or short.
 */
 
 import type { ReactNode } from 'react';

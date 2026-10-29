@@ -155,7 +155,7 @@ export const HouseFile = () => {
       { headerName: 'Avg price', field: 'avgPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "Unusual Whales' estimate of the average price the house paid — '—' where it rests on a first buy the filing contradicts" },
       { headerName: '% of 13F value', field: 'pctOfBook', width: 112, type: 'rightAligned', valueFormatter: p => `${Number(p.value).toFixed(1)}%`, headerTooltip: 'This line\'s reported value as a share of the total value of everything the house reported on its 13F (Unusual Whales\' perc_of_share_value) — over the whole filing, not only the lines read here' },
       { headerName: '% of co.', field: 'pctOfShares', width: 96, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `${Number(p.value).toFixed(2)}%` : '—'), headerTooltip: 'The share of the company\'s shares outstanding this house holds' },
-      { headerName: 'First buy', field: 'firstBuy', width: 110, valueFormatter: p => (p.value && /^\d{4}-\d{2}-\d{2}/.test(String(p.value)) ? longDay(String(p.value)) : String(p.value ?? '—')), headerTooltip: "The first quarter this house reported owning the stock — '—' where the date is contradicted by the filing itself (units held in earlier quarters, or a first price far off the filing's own)" },
+      { headerName: 'First buy', field: 'firstBuy', width: 110, valueFormatter: p => (p.value && /^\d{4}-\d{2}-\d{2}/.test(String(p.value)) ? longDay(String(p.value)) : String(p.value ?? '—')), headerTooltip: "The first quarter this house reported the stock; '—' where the filing itself contradicts the date" },
       { headerName: 'First price', field: 'firstPrice', width: 100, type: 'rightAligned', valueFormatter: p => (Number(p.value) > 0 ? `$${Number(p.value).toFixed(2)}` : '—'), headerTooltip: "The close on the day of the first buy. Not a strike. '—' where the first buy cannot be trusted (see First buy)" },
     ],
     [],
@@ -381,12 +381,12 @@ export const ShortFile = () => {
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary">{row.daysToCover.toFixed(1)}</dd>
           </div>
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title="Fee: what a short seller pays a year to borrow the shares — high means the shares are hard to find. Rebate: the interest the lender pays back on the cash collateral; negative means the short pays more">Fee · rebate</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title="Fee: a short seller's yearly cost to borrow (high = hard to find). Rebate: interest paid back on the cash collateral">Fee · rebate</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{fileWaiting ? <span className="text-textMuted">reading today's borrow…</span> : <>{row.feeRate == null ? '—' : `${row.feeRate.toFixed(2)}%`} · {row.rebateRate == null ? '—' : `${row.rebateRate < 0 ? '−' : ''}${Math.abs(row.rebateRate).toFixed(2)}%`}</>}</dd>
           </div>
           {row.shortVolRatio != null ? (
           <div>
-            <dt className="text-t10 text-textMuted cursor-help" title={`Of the last session's off-exchange volume reported to FINRA (dark pools and wholesalers — not the lit exchanges' trades), the share reported as short sales; market makers' hedges count too, so about half is ordinary. Source: ${row.shortVolSource ?? 'Unusual Whales short volume and ratio (FINRA)'}`}>Short volume · off-exchange</dt>
+            <dt className="text-t10 text-textMuted cursor-help" title={`The share of last session's off-exchange volume reported short; about half is ordinary. Source: ${row.shortVolSource ?? 'FINRA'}`}>Short volume · off-exchange</dt>
             <dd className="mt-0.5 font-mono text-t12 tnum text-textPrimary whitespace-nowrap">{row.shortVolRatio.toFixed(0)}%{row.shortVolDate ? <span className="text-textMuted"> · {asOfDay(row.shortVolDate)}</span> : null}</dd>
             {/* the source named on the card */}
             <dd className="font-mono text-t9 text-textMuted whitespace-nowrap" data-short-vol-source>{row.shortVolSource?.startsWith('the by-market') ? 'FINRA CNMS · by-market rows' : 'FINRA CNMS · short volume read'}</dd>

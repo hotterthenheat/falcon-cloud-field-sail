@@ -1,28 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - YOUR REASONS (the builder)
-
-  Watchers ships six reasons the desk watches
-  for. This is the door for the reader's own.
-
-  WHAT THE READER WRITES AND WHAT THEY DON'T. They
-  write the conditions and the handle. They never
-  write the explanation — the Reason column's
-  sentence is composed from the conditions
-  themselves (data/flowReasons.ts), so the words in
-  the feed can never drift from the test that put
-  the row there.
-
-  THE COUNT IS THE VERDICT. Every draft says how
-  many of today's contracts it catches, live, as
-  you move the numbers. That is the honest answer
-  to "is this any good": a reason that catches 400
-  rows is a reason that says nothing, and a reason
-  that catches none is a reason you will never
-  hear from. We show the number and let the reader
-  decide — no score, no grade, no advice.
-==================================================
-*/
+/* The builder for the reader's own Watchers reasons: they write the conditions and the handle, never the sentence.
+   Each draft shows how many of today's contracts it catches; no score, no advice. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -48,10 +25,7 @@ import {
 } from '../../data/flowReasons';
 import type { BookContract } from '../../types/trace';
 
-/* The house dropdown, not a native <select> (Noah, 2026-08-30: "the dropdown
-   menu ... need to be more readable") — the OS paints native option lists in
-   its own colours and fonts, outside every token we own. Same anchored-popover
-   grammar as the chart toolbar's pickers; long lists scroll. */
+/* The house dropdown, not a native select, so the list wears the page's tokens; long lists scroll. */
 const PickMenu = <V extends string>({
   value,
   options,
@@ -117,10 +91,7 @@ const PickMenu = <V extends string>({
   );
 };
 
-/* Groups as the reader types (Noah: "you should be listening to user input and
-   putting commas where need be like 100,000 or 1,000,000"). The field holds
-   the formatted TEXT; the parsed number flows out. A native number input
-   forbids commas, which is exactly why it read as a wall of digits. */
+/* Groups digits as the reader types: the field holds the formatted text, the parsed number flows out. */
 const fmtNum = (raw: string): string => {
   const clean = raw.replace(/[^\d.]/g, '');
   const dot = clean.indexOf('.');
@@ -140,7 +111,7 @@ const CommaInput = ({
   value: number;
   onChange: (v: number) => void;
   ariaLabel: string;
-  /** The field's sensible preset, as a GHOST — everyone knows where the
+  /** The field's sensible preset, as a ghost — everyone knows where the
       number goes; the ghost shows the shape and dies at the first keystroke. */
   placeholder?: string;
 }) => {
@@ -238,11 +209,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
     if (saveReason(draft)) setDraft(null);
   };
 
-  /* Edge-aware like FilterDoor (Noah, 2026-08-30: "all my filters are
-     literally bleeding outside of the page"): this button sits at the left
-     of the controls row, so a door hung from its right edge ran 400px off
-     the page. Open from the left edge; flip only when that would cross the
-     viewport. */
+  /* Opens from the button's left edge and flips only when that would cross the viewport. */
   const toggle = () => {
     const r = wrapRef.current?.getBoundingClientRect();
     if (r) setAlign(r.left + DOOR_W + 8 > window.innerWidth ? 'right' : 'left');
@@ -259,7 +226,7 @@ const ReasonDoor = ({ book }: { book: BookContract[] }) => {
       >
         <ListPlus className="w-3 h-3" />
         Your reasons
-        {/* Weight, not neon: the count is data (see the 2026-08-30 ink law). */}
+        {/* Weight, not neon: the count is data. */}
         {reasons.length > 0 && <span className="font-bold text-textPrimary tnum">{reasons.length}</span>}
       </button>
 

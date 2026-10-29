@@ -24,7 +24,7 @@ export interface Person {
   emailConfirmedAt: string | null;
   /** the ways in: 'email', 'google', 'apple' */
   providers: string[];
-  /** the plan's standing, from Stripe (2026-10-10) */
+  /** the plan's standing, from Stripe */
   planStatus: PlanStatus;
   planPeriod: 'month' | 'year' | null;
   planRenewsOn: string | null;

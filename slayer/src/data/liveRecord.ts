@@ -1,8 +1,5 @@
-/*
-  The live record. The browser asks this app's server (/api/uw); the server
-  holds the Unusual Whales token. Until a feed answers, the page shows nothing.
-  A failed feed stays empty. It does not invent a congressman or a headline.
-*/
+/* The live record through this app's server (/api/uw), which holds the token; a feed that has not
+   answered, or failed, stays empty. */
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { EMPTY_CONGRESS, summariseCongress } from './congress';

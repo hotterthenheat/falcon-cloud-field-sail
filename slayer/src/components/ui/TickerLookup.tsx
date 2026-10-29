@@ -1,15 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - TICKER LOOKUP
-  The compact search body embedded inside picker
-  menus (TickerQuickPick, WidgetTickerPicker).
-  Filters the full bundled universe — NASDAQ json +
-  the NYSE half of the S&P 500 — lazy-loaded so the
-  ~300KB listing chunk never rides the first paint.
-  A symbol with no listing still picks on Enter:
-  the sim synthesizes unknown names.
-==================================================
-*/
+/* The compact search body inside picker menus: filters the bundled universe (NASDAQ list plus the NYSE half of the
+   S&P 500), loaded lazily. An unlisted symbol still picks on Enter. */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Search } from 'lucide-react';

@@ -24,10 +24,6 @@ const longDay = (iso: string) => {
   return `${WEEK[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 };
 const dayCell = (iso: string) => `${SHORT[Number(iso.slice(5, 7)) - 1]} ${Number(iso.slice(8, 10))}`;
-const minutes = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-};
 const blank = <span className="text-textMuted">—</span>;
 
 interface Line {

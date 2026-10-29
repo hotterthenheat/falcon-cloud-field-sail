@@ -1,47 +1,17 @@
 /*
-==================================================
-  SLAYER TERMINAL - WEIGHER DESK (pages/weigher/WeigherDesk.tsx)
-
-  The Weigher workstation: chart, chain, scanner
-  and the weigh station as four cards on one desk,
-  on the same plain black canvas as every other page.
-==================================================
-
-  STATIC, BY DECREE (Noah, 2026-08-30: "no movementes except for scrolling.
-  no dragging things"). This desk spent five days as a movable react-grid-
-  layout surface and every session of it bought a new fight — dead-zone
-  sashes, drags that stuttered, cards that would not come back up, a reset
-  button to apologise for all of it. The layout is now a FIXED FRAME: the
-  chart and the chain split the top 60% of the height half-and-half, the
-  scanner and the strike read split the bottom 40% the same way, and the
-  only thing that moves anywhere is a scrollbar inside a card. Fullscreen
-  stays — a takeover is a view, not a rearrangement.
-
-  THE FOUR CARDS, and the loop that makes them one page:
-  the scanner picks the NAME → the chain picks the CONTRACT → the chart can
-  show either the stock's tape or that contract's modeled premium → the weigh
-  station says what the contract costs and what it has to clear. Facts only,
-  Term-explained; there is no order entry anywhere because we are not a
-  broker (Noah, 2026-08-25: "forget everything related to buy/sell").
-
-  NO MOOD FIELD (Noah, 2026-09-03: "remove the green background effect…
-  a regular full black background like the other pages"). For nine days the
-  desk sat on a top-anchored red/green/gray wash keyed to the Nasdaq's
-  session; it is gone, and the desk sits on the shell's canvas like every
-  other page. The session read in the head (label, NDX move, the diverging
-  hairline) is now the only place the Nasdaq's direction shows here.
+  The Weigher desk: the chart, the live chain, the name lists and the weigh-up of one contract on one static desk,
+  with the positions and watchlist under them marked at live quotes.
 */
 
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, Maximize2, Minimize2, Plus, Scale } from 'lucide-react';
 import { type ColDef, type ICellRendererParams, type RowClickedEvent } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import { GRID_MODULES, GRID_THEME } from '../../components/ui/houseGrid';
 import DropdownSelect, { type DropdownOption } from '../../components/ui/DropdownSelect';
 import ExpiryCard, { type ExpiryChoice } from '../../components/ui/ExpiryCard';
-import DropdownMulti, { type MultiGroup } from '../../components/ui/DropdownMulti';
+import DropdownMulti from '../../components/ui/DropdownMulti';
 import CardTabs from '../../components/ui/CardTabs';
 import GuideFocus, { GuideDoor } from '../../components/ui/GuideFocus';
 import CompanyLogo from '../../components/ui/CompanyLogo';
@@ -54,7 +24,7 @@ import { onGlide } from '../../core/glide';
 import { DOCK_ROOM } from '../../data/editorDock';
 import { useTicker } from '../../context/MarketDataContext';
 import { snapshotOf, useBookRev } from '../../data/uwBook';
-import { buildLevelsFor, buildPrints, fmtUsd } from '../../data/gex';
+import { buildLevelsFor, buildPrints } from '../../data/gex';
 import { wantSpotGex } from '../../data/spotGexBook';
 import {
   blankChain,
@@ -114,7 +84,6 @@ import { ChartSkeleton, Deferred } from '../../components/ui/Skeleton';
 import SpotPrice from '../../components/gex/SpotPrice';
 import ContractPremiumPane from '../../components/gex/ContractPremiumPane';
 import { useFadeClose } from '../../components/ui/useFadeClose';
-import Term from '../../components/ui/Term';
 import { fmtStrike, CHAIN_COLUMNS, DEFAULT_COLS, COLUMN_GROUPS, ChainCard } from '../../components/weigher/ChainGrid';
 import type { Timeframe } from '../../data/timeframe';
 import type { OptionRight } from '../../types/compass';
@@ -377,12 +346,6 @@ export const ScanGrid = memo(function ScanGrid({ rows, ticker, preset, onPick, w
   );
 });
 
-/* States, never orders (the Compass ruling): BUY/WATCH/FADE are internal
-   loop vocabulary; the reader sees the state — and THE CASE in one word
-   (the walk, 2026-09-11: "High conviction" was a buzzword; the setup page
-   says strong / fair / weak off the same score, so this card does too). */
-const DOOR_CLS =
-  'inline-flex items-center gap-1 px-2 py-1 rounded-md border border-borderSubtle bg-ink/[0.03] hover:bg-ink/[0.06] font-mono text-[9px] uppercase tracking-wider text-textSecondary hover:text-textPrimary transition-colors';
 /** One chain row, with the spot rule under it when it brackets the market.
     Clicking it puts the strike ON THE SCALE - the Strike card carries the
     weigh-up now, so the ladder itself stays clean. */

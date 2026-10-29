@@ -1,10 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - TRACKER CONTEXT
-  Manages bookmarked setups with localStorage
-  persistence. Provides track/untrack/isTracked
-  to the entire app.
-==================================================
+  The Compass contracts the reader tracks, kept in localStorage: track, untrack, and whether one is tracked.
 */
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';

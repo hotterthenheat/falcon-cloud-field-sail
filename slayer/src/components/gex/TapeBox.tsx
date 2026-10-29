@@ -1,33 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TAPE (components/gex/TapeBox.tsx)
-
-  Today's price with the book's levels ON it (the
-  competitive audit, 2026-10-13 — "levels on the
-  trader's own chart" is the first thing every
-  practitioner asks a dealer-positioning tool for,
-  and the Map sent them to another page for it). One
-  session, the close as a line; the call wall, the
-  flip, the put wall, the pin and the supreme as
-  price lines across it, each named on the line and
-  priced on the scale; the flip's own path through
-  the day under them; ahead of now, one expected move
-  to the close. The levels' chips in the head KEEP the
-  strike, and the bell beside each sets an alert on
-  the level (components/gex/alertStore.ts armLevel —
-  the same alert the Alerts drawer arms). The replay
-  rewinds it with the rest of the page. Hover for the
-  minute; the arrow keys walk the bars.
-
-  DRAWN BY THE CHART LIBRARY, Compare's way (the
-  owner, 2026-10-14, of Compare's "Since the open":
-  "i need charts that look that clean in the map page
-  … i dont want ones AI created"): the hand-drawn SVG
-  — hour rules, a grey fill, three ticks in a margin,
-  a lane of tags — is gone; the library's line, scale,
-  crosshair and clock are the chart (dayChart.ts).
-==================================================
-*/
+/* Today's price with the book's levels on it, drawn by the chart library (dayChart.ts): the session's close line, the
+   levels ladder at the right edge (a kept strike, a bell that arms the level's alert), and ahead of now 1σ to the close
+   and the corridor's field. The replay rewinds it with the page; hover for the minute, arrow keys walk the bars. */
 
 import { sigmaFracOver, sigmaOverMinutes } from '../../data/expectedMove';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -62,18 +35,13 @@ const SILVER = 'rgb(var(--silver))';
 const INK_3 = 'rgb(var(--text-muted))';
 const fmtStrike = (v: number) => (!Number.isFinite(v) ? '—' : v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 const TAPE_KEY = 'slayer_map_tape';
-/* THE LEVELS AS THE LADDER'S RUNGS (Noah, 2026-10-14: "i want the supreme, call wall and put wall and flip to have that
-   same hover thing that the compass charts have so it doesnt take up too much space"): the key levels ladder
-   (keyLevelsPrimitive.ts — the Compass charts' and Terrain's) at the tape's right edge, short rungs in the levels'
-   inks, the one under the pointer brightening with a card that keeps the strike or sets its bell. The full-width lines
-   with their words and the row of chips in the head are gone. The band at the right edge the pointer finds a rung in,
-   and how near a rule it must be, media px. */
+/* The key levels as the ladder's rungs at the tape's right edge (keyLevelsPrimitive.ts); the rung under the pointer
+   brightens with a card that keeps the strike or sets its bell. The band the pointer finds a rung in, media px. */
 const LADDER_HIT_W = 56;
 const LADDER_NEAR = 7;
 /** How long the rung's card takes to go (index.css chart-card-out) */
 const CARD_OUT_MS = 160;
-/** A FACT ON A PART'S ONE LINE (Noah, 2026-10-14: "very little chart and huge words taking up 1/3 of the space"): the name
-    in tracked capitals, the figure beside it — the page head's grammar, one row, so the chart has the height */
+/** A fact on a part's one line: the name in tracked capitals, the figure beside it, so the chart keeps the height */
 const PartFact = ({ label, children, title }: { label: string; children: ReactNode; title?: string }) => (
   <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={title}>
     <span className="text-t11 uppercase tracking-wider text-textMuted">{label}</span>
@@ -140,25 +108,19 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       return !v;
     });
   };
-  /* THE ROOM'S PRICE (pages/pinpoint/useRoomScan.ts useRoomSpot — one price on the page, 2026-10-14: this box's Last read
-     455.52 under a head at 455.38): on the house the forming bar's close IS the tick (core/simulator.ts updateCandles),
-     so the bars are read again on it and the line ends on the head's figure; a replay's bars are handed in and stand */
+  /* the room's price (useRoomSpot): one price on the page, the line ending on the head's figure; a replay's bars stand */
   const roomSpot = useRoomSpot(snapshot.ticker);
   const bookRev = useBookRev();
   const markMoves = useChartFocus(snapshot.ticker);
   const read = useResolvedSession(snapshot.ticker);
   const bars = useMemo(() => barsProp ?? deskBars(snapshot.ticker, read.session) ?? liveBars(snapshot.ticker), [snapshot.ticker, barsProp, bookRev, read.session]);
-  /* THE BOOK HANDED IN IS ALREADY THE MAP'S WINDOW (bookForDates) — read as it stands, the band's own rule
-     (ExposureField: a dated book is read '0DTE'). The desk's Levels card lives on the Board; read here it re-cut the
-     window to the whole book under a head that still named the window (the ship pass, 2026-10-22). */
+  /* the book handed in is already the Map's window, read as it stands (a dated book is read '0DTE') */
   const levelsScope = '0DTE' as const;
   const levels = useMemo<Level[]>(() => {
     try {
-      /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the tags here are the
-         band's tags (the re-audit's H6) */
+      /* the room's one reading of the levels (data/roomLevels.ts), so the tags here are the band's */
       const l = roomLevels(snapshot, levelsScope);
-      /* NOTHING DRAWN OFF A PROVISIONAL BOOK (the seventh audit's retail blocker: SPY's Map marked the All-expiries 765
-         and 760 under "Today" while Today's chain loaded): no line, no chip, until the scope's levels are final */
+      /* nothing drawn off a provisional book: no line or chip until the scope's levels are final */
       if (!l || (snapshot.liveBook && (l.complete === false || snapshot.levelsPending))) return [];
       const all: Level[] = [
         { key: 'callWall', word: 'Call wall', ink: CALL_WALL, price: l.callWall },
@@ -174,7 +136,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       return [];
     }
   }, [snapshot, levelsScope]);
-  /* ONE LINE AND ONE CHIP WHERE LEVELS COINCIDE (the re-audit's M4) */
+  /* one line and one chip where levels coincide */
   const groups = useMemo<Group[]>(() => {
     const out: Group[] = [];
     for (const l of levels) {
@@ -194,12 +156,9 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const groupsKey = groups.map(g => `${g.key}@${g.price}`).join('|');
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
-  /* THE FLIP'S PATH (idea 2, 2026-10-13): the flip of each minute's own book, paired to the bars by time. A closed
-     minute's book never changes, so its flip is worked out once (kept by the book itself) — a tick re-reads the last. */
+  /* the flip's path: each minute's book's flip, paired to the bars by time (a closed minute's book never changes) */
   const flipMemo = useRef(new WeakMap<GexSnapshot, number | null>());
-  /* THE PATH IS OFF (the Pinpoint audit, 2026-10-22): each minute's book was today's volume walked onto the overnight
-     open interest — volume is not open interest — and its flip was the per-strike sign change, not the book's zero
-     crossing the line beside it draws. No past book is on the feed to re-price, so no past flip is drawn. */
+  /* the path is off: no past book is on the feed to re-price, so no past flip is drawn */
   const FLIP_PATH = false;
   const flipTrail = useMemo<(LineData<Time> | WhitespaceData<Time>)[]>(() => {
     if (!FLIP_PATH) return [];
@@ -235,29 +194,24 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const spot = bars.length ? bars[bars.length - 1].close : snapshot.spot;
   /* what "Last" prints: the room's price — the replay's last bar when rewound */
   const last = barsProp != null ? spot : roomSpot ?? spot;
-  /* ONE EXPECTED MOVE ON EVERY PAGE (the fourth audit's B2): the vendor's implied move into the levels' expiry (uwBook
-     peekDaySigma — Compare's and the reach odds'), over the minutes left; the name's vol only when the feed has none */
+  /* one 1σ on every page: the levels' expiry's (uwBook peekDaySigma), the name's vol only when the feed has none */
   const iv = peekIv(snapshot.ticker) ?? 0.2;
   const minLeft = Math.max(0, CLOSE_MIN - nowMin);
   /* …and no expected move off it either (the same blocker: "ONE MOVE today ±4.12" read off the 30-day vol, later ±4.74 —
      the feed's own implied move): "…" until the levels' scope is final and the feed's term structure is in */
   const movePending = !!snapshot.liveBook && (!!snapshot.levelsPending || roomLevels(snapshot, '0DTE')?.complete === false || peekScopeMove(snapshot.ticker, scopeDateOf(snapshot))?.source === 'iv30');
   const daySigma = snapshot.liveBook && !movePending ? peekDaySigma(snapshot.ticker, scopeDateOf(snapshot)) : null;
-  /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2: "One move ±0.48" was the
-     feed's move LEFT to the close, scaled again); a replay's minute keeps the full-session figure's scaling */
+  /* scaled to the minutes left exactly once; a replay's minute keeps the full-session figure's scaling */
   const left = daySigma != null && at == null ? peekMoveToClose(snapshot.ticker, scopeDateOf(snapshot), minLeft) : null;
   const w1 = left ?? (daySigma != null ? sigmaOverMinutes(daySigma, minLeft) : spot * sigmaFracOver(iv, minLeft));
-  /* ONE PHASE VOCABULARY (the sixth audit's m8: "closed" here, "The next session" on the Read, "Today" on the Levels
-     card, all before Friday's open): outside the session the move is the coming session's — "today" before a trading
-     day's open, "next session" after its close (bookWindow todayScopeLabel, the Levels card's own word) */
+  /* one phase vocabulary: outside the session the move is the coming session's — "today" before a trading day's open,
+     "next session" after its close (bookWindow todayScopeLabel) */
   const aheadWord = todayScopeLabel() === 'Today' ? 'today' : 'next session';
   const shutBand = !movePending && daySigma != null && spot > 0 ? `${(spot - daySigma).toFixed(2)}–${(spot + daySigma).toFixed(2)}` : null;
   const shutMove = movePending ? `${aheadWord} …` : shutBand ? `${aheadWord} ${shutBand}` : aheadWord;
   const dayStart = bars.length ? dayStartOf(bars[0].time, nyMinutes(bars[0].time * 1000)) : 0;
-  /* THE THERMAL FIELD (thermalFieldPrimitive.ts): where price is likelier to be from now to the close, by the Ahead
-     model's corridor (data/ahead.ts) — the odds curve's centre pulled by the strikes, one and two expected moves round
-     it, the walls bending the band — read a point a minute between the corridor's five-minute points, cut at the axis'
-     end while the session runs. Nothing after the close; in a replay, from the replayed minute. */
+  /* The field: where price is likelier to be from now to the close, by the corridor (data/ahead.ts), read a point a minute
+     and cut at the axis' end while the session runs. Nothing after the close; in a replay, from the replayed minute. */
   const profile = useMemo(() => {
     try {
       return buildExposureProfile(snapshot, '0DTE', 30);
@@ -325,9 +279,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const [levelHot, setLevelHot] = useState<{ key: KeyLevelRung['key']; price: number; y: number } | null>(null);
   /** The day box's head line, when this is its upper chart (DayBox DayHeadSlot) */
   const headSlot = useContext(DayHeadSlot);
-  /* SMOOTH, NOT RAPID (Noah, 2026-10-14: "the hover should be smooth not rapid"): the card comes in on the house's soft
-     fade and goes out on a short one the Modal's way — the exit animation held up for CARD_OUT_MS, then a timer unmounts
-     it, never an animation's end */
+  /* the card fades in on the house's soft fade and out on a short one (held CARD_OUT_MS, then unmounted by a timer) */
   const [levelClosing, setLevelClosing] = useState(false);
   const levelLeave = useRef(0);
   const levelHotRef = useRef(levelHot);
@@ -378,28 +330,24 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     const host = hostRef.current;
     if (!host || !open) return;
     const s = daySurface(host, paper);
-    /* TWO CHARTS, NOT ONE (Noah, 2026-10-15: "the book and the day should be 2 separate tradingview charts not one big
-       one"): the tape carries its own clock along its foot and its own mark, as the book does under it */
+    /* two charts, the tape above the book, each with its own clock along its foot and its own mark */
     const chart = createChart(host, dayChartOptions(s, { clock: true, logo: true }));
     /* the scale holds the bars, the levels within reach of them, the cone and the kept strike — a level a day's range
        away would flatten the tape to a line, so it waits in the chips instead */
-    /* THE TAPE LIKE THE BOOK UNDER IT (Noah, 2026-10-14: "these top charts need to be trading view charts as well … the
-       ones similar to 'the book' right under it"): the library's area — the line in the page's ink with its ground
-       fading under it, the way the net's ground does */
+    /* the tape like the book under it: the library's area, the line in the page's ink with its ground fading under it */
     const price = chart.addSeries(AreaSeries, {
       lineColor: s.ink,
       topColor: alpha(s.ink, paper ? 0.16 : 0.22),
       bottomColor: alpha(s.ink, 0.01),
       lineWidth: 2,
       priceLineVisible: false,
-      /* ONE PRICE (the retail test, 2026-10-23: the scale's tag read 763.97 — the last cash bar's close — beside "Last
-         763.96", the regular close): the scale's tag is the price the box prints, drawn below as its own line */
+      /* one price: the scale's tag is the price the box prints, drawn below as its own line */
       lastValueVisible: false,
       crosshairMarkerRadius: 3,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
       autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
         const r = original();
-        /* a view holding no bars has no range (the seventh audit's phone pass: "reading 'minValue'" of null) */
+        /* a view holding no bars has no range */
         if (!r || !r.priceRange) return r;
         let lo = r.priceRange.minValue;
         let hi = r.priceRange.maxValue;
@@ -432,15 +380,11 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     chart.subscribeCrosshairMove(param => {
       /* THE POINTER ON A RUNG — within the ladder's band at the right edge and near a rule: the rung brightens, its card
          opens, and the minute's card stands aside */
-      /* ONLY A POINTER MOVES THE RUNG'S STATE (Noah, 2026-10-14: "the hover effect is removed after 1 second, it should stay
-         as long as the hover stays"): the chart calls this on every data tick too, with no pointer behind it, and that
-         read as the pointer leaving the rung — a tick is nothing to the ladder */
+      /* only a pointer moves the rung's state: the chart calls this on every data tick too, with no pointer behind it */
       /* the pointer leaving the chart comes as a move with no point behind it (and no source event) — that, too, is
          the pointer off the rungs; a tick while the pointer is away looks the same, and says the same */
       if (param.sourceEvent || param.point === undefined) {
-        /* a pointer on the chart is a pointer off the card — the card is an overlay the chart never hears through — so
-           the card's own "the pointer is over me" flag can never wedge the leave (Noah's still, 2026-10-14: the pointer at
-           the far left of the tape, the call wall's card standing) */
+        /* a pointer on the chart is a pointer off the card, so the card's own hover flag can never wedge the leave */
         if (param.sourceEvent) overCard.current = false;
         let rung: KeyLevelRung | null = null;
         if (param.sourceEvent && param.point && ladder.data && param.point.x >= chart.timeScale().width() - LADDER_HIT_W) {
@@ -488,7 +432,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       setHover({ i, x, y });
     });
     chartRef.current = chart;
-    /* the axis as wide as its figures, shared with the hedging chart under it (2026-10-18) */
+    /* the axis as wide as its figures, shared with the hedging chart under it */
     const unsync = syncDayScale(chart, snapshot.ticker, 'tape', setScaleW);
     priceRef.current = price;
     flipRef.current = flip;
@@ -572,11 +516,8 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupsKey, focus, paper, part, open, last]);
 
-  /* THE KEPT STRIKE OFF THE SCALE (the owner, 2026-10-14, after a walk as a user: 463 kept, seven points up, and the tape
-     showed nothing — no line, no chip, no word, under a note that had promised "every box"): the scale holds a kept strike
-     within reach of the day's range (the provider above) and a strike beyond it would flatten the tape to a line, so it
-     stays off — but a chip in the row and a tag at the plot's edge say so, and which way. Read off the drawn chart
-     after every render: where the strike's price lands against the pane. */
+  /* A kept strike off the scale stays off (it would flatten the tape), but a chip in the row and a tag at the plot's edge
+     say so and which way — read off the drawn chart after every render. */
   const [keptOff, setKeptOff] = useState<'up' | 'down' | null>(null);
   useEffect(() => {
     const series = priceRef.current;
@@ -655,15 +596,11 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   const say = (ws: string[]) => (ws.length <= 1 ? ws[0] ?? '' : `${ws.slice(0, -1).join(', ')} and ${ws[ws.length - 1]}`);
   const plotW = hostRef.current?.clientWidth ?? 0;
   const session = useMemo(() => (bars.length ? { lo: Math.min(...bars.map(b => b.low)), hi: Math.max(...bars.map(b => b.high)) } : null), [bars]);
-  /* THE BARS' OWN DAY (the fifth audit, 2026-10-23: "Price today · SESSION 761.17–767.71" at 01:00 Friday over Thursday's
-     session): "today" only when the bars are New York's today, else the day by name */
+  /* the bars' own day: "today" only when the bars are New York's today, else the day by name */
   const barDay = bars.length ? nyIsoDate(bars[bars.length - 1].time * 1000) : null;
   const priceWord = !barDay || dayRef(barDay) === 'today' ? 'Price today' : `Price · ${longDay(barDay)}`;
 
-  /* THE CHART IS NAMED FOR WHAT IT SHOWS (Noah, 2026-10-15: "remove the word 'the tape' sounds ai generated and lacks
-     clarity … give me informative names as to what they do, i also dislike their size or font"): today's price, in the
-     figures' own size and ink, the facts beside it — and ON THE DAY BOX'S HEAD LINE when the box hands us its slot
-     ("everything should fit on one line") */
+  /* the chart is named for what it shows — today's price, the facts beside it, on the day box's head line when it has one */
   const partHead = part ? (
     <>
       {headSlot && <span className="h-4 w-px bg-borderSubtle shrink-0" aria-hidden />}
@@ -688,9 +625,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
     </>
   ) : null;
   return (
-    /* AS A PART: the upper of the day box's two charts, edge to edge — the head row, the plot under it with its own clock;
-       the book under it past one rule (Noah, 2026-10-15: "2 separate tradingview charts", then "no padding, their
-       respected charts should fill the entire container") */
+    /* as a part: the upper of the day box's two charts, edge to edge — the head row, the plot with its own clock */
     <section className={`relative flex flex-col min-w-0 ${part ? 'flex-1 min-h-0' : ''}`} data-tape-box data-tape-open={open || undefined} data-tape-part={part || undefined}>
       {/* AS A PART the head goes up to the day box's line (DayBox's slot); the box's own line is the standalone tape's */}
       {part ? (
@@ -742,8 +677,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
       </div>
       )}
       {open && (
-        /* AS A PART OF THE DAY BOX the plot takes its share of the box's height — 240 at least, more when the box stands
-           beside the book and is stretched to its height (2026-10-13) */
+        /* as a part of the day box the plot takes its share of the height — 240 at least */
         <div className={part ? 'flex-1 min-h-0 flex flex-col border-t border-borderSubtle/60' : 'border-t border-borderSubtle/60'}>
           <div
             className={`relative ${part ? 'flex-[1_1_280px] min-h-[240px]' : 'h-[260px]'} outline-none`}

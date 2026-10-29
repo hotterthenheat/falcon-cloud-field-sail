@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE WORDS ON THE PAGE (Trace)
-
-  Audit round 8 (retail): "standing contracts",
-  "own-terms prints", "floor packages", "spread
-  legs · no read", Vol/OI, ΔOI, "stock-like" and
-  the open-interest day were desk words with no
-  plain-English line anywhere. One line under the
-  read names the page's words; opened, each says
-  what it means in a sentence. A word's hover says
-  the same, so a laptop never has to open it.
-==================================================
-*/
+/* One line under the read naming the page's own terms; opened, each says what it means. A term's hover says the
+   same. */
 
 import { SPREAD_LEG_PCT } from '../../data/flowBook';
 
@@ -24,31 +12,31 @@ export const TERMS: Record<TermKey, { word: string; plain: string }> = {
   },
   ownTerms: {
     word: 'own-terms prints',
-    plain: "Dark-pool trades priced by their own terms (contingent, average-price, prior-reference) or in the opening or closing auction, not at the market's quote — they say nothing about buying or selling pressure, so they are shown apart and never read.",
+    plain: "Dark-pool trades priced by their own terms (contingent, average-price) or in an auction, not at the quote: shown apart, never read.",
   },
   floor: {
     word: 'floor packages',
-    plain: 'Multi-leg packages put together on an exchange floor — often compression trades that net positions down between firms. Their side belongs to the package, not to a bet, so they are set apart and never ranked.',
+    plain: 'Multi-leg packages crossed on an exchange floor, often compression between firms. Their side is the package\'s, so they are set apart, never ranked.',
   },
   spreadLegs: {
     word: 'spread legs · no read',
-    plain: `A contract traded as one leg of a multi-leg order (a spread): one leg is bought while another is sold, so a leg's own side says nothing about direction. A contract with ${SPREAD_LEG_PCT}% or more of its day in such orders is counted, but given no lean and never called the biggest bet.`,
+    plain: `A contract with ${SPREAD_LEG_PCT}% or more of its day as legs of spreads: a leg's side says nothing about direction, so it gets no lean or crown.`,
   },
   volOi: {
     word: 'Vol/OI',
-    plain: "Today's volume divided by the open interest (the contracts outstanding before today). At 1.5× or more, more traded today than was open — new positions were likely built.",
+    plain: "Today's volume over the open interest before today. At 1.5× or more, new positions were likely built.",
   },
   doi: {
     word: 'ΔOI',
-    plain: 'The change in open interest from one daily count to the next — up means positions were opened, down means they were closed. "New" means there was none before.',
+    plain: 'The change in open interest between daily counts: up is positions opened, down closed. "New" means there was none before.',
   },
   stockLike: {
     word: 'stock-like',
-    plain: 'Deep in the money (25% or more) with a month or more to run — it moves almost one-for-one with the stock, so it is usually a stock replacement or a roll, not a bet on direction.',
+    plain: '25% or more in the money with a month or more to run: it moves like the stock, usually a replacement or a roll, not a bet.',
   },
   oiDay: {
     word: 'the open-interest day',
-    plain: "Open interest is counted once a day, before the open — so the newest count shows what the previous session's trading left. Today's trading shows up in tomorrow morning's count.",
+    plain: "Open interest is counted each morning, so the newest count shows the previous session's trading; today's shows up tomorrow.",
   },
 };
 

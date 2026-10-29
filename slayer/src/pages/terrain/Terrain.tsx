@@ -45,6 +45,8 @@ import { readSessionClock } from '../../data/moc';
 import ProfilePanel, { PALETTE_OPTIONS, PROFILE_MIN_W, profileRestWidth, type ProfileLane, type ProfilePalette } from '../../components/gex/ProfilePanel';
 import DropdownSelect from '../../components/ui/DropdownSelect';
 import { netSinceOpenRatio } from '../../data/levelview';
+import { useLevelsFor } from '../../data/levelsFor';
+import { useLevelsScope } from '../../data/levelsScope';
 import ProfileGuide from '../../components/gex/ProfileGuide';
 import GuideFocus from '../../components/ui/GuideFocus';
 import { buildFlowFromRows } from '../../data/hedgeFlow';
@@ -772,6 +774,15 @@ const ReadoutCell = ({ k, v, ink }: { k: string; v: string; ink?: string }) => (
   </span>
 );
 
+/** A stable function that calls the latest `fn` — the memoised chart's callbacks, so a pane render (a resize, a tick)
+    does not re-render the chart behind it. */
+function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const ref = useRef(fn);
+  ref.current = fn;
+  return useCallback((...args: A) => ref.current(...args), []);
+}
+const NO_FLOW_PRINTS: readonly never[] = [];
+
 /* The hovered bar lives in a cell, not the pane's state: the chart reports it on every pointer move, and as pane state
    each move re-rendered the whole pane — its toolbar and the rail's calendar (~500 cells). Only the read line reads it. */
 /* The chrome's one read line: the hovered bar while the pointer is on the plot, else the heaviest strikes. It sheds
@@ -908,12 +919,20 @@ const Pane = ({
   boxRef, cell = '', palette, railCut, onRailCut, arriveFocus = null, onTrailRef,
 }: PaneProps) => {
   const onTrailKey = useCallback((ref: number) => onTrailRef?.(index, ref), [onTrailRef, index]);
+  const chartCrosshair = useStable(onCrosshair);
+  const chartSyncRegister = useStable(registerSync);
+  const chartExitDraw = useStable(onExitDraw);
+  const chartEnterDraw = useStable(onToggleDrawing);
+  const chartExitReplay = useStable(onExitReplay);
   const { ticker, timeframe, overlays, indicators, chartStyle, clock, compares, priceScale, sessionOr, ladder } = cfg;
   /* its own theme, else the page's default — Glacier on the dark terminal, Stone on paper — re-read on a flip */
   const pageDefault = usePageDefaultCandleKey();
   const theme = cfg.theme ?? pageDefault;
   /* the chart's own picture, handed in on mount (StrikeChart snapshotRegister) */
   const snapshotTakeRef = useRef<(() => HTMLCanvasElement | null) | null>(null);
+  const chartSnapshotRegister = useCallback((take: (() => HTMLCanvasElement | null) | null) => {
+    snapshotTakeRef.current = take;
+  }, []);
   /* WHAT THE AXIS IS ACTUALLY DRAWING, from the one function that decides it.
      The chart asks the same question of the same list, so the picker's trigger
      and the price ticks can never disagree — a second `compares.some(...)`
@@ -1038,7 +1057,16 @@ const Pane = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ticker, revision, railCut]
   );
-  const levels = railData.levels;
+  /* The walls, flip and supreme are the house's (data/levelsFor.ts) in the desk-wide levels scope Pinpoint's head sets,
+     so Terrain names the same levels as Pinpoint and Dossier. Until the book is live, the rail's own read stands in. */
+  const levelsScope = useLevelsScope();
+  const house = useLevelsFor(ticker, levelsScope);
+  const levels = useMemo(() => {
+    const own = railData.levels;
+    if (!house) return own;
+    const n = (v: number | null) => (v == null ? Number.NaN : v);
+    return { spot: own.spot, callWall: n(house.callWall), putWall: n(house.putWall), flip: n(house.flip), supreme: house.supreme };
+  }, [railData, house]);
   const changePct = useMemo(
     () => peekChange(ticker),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1134,6 +1162,7 @@ const Pane = ({
   useFocusTrap(expanded, overlayRef);
 
   const [focus, setFocus] = useState<number | null>(arriveFocus);
+  const chartKeepStrike = useCallback((price: number) => setFocus(cur => (cur != null && Math.abs(cur - price) < 1e-9 ? null : price)), []);
   /* a strike belongs to its name: let go of when the pane CHANGES name (never on the mount — an arrival's would go with it) */
   const focusName = useRef(ticker);
   useEffect(() => {
@@ -1587,7 +1616,7 @@ const Pane = ({
               bookDate={bookPick}
               levels={levels}
               timeframe={timeframe}
-              flowPrints={[]}
+              flowPrints={NO_FLOW_PRINTS}
               height={tall ? 260 : 200}
               overlays={overlays}
               indicators={indicators}
@@ -1597,20 +1626,18 @@ const Pane = ({
               trailKey={false}
               onTrailKey={onTrailKey}
               /* the chart's picture, for the toolbar's camera (2026-10-18) */
-              snapshotRegister={take => {
-                snapshotTakeRef.current = take;
-              }}
+              snapshotRegister={chartSnapshotRegister}
               barClock={clock}
               prints={prints}
               compares={compares}
               priceScale={priceScale}
               sessionOr={sessionOr}
               drawing={drawing}
-              onExitDraw={onExitDraw}
+              onExitDraw={chartExitDraw}
               /* The persistent rail's way in — a tool clicked at rest arms
                  draw mode with that tool in hand (guarded in the chart, so
                  clicking tools WHILE drawing never toggles it off). */
-              onEnterDraw={onToggleDrawing}
+              onEnterDraw={chartEnterDraw}
               /* Only the takeover has a top band to spare. */
               railTopOk={expanded}
               /* IN FULLSCREEN THE DESK BAR FLOATS OVER THE PANE'S FOOT (the bar below: `fixed`, 12px above the time axis),
@@ -1619,13 +1646,13 @@ const Pane = ({
                  and the gap, so the two never share a row. */
               footInset={expanded ? 44 : 0}
               replay={replay}
-              onExitReplay={onExitReplay}
+              onExitReplay={chartExitReplay}
               focusPrice={focus}
               /* a bead clicked on the field keeps its strike — the ladder's own toggle (2026-10-15) */
-              onKeepStrike={price => setFocus(cur => (cur != null && Math.abs(cur - price) < 1e-9 ? null : price))}
+              onKeepStrike={chartKeepStrike}
               priceTag
-              onCrosshair={onCrosshair}
-              syncRegister={registerSync}
+              onCrosshair={chartCrosshair}
+              syncRegister={chartSyncRegister}
               onReadout={readout.set}
               projectionRef={projectionRef}
               exportRef={exportPngRef}

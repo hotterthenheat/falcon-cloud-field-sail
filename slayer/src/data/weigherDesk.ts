@@ -1,16 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - WEIGHER DESK DATA (data/weigherDesk.ts)
-
-  The chain, the scanner and the market mood behind
-  the Weigher's workstation (Noah, 2026-08-25 — the
-  Legend-shaped redesign). Facts only, priced by the
-  SAME machinery every other surface uses:
-  estimatePremium for marks, blackScholesGreeks for
-  greeks, the simulator's chain for open interest,
-  expiryFor for real session dates. No orders, no
-  sides, no advice — we are not a broker.
-==================================================
+  The Weigher's chain: listed expiries and the live chain from ThetaData (the vendor's listed contracts when
+  ThetaData does not answer), the session's volume and open interest, and yesterday's close.
 */
 
 import { expiryFor, isoDate, type Expiry } from '../core/calendar';
@@ -279,7 +269,6 @@ export function buildDeskChain(ticker: string, dte: number, depth = 10, snap?: M
     );
 
     // ---- the column-catalog facts, all from the machinery already here ----
-    const itm = (right === 'C' ? nd2 : 1 - nd2) * 100;
     const breakeven = Number((right === 'C' ? strike + ask : strike - ask).toFixed(2));
     // Size leans toward the money like volume does, on its own hash lane
     const sizeDecay = Math.exp(-Math.abs(strike - spot) / (spot * 0.1));

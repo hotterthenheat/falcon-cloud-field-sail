@@ -1,52 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE JOURNAL'S DATA
-  (data/review/journal.ts)
-
-  What the journal keeps that the engines do not: the
-  reader's words and tags on a closed trade, a note on
-  a replayed day, and the lists of tags the reader
-  owns. A journal exists for what the numbers cannot
-  say (Noah, 2026-09-20: "a bit lacking in
-  functionality") — so everything here is the
-  reader's, and every figure made from it (a tag's
-  trades, what it won, what it made) is a count of
-  THEIR trades, never a score of ours.
-
-    an entry     on a trade, kept WITH ITS SESSION
-                 (`session.journal`): a setup, the
-                 mistakes, whether the plan was
-                 followed, and three answers — why I
-                 took it · what I saw while in it ·
-                 what I would do again. The one note
-                 the first journal kept (`notes`) is
-                 read as the first answer until it is
-                 written again.
-    a day's note on a session's replayed day
-                 (`session.days`): the plan before,
-                 the review after.
-    the tags     two lists the reader owns, kept on
-                 this machine (`slayer_review_tags_v1`)
-                 — a tag taken off a list stays on the
-                 trades that carry it.
-
-  Both kinds of session write here. A ROW says which
-  kind it is; what a journal needs of a trade (when,
-  what, which way, how it ended, what it made) is
-  asked through the helpers below, never by reaching
-  into one kind's fields.
-
-  A SECOND JOURNAL, THE SAME PAGES (2026-09-22, Noah:
-  "there should be 2 different journals, 1 for the
-  backtesting and 1 for the paper trading"). A row can
-  be a PAPER trade (`paper: true`, data/paper/engine.ts):
-  its moments are real instants (`at`), not a replayed
-  day's minute, and its account keeps its words under
-  its own key (data/paper/store.ts). The helpers answer
-  for it the way they answer for the other two, so the
-  journal's pages serve both journals — each reading
-  only its own rows (`paperRowsOf`, `rowsOf`).
-==================================================
+  What the journal keeps that the engines do not: the reader's words and tags on a trade, notes on a day, and the
+  tag lists the reader owns.
 */
 
 import { useSyncExternalStore } from 'react';
@@ -57,7 +11,7 @@ import { contractWords } from './quotes';
 import { barTime, clockWords, dayWords } from './tape';
 import { futBookOf as paperFutBookOf, optBookOf as paperOptBookOf, type FutTrade as PaperFutTrade, type OptTrade as PaperOptTrade, type PaperAccount, type PaperMoment } from '../paper/engine';
 import { nyMomentWords } from '../paper/clock';
-import { futWords, paperFut } from '../paper/products';
+import { futWords } from '../paper/products';
 
 export interface JournalEntry {
   /** One of the reader's setups */
@@ -137,7 +91,6 @@ export type EndedCut = 'hand' | 'target' | 'stop' | 'market' | 'pieces';
 export const endedCutOf = (r: JournalRow): EndedCut => (r.t.how === 'scaled' ? 'pieces' : r.t.how === 'target' ? 'target' : r.t.how === 'stopped' ? 'stop' : r.t.how === 'expired' || r.t.how === 'rolled' || r.t.how === 'rule' || r.t.how === 'page' ? 'market' : 'hand');
 /** A price as its own desk prints it: a future on its tick, a contract to the cent */
 export const priceWordsOf = (r: JournalRow, v: number): string => (r.fut ? (r.paper ? futWords(r.t.symbol, v) : futPrice(futProduct(r.t.symbol), v)) : v.toFixed(2));
-export const longNameOf = (r: JournalRow): string => (r.fut ? (r.paper ? paperFut(r.t.symbol).name : futProduct(r.t.symbol).name) : r.t.contract.ticker);
 
 /** A trade's entry — the first journal's one note is the first answer until that answer is written */
 export const entryOf = (r: JournalRow): JournalEntry => {
@@ -147,7 +100,6 @@ export const entryOf = (r: JournalRow): JournalEntry => {
 /** Every word the reader wrote on it, as one line — the list's column, and what the search reads */
 export const wordsOf = (e: JournalEntry): string => [e.why, e.saw, e.again].map(w => (w ?? '').trim()).filter(Boolean).join(' · ');
 export const hasWords = (e: JournalEntry): boolean => wordsOf(e).length > 0;
-export const hasTags = (e: JournalEntry): boolean => !!e.setup || (e.mistakes?.length ?? 0) > 0 || !!e.plan;
 
 /* ---- the cut: what the page's cards ask of a row ---- */
 export interface JournalCut {

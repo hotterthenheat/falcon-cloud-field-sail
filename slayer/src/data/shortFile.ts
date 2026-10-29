@@ -1,9 +1,5 @@
-/*
-  A NAME'S OWN SHORT READS (the retail pass, 2026-10-22), read whole. The vendor desk keeps the last 600 rows of a list
-  (or the last 24 of a nested one) on the assumption that the oldest come first — but /shorts/{t}/data, /ftds and
-  /volume-and-ratio answer newest first, so the desk's copy was the OLDEST rows: GME's short volume read 32% (a July
-  session) against 61% the last session. The short file reads these routes here, unclipped, once per name a session.
-*/
+/* A name's own short reads, read whole: these routes answer newest first, so they are read here unclipped, once per
+   name a session. */
 
 import { useEffect, useState } from 'react';
 import { uwCall } from './whales';

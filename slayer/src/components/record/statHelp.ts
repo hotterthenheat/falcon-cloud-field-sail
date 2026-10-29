@@ -1,7 +1,4 @@
-/*
-  THE DOSSIER'S PLAIN-ENGLISH HOVERS (the retail pass, 2026-10-22). One line per stat label, so every figure on every
-  Dossier page answers "what is this?" on hover. A label not listed here gets no hover — add it here, not inline.
-*/
+/* The Dossier's plain-English hovers: one line per stat label. A label not listed here gets no hover. */
 
 const HELP: Record<string, string> = {
   /* earnings */

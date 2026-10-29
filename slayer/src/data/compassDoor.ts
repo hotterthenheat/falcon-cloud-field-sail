@@ -14,9 +14,6 @@ import type { SleeveKey } from '../types/compass';
 import { deskPhase } from './compassSession';
 import type { OptionPhase } from './compassSession';
 
-/** First minute the loaded scan looks. Last minute it looks. */
-export const SCAN_OPEN_MIN = 9 * 60 + 30;
-export const SCAN_FLAT_MIN = 15 * 60;
 export const OPEN_CAP = 5;
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -94,12 +91,6 @@ export function sessionBook(tracked: readonly TrackedSetup[], at: At = now()): T
 }
 
 const usedNames = new Set<string>();
-
-/** One entry per name per session, including a fill that was unavailable. */
-export function noteNameUsed(ticker: string, at: At = now()): void {
-  if (!ticker) return;
-  usedNames.add(`${entrySession(at)}|${ticker.toUpperCase()}`);
-}
 
 export function nameUsed(ticker: string, at: At = now()): boolean {
   return usedNames.has(`${entrySession(at)}|${ticker.toUpperCase()}`);

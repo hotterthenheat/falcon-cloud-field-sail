@@ -1,21 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE SHAPE OF A TRADE, DRAWN
-  (components/review/TradeShape.tsx)
-
-  The hexagon (Noah, 2026-09-29: "a cooler hexogram"
-  in place of "While you held it"): six axes, one
-  polygon for the trade in its own ink — the bull's
-  for a win, the bear's for a loss — and the reader's
-  USUAL shape behind it in a silver hairline, so the
-  trade reads against their own habit. A drawn scale
-  is never a still picture: the polygon grows out of
-  the centre when the page lands on a trade, the axis
-  under the pointer lights with its vertex, and the
-  house's pointer card says the axis's figure, its
-  sentence, and the usual beside it. Every colour is
-  a token, so the figure is part of the page on paper.
-==================================================
+  A trade's shape as a hexagon on six axes in its result's ink, with the reader's usual shape behind it; the axis
+  under the pointer lights and its card says the figure.
 */
 
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';

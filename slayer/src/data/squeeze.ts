@@ -1,10 +1,5 @@
-/* The squeeze setup: could the shorts be forced to buy back in a hurry? Fixed public rules on the vendor's fields,
-   one rule for the Shorts list and a name's file (the rungs are printed in the Shorts guide):
-     short interest of the float ≥40% 3 · ≥30% 2 · ≥20% 1     days to cover ≥10 2 · ≥5 1
-     borrow fee a year ≥50% 2 · ≥10% 1                          under 500K shares left to borrow 1
-     shares short up 20%+ since the prior report 1
-   strong: 6+ points from 3+ facts with 20%+ short and a tight borrow; building: 4+ points from 2+ facts; weak: the rest.
-   A file's short volume and fails to deliver are shown beside the read, never scored. */
+/* One squeeze rule for the Shorts list and a name's file; the rungs are printed in the Shorts guide. Short
+   volume and fails to deliver are shown beside the read, never scored. */
 
 import type { ShortRow } from './fileBooks';
 

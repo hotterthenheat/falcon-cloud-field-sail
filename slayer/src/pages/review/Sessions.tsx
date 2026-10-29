@@ -1,40 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW › BACKTEST · THE SESSIONS
-  (pages/review/Sessions.tsx)
-
-  Where a backtest begins and where it is come back
-  to. One line of cards makes a session — the name,
-  the money it starts with, the day the clock starts
-  on, the fee — and the list under it is every
-  session kept on this machine: where its clock
-  stands, what it is worth, what its closed trades
-  add up to, and the doors to its desk and its report.
-
-  TWO NAMES AND THE READER'S OWN RULES (Noah,
-  2026-09-20: two tickers a session, "build it, hard
-  blocks"). ONE NAME IS THE DEFAULT AND A SECOND IS
-  ADDED (the same day, with a picture of a card that
-  read "AND · One name": "seems counterintuitive like
-  its forcing you to choose 2 names"): a dashed door,
-  "+ A second name", becomes the card when pressed —
-  opening straight onto its search — and an × beside it
-  takes it away again.
-  OPTIONS OR FUTURES is the first card (2026-09-20, his
-  word: "backtesting/paper trading for regular futures
-  ndx, spx, oil, gold silver"). It changes what the Name
-  cards list (the products: ES · MES · NQ · MNQ · CL · GC
-  · SI), what the fee is, and one rule's words — a
-  future has no cost, so "what a trade may cost" becomes
-  what it may RISK, entry to stop. The list under it
-  holds both kinds; a futures row says so.
-  The rules are three — how many positions may be open
-  at once, what one trade may cost, where the day
-  stops. They are chosen HERE and nowhere else: the
-  sentence under the cards says so before the press,
-  because a rule that can be loosened in the middle of
-  a losing day is not a rule.
-==================================================
+  Where a backtest session starts and is come back to: the cards that make a session (name, cash, day, fee, the
+  reader's rules) and every session kept on this machine.
 */
 
 import BacktestPaused from './BacktestPaused';

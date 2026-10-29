@@ -1,33 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE WIDGETS
-  (pages/workspace/registry.tsx)
-
-  Every widget the desk can hold, in the rail's own
-  groups (REBUILT 2026-09-30 — tile.ts says what a
-  tile is and why the twelve before these went):
-
-    MARKET     Chart · News · Earnings · Stocks ·
-               Insiders & Congress
-    THE BOOK   The book · Key levels · The range ·
-               Where it closes · At the wall ·
-               Targets · Where the walls are heading ·
-               Head to head
-    TRADE      Compass setups · Tracker · The chain ·
-               Positions & watchlist
-    PRACTICE   Paper account · Journal
-    YOU        Alerts · Session clock
-
-  Each names its size and the floor and ceiling it
-  reads at, its settings and the cards they are
-  picked from, and THE PAGE ITS DOOR OPENS — the real
-  page, on the tile's name, carrying what the tile
-  showed and the way back to Pulse. The session clock
-  alone has no door: it is not a copy of a page.
-
-  Nothing from Trace is here: order flow left the
-  desk at Noah's word (2026-09-20).
-==================================================
+  Every widget a Pulse desk can hold, by group: its size and limits, its settings and controls, and the page its
+  door opens.
 */
 
 import { BookOpenText, Briefcase, CalendarClock, CandlestickChart, Clock, Compass, GitCompareArrows, Grid3x3, Landmark, LineChart, Milestone, Newspaper, Rows3, TableProperties, Target } from 'lucide-react';

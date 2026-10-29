@@ -1,6 +1,5 @@
-/* Everything the reader marked on Trace and what it has done since. One grid for every kind of option mark (the shared
-   facts are columns; a print's or structure's own facts compose one "Then" cell), ranked by how much each moved; a mark
-   off today's book keeps its "then" and never drops. Kept dark crosses have their own box. */
+/* Everything marked on Trace and what it has done since: one grid for every option mark, ranked by how far each
+   moved. A mark off today's book keeps its "then"; kept dark crosses have their own box. */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';

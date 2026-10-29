@@ -1,10 +1,5 @@
-/*
-  THE STAR — the Live Tape's bookmark, shared with every Trace table (Noah,
-  2026-09-03). It leads the row's first cell, it is its own control (a click
-  on it must not also open the row's card), and it reads the watch store
-  itself, so a table's memoised rows sit still when a bookmark flips — only
-  the stars redraw. The silver accent when on (lime until 2026-10-13): the same ink the tape's star always wore.
-*/
+/* The row's watch star: its own control (a click never opens the row's card), reading the store itself so only the
+   stars redraw when a mark flips. */
 
 import { Bookmark } from 'lucide-react';
 import { useWatch, type WatchedItem } from '../../context/WatchContext';

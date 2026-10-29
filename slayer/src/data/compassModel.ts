@@ -66,7 +66,8 @@ import type { StrikeNode } from '../types/market';
 let ENTRY: Tree[] = [];
 let RUNNER: Tree[] = [];
 let locked = false;
-let lockText = `${MODEL_1_NAME} and ${MODEL_2_NAME} are not loaded. Scoring is closed until the files match their hashes.`;
+/* Empty until a load has been tried and failed: an unscored session is not a failed load. */
+let lockText = '';
 let loading: Promise<boolean> | null = null;
 
 export function lockReason(): string {
@@ -350,16 +351,14 @@ async function fetchCurve(symbol: string, now: number): Promise<Curve | null> {
   return cum.size ? { cum, five } : null;
 }
 
-function curveOf(symbol: string): Curve | null {
-  return curves.get(symbol) ?? null;
-}
-
-export function warmVolumes(symbols: string[], now = Date.now()): void {
-  for (const symbol of symbols) {
-    if (INDEX.has(symbol) || curves.has(symbol) || warmQ.includes(symbol)) continue;
-    warmQ.push(symbol);
+/** The name's intraday volume curve over the prior sessions; asked for in the background the first time it is wanted */
+function curveOf(symbol: string, now = Date.now()): Curve | null {
+  const key = `${symbol}|${sessionYmd(now)}`;
+  if (!curves.has(key) && !INDEX.has(symbol) && !warmQ.includes(key)) {
+    warmQ.push(key);
+    void drain(now);
   }
-  void drain(now);
+  return curves.get(key) ?? null;
 }
 
 async function drain(now: number): Promise<void> {
@@ -370,12 +369,13 @@ async function drain(now: number): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 400));
       continue;
     }
-    const symbol = warmQ.shift();
-    if (!symbol || curves.has(symbol)) continue;
+    const key = warmQ.shift();
+    if (!key || curves.has(key)) continue;
+    const symbol = key.split('|')[0];
     try {
-      curves.set(symbol, await fetchCurve(symbol, now));
+      curves.set(key, await fetchCurve(symbol, now));
     } catch {
-      curves.set(symbol, null);
+      curves.set(key, null);
     }
   }
   warming = false;
@@ -736,109 +736,9 @@ function slotOf(s: { ticker: string; sleeve: string }): string {
   return `${s.ticker}|${s.sleeve}`;
 }
 
-interface Scored { setup: Setup; p1: number; prun: number }
-
-function keepOne(entry: Scored, runner: Scored | null): Setup {
-  const same = runner != null && runner.setup.id === entry.setup.id;
-  const close = runner != null && runner.p1 >= entry.p1 - 0.02;
-  const win = same || !runner || !close ? entry : runner;
-  const prun = win.prun;
-  return {
-    ...win.setup,
-    p1: win.p1,
-    prun,
-    runner: false,
-    modelAgree: same,
-    better: 'entry',
-    band: 'top',
-    strength: false,
-    seenAt: Date.now(),
-  };
-}
-
-function asAverage(row: Scored): Setup {
-  seen.add(row.setup.id);
-  return {
-    ...row.setup,
-    p1: row.p1,
-    prun: row.prun,
-    runner: false,
-    modelAgree: false,
-    better: 'entry',
-    band: 'average',
-    strength: false,
-    seenAt: Date.now(),
-  };
-}
-
-function fitted(fit: { calls?: boolean; bar: number; b: number; w: number[]; mean: number[]; std: number[] }, x: number[]): number {
-  if (fit.calls === false) return 0;
-  let z = fit.b;
-  for (let i = 0; i < fit.w.length; i++) z += fit.w[i] * ((x[i] - fit.mean[i]) / (fit.std[i] || 1));
-  const p = 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, z))));
-  return p >= fit.bar ? p : 0;
-}
-
-function asScalp(row: Scored, prob: number): Setup {
-  seen.add(row.setup.id);
-  return {
-    ...row.setup,
-    p1: prob,
-    prun: row.prun,
-    runner: false,
-    modelAgree: false,
-    better: 'entry',
-    band: 'scalp',
-    strength: false,
-    seenAt: Date.now(),
-  };
-}
-function bandOf(_p1: number): Setup['band'] | null {
-  return null;
-}
-
-function asWing(row: Scored, prob: number): Setup {
-  seen.add(row.setup.id);
-  return {
-    ...row.setup,
-    p1: prob,
-    prun: row.prun,
-    runner: true,
-    modelAgree: false,
-    better: 'runner',
-    band: 'wing',
-    strength: false,
-    seenAt: Date.now(),
-  };
-}
-
-/** Same contract. A higher score changes the rung. It does not open a second trade. */
-function lift(id: string, p1: number, prun: number, maps: Map<string, Setup>[]): void {
-  const band = bandOf(p1);
-  for (const into of maps) {
-    for (const [key, had] of into) {
-      if (had.id !== id) continue;
-      const climbed = band != null && (had.p1 ?? 0) < p1 && band !== had.band;
-      into.set(key, {
-        ...had,
-        p1,
-        prun,
-        band: climbed && band ? band : had.band,
-        strength: climbed || !!had.strength,
-        runner: had.runner,
-        better: had.better,
-      });
-      return;
-    }
-  }
-}
-
 const picks = new Map<string, Setup>();
 const wingPicks = new Map<string, Setup>();
-const avgPicks = new Map<string, Setup>();
-const scalpPicks = new Map<string, Setup>();
 const lotteryPicks = new Map<string, Setup>();
-const pendingScalp: { sleeve: string; row: Scored; prob: number }[] = [];
 const left = new Map<string, LeftRow>();
 
 export interface ScanReport { best: number; prun: number; contract: string; ticker: string; scored: number; quiet: number; setup: Setup | null }
@@ -1057,22 +957,12 @@ export function currentPicks(): Setup[] {
   return [...picks.values(), ...wingPicks.values(), ...lotteryPicks.values(), ...nearPicks.values()].sort((a, b) => rank(b) - rank(a) || (b.p1 ?? 0) - (a.p1 ?? 0));
 }
 
-export function commitScalps(sleeve: string): boolean {
-  const rows = pendingScalp.filter(p => p.sleeve === sleeve);
-  for (let i = pendingScalp.length - 1; i >= 0; i--) if (pendingScalp[i].sleeve === sleeve) pendingScalp.splice(i, 1);
-  if (!rows.length) return false;
-  rows.sort((a, b) => b.prob - a.prob);
-  const win = rows[0];
-  if (seen.has(win.row.setup.id)) return false;
-  for (const [key, pick] of scalpPicks) if (pick.sleeve === sleeve && !seen.has(key)) scalpPicks.delete(key);
-  scalpPicks.set(win.row.setup.id, asScalp(win.row, win.prob));
-  return true;
+/* The scalp sleeve was retired; the scan still calls these two at each pass, and they do nothing. */
+export function commitScalps(_sleeve: string): boolean {
+  return false;
 }
 
-/** A new pass does not inherit last slot's losers. */
-export function dropPending(sleeve: string): void {
-  for (let i = pendingScalp.length - 1; i >= 0; i--) if (pendingScalp[i].sleeve === sleeve) pendingScalp.splice(i, 1);
-}
+export function dropPending(_sleeve: string): void {}
 
 export function heldSetup(id: string): Setup | null {
   const held = currentPicks().find(s => s.id === id);
@@ -1085,20 +975,8 @@ export function heldSetup(id: string): Setup | null {
   return null;
 }
 
-export function dropSleeve(sleeve: string): void {
-  for (const [key, pick] of picks) if (pick.sleeve === sleeve) picks.delete(key);
-  for (const [key, pick] of wingPicks) if (pick.sleeve === sleeve) wingPicks.delete(key);
-  for (const [key, pick] of lotteryPicks) if (pick.sleeve === sleeve) lotteryPicks.delete(key);
-}
-
-let pace = { done: 0, total: 0, sleeve: 'odte' as 'odte' | 'weekly' };
-
-export function scanPace(): { done: number; total: number; sleeve: 'odte' | 'weekly' } {
-  return pace;
-}
-
-export function setScanPace(done: number, total: number, sleeve: 'odte' | 'weekly' = 'odte'): void {
-  pace = { done, total, sleeve };
+export function setScanPace(_done: number, _total: number, _sleeve: 'odte' | 'weekly' = 'odte'): void {
+  /* the scan reports its pace; nothing reads it now */
 }
 
 export function noteLeft(row: { id: string; ticker: string; contract: string }, why: string): void {
@@ -1108,8 +986,6 @@ export function noteLeft(row: { id: string; ticker: string; contract: string }, 
   for (const [key, pick] of picks) if (pick.id === row.id) picks.delete(key);
   for (const [key, pick] of wingPicks) if (pick.id === row.id) wingPicks.delete(key);
   for (const [key, pick] of lotteryPicks) if (pick.id === row.id) lotteryPicks.delete(key);
-  for (const [key, pick] of avgPicks) if (pick.id === row.id) avgPicks.delete(key);
-  for (const [key, pick] of scalpPicks) if (pick.id === row.id) scalpPicks.delete(key);
   for (const [key, pick] of nearPicks) if (pick.id === row.id) nearPicks.delete(key);
   persistCalls();
 }
@@ -1504,18 +1380,6 @@ export async function scoreBook(setups: Setup[], now = Date.now(), merge = false
   await scoreAll(setups, now, merge);
 }
 
-export function noteMids(setups: Setup[], now = Date.now()): void {
-  for (const s of setups) noteMid(s.id, quoteMinute(s, now), s.mid);
-}
-
-export function refreshQuotes(setups: Setup[], _now = Date.now()): void {
-  paintQuotes(setups);
-}
-
-export function pickTickers(): string[] {
-  return [...picks.values()].map(s => s.ticker);
-}
-
 let claimedSlot = -2;
 const claimedSleeves = new Set<string>();
 
@@ -1549,14 +1413,6 @@ export function claimSlot(now: number, sleeve: string): 'closed' | 'scan' | 'hol
 /** The tape was not in yet. The same slot may run again. */
 export function releaseSlot(sleeve: string): void {
   claimedSleeves.delete(sleeve);
-}
-
-export async function lockToSlot(setups: Setup[], now = Date.now()): Promise<void> {
-  const next = claimSlot(now, 'book');
-  if (next === 'closed') return;
-  for (const s of setups) noteMid(s.id, quoteMinute(s, now), s.mid);
-  if (next === 'scan') await scoreAll(setups, now);
-  else paintQuotes(setups);
 }
 
 export interface LiveScore {

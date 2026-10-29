@@ -1,44 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · A FUTURE'S LADDER
-  (components/paper/DomLadder.tsx)
-
-  The partner's price ladder (Noah liked it: "hotkeys,
-  aldder"), in the house's row grammar — the chain's
-  rows, a tick a row, the price the name trades at in
-  the silver that means where you are.
-
-    BUY · PRICE · SELL   the reader's own working orders
-                         sit on their side of their
-                         price, their size in a chip —
-                         a press on one cancels it. A
-                         press on an empty cell places the
-                         quick size there: under the price
-                         a LIMIT (it waits for a dip), over
-                         it a STOP (it buys the break) —
-                         and the mirror on the sell side
-    VOLUME               what traded at each price this
-                         session, as a bar (the feed gives
-                         a bar's volume, spread over its
-                         range — a stand-in, said so)
-    AT THIS PRICE        with a position open, what it would
-                         be up or down if the price were
-                         there — its entry marked
-
-  THERE IS NO BOOK TO SHOW. A real ladder shows the size
-  resting at every price; the simulated feed has none, so
-  no column pretends to. It centres itself on the price
-  unless the reader has scrolled it, and the door at its
-  foot brings it back.
-
-  WHERE IT LIVES (2026-09-22 — Noah: "show me ours on the
-  live chart for futures but it should be something that
-  you can exit out of with ease"): `LadderDock`, a panel
-  beside a future's chart — the chart gives it the room
-  while it is open and takes it back when it closes. Its X,
-  Esc inside it, or the chart head's Ladder door closes it.
-  A press carries the Order card's brackets (futDraftAt).
-==================================================
+  A future's price ladder, a tick a row: working orders on their side of their price, a press places the quick size
+  (a limit below the price, a stop above), and the session's volume per price as a bar.
 */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';

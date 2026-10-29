@@ -1,27 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - BANDS AND NOTES ON A SMALL CHART
-  (components/record/plotNotesPrimitive.ts)
-
-  Two things the library's price lines cannot do on
-  their own, drawn on the chart's own canvas so the
-  chart stays the library's (the crosshair, the
-  card, the axes are untouched):
-
-    A BAND   a soft fill between two prices across
-             the whole plot — the pair's usual range
-             (2026-09-29: three dashed lines read as
-             three more lines; a band reads as a
-             room the line lives in)
-    A NOTE   a line's NAME inside the plot at its
-             left end, one point above the line —
-             the axis then carries the figure alone
-             (three wide "usual high 1.267" tags
-             collided on the pair's price scale)
-
-  The band sits under the series, the notes over it.
-==================================================
-*/
+/* Bands and notes on a small chart, drawn on the chart's own canvas: a band is a soft fill between two prices; a note
+   is a line's name inside the plot at its left end. The band sits under the series, the notes over it. */
 
 import type { IChartApi, IPrimitivePaneRenderer, IPrimitivePaneView, ISeriesApi, ISeriesPrimitive, SeriesAttachedParameter, SeriesType, Time } from 'lightweight-charts';
 
@@ -105,8 +83,7 @@ class NotesRenderer implements IPrimitivePaneRenderer {
       const H = scope.mediaSize.height * vr;
       const x = 8 * hr;
       const h = 13 * vr;
-      /* the pills already drawn — a note whose pill would sit on one takes the other side of its line, or stays unsaid
-         (two levels half a dollar apart printed one word over the other, the trend's 20-day and support, 2026-09-29) */
+      /* a note whose pill would sit on one already drawn takes the other side of its line, or stays unsaid */
       const drawn: { top: number; bottom: number }[] = [];
       const placed = data.notes
         .map(n => {

@@ -199,5 +199,3 @@ export { PAPER_FUTURES, PAPER_INDEXES, bigOf, frontOn, futOfFund, futWords, isMi
 export const futNow = (_symbol: string): number => NaN;
 /** No live futures candles */
 export const futCandles = (_symbol: string): Candle[] => [];
-/** An index's own minute bars from the vendor book */
-export const indexCandles = (symbol: string): Candle[] => candlesOf(symbol);

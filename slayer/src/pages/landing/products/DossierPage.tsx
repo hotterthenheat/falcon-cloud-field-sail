@@ -1,28 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE DOSSIER, ON ITS OWN PAGE
-  (pages/landing/products/DossierPage.tsx)
-
-  The second product page (Noah, 2026-10-02): "next
-  is the dossier page, make sure the stocks full
-  analysis sections, on the news page everything of
-  importance from the headlines high, medium and low
-  to the calendar and anything else you deem
-  important. remember that the key behind all of
-  these pages is that your english doesn't sound
-  like a robot … articulate yourself like how a
-  20-30 year old professional would."
-
-  Five rooms, one page: THE WIRE (the story beside
-  the map, the headlines with their impact marks,
-  the one recording — the tour's own film of the
-  page — and the calendar with the four reads),
-  EARNINGS (the week, a name's last eight prints),
-  STOCKS (how every name screens, then four sections
-  of a name's full analysis), INSIDERS and CONGRESS
-  side by side. Every picture is the real page
-  (scripts/make-product-shots.mjs, `dossier`).
-==================================================
+  The Dossier's product page: the stock file, the news and its calendar, earnings, insiders and Congress.
 */
 
 import { useGround } from '../ground';

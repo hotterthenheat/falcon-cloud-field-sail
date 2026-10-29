@@ -34,6 +34,8 @@ export const signedPct = (v: number, d = 1): string => {
   if (Number(s) === 0) return `${(0).toFixed(d)}%`;
   return `${v > 0 ? '+' : '−'}${s}%`;
 };
+/** The ink for a signedPct figure: muted when it reads 0.0% */
+export const pctInk = (v: number, d = 1): string => (Number(Math.abs(v).toFixed(d)) === 0 ? 'text-textMuted' : v > 0 ? 'text-bull' : 'text-bear');
 
 /** A vendor number field: a number, a numeric string, or null */
 export const numOr = (v: unknown): number | null => {

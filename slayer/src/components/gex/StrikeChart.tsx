@@ -1,5 +1,5 @@
 import {
-  useCallback, useEffect, useMemo, useRef, useReducer, useState,
+  memo, useCallback, useEffect, useMemo, useRef, useReducer, useState,
   useSyncExternalStore,
   type MutableRefObject, type PointerEvent as ReactPointerEvent, useLayoutEffect,
   type ReactNode,
@@ -1407,6 +1407,7 @@ const StrikeChart = ({
   /* The box's client rect for the per-move hit tests, read once and dropped when it can have moved. Read fresh on every
      move it forced a layout each time, right after the pane's read line had written to the DOM. */
   const boxRectRef = useRef<DOMRect | null>(null);
+  const wheelAtRef = useRef(0);
   const boxRect = (el: HTMLElement) => (boxRectRef.current ??= el.getBoundingClientRect());
   useEffect(() => {
     if (!boxEl) return;
@@ -3440,7 +3441,7 @@ const StrikeChart = ({
     const onMove = (p: MouseEventParams<Time>) => {
       const d = ladder.data;
       const series = candleSeriesRef.current;
-      if (!p.point || !d || !series) {
+      if (!p.point || !d || !series || panRef.current) {
         ladder.setHot(null);
         levelCell.set(prev => (prev === null ? prev : null));
         return;
@@ -4960,9 +4961,22 @@ const StrikeChart = ({
             setPinnedBead(null);
           }
         }}
+        onWheelCapture={() => {
+          wheelAtRef.current = performance.now();
+        }}
         onMouseMove={e => {
-          const rect = boxRect(e.currentTarget);
           pointerAtRef.current = { x: e.clientX, y: e.clientY };
+          /* No hover reads while the view is moving under the pointer — a drag (a button down) or a wheel zoom: every
+             move would land on another bead, and the cards would flicker through the gesture. The next still move reads. */
+          if (e.buttons !== 0 || performance.now() - wheelAtRef.current < 200) {
+            trailsRef.current?.setHover(null);
+            beadCell.set(null);
+            coneCell.set(null);
+            eventsPrimRef.current?.setHovered(null);
+            eventCell.set(null);
+            return;
+          }
+          const rect = boxRect(e.currentTarget);
           /* THE FIELD'S BEAD under the pointer (2026-10-15): one hit test a move, the primitive's hover written only
              when the bead changes; nothing while a bead is kept or a rung's card is up */
           const tr = trailsRef.current;
@@ -5726,4 +5740,5 @@ const StrikeChart = ({
   );
 };
 
-export default StrikeChart;
+/* memoised: a host re-render (a pane resize, its toolbar) with the same props leaves the chart alone */
+export default memo(StrikeChart);

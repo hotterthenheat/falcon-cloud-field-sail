@@ -33,18 +33,14 @@ export const bracketShort = (i: number | null): string => {
 
 export const EMPTY_CONGRESS: CongressFeed = { trades: [], totalLow: 0, totalHigh: 0, unknownAmounts: 0, purchases: 0, sales: 0, lateFilings: 0, overlaps: 0, medianLag: 0, windowDays: 0 };
 
-/** A Treasury bill report — the bulk of the book (cash parked in 4- to 52-week bills), not an equity bet. The pages hide
-    them by default and say how many they hid (audit round 5, 2026-10-23) */
+/** A Treasury bill report: parked cash, not an equity bet. The pages hide them by default and count them. */
 export const isTreasuryBill = (t: CongressTrade): boolean => {
   const d = `${t.assetDescription || ''} ${t.ticker || ''}`;
-  /* the filers' own spellings (audit round 7: Steve Cohen's "US Treas Bills Int Rate 0.000% MAT 8/5/2027" and "U.S. Tres
-     Bill …" were counted as reports): Treasury, Treas, Tres or Trsy, then Bill(s) */
+  /* the filers' own spellings: Treasury, Treas, Tres or Trsy, then Bill(s) */
   return /\b(?:treasury|treas|tres|trsy|tsy)\.?\s*bills?\b|\bt-?bills?\b|\bus treasury bill|\bunited states treasury bill/i.test(d);
 };
 
-/* BONDS APART FROM THE STOCK BOOK (round 8: Treasury notes and munis topped "the reports to know" and were summed into
-   the headline total, while T-bills were hidden). A report of a note, a bond, a municipal or an asset-backed security —
-   Treasury, agency, state or corporate — is counted apart from the stock-focused figures, and said apart. */
+/* A note, bond, municipal or asset-backed report is counted apart from the stock-focused figures, and said apart. */
 export const isBondReport = (t: CongressTrade): boolean => {
   if (isTreasuryBill(t)) return false;
   if (t.assetKind === 'Corporate Bond' || t.assetKind === 'Municipal Security' || t.assetKind === 'Asset-Backed Security') return true;

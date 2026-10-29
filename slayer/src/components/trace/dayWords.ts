@@ -1,13 +1,7 @@
-/*
-  RELATIVE DAYS, FROM THE CLOCK (audit round 5, 2026-10-23): at 01:00 ET on Fri Oct 23 the last session was Thu Oct 22,
-  and Trace still said "expires tomorrow" of an Oct 23 contract, "expires today" of an Oct 22 one, "expiring today" of
-  the Oct 22 0DTE book and "rose overnight" of the Oct 21 → Oct 22 open interest. Every relative-day word on Trace comes
-  from here: New York's calendar day against the data's session day. When the data is a past session's, its date is
-  named ("Oct 22"), never "today".
-*/
+/* Every relative-day word on Trace: New York's calendar day against the data's own session day, so a past session is
+   named ("Oct 22"), never "today". */
 
-import { isoDate, isTradingDay } from '../../core/calendar';
-import { LEAN_EDGE, nextSessionIso, nyDateOf, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
+import { nextSessionIso, nyDateOf, nyIsoToday, tapeSessionIso } from '../../data/traceLive';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const parse = (iso: string) => {
@@ -39,17 +33,6 @@ export const dayAdv = (sessionIso: string = tapeSessionIso()) => (isLiveDay(sess
 export const dayPos = (sessionIso: string = tapeSessionIso()) => (isLiveDay(sessionIso) ? "today's" : `${shortDay(sessionIso)}'s`);
 /** "Today" — or "Oct 22" (a label) */
 export const dayLabel = (sessionIso: string = tapeSessionIso()) => (isLiveDay(sessionIso) ? 'Today' : shortDay(sessionIso));
-/** The session before a session day, YYYY-MM-DD */
-export function prevSessionIso(sessionIso: string = tapeSessionIso()): string {
-  const p = parse(sessionIso);
-  if (!p) return sessionIso;
-  const d = new Date(p.y, p.mo - 1, p.d);
-  d.setDate(d.getDate() - 1);
-  for (let i = 0; i < 10 && !isTradingDay(d); i++) d.setDate(d.getDate() - 1);
-  return isoDate(d);
-}
-/** The open-interest change in words: "overnight" while the session is today's, else "from Oct 21 to Oct 22" */
-export const oiSpanWords = (sessionIso: string = tapeSessionIso()) => (isLiveDay(sessionIso) ? 'overnight' : `from ${shortDay(prevSessionIso(sessionIso))} to ${shortDay(sessionIso)}`);
 /** A contract's expiry against New York's today: "expires today", "expires tomorrow", "expires in 3 days", "expired
     yesterday (Oct 22)", "expired Oct 20" */
 export function expiryWords(expiry: string): string {
@@ -63,9 +46,7 @@ export function expiryWords(expiry: string): string {
 }
 /** The same-day expiry of a session in words: "expiring today" — or "expiring Oct 22" (expired at that bell) */
 export const sameDayWords = (sessionIso: string = tapeSessionIso()) => (isLiveDay(sessionIso) ? 'expiring today' : `expiring ${shortDay(sessionIso)}`);
-/** A contract row's next report in words — earnDays counts TRADING days (sessions) from the tape's session, so it says
-    so (audit round 5: "Earnings in 19d" beside a DTE column of calendar days read as 19 calendar days; NVDA reports
-    Wed Nov 18, 26 calendar days out) */
+/** A row's next report in words: earnDays counts trading days (sessions), so it says so */
 export function earnWords(r: { earnDays: number | null; earnIso?: string | null }): { text: string; title: string } | null {
   if (r.earnDays == null) return null;
   const date = r.earnIso ? shortDay(r.earnIso) : '';
@@ -74,11 +55,8 @@ export function earnWords(r: { earnDays: number | null; earnIso?: string | null 
   const title = `The name's next report${date ? `, ${date}` : ''}: ${r.earnDays} trading day${r.earnDays === 1 ? '' : 's'} (sessions) from the ${shortDay(tapeSessionIso())} session${Number.isFinite(cal) ? ` · ${cal} calendar day${Math.abs(cal) === 1 ? '' : 's'} from today` : ''}`;
   return { text, title };
 }
-/** An even day's share, never rounded up onto the edge it fell short of ("54.6", not "55") */
-export const shyPct = (v: number) => (Math.round(v) >= LEAN_EDGE ? (Math.floor(v * 10) / 10).toFixed(1) : String(Math.round(v)));
-/** A window of prints in words, its day named when it is not New York's today (audit round 6: an after-hours window read
-    "16:38:05–17:11:50 ET" at 04:15 the next morning): "Oct 22 16:38:05–17:11:50", "Oct 21 15:59:58–Oct 22 09:31:02",
-    or "09:30:01–09:41:15" on today's session. Null when no row carries a time. */
+/** A window of prints in words, its day named when not New York's today: "Oct 22 16:38:05–17:11:50" or
+    "09:30:01–09:41:15". */
 export function spanWords(xs: readonly { time: string; epochMs?: number }[]): string | null {
   const timed = xs.filter(r => r.time && r.time !== '—');
   if (!timed.length) return null;
@@ -100,11 +78,8 @@ export function spanWords(xs: readonly { time: string; epochMs?: number }[]): st
   return `${shortDay(d0)} ${first.time}–${shortDay(d1)} ${last.time}`;
 }
 
-/* ---- WHOSE TRADING THE OPEN INTEREST REFLECTS (audit round 7, major 2) ----------------------------------------------
-   A count of open interest is set the morning after a session trades. Each book row carries the session its volume is
-   from (volDay) and the session whose trading set the count it shows (oiDay — traceLive usePairedOi): the same day once
-   the vendor publishes the count after the volume, the session before until then (oiPending). Pages name that day
-   ("OI after Oct 22's trading") and keep a row that lags out of any sum with the rest. */
+/* Whose trading the open interest reflects: a count is set the morning after a session (oiDay); until the vendor
+   publishes it the row is on the session before (oiPending). */
 type OiRow = { oiDay?: string; volDay?: string; oiPending?: boolean; expired?: boolean };
 export interface OiCover {
   /** The newest session whose trading the rows' counts reflect */

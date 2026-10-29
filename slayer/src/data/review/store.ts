@@ -1,24 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE SESSIONS' STORE
-  (data/review/store.ts)
-
-  The reader's backtest sessions, kept on this machine
-  (`slayer_review_v1`) and carried by the account when
-  signed in (data/sync.ts) — the watchlist's pattern: a module
-  store with a subscription, so the desk, the list,
-  the report and the journal all read one thing.
-  Every change goes through the engine's pure
-  functions; this file only holds and saves.
-
-  TWO KINDS OF SESSION, ONE LIST (2026-09-20): an
-  options session (engine.ts) and a futures one
-  (futuresEngine.ts, `kind: 'futures'`). They share
-  what the list needs — a name, its names, a clock,
-  its start — and nothing of how they trade, so every
-  change below asks the session what kind it is and
-  hands it to its own engine.
-==================================================
+  The reader's backtest sessions, kept in localStorage and synced when signed in, as a module store with a
+  subscription.
 */
 
 import { useSyncExternalStore } from 'react';

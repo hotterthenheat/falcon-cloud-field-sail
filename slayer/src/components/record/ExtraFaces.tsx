@@ -11,10 +11,7 @@ import type { InsiderTrade, ReportOwner } from '../../types/record';
 import { useCongressBook } from '../../data/liveRecord';
 import { phonePin } from './pagedGrid';
 
-/*
-  The second face under the grid Congress and Insiders already own.
-  Same house grid as the tape above — not a second table.
-*/
+/* The second face under the Congress and Insiders grids, on the same house grid as the tape above. */
 
 const defaultColDef = { sortable: true, resizable: true, suppressMovable: true };
 
@@ -69,7 +66,7 @@ export const CongressHoldings = ({ since }: { since?: string | null } = {}) => {
       <div className="px-5 border-t border-borderSubtle/60">
         <div className="h-[26px] flex items-center gap-3 text-t10 font-semibold uppercase tracking-widest text-textPrimary max-sm:h-auto max-sm:flex-col max-sm:items-start max-sm:gap-0.5 max-sm:py-1.5">
           <span>Bought, no sale reported since</span>
-          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">{/* (round 9) which window it covers — every report read, not the window above */}over every report read{since ? `, trades since ${since.slice(5, 7)}/${since.slice(8, 10)}/${since.slice(2, 4)}` : ''} — not only the window above · purchases with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
+          <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">{/* which window it covers: every report read, not the window above */}over every report read{since ? `, trades since ${since.slice(5, 7)}/${since.slice(8, 10)}/${since.slice(2, 4)}` : ''} — not only the window above · purchases with no later sale of the same asset in them (a filing rarely says full or partial) · not a holdings disclosure · a row opens that member’s book</span>
         </div>
       </div>
       <div className="slayer-board border-t border-borderSubtle">
@@ -127,9 +124,7 @@ const SECTOR_WORD: Record<string, string> = {
 };
 const sectorWord = (raw?: string) => (raw ? SECTOR_WORD[raw.trim().toLowerCase()] ?? raw.trim() : 'Not stated');
 
-/* BY SECTOR, ON THE PAGE'S OWN CUT (the data audit, 2026-10-22): the table summed the whole feed, every window and
-   cut ignored, under the house universe's sectors — 2,508 buys and 3,047 sales fell to "Other". It now adds up the
-   rows the grid above shows (window, role and names applied), by Unusual Whales' own sector field. */
+/* By sector, on the page's own cut (window, role and names applied), by the vendor's own sector field. */
 export const InsiderSectorFlow = ({ trades, windowDays, state = 'read' }: { trades: readonly InsiderTrade[]; windowDays: number; state?: 'reading' | 'failed' | 'read' }) => {
   const rows = useMemo(() => {
     const map = new Map<string, SectorRow>();
@@ -166,7 +161,7 @@ export const InsiderSectorFlow = ({ trades, windowDays, state = 'read' }: { trad
           <span className="normal-case tracking-normal font-normal text-t10 text-textSecondary">the open-market rows on this cut, last {windowDays} days, added up by sector · the net is dollars bought minus dollars sold, a planned sale counted like a chosen one</span>
         </div>
       </div>
-      {/* an empty cut says so in a sentence — never a grid of headers over nothing (the retail test, 2026-10-23: GME) */}
+      {/* an empty cut says so in a sentence, never a grid of headers over nothing */}
       {rows.length === 0 ? (
         <p className="px-5 py-3 border-t border-borderSubtle text-t12 text-textSecondary" data-insider-sectors-empty>
           {state === 'reading'

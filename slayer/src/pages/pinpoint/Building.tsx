@@ -1,69 +1,6 @@
-/*
-==================================================
-  SLAYER TERMINAL - BUILDING
-  (pages/pinpoint/Building.tsx)
-
-  A FACE OF THE AGENDA since 2026-10-14 (Noah:
-  Building and Targets "on the same page put
-  interchangable" — pages/pinpoint/Agenda.tsx,
-  /pinpoint/agenda?view=building). ONE BOX since
-  the same day (Noah, with its picture: "remove
-  both of these from their designated sections and
-  add more strikes to fill their positions"): the
-  heading drawing is gone from this face — it lives
-  on as the Pulse desk's tile — and the ledger
-  opens on twenty strikes each side instead of
-  fifteen.
-
-  ONE TO FOUR NAMES, EACH ON ITS OWN EXPIRY (Noah,
-  2026-10-14: "for the building page i want to have
-  the ability to choose different tickers and
-  different exps from 1 to 4 tickers. you choose how
-  the layout should be"). THE LAYOUT, mine: one box.
-  Its head is the Agenda's switch, the guide door
-  and the line; under it ONE line of cards for every
-  pane — Show · Order · Strikes · the NAMES door
-  (the Map's own: "+ Names N", a name picked from
-  the whole listing, four at most) — and the key.
-  Then THE PANES SIDE BY SIDE, one a name: the first
-  follows the frame's name (its chip is linked, the
-  Map's grammar) and each added one holds its own;
-  every pane carries its EXPIRY card (the house's
-  expiries as dates, ladderControls) and its two
-  facts; beside other panes a pane goes COMPACT —
-  the strike, the wall, the change and the word's
-  chip, four columns a quarter of the screen can
-  hold — and alone it is the whole ledger. The panes
-  are kept on this machine (slayer_building_panes),
-  the Map's names the same way.
-
-  The fifth page of Pinpoint (2026-09-07). The Map
-  says where the hedging sits, Ahead what happens
-  from here to the close. Building says which of
-  the hedging arrived TODAY — the wall a day early
-  — read top to bottom in two boxes:
-
-    WHAT'S BEING BUILT   every strike: the hedging
-                         there now, what today added
-                         or took off (calls · puts),
-                         the day's shape, the word
-    WHERE THE WALLS      the four levels at the open,
-    ARE HEADING          now, and by the close at
-                         today's pace, with the
-                         strike growing fastest on
-                         each side
-
-  A COMPOSITION, like Ahead: the open interest is
-  the one every snapshot carries, the units are the
-  chain's own at the live spot, the levels are the
-  Map's, the clock is the shell's. data/building.ts
-  holds the arithmetic. IN THE SIMULATOR the open
-  interest is one book: a pane's expiry scales the
-  hedging the way the Map's does (data/exposure
-  EXPIRY_DECAY); on the feed each expiry has its own
-  open interest and the deltas follow.
-==================================================
-*/
+/* Building, a face of the Agenda (/pinpoint/agenda?view=building): which of the hedging arrived today — every strike's
+   hedging now, what the overnight open-interest change added or took off (calls · puts) and the word. One to four panes,
+   each a name on its own expiry (kept in slayer_building_panes); data/building.ts holds the arithmetic. */
 
 import { daySigmaOfIv } from '../../data/expectedMove';
 import { nyClock } from '../../core/nyTime';
@@ -100,16 +37,14 @@ import type { MarketSnapshot } from '../../types/market';
 
 /** The open interest sweeps on its own cadence — a wall must not vibrate with every tick */
 const SCAN_INTERVAL_MS = 10_000;
-/* THE PANES (data/panes.ts since 2026-10-15 — Targets stands on the same store and door) */
+/* the panes (data/panes.ts — Targets stands on the same store and door) */
 const PANES_KEY = 'slayer_building_panes';
 let panesMemory: Pane[] | null = null;
 
 /* The ledger's choices, held across route changes, reset on reload */
 let orderMemory: BuildOrder = 'strike';
 let windowMemory: StrikeWindow = 20;
-/* EVERY STRIKE BY DEFAULT (Noah, 2026-10-14: "always start of by showing the full expanded view and then the user can
-   collaspe to only see the one with actual significance") — Show · What moved folds the steady strikes away; the movers
-   alone had been the default since 2026-09-13 */
+/* every strike by default; Show · What moved folds the steady strikes away */
 let showMemory: BuildShow = 'all';
 
 const WINDOWS = new Set<number>([10, 15, 20, 25, 30]);
@@ -119,7 +54,7 @@ const paneWindow = (p: Pane, fallback: StrikeWindow): StrikeWindow => (WINDOWS.h
 const paneOrder = (p: Pane, fallback: BuildOrder): BuildOrder => (ORDERS.has(p.order ?? '') ? (p.order as BuildOrder) : fallback);
 const paneShow = (p: Pane, fallback: BuildShow): BuildShow => (SHOWS.has(p.show ?? '') ? (p.show as BuildShow) : fallback);
 
-/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+/* New York's clock with its zone */
 const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
 const Building = () => {
@@ -186,10 +121,7 @@ const Building = () => {
   useEffect(() => {
     if (!marketData) return;
     const now = Date.now();
-    /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
-       so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
-       the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
-       at once */
+    /* a book that changes shape (the full book landing after the board read) is taken at once */
     const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
     /* a book whose dates or contract facts landed (a new uwByDate — uwBook never edits a chain in place) is taken at once */
     const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData) || scanRef.current.uwByDate !== marketData.uwByDate;
@@ -256,10 +188,8 @@ const Building = () => {
     moved += b.rows.filter(r => r.verdict !== 'steady').length;
     total += b.rows.length;
   }
-  /* until any strike carries a change of open interest the book is still being read — "0 of 41 moved" over a
-     loading ledger claimed a quiet day it had not seen (the ship pass, 2026-10-22) */
-  /* …and "N of M moved" only once every pane's count is final (the fifth audit: "0 OF 23 MOVED" printed while the totals
-     still read "…") */
+  /* until any strike carries a change of open interest the book is still being read */
+  /* …and "N of M moved" only once every pane's count is final */
   const counted = [...builds.values()].every(b => !b.loading) && [...builds.values()].some(b => b.rows.some(r => r.dCall !== 0 || r.dPut !== 0));
 
   /* THE NAMES DOOR — the Map's: "+ Names N", a name from the whole listing, four at most (NamesDoor, Targets' too) */

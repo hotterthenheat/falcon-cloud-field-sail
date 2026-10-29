@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - ON SCREEN? (components/ui/useOnScreen.ts)
-
-  Whether an element is inside the viewport, kept
-  by an IntersectionObserver — so a box below the
-  fold can be spared work nobody sees (the Map's
-  replay, 2026-09-11: the calendar, the clock and
-  the report rebuilt on every replayed minute
-  behind a fullscreen chart, and each rebuild was
-  the frame the ladder's easing stuttered on). A
-  callback ref, so it binds whatever element the
-  host renders, whenever it renders it.
-==================================================
-*/
+/* Whether an element is in the viewport (IntersectionObserver), so off-screen boxes can skip work. A callback ref, so
+   it binds whatever element the host renders. */
 
 import { useEffect, useState } from 'react';
 

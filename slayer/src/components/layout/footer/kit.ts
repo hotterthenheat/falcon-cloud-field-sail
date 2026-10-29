@@ -1,35 +1,8 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE FOOTER'S KIT
-  (components/layout/footer/kit.ts)
-
-  What every picture on the footer is drawn with: the
-  photograph's language in one place (2026-10-03 — the
-  owner: "each page had its own art work similar to that
-  one but thats representive of its page … keep the same
-  artistic language"). The engine (FooterArt.tsx) breaks
-  and lights the screen; a scene (scenes.ts) is only its
-  own picture, made of parts (parts/*.ts), each drawn
-  with these:
-
-    THE BRUSH   the still parts. Drawn twice: SHARP (the
-                terminal as it is, every mark, crisp) and
-                BROKEN (coarse — a share of each mark
-                survives, a line is its dashes, a bar a
-                piece of itself, a word some of its
-                letters). The engine lays a hair of red
-                and of blue under the broken copy.
-    THE PEN     the moving parts, coarse, drawn three
-                times a frame: a red pass a pixel left, a
-                blue pass a pixel right, then the marks in
-                their own inks. Words only on the last.
-    THE WALK    a price line with momentum, leaning back
-                to where it began — the photograph's line,
-                and every sparkline and curve that walks.
-
-  Art, not data: no figure drawn is a price. The tags are
-  the clock (New York's), a calendar says its days.
-==================================================
+  What every footer picture is drawn with. The brush draws still parts twice: sharp, and broken (coarse; a share of
+  each mark survives, lines become dashes); the engine (FooterArt.tsx) lays the red/blue fringe under the broken copy.
+  The pen draws moving parts three passes a frame (red a pixel left, blue a pixel right, then the inks; words only on
+  the last). The walk is a price line with momentum that leans back to its start. Art, not data: no figure is a price.
 */
 
 import { FONT_SANS } from '../../../theme/fonts';
@@ -113,7 +86,7 @@ export interface Ink {
 }
 export const inksOf = (el: Element): Ink => {
   const red = chan(el, '--bear', '255 59 48');
-  /* our tokens have no --compare: the hair of blue is the glacier, as our first footer drew it (2026-10-07) */
+  /* there is no --compare token: the blue fringe uses glacier */
   const blue = chan(el, '--glacier', '122 189 215');
   const moon = chan(el, '--moon', '185 169 244');
   const warn = chan(el, '--warn', '255 149 0');
@@ -230,7 +203,7 @@ export interface Scene {
 }
 export type SceneMaker = () => Scene;
 
-/** A SCENE IS ITS PARTS, each in the box `arrange` gives it for the stage (a part left out of a phone's picture gets no box) */
+/** A scene is its parts, each in the box `arrange` gives it (a part left out of a phone's picture gets no box) */
 export const compose = (parts: Part[], arrange: (s: Stage) => (Box | null)[]): Scene => {
   let shown: Part[] = [];
   return {
@@ -522,8 +495,7 @@ export const walk = (seed: number, o: { step?: number; gap?: number; lean?: numb
       bot = nbot;
       if (!steps.length) {
         while (steps.length < cap()) steps.push(next());
-        /* the step to come follows the last one taken (it was made before them, and the line fell back to where it began
-           the moment it came due — the sharp V the first piece carried across its pane) */
+        /* the next step continues from the last one taken, so the line does not snap back to its start */
         pending = next();
         t0 = t - (steps.length - 1) * STEP;
         [rlo, rhi] = bounds();

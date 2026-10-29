@@ -1,29 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE, ON ITS OWN PAGE
-  (pages/landing/products/PulsePage.tsx)
-
-  The first product page (Noah, 2026-10-02):
-  "starting with the pulse section this section
-  needs to start off with a slightly more detailed
-  explanation throughout the page explaining what
-  it does with images, i want only one screen
-  recording on this page showcasing the ability to
-  drag and move things around and how they plop
-  into open spaces or fit their container … also
-  how clicking full screen on something brings you
-  to that page with the back to pulse button up top
-  being shown."
-
-  So: the head and the desk in the window, still;
-  a tile up close; THE ONE RECORDING (the film
-  maker's `@pulse-arrange`: a tile dragged into an
-  open space, one pulled wider, a tile's door and
-  Back to Pulse); the list of tiles; the five house
-  desks; the door. Every count and name here is the
-  terminal's own (pages/workspace/registry.tsx,
-  desks.ts) — change them there and here together.
-==================================================
+  Pulse's product page: the desk, its widgets and desks, and one recording.
 */
 
 import { useGround } from '../ground';

@@ -1,9 +1,5 @@
-/*
-  THE TAPE (components/layout/footer/parts/tape.ts) — Trace's: prints coming in at the top, the rows below stepping down
-  to make room — each its moment (the clock), its name, its side, its fill against the market, its size and money, the
-  flow's lean and the word for it; the largest print in the supreme's magenta. And the net flow's lines: the calls'
-  money climbing, the puts' falling, the price between them.
-*/
+/* Trace's tape: prints arriving at the top and rows stepping down (time, name, side, fill, size, money, lean); the
+   largest print magenta. And the net-flow lines: call money climbing, put money falling, the price between. */
 
 import { FONT, box, clock, ease, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
 import type { Chart } from './chart';
@@ -66,8 +62,7 @@ export const tape = (o: { seed?: number; every?: number } = {}): Part => {
     const mid = y + rh / 2;
     const bh = sharp ? 3 : 4;
     const side = pr.call ? I.bull : I.red;
-    /* its moment — not on a narrow tape (Noah, 2026-10-07, of the landing's tape at 105px wide: "they just look like a
-       bunch of overlapping stuff"): a clock is 38px of an 8.5px face and ran under the name; the pill says the moment */
+    /* the time is omitted on a narrow tape, where it ran under the name; the pill says the moment */
     if (words && !narrow) {
       c.font = `${sharp ? 500 : 600} 8.5px ${FONT}`;
       c.textBaseline = 'middle';
@@ -221,7 +216,7 @@ export const tape = (o: { seed?: number; every?: number } = {}): Part => {
   };
 };
 
-/* ---- THE NET FLOW: the calls' money and the puts' on the price's pane, walking with it ---------------------------- */
+/* ---- net flow: call and put money on the price pane ---- */
 
 export const flowLines = (ch: Chart, o: { seed?: number } = {}): Part => {
   const calls = walk((o.seed ?? 61) + 1, { step: ch.walk.STEP, gap: ch.walk.GAP, drift: 0.05, lean: 0.0005, kick: 0.7 });

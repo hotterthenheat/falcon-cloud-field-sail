@@ -1,16 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE BUILT-IN SCRIPTS (data/builtinScripts.ts)
-
-  The scripts the terminal ships, as Pine source —
-  scripts like any other, owned by the terminal and
-  read-only; Make a copy turns one into yours. Two
-  shelves: SLAYER, which read the terminal's own
-  numbers through `slayer.*` (the one namespace
-  beyond Pine), and TECHNICALS, the classics in
-  plain Pine v6 that paste straight into TradingView
-  and back.
-==================================================
+  The scripts the terminal ships, as read-only Pine source: the Slayer shelf (which reads the terminal's own
+  numbers through `slayer.*`) and the classic technicals. Make a copy turns one into yours.
 */
 
 import { compile, explain } from '../core/pine';

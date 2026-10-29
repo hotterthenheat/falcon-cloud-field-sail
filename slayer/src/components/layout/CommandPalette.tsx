@@ -43,9 +43,7 @@ const CommandPalette = ({ open, onClose }: CommandPaletteProps) => {
   const room = roomOf();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // The full ticker universe (S&P 500 + NASDAQ listings) — lazy, its chunk is
-  // ~300KB and ⌘K is the desk's only terminal-ticker control (Noah,
-  // 2026-08-18: four names was the whole reachable market).
+  /* the full ticker universe (S&P 500 + NASDAQ, ~300 KB) loads when the palette first opens */
   useEffect(() => {
     if (!open) return;
     if (!tickMod) import('../../data/tickers').then(setTickMod);

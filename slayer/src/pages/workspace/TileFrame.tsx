@@ -1,42 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PULSE · THE TILE
-  (pages/workspace/TileFrame.tsx)
-
-  The one frame every widget on the desk wears
-  (tile.ts says what a tile is). Its head is ONE
-  LINE and it is the drag handle:
-
-    grip · icon · title        what it is
-    the widget's own controls  the house's dropdown
-                               cards, at the head's
-                               24px size — named when
-                               there is room, bare
-                               when there is less, and
-                               behind one sliders door
-                               when there is none
-    the scope chip             the name it follows, or
-                               holds — only on a tile
-                               that is about a name
-    the door                   opens the widget's real
-                               page with the way back
-                               to Pulse; an arrow that
-                               LEAVES, not the full-
-                               screen glyph — it goes
-                               somewhere. THE CHART'S
-                               is the fullscreen glyph:
-                               it lifts its own (tile.ts
-                               `fullscreen`), and its
-                               page is in the ⋯ menu
-    ⋯                          duplicate · its own
-                               size again · remove
-
-  The body is the widget's instrument and nothing
-  else. It is told its room (a coarse box, so a
-  width that glides with the sidebar does not
-  re-render it a frame) and mounts a frame after its
-  skeleton, one tile a frame.
-==================================================
+  The frame every Pulse tile wears: one head line that is the drag handle (grip, icon, title, the tile's controls,
+  its name and link, its door and menu), and the body sized to what is left.
 */
 
 import { useCallback, useRef, useState } from 'react';

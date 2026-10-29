@@ -1,25 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - PAPER · THE REAL CLOCK
-  (data/paper/clock.ts)
-
-  A paper account lives on TODAY'S clock (docs/paper-
-  rules.md, "The day"), read in New York whatever the
-  machine's own zone is. Everything here is a pure
-  function of an instant, so the engine and its proof
-  can hand it any moment they like:
-
-    New York's wall clock at an instant, and the
-    instant of a New York wall-clock time
-    THE TRADING DAY a moment belongs to — 17:00 to
-      17:00, the futures day every prop firm counts
-      by: 20:00 Tuesday is Wednesday's, the weekend is
-      Monday's, a market holiday the next session's
-    the time an option has left — the sessions after
-      today up to its expiry, and what is left of
-      today's 09:30–16:00 (the backtest's own
-      `yearsLeft`, on the real clock)
-==================================================
+  The paper account's clock: New York's wall clock, the trading day, the bell and years to expiry, as pure
+  functions of an instant so the engine can be handed any moment.
 */
 
 import { isTradingDay, isoDate, sessionsBetween } from '../../core/calendar';

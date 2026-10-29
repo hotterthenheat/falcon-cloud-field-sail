@@ -96,25 +96,6 @@ export function valueAt(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right'>,
   return Number(estimatePremium(spot, w.strike, w.right, iv, tYears).toFixed(2));
 }
 
-/** Risk-neutral odds the contract finishes in the money — N(d2), the chain's own family */
-export function itmOddsOf(w: Pick<WatchedContract, 'ticker' | 'strike' | 'right' | 'expiry'>, spot = spotOf(w.ticker)): number {
-  const t = yearsToExpiry(w.expiry);
-  const iv = contractIvFor(w.ticker, w.strike, w.right);
-  const r = 0.05;
-  const d1 = (Math.log(spot / w.strike) + (r + (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
-  const d2 = d1 - iv * Math.sqrt(t);
-  const nd2 = normalCDF(d2);
-  return Math.round((w.right === 'C' ? nd2 : 1 - nd2) * 100);
-}
-
-/** Abramowitz–Stegun N(x) — the approximation core/greeks and the chain use */
-function normalCDF(x: number): number {
-  const k = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804 * Math.exp((-x * x) / 2);
-  const p = k * (0.31938153 + k * (-0.356563782 + k * (1.781477937 + k * (-1.821255978 + k * 1.330274429))));
-  return x >= 0 ? 1 - d * p : d * p;
-}
-
 /* ---- the returns ------------------------------------------------------------------ */
 
 export interface WatchReturns {
@@ -232,11 +213,6 @@ export function watchedFor(req: Pick<WatchRequest, 'ticker' | 'strike' | 'right'
   return same.find(w => w.status === 'open') ?? same.sort((a, b) => b.addedAt - a.addedAt)[0] ?? null;
 }
 
-/** Is this contract on the list, open? */
-export function isWatching(req: Pick<WatchRequest, 'ticker' | 'strike' | 'right' | 'expiry'>): boolean {
-  return list.some(w => w.status === 'open' && w.ticker === req.ticker && w.strike === req.strike && w.right === req.right && w.expiry === req.expiry);
-}
-
 /** Close at the mark now — the return locks */
 export function closeWatched(id: string): void {
   const w = list.find(x => x.id === id);
@@ -254,10 +230,6 @@ export function removeWatched(id: string): void {
 
 export function setWatchedSize(id: string, size: number): void {
   commit(list.map(x => (x.id === id ? { ...x, size: Math.max(1, Math.round(size)) } : x)));
-}
-
-export function setWatchedNote(id: string, note: string): void {
-  commit(list.map(x => (x.id === id ? { ...x, note: note.trim() || undefined } : x)));
 }
 
 /**

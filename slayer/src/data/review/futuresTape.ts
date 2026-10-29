@@ -1,36 +1,10 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE FUTURES TAPE
-  (data/review/futuresTape.ts)
-
-  What a FUTURES backtest replays (docs/review-futures-
-  rules.md): a product's past trading days, a minute
-  bar at a time. THIS FILE IS THE SEAM for futures the
-  way tape.ts + quotes.ts are for options — today a
-  seeded stand-in that stays put, and when the bought
-  feed is wired in (one-minute bars per contract month,
-  with the roll dates) only this file changes.
-
-  A FUTURE'S DAY IS NOT A STOCK'S. It trades nearly
-  round the clock: a trading day runs from 18:00 New
-  York the evening before to 17:00, 1,380 minutes, and
-  the hour's break after it is a GAP on the tape, not
-  minutes to play through. Minute 0 of "Monday" is
-  Sunday 18:00. A bar's `time` is the real instant it
-  began, like every tape in the house. The night is
-  quiet, Europe's morning less so, 08:30's numbers and
-  the 09:30 open are the busy hours: the walk's width
-  follows that shape and still lands on the day's
-  close.
-
-  The days are the stock tape's days (the house
-  calendar). The exchange's own holiday sessions are
-  not modelled; nor are limits or halts.
-==================================================
+  The futures backtest's tape: a seeded synthetic walk per product, kept only to redraw sessions already in the
+  journal (Backtest is paused).
 */
 
 import type { Candle } from '../../types/market';
-import { dateOf, dayWords, gauss, stream, tapeDays } from './tape';
+import { dateOf, gauss, stream, tapeDays } from './tape';
 
 export const FUT_DAY_MIN = 1380;
 export const FUT_LAST_MIN = FUT_DAY_MIN - 1;
@@ -124,7 +98,6 @@ export const futMomentWords = (day: string, minute: number): string => {
   nyStamp ??= new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
   return `${nyStamp.format(new Date((futBarTime(day, minute) + 60) * 1000))} · ${futClockWords(minute)}`;
 };
-export { dayWords as futDayWords };
 
 /* ---- the daily path, walked back from today's quote ---- */
 interface DayFrame {

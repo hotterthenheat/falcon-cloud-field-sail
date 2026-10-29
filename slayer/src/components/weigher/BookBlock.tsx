@@ -1,14 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - THE BOOK AT THIS STRIKE
-  (components/weigher/BookBlock.tsx)
-
-  The third block of the chain's weigh-up, under
-  Stats and The Greeks, in their exact grammar: what
-  the dealer book says about the strike the reader
-  is weighing (data/bookAtStrike.ts). Our two cents,
-  where the decision is made (Noah, 2026-09-28).
-==================================================
+  The chain weigh-up's third block: what the live dealer book says about the strike (data/bookAtStrike.ts).
 */
 
 import { StatCell, fmtStrike } from './ChainGrid';

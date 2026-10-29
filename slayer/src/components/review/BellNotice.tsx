@@ -1,34 +1,6 @@
 /*
-==================================================
-  SLAYER TERMINAL - REVIEW · THE BELL
-  (components/review/BellNotice.tsx)
-
-  Contracts trade 09:30 to 16:00 New York and then the
-  market is SHUT — there is no overnight session to
-  trade into, the way a future has (Noah, 2026-09-20:
-  "there should be some sort of alert telling the user
-  that the options day is over because unlike futures
-  they have a closing window"). A replay that simply
-  stops at 16:00 leaves the reader pressing play at a
-  clock that will not move. So the desk says it, twice:
-
-    THE LAST FIFTEEN MINUTES — one quiet line over the
-    tape: how long is left, and, when a held contract
-    expires TODAY, that it will settle at the bell
-    (what it is worth in the money — often nothing).
-
-    THE BELL — a card: the day is over, what the bell
-    did to the book (day orders that went unfilled,
-    contracts that settled, positions that carry over
-    and will open wherever the name gaps to), and the
-    one thing there is to do next: open the next day.
-
-  It floats at the head of the tape, in the chart's own
-  clothes, and both can be put away (they come back
-  with the next day's close). Not an ALERT in the house
-  sense — nothing was set, nothing rings: it is the
-  state of the market, said where the eye is.
-==================================================
+  Options stop trading at 16:00 New York. In the last fifteen minutes the desk says how long is left and what
+  expires today; at the bell it says the day is over and how what was held settled.
 */
 
 import { ArrowRight, BellRing, X } from 'lucide-react';

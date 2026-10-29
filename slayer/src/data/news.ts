@@ -16,7 +16,7 @@ export interface NewsPrediction {
   analog: string;
   /** What to do with it */
   playbook: string;
-  /** False when this is a live headline with no session print. Absent on the sample, which always has a model number. */
+  /** False when the named stock had no session print at publish */
   measured?: boolean;
   /** The pre-market or after-hours move at publish, kept apart from the session's (null in the session) */
   extMovePct?: number | null;
@@ -34,7 +34,7 @@ export interface NewsItem {
   source: string;
   /** null = macro / index-level. The first name, when a headline names several. */
   ticker: string | null;
-  /** Every name on the headline. Absent on the sample, which has one. */
+  /** Every name on the headline */
   tickers?: string[];
   /** Companies the headline names but is not about (an untagged story that does not lead with them) — never the
       story's name, never on the board */

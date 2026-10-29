@@ -1,21 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A NAME'S OWN FACTS
-  (components/gex/ColumnFacts.tsx)
-
-  The facts the page head used to print for the
-  room's name alone (the owner, 2026-10-14: "what if
-  i have 3 or 4 names up? makes no sense to have
-  this up"): each column of the Map's book carries
-  its own — the price, the change, the flip and its
-  distance in the Ruler's unit, the dealers' word,
-  and how the flip held today by the report's rule.
-  The head's grammar one size down: tracked caps for
-  the names, the figures beside them, hairlines
-  between, one mono line. A narrow column sheds the
-  extras one at a time, never clips.
-==================================================
-*/
+/* A name's own facts, one mono line per column of the Map's book: the price, the change, the flip and its distance in
+   the Ruler's unit, the dealers' word, how the flip held today. A narrow column sheds extras one at a time, never clips. */
 
 import { daySigmaOfIv } from '../../data/expectedMove';
 import { useMemo } from 'react';
@@ -36,10 +20,8 @@ const fmt = (v: number) => (v % 1 === 0 ? v.toFixed(0) : v.toFixed(2));
 /* the hairline between two facts — the head's rule */
 const SEP = 'border-l border-borderSubtle pl-2.5';
 
-/* THE WIDTH A PIECE TAKES, BY ARITHMETIC (2026-10-14): the row's fit was found by drawing it and reading scrollWidth, up to
-   four times — each read a layout of the whole page, 238ms of the click that adds a name. The data face is the house's
-   Helvetica with tabular figures: a figure or a lower-case letter is at most 0.6em, a tracked capital 0.74em (checked
-   against the drawn row at 1920, 1440 and a phone); the gaps are the row's own. Nothing is read off the page. */
+/* The width a piece takes, by arithmetic (no layout reads): a figure or lower-case letter is at most 0.6em of the
+   house's tabular face, a tracked capital 0.74em. */
 const ch = (text: string, px: number, tracked = false) => text.length * px * (tracked ? 0.74 : 0.6);
 const GROUP = 21; /* gap-x-2.5, the hairline, pl-2.5 */
 
@@ -62,7 +44,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   const bookRev = useBookRev();
   ensureBook(ticker, 'board');
   const levels = roomLevels(snapshot, scope);
-  /* nothing provisional (the fourth audit's M1): until the levels' contracts are all in, "…" */
+  /* nothing provisional: until the levels' contracts are all in, "…" */
   const pending = !!snapshot.liveBook && levels?.complete === false;
   const flip = levels && levels.flipFound !== false && levels.flip != null && Number.isFinite(levels.flip) ? levels.flip : null;
   /* THE REGIME IS THE SIGN OF NET GAMMA AT SPOT (data/flipLevel.ts) — never the side of the flip */
@@ -93,9 +75,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   }, [ticker, flip, side, bars, fresh]);
   const heldWords = held ? (held.tests === 0 ? 'untested' : held.broke === 0 ? `held all ${held.tests}` : `broke ${held.broke} of ${held.tests}`) : null;
 
-  /* A NARROW COLUMN SHEDS, NEVER CLIPS (the audit, four names at 1440: the row ended at "DEALER"): the day's count goes
-     first, then the dealers' label (its word stays, in its ink), then the flip's distance, then the change — the words
-     before the figures */
+  /* a narrow column sheds, never clips: the day's count first, then the dealers' label, the flip's distance, the change */
   const priceW = ch(spot.toFixed(2), 14);
   /* the move outside the session rides with the day's change ("−1.18% · after hours +0.05%"): the change sheds it last */
   const extPct = snapshot.dayMove?.extPct;
@@ -120,8 +100,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
     if (core + dealersLabelW + heldW <= room) [shed, showExt] = [0, true];
     else if (core + dealersLabelW <= room) [shed, showExt] = [1, true];
     else if (core <= room) [shed, showExt] = [2, true];
-    /* the pre-market or after-hours move outranks the flip's distance too — every price on the desk reads
-       "−1.18% Oct 22 · pre-market +0.12%" (the sixth audit's M1) */
+    /* the pre-market or after-hours move outranks the flip's distance too */
     else if (base + changeW + extW <= room) [shed, showExt] = [3, true];
   }
   const regimeInk = !hasRegime ? undefined : absorb ? ABSORB : AMPLIFY;

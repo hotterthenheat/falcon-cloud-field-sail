@@ -1,29 +1,5 @@
 /*
-==================================================
-  SLAYER TERMINAL - PRACTICE, PAPER, BACKTEST AND
-  THE JOURNAL, EACH ON ITS OWN PAGE
-  (pages/landing/products/PracticePages.tsx)
-
-  Four product pages in one file (Noah, 2026-10-02:
-  "next do the individual pages of practice, paper,
-  backtest and journal. make sure to include every
-  section for each page including the actual journal
-  for each trade for the journal section. follow the
-  rules we established"). The rules: the landing's
-  clothes (ProductPage), one recording a page — the
-  tour's own film of that page, since each of those
-  already shows the thing he asked for — pictures for
-  every section, not too long, and words a working
-  trader in their twenties would write.
-
-  The four recordings, one each: Practice plays the
-  futures film (two ES long, the brackets pulled off
-  the chip, the day played); Paper its own; Backtest
-  its own; the Journal its own. Every picture is the
-  real page (scripts/make-product-shots.mjs,
-  `practice`); every section named here is one the
-  page has.
-==================================================
+  The product pages for Practice, Paper Trade, Backtest and the Journal, in one file.
 */
 
 import { Link } from 'react-router-dom';
@@ -73,41 +49,28 @@ export const PracticePage = () => (
     name="Practice"
     glyph="practice"
     group="Practice"
-    head={['Practice on real prices.', 'With pretend money and nothing at stake.']}
+    head={['Practice on live option quotes.', 'With pretend money and nothing at stake.']}
     intro={
       <>
-        Practice is three rooms on one feed. Paper trades today’s prices with pretend money, on a practice account or a prop firm’s evaluation. Backtest replays a past day a minute at a time and lets you trade it — options off
-        the chain as it stood, or futures long and short. The Journal is where every closed trade from either book ends up, on its day, with your words next to it. It’s the same order card, the same chart and the same brackets
-        in all three, so what you learn in one carries straight into the next.
+        Practice is three rooms. Paper trades options with pretend money, filled at each contract’s live bid and ask during the options session. Backtest is paused until real minute-by-minute option history is wired in — the
+        old tape was a synthetic random walk, so it is not offered as a past market. The Journal is where every closed trade ends up, on its day, with your words next to it. Futures are paused too: there is no live futures feed.
       </>
     }
     path="/practice/paper"
     plan={PLAN}
   >
-    <Aside eyebrow="Paper Trade" first="Paper trading on today’s prices." second="Options and futures, nothing at stake." picture={<Picture src={`${SHOTS}/paper-desk`} alt="The paper desk: the chart with a bracketed position, the account card and the chain" ratio="1440 / 1000" />}>
+    <Aside eyebrow="Paper Trade" first="Paper trading on live quotes." second="Options, nothing at stake." picture={<Picture src={`${SHOTS}/paper-desk`} alt="The paper desk: the chart with a bracketed position, the account card and the chain" ratio="1440 / 1000" />}>
       <p>
-        The live desk, with a practice account or an evaluation behind it. Pick a strike off the chain and the order opens inside it; buy, and the position stands on the chart with its targets and its stop. Futures get a ladder
-        beside the chart. The account carries from day to day.
+        The live desk, with a practice account behind it. Pick a strike off the chain and the order opens inside it; buy at the contract’s live ask, and the position stands on the chart with its targets and its stop. The
+        account carries from day to day.
       </p>
       <To to="/products/paper">Read about Paper</To>
     </Aside>
 
-    <Film
-      path="/practice/futures"
-      eyebrow="In use"
-      first="A futures trade, start to finish."
-      second="You buy two ES, set the brackets, and let the day run."
-      lines={[
-        { word: 'The order', says: 'Market, limit or stop; join the bid or the ask; close, reverse or flatten. Two contracts bought at market here.' },
-        { word: 'The brackets', says: 'Two targets pulled up off the position’s chip on the chart, a stop pulled down. The chip shows the dollars as the line moves.' },
-        { word: 'The day', says: 'Play, and the candles print at the pace you set. Pause whenever you want to think.' },
-      ]}
-    />
-
-    <Aside eyebrow="Backtest" first="A past day replayed minute by minute." second="Traded as it happened." flip picture={<Picture src={`${SHOTS}/backtest-desk`} alt="The backtest desk on a played day: the chart with a position and its brackets, the chain as it stood, the order" ratio="1440 / 1000" />}>
+    <Aside eyebrow="Backtest" first="Backtest is paused." second="Until real option history is wired in." flip picture={<Picture src={`${SHOTS}/backtest-desk`} alt="The backtest desk on a played day: the chart with a position and its brackets, the chain as it stood, the order" ratio="1440 / 1000" />}>
       <p>
-        Pick a day and a name, set your rules, and the session starts at the open. The candles print and the chain reprices as the clock moves; the quotes are the ones that stood that minute. When you’re done, the report says
-        what the trades added up to.
+        A replay needs the bid and ask every contract had each minute of a past day. The app does not have that history yet, and the tape it used before was a seeded random walk, so Backtest is paused rather than passing
+        that off as a past market. Sessions played on it stay in the Journal, marked as synthetic.
       </p>
       <To to="/products/backtest">Read about Backtest</To>
     </Aside>
@@ -128,7 +91,7 @@ export const PracticePage = () => (
       </div>
       <ul className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-5 border-t border-borderSubtle">
         {[
-          { word: 'The order', says: 'The same card on the paper desk and in the backtest. An option’s order lives inside its strike in the chain; a future’s stands beside the chart with market, limit and stop.' },
+          { word: 'The order', says: 'An option’s order lives inside its strike in the chain, at the contract’s live bid and ask.' },
           { word: 'The ladder', says: 'Up to three targets and two stops on a position, breakeven after the first target, a trailing stop, and a count of contracts at each level. Pulled off the chart or typed.' },
           { word: 'The journal', says: 'Every closed trade from either book lands in the same journal, with the account it came from on the row.' },
         ].map(l => (
@@ -149,20 +112,20 @@ export const PaperPage = () => (
     name="Paper Trade"
     glyph="paper"
     group="Practice"
-    head={['Paper trading on today’s prices.', 'A real desk with pretend money.']}
+    head={['Paper trading on live quotes.', 'A real desk with pretend money.']}
     intro={
       <>
-        Paper is the live desk with nothing at stake. Start a practice account at the size you want, or take a prop firm’s evaluation with its profit target, loss limit and trading days as the rules. Then trade the day as it
-        happens — options off the chain, futures long or short — on the same order card and chart you’d use for real. The account carries from day to day, and every closed trade goes to the journal.
+        Paper is the live desk with nothing at stake. Start a practice account at the size you want and trade options off the chain at each contract’s live bid and ask, during the options session. Orders wait when there is
+        no two-sided quote. The account carries from day to day, and every closed trade goes to the journal. Evaluations and futures are paused: there is no live futures feed.
       </>
     }
     path="/practice/paper"
     plan={PLAN}
   >
-    <Aside eyebrow="Starting out" first="Start with a practice account." second="Or a prop firm’s evaluation." picture={<Picture src={`${SHOTS}/paper-start`} alt="The paper desk's start page: a practice account at four sizes, or a prop firm's evaluation with its plans" ratio="1440 / 1000" />}>
+    <Aside eyebrow="Starting out" first="Start with a practice account." second="Evaluations return with a futures feed." picture={<Picture src={`${SHOTS}/paper-start`} alt="The paper desk's start page: a practice account at four sizes, or a prop firm's evaluation with its plans" ratio="1440 / 1000" />}>
       <p>
-        A practice account is pretend money with no rules but your own: $10,000 to $100,000, options and futures, a fee an option each way. An evaluation is a prop firm’s test — a profit target, a loss limit that follows your
-        best close, a limit on contracts, a number of trading days — and the desk holds you to it, with the account’s status in its head.
+        A practice account is pretend money with no rules but your own: $10,000 to $100,000, options, a fee an option each way. An evaluation is a prop firm’s futures test; it is paused until the app has a live futures
+        feed.
       </p>
     </Aside>
 
@@ -192,12 +155,6 @@ export const PaperPage = () => (
       </p>
     </Aside>
 
-    <Aside eyebrow="Futures" first="Futures on the same desk." second="A ladder beside the chart, long or short." flip picture={<Picture src={`${SHOTS}/paper-futures`} alt="The paper desk on a future: the ladder beside the chart, the order card with market, limit and stop" ratio="1440 / 1000" />}>
-      <p>
-        Put a future on the chart and the desk changes shape: a price ladder stands beside it, so you buy and sell at a price on the ladder itself, and the order card turns to market, limit and stop with join-the-bid and
-        join-the-ask. ES, NQ, oil, gold and silver, nearly round the clock, with the margin a contract holds shown on the position.
-      </p>
-    </Aside>
   </ProductPage>
 );
 
@@ -208,12 +165,11 @@ export const BacktestPage = () => (
     name="Backtest"
     glyph="backtest"
     group="Practice"
-    head={['Replay a past day.', 'And trade it as it happened.']}
+    head={['Replay a past day.', 'Paused until real history is wired in.']}
     intro={
       <>
-        Backtest replays a past session a minute at a time — the candles print, the chain reprices, the quotes are the ones that stood that minute — and you trade it with pretend money. Options or futures, one name or two,
-        your own rules on how many positions you may hold, how much a trade may cost or risk, and where the day stops. Play it at any pace, step a minute, or jump to a time. When you’re done, the report says what the session’s
-        trades added up to.
+        Backtest is paused. A replay has to trade the bid and ask each contract really had that minute, and the app has no source for that history yet; the tape it ran on before was a seeded random walk, not a past market.
+        What follows is how the desk works, for when real history is wired in. Sessions already played stay in the Journal, marked as synthetic.
       </>
     }
     path="/practice/backtest"
@@ -233,8 +189,8 @@ export const BacktestPage = () => (
       first="A trade in the backtest."
       second="You buy two, set the brackets, and press play."
       lines={[
-        { word: 'The chain', says: 'The chain as it stood that minute, bid and ask, delta, the decay a day. Open a strike and the order is inside it.' },
-        { word: 'The chart', says: 'Two targets and a stop pulled off the position’s chip. When a line is hit the engine fills it at the quote that stood then.' },
+        { word: 'The chain', says: 'The chain at the replay’s minute: bid and ask, delta, the decay a day. Open a strike and the order is inside it.' },
+        { word: 'The chart', says: 'Two targets and a stop pulled off the position’s chip. When a line is hit the engine fills it at that minute’s replay quote.' },
         { word: 'The clock', says: 'Play, and the day runs at the pace you set. The chip’s dollars move with every candle.' },
       ]}
     />

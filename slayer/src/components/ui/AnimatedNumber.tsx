@@ -6,10 +6,8 @@ interface AnimatedNumberProps {
   /** Formats the in-flight value each frame (e.g. v => `$${v.toFixed(2)}`) */
   format?: (v: number) => string;
   className?: string;
-  /** Robinhood-style change stamp (Noah, 2026-08-10): on a value change the
-      ink jumps to bull/bear for a beat, then eases back to the inherited
-      color while the number rolls. OPT-IN — a terminal where every number
-      flashes is a terminal where none of them do. */
+  /** Change stamp: on a new value the ink jumps to bull or bear for a beat, then eases back while the number rolls.
+      Opt-in: if every number flashed, none would stand out. */
   flash?: boolean;
 }
 

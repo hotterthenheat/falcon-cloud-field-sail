@@ -1,15 +1,11 @@
-/*
-  WHAT STANDS ON A CHART (components/layout/footer/parts/field.ts) — Terrain's strike field (beads by strike, its walls,
-  the flip), Paper's orders (the entry, the take-profit, the stop, each run out to its tag), the alerts' lines (a bell at
-  the end of each; the line sounds when the price crosses it), and the backtest's replay (a past day's candles drawn as the
-  play head reaches them, and the scrubber under them).
-*/
+/* What stands on a chart: Terrain's strike field, Paper's orders (entry, target, stop with tags), alert lines ending in
+   bells, and the backtest replay (candles drawn as the head reaches them, with a scrubber). */
 
 import { FONT, PIX, box, chip, clock, dashes, frame, hair, keep, rgb, rng, type, walk, type Box, type Frame, type Part, type Pen, type Pill, type Stage } from '../kit';
 import type { Chart } from './chart';
 
-/* ---- THE STRIKE FIELD (Terrain): a row of beads at each strike, longest where the book is heaviest, in the side's ink;
-   the walls bright, the supreme in its magenta, the flip a grey line of dashes — and their chips at the pane's edge -- */
+/* ---- the strike field: a bead row per strike, longest where the book is heaviest, walls bright, supreme magenta, the
+   flip grey dashes, chips at the pane edge ---- */
 
 export const field = (ch: Chart, o: { seed?: number; gap?: number } = {}): Part => {
   let s: Stage | null = null;
