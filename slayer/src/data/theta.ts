@@ -82,12 +82,29 @@ function faultText(status: number, parsed: unknown, text: string): string {
   return msg || `unavailable ${status}`;
 }
 
-/** Trace, Pinpoint and the Dossier read Unusual Whales only: no ThetaData request ever leaves their pages, whatever asks. */
-export const uwOnlyRoute = (): boolean => typeof location !== 'undefined' && /^\/(trace|pinpoint|dossier)(\/|$)/.test(location.pathname);
+/* What ThetaData may be asked for on the page in view (the owner's rules, docs/DATA_SOURCES.md):
+   Trace and the Dossier read Unusual Whales only; Pinpoint reads its greeks, exposure and levels from Unusual Whales
+   and only its live price and chart candles from ThetaData; every other page may read all of ThetaData. */
+export type ThetaUse = 'all' | 'prices' | 'none';
+export const thetaUseHere = (): ThetaUse => {
+  if (typeof location === 'undefined') return 'all';
+  if (/^\/(trace|dossier)(\/|$)/.test(location.pathname)) return 'none';
+  if (/^\/pinpoint(\/|$)/.test(location.pathname)) return 'prices';
+  return 'all';
+};
+/** The page in view reads Unusual Whales only (Trace, the Dossier): no ThetaData request leaves it, whatever asks. */
+export const uwOnlyRoute = (): boolean => thetaUseHere() === 'none';
+/* a live price or a chart candle: a stock's or an index's snapshot, or its bars */
+const PRICE_PATH = /^\/(stock|index)\/(snapshot\/(quote|trade|price|ohlc)|history\/ohlc)(\?|$)/;
+/** May this ThetaData request be made on the page in view? */
+export const thetaAllowedHere = (path: string): boolean => {
+  const use = thetaUseHere();
+  return use === 'all' || (use === 'prices' && PRICE_PATH.test(path));
+};
 
 export async function thetaCall(path: string, jump = false): Promise<{ status: number; data: unknown; error: string | null }> {
   if (SIM_DESK) return { status: 0, data: null, error: 'sim' };
-  if (uwOnlyRoute()) return { status: 0, data: null, error: 'uw_only' };
+  if (!thetaAllowedHere(path)) return { status: 0, data: null, error: 'uw_only' };
   const auth = await feedHeaders();
   if (!auth.ok) return { status: 401, data: null, error: auth.code };
   if (Date.now() < downUntil) return { status: 503, data: null, error: 'terminal_down' };
