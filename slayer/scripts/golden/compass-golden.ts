@@ -324,4 +324,63 @@ if (process.env.GOLDEN_RECORD === '1' || existsSync(lateExpected)) {
   console.log(`SKIP  ${LATE_SET}: not recorded yet.`);
 }
 
+/* ---- 6. the day summary ------------------------------------------------------------------------------------ */
+{
+  const { daySummary } = await import('../../src/data/compassOutcome');
+  const closedAt = (px: number, ask: number, pnl: number, fees: number) => ({ status: 'closed' as const, fill: { at: 0, bid: ask - 0.04, ask }, exit: { at: 0, px, why: '' }, peak: 0, stop: 0, last: null, ret: 0, pnl, fees, heldMin: 0 });
+  const rows = [
+    /* won: 1.88 on a 1.25 fill, (1.88 - 1.25)·100 - 1.08 = 61.92 */
+    { outcome: closedAt(1.88, 1.25, 61.92, 1.08) },
+    /* lost: the stop test's -68.08 */
+    { outcome: closedAt(0.58, 1.25, -68.08, 1.08) },
+    /* open: fill 1.25, last bid 1.40: (1.40 - 1.25)·100 - (1.00 + 0.08 + 1.40·100·0.0000206 = 1.0829 → 1.08) = 13.92 */
+    { outcome: { status: 'open' as const, fill: { at: 0, bid: 1.21, ask: 1.25 }, exit: null, peak: 1.4, stop: 0.58, last: { t: 0, bid: 1.4, ask: 1.44 }, ret: 12, pnl: null, fees: null, heldMin: 5 } },
+    { outcome: null },
+    { outcome: { status: 'unavailable' as const, fill: null, exit: null, peak: 0, stop: 0, last: null, ret: null, pnl: null, fees: null, heldMin: null } },
+  ];
+  const d = daySummary(rows);
+  expectEqual('day: calls, won, lost, open, filling, unavailable', [d.calls, d.won, d.lost, d.open, d.waiting, d.unavailable], [5, 1, 1, 1, 1, 1]);
+  /* net 61.92 - 68.08 = -6.16; open marked 13.92; fees 1.08 + 1.08 + 1.08 */
+  expectEqual('day: net per contract after the round trip', d.net, -6.16);
+  expectEqual('day: open calls marked at the bid', d.openMark, 13.92);
+  expectEqual('day: round-trip fees inside', d.fees, 3.24);
+  /* a stop exactly at the fill still loses its fees: (1.25 - 1.25)·100 - 1.08 is a loss */
+  expectEqual('day: breakeven exit counts as lost', daySummary([{ outcome: closedAt(1.25, 1.25, -1.08, 1.08) }]).lost, 1);
+}
+
+/* ---- 7. the server record ---------------------------------------------------------------------------------- */
+{
+  const { mkdtempSync, writeFileSync: write } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { RECORD_FORMAT, compassRoute, startCompassEngine, thetaAnswer } = await import('../../src/data/compassServer');
+  /* ThetaData answers in the browser client's shape: an outage is terminal_down, 472 is no data, 429 is busy */
+  expectEqual('theta: rows unwrapped from response', thetaAnswer(200, '{"response":[{"a":1}]}', 'application/json'), { status: 200, data: [{ a: 1 }], error: null });
+  expectEqual('theta: a lost session is the terminal down', thetaAnswer(503, '{"code":"session_lost"}', 'application/json').error, 'terminal_down');
+  expectEqual('theta: 472 is no data', thetaAnswer(472, 'No data', 'text/plain').error, 'no_data');
+  expectEqual('theta: 429 is busy, not down', thetaAnswer(429, 'Too many', 'text/plain').error, 'busy');
+  expectEqual('theta: csv rows', thetaAnswer(200, 'type,open,close\n"open","09:30:00","16:00:00"', 'text/csv').data, [{ type: 'open', open: '09:30:00', close: '16:00:00' }]);
+  const dir = mkdtempSync(join(tmpdir(), 'compass-record-'));
+  const call = { key: '2026-10-29|RUTW-2845-C-top-setups-odte', id: 'RUTW-2845-C-top-setups-odte', day: '2026-10-29', book: 'A', ticker: 'RUTW', contract: 'RUTW 2845C', right: 'C', strike: 2845, expiry: '2026-10-29', sleeve: 'odte', firedAt: nyWallTime(2026, 10, 29, 10, 15), quoteAt: nyWallTime(2026, 10, 29, 10, 14) + 59_000, bid: 14.8, ask: 15.9, spot: 2846.9, p1: 0.772379, prun: 0.4, runner: false, outcome: null, pathAt: 0, spark: [], how: 'late', mark: nyWallTime(2026, 10, 29, 10, 15) };
+  const mark = { at: nyWallTime(2026, 10, 29, 10, 15), clock: '10:15', sleeve: 'odte', names: { RUTW: 'late', SPY: 'live', XLF: 'none' }, scored: 88, ranAt: 0 };
+  write(join(dir, '2026-10-29.json'), JSON.stringify({ format: RECORD_FORMAT, day: '2026-10-29', savedAt: 0, close: null, calls: [call], marks: [mark], lottery: false, state: { day: '20261029' }, meta: { spots: {}, sparks: {}, line: '', theta: 'up', downSince: 0 } }));
+  freezeClock('2026-10-29T15:00:00Z');
+  const engine = startCompassEngine({ dir, publicDir: join(here, '..', '..', 'public'), theta: async () => ({ status: 503, body: '', type: '' }), scan: false });
+  const ask = (url: string) => {
+    let body = '';
+    const res = { statusCode: 0, setHeader: () => {}, end: (b?: string | Buffer) => { body = String(b ?? ''); } };
+    compassRoute(engine, { url, method: 'GET', headers: {} }, res);
+    return { status: res.statusCode, body: JSON.parse(body) as Record<string, unknown> };
+  };
+  const rec = ask('/api/compass/record?day=2026-10-29');
+  expectEqual('record: served as written, without the engine state', Object.keys(rec.body).sort(), ['calls', 'close', 'day', 'format', 'lottery', 'marks', 'savedAt']);
+  expectEqual('record: the late call and its mark', [(rec.body.calls as { how: string; contract: string }[])[0].how, (rec.body.marks as { names: Record<string, string> }[])[0].names], ['late', { RUTW: 'late', SPY: 'live', XLF: 'none' }]);
+  const st = ask('/api/compass/state');
+  expectEqual('state: format, session, a reader', [st.body.format, st.body.day, (st.body.engine as { readOnly: boolean }).readOnly], [RECORD_FORMAT, '2026-10-29', true]);
+  expectEqual('state: the record in every browser', (st.body.signals as { key: string }[]).map(r => r.key), [call.key]);
+  expectEqual('state: an unchanged rev answers same', ask(`/api/compass/state?rev=${st.body.rev}`).body.same, true);
+  expectEqual('days: sessions and calls', ask('/api/compass/days').body.days, [{ day: '2026-10-29', calls: 1 }]);
+  expectEqual('record: a bad day is refused', ask('/api/compass/record?day=yesterday').status, 400);
+  engine.stop();
+}
+
 done();

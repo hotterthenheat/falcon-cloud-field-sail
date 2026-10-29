@@ -72,17 +72,22 @@ const NAMES = [
 ];
 
 const n = rows.length;
+/* the minutes the trees were trained on: column 0 from 15 to 330 */
+const inWindow = (row: Row) => row.x[0] != null && row.x[0] >= 15 && row.x[0] <= 330;
+const nIn = rows.filter(inWindow).length;
 const cols = Array.from({ length: 56 }, (_, i) => {
   let lo = Infinity;
   let hi = -Infinity;
   let missing = 0;
   let below = 0;
   let above = 0;
+  let missingIn = 0;
   const r = entry.ranges[i];
   for (const row of rows) {
     const v = row.x[i];
     if (v == null) {
       missing += 1;
+      if (inWindow(row)) missingIn += 1;
       continue;
     }
     lo = Math.min(lo, v);
@@ -92,8 +97,9 @@ const cols = Array.from({ length: 56 }, (_, i) => {
   }
   const sameRange = JSON.stringify(entry.ranges[i]) === JSON.stringify(runner.ranges[i]);
   /* a missing value read as 0 by some split, on a column that is missing live */
-  const silent = missing > 0 ? entry.splits[i].none + entry.splits[i].zero + runner.splits[i].none + runner.splits[i].zero : 0;
-  return { col: i, name: NAMES[i], live: missing === n ? null : { lo, hi }, trained: r, sameRange, missing, below, above, splits: { entry: entry.splits[i], runner: runner.splits[i] }, silent };
+  const silent = missingIn > 0 ? entry.splits[i].none + entry.splits[i].zero + runner.splits[i].none + runner.splits[i].zero : 0;
+  const silentOut = missing - missingIn > 0 ? entry.splits[i].none + entry.splits[i].zero + runner.splits[i].none + runner.splits[i].zero : 0;
+  return { col: i, name: NAMES[i], live: missing === n ? null : { lo, hi }, trained: r, sameRange, missing, missingIn, below, above, splits: { entry: entry.splits[i], runner: runner.splits[i] }, silent, silentOut };
 });
 
 /* ---- identities on every row ---- */
@@ -137,12 +143,15 @@ for (const c of cols) {
   const live = c.live ? `[${fmt(c.live.lo)}, ${fmt(c.live.hi)}]` : 'all missing';
   const trained = c.trained ? `[${fmt(c.trained.lo)}, ${fmt(c.trained.hi)}]` : '?';
   const out = c.below + c.above ? `${c.below + c.above} (${pct(c.below + c.above)})` : '0';
-  const silent = c.missing ? (c.silent ? `YES: ${c.silent} splits` : 'no') : '';
+  const silent = c.missing ? (c.silent ? `YES, inside 15–330 (${c.missingIn} rows, ${c.silent} splits)` : c.silentOut ? 'only outside 15–330' : 'no') : '';
   console.log(`x${String(c.col).padEnd(3)} ${c.name.padEnd(30)} ${live.padEnd(26)} ${trained.padEnd(26)} ${(c.missing ? pct(c.missing) : '0').padEnd(9)} ${out.padEnd(9)} ${silent}`);
 }
 const identity = Object.entries(fails);
 console.log(`\nIdentities: ${identity.length ? identity.map(([k, v]) => `${k}: ${v} rows fail`).join('; ') : `all hold on ${n} rows`}`);
 const flagged = cols.filter(c => c.silent);
-console.log(`Missing read as 0 on a split: ${flagged.length ? flagged.map(c => `x${c.col}`).join(', ') : 'none (every split on a column that is missing live sends NaN the trained way)'}`);
+console.log(`${nIn} of ${n} rows are inside the trained minutes (t 15 to 330); outside them column 0 is past every tree's range.`);
+console.log(`Missing read as 0 on a split, inside the trained minutes: ${flagged.length ? flagged.map(c => `x${c.col}`).join(', ') : 'none (every split on a column that is missing there sends NaN the trained way)'}`);
+const outside = cols.filter(c => c.silentOut && !c.silent);
+if (outside.length) console.log(`Missing read as 0 only outside the trained minutes: ${outside.map(c => `x${c.col}`).join(', ')}`);
 console.log(`Entry and runner trained ranges ${cols.every(c => c.sameRange) ? 'are the same on every column' : `differ on ${cols.filter(c => !c.sameRange).map(c => `x${c.col}`).join(', ')}`}`);
 if (jsonOut) writeFileSync(jsonOut, JSON.stringify({ day, rows: n, cols, identities: fails }, null, 1));
