@@ -333,14 +333,22 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
       const want = (id: string | null, px: number) => {
         if (id && id !== 'phone' && !proseSet.has(id)) need[id] = Math.max(need[id] ?? 0, Math.ceil(px));
       };
+      /* the content's own width, to the subpixel: scrollWidth rounds, and a 0.4px overflow still paints an ellipsis */
+      const range = document.createRange();
+      const contentW = (el: HTMLElement) => {
+        range.selectNodeContents(el);
+        return range.getBoundingClientRect().width;
+      };
       wrap.querySelectorAll<HTMLElement>('.ag-cell[col-id]').forEach(cell => {
-        const over = cell.scrollWidth - cell.clientWidth;
-        if (over > 0) want(cell.getAttribute('col-id'), cell.offsetWidth + over + 2);
+        const cs = getComputedStyle(cell);
+        const room = cell.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        const over = contentW(cell) - room;
+        if (over > 0.25) want(cell.getAttribute('col-id'), cell.offsetWidth + over + 2);
       });
       wrap.querySelectorAll<HTMLElement>('.ag-header-cell[col-id]').forEach(head => {
         const text = head.querySelector<HTMLElement>('.ag-header-cell-text');
-        const over = text ? text.scrollWidth - text.clientWidth : 0;
-        if (over > 0) want(head.getAttribute('col-id'), head.offsetWidth + over + 2);
+        const over = text ? contentW(text) - text.getBoundingClientRect().width : 0;
+        if (over > 0.25) want(head.getAttribute('col-id'), head.offsetWidth + over + 2);
       });
       setFit(prev => {
         let next: Record<string, number> | null = null;
@@ -357,14 +365,17 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
     }
     const defs = columnsToColDefs(columns, hiddenSet, widths, tooltips, flexes, lockColumns, fit, proseSet);
     for (const d of defs) {
-      if (pinLeft?.includes(d.colId ?? '')) d.pinned = 'left';
-      else if (pinRight?.includes(d.colId ?? '')) {
+      /* a pinned column is a wall, not a share: no flex, so a fitted width is the width it draws at */
+      if (pinLeft?.includes(d.colId ?? '')) {
+        d.pinned = 'left';
+        d.flex = undefined;
+      } else if (pinRight?.includes(d.colId ?? '')) {
+        d.flex = undefined;
         d.pinned = 'right';
         /* room for the endless window's scrollbar beside the right-pinned figure */
         if (endlessOn && d.width) {
           d.width += 14;
           d.minWidth = d.width;
-          d.flex = d.width;
         }
       }
     }
@@ -640,7 +651,7 @@ export const TraceGrid = <T,>({ rows, columns, hidden, widths, flexes, lockColum
 
   return (
     /* suppressAnimationFrame puts every row in the first paint; the endless foot stands under the window, not in it */
-    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-lock={lockColumns || undefined} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
+    <div ref={wrapRef} className={`slayer-board relative border-t border-borderSubtle animate-grid-in ${windowed ? '[&_.ag-grid-pinned-right-cells_.ag-column-last]:!pr-[22px] [&_.ag-grid-pinned-right-cells_.ag-cell:last-child]:!pr-[22px] [&_.ag-header-cell.ag-column-last]:!pr-[22px]' : ''} ${windowed && phone ? '[&_.ag-cell]:!pr-[18px]' : ''}`} data-trace-grid={testId} data-fit-dbg={JSON.stringify(fit)} data-lock={lockColumns || undefined} data-cutting={cutting || undefined} data-phone-rows={phone || undefined} data-paged={paged || undefined} data-endless={endless ? endless.state : undefined}>
      <div className="relative" style={windowed ? { height: `min(${pageHeight}px, calc(100dvh - 72px))`, minHeight: 360 } : autoHeight ? (paged ? { height: pageHeight } : undefined) : { height }} data-trace-window>
       <AgGridProvider modules={GRID_MODULES}>
         <AgGridReact<T>

@@ -534,7 +534,7 @@ export function readRules(a: PaperAccount, v: PaperView, m: Pick<PaperMarket, 'n
     out.push({ id: 'bp', label: 'Buying power', kind: 'limit', fill, state: limitState(fill), value: `${money(tied)} of ${money(r.buyingPower)}`, room: `${money(Math.max(0, r.buyingPower - tied))} free`, says: `No more than ${money(r.buyingPower)} tied up in premium at once, resting buys in` });
   }
   /* the holding rules: when the account has to be flat today */
-  const flat = flatTimeOf(a, a.day, null, m);
+  const flat = a.status === 'open' ? flatTimeOf(a, a.day, null, m) : null;
   if (flat) {
     const left = flat.at - m.now;
     const past = left <= 0 && m.now < dayEndsAt(a.day);

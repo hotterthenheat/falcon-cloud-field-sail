@@ -782,7 +782,8 @@ const News = () => {
                 <span className="min-w-0 h-5 flex items-center lg:max-2xl:hidden">
                   <CatTag category={e.item.category} size={9} />
                 </span>
-                <span className="h-5 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} /></span>
+                {/* "major" and "board" stack inside their column rather than run into the impact square */}
+                <span className="min-h-5 min-w-0 flex items-center"><NewsFlag major={e.item.major} onBoard={onBoard(e)} className="flex-wrap gap-y-0.5 leading-[13px] min-w-0" /></span>
                 <span className="min-w-0 flex items-center gap-2">
                   <ImpactMark tier={tierOf(e.severity)} />
                   <span className={`min-w-0 break-words whitespace-normal leading-relaxed text-t12 ${open ? 'text-textPrimary' : 'text-textSecondary group-hover:text-textPrimary'} transition-colors`}>{e.item.headline}{similarRef.current.get(e.id) ? <span className="ml-1.5 font-mono text-t9 text-textMuted" title="Near-duplicate headlines within six hours, folded into this one" data-news-similar={similarRef.current.get(e.id)}>+{similarRef.current.get(e.id)} similar</span> : null}</span>

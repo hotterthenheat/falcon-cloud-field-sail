@@ -11,6 +11,8 @@ interface FilterTabsProps<V extends string> {
   value: V;
   onChange: (value: V) => void;
   ariaLabel?: string;
+  /** 'sm': tighter pills for a narrow host (a pane's side panel); the default is unchanged */
+  size?: 'md' | 'sm';
 }
 
 /** Soft tab strip (shadcn grammar): sentence-case labels in a faint grouped
@@ -22,7 +24,7 @@ interface FilterTabsProps<V extends string> {
     #0a0a0a — black on the black pill, "the active one you cant even see"
     (Noah, 2026-09-19, the Tracker).
     The pill GLIDES between options (shared-layout), never teleports. */
-const FilterTabs = <V extends string>({ options, value, onChange, ariaLabel, paper: paperProp }: FilterTabsProps<V>) => {
+const FilterTabs = <V extends string>({ options, value, onChange, ariaLabel, paper: paperProp, size = 'md' }: FilterTabsProps<V>) => {
   const scope = useId(); // isolates the pill from other FilterTabs instances
   /* THE PILL WEARS THE HOLO (Noah, 2026-10-15, on the panel's Ladder · Net · GEX: "let the active one have our changing
      holo silver color"): where-you-are is the silver since 2026-10-13, and the living foil is its moving face — the
@@ -40,7 +42,7 @@ const FilterTabs = <V extends string>({ options, value, onChange, ariaLabel, pap
               key={opt.value}
               aria-pressed={active}
               onClick={() => onChange(opt.value)}
-              className="relative px-3 py-1 rounded-md text-xs font-medium transition-colors"
+              className={`relative ${size === 'sm' ? 'px-2' : 'px-3'} py-1 rounded-md text-xs font-medium transition-colors`}
             >
               {active && (
                 /* THE GLIDE RUNS ONLY WHEN THE CHOICE CHANGES (Noah, 2026-10-15, dragging Terrain's panel: "the button

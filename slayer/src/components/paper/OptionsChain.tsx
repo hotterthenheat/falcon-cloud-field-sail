@@ -19,12 +19,15 @@ const num = (v: string) => (v.trim() === '' ? undefined : Number(v));
 const COLS_KEY = 'slayer_paper_chain_cols';
 /** What the chain opens with: the quote, the delta, the vol, the decay in dollars a day, the interest */
 const PAPER_COLS = ['bid', 'ask', 'delta', 'iv', 'decay', 'oi'];
+/** …and on a phone, what fits its width without a sideways scroll — so a strike's order, drawn across the chain, fits too */
+const PHONE_COLS = ['bid', 'ask', 'delta'];
+const atRest = () => (typeof window !== 'undefined' && window.innerWidth < 640 ? PHONE_COLS : PAPER_COLS);
 const readCols = (): string[] => {
   try {
     const kept = JSON.parse(localStorage.getItem(COLS_KEY) ?? 'null') as string[] | null;
-    return Array.isArray(kept) ? CHAIN_COLUMNS.map(c => c.key).filter(k => kept.includes(k)) : PAPER_COLS;
+    return Array.isArray(kept) ? CHAIN_COLUMNS.map(c => c.key).filter(k => kept.includes(k)) : atRest();
   } catch {
-    return PAPER_COLS;
+    return atRest();
   }
 };
 
@@ -261,7 +264,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
             Buy {n} more @ {quote.ask.toFixed(2)}
           </button>
         </div>
-        <div className="font-mono text-t11 tnum leading-relaxed" data-order-status>
+        <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
           <div className="text-textSecondary">
             {sellN} × {usd(quote.bid)} × 100 = <span className="text-textPrimary font-semibold">{usd(proceeds)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
           </div>
@@ -312,7 +315,7 @@ export const ChainOrder = ({ c, ticker, expiry, spot, desk, word = true }: { c: 
           trail={{ placeholder: basis === 'name' ? (quote.spot * 0.004).toFixed(2) : (quote.ask * 0.2).toFixed(2), unit: basis === 'name' ? `of ${ticker}` : 'a share' }}
         />
       )}
-      <div className="font-mono text-t11 tnum leading-relaxed" data-order-status>
+      <div className="font-mono text-t11 tnum leading-relaxed whitespace-normal break-words" data-order-status>
         <div className="text-textSecondary">
           {n} × {usd(px)} × 100 = <span className="text-textPrimary font-semibold">{usd(cost)}</span> <span className="text-textMuted">· fee {usd(fees)}</span>
         </div>

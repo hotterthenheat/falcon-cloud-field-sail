@@ -964,7 +964,7 @@ const Compare = () => {
               />
               {sections.map(sec => (
                 <Fragment key={sec.title}>
-                  <div className={`${gutter} flex items-center border-t border-borderSubtle/60 paper-indent paper-band paper-bold font-mono text-t11 uppercase tracking-widest text-textPrimary truncate`} style={{ height: CMP_SECTION_H }} data-compare-section={sec.title}>
+                  <div className={`${gutter} flex items-center border-t border-borderSubtle/60 paper-indent paper-band paper-bold font-mono text-t11 uppercase tracking-widest leading-tight text-textPrimary py-1 break-words`} style={{ minHeight: CMP_SECTION_H }} data-compare-section={sec.title}>
                     {sec.title}
                   </div>
                   {sec.rows.map(r => (
@@ -983,7 +983,7 @@ const Compare = () => {
                       {phone && (
                         <span className="flex flex-col items-center leading-none pt-1.5 pb-1" data-compare-fact title={r.hint}>
                           <span className="text-t11 text-textSecondary whitespace-nowrap">{r.label}</span>
-                          <span className="mt-[3px] text-t11 text-textMuted whitespace-nowrap truncate max-w-full" data-compare-note>
+                          <span className="mt-[3px] text-t11 text-textMuted text-center leading-tight max-w-full" data-compare-note>
                             {r.note}
                           </span>
                         </span>

@@ -121,7 +121,7 @@ const HouseName = ({ data }: ICellRendererParams<InstitutionRow>) =>
       {data.unlisted ? <span className="w-4 shrink-0" aria-hidden /> : <CompanyLogo ticker={data.ticker} size={16} />}
       <span className="flex flex-col leading-tight min-w-0" title={data.unlisted ? `${data.company ?? ''} — the filing gives no listed symbol` : undefined}>
         <span className={`font-mono text-t12 font-bold ${data.unlisted ? 'text-textSecondary' : 'text-textPrimary'}`}>{data.ticker}</span>
-        {data.unlisted ? <span className="text-t10 text-textMuted truncate">{data.company}</span> : <CoSub ticker={data.ticker} />}
+        {data.unlisted ? <span className="text-t10 text-textMuted truncate" title={data.company ?? undefined}>{data.company}</span> : <CoSub ticker={data.ticker} />}
       </span>
     </span>
   ) : null;

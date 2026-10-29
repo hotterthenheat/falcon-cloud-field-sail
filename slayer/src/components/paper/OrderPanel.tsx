@@ -10,11 +10,7 @@ const SILVER_FILL = 'rgb(var(--silver-fill))';
 const SIZES = [1, 3, 5, 10, 15];
 export const labelCls = 'text-t10 text-textMuted whitespace-nowrap';
 const HOVER = { plain: 'hover:text-textPrimary hover:bg-ink/[0.05]', bull: 'hover:text-bull hover:bg-bull/[0.12]', bear: 'hover:text-bear hover:bg-bear/[0.12]' } as const;
-/** The smaller buttons under the two: quiet, one line each */
-const grey =
-  'h-[26px] min-w-0 px-2 rounded-md border border-borderSubtle bg-ink/[0.03] font-mono text-t10 font-semibold uppercase tracking-wider text-textSecondary whitespace-nowrap overflow-hidden text-ellipsis enabled:hover:text-textPrimary enabled:hover:border-borderMuted enabled:hover:bg-ink/[0.06] disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
 const stepBtn = 'w-7 inline-flex items-center justify-center text-textSecondary enabled:hover:text-textPrimary enabled:hover:bg-ink/[0.06] disabled:opacity-35 disabled:cursor-not-allowed transition-colors';
-const num = (v: string) => (v.trim() === '' ? undefined : Number(v));
 
 /** The house's pill switch (the tickets'): the one in hand in silver */
 export const Pills = <T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string; tone?: 'bull' | 'bear'; off?: boolean }[]; onChange: (v: T) => void; label: string }) => (
