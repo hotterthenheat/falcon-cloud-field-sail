@@ -33,7 +33,6 @@
 ==================================================
 */
 
-import Simulator from '../core/simulator';
 import { bookHistory, dayBars } from './uwBook';
 import { OPEN_MIN, hhmm } from './ahead';
 import { sessionBars } from './levelview';
@@ -68,7 +67,7 @@ function rangeOf(ticker: string, bars: Candle[]): ReplayRange | null {
   const first = bars[0].time;
   const last = bars[bars.length - 1].time;
   const snaps = new Map<number, GexSnapshot>();
-  for (const s of bookHistory(ticker) ?? Simulator.getGexHistory(ticker) ?? []) if (s.time >= first && s.time <= last) snaps.set(s.time, s);
+  for (const s of bookHistory(ticker) ?? []) if (s.time >= first && s.time <= last) snaps.set(s.time, s);
   /* No book kept for that day — nothing to rewind to */
   if (snaps.size === 0) return null;
   return { ticker, bars, snaps, length: (bars.length - 1) * BAR_SEC };

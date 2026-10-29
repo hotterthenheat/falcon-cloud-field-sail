@@ -14,10 +14,9 @@
 ==================================================
 */
 
-import Simulator from '../core/simulator';
 import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyIsoDate, nyMinutes, nySession } from '../core/nyTime';
 import { recordDay } from './bookWindow';
-import { bookCandles, bookHistory, peekEntry } from './uwBook';
+import { bookCandles, bookHistory, peekEntry, peekSpot } from './uwBook';
 import type { Candle, MarketSnapshot } from '../types/market';
 
 /** NONE: no book was kept at the open or now — nothing to compare */
@@ -86,9 +85,7 @@ export function sessionBars(ticker: string) {
     }
     return [];
   }
-  const bars = Simulator.peekCandles(ticker);
-  if (!bars || bars.length === 0) return null;
-  return sessionCut(bars);
+  return null;
 }
 
 /** True when a bar's minute is inside the cash session */
@@ -112,7 +109,7 @@ export function netSinceOpenRatio(ticker: string): Map<number, number> | null {
   if (peekEntry(ticker)) return null;
   const session = sessionBars(ticker);
   if (!session) return null;
-  const snaps = bookHistory(ticker) ?? Simulator.getGexHistory(ticker) ?? [];
+  const snaps = bookHistory(ticker) ?? [];
   const first = snaps.find(s => s.time >= session[0].time);
   const last = snaps[snaps.length - 1];
   if (!first || !last || first === last) return null;
@@ -138,15 +135,14 @@ export function snapshotAtOpen(ticker: string): MarketSnapshot | null {
   if (peekEntry(ticker)) return null;
   const session = sessionBars(ticker);
   if (!session) return null;
-  const snaps = bookHistory(ticker) ?? Simulator.getGexHistory(ticker) ?? [];
+  const snaps = bookHistory(ticker) ?? [];
   const first = snaps.find(s => s.time >= session[0].time);
   if (!first) return null;
   const book = new Map<number, { callOI: number; putOI: number }>();
   for (const l of first.levels) if (l.callOI != null && l.putOI != null) book.set(l.strike, { callOI: l.callOI, putOI: l.putOI });
   if (!book.size) return null;
-  const live = Simulator.snapshotFor(ticker);
-  const spot = session[0].open;
-  return { ...live, spot, chain: Simulator.chainWithBook(ticker, spot, book) };
+  /* no live opening chain can be rebuilt from the vendor's book, so nothing is invented here */
+  return null;
 }
 
 /*
@@ -209,11 +205,11 @@ export function buildLevelRead(ticker: string, strike: number): LevelRead | null
     inTouch = hit;
   }
 
-  const spot = Simulator.TICKERS[ticker]?.currentPrice ?? session[session.length - 1].close;
+  const spot = peekSpot(ticker) ?? session[session.length - 1].close;
   const distPct = ((strike - spot) / spot) * 100;
 
   /* the vendor's minute history is volume walked onto open interest — no since-the-open claim off it (see above) */
-  const snaps = peekEntry(ticker) ? [] : (Simulator.getGexHistory(ticker) ?? []);
+  const snaps: { time: number; levels: { strike: number; value: number }[] }[] = [];
   const at = (s: { levels: { strike: number; value: number }[] }) => s.levels.find(l => l.strike === strike)?.value ?? null;
   const first = snaps.find(s => s.time >= session[0].time);
   const last = snaps[snaps.length - 1];

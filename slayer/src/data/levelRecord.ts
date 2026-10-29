@@ -28,7 +28,6 @@
 
 import { pickFlip, pickWalls } from '../core/walls';
 import { nyDay } from '../core/nyTime';
-import Simulator from '../core/simulator';
 import { sessionStarts } from './indicators';
 import { YEAR_MINUTES } from './measure';
 import type { Candle, GexSnapshot } from '../types/market';

@@ -149,7 +149,7 @@ const SCREENS: { value: 'all' | Grade; label: string; hint: string }[] = [
 ];
 export const stocksControls = (): TileControl[] => [{ id: 'screen', label: 'Screen', title: 'Which names the board shows', options: SCREENS }];
 
-export const StocksTile = ({ ctx, state, size }: TileProps) => {
+export const StocksTile = ({ state, size }: TileProps) => {
   const door = useDoor();
   const picks = useStockBoard();
   const screen = String(state.screen ?? 'all');

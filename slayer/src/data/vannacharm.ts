@@ -4,7 +4,7 @@
   levelFlip). The simulator desk keeps its scenario projection.
 */
 
-import Simulator from '../core/simulator';
+import { bookCandles, bookHistory } from './uwBook';
 import { pickFlip, pickLegWalls } from '../core/walls';
 import { levelFlip } from './flipLevel';
 import type { MarketSnapshot, StrikeNode } from '../types/market';
@@ -104,8 +104,8 @@ const DRIFT_BARS = 390; // one session of 1-min bars
 const DRIFT_STEP = 3; // sample every 3rd bar
 
 function buildDrift(ticker: string): WallDriftPoint[] {
-  const candles = Simulator.getCandles(ticker);
-  const snaps = Simulator.getGexHistory(ticker);
+  const candles = bookCandles(ticker);
+  const snaps = bookHistory(ticker);
   if (!candles?.length || !snaps?.length) return [];
 
   const n = Math.min(DRIFT_BARS, snaps.length, candles.length);
@@ -186,7 +186,7 @@ export function buildVannaCharm(
 
   let delta: MigrationRead['delta'] = null;
   if (!live) {
-    const snaps = Simulator.getGexHistory(ticker);
+    const snaps = bookHistory(ticker);
     if (snaps && snaps.length >= 2) {
       const nowSnap = snaps[snaps.length - 1];
       const prevSnap = snaps[Math.max(0, snaps.length - 1 - 10)];
