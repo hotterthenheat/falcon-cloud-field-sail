@@ -37,6 +37,12 @@ You need Node 22, Java 21 and the ThetaData terminal jar (see `docs/theta-termin
 The first page view after a start takes a few seconds while the shared data hub fills; after that pages paint at
 once, and a reload paints the last data this browser kept (stamped "as of …") while the fresh data loads.
 
+**Compass runs inside the server**, not in the browser: `npm run dev` and `npm run serve` both start its scan, which
+runs every mark from start to shutdown whether or not a page is open, and every browser shows the same record. The
+record is `slayer/.cache/compass/YYYY-MM-DD.json`. Start the server before the session you want scanned; marks missed
+while it was off or while ThetaData was down are scored afterwards from recorded quotes and marked "late". How it
+works and what it needs: `docs/compass-engine.md`.
+
 ## Serve it to other people
 
 For more than a few viewers, run the production build instead of the dev server:
