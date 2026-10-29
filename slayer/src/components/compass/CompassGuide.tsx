@@ -26,7 +26,7 @@ export const CompassGuide = () => (
       <p>When the terminal could not answer at a mark, the mark is scored afterwards from the quotes ThetaData recorded at that exact instant, and marked “scored late from recorded quotes”. Only the quotes that stood at the mark are used, never later ones, and the call settles by the same rules from its mark. A name ThetaData had no quotes for at that minute is recorded as not scored.</p>
     </Section>
     <Section title="Unvalidated">
-      <p>The two models are scored exactly as LightGBM scores them, and every live input is checked against its definition and against the range each tree was trained on. What cannot be checked here is that the live inputs match the rows the models were trained on: those rows, or the feature builder that made them, are not in this app. Until they are, every Book A and Book B call wears “Unvalidated”.</p>
+      <p>The two models are scored exactly as LightGBM scores them, and every live input is checked against its definition and against the range each tree was trained on. What cannot be checked here is that the live inputs match the rows the models were trained on: those rows, or the feature builder that made them, are not in this app. Until they are, every Book A and Book B call wears “Unvalidated”. One input is known to differ: range compression needs an hour of minutes, so before 10:30 ET it is missing, and the trees, which never saw it missing, read it as 0.</p>
     </Section>
   </div>
 );

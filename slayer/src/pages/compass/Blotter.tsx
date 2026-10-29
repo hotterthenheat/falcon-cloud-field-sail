@@ -129,7 +129,7 @@ const COLUMNS: Column<Line>[] = [
   { key: 'pnl', header: 'P&L', align: 'right', sortValue: r => r.pnl ?? -1e9, render: r => (r.pnl == null ? blank : <span className={`tnum ${dirInk(r.pnl)}`}>{`${r.pnl < 0 ? '−' : '+'}${usd(Math.abs(r.pnl))}`}</span>) },
   { key: 'result', header: 'Result', align: 'right', sortValue: r => r.result, render: r => <Tip label={r.why || undefined}><span className={RESULT_INK[r.result]}>{RESULT_WORD[r.result]}</span></Tip> },
 ];
-const WIDTHS: Record<string, number> = { day: 72, fired: 92, contract: 180, book: 64, p1: 84, quote: 116, paid: 80, exitPx: 80, out: 68, held: 80, ret: 84, pnl: 88, result: 96 };
+const WIDTHS: Record<string, number> = { day: 62, fired: 88, contract: 156, book: 52, p1: 74, quote: 124, paid: 78, exitPx: 78, out: 62, held: 70, ret: 74, pnl: 86, result: 82 };
 const TOOLTIPS: Record<string, string> = {
   fired: 'When the scan sent the call, New York time.',
   p1: 'Model 1 at the call. Book C has no model.',
