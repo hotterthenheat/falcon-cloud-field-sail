@@ -1,60 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ascendingSpotIndex, barGap, labelStride, layoutBand, spotX } from './strikeBand';
-/* the TOKEN inks (paletteInk), not the hex palette: inline colours and SVG attributes only, and the hex
-   pair printed the dark theme's green/red on paper at 2:1 (2026-09-16) */
+/* Token inks (paletteInk), not hex: the hex pair printed dark-theme green/red on paper at 2:1. */
 import { BULL, CALL_WALL, SUPREME, PUT_WALL, SPOT } from './paletteInk';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import type { ExposureProfileData } from '../../types/gex';
 
-/*
-==================================================
-  SLAYER TERMINAL - EXPOSURE BY STRIKE, AS A BAND
-  (components/gex/StrikeExposureBand.tsx)
-
-  The reference's "Net Delta Exposure By Strike":
-  strike along the bottom, signed exposure diverging
-  from a rule through the middle, spot marked where
-  it actually falls between two strikes.
-
-  WHY THIS IS NOT A PANE IN THE PRICE CHART, and
-  could never be. Every pane lightweight-charts draws
-  shares ONE time axis — that is what makes a pane a
-  pane rather than a second chart. This band's axis is
-  the STRIKE. Forced into the chart's pane stack it
-  would have to pretend strikes were timestamps, and
-  the crosshair, the pan and the zoom would all then
-  be lying about what the reader was pointing at.
-
-  So it docks BELOW the chart instead: the same
-  toggle, the same menu, the same persistence, and its
-  own axis where it needs one.
-
-  REDRAWN 2026-08-28 (Noah: "just a bunch of blocks
-  with slight differences in size"). What was wrong
-  was not the shape, it was that height was the ONLY
-  voice the band had — flat rects at one opacity, no
-  scale, no names, slots so wide a bar became a slab.
-  Now magnitude speaks twice (height AND ink: a
-  gradient that burns at the tip and cools to the
-  rule, opacity scaled to the bar's share of the max),
-  bars are capped at a readable width instead of
-  swallowing their slot, the two extremes print their
-  dollar values at the tip, the scale itself is
-  printed in the corners, spot wears the house price
-  tag, and the strikes that ARE somebody — supreme, call
-  wall, put wall — are named in their own inks on the
-  axis. Hover any slot and the header reads it out.
-
-  THE INKS ARE THE HOUSE DIRECTION PAIR — the same
-  two the flow band and the drift lines wear. A signed
-  exposure bar is a direction, and the reader has
-  already learned green-up/red-down twice on this
-  screen; a third vocabulary for the same idea is a
-  cost with no return. The supreme/wall inks appear only
-  on the axis labels, where they mean identity, never
-  on the bars, where they would fight direction.
-==================================================
-*/
+/* Exposure by strike as a band docked under the chart: its axis is the strike, which no lightweight-charts pane can carry
+   (panes share the time axis). Magnitude is height and ink; bars are the direction pair; level names appear on the axis only. */
 
 /** Which greek the band draws. The same three the exposure matrix carries. */
 export type BandMetric = 'gex' | 'dex' | 'vex';
@@ -96,13 +48,7 @@ const StrikeExposureBand = ({
   plotHeight = 96,
   onClose,
 }: StrikeExposureBandProps) => {
-  /*
-    The band is laid out in the box's OWN pixels rather than in a fixed
-    viewBox stretched to fit. A viewBox would scale the bars and the type
-    together, so the strike labels would grow on a wide desk and shrink to
-    nothing on a phone — and the 1px floor that keeps a tiny value visible
-    would stop being 1px.
-  */
+  /* Laid out in the box's own pixels, not a stretched viewBox, so type keeps its size and the 1 px floor stays 1 px. */
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -119,25 +65,14 @@ const StrikeExposureBand = ({
     return () => ro.disconnect();
   }, []);
 
-  /*
-    STRIKES ASCEND LEFT TO RIGHT, and the profile hands them down.
-
-    Reversed here rather than at the source: the ladder surfaces read
-    top-to-bottom high-to-low, which is right for a vertical rail beside a
-    price axis, and the horizontal band reads left-to-right low-to-high, which
-    is right for an axis of prices. Both orders are correct for their own
-    shape; only one of them can be the array's.
-  */
+  /* Strikes ascend left to right; the profile hands them down (high to low, right for a vertical rail), so reverse here. */
   const rows = [...data.strikes].reverse();
   /* spotAfterIndex counts from the descending end, so it has to be mirrored
      with the rows — in the proved module, because an off-by-one here would put
      the spot rule one strike from the market and look perfectly fine. */
   const spotIndex = ascendingSpotIndex(data.spotAfterIndex, rows.length);
 
-  /* Proportional air, not two fixed pixels — see barGap. Then the width cap,
-     applied HERE rather than in the proved module: the layout's slot math is
-     still what places labels and hover, only the drawn ink narrows, centred
-     in the slot it was given. */
+  /* Proportional air (see barGap), then the width cap: slots still place labels and hover; only the drawn ink narrows, centred. */
   const bars = layoutBand(
     rows,
     r => (r as (typeof rows)[number])[metric].net,

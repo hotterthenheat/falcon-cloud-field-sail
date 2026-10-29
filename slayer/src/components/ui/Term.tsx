@@ -10,14 +10,8 @@ interface TermProps {
   className?: string;
 }
 
-/**
- * Inline jargon explainer — wraps a label with a dotted underline and reveals
- * its one-line definition in a floating card on hover OR keyboard focus.
- * Fixed-position so it never clips inside scroll containers; any scroll
- * dismisses it (a fixed card would detach from its anchor otherwise). The
- * card itself stays hoverable; a short close delay bridges the anchor→card
- * gap.
- */
+/** Inline jargon: a dotted underline whose one-line definition floats on hover or focus. Fixed-position so scroll containers
+    cannot clip it; any scroll dismisses it; a short close delay bridges anchor to card. */
 const Term = ({ k, children, className = '' }: TermProps) => {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const closeTimer = useRef(0);

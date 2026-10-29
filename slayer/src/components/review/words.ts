@@ -2,6 +2,7 @@
 
 import { clockWords, dayWords } from '../../data/review/tape';
 import type { Moment } from '../../data/review/engine';
+import { pctWhole as pct } from '../../core/format';
 
 const MINUS = '−';
 export const usd = (v: number, digits = 2): string => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
@@ -9,7 +10,7 @@ export const usd = (v: number, digits = 2): string => `$${Math.abs(v).toLocaleSt
 export const usdSigned = (v: number, digits = 2): string => (Math.abs(v) < 0.005 ? usd(0, digits) : `${v > 0 ? '+' : MINUS}${usd(v, digits)}`);
 /** "+0.42R" */
 export const rWords = (r: number): string => `${r >= 0 ? '+' : MINUS}${Math.abs(r).toFixed(2)}R`;
-export const pct = (v: number): string => `${Math.round(v * 100)}%`;
+export { pct };
 /** The direction's ink for a signed figure — flat money is plain */
 export const dirInk = (v: number): string => (Math.abs(v) < 0.005 ? 'text-textSecondary' : v > 0 ? 'text-bull' : 'text-bear');
 /** "Mar 14 · 10:42" */

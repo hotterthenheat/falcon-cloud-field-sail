@@ -1,39 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW SURE IS THIS
-  (data/levelSureness.ts)
-
-  The ideas' rank 3, 2026-10-09: every dealer level
-  says what it stands on. Three things, each a
-  disclosure of method — never a disclaimer:
-
-    the assumption  which side dealers are on. Open
-                    interest says how many contracts
-                    are open at a strike, not who
-                    bought them; every exposure model
-                    assumes it. This one assumes the
-                    street's usual: customers sold
-                    the calls and bought the puts,
-                    dealers hold the other side.
-    the freshness   open interest is counted once a
-                    day, after the close; the price
-                    the hedging is read at is live.
-    the other side  where the level would sit if that
-                    assumption were wrong — the book
-                    read with every strike's side
-                    turned over. The walls move to the
-                    strikes that are heaviest the
-                    other way; the flip keeps its
-                    price and swaps its meaning; the
-                    supreme keeps its strike and
-                    pushes the other way.
-
-  Pure: a chain and a spot in, the words out, so any
-  room reads it (Terrain next). The house sign is
-  core/walls.ts's — negative call-dominant,
-  positive put-dominant.
-==================================================
-*/
+/* What every dealer level stands on: the assumption (customers sold calls and bought puts, dealers hold the other side),
+   the freshness (OI daily, price live), and the other side (the levels with every strike's side flipped). Pure; house sign as core/walls.ts. */
 
 import { bookCandles } from './uwBook';
 import { sessionStarts } from './indicators';

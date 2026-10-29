@@ -1,70 +1,8 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { fmtStrike } from '../../core/format';
 
-/*
-==================================================
-  SLAYER TERMINAL - ALERTS (gex/alertStore.ts)
-
-  Things you asked to be told about, kept per
-  symbol and visible on every pane showing it.
-==================================================
-
-  WHY THIS IS A MODULE-LEVEL STORE AND NOT COMPONENT STATE.
-
-  Terrain mounts up to four panes and two of them can be on the same symbol.
-  Alerts are keyed by symbol, so with per-component state and a shared key the
-  second pane's save silently overwrites the first pane's alert — and the first
-  pane goes on drawing a line for something that is no longer stored. One store
-  with subscribers means both panes read the same list and both repaint when
-  either changes.
-
-  Persistence is the drawings store's shape verbatim, including the
-  self-healing validator: anything that is not a well-formed alert is dropped
-  on read rather than thrown, so a half-written key from a previous version
-  cannot take a chart down with it. An entry saved by the price-only version
-  of this file (no `kind` field) is healed to `kind: 'price'` — the reader's
-  standing alerts survive the upgrade.
-
-  WHAT AN ALERT IS AND IS NOT.
-
-  It is a mark on a pane that changes when the thing it watches happens, while
-  you are watching. It is not a notification: nothing runs when the tab is
-  closed, and the menu says so in as many words. A promise to tell someone
-  about a price and then not telling them is worse than not offering it.
-
-  THE KINDS (T-22). A fixed price is only one thing worth watching:
-    price     — close reaches a price you typed          (crossed toward)
-    level     — close crosses a NAMED level: call wall, put wall, flip, supreme.
-                The level moves with the book, so the alert follows the level
-                rather than freezing the price it had when armed.
-    indicator — close crosses VWAP or an EMA, or RSI crosses a threshold.
-                Indicator values depend on the bar size, so the alert is
-                stamped with the arming pane's timeframe and only a pane on
-                that timeframe evaluates it.
-    gexflip   — the book's total net GEX changes sign
-    newsupreme   — the largest-exposure strike moves to a different strike
-    wallmove  — either wall migrates at least N strikes from where it stood
-    flow      — an option print at or over a premium floor arrives (only
-                prints AFTER arming count — the tape's history is not news)
-    news      — a GRADED headline lands for this name (the room's wire
-                drips through the day; stories already landed do not count,
-                same clock rule as flow)
-
-  SIDES AND BASELINES ARE ESTABLISHED LAZILY, ON THE FIRST EVALUATION.
-  "Crossed" needs to know which side you started on, and "moved" needs to
-  know where it stood — but the menu that arms an alert does not hold the
-  indicator's value or the book's walls (they depend on the pane's bars and
-  the tick). So a fresh alert carries side 0 / baseline 0, and the first tick
-  that can read the watched thing fills it in via `evaluateAlert` returning
-  an `armed` copy. Recomputing the side on LATER ticks is the bug the price
-  kind always guarded against: an alert that re-arms itself behind the price
-  never fires.
-
-  THE FIRING RULES ARE PURE. `evaluateAlert(alert, ctx)` takes everything it
-  reads as an argument and touches no store, so the proof script can hand it
-  a staged book and a staged tape and check every rule — the chart's only job
-  is building the context from data it already holds.
-*/
+/* Alerts per symbol, in a module store so two panes on one symbol share and repaint one list; a malformed stored entry
+   is dropped on read, never thrown. They fire only while the tab is open. See AlertKind for the kinds. */
 
 export type LevelName = 'callWall' | 'putWall' | 'flip' | 'supreme' | 'coneHigh' | 'coneLow';
 export type IndicatorSource = 'vwap' | 'ema9' | 'ema21' | 'ema50' | 'rsi';
@@ -73,7 +11,7 @@ interface AlertBase {
   id: string;
   /** When it fired, in epoch ms. 0 while it is still waiting. */
   firedAt: number;
-  /** When it was set (or set again), in epoch ms — the drawer's "set 21:20" (2026-09-10); absent on entries saved before it */
+  /** When it was set (or set again), epoch ms; absent on older entries. */
   setAt?: number;
 }
 
@@ -158,11 +96,8 @@ export interface NewsAlert extends AlertBase {
   armedAt: number;
 }
 
-/** A script's own `alertcondition(...)`, armed from the library's gear card
-    (2026-09-10, Noah: "wire the script alerts into the bell"). Not judged by
-    `evaluateAlert` — the shell's watcher runs the script over the name's
-    bars on the timeframe it was armed on, with the placement's inputs, and
-    fires it when the condition holds on a bar that closes after arming. */
+/** A script's own `alertcondition(...)`, armed from the library's gear card; not judged by `evaluateAlert` — the shell's watcher
+    runs the script on the armed timeframe and fires on a bar that closes after arming. */
 export interface ScriptAlert extends AlertBase {
   kind: 'script';
   scriptId: string;
@@ -214,9 +149,7 @@ const readAlert = (a: unknown): Alert | null => {
   const c = a as Record<string, unknown>;
   if (typeof c.id !== 'string' || !isFin(c.firedAt)) return null;
   const base = { id: c.id, firedAt: c.firedAt as number, ...(isFin(c.setAt) ? { setAt: c.setAt as number } : {}) };
-  /* Legacy vocabulary (pre-2026-08-29): alerts saved before the supreme
-     rename carry 'newking' kinds and 'king' level names — healed, not
-     dropped, same contract as the pre-kinds entries below. */
+  /* Older vocabulary: 'newking' kinds and 'king' levels are healed to the supreme names, not dropped. */
   const rawKind = c.kind === 'newking' ? 'newsupreme' : c.kind;
   if (c.level === 'king') c.level = 'supreme';
   const kind = rawKind ?? (isFin(c.price) && typeof c.above === 'boolean' ? 'price' : null);
@@ -440,13 +373,8 @@ export function markFired(ticker: string, id: string, at: number): void {
   if (!hit || hit.firedAt !== 0) return;
   write(ticker, list.map(a => (a.id === id ? { ...a, firedAt: at } : a)));
 
-  /* OURS, on top of the port (Noah, 2026-08-28: "alerts dont dissapear
-     after a certain time nor does the bell show a notification icon").
-     Every firing is recorded in the session log and counted as unseen for
-     the bell; the fired mark stays lit on the pane for DISMISS_MS and then
-     takes itself off the armed set. The timeout re-checks firedAt so a
-     reader who re-arms inside the window is not silently un-armed by the
-     cleanup that outlived the firing it was cleaning. */
+  /* Every firing goes to the session log and the bell's unseen count; the mark stays lit for DISMISS_MS, then leaves the armed set.
+     The timeout re-checks firedAt so a re-arm inside the window is not undone. */
   const prev = firedLogs.get(ticker) ?? [];
   firedLogs.set(ticker, [{ key: `${id}-${at}`, alert: { ...hit, firedAt: at }, at }, ...prev].slice(0, FIRED_LOG_CAP));
   unseenCounts.set(ticker, (unseenCounts.get(ticker) ?? 0) + 1);
@@ -457,13 +385,7 @@ export function markFired(ticker: string, id: string, at: number): void {
   }, DISMISS_MS);
 }
 
-/*
-  ── THE FIRED LOG, THE BELL COUNT, AND THE 3-SECOND RULE (ours) ────────────
-
-  Deliberately IN-MEMORY. This file's contract is "while this tab is open";
-  a persisted log would quietly become the notification service the menu
-  explicitly says this is not.
-*/
+/* The fired log is in memory on purpose: alerts promise "while this tab is open", not a notification service. */
 const DISMISS_MS = 3000;
 const FIRED_LOG_CAP = 20;
 
@@ -505,16 +427,8 @@ export function clearFiredLog(ticker: string): void {
   notifyTicker(ticker);
 }
 
-/*
-  ── EVERY NAME AT ONCE (2026-09-10, the alerts rule: "see in one place") ──
-
-  The store is one list per name, so a surface that shows every alert the
-  reader has — the drawer behind the sidebar's bell — needs to know which
-  names hold one. An index key remembers them across reloads; a scan of the
-  store's own keys heals an index that was never written (alerts set before
-  the index existed). One channel carries "something, somewhere, changed";
-  the snapshot is rebuilt lazily and kept by identity for useSyncExternalStore.
-*/
+/* Every name at once (the drawer): an index key remembers which names hold alerts, healed by a scan of the store's own keys;
+   one channel says "something changed" and the snapshot is rebuilt lazily, kept by identity for useSyncExternalStore. */
 const NAMES_KEY = 'slayer_alert_names';
 const NAME_PREFIX = 'slayer_price_alerts_';
 let names: Set<string> | null = null;

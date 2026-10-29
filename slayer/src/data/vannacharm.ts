@@ -1,8 +1,5 @@
-/*
-  Vanna and charm level shifts. On the live book vanna and charm change the delta hedge, not the gamma walls, so the
-  projected levels are the current ones, named with the pages' own rules (core/walls.ts pickLegWalls, data/flipLevel.ts
-  levelFlip). The simulator desk keeps its scenario projection.
-*/
+/* Vanna and charm level shifts. On the live book they move the delta hedge, not the gamma walls, so the projected levels are the current ones
+   named by the pages' rules (core/walls.ts pickLegWalls, flipLevel levelFlip). */
 
 import { bookCandles, bookHistory } from './uwBook';
 import { pickFlip, pickLegWalls } from '../core/walls';
@@ -79,10 +76,7 @@ function liveLevels(snapshot: MarketSnapshot, chain: readonly StrikeNode[]): Lev
 // ---- scenario projection -------------------------------------------------------
 function projectStrike(n: StrikeNode, mode: ShiftMode, ivShift: IvShift, maxCharm: number, spot: number, ticker: string): number {
   if (mode === 'CHARM') {
-    // Delta decay bleeds gamma hardest at the money, and the CALL and PUT legs
-    // bleed at different per-strike rates — that differential is what lets the
-    // NET flip sign near zero (flip migrates) and lets neighboring strikes
-    // overtake a wall (walls migrate). Pure uniform scaling can do neither.
+    // Charm bleeds gamma hardest at the money and at different rates per leg; that differential lets the net flip sign and walls migrate.
     const norm = Math.abs(n.charm) / (maxCharm || 1);
     const t = HOURS_TO_CLOSE / 6.5;
     const jc = h01(`${ticker}-${n.strike}-charm-c`);

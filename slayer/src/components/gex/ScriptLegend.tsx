@@ -1,42 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SCRIPTS' LEGEND (components/gex/ScriptLegend.tsx)
-
-  The scripts on a pane, named at the chart's top
-  left the way TradingView lists its indicators
-  (Noah, 2026-09-10: "the indicators added appear on
-  the top left corner … with a blind/show or remove
-  ability. i want that as well"): the name, its
-  inputs' values in muted ink, and on hover an eye
-  to hide or show it and an × to take it off. A
-  hidden script stays listed, dimmed, its eye shut,
-  so the reader knows it is there. A script that
-  does not read says so instead of drawing nothing.
-
-  WHERE IT SITS. Every host floats its own chrome
-  over the chart's top — Pulse's strip and readout,
-  the Weigher's strip, Terrain's strip and compares
-  — and each is a different height that wraps at
-  its own width. The chart cannot know those, so
-  the hosts mark that chrome `data-chart-chrome`
-  and the legend measures: it sits four pixels
-  under the lowest marked block that overlaps this
-  chart's upper third, and re-measures whenever
-  the chart's box changes size.
-
-  ITS BOX IS ITS OWN (Noah, 2026-10-18: "severe
-  shaking … the words move up and down RAPIDLY"
-  with the pointer between two rows). The gaps
-  between the rows used to let the pointer through
-  to the plot, and a host whose chrome changes with
-  the plot's hover (Terrain's hovered-bar readout)
-  moved this legend under the pointer — onto a row,
-  off the plot, back again, every frame. The host's
-  chrome now keeps one height (Terrain.tsx), and the
-  legend's whole box takes the pointer, gaps
-  included, so no host can shake it that way again.
-==================================================
-*/
+/* Scripts on a pane, listed top left as TradingView does: name, inputs, eye and ×; a hidden one stays dimmed.
+   It sits 4 px under the lowest `data-chart-chrome` block over the chart's upper third, and its whole box takes the pointer so it cannot jitter. */
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, X } from 'lucide-react';
@@ -70,10 +33,7 @@ const clearance = (root: HTMLElement): { top: number; chrome: HTMLElement[] } =>
 const ScriptLegend = ({ paneId, scripts }: { paneId: string; scripts: PaneScript[] }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [top, setTop] = useState(8);
-  /* Measured after every render (the chrome can appear later — a compare
-     added), whenever the chart's box resizes (the strip wraps), and whenever
-     a chrome block itself changes size (a readout that fills in a beat after
-     full screen opens). */
+  /* Measured after every render, on the chart's resize, and when a chrome block itself resizes. */
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -93,12 +53,8 @@ const ScriptLegend = ({ paneId, scripts }: { paneId: string; scripts: PaneScript
   return (
     <div
       ref={rootRef}
-      /* IT GLIDES TO ITS PLACE (Noah, 2026-10-18, Terrain's Tools kit rolling back in: "the indicators fill back up
-         the empty space … rapid and robotic when it should be smooth not a binary 0 -> 1"): the chrome it sits under
-         changes height in a few frames, and the legend used to land on each new measurement at once. A transition on
-         `top` carries it there over 220ms on an ease-in-out, retargeted by every measurement on the way, so it trails
-         the chrome's foot smoothly in either direction. The first placement is measured before the first paint
-         (useLayoutEffect), so nothing glides in from the top on mount. */
+      /* It glides to its place (220 ms on `top`, retargeted by each measurement) as the chrome above changes height;
+         the first placement is before paint, so nothing glides in on mount. */
       style={{ top, transition: 'top 220ms cubic-bezier(0.45, 0, 0.25, 1)' }}
       className="absolute left-3 z-10 flex flex-col items-start gap-[3px] pointer-events-auto select-none"
       aria-label="Scripts on this pane"

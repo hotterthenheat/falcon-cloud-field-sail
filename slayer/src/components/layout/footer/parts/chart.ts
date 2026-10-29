@@ -421,7 +421,7 @@ export const ladder = (o: { seed?: number; gap?: number; curve?: boolean; share?
           c.setLineDash([]);
         }
       }
-      /* THE BOOK'S OWN MARKS: the supreme's row in its magenta, a wall named either side, the flip a grey line of dashes */
+      /* The book's own marks: the supreme's row in magenta, a wall named either side, the flip a grey dashed line. */
       if (o.marks && rows.length > 8) {
         const n = rows.length;
         const named: [number, string, string][] = [

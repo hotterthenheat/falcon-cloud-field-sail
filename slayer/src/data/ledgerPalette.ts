@@ -1,22 +1,10 @@
 import { useSyncExternalStore } from 'react';
 import type { LedgerPalette } from '../components/gex/ColoursSwitch';
 
-/*
-==================================================
-  SLAYER TERMINAL - THE MAP'S COLOURS (data/ledgerPalette.ts)
-
-  Which ramp the matrix and the calendar are painted in — thermal, or the
-  house's ember and glacier. A preference, not a read, so it lives in
-  Settings › Appearance and is remembered on this machine (idea 10,
-  2026-10-13: the band's colours card was 150px of every row for a choice
-  made once).
-==================================================
-*/
+/* Which ramp the matrix and calendar wear, thermal or the house's ember and glacier: a preference in Settings › Appearance, remembered on this machine. */
 
 const KEY = 'slayer_ledger_palette';
-/* THE THERMAL RAMP BY REST (Noah, 2026-10-14: "the heatmap and matrix should always start off as the thermal colorway"
-   — the house's own tradition since the thermal try of 2026-09-05); the partner's cut opened on ember and glacier. A
-   house choice made in Settings is kept. */
+/* Thermal by default; a house choice made in Settings is kept. */
 const read = (): LedgerPalette => {
   try {
     return localStorage.getItem(KEY) === 'house' ? 'house' : 'thermal';

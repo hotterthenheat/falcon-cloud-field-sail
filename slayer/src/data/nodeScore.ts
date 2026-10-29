@@ -1,9 +1,5 @@
-/**
- * The scorecard.
- * A hold is ten minutes inside the wider of five cents and two basis points, not the next print.
- * Nearby strikes, one step off the nodes, are scored the same way.
- * Each morning, yesterday's closing flow inventory is set against the new open interest.
- */
+/** The scorecard: a hold is ten minutes inside the wider of five cents and two basis points; nearby strikes one step off are scored the same.
+    Each morning yesterday's closing flow inventory is set against the new open interest. */
 
 interface NodeScore {
   flowHeld: number;

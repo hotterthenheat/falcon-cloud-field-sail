@@ -1,10 +1,5 @@
-/*
-  Carries a person's localStorage state through their account (public.user_state, one row per carried key).
-  The stores keep writing localStorage; this watches the browser's setItem/removeItem for CARRIED keys, stamps each
-  change and uploads it in batches. At boot the account's rows are pulled and the newer side wins, key by key.
-  Signing out flushes, then clears the carried keys. Scripts (IndexedDB) and device-only state are not carried.
-  Last write wins by time; offline, an upload waits for the next change or boot.
-*/
+/* Carries localStorage state through the account (public.user_state, a row per carried key): watches setItem/removeItem on carried keys,
+   uploads in batches, pulls at boot with the newer side winning per key, and clears them on sign-out. Scripts and device-only state stay local. */
 
 import { supabase } from './supabase';
 import { readAccount } from './account';

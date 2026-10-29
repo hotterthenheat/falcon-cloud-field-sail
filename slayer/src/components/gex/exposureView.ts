@@ -1,15 +1,5 @@
-/*
-  The Ledger's pointer contract: a cell is one strike at one expiry, and
-  the wrapper turns it into the house readout card.
-
-  THE GREEK PICK (Noah, 2026-09-10: "the greek choosing button … you can
-  either choose 1 or 2 or 3 or 4 or all"): the calendar and the ladder draw
-  any set of the five greeks. The pick is a list of values for the house's
-  DropdownMulti — the greeks ticked, or the one word 'all'. Nothing ticked
-  reads as all five. Ticking 'all' clears the greeks; ticking a greek clears
-  'all'. `pickGreeks` turns the list into the greeks drawn, in the book's
-  own order.
-*/
+/* The Ledger's pointer contract: a cell is one strike at one expiry. The greek pick is DropdownMulti's list (greeks, or 'all');
+   none ticked reads as all five, and `pickGreeks` returns them in the book's order. */
 import { GREEKS, type Greek } from '../../data/exposureSurface';
 import type { MultiOption } from '../ui/DropdownMulti';
 

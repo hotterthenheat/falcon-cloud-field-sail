@@ -1,7 +1,4 @@
-/*
-  One pane's exposure, with a status on every number.
-  A missing wall is unavailable. It is never the spot.
-*/
+/* One pane's exposure with a status on every number; a missing wall is unavailable, never the spot. */
 
 import { DEALER_CALL, DEALER_PUT } from './spxFacts';
 

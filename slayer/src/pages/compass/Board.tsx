@@ -157,9 +157,7 @@ const Board = () => {
     for (const id of settleOpen(trackedSetups, live.setups, spotOf, opens)) untrackSetup(id);
   }, [live.setups, live.spots, trackedSetups, opens, untrackSetup]);
 
-  /* Nothing selected → #1 is. The rail always follows a selection, so it
-     never belongs to nothing; a sweep, filter or kind change that drops the
-     selected card falls back to the first one visible. */
+  /* Nothing selected → #1 is: a scan, filter or kind change that drops the selected card falls back to the first visible. */
   useEffect(() => {
     if (!rankedSetups.length) return;
     if (!selectedId || !rankedSetups.some(s => s.id === selectedId)) setCompassView({ selectedId: rankedSetups[0].id });
@@ -199,9 +197,8 @@ const Board = () => {
     ];
   }, [sleeveDates]);
   const nameRev = useSyncExternalStore(subscribeCompanyNames, companyNamesRev, () => 0);
-  useEffect(() => {
-    askCompanyNames(COMPASS_TICKERS);
-  }, []);
+  /* The name search matches company names, so all 456 are asked for, but only once the search is opened */
+  const askNames = () => askCompanyNames(COMPASS_TICKERS);
   const ALIAS: Record<string, string> = {
     SPX: 'spx spxw xsp s&p sp500',
     SPXW: 'spx spxw xsp',
@@ -322,6 +319,7 @@ const Board = () => {
                 value={tickerFilter ?? 'ALL'}
                 options={nameOptions}
                 match={matchName}
+                onOpen={askNames}
                 onChange={v => {
                   if (v === 'ALL' || !COMPASS_SET.has(v)) {
                     setCompassView({ tickerFilter: null });

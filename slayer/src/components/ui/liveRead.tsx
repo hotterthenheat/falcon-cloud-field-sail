@@ -2,11 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useTicker } from '../../context/MarketDataContext';
 
-/*
-  Live figures. Digits keep one width, a print that moves flashes once,
-  and a panel that has gone quiet says so beside its title — never by
-  pasting a vendor's error sentence into a cell.
-*/
+/* Live figures: digits keep one width, a moving print flashes once, and a quiet panel says so beside its title. */
 
 /** A flow print (Unusual Whales) that has not printed in this long is stale. */
 export const FLOW_TTL_MS = 20_000;

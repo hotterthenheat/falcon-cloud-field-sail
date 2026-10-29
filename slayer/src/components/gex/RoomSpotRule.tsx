@@ -1,16 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SPOT ROW'S PILL, ON THE
-  ROOM'S PRICE (components/gex/RoomSpotRule.tsx)
-
-  One price on the page (the owner, 2026-10-14):
-  the pill between the strikes reads the room's
-  price now (pages/pinpoint/useRoomScan.ts
-  useRoomSpot) — the head's figure — and it alone
-  re-renders on the tick; the grid round it moves
-  only when the price crosses a strike.
-==================================================
-*/
+/* The spot row's pill on the room's price (useRoomSpot): it alone re-renders on the tick; the grid moves only when the price crosses a strike. */
 
 import SpotRule from '../ui/SpotRule';
 import { useRoomSpot } from '../../pages/pinpoint/useRoomSpot';

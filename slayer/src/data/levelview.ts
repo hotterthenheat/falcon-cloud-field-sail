@@ -1,18 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - LEVEL VIEW (levelview.ts)
-  What a focused strike is DOING today (Noah,
-  2026-08-22: "what purpose does bringing me to
-  the chart serve"). Three facts the ranking can't
-  show because it ranks from the latest scan only:
-    · how far price is from the level, live
-    · whether price has tested it this session
-    · whether the gamma there is building or
-      bleeding since the open
-  Read off the simulator's tape and GEX history —
-  no new engine, just the chart's own data spoken.
-==================================================
-*/
+/* What a focused strike is doing today: how far price is, whether it was tested this session, and whether its gamma is building since the open. */
 
 import { SESSION_CLOSE_MIN, SESSION_OPEN_MIN, nyClock, nyIsoDate, nyMinutes } from '../core/nyTime';
 import { recordDay } from './bookWindow';
@@ -41,9 +27,7 @@ const TREND_THRESHOLD = 15;
 /** A bar's time, New York's clock — the market's day, whatever zone the machine is in */
 const fmtTime = (t: number) => nyClock(t * 1000);
 
-/** The live session's bars — today's cash session (sessionCut). Exported for
-    the Wall Report Card (2026-09-05), which grades every level on the same
-    session cut the focus chip's touches use. */
+/** The live session's bars (sessionCut), shared with the Wall Report Card so every grade reads the same session cut. */
 export function sessionBars(ticker: string) {
   const live = bookCandles(ticker);
   /* A live vendor book answers for this name. One bar, or none, is not a
@@ -66,18 +50,9 @@ export const inCashSession = (t: number): boolean => {
   return m >= SESSION_OPEN_MIN && m < SESSION_CLOSE_MIN;
 };
 
-/**
- * Per strike, net gamma at the session OPEN as a ratio of net gamma NOW
- * (the motion ghost's data, Noah 2026-08-22). A ratio under 1 means the
- * strike has built since the open; over 1, bled; negative, the side flipped.
- * Ratios, not dollars, so a ladder sliced to one expiry can apply the
- * strike's own motion to its own scale. Null until a session has two
- * snapshots to compare.
- */
+/** Per strike, net gamma at the open over net gamma now: under 1 built, over 1 bled, negative flipped. Null until two snapshots exist. */
 export function netSinceOpenRatio(ticker: string): Map<number, number> | null {
-  /* NOT ON THE VENDOR'S BOOK (the Pinpoint audit, 2026-10-22): its minute history walks today's VOLUME onto the open
-     interest, and volume is not open interest — "39× growing", "new today" on strikes whose contracts never changed.
-     Open interest is counted once, overnight; there is no since-the-open change to show, so none is claimed. */
+  /* Not on the vendor's book: its minute history walks volume onto open interest, and OI is counted once overnight, so no since-open change is claimed. */
   if (peekEntry(ticker)) return null;
   const session = sessionBars(ticker);
   if (!session) return null;
@@ -95,13 +70,8 @@ export function netSinceOpenRatio(ticker: string): Map<number, number> | null {
   return out;
 }
 
-/**
- * THE BOOK AS IT STOOD AT THE OPEN (2026-10-12, the calendar's badges — Noah: Skylit's velocity figures "on the
- * node"): the session's first GEX snapshot carries the open interest by strike at that instant, and the first bar
- * carries the price; the chain is rebuilt from the two by the simulator's own estimator, so an exposure surface
- * built off it is the same maths at the open. Everything else on the snapshot (the plan, the indicators, the tape) is
- * the live one's — no surface reads them. Null until the session has a snapshot to start from.
- */
+/** The book as it stood at the open: the session's first GEX snapshot's OI by strike and the first bar's price. Null on the vendor's book
+    (it has no opening book of its own) and until a snapshot exists. */
 export function snapshotAtOpen(ticker: string): MarketSnapshot | null {
   /* the vendor's book has no opening book of its own (see netSinceOpenRatio) — and the simulator's chain is not this name's */
   if (peekEntry(ticker)) return null;
@@ -117,22 +87,8 @@ export function snapshotAtOpen(ticker: string): MarketSnapshot | null {
   return null;
 }
 
-/*
-  THE SINCE-OPEN READ — ONE RULE FOR EVERY CARD (2026-09-16). Terrain's
-  rail card printed "+164103195%" (Noah: "do you see the crazy large number
-  on this card??? … what should we do about atrociously large numbers …
-  on crazy days"). The strike's net was next to nothing at the open, and a
-  percent of nothing is not a figure a reader can use — on a real day a
-  strike CAN go from a balanced book at the bell to hundreds of millions
-  one-sided by noon. The Map's strike card had a rule for it already; now
-  every card reads it from here, and no card prints a raw percent again:
-    · the side flipped (ratio < 0)         → words only: "flipped sides since the open"
-    · now is 20× the open or more (< 0.05) → words only: "new since the open"
-    · now is over 3× the open              → the multiple, "4.2×", building
-    · else the percent, −99 … +200, and the word by the ±15% threshold
-  Every figure is grouped with commas by construction (`toLocaleString`),
-  so a figure can never print as a run of digits even if a tier moves.
-*/
+/* The since-open read, one rule for every card: side flipped → words only; now ≥ 20× the open → "new since the open";
+   over 3× → the multiple; else the percent (−99 … +200) with the ±15% word. Never a raw percent of nothing. */
 interface SinceOpenRead {
   /** The figure as printed — "+37%", "-12%", "4.2×" — or null when only the words apply */
   figure: string | null;

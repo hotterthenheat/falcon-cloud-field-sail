@@ -1,8 +1,5 @@
-/*
-  What is on the record about a name off the tape: insider trades (SEC Form 4) and members of Congress' reported trades
-  (STOCK Act). The shapes follow the real feeds: amount brackets rather than figures, a three-state plan flag, the
-  owner on every row.
-*/
+/* What is on the record about a name off the tape: insider trades (SEC Form 4) and members of Congress' trades (STOCK Act),
+   shaped like the feeds (amount brackets, a three-state plan flag, the owner on every row). */
 
 /* ---- Congress ------------------------------------------------------------------ */
 

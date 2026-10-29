@@ -1,10 +1,5 @@
-/*
-  The shell's one watchlist of names, in sections the reader names, each name flagged or not (store:
-  data/nameWatch.ts). Opened from the rail over any page. A row shows the mark, price, day change and the nearest of
-  call wall, put wall and flip with its distance; a press makes it the terminal's name. Contract lists stay where
-  they live (Weigher, Trace bookmarks, Compass Tracker) and rows link to them. Kept locally and carried by the
-  account. Esc or an outside click closes it.
-*/
+/* The shell's one watchlist of names in reader-named sections (data/nameWatch.ts): mark, price, day change and the nearest level
+   per row; a press makes it the terminal's name. Contract lists stay in their own rooms. Kept locally and carried by the account. */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';

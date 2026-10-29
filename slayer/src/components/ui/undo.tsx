@@ -1,13 +1,5 @@
-/*
-  Undo instead of "are you sure?": a destructive action happens at once and a chip in the toast column (AlertToasts)
-  offers Undo with a countdown.
-
-  Usage: do the destructive thing, keep what restores it, then
-  `undoable({ label: \`Removed ${gone.name}\`, undo: () => restoreDesk(gone, i) })`. The chip shows for `ms` (6 s),
-  pausing under the pointer or focus; Undo (or Ctrl/Cmd+Z outside a text field) runs `undo` once. `onExpire` runs
-  on timeout; a chip with the same `key` replaces the last. The label is the plain past tense. `undoable` returns a
-  dismiss function. The shell renders <UndoToasts /> once.
-*/
+/* Undo instead of "are you sure?": the action happens at once and a toast chip offers Undo for `ms` (6 s, paused under hover or focus;
+   Ctrl/Cmd+Z works too). `undoable({ label, undo, onExpire?, key? })` returns a dismiss; the shell renders <UndoToasts /> once. */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 

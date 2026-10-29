@@ -91,7 +91,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const [win, setWin] = useState('15m');
   const winIdx = Math.max(0, READ_WINDOWS.findIndex(w => w.key === win));
 
-  /* TODAY'S CONTRACTS OVER EACH WINDOW — the minute grid, seven books back (the read card's own) */
+  /* Today's contracts over each window, off the minute grid, seven books back (the read card's own). */
   const hist = useMemo<(ExposureProfileData | null)[] | null>(() => {
     const range = replayRange(s.ticker);
     if (!range) return null;
@@ -111,7 +111,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
   const shownThen = (v: number | null): number | null => (v == null ? null : shownGreek(greek, v));
   const net = greek === 'gex' ? s.netGex : s.rows[greek].reduce((acc, r) => acc + r.value, 0);
   const flipAt = s.flip;
-  /* THE REGIME IS THE NET'S SIGN (data/flipLevel.ts) — "ABSORBS" beside a red −$1.3B read the side of the flip */
+  /* The regime is the net's sign (data/flipLevel.ts), never the side of the flip. */
   const regimeWord = flipAt != null && flipAt > 0 && Math.abs(s.spot - flipAt) / flipAt <= 0.0005 ? 'either way' : s.netGex >= 0 ? 'absorbs' : 'amplifies';
   const rowOf = (strike: number): StrikeExposure | undefined => s.strikes.find(r => r.strike === strike);
   /* a level outside the drawn window still has its value, read off the side's whole chain */
@@ -156,7 +156,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
     return parts.join(' ');
   })();
 
-  /* EVERY FIGURE IN THE PRIMARY INK — a missing one muted; no ramp, no family colour on a number */
+  /* Every figure in the primary ink, a missing one muted; no ramp colour on a number. */
   /* gamma in the reader's sign and ink (retailSign.ts): positive absorbs, green; negative amplifies, red */
   const Money = ({ v, bold = false, size = 11, g: mg = greek }: { v: number | null; bold?: boolean; size?: number; g?: Greek }) => {
     /* never a false $0: vega comes off the contract rows alone, so a strike whose contracts carry none says so */
@@ -251,7 +251,7 @@ const CompareSidePanel = ({ side, s, cmp, unit, greek, greeks, chip, focus, onPi
         {s.read}
       </p>
       <div className="flex flex-col" data-side-levels>
-        {/* THE ONE ORDER (core/walls.ts LEVEL_ORDER): supreme · call wall · put wall · flip */}
+        {/* Levels in LEVEL_ORDER (core/walls.ts): supreme, call wall, put wall, flip. */}
         {(greeks && greeks.length > 1 ? greeks : [greek]).map(g => (
           <Level key={g} word={greeks && greeks.length > 1 ? GREEK_LABEL[g] : 'supreme'} tone="supreme" k={s.supreme[g].strike} g={g} />
         ))}

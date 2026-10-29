@@ -1,15 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PINE RUNTIME'S SHAPES
-  (core/pine/types.ts)
-
-  What goes in (bars, the reader's inputs, the
-  terminal's own numbers) and what comes out (the
-  lines, fills, marks and alerts a script drew) of a
-  run. The runtime is a Pine v6 subset interpreted in
-  the browser — never eval — see core/pine/index.ts.
-==================================================
-*/
+/* A run's inputs (bars, reader inputs, the terminal's own numbers) and outputs (lines, fills, marks, alerts). See core/pine/index.ts. */
 
 import type { ScriptInputValue, ScriptPlotStyle } from '../../types/scripts';
 

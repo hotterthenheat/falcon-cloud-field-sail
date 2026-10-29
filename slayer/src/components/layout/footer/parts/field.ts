@@ -152,8 +152,7 @@ export const orders = (ch: Chart): Part => {
   };
 };
 
-/* ---- THE ALERTS' LINES: a dashed line with a bell at its end; when the price crosses one it sounds — a ring where it
-   crossed, the line lit, and a card in the corner saying so ------------------------------------------------------- */
+/* ---- Alert lines: a dashed line with a bell; when price crosses one it rings, the line lights and a corner card says so ---- */
 
 export const bell = (c: CanvasRenderingContext2D, x: number, y: number, style: string, sharp: boolean) => {
   c.fillStyle = style;
@@ -284,8 +283,7 @@ export const alertLines = (ch: Chart, o: { toast?: boolean; count?: number } = {
   };
 };
 
-/* ---- THE BACKTEST'S REPLAY: a past day's candles, drawn up to the play head as it moves along, a target and a stop on
-   it, and the scrubber under it — the day's hours, the head, the replay's own clock ------------------------------- */
+/* ---- The backtest's replay: a past day's candles drawn to the play head, a target and stop, and the scrubber ---- */
 
 const OPEN_MIN = 9 * 60 + 30;
 const CLOSE_MIN = 16 * 60;
@@ -371,7 +369,7 @@ export const replay = (o: { seed?: number; cycle?: number } = {}): Part => {
           type(b, word, pane.x1 - 46, y + 0.5, { size: 8.5, hue: ink.panel });
         }
       }
-      /* THE SCRUBBER'S CARD: the replay's day and clock, its track and the day's hours, the controls */
+      /* The scrubber's card: the replay's day and clock, its track and hours, the controls. */
       frame(b, card, { a: 0.16, radius: 8, grip: false });
       if (!sharp && keep(b, 0.5)) {
         c.fillStyle = rgb(ink.line, 0.25);

@@ -1,37 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE EVERYDAY DRAWING KINDS
-  (components/gex/drawingKinds.ts)
-
-  The layer's first thirteen kinds are drawn inside
-  drawingsPrimitive.ts. These twenty-one arrived
-  together (Noah, 2026-09-19, with TradingView's own
-  drawing panels: "how can we add all of these into
-  the toolbar without extending the toolbar super
-  long" → "build it, rail plus the everyday tools"),
-  and the primitive was a thousand lines already, so
-  they live here: how each one is DRAWN and how each
-  one is HIT, as two functions the primitive calls
-  first and falls through when they say "not mine".
-
-  Both halves of a kind sit side by side on purpose —
-  a mark that is drawn one way and hit another is the
-  bug this layer has met most often.
-
-    LINES      ray · hray · cross
-    FIB        fibext · fibchannel
-    MEASURE    long · short · prange · drange · avwap
-    SHAPES     triangle · circle · rotrect · polyline
-               brush · highlighter · arrowup · arrowdown
-    WORDS      text · callout · pricelabel
-
-  COLOUR. A mark is the reader's, so it wears the
-  layer's white or the ink they chose. Three places
-  take the pair instead, because there they ARE
-  direction: a position's reward and risk, a price
-  range's sign, and the up and down arrow stamps.
-==================================================
-*/
+/* The everyday drawing kinds beyond drawingsPrimitive.ts's first thirteen: how each is drawn and hit, side by side so the two cannot
+   disagree; the primitive calls these first. A mark wears the reader's ink, except where it is direction (risk/reward, price range, arrows). */
 
 import { fmtElapsed, measureSpan } from '../../data/measure';
 import type { Drawing, DrawingPoint } from './drawingsPrimitive';

@@ -1,10 +1,7 @@
 import DropdownSelect from './DropdownSelect';
 import { DESK_SESSIONS, followDeskClock, sessionMeta, setDeskSession, useDeskFollowsClock, useDeskSession, type DeskSession } from '../../data/deskSession';
 
-/*
-  Which session the book is being read in. Follow the clock unless the
-  reader pins one. The pin is the other rows; Follow gives the pin back.
-*/
+/* Which session the book is read in: the clock's, unless the reader pins one; Follow gives the pin back. */
 type Choice = DeskSession | 'clock';
 
 const SessionBook = () => {

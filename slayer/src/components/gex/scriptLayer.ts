@@ -1,20 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A SCRIPT ON THE CHART (components/gex/scriptLayer.ts)
-
-  What the Pine runtime hands back (core/pine
-  RunResult) drawn onto a lightweight-charts pane:
-  plots as line, step, histogram, area or dotted
-  series with their per-bar inks; hlines as price
-  lines; shapes as the library's markers; fills and
-  background washes through one small primitive
-  that paints between two series or behind the
-  bars, since the library has no band of its own.
-  One handle per placed script: a tick updates it
-  in place, a change of shape rebuilds it, and the
-  host tears it down whole.
-==================================================
-*/
+/* A Pine run (core/pine RunResult) drawn onto a lightweight-charts pane: plots as series, hlines as price lines, shapes as markers,
+   fills and washes through one small primitive. One handle per script: a tick updates in place, a shape change rebuilds. */
 
 import {
   AreaSeries,
@@ -257,15 +242,10 @@ export interface ScriptHandle {
   destroy: () => void;
 }
 
-/**
- * Draw one run onto a pane. `paneIndex` 0 is the tape; an own-pane script
- * takes the index the host allocated.
- */
+/** Draw one run onto a pane; `paneIndex` 0 is the tape, an own-pane script takes the host's index. */
 export function drawRun(chart: IChartApi, run: RunResult, bars: Bar[], paneIndex: number): ScriptHandle {
   const overlay = paneIndex === 0;
-  /* THE VALUE ON THE AXIS (Noah, 2026-10-17, the EMA ribbon: "i dont see them"): a script's plot prints its last value
-     on its axis in its own ink whether it overlays the price or stands in a pane of its own — TradingView's way; the
-     label the library draws takes the plot's colour. The hidden anchor series below keeps its label off. */
+  /* A plot prints its last value on its axis in its own ink, overlay or own pane, as TradingView does; the hidden anchor series keeps its label off. */
   const baseOpts = { priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, ...(overlay ? { priceScaleId: 'right' } : {}) };
   const sig = shapeSig(run);
   const plotSeries: { index: number; series: AnySeries }[] = [];

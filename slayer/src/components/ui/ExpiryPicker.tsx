@@ -1,11 +1,9 @@
-/*
-  A date control on react-day-picker (classes ours, none of its stylesheet) inside a Radix Popover, made for expiries:
-  weekends, holidays and past days are disabled, and today, this Friday, next Friday and the monthly sit above the grid.
-*/
+/* An expiry picker on react-day-picker (our classes, none of its CSS) in a Radix Popover: weekends, holidays and past days disabled;
+   today, this Friday, next Friday and the monthly as quick picks. */
 
 import { DayPicker } from 'react-day-picker';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { isoDate, isTradingDay, nextSession, today } from '../../core/calendar';
+import { isoDate, isTradingDay, nextSession, sessionAtOrBefore as backToSession, sessionBefore as prevSession, today } from '../../core/calendar';
 
 const SILVER_FILL = 'rgb(var(--silver-fill))'; /* the silver as a SURFACE — a filled pill with the dark word on it, the holo flat form on either ground */
 
@@ -15,12 +13,6 @@ const parse = (iso: string): Date | undefined => {
 };
 const fmt = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-/** Back off a holiday to the session before it — a Friday holiday expires Thursday */
-const backToSession = (d: Date) => {
-  const out = new Date(d);
-  for (let i = 0; i < 7 && !isTradingDay(out); i++) out.setDate(out.getDate() - 1);
-  return out;
-};
 const fridayOnOrAfter = (d: Date) => addDays(d, (5 - d.getDay() + 7) % 7);
 const thirdFriday = (year: number, month: number) => {
   const first = new Date(year, month, 1);
@@ -54,13 +46,6 @@ interface DateBoardProps {
   floor?: string;
   ceiling?: string;
 }
-
-const prevSession = (from: Date): Date => {
-  const out = new Date(from);
-  do out.setDate(out.getDate() - 1);
-  while (!isTradingDay(out));
-  return out;
-};
 
 /** The days a trader reaches for when writing the day they got in. */
 function quickEntered(from: Date = today()): { label: string; date: Date }[] {

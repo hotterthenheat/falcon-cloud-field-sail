@@ -1,8 +1,5 @@
-/*
-  Where New York's clock stands against the trading session, without loading any data module.
-  Stock session 09:30-16:00; pre-market from 04:00, after hours to 20:00; 'late' is 16:00-16:15, while index and
-  ETF options still trade.
-*/
+/* Where New York's clock stands against the session, loading no data module: stocks 09:30–16:00, pre from 04:00, after to 20:00;
+   'late' is 16:00–16:15 while index and ETF options still trade. */
 
 import { isTradingDay } from './calendar';
 import { nyParts } from './nyTime';

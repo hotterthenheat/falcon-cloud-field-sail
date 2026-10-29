@@ -1,20 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TWO SOUNDS (core/sound.ts)
-
-  Alerts out loud (Settings › The desk, 2026-09-12):
-  a JINGLE when an alert is set — two quick notes
-  rising, the bell's own swing made audible — and a
-  CHIME when one alerts, a longer, softer pair that
-  carries across a room. Drawn on the Web Audio
-  API, no files; the switch on the Settings page
-  silences both. The browser only lets a page play
-  after a gesture: setting an alert is one, so the
-  jingle always sounds; a chime that fires before
-  any gesture on this visit stays silent rather
-  than throwing.
-==================================================
-*/
+/* Alerts out loud (Settings › The desk): a rising jingle when one is set, a softer chime when one fires, on Web Audio with no files.
+   Browsers allow sound only after a gesture, so a chime before any gesture stays silent. */
 
 import { readDeskPrefs } from '../data/deskPrefs';
 import { EMBEDDED } from '../embed';

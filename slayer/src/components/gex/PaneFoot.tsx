@@ -1,28 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE FOOT OF THE PRICE PANE
-  (components/gex/PaneFoot.tsx)
-
-  Where a chart's floating bar lives (the replay bar,
-  the backtest's clock): along the foot of the PRICE
-  pane — not the foot of the chart. They were the same
-  place until an indicator took a pane of its own
-  (RSI, ADX, a script "in its own pane"): the bar was
-  hung off the time axis, so it lay across the new
-  pane and hid the very line the reader had just asked
-  for (Noah, 2026-09-20, with a picture of the folded
-  bar over an indicator's pane).
-
-  The library tells nobody when a pane is added, taken
-  away or dragged taller, so the pane's height is read
-  each frame and the DOM is written only when it has
-  changed. Until the first frame (a hidden tab gets
-  none) the bar rests above the time axis, as it used
-  to. A double-click on the bar stays on the bar: the
-  chart's box resets its view on one, and two quick
-  steps of a replay are not a reset.
-==================================================
-*/
+/* A chart's floating bar sits along the foot of the price pane, not the chart, so an indicator pane is never covered.
+   The library reports no pane changes, so the pane's height is read each frame and the DOM written only on change. */
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { IChartApi } from 'lightweight-charts';

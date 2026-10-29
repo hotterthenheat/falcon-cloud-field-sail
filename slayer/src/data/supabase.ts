@@ -1,9 +1,5 @@
-/*
-  The browser's Supabase client. It uses the project URL and the publishable key (row-level security governs what
-  that key reaches); the service-role key never comes near the browser. Without both variables, or in the landing's
-  photographer window (embed.ts PHOTO), accounts are off and the client is null. Under Node (tsx proof scripts)
-  import.meta.env is absent, which reads as accounts off.
-*/
+/* The browser's Supabase client on the project URL and publishable key (RLS governs what it reaches). Without both, in the landing's
+   photographer window, or under Node (proof scripts), accounts are off and the client is null. */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { PHOTO } from '../embed';

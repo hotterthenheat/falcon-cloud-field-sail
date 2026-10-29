@@ -90,7 +90,7 @@ const Boot = ({ src, onDone, run: runMs = RUN, sweep = 'all' }: Props) => {
         /* the last state is the picture itself */
         const sharp = k >= AT.length - 1 ? 1 : k / STATE_COUNT;
         piece.draw(ctx, 0, 0, c.width, c.height, sharp);
-        /* THE SWEEP: where its page's motion has passed, the picture is already itself — a soft edge, not a cut */
+        /* Where its page's motion has passed, the picture is already itself: a soft edge, not a cut. */
         if (sweep !== 'all' && sharp < 1 && lctx) {
           const f = Math.max(0, Math.min(1, (t - 0.08) / 0.7));
           const cw = c.width;

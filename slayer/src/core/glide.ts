@@ -1,41 +1,9 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE LAYOUT GLIDE (core/glide.ts)
-
-  The perf sweep (2026-09-06). The sidebar folding
-  is a 300ms width transition, and every canvas in
-  the main column was re-laid out on each of its
-  eighteen frames — two charts and a ladder at
-  35–50ms a frame, the stutter Noah named first
-  ("the sidebar being dragged for the first time").
-
-  While a glide is on, the surfaces that cost the
-  most HOLD THEIR SIZE — a chart pins itself to its
-  panel's right edge and lets the panel grow or
-  shrink round it, a ladder keeps its last measure —
-  and each takes ONE resize when the glide ends.
-  The DOM around them (borders, heads, rows of
-  text) reflows every frame as before; that part
-  was never the cost.
-
-  Two kinds. 'frame' is the sidebar's width glide:
-  the desk's grid items drop their own 200ms width
-  transition for it (index.css), so they follow the
-  frame instantly and settle when it does. 'snap'
-  is that same item transition after a widget is
-  dropped or resized — the chart holds through it
-  and takes the final size once.
-==================================================
-*/
+/* While the sidebar's 300 ms width glide runs, the costly surfaces (charts, ladders) hold their size and resize once at the end;
+   the DOM around them reflows as before. 'frame' is the sidebar glide, 'snap' a desk item's settle after a drop or resize. */
 
 type GlideKind = 'frame' | 'snap';
 
-/** WHERE THE FRAME IS GOING (2026-09-12): the sidebar knows the width the main
-    column will have when its glide settles, and says so at the start, so a
-    surface can lay itself out for the destination at once and RIDE the glide
-    there — instead of holding its old shape and snapping when the frame stops
-    (Noah: "the cards freeze and snap into frame... it changes the user's pov
-    rapidly"). */
+/** Where the frame is going: the sidebar states the main column's final width at the start, so a surface can lay out for it and ride the glide. */
 interface GlideTarget {
   mainWidth: number;
 }
@@ -64,12 +32,7 @@ export function beginGlide(maxMs = 450, kind: GlideKind = 'frame', to: GlideTarg
   endTimer = window.setTimeout(endGlide, maxMs);
 }
 
-/** THE HOST'S PROMISE: a host that already knows its width at the end of the
-    glide declares it (`data-tile-width` — the desk's tiles, laid out for the
-    destination the moment the glide begins and transitioning there). A surface
-    inside asks for the width IT will have then, and sizes for it at the start —
-    nothing left to do when the frame stops. Null when nothing above it made a
-    promise, and the surface holds and takes one resize at the end as before. */
+/** A host that knows its end width declares it (`data-tile-width`); a surface sizes for that at the start. Null with no promise: hold and resize once. */
 export function promisedWidth(el: HTMLElement): number | null {
   const host = el.closest<HTMLElement>('[data-tile-width]');
   if (!host) return null;

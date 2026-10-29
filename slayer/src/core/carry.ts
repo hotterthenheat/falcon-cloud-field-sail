@@ -1,21 +1,11 @@
-/*
-  The rate and dividend yield every greek is priced against. r is DEFAULT_R (the front-end bill's neighbourhood) until
-  a feed calls setCarry — Pinpoint and the Dossier read Unusual Whales only, so there it stays DEFAULT_R; q is 0 unless a
-  name's own yield is set (setDividend), never a blanket index yield.
-*/
+/* The rate and yield every greek is priced against: r is DEFAULT_R until a feed calls setCarry (Pinpoint and Dossier never do),
+   q is 0 unless a name's own yield is set. */
 
 interface Carry {
   /** Continuously-compounded risk-free rate, annualized (0.042 = 4.2%). */
   r: number;
   /** Continuous dividend yield, annualized (0 unless the name's own yield is known). */
   q: number;
-}
-
-interface CarrySource {
-  /** 'assumed' until a feed sets it — surfaces may print this. */
-  kind: 'assumed' | 'feed';
-  /** One line a surface can show a reader without lying. */
-  note: string;
 }
 
 /* The neighbourhood of the front-end Treasury yield. Not live — see above. */
@@ -25,10 +15,6 @@ export const DEFAULT_R = 0.042;
 export const DEFAULT_Q = 0;
 
 let current: Carry = { r: DEFAULT_R, q: DEFAULT_Q };
-let source: CarrySource = {
-  kind: 'assumed',
-  note: `r ${(DEFAULT_R * 100).toFixed(1)}% until the bill prints · q 0 until that name's yield is known`,
-};
 
 const yields = new Map<string, number>();
 

@@ -1,30 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE VISIT COUNT (core/analytics.ts)
-
-  One measurement tool, Plausible (plausible.io, run
-  from the EU): counts visits and pages without a
-  cookie and without a profile of anyone — the page,
-  the site that sent them, the browser and device
-  family, the country. Never a name, an email or an
-  address. Chosen 2026-10-10 over an in-house page
-  (Noah asked for "a analytics page … in real time";
-  the answer was: not ours to build, a service does
-  it better for $9 a month).
-
-  THE SWITCH IS THE BUILD'S: `VITE_PLAUSIBLE_DOMAIN`
-  names the site (slayerterminal.com) and the script
-  loads; blank or absent, nothing loads and nothing
-  is counted — development, the checks and every
-  build before the domain exists. The privacy page
-  reads the same switch, so it says what is true of
-  the build it is on (pages/landing/legal/Privacy.tsx).
-
-  Not a visit: the terminal inside the landing's
-  window (src/embed.ts), and an automated browser —
-  the photographer, the link check, the phone sweep.
-==================================================
-*/
+/* Plausible (EU-hosted) counts visits without cookies or profiles. `VITE_PLAUSIBLE_DOMAIN` switches it on (blank: nothing loads),
+   and the privacy page reads the same switch. Not counted: the landing's embedded terminal and automated browsers. */
 
 const named = (import.meta.env.VITE_PLAUSIBLE_DOMAIN as string | undefined)?.trim() ?? '';
 

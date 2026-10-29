@@ -177,8 +177,7 @@ export function buildCompareSide(snapshot: MarketSnapshot, clock: AheadClock, ex
   } catch {
     return null;
   }
-  /* THE FLIP OFF THE SAME CONTRACTS AS THE WALLS: the snapshot's chain is the Levels card's; with another expiry picked
-     here the gauge read the card's flip beside this expiry's walls */
+  /* The flip off the same contracts as the walls: with another expiry picked here, the gauge reads that expiry's chain. */
   const lens = snapshot.liveBook && snapshot.uwChains?.[expiry]?.length ? { ...snapshot, chain: snapshot.uwChains[expiry]! } : snapshot;
   const gauge = buildFlipGauge(lens);
   const iv = peekIv(ticker) ?? 0.2;

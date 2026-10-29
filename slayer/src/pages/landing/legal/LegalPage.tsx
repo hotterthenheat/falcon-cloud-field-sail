@@ -1,33 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A LEGAL PAGE OF THE SITE
-  (pages/landing/legal/LegalPage.tsx)
-
-  Noah, 2026-10-05: "lets talk terms and service".
-  The Terms and the Privacy Policy, in the landing's
-  clothes — the bar, the eyebrow, the two-tone head,
-  the footer — around a run of numbered sections.
-
-  WRITTEN TO BE READ. Every section opens with one
-  line IN PLAIN WORDS, then the text that governs.
-  The words are ours from a blank page: our products
-  by name, our rules (no refunds, no streaming, one
-  person an account, arbitration one at a time), in
-  the house voice. Nothing lifted from anyone else's
-  terms, not even the section names.
-
-  The two sections a reader must not miss — no
-  promises about the service, what we are liable for
-  — stand in a panel in the brighter ink, so they are
-  conspicuous without shouting in capitals.
-
-  LEGAL holds the few facts the pages share: the
-  name, the address, the state. The state is empty
-  until Noah names the company's home; the disputes
-  section reads "the state where Slayer Terminal is
-  based" until then, and one edit here fills it.
-==================================================
-*/
+/* The Terms and Privacy pages in the landing's clothes: numbered sections, each opening with one plain line, then the governing text.
+   The two must-read sections stand in a brighter panel. LEGAL holds the shared facts; the state is blank until set. */
 
 import { useEffect, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -36,7 +8,7 @@ import SiteFooter from '../../../components/layout/SiteFooter';
 import { Block, GroundProvider, useGround } from '../ground';
 import { Arrive, DOOR_ARROW, DOOR_GROUP, Eyebrow, Nav, TwoTone, Wrap, useDoorSeen } from '../pieces';
 
-/** The facts both pages share — the state is filled in once Noah names the company's home */
+/** The facts both pages share; `state` is filled in once the company's home state is set. */
 export const LEGAL = {
   name: 'Slayer Terminal',
   email: 'info@slayerterminal.com',
@@ -107,10 +79,7 @@ const Page = ({ kind, title, updated, intro, sections, sibling }: Props) => {
       <Nav ground={a} door={!doorSeen} />
       <Block on="a" id="legal" label={title} className="pt-28 sm:pt-32">
         <Wrap>
-          {/* THE PAGE ARRIVES (Noah, 2026-10-05: "make the transition to the privacy page and the terms of service page
-              also have a nice simple smooth animation right now it is quick"): the head's lines rise one after another on
-              the first paint, the way a section's head does when it scrolls into view; then the list of sections, then
-              the first section. Every later section arrives as it is scrolled to. */}
+          {/* The page arrives: the head's lines rise in turn on first paint, then the section list and the first section; the rest arrive as scrolled to. */}
           <Arrive atMount className="flex flex-col gap-5">
             <Eyebrow>
               Legal <span className="text-textMuted/60">·</span> {kind}
@@ -120,7 +89,7 @@ const Page = ({ kind, title, updated, intro, sections, sibling }: Props) => {
           </Arrive>
 
           <div className="mt-14 sm:mt-16 grid grid-cols-1 lg:grid-cols-12 gap-x-16 gap-y-10">
-            {/* THE SECTIONS BY NAME — a column that stays while the text scrolls; on a phone, the list above the text */}
+            {/* The sections by name: a sticky column on desk, the list above the text on a phone. */}
             <Arrive atMount className="lg:col-span-3 lg:sticky lg:top-28 lg:self-start">
               <nav className="arrive-line [--i:4]" aria-label="The sections">
                 <p className="font-mono text-t10 uppercase tracking-[0.2em] text-textMuted">In this page</p>
@@ -137,10 +106,8 @@ const Page = ({ kind, title, updated, intro, sections, sibling }: Props) => {
               </nav>
             </Arrive>
 
-            {/* THE NUMBER HANGS IN THE MARGIN (Noah, 2026-10-05: the title "should be vertically aligned with its children
-                making the number stick out of the alignment"): the number is a fixed box and the head is pulled left by
-                exactly that box and its gap, so the title starts where the plain line and the body start. On a phone the
-                column keeps that much room on its left so the number is not clipped at the gutter. */}
+            {/* The number hangs in the margin: the head is pulled left by the number's box and gap so titles align with their body;
+   a phone keeps that room on the left. */}
             <div className="lg:col-span-8 lg:col-start-5 flex flex-col gap-12 sm:gap-14 pl-9 lg:pl-0">
               {sections.map((s, i) => {
                 /* the first section follows the head and the list on the first paint; the rest arrive as they are reached */

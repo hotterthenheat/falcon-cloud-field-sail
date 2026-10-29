@@ -8,11 +8,8 @@ interface CompanyLogoProps {
   className?: string;
 }
 
-/*
-  A company mark for any ticker: the brand SVG (public/logos/{TICKER}.svg, brand colour baked in), else a monogram
-  tile. Both faces share one fixed box with no in-flow text (the letters are absolutely positioned), so swapping
-  faces never shifts the row's baseline.
-*/
+/* A company mark for any ticker: public/logos/{TICKER}.svg, else a monogram tile, both in one fixed box
+   with no in-flow text so swapping faces never shifts the baseline. */
 /* names without a file are remembered for the session, so the letters draw at once and the request is not repeated */
 /* symbols the remote logo source has no mark for, remembered across visits so a miss costs one request, not one per page */
 const MISS_KEY = 'slayer_logo_miss_v1';

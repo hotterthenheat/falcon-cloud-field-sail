@@ -1,8 +1,5 @@
-/*
-  The Compass decision journal: choice, record, resolve, recalibrate. The live writer and the replay harness write the
-  same shapes, told apart by FeatureSnapshot.provenance. DecisionEvent and FeatureSnapshot are append-only; an
-  OutcomeEvent holds only real market facts; weights change only through a WeightsRevision row.
-*/
+/* The Compass decision journal: choice, record, resolve, recalibrate. Live writer and replay harness write the same shapes
+   (FeatureSnapshot.provenance tells them apart); DecisionEvent and FeatureSnapshot are append-only, weights change only via WeightsRevision. */
 
 import type { ScannerKey, SleeveKey, Verdict } from './compass';
 /* Horizon is declared beside the weights it indexes; rows use that type, never a copy. */

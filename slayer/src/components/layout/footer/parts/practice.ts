@@ -3,7 +3,7 @@
 
 import { box, chip, dayWord, frame, keep, prose, rgb, rng, tag, type, walk, type Box, type Part, type Pen, type Pill, type Stage } from '../kit';
 
-/* NEW YORK'S CALENDAR: today's date there, so the month is the market's month */
+/* New York's calendar, so the month is the market's month. */
 const NY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' });
 const MONTH = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' });
 const today = () => {
@@ -153,7 +153,7 @@ export const calendar = (o: { seed?: number; week?: boolean } = {}): Part => {
   };
 };
 
-/* ---- THE MONEY'S CURVE: what the account made, trade on trade, walking --------------------------------------------- */
+/* ---- The equity curve: what the account made, trade on trade ---- */
 
 export const equity = (o: { seed?: number; title?: string } = {}): Part => {
   const wk = walk(o.seed ?? 1212, { step: 520, gap: 3, kick: 0.8, drift: 0.035, lean: 0.0008 });

@@ -1,32 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DAY BOX'S CHARTS
-  (components/gex/dayChart.ts)
-
-  The tape and the book through the day, drawn by
-  the chart library the way Compare's "Since the
-  open" is (the owner, 2026-10-14: "i need charts
-  that look that clean in the map page for the day
-  and the book charts … study it really good"). What
-  that chart is, taken whole:
-
-    · the library's own canvas — its lines, its
-      crosshair, its axis labels — never a hand-
-      drawn SVG over it;
-    · no grid at all; the price scale on the right
-      with the live value in a chip; the clock along
-      the foot, the hours in weight;
-    · the page's own ground (the dark panel, or the
-      paper's), the figure surface's quiet inks;
-    · the same face and size for every word on it.
-
-  The two charts stand one over the other and share
-  one clock: the same price-scale width on both, so
-  their plots end on the same pixel, and the same
-  minutes from the first bar to the close, so a
-  minute is one x on both.
-==================================================
-*/
+/* The day box's charts, drawn by lightweight-charts as Compare's "Since the open": the library's own canvas, no grid,
+   price scale right with a live chip, the clock along the foot. The two charts share one clock and one price-scale width. */
 
 import type { DeepPartial, IChartApi, ISeriesApi, LineData, SeriesType, Time, TimeChartOptions, UTCTimestamp } from 'lightweight-charts';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
@@ -37,13 +10,8 @@ import { nyTickMarks } from '../../core/nyTime';
 /** The axis's width before it is measured — a chrome offset's rest value only (the axes size themselves, below) */
 export const DAY_SCALE_W = 76;
 
-/* ONE WIDTH FOR THE DAY'S TWO AXES (Noah, 2026-10-18, the tape and the hedging chart: "too much padding with the price
-   axis, it should be touching the edge giving the chart more room"): the width used to be held open at 76 on both so
-   their plots ended on the same pixel — and the library sets its tick text from the LEFT of the axis, so a held-open
-   axis leaves its room on the right of the figures. Now each chart starts at its natural width (minimumWidth 0 — the
-   axis as wide as its figures, the figures at the edge) and reports it to its name's group; the widest sets both, so a
-   minute stays one x on both and the figures touch the edge on the wider chart, within a few pixels on the other. A
-   width only grows (a label widening re-measures); the group forgets a chart that leaves. */
+/* One width for the day's two axes: each chart reports its natural axis width to its group and the widest sets both,
+   so a minute stays one x on both. A width only grows; a chart that leaves is forgotten. */
 const groups = new Map<string, { widths: Map<string, number>; subs: Map<string, (w: number) => void> }>();
 export function syncDayScale(chart: IChartApi, group: string, id: string, onWidth?: (w: number) => void): () => void {
   let g = groups.get(group);
@@ -140,10 +108,8 @@ export function dayChartOptions(s: DaySurface, opts: { clock: boolean; logo: boo
 /** The epoch second at a New York minute of the session's day, off its first bar */
 export const dayStartOf = (firstTime: number, firstMin: number): number => firstTime - firstMin * 60;
 
-/** Every minute from the axis' first to its last — the clock both charts share, whether or not a bar has come yet (the
-    replay's boxes hold still: the axis is the session, not the bars so far). REAL POINTS, on a hidden series and a scale
-    of its own (CLOCK_SCALE): this library leaves whitespace-only data out of the clock, and in a replay the book's axis
-    ended on the replayed minute while the tape's ran to the close. A hidden series is never drawn, never snapped to. */
+/** Every minute from the axis' first to its last, as real points on a hidden series (CLOCK_SCALE): the library leaves
+    whitespace-only data out of the clock, so a replay's axes would otherwise end at different minutes. */
 export const CLOCK_SCALE = 'clock';
 export function dayClock(dayStart: number, from: number, to: number): LineData<Time>[] {
   const out: LineData<Time>[] = [];
@@ -160,15 +126,11 @@ const samePoint = (a: object | undefined, b: object | undefined): boolean => {
   return ka.every(k => (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k]);
 };
 
-/** THE NEWEST MINUTE, NOT THE WHOLE DAY: a tick moves the last point, a new minute adds one — the rest of the series is
-    never handed over again (the paying user's "make sure its all running fast"). Anything else — a replay scrubbed back,
-    a new name — sets the whole series. */
+/** The newest minute, not the whole day: a tick moves the last point, a new minute adds one; anything else sets the whole series. */
 export function feedSeries<T extends { time: Time }>(series: ISeriesApi<SeriesType>, next: readonly T[], prev: { current: readonly T[] | null }): void {
   const p = prev.current;
-  /* A TICK, NOT A NEW SERIES — the same first bar, one more bar at most, AND the bars already drawn unchanged (the ship
-     pass, 2026-10-22: a switch from SPY to NVDA handed a series with the same first minute and the same length, so only
-     the last bar was updated and the chart kept SPY's whole day at $765 beside NVDA's last print). The first point and
-     the last settled one are checked by value; anything else is drawn whole. */
+  /* A tick only if the first point and the last settled one match by value: same first minute and length is not enough
+     (a name switch kept the previous name's day). */
   const settled = next.length === (p?.length ?? -1) ? next.length - 2 : next.length - 3;
   if (
     p &&

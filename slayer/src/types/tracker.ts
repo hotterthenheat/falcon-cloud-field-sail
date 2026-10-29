@@ -1,10 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - TRACKER TYPES (tracker.ts)
-  Bookmarked setups for live monitoring on the
-  dedicated Tracker page.
-==================================================
-*/
+/* Bookmarked setups for live monitoring on the Tracker page. */
 
 import type { OptionRight, ScannerKey, SleeveKey, Verdict } from './compass';
 
@@ -16,8 +10,7 @@ export interface TrackedSetup {
   strike: number;
   right: OptionRight;
   scanner: ScannerKey;       // which scanner found it (the thesis lens)
-  /** Which tenor it was found on. Optional: rows tracked before the sleeve
-      axis (2026-08-04) don't carry one — treat as 'odte'. */
+  /** Which tenor it was found on; older rows carry none, read as 'odte'. */
   sleeve?: SleeveKey;
   /** The contract's own expiration, YYYY-MM-DD. Absent on rows kept before this field. */
   expiry?: string;

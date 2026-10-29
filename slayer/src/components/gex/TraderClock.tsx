@@ -1,57 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TRADER'S CLOCK
-  (components/gex/TraderClock.tsx)
-
-  Dealer hedging has a SCHEDULE, and no dealer
-  positioning product shows it as one (the Pinpoint
-  roadmap, 2026-09-05). This is today's session,
-  09:30 to 16:00 New York, cut into the phases
-  hedging actually lives by, with today's own
-  figures written into each: which strike price
-  sticks to at lunch, where charm bites into the
-  close, how much of today's gamma expires at 4:00.
-
-  REDONE 2026-09-05 in the approved grammar, on the
-  Tremor Tracker's shape: the session as a strip of
-  78 five-minute blocks, each block's shade the
-  phase's weight, the block you are in lit in the
-  live ink, the blocks still to come a shade
-  quieter. The phases are named above the strip,
-  the hours run under it.
-
-  HOW IT ANSWERS THE POINTER (Noah, same day):
-    hover a block     — its card opens: the minute,
-                        the phase, the phase's
-                        sentence for today, and one
-                        meaningful ink (absorbs or
-                        amplifies moves)
-    click a block     — the card and the sentence
-                        STAY on that block
-    click a name      — the words above the strip
-                        keep the whole phase, its
-                        blocks ringed in silver
-    click anywhere    — outside the strip, and it
-                        all lets go
-  The phase you are in wears the where-you-are
-  silver: its name, and its blocks a touch brighter.
-
-  THE PHASES ARE A RULE OF THUMB, stated as one.
-  THE FIGURES ARE TODAY'S: the gamma pin from the
-  0DTE profile, the largest-charm strike and the
-  levels charm moves from the vanna/charm engine,
-  the 4:00 share from the surface (the same number
-  the Calendar's read line prints). Nothing here is
-  a forecast of price — it is a timetable of the
-  forces that act on it.
-
-  NOW is the real clock (readSessionClock, New York
-  time), the same clock the shell's "to the bell"
-  reads. Outside the session the strip shows the
-  whole day and says which phase the next open
-  starts with.
-==================================================
-*/
+/* The Trader's Clock: today's 09:30–16:00 session as 78 five-minute blocks in the phases hedging lives by, each with today's figures
+   (the lunch pin, the charm window, the share expiring at 4:00). The phases are a rule of thumb; now is readSessionClock (New York). */
 
 import { GLOSSARY } from './glossary';
 import { levelsFor } from '../../data/levelsFor';
@@ -76,7 +24,7 @@ import { useLedgerPalette } from '../../data/ledgerPalette';
 import { fmtStrike } from '../../core/format';
 
 const LIVE = 'rgb(var(--select))';
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const OPEN_MIN = 9 * 60 + 30;
 const CLOSE_MIN = 16 * 60;
 const SPAN = CLOSE_MIN - OPEN_MIN; // 390 trading minutes
@@ -162,7 +110,7 @@ export const PHASES: Phase[] = [
     name: 'The close',
     weight: 1,
     pressure: 'amplifies',
-    /* "at the close", not "4:00": the box prints its hours as 09:30 … 16:00 (the audit's M6, 2026-10-13) */
+    /* "At the close", not "4:00": the box prints its hours as 09:30 … 16:00. */
     words: f => `the closing auction — ${f.bellShare != null ? `${f.bellShare}% of the gamma expires at the close (${bellDay().date})` : 'the session’s gamma expires at the close'}`,
   },
 ];
@@ -241,18 +189,13 @@ function hourPhases(win: Win, bars: readonly { time: number; high: number; low: 
     },
   }));
 }
-/* THE NAMES ON A PHONE (the audit's C1, 2026-10-13): under `lg` the six names stand on two rows, in one word each, the
-   close's anchored to the strip's right edge — on one row at 390px "The open" ran into "The morning" and "Charm window"
-   into "The turn". Since the paying-user audit (M3) the desk wears the one-word names too; the full ones are in the card. */
+/* One-word phase names; under `lg` they stand on two rows with the close's at the strip's right edge. The full names are in the card. */
 const SHORT_NAME: Record<string, string> = { open: 'Open', morning: 'Morning', lunch: 'Lunch', charm: 'Charm', turn: 'Turn', auction: 'Close' };
 const PRESSURE_WORDS = { absorbs: 'absorbs moves', amplifies: 'amplifies moves' } as const;
-/* WHAT A BLOCK'S INK SAYS (2026-10-14): the hedging's own pair, the matrix's legend — ember where it amplifies a move,
-   glacier where it absorbs one; the morning, which leans with the flip, in the page's ink. The weight is its depth. */
-/* THE PRESSURE PAIR FOLLOWS THE MAP'S PALETTE (Noah, 2026-10-17: "the color of this needs to change to match the
-   thermal") — paletteInk.ts pressureInks, read off Settings › Appearance's palette in the component */
+/* A block's ink is the hedging pair (ember amplifies, glacier absorbs); the morning, which leans with the flip, in the page's ink. */
+/* The pressure pair follows the Map's palette (paletteInk pressureInks). */
 
-/* A FACT ON THE HEAD'S LINE — its name in tracked capitals, its figure beside it, a hairline before the next (the page
-   head's grammar, PinpointLayout's Fact) */
+/* A fact on the head's line: its name in tracked capitals, the figure beside it. */
 const CLOCK_TIPS: Record<string, string> = {
   Now: "The time in New York and the part of the trading day it falls in",
   Next: 'The next part of the day and how long until it starts',
@@ -268,11 +211,8 @@ const ClockFact = ({ label, children, tip }: { label: string; children: ReactNod
 /** What the reader has kept: one block, or one whole phase */
 type Pin = { kind: 'block'; i: number } | { kind: 'phase'; key: string } | null;
 
-/** `scope`: the host's chip saying which name these figures belong to.
-    `at`: minutes from midnight ET to stand the clock at instead of now — the
-    Map's replay (2026-09-08) walks the strip to the minute it is rewound to.
-    `onSeek`: while a replay is running, a click moves that replay to the minute
-    instead of keeping a block. The playhead on the day charts is this same minute. */
+/** `scope`: the host's chip naming the figures' name. `at`: minutes from midnight ET to stand at instead of now (the Map's replay).
+    `onSeek`: during a replay a click moves it to that minute instead of keeping a block. */
 const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketSnapshot; scope?: ReactNode; at?: number | null; onSeek?: (min: number) => void; /** The date the levels are read off (the Levels card). The share that dies at the close is of the whole book. */ dates?: readonly string[] | null }) => {
   const clock = readSessionClock();
   const [hover, setHover] = useState<number | null>(null);
@@ -280,9 +220,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
   const stripRef = useRef<HTMLDivElement>(null);
   /* the box folds to its head, remembered (data/boxFold.ts) */
   const [open, toggleOpen] = useBoxFold('clock');
-  /* FIFTEEN-MINUTE BLOCKS ON A NARROW STRIP (the re-audit's H2, 2026-10-13): 78 five-minute blocks on a phone's 356px
-     were 1.9px wide each, and each is a button. Under 520px the strip holds 26 blocks of a quarter hour; the block kept
-     is read as its first minute, as before. */
+  /* Under 520 px the strip holds 26 quarter-hour blocks (78 would be ~2 px buttons); a kept block reads as its first minute. */
   const [stripW, setStripW] = useState(0);
   useLayoutEffect(() => {
     const el = stripRef.current;
@@ -327,15 +265,12 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
     setPin(p => (p?.kind === 'block' ? null : p));
     setHover(null);
   }, [narrow, shown]);
-  /* The guide as a focus over the whole box (the house pattern, 2026-09-06) */
+  /* The guide as a focus over the whole box. */
   const [guideOpen, setGuideOpen] = useState(false);
   /* the strip's two inks and the hover card's word — the Map's palette, thermal by rest */
   const PRESSURE_INK = pressureInks(useLedgerPalette());
 
-  /* A click on a block keeps that block; a click on a phase's name up top keeps
-     the whole phase (Noah: "no double click, only clicking the words up top
-     showcases the segment"). Clicking the same thing again lets it go.
-     During a replay the click is the scrubber: it moves the playhead, and does not pin. */
+  /* A click on a block keeps it; a click on a phase name keeps the phase; again lets go. In a replay the click scrubs instead. */
   const onBlockClick = (i: number) => {
     if (onSeek) {
       onSeek(minuteOf(i * blockMin, win));
@@ -379,7 +314,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
         supreme = levels.supreme;
         flip = levels.flipFound === false ? null : levels.flip;
       }
-      /* THE NAMED LEVELS ARE levelsFor's, in the Levels card's scope (the sixth audit's B1) — the pin stays today's */
+      /* The named levels are levelsFor's, in the Levels card's scope; the pin stays today's. */
       const lv = snapshot.liveBook ? levelsFor(snapshot.ticker, levelsForName(snapshot.ticker)) : null;
       if (lv) {
         supreme = lv.supreme;
@@ -398,8 +333,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       /* no chain yet */
     }
     try {
-      /* THE BOARD'S SHARE (the ship pass, 2026-10-22): the feed's gamma per expiry, today's date against every live
-         date — one figure on the Board, Compare and here. The older reads below stand in until that list is in. */
+      /* The Board's share: the feed's gamma per expiry, today's date against every live date; the older reads stand in until it lands. */
       const feed = peekBellShare(snapshot.ticker);
       if (feed.share != null || feed.why === 'none') {
         bellShare = feed.share;
@@ -443,9 +377,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
   const keptBlock = pin?.kind === 'block' ? pin.i : null;
   const keptPhase = pin?.kind === 'phase' ? phases.find(p => p.key === pin.key) ?? null : null;
   const shownBlock = hover ?? keptBlock;
-  /* ONE TAB STOP, THE ARROW KEYS WALK THE BLOCKS (the re-audit's M2): the strip was 78 stops between the box above and
-     the report. The kept block, else the one that is now, takes the Tab; Left and Right move along, Enter keeps, Escape
-     lets go — the tape's and the profile's walk. */
+  /* One tab stop: the kept (or current) block takes Tab; Left/Right move, Enter keeps, Escape lets go. */
   const focusBlock = keptBlock ?? nowBlock ?? 0;
   const onStripKeys = (e: KeyboardEvent<HTMLDivElement>) => {
     const cur = hover ?? keptBlock ?? nowBlock ?? 0;
@@ -469,8 +401,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
   const shownPhase = shownMin != null ? phaseAtMin(shownMin) : null;
   const cardPct = shownBlock != null ? ((shownBlock + 0.5) / blocks) * 100 : 0;
   const cardOnRight = shownBlock != null ? shownBlock < blocks * 0.6 : true;
-  /* the card opens under the strip, or over it where the screen ends first (2026-10-14: the box is short now, and its
-     card under a strip near the screen's foot opened off it) — read only while a block is shown */
+  /* The card opens under the strip, or over it near the screen's foot; read only while a block is shown. */
   const cardAbove = shownBlock != null && typeof window !== 'undefined' && (stripRef.current?.getBoundingClientRect().bottom ?? 0) + 150 > window.innerHeight;
 
   const untilNext = nextPhase ? offsetOf(nextPhase.from, win) - offsetOf(nowMin, win) : 0;
@@ -493,10 +424,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the clock" testId="clock-guide" viewport>
         <ClockGuide nowBlock={guideNow} line={line} bellShare={facts.bellShare} pin={facts.pin} supreme={facts.supreme} charmStrike={facts.charmStrike} />
       </GuideFocus>
-      {/* THE HEAD IN THE HOUSE'S GRAMMAR (2026-10-14, the owner: the clock was "AI slop" — a subtitle, three stat cards with
-          their labels over their values, a paragraph under a wall of identical bars): the name, its scope and its doors, then
-          the facts on one mono line, tracked capitals for their names and the figures beside them. On the box beside the
-          report the facts take the line under the name. */}
+      {/* The head: the name, its scope and doors, then the facts on one mono line (beside the report they take the line under the name). */}
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
         <h3 className="text-t16 font-semibold leading-tight text-textPrimary">The trader's clock</h3>
         {scope}
@@ -540,9 +468,8 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               </ClockFact>
             </>
           )}
-          {/* in the page's ink, not magenta — magenta is the supreme's marker alone (2026-10-14) */}
-          {/* AFTER THE CLOSE THE SHARE IS THE NEXT SESSION'S (the second re-audit, 2026-10-22: "EXPIRES AT THE CLOSE 16%" beside
-              "NOW after the close") — said with its day (data/bookWindow.ts bellDay) */}
+          {/* In the page's ink; magenta is the supreme's marker alone. */}
+          {/* After the close the share is the next session's, said with its day (bookWindow bellDay). */}
           <ClockFact label={bellDay().clock} tip={`${bellDay().tip(snapshot.ticker)} — every expiry counted`}>
             <span
               className="tnum"
@@ -558,13 +485,8 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
 
       {open && (
       <div className="px-5 pb-4 flex-1 flex flex-col justify-center" ref={stripRef}>
-        {/* THE STRIP KEEPS ITS 28px (Noah, 2026-10-14, with the picture: "these are wayyy to long they should look like how they
-            did before"); the box beside the report is as tall as the report, and the phases, the strip and the hours stand
-            centred in the height it has over its words */}
-        {/* THE PHASES — named above the strip on ONE row. Each name sits at its
-            phase's start, except the last two: the turn is twenty minutes wide
-            and the close ten, so the turn's name ends at 15:50 and the close's
-            starts there — the same line, no overlap. */}
+        {/* The strip keeps its 28 px; beside the report the phases, strip and hours centre in the height the box has. */}
+        {/* Phase names on one row at their phase's start, except the turn (20 min) ends at 15:50 where the close's (10 min) begins. */}
         <div className={`relative ${narrow ? 'h-9' : 'h-[18px]'}`} data-clock-phases>
           {phases.map((p, i) => {
             const active = current?.key === p.key;
@@ -579,10 +501,8 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
                 data-phase-name={p.key}
                 aria-pressed={keptPhase?.key === p.key}
                 onClick={() => onNameClick(p.key)}
-                /* Under lg: every other name on the second row, the close's name on the strip's right edge (it ran 8px past a
-                   phone's strip from its own start, so the phone pass of 2026-09-13 hid it) */
-                /* ONE WORD EACH, AND THE CLOSE ON THE EDGE AT EVERY WIDTH (the paying-user audit's M3, 2026-10-13): "The close"
-                   from its own start ran 4px past a 1440 desk's box; on one row the turn stands just left of it */
+                /* Under lg: every other name on the second row. */
+                /* The close's name on the strip's right edge at every width; from its own start it ran past the box. */
                 className={`hit absolute font-mono text-t11 font-semibold uppercase tracking-wider whitespace-nowrap ${nameCls} ${narrow && i % 2 === 1 ? 'top-[18px]' : 'top-0'} ${last ? '!left-auto !right-0 !translate-x-0' : ''} ${turn && !narrow ? '!left-auto !right-[52px] !translate-x-0' : ''}`}
                 style={{
                   left: `${pctAt(turn ? p.to : p.from)}%`,
@@ -598,8 +518,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
         </div>
 
         {/* THE STRIP — 78 five-minute blocks; shade = the phase's weight, silver = now */}
-        {/* BESIDE THE REPORT (from 1,880px) the box is as tall as the report, and the strip takes the height the box has
-            over its words (2026-10-13, "i dont want any deadspace") — 22px when the box is its own height */}
+        {/* Beside the report (from 1,880 px) the strip takes the box's spare height; 22 px otherwise. */}
         <div className="relative flex flex-col" onPointerLeave={() => setHover(null)}>
           {/* a narrow strip is the thumb's height (44px) — the blocks are the targets, and 10px wide is all the width a quarter
               hour gets on a phone; the height is ours to give */}
@@ -621,11 +540,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               const future = nowBlock != null && i > nowBlock;
               const inCurrent = current?.key === p.key;
               const hovered = hover === i;
-              /* WHAT IS KEPT IS IN FOCUS, THE REST GOES SOFT (Noah: "a focus on
-                 that portion and a blur on the rest", not rings): a kept phase
-                 keeps its blocks crisp and lifted while every other block dims
-                 and blurs; a kept block does the same for itself alone. A block
-                 under the pointer is always in focus. */
+              /* What is kept is in focus and the rest dims and blurs; a block under the pointer is always in focus. */
               const inFocus = hovered || (keptPhase ? p.key === keptPhase.key : keptBlock != null ? i === keptBlock : true);
               const soft = !!pin && !inFocus;
               /* The phase you are in sits a touch brighter than its weight alone;
@@ -666,7 +581,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
             {(cash ? [OPEN_MIN, 10 * 60, 11 * 60, 12 * 60, 13 * 60, 14 * 60, 15 * 60, CLOSE_MIN] : [minuteOf(win.span, win)]).map(t => (
               <span
                 key={t}
-                /* a phone's strip holds four hours, not eight: 09:30 overprinted 10:00 (the audit's C1) */
+                /* A phone's strip labels four hours, not eight. */
                 className={`absolute top-0 font-mono text-t11 tnum text-textMuted ${twoRows && (cash ? t === 10 * 60 || t === 11 * 60 || t === 13 * 60 || t === 15 * 60 : false) ? 'hidden' : ''}`}
                 style={{ left: `${pctAt(t)}%`, transform: pctAt(t) > 96 ? 'translateX(-100%)' : pctAt(t) < 4 ? undefined : 'translateX(-50%)' }}
               >
@@ -681,9 +596,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
               data-clock-card
               data-kept={keptBlock === shownBlock ? 'true' : 'false'}
               className={`absolute z-10 pointer-events-none rounded-lg border border-borderMuted bg-card/95 backdrop-blur-sm shadow-[0_8px_24px_rgba(0,0,0,0.5)] px-3 py-2 ${narrow ? 'left-0 right-0' : 'w-[300px]'}`}
-              /* UNDER THE STRIP, over the sentence that says the same (the audit's M7, 2026-10-13): risen above the strip, a card
-                 for a block in the right half covered the box's own facts (Now · Next · Expires). On a narrow strip it is the
-                 strip's own width — beside the block it ran off a phone's edge (the re-audit). */
+              /* The card sits under the strip so it never covers the box's facts; on a narrow strip it takes the strip's width. */
               style={{ ...(cardAbove ? { bottom: 'calc(100% + 22px)' } : { top: 'calc(100% + 4px)' }), ...(narrow ? {} : { left: `${cardPct}%`, transform: cardOnRight ? 'translateX(12px)' : 'translateX(calc(-100% - 12px))' }) }}
             >
               <div className="flex items-baseline gap-2">
@@ -706,8 +619,7 @@ const TraderClock = ({ snapshot, scope, at, onSeek, dates }: { snapshot: MarketS
           )}
         </div>
 
-        {/* no sentence under the strip (2026-10-14): what the phase you are in does today is the card's, on the block under
-            the pointer, and the guide's — the box's own line is the head's facts */}
+        {/* No sentence under the strip: the phase's words are the card's and the guide's. */}
       </div>
       )}
     </section>

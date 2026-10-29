@@ -481,12 +481,11 @@ const TargetsBoard = ({ agenda, ticker, clock, head, density, yours, armedAt, on
   );
 
   return (
-    /* FIVE ROWS OF THE HOST'S SUBGRID — the head, the sentence, the podium, the list, the foot — so panes side by side
-       share every row's height (RankedTargets; the row's card is a portal and takes no row) */
+    /* Five rows of the host's subgrid (head, sentence, podium, list, foot) so side-by-side panes share row heights. */
     <LoudStrikes.Provider value={loudSet}>
     <FromSpot.Provider value={fromSpot}>
     <section className="relative grid grid-rows-subgrid row-span-5 min-w-0" data-targets-board data-targets-density={density}>
-      {/* THE PANE'S HEAD — its line (the chip, the expiry, the watch), and the four facts */}
+      {/* The pane's head: the chip, the expiry, the watch, and the four facts. */}
       <div className={`${pad} pt-3 pb-2 flex items-start gap-x-6 gap-y-2 flex-wrap`}>
         <div className="flex items-center gap-2 flex-wrap">{head}</div>
         {/* beside other panes the facts take a row of their own — the same row in every pane, whatever its line holds */}

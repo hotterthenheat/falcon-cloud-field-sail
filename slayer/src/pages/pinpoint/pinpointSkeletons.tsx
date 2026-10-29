@@ -1,29 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - PINPOINT'S SKELETONS BY PAGE
-  (pages/pinpoint/pinpointSkeletons.tsx)
-
-  What stands in for a Pinpoint page while its code
-  travels (App's lazy routes) or its first read
-  walks in. Noah, 2026-09-08: "the loading skeleton
-  doesn't seem to take the shape of its container…
-  a generic loading skeleton and that's a design
-  flaw" — the shell showed ONE page skeleton for
-  every route. Now every page stands in as its own
-  boxes, drawn to the landed geometry measured at
-  1500×1100 (scripts dump, 2026-09-08): the same
-  paddings, the same heads, the same rows.
-
-  STATIC CHROME RENDERS AS ITSELF: the shell row's
-  page name and words come from the registry, so
-  the row wraps exactly where the real one wraps
-  (a one-line stand-in sat 22px short on Building).
-  Only what data decides shimmers.
-
-  Imports nothing heavy — no page, no simulator — so
-  the shell can render these before any chunk lands.
-==================================================
-*/
+/* Each Pinpoint page's skeleton in its own shape, measured from the landed geometry; static chrome renders as itself, only data shimmers.
+   Imports nothing heavy, so the shell can render it before any chunk lands. */
 
 import { Skeleton } from '../../components/ui/Skeleton';
 import { readLedgerView } from '../../components/gex/ledgerView';
@@ -35,8 +11,7 @@ import { GEX_SUBPAGES } from './subnav';
 
 /* ---- the shell row ------------------------------------------------------------- */
 
-/** The shell's head — the page's real icon, name and words on the left; on the
-    right the Ruler card (the four facts that stood beside it went on 2026-10-14) */
+/** The shell's head: the page's real icon, name and words; the Ruler card on the right. */
 const PinpointShellSkeleton = ({ pathname }: { pathname: string }) => {
   const page = GEX_SUBPAGES.find(p => pathname.startsWith(p.path)) ?? GEX_SUBPAGES[0];
   const PageIcon = page.icon;
@@ -60,12 +35,8 @@ const PinpointShellSkeleton = ({ pathname }: { pathname: string }) => {
 
 /* ---- the Map ------------------------------------------------------------------- */
 
-/* THE MAP OPENS ON THE EXPOSURE MATRIX (Noah, 2026-09-28, with the August picture): its first box stands in as that table —
-   the band (the chip, Expiry, Strikes, the replay door), the two head rows (a greek over three legs), one row per strike
-   with a figure and its thin bar in every cell, the spot rule in the middle. Twenty strikes each side, 27px rows. */
-/* THE CALENDAR'S SHAPE (2026-10-12): no read line above the grid any more (the pointer card took its words); seven
-   date columns — the band's default window — the strike at the far left, the spot rule under the nodes alone with
-   its pill in the middle, a 28px row of its own */
+/* The Map opens on the exposure matrix: the band, two head rows, one row per strike, the spot rule in the middle; twenty strikes each side, 27 px rows. */
+/* The calendar's shape: seven date columns, the strike at the far left, the spot rule in its own 28 px row. */
 const CalendarGrid = () => (
   <div className="flex-1 min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 grid" style={{ gridTemplateColumns: '60px repeat(7, minmax(0, 1fr))', gridTemplateRows: '22px 22px repeat(20, minmax(18px, 1fr)) 28px repeat(20, minmax(18px, 1fr))' }}>
@@ -121,10 +92,9 @@ export const CalendarInner = () => (
     {readLedgerView('map') === 'calendar' ? (
       <CalendarGrid />
     ) : (
-    /* THE MATRIX'S SHAPE (2026-10-12): the net alone — one column a greek, the figure at the right and its bar the
-       whole lane; the spot rule under the net columns alone, the strike column's cell of that row empty */
+    /* The matrix's shape: the net alone, one column a greek; the spot rule under the net columns only. */
     <div className="flex-1 min-h-0 overflow-hidden">
-      {/* GEX alone, put · call · net under it (the partner's matrix, 2026-10-14): the strike column, three 120px legs */}
+      {/* GEX alone, put · call · net: the strike column and three 120 px legs. */}
       <div className="grid" style={{ gridTemplateColumns: '70px repeat(3, minmax(0, 1fr))' }}>
         <div className="px-2 flex items-end justify-end pb-1.5 border-b border-borderSubtle">
           <Line w={36} h={9} />
@@ -239,8 +209,7 @@ const ReportBoxSkeleton = () => (
   </Box>
 );
 
-/** THE DAY (the partner's box, taken 2026-10-14): the tape over the book's net gamma, on one clock — the head, the two
-    part words with their facts, two plots sharing the height */
+/** The day box: the tape over the book's net gamma on one clock. */
 const SessionInner = () => (
   <section className="relative flex-1 flex flex-col min-w-0 min-h-0" aria-hidden data-skeleton="session-box">
     <div className="px-5 pt-3 pb-1 flex items-center gap-3">
@@ -260,9 +229,8 @@ const SessionInner = () => (
   </section>
 );
 
-/* THE MAP'S FIRST SCREEN since the partner's Map came (2026-10-14): the band in its own strip, the book packed to its
-   panes with the day box beside it (from 640px of room), the clock and the report under them (side by side from 1880px).
-   The book stands as one GEX pane at its natural width — put · call · net at 120px each after the strike column. */
+/* The Map's first screen: the band, the book packed to its panes with the day box beside it (from 640 px), the clock and report under
+   (side by side from 1880 px). */
 export const MapPageSkeleton = () => (
   <>
     <div className="border border-borderSubtle rounded-md bg-panel overflow-hidden">

@@ -1,7 +1,4 @@
-/*
-  Shared tone maps for direction and status colour, as static class strings so Tailwind sees them.
-  A tone is never the only signal: always pair it with a label or icon.
-*/
+/* Tone maps for direction and status, as static class strings so Tailwind sees them; always pair a tone with a label or icon. */
 
 /* crown: a black box with magenta words, the engine's top pick only. supreme: the magenta tint at chip scale.
    white: bright neutral ink (Compass process states). holo: flat silver for terminal hardware (counts, chrome). */

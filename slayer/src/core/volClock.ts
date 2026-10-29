@@ -15,10 +15,7 @@ export function calendarYears(expiry: string, nowMs = Date.now()): number {
   return Math.max(FLOOR_MIN, mins) / CALENDAR_YEAR_MIN;
 }
 
-/**
- * Put a calendar-year vol onto the trading clock without changing the variance.
- * σ_trading² · T_trading = σ_vendor² · T_calendar.
- */
+/** A calendar-year vol on the trading clock with the variance unchanged: σ_trading² · T_trading = σ_vendor² · T_calendar. */
 export function vendorIvOnTradingClock(vendorIv: number, expiry: string, nowMs = Date.now()): number {
   if (!(vendorIv > 0)) return 0;
   const tTrade = tradingYears(expiry, nowMs);
@@ -43,10 +40,7 @@ export function usableMid(bid: number, ask: number): number {
   return mid;
 }
 
-/**
- * The vol the trading clock should price. The mid is solved on that clock when the spread is tight.
- * A vendor print is the fallback, rescaled so the variance matches.
- */
+/** The vol the trading clock prices: solved from the mid when the spread is tight, else the vendor print rescaled to the same variance. */
 export function ivOnTradingClock(
   bid: number,
   ask: number,
@@ -123,13 +117,8 @@ export function flowWindow(expiry: string, nowMs = Date.now()): boolean {
   return minutes <= 5 * 390;
 }
 
-/**
- * Dealer inventory. Starts at open interest.
- * A customer buy at the ask makes the dealer shorter, so the count rises and the greek's minus sign goes more short.
- * A customer sale at the bid makes the dealer longer.
- * The count is allowed to cross zero. Past zero the dealer is net long that side, and the greek's minus sign flips.
- * Multi-leg volume is taken out in proportion. It is not a side.
- */
+/** Dealer inventory from open interest: a customer buy at the ask makes the dealer shorter, a sale at the bid longer; the count may cross zero
+    (the dealer is then net long that side). Multi-leg volume is removed in proportion. */
 export function dealerInventory(oi: number, askVol: number, bidVol: number, multiVol: number, volume: number): number {
   const complex = volume > 0 ? Math.min(1, Math.max(0, multiVol / volume)) : 0;
   const ask = Math.max(0, askVol) * (1 - complex);

@@ -1,8 +1,5 @@
-/*
-  The signature "slayer:~ $ <dot> live" with a hairline: the rail foot, footer, launch gate and phone menu.
-  States: live (the dot is the moving foil, the word silver), delayed (warning ink), closed (muted). The foil is the
-  mark's strip on the shared brand clock (brandClock.ts); the word follows data/marketState.ts, re-read every 30 s.
-*/
+/* The signature "slayer:~ $ <dot> live": live (foil dot), delayed (warning ink), closed (muted).
+   The dot rides the shared brand clock (brandClock.ts); the word is data/marketState.ts, re-read every 30 s. */
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { readMarketState } from '../data/marketState';

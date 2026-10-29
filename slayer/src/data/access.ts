@@ -1,8 +1,5 @@
-/*
-  The plan gates in the browser. Which plan opens which room lives in shared/plans.mjs, which the data proxies
-  (server/) also enforce; this file only hides what the server would refuse anyway.
-  With no Stripe key in the environment there are no gates, so a machine without keys keeps working.
-*/
+/* Plan gates in the browser: which plan opens which room lives in shared/plans.mjs, which the data proxies also enforce;
+   this only hides what the server would refuse. With no Stripe key there are no gates. */
 
 import { useMemo, useSyncExternalStore } from 'react';
 import { useAccount, type AccountState } from './account';

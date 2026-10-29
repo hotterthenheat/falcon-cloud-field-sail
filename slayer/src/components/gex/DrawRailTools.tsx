@@ -1,44 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE RAIL'S TOOLS
-  (components/gex/DrawRailTools.tsx)
-
-  The drawing rail's middle: ONE BUTTON A FAMILY, a
-  family's list beside it, and the whole catalogue as
-  a sheet (Noah, 2026-09-19, with TradingView's panels:
-  "how can we add all of these into the toolbar without
-  extending the toolbar super long"). The list of tools
-  is drawTools.tsx; the rail's own box, its dock and
-  its hide-and-show stay in StrikeChart.
-
-    A FAMILY'S BUTTON  wears the last tool used from
-      it. A click takes that tool in hand. THE ARROW
-      beside it — TradingView's own (Noah, 2026-09-19:
-      "the arrow should appear as such"): a chevron in
-      its own narrow column right of the icon, there
-      under the pointer and gone at rest, named for the
-      family — opens the family's list. So does a long
-      press, or a right click. (It was a 5px tick in
-      the button's corner, which he did not read as an
-      arrow.) On a touch screen there is no pointer to
-      be under, so it shows always.
-    THE LIST  flies out beside the rail: a row a tool,
-      small heads between, a star at each row's end.
-    THE SHEET  is every tool: a search box, a tab a
-      family, a grid of named tiles. On a narrow pane
-      it is a bottom sheet and IS the toolbar — the
-      rail is off there (a 34px column over a 350px
-      pane is a wall).
-    THE STAR  at the rail's end holds the starred
-      tools, whatever family they are from.
-
-  The list and the sheet are PORTALLED into the chart's
-  box: the rail scrolls when a pane is short, and a
-  scrolling box clips whatever flies out of it. They
-  wear `data-chart-rail` — black on any tape, like the
-  rail they belong to (index.css).
-==================================================
-*/
+/* The drawing rail's middle: one button a family (wearing its last tool; a chevron, long press or right click opens the list),
+   the list, the sheet of every tool (a bottom sheet on a narrow pane) and the starred row. List and sheet portal into the chart box so the rail's scroll cannot clip them. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -63,8 +24,7 @@ interface RailToolsProps {
   onSheet: (open: boolean) => void;
 }
 
-/* THE TWO COLUMNS: a 24px icon column, and a 10px arrow column beside it. Docked left, every button is the rail's whole width
-   and keeps its icon in the icon column; docked top, only the buttons that HAVE an arrow pay for its column. */
+/* Two columns, a 24 px icon and a 10 px arrow; docked top, only buttons with an arrow pay for its column. */
 const cell = (dock: Dock) => (dock === 'left' ? 'h-[26px] w-full pr-[10px]' : 'w-[24px] h-full');
 const listCell = (dock: Dock) => (dock === 'left' ? 'h-[26px] w-full' : 'w-[34px] h-full');
 const face = (on: boolean) => (on ? 'bg-select/15 text-select' : 'text-textSecondary hover:text-textPrimary hover:bg-ink/[0.04]');

@@ -1,16 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-/*
-==================================================
-  SLAYER TERMINAL - ONE MINUTE UNDER THE POINTER (data/dayHover.ts)
-
-  The day box draws the tape and the book's net gamma on one clock (idea 1,
-  2026-10-13). The minute under the pointer on either plot is marked on
-  both — this is the one minute, set by whichever plot has the pointer,
-  read by the other. It belongs to ONE name: a second ticker on the map
-  does not follow it.
-==================================================
-*/
+/* The one minute under the pointer on either day-box plot, marked on both; it belongs to one name. */
 
 type DayHover = { min: number; from: 'tape' | 'through'; ticker: string } | null;
 

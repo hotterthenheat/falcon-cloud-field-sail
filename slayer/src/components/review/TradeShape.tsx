@@ -46,7 +46,7 @@ interface Props {
 const TradeShapeFigure = ({ shape, usual, ink, rowKey }: Props) => {
   const [hot, setHot] = useState<number | null>(null);
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
-  /* THE DRAW-IN: the polygon grows out of the centre on the house curve when a trade lands */
+  /* The draw-in: the polygon grows from the centre on the house curve when a trade lands. */
   const [drawn, setDrawn] = useState(false);
   useEffect(() => {
     setDrawn(false);

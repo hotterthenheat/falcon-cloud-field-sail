@@ -1,24 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE LANDING'S FILMS
-  (pages/landing/films.ts)
-
-  What the tour's window and the wall of desks share
-  about the films: where they are, which exist, and
-  WHEN A FILM MAY PLAY.
-
-  The films are made by scripts/make-landing-clips.mjs
-  from the real terminal; films.json is its list — a
-  page, theme and size that is not on it has no film,
-  and its still is all the landing shows.
-
-  A FILM PLAYS ONLY WHILE IT CAN BE SEEN: its box on
-  the screen and the tab in front. And not at all for
-  a visitor who asked their system for less motion or
-  to save data — they get the still, which is the
-  film's own first frame.
-==================================================
-*/
+/* What the tour's window and the wall share about the films (made by scripts/make-landing-clips.mjs, listed in films.json).
+   A film plays only while on screen with the tab in front, never under reduced motion or save-data (the still is its first frame). */
 
 import { useEffect, useState, type RefObject } from 'react';
 import type { Theme } from '../../theme/theme';
@@ -70,10 +51,8 @@ export const useTabInFront = (): boolean => {
   return front;
 };
 
-/* THE READER REACHES FOR THE THEME (2026-10-03 — Noah, with the wall's screens circled: they "wont change colors as fast
-   as the rest … they lag behind everytime"): the toggle says so as the pointer arrives on it, as a finger lands on it or
-   as the keys reach it, and every window with films starts the other theme's film hidden and in step — so by the press
-   the other film is already playing, and the screens turn colour with the page. */
+/* Theme intent: as the pointer, a finger or the keys reach the toggle, every window starts the other theme's film hidden and in step,
+   so the screens turn with the page. */
 const intents = new Set<() => void>();
 export const onThemeIntent = (fn: () => void): (() => void) => {
   intents.add(fn);

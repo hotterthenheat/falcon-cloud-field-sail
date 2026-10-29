@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE LADDER CARD'S OWN CONTROLS
-  Shared by the Pulse widget and the Pinpoint card so
-  the two Strike Pressure Ladder cards are ONE card
-  (Noah, 2026-09-05, the Pinpoint copy beside the
-  widget: "it does not look like the provided image…
-  i see some random 0dte, 1d, 2d, etc outside of the
-  card itself"). The controls live INSIDE the card —
-  a view strip, the expiry strip, the strike range,
-  the fullscreen — and the engine's pattern read
-  sits under them as the card's own sentence.
-==================================================
-*/
+/* The ladder card's own controls, shared by the Pulse widget and the Pinpoint card so the two are one card:
+   view, expiry, strike range and fullscreen inside the card, the pattern read under them. */
 
 import type { ExpiryChoice } from '../ui/ExpiryCard';
 import { bookToday, expiryFor, isoDate, sessionsBetween, today, MONTHS } from '../../core/calendar';
@@ -32,14 +20,10 @@ const monthlyExpiry = (from: Date): Date => {
   return thisMonth >= now ? thisMonth : third(now.getFullYear(), now.getMonth() + 1);
 };
 
-/** THE EXPIRIES AS DATES (Noah, 2026-09-08: "the ladder doesn't have dates for
-    exp, it just says 1d 2d 3d") — the same choices, spelled as the day they
-    resolve to on the market calendar, with one plain line each. One list for
-    the Map's Expiry card and the desk's ladder. */
+/** The expiries as the dates they resolve to on the market calendar, with one plain line each; one list for the Map's Expiry card and the ladder. */
 export function ladderExpiryOptions(ticker?: string): ExpiryChoice<ExposureExpiry>[] {
   const base = bookToday();
-  /* the five-session choice only ends THIS week from a Monday — from a Thursday it lands on next Tuesday, and the hint
-     said "the end of this week" over Oct 27 · Tue (the ship pass, 2026-10-22) */
+  /* The five-session choice ends this week only from a Monday. */
   const weekWord = (d: Date) => {
     const n = sessionsBetween(base, d);
     const sameWeek = d.getDay() === 5 && d.getTime() - base.getTime() < 7 * 86_400_000 && d.getDay() >= base.getDay();
@@ -48,8 +32,7 @@ export function ladderExpiryOptions(ticker?: string): ExpiryChoice<ExposureExpir
   const day = (dte: number) => expiryFor(dte, base);
   const t0 = day(0);
   const isToday = t0.dte === 0 && isoDate(t0.date) === isoDate(today());
-  /* each choice carries its real day — the calendar card lights those days (2026-09-12) — and a day is offered once:
-     from a Thursday "1D" and "2D" both land on Friday (the weekend walks back), and the list read "Oct 23 · Fri" twice */
+  /* Each choice carries its real day (the calendar card lights it), and a day is offered once: from a Thursday 1D and 2D both land on Friday. */
   const seen = new Set<string>();
   return ([
     { value: '0DTE', label: isToday ? `Today · ${fmtDay(t0.date)}` : `Next session · ${fmtDay(t0.date)}`, hint: 'The contracts that expire at the bell — the sharpest hedging', date: t0.date },
@@ -60,9 +43,7 @@ export function ladderExpiryOptions(ticker?: string): ExpiryChoice<ExposureExpir
     { value: 'OPEX', label: `${fmtDay(monthlyExpiry(base))} · monthly`, hint: 'The monthly expiration — the heaviest structure', date: monthlyExpiry(base) },
     { value: 'ALL', label: 'All expiries', hint: 'Every listed expiry, weighed together', date: null },
   ] as ExpiryChoice<ExposureExpiry>[])
-    /* NAMED FOR THE DATE THE BOOK READS (the ship pass, 2026-10-22): the choices are the market calendar's, but a name
-       lists only some days — NVDA has no Oct 22, and "Today · Oct 22" read its Oct 23 book. With a name in hand each
-       choice says the listing it lands on. */
+    /* With a name in hand each choice names the listing it lands on (a name lists only some days). */
     .map(o => {
       if (!ticker || !o.date) return o;
       const hit = expiryDateFor(ticker, o.value);

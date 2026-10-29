@@ -4,7 +4,7 @@
 import { parseBoosters, predict, type Tree } from './lgbm';
 import { thetaCall } from './theta';
 import { nyParts, nyWallStamp } from '../core/nyTime';
-import { isTradingDay, nyYmd as ymd } from '../core/calendar';
+import { nyYmd as ymd, sessionBefore } from '../core/calendar';
 import { ensureBook, snapshotOf } from './uwBook';
 import { econReleases } from './monthCalendar';
 import {
@@ -60,6 +60,7 @@ import { COMPASS_TICKERS } from './compassUniverse';
 import { optionScanOpen, sessionYmd } from './compassSession';
 import type { OptionRight, Setup } from '../types/compass';
 import type { StrikeNode } from '../types/market';
+import { normCdf as cdf } from './expectedMove';
 
 let ENTRY: Tree[] = [];
 let RUNNER: Tree[] = [];
@@ -160,12 +161,6 @@ interface Curve { cum: Map<number, number[]>; five: Map<number, number[]> }
 interface PinBook { nodes: { strike: number; call: number; put: number }[]; oi: (strike: number, right: OptionRight) => number }
 interface LeftRow { id: string; ticker: string; contract: string; why: string; at: number }
 
-function cdf(x: number): number {
-  const t = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804014327 * Math.exp(-0.5 * x * x);
-  const p = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-  return x >= 0 ? 1 - p : p;
-}
 
 function bsStates(S: number, K: number, T: number, sig: number, call: boolean): { px: number; de: number; ga: number; th: number; ve: number } {
   if (!(S > 0) || !(K > 0) || !(T > 0) || !(sig > 0)) return { px: NaN, de: NaN, ga: NaN, th: NaN, ve: NaN };
@@ -217,11 +212,7 @@ function stampAt(stamp: unknown): { d: string; m: number } | null {
 
 /** The trading session before `day` (YYYYMMDD), skipping weekends and market holidays. */
 function priorSessionYmd(day: string): string {
-  const d = new Date(Number(day.slice(0, 4)), Number(day.slice(4, 6)) - 1, Number(day.slice(6, 8)));
-  for (let i = 0; i < 10; i++) {
-    d.setDate(d.getDate() - 1);
-    if (isTradingDay(d)) break;
-  }
+  const d = sessionBefore(new Date(Number(day.slice(0, 4)), Number(day.slice(4, 6)) - 1, Number(day.slice(6, 8))));
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 

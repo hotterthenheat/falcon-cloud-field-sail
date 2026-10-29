@@ -1,32 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A PICTURE COMING INTO FOCUS
-  (pages/landing/pixels.ts)
-
-  The landing's way of drawing a picture that is
-  not there yet: the terminal acquiring its screen.
-  His partner's piece, taken for the tour's window
-  (Noah, 2026-10-03: "my partner has this loading
-  thing on the landing pages that changes from one
-  page to another after a certain period. implement
-  that as well"). The picture RESOLVES rather than
-  breaks: a fine grain, without colour, its faintest
-  marks not yet arrived, sharpening and taking its
-  colour as it comes in. The fringe and the tear
-  stay the footer's alone (FooterArt.tsx).
-
-  A PIECE is a picture (or a part of one) made
-  ready: its colours and the strength of every mark,
-  read once at its own size. It is drawn at a
-  SHARPNESS from 0 (the coarsest grain, grey, only
-  the stronger marks) to 1 (the picture itself, from
-  its source at full resolution); between, eight
-  states — a grain, the weakest mark kept, how grey
-  — each made the first time it is asked for and
-  kept. A mark's strength is its light on black and
-  its ink on paper.
-==================================================
-*/
+/* A picture coming into focus: it resolves from a fine grey grain with only its strongest marks to the full picture (sharpness 0 → 1,
+   eight cached states between). A mark's strength is its light on black and its ink on paper. */
 
 /** the states a piece passes through as it sharpens: its grain (CSS px of the piece), the weakest mark kept, and how
     much of its colour is still to come (1 grey, 0 its own) */

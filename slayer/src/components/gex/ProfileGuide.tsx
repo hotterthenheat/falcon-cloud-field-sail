@@ -1,28 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ THE PROFILE PANEL
-  (components/gex/ProfileGuide.tsx)
-
-  The card behind the panel's "How to read" door
-  (Noah, 2026-09-06: "how can someone know this
-  info in the page?" then "the how to read should
-  have some visuals. high quality visuals not just
-  renders"). Two figures drawn in the panel's own
-  hand — thermal capsules, a strike column, the
-  spot chip — so the picture teaches the lane it
-  sits next to:
-
-    SIZE   one strike, one capsule; its length is
-           the hedging parked there, its colour
-           which way that hedging leans.
-    FLOW   a trip from spot to a strike; every
-           strike crossed adds its weight, and the
-           running total is the bill on arrival.
-
-  Under them, today's walls read both ways, from
-  the live numbers.
-==================================================
-*/
+/* The card behind the profile panel's "How to read": size (one capsule a strike, its length the hedging, its colour the lean)
+   and flow (the running total from spot to a strike), then today's walls from the live numbers. */
 
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
 import { fmtFlow, type FlowLadder } from '../../data/hedgeFlow';
@@ -34,7 +11,7 @@ import { fmtStrike } from '../../core/format';
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const GRID = 'rgba(255,255,255,0.07)';
 /* The thermal ramp's stops, as the calendar and the panel paint them */
 const COOL_1 = '#A6D96A';

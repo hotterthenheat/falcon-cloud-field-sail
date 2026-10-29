@@ -1,38 +1,8 @@
 import { sessionStarts } from './indicators';
 import type { Candle } from '../types/market';
 
-/*
-==================================================
-  SLAYER TERMINAL - VOLUME PROFILE (data/volumeProfile.ts)
-
-  Volume by PRICE for the session — VPOC and the
-  value area, T-10's engine.
-==================================================
-
-  The rail's exposure column says where the BOOK is heavy; this says where
-  the TAPE has actually traded. A gamma wall with no traded volume behind it
-  is a different animal from one where price has spent hours — which is why
-  the directive wants the two on one axis, and why this engine exists.
-
-  BARS, NOT TRADES. The feed seam carries OHLCV bars, so each bar's volume
-  is spread across the price bins its high–low range covers, proportional to
-  overlap — a bar that spent its minute across three bins leaves a third of
-  its volume in each; a bar that never left one bin leaves everything there.
-  When a per-trade feed lands, the same bins accept exact prices and nothing
-  downstream moves.
-
-  THE SESSION'S, by the same gap cut every session feature uses. A profile
-  spanning many days answers a different question (composite value), and the
-  rail is a today instrument.
-
-  VPOC is the heaviest bin — ties resolve toward the LAST CLOSE, because a
-  flat-topped profile read from the market's own position is the honest tie.
-  THE VALUE AREA is the standard 70%: start at the VPOC, repeatedly annex
-  the heavier adjacent bin (ties upward, the TPO convention), stop when the
-  area holds at least 70% of the session's volume. VAH/VAL are the outer
-  EDGES of the area's end bins — the prices value runs to, not the centres
-  of the bins that happen to hold it.
-*/
+/* Volume by price for the session: each bar's volume spread over the bins its range covers, by overlap. VPOC is the heaviest bin
+   (ties toward the last close); the value area grows from it by the heavier neighbour (ties up) to 70%; VAH/VAL are its outer edges. */
 
 const VALUE_AREA_FRACTION = 0.7;
 /** Bin count the wrapper aims the session's range at. */
@@ -57,10 +27,7 @@ export interface VolumeProfile {
 
 const EMPTY: VolumeProfile = { bins: [], binSize: 0, totalVolume: 0, vpoc: null, vah: null, val: null };
 
-/**
- * The profile of the CURRENT session in `bars1m`, at an explicit bin size.
- * `sessionVolumeProfile` below picks the size; proofs pin this directly.
- */
+/** The current session's profile at an explicit bin size; `sessionVolumeProfile` picks the size. */
 function buildVolumeProfile(sessionBars: readonly Candle[], binSize: number): VolumeProfile {
   if (sessionBars.length === 0 || !(binSize > 0)) return EMPTY;
   let lo = Infinity;

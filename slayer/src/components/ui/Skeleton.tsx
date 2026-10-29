@@ -1,8 +1,5 @@
-/*
-  Skeleton: a box in the shape of what is coming, with a slow passing light on the house surface.
-  Deferred: paints the skeleton first and mounts the real thing a frame or two later, staggered by index, so a route
-  opens with every box in place and costly charts arrive one per frame. Changes when a surface first draws, not what.
-*/
+/* A box in the shape of what is coming, with a slow passing light. Deferred paints the skeleton first and mounts the real thing
+   a frame or two later, staggered by index, so a route opens with every box in place and costly charts arrive one per frame. */
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 

@@ -23,7 +23,7 @@ export interface Position {
   entry?: number;
   /** The live mark at the moment it was added, when no price was typed. Never a model. */
   addedMark?: number;
-  /** The session you entered, YYYY-MM-DD. Absent on rows saved before this — those use the day they were added. */
+  /** The session entered, YYYY-MM-DD; older rows use the day they were added. */
   enteredOn?: string;
   source: 'you' | 'tracker';
   addedAt: number;

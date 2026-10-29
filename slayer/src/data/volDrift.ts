@@ -1,58 +1,9 @@
 import type { Candle } from '../types/market';
 
-/*
-==================================================
-  SLAYER TERMINAL - THE VOLATILITY DRIFT
-  (data/volDrift.ts)
+/* Two vol lines under the tape: realised, measured from the drawn bars (rolling log-return stdev, annualised), and implied as the feed
+   reports it (flat when the feed gives one number). The window and annualisation are gathered in RV_MODEL. */
 
-  Two volatility lines under the tape: what the
-  underlying is ACTUALLY doing (realised), and what
-  the option market says it expects (implied). The
-  distance between them is the whole trade — implied
-  above realised is a premium seller's session,
-  realised catching up to implied is where short
-  gamma starts to hurt.
-
-  ----------------------------------------------
-  WHERE EACH NUMBER COMES FROM. Read this before
-  trusting either line.
-
-  REALISED is MEASURED, here, from the same
-  aggregated bars the tape draws. Rolling standard
-  deviation of log returns, annualised. It moves
-  because the price moved, and it agrees with the
-  candles above it because it is computed from them.
-
-  IMPLIED is REPORTED by the feed. This module does
-  not model it, smile it, or interpolate it — it
-  takes the number handed to it and puts it on the
-  axis. In the current simulator that number is a
-  per-ticker CONSTANT, so the implied line draws
-  FLAT. That is not a bug in this module and it is
-  not a placeholder pretending to be live: it is the
-  feed's honest answer, and it will start moving the
-  day a real implied series is wired to the same
-  seam. Nothing here fabricates movement to make the
-  pane look busier than the data behind it.
-  ----------------------------------------------
-
-  THE ANNUALISATION AND THE WINDOW ARE ASSUMPTIONS,
-  and they are gathered into RV_MODEL below so the
-  real math file can replace them in one place
-  rather than hunting them through a chart effect.
-==================================================
-*/
-
-/**
- * The realised-vol convention this module ships with.
- *
- * Close-to-close over a rolling window, annualised on TRADING time — 252
- * sessions of 6.5 hours, not 365 days of 24. Annualising intraday returns on
- * calendar time counts the overnight hours as periods in which the price could
- * have moved, and it could not, which quietly halves the number.
- *
- * Replaceable wholesale. Everything downstream reads these three fields.
- */
+/** Close-to-close over a rolling window, annualised on trading time (252 sessions of 6.5 h); calendar time would count closed hours and halve it. */
 const RV_MODEL = {
   /** Bars in the rolling sample. 30 on a 1m clock is half an hour. */
   window: 30,
@@ -70,21 +21,8 @@ interface VolPoint {
   value: number;
 }
 
-/**
- * How many sample periods a year holds at this bar width.
- *
- * Two regimes, because `barSec` means two different things either side of the
- * session length. An intraday bar is a slice OF a session, so a session holds
- * `sessionSeconds / barSec` of them. A daily or weekly bar is a whole number of
- * SESSIONS wearing a calendar span — and the calendar span is the trap: a daily
- * bar covers 86,400 seconds of clock but one session of trading, and a weekly
- * bar covers 604,800 seconds of clock but five. Scaling a daily bar by its
- * calendar seconds annualises it at 68 periods a year instead of 252 and quotes
- * realised vol at roughly half its true value.
- *
- * The 5/7 turns calendar days into sessions. `Math.max(1, …)` holds the daily
- * bar at exactly one session, which is what it is.
- */
+/** Sample periods a year at this bar width: an intraday bar is a slice of a session (sessionSeconds / barSec); a daily or weekly bar
+    is whole sessions (5/7 of its calendar days), or a daily bar annualises at 68 a year instead of 252. */
 function periodsPerYear(barSec: number): number {
   const sec = Math.max(1, barSec);
   if (sec < RV_MODEL.sessionSeconds) {
@@ -94,35 +32,15 @@ function periodsPerYear(barSec: number): number {
   return RV_MODEL.sessionsPerYear / sessionsPerBar;
 }
 
-/**
- * Rolling annualised realised volatility, in percent, one point per bar.
- *
- * The first `window` bars produce NO points. A shorter window would let the
- * line start at bar two on a sample of one return, where the standard
- * deviation is zero by construction — a confident 0% that is an artifact of
- * having no data, drawn at the exact left edge a reader anchors on.
- *
- * Overnight gaps are dropped from the sample rather than counted as returns.
- * A 1m realised-vol reading that includes the gap between 16:00 and 09:30 is
- * measuring the gap, not the minute, and one of those in the window dominates
- * every other return in it.
- */
+/** Rolling annualised realised vol in percent; the first `window` bars give no points (a one-return stdev is a fake 0%).
+    Overnight gaps are dropped from the sample, not counted as returns. */
 export function realizedVol(bars: readonly Candle[], barSec: number): VolPoint[] {
   const window = Math.max(2, Math.floor(RV_MODEL.window));
   if (bars.length <= window) return [];
 
   const scale = Math.sqrt(periodsPerYear(barSec)) * 100;
-  /*
-    THE OVERNIGHT TEST IS INTRADAY-ONLY.
-
-    A gap wider than 1.5 bars is a session break on an intraday clock — the same
-    test the VWAP anchor uses, so the two agree on where a session starts. On a
-    DAILY clock the same test would throw away every Friday-to-Monday step,
-    which is 20% of the sample and a perfectly ordinary daily return; on a
-    weekly clock it would throw away every holiday week. At or above the session
-    length, consecutive bars ARE consecutive sessions — `aggregateCandles` only
-    emits buckets that hold data — so there is no break to find.
-  */
+  /* The overnight test is intraday-only: a gap over 1.5 bars is a session break (as the VWAP anchor tests); at or above a session
+     consecutive bars are consecutive sessions. */
   const gapSec = barSec < RV_MODEL.sessionSeconds ? barSec * 1.5 : Infinity;
 
   /* returns[i] belongs to bars[i + 1]; null where the step crossed a break. */
@@ -168,17 +86,7 @@ export function realizedVol(bars: readonly Candle[], barSec: number): VolPoint[]
   return out;
 }
 
-/**
- * The implied line, as REPORTED — one flat-held reading carried across the
- * bars the realised line covers.
- *
- * `iv` arrives as a fraction (0.15) and leaves as a percent (15), because that
- * is the axis both lines share. A feed that reports nothing draws nothing.
- *
- * When a real implied SERIES lands, this function is what it replaces: the
- * chart asks for points over a span and does not care whether they came from
- * one constant or ten thousand quotes.
- */
+/** The implied line as reported: one reading (a fraction in, percent out) held across the realised line's bars; nothing reported draws nothing. */
 export function impliedVolLine(iv: number | null | undefined, over: readonly VolPoint[]): VolPoint[] {
   if (typeof iv !== 'number' || !Number.isFinite(iv) || iv <= 0) return [];
   const pct = iv * 100;

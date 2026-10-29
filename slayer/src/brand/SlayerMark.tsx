@@ -1,10 +1,5 @@
-/*
-  The mark ">S|" on its tile, used by the rail, launch gate, landing bar and system pages.
-  Three layers so nothing repaints: a still SVG (tile, brackets, ">"), the S as a CSS mask over a sliding foil strip
-  (a compositor transform), and a cursor that blinks by opacity, all on one clock (brandClock.ts).
-  From 64 px the whole mark; below, the S| alone centred on its tile; `bare` drops the tile. States: markState.ts.
-  The foil is silver on dark and the galaxy ink on paper (--foil-1..5); `near` brightens the S within 80 px.
-*/
+/* The mark ">S|": a still SVG, the S as a mask over a sliding foil strip (compositor transform) and an opacity cursor,
+   all on brandClock.ts so nothing repaints. Under 64 px only the S| shows; `bare` drops the tile. */
 
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { MARK, MARK_CONTENT } from './paths';

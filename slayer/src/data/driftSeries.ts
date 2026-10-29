@@ -1,41 +1,8 @@
 import type { FlowPrint } from '../types/trace';
 import { bucketFlow } from './flowBars';
 
-/*
-==================================================
-  SLAYER TERMINAL - THE PREMIUM DRIFT
-  (data/driftSeries.ts)
-
-  Two running totals: every dollar of call premium
-  that has printed today, and every dollar of put
-  premium. Drawn against the tape they came from,
-  the gap between the two lines IS the session's
-  lean, and the SLOPE of each is where the money is
-  arriving right now.
-
-  WHY CUMULATIVE AND NOT PER-BAR. The flow band
-  already draws per-bar premium, and per-bar answers
-  "is this minute busy". It cannot answer "who has
-  been buying all morning", because a steady bid
-  looks identical to no bid at all once each bar is
-  measured on its own. A running total keeps the
-  morning in the picture at 3pm.
-
-  THIS INVENTS NOTHING. It sums `bucketFlow`, which
-  sums Trace's accumulated prints. Three surfaces —
-  the tape desk, the flow band, this — now read one
-  tape, so they cannot end up quoting different
-  premium for the same session.
-
-  THE LIMIT, STATED PLAINLY: the tape begins
-  accumulating when the app opens. A running total
-  that starts at 10:41 is a running total FROM 10:41,
-  not from the bell, and it will read low against a
-  vendor's figure until a real feed backfills the
-  session. Nothing here pretends otherwise — the
-  first point is the first print we actually saw.
-==================================================
-*/
+/* Two running totals of today's call and put premium (summed from bucketFlow, Trace's prints): the gap is the session's lean,
+   the slope where money is arriving. The tape starts when the app opens, so a total from 10:41 is from 10:41, not the bell. */
 
 /** One instant on the two running totals. */
 interface DriftPoint {
@@ -56,36 +23,11 @@ interface DriftOptions {
   fromMs?: number;
 }
 
-/*
-  A CEILING ON THE FILLED BARS.
-
-  The gap fill below walks bar by bar from the first print to the last, so a
-  tape holding two prints four hours apart on a 1m clock costs 240 points —
-  nothing. But `barSec` arrives from a timeframe the caller chose and `at`
-  arrives from a feed, and one absurd timestamp would otherwise ask this to
-  materialise an unbounded array before anyone could notice.
-
-  Above the ceiling the fill is skipped and the sparse buckets are returned as
-  they are. The line then slopes across the gap instead of stepping, which is
-  the wrong picture — but a wrong picture is recoverable and an out-of-memory
-  page is not, and the ceiling is set far above any real session.
-*/
+/* A ceiling on the filled bars: one absurd timestamp must not materialise an unbounded array; above it the sparse buckets are returned as they are. */
 const MAX_FILLED_POINTS = 5000;
 
-/**
- * Running call/put premium totals, one point per bar.
- *
- * EVERY BAR BETWEEN THE FIRST AND LAST PRINT GETS A POINT, including the quiet
- * ones — and that is the opposite of what `bucketFlow` does, on purpose. An
- * absent bar in a histogram draws nothing, which is correct: nothing traded.
- * An absent bar in a LINE draws a straight segment from the last point to the
- * next one, which would show premium arriving smoothly through a lunch hour
- * when in fact none arrived at all. Holding the total flat across the gap is
- * the only shape that says what happened.
- *
- * Returns [] when nothing usable is in the tape — an empty pane, not a zero
- * line, because a zero line asserts a session in which nobody traded.
- */
+/** Running call/put premium, one point per bar including quiet ones (held flat), so a line never shows premium arriving through a lunch hour.
+    [] when nothing usable is in the tape: an empty pane, not a zero line. */
 export function cumulativeDrift(
   prints: readonly (FlowPrint & { at?: number })[],
   options: DriftOptions
@@ -112,10 +54,7 @@ export function cumulativeDrift(
 
   let next = 0;
   for (let t = bars[0].time; t <= bars[bars.length - 1].time; t += barSec) {
-    /* `while`, not `if`: bucketFlow's times are always multiples of barSec, so
-       one bucket per step is the rule — but if a caller ever hands this bars
-       from a different clock, several could land in one step and the loop must
-       consume all of them rather than silently dropping the rest. */
+    /* `while`, not `if`: bars from another clock could put several buckets in one step, and all must be consumed. */
     while (next < bars.length && bars[next].time <= t) {
       calls += bars[next].callPrem;
       puts += bars[next].putPrem;

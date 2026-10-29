@@ -1,10 +1,5 @@
-/*
-  Every figure for one cell — strike and expiry — the ledger on demand,
-  plus the strike netted across every expiry drawn: the floating house
-  card under the pointer. Nothing here is allowed to bleed: the calendar
-  line wraps into its own row (the pointer card once overran its edge on
-  "498 across 7 expiries").
-*/
+/* Every figure for one cell (strike and expiry) plus the strike netted across every drawn expiry, under the pointer.
+   The calendar line wraps to its own row so nothing overruns the card. */
 
 import { type Greek } from '../../data/exposureSurface';
 import { BULL, LONG_GAMMA, PUT_WALL, SHORT_GAMMA } from './paletteInk';

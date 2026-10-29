@@ -1,16 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - TICKER QUICK-PICK
-  The compact in-header ticker switcher shared by
-  the flow-board minis, the 4-way chart board and
-  the live chart's fullscreen strip. The menu is a
-  full-universe search (S&P 500 + NASDAQ listings),
-  not a watchlist — four presets and a blind text
-  box was the whole reachable market until Noah
-  called it (2026-08-18). Unknown symbols still
-  pick on Enter; the sim synthesizes them.
-==================================================
-*/
+/* The compact in-header ticker switcher: a full-universe search (S&P 500 and Nasdaq listings); an unknown symbol still picks on Enter. */
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -25,11 +13,7 @@ import TickerLookup from '../ui/TickerLookup';
 import useFocusTrap from '../ui/useFocusTrap';
 
 interface TickerQuickPickProps {
-  /* The chain card wears the SLIM cut (Noah, 2026-08-26: "make it blend in
-     with its background more and thinner... it just doesnt look like it
-     belongs there") — the capsule's pill is the chart toolbar's grammar,
-     where the name is the subject and earns a surface. In a strip of quiet
-     text chips it speaks chip instead: no fill, chip-height, hover reveal. */
+  /* The slim cut for a strip of quiet chips: no fill, chip height, hover reveal. */
   slim?: boolean;
   /** What the capsule SAYS when that is more than the ticker — the Weigher's
       contract lens prints the whole contract ("SPY 507 Call") while the
@@ -37,16 +21,9 @@ interface TickerQuickPickProps {
   label?: string;
   ticker: string;
   onPick: (ticker: string) => void;
-  /* The button's tooltip. Defaulted, so every caller that has never thought
-     about it keeps the words it already had. A host with KEYS on this control
-     names them here — Terrain's `s` opens this menu and ↑/↓ step the symbol
-     without it, and the desk's convention is that a control's title names its
-     key (the expand button's "— F", the rail's "— R"). */
+  /* The button's tooltip; a host with keys on this control names them here (Terrain's `s`, ↑/↓). */
   title?: string;
-  /* OPTIONALLY CONTROLLED. Left alone the button owns its own open state, the
-     way every other caller uses it. A host that has to open this from a
-     keyboard passes both, and then owns it — there is no third state where
-     both the host and the button think they are in charge. */
+  /* Optionally controlled: pass both to own the open state; there is no half-controlled mode. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -65,26 +42,13 @@ const TickerQuickPick = ({ ticker, onPick, open: openProp, onOpenChange, slim, l
      rightward INTO that pane instead of reaching back over its neighbour. */
   const { anchorRef, placed } = useAnchoredMenu<HTMLButtonElement>(open, 'bottom', MENU_W, 'start');
   const menuRef = useRef<HTMLDivElement | null>(null);
-  /*
-    The menu covers the pane's own controls, and without a trap Tab walked
-    straight out of it onto them: a keyboard reader kept tabbing into things
-    they could not see, hidden behind the panel they were reading. Measured on
-    the Terrain desk, Tab from the search box reached desk controls underneath
-    the open menu within a few dozen stops.
-
-    `CompareControl` — the other menu on this toolbar — already does exactly
-    this. This one was the odd one out, so it uses the same hook rather than a
-    second mechanism: the trap also hands focus back to the trigger on close,
-    which is the half a reader notices when it is missing.
-  */
+  /* A focus trap (as CompareControl): the menu covers the pane's controls, and the trap returns focus to the trigger on close. */
   useFocusTrap(open, menuRef);
 
   // Outside click / Escape closes the picker
   useEffect(() => {
     if (!open) return;
-    /* pointerdown, not mousedown: a Radix trigger's pointerdown prevents its
-       default, which cancels the compatibility mousedown — a mousedown listener
-       never heard the click that opened the other menu (2026-09-06). */
+    /* pointerdown, not mousedown: a Radix trigger's pointerdown cancels the compatibility mousedown. */
     const onDown = (e: PointerEvent) => {
       /* The menu is PORTALLED to the body, so it is not inside rootRef any
          more — without the menuRef clause every click on the menu counted as
@@ -93,14 +57,8 @@ const TickerQuickPick = ({ ticker, onPick, open: openProp, onOpenChange, slim, l
       if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
       setOpen(false);
     };
-    /* CAPTURE, and it stops the key going any further.
-
-       Escape is not owned by one component: the desk behind this menu closes
-       an expanded pane on the same key, and both listeners are on `window`.
-       Bubble-phase, both fire — measured: one Escape with this open inside an
-       expanded pane closed the menu AND collapsed the pane. Window-capture
-       runs before window-bubble, so the innermost thing open gets the key and
-       nothing else sees it. Same pattern as the date picker. */
+    /* Capture phase, and the key stops here: the desk behind also closes on Escape at window level,
+       so the innermost open thing takes the key first. */
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
@@ -121,10 +79,7 @@ const TickerQuickPick = ({ ticker, onPick, open: openProp, onOpenChange, slim, l
 
   return (
     <div ref={rootRef} className="relative">
-      {/* TradingView's symbol button (Noah, 2026-08-23): the name wears a
-          capsule a shade grayer than the bar it sits on — the one control
-          on the taskbar with its own surface, because it IS the subject.
-          TV-sized: ~112×28, name leading, the affordance at the far end. */}
+      {/* TradingView's symbol button: a capsule a shade greyer than its bar (~112×28), the one control with its own surface. */}
       <button
         ref={anchorRef}
         onClick={() => setOpen(!open)}

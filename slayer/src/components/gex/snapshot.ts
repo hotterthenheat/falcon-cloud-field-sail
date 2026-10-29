@@ -1,26 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE SNAPSHOT (components/gex/snapshot.ts)
-
-  TradingView's camera, on our toolbar (Noah,
-  2026-10-18: "a feature on the task bar section
-  (right side) like tradingview where you can take
-  a screenshot of the screen"). The tape as it
-  stands, composed into one picture the house
-  would sign: a head line — the name, the interval,
-  the price and its change, the moment — over the
-  chart the library renders (its canvases, every
-  series, every drawing and primitive, the axes),
-  and the strike rail beside it when the pane has
-  one. Then three doors: save it as a PNG, copy it
-  to the clipboard, open it in a new tab.
-
-  The chart's pixels come from the library itself
-  (takeScreenshot), so what the picture shows is
-  exactly what the tape drew — no DOM-to-image
-  guesswork, no dependency.
-==================================================
-*/
+/* The chart snapshot: a head line (name, interval, price and change, moment) over the library's own takeScreenshot
+   (every series, drawing and axis) and the strike rail when there is one; saved as PNG, copied, or opened in a tab. */
 
 import { FONT_SANS } from '../../theme/fonts';
 import { readToken } from '../../theme/theme';

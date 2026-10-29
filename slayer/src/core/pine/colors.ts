@@ -1,14 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - PINE COLOURS (core/pine/colors.ts)
-
-  Pine's named colours (TradingView's own values, so a
-  pasted script draws what its author saw), hex
-  literals with and without alpha, `color.new` /
-  `color.rgb` / `color.from_gradient`, and the CSS a
-  chart can take.
-==================================================
-*/
+/* Pine's named colours (TradingView's values), hex literals with and without alpha, `color.new` / `rgb` / `from_gradient`, and CSS out. */
 
 import type { PineColor } from './types';
 

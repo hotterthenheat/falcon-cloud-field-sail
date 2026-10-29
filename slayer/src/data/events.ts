@@ -4,44 +4,8 @@ import type { EarningsEvent } from './earnings';
 import type { Candle } from '../types/market';
 import type { FlowPrint } from '../types/trace';
 
-/*
-==================================================
-  SLAYER TERMINAL - EVENT MARKERS (data/events.ts)
-
-  The calendar, on the tape — T-11.
-==================================================
-
-  A chart with no event context makes the reader hold the calendar in their
-  head. This engine turns three sources the terminal already carries into
-  marks along the tape's bottom edge:
-
-    EARNINGS   this name's next report, from the earnings engine — BMO at
-               that session's open, AMC at its close, with the implied move
-               the options are charging riding in the card
-    MACRO      FOMC · CPI · NFP, from the schedule below
-    PRINTS     the session's largest option prints over a premium floor —
-               the tape's own record of when size arrived
-
-  TWO TIME SHAPES, ONE SEAM. An event already on the tape carries a bar
-  TIME; one still ahead carries TRADING MINUTES past the last bar — the same
-  runway arithmetic the expected-move cone draws with, so the two cannot
-  disagree about where "three sessions out" lands. The bridge between the
-  real-world calendar and the simulator's tape is SESSIONS: an event n
-  trading days away sits n sessions ahead, whatever dates the synthetic tape
-  believes in. When the live feed replaces the simulator the same bridge
-  degenerates to the identity.
-
-  THE SCHEDULE'S HONESTY, kind by kind. The FOMC table is the Fed's own
-  published 2026 calendar (decision days). NFP is a RULE — first Friday of
-  the month — applied to the real calendar. CPI is APPROXIMATED at the
-  second Wednesday: BLS publishes exact dates and the calendar feed will
-  carry them; until then the approximation is named in the card rather than
-  dressed as a confirmed date. Dividends, splits and congress/insider
-  filings are in the directive and NOT here: the simulator models none of
-  them, and a marker invented for a modelled filing would be exactly the
-  fake functionality rule 1 exists to keep out. They join when their feeds
-  do.
-*/
+/* Markers along the tape's bottom edge: this name's next earnings (BMO at the open, AMC at the close), FOMC/CPI/NFP, and the session's
+   largest prints. Past events carry a bar time, future ones trading minutes ahead (the cone's arithmetic). FOMC is the Fed's 2026 calendar; NFP first Friday; CPI approximated (second Wednesday, said so). */
 
 export type MarketEventKind = 'earnings' | 'macro' | 'print';
 
@@ -140,10 +104,7 @@ interface TapeEventsInput {
   todayIso: string;
 }
 
-/**
- * Every marker the tape carries, past ones first (by time), future ones after
- * (by minutes ahead).
- */
+/** Every marker, past ones first by time, then future ones by minutes ahead. */
 export function buildTapeEvents(input: TapeEventsInput): MarketEvent[] {
   const { bars, prints, earnings, macro, todayIso } = input;
   if (bars.length === 0) return [];
@@ -165,10 +126,7 @@ export function buildTapeEvents(input: TapeEventsInput): MarketEvent[] {
       future.push({ ...e, minutesAhead: ahead });
       return;
     }
-    /* Already on the tape: k sessions back on the grid (the seeded sessions
-       are one calendar day apart), m minutes into that session. Dropped if
-       it predates the buffer — a mark with no bar under it points at
-       nothing. */
+    /* Already on the tape: k sessions back, m minutes in; dropped if it predates the buffer. */
     const t = todayStart + k * 86400 + m * 60;
     if (t >= bars[0].time && t <= last.time) past.push({ ...e, time: t });
   };

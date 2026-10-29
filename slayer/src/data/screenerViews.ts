@@ -2,29 +2,7 @@ import { createViewStore } from './savedViews';
 import { DEFAULT_FILTERS, type BookFilters } from './flowBook';
 import type { SleeveKey } from '../types/compass';
 
-/*
-==================================================
-  SLAYER TERMINAL - SCREENER VIEWS
-  (data/screenerViews.ts)
-
-  A filter you can send someone. Taken from the
-  partner's build at Noah's word (2026-10-13).
-==================================================
-
-  THE FILTER IS THE ADDRESS. A screen the reader has tuned — the side, the
-  tenors, the floors, whether in-the-money is excluded — lived in one
-  localStorage key, which meant it could not be shared, could not be
-  bookmarked, could not be opened twice side by side, and could not be
-  described to anyone except by listing the controls out loud.
-
-  THE URL WINS OVER THE STORED FILTER, always. A link someone was SENT is a
-  more specific instruction than what that reader happened to be looking at
-  last. When there is no query, the stored filter is the fallback.
-
-  ONLY WHAT DIFFERS IS WRITTEN. A default-valued filter leaves no parameter
-  behind, so an untouched screener has a clean URL and a shared one carries
-  exactly the decisions that were made.
-*/
+/* A screener filter as the address: the URL wins over the stored filter, and only fields that differ from the defaults are written. */
 
 // ---- the codec ------------------------------------------------------------
 
@@ -35,7 +13,7 @@ export function filtersToParams(f: BookFilters, screen?: string, query?: string,
   const p = new URLSearchParams();
   if (screen) p.set('screen', screen);
   if (query) p.set('q', query);
-  /* THE EXPIRY TRAVELS TOO: a screen cut to one date is shared and saved with it */
+  /* The expiry travels too. */
   if (expiry) p.set('exp', expiry);
   if (f.side !== DEFAULT_FILTERS.side) p.set('side', f.side);
   if (f.tenors.length) p.set('tenors', f.tenors.join(','));
@@ -45,14 +23,7 @@ export function filtersToParams(f: BookFilters, screen?: string, query?: string,
   return p;
 }
 
-/**
- * Read a filter out of a query string.
- *
- * Every field is validated rather than trusted: a URL is user input, and
- * anyone can type one. A malformed value falls back to its default instead
- * of poisoning the screen — `vol=abc` filters nothing rather than filtering
- * everything away and leaving a reader staring at an empty table.
- */
+/** A filter read from a query string, every field validated (a URL is user input); a malformed value falls back to its default. */
 export function paramsToFilters(
   p: URLSearchParams,
   validTenors: readonly string[]

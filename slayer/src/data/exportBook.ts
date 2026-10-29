@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE BOOK, TAKEN AWAY (data/exportBook.ts)
-
-  What the Map draws, as a file (the competitive
-  audit, 2026-10-13 — every product in the category
-  hands its book over as CSV or JSON; the Map had no
-  door for it): the book by greek, date and strike
-  with both legs and the net, and the levels with
-  the moment they were read at. Written in the
-  browser from the surface on screen — nothing is
-  asked of a server; what you see is what you get.
-==================================================
-*/
+/* What the Map draws, as a file: the book by greek, date and strike (both legs and the net) and the levels with their moment,
+   written in the browser from the surface on screen. */
 
 import { nyStamp } from '../core/nyTime';
 import type { ExposureSurface, Greek } from './exposureSurface';

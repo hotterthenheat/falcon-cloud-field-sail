@@ -69,11 +69,7 @@ export const GroundProvider = ({ children }: { children: ReactNode }) => {
       setA(next);
     };
     const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-    /* The turn is a cut while a film rolls: the View Transition captures the page twice, and each capture
-       rasterises every playing film — measured, the page stood frozen ~210ms with the wall's eight films up (the
-       capture before the change 33ms, React's own update 40ms, the rest the second capture and the crossfade's
-       first frame), and 3ms with no transition at all. So the crossfade of stays for a page of stills — less
-       motion, saved data, no films — and a page with a film rolling simply switches, at once. */
+    /* A cut, not a View Transition, while a film rolls: the transition's two captures rasterise every playing film (~210 ms frozen with eight up). */
     const rolling = Array.from(document.querySelectorAll('video')).some(v => !v.paused && v.readyState >= 2);
     if (typeof doc.startViewTransition === 'function' && !calm?.matches && !rolling) doc.startViewTransition(() => flushSync(run));
     else run();

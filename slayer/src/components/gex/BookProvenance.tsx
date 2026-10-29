@@ -1,23 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHERE THIS BOOK COMES FROM
-  (components/gex/BookProvenance.tsx)
-
-  The data door on the Map's band and the card behind
-  it (the competitive audit, 2026-10-13: the category's
-  own disclaimers call a demo book "not valid for live
-  trading", and a serious exposure map prints its
-  provenance and its method on screen — the feed, the
-  open interest's date, the price the hedging is read
-  at, the formula, the sign, the units, what each level
-  is and what the other products call it). The door
-  says the source in two words when a feed is on, and
-  only "Data" on the house book (the owner, 2026-10-13:
-  the site is theirs alone, it need not say simulated
-  anywhere); the card says the rest, in the house's
-  words.
-==================================================
-*/
+/* The Map's data door and its card: the feed, the open interest's date, the price hedging is read at,
+   the formula, sign and units, and what each level is. */
 
 import { FLIP_RULE } from '../../data/flipLevel';
 import { ASSUMPTION_WORDS, freshnessOf } from '../../data/levelSureness';
@@ -37,8 +19,7 @@ const isLive = (ticker?: string): boolean => {
 };
 
 /** The source, in two words — for the door and the chip */
-/* THE CARD SAYS WHAT THE PAGE DOES (the seventh audit's M4, 2026-10-23): it read "House book · the terminal's own
-   chain…" off a hard-coded `live: false` over the live open-interest book */
+/* The card's source line follows the book actually on screen, never a hard-coded flag. */
 export function sourceWords(ticker?: string): { short: string; long: string; live: boolean } {
   if (isLive(ticker))
     return {
@@ -49,9 +30,7 @@ export function sourceWords(ticker?: string): { short: string; long: string; liv
   return { short: 'House book', long: "the terminal's own chain, open interest and tape, built in the terminal", live: false };
 }
 
-/** WHEN AND AT WHAT PRICE THE ROWS ON SCREEN WERE PRICED (the seventh audit's M4: "priced at the live spot" before the
-    open, over rows priced at Thursday's 16:15) — the feed's own minute and price for the book's rows, and when the
-    open interest under them was counted */
+/** When and at what price the rows on screen were priced (the feed's own minute), and when their open interest was counted. */
 export function bookFreshness(ticker: string): string {
   if (!isLive(ticker)) return freshnessOf(ticker);
   const front = Object.keys(peekEntry(ticker)?.byDate ?? {}).filter(d => d >= nyIsoDate()).sort()[0] ?? null;

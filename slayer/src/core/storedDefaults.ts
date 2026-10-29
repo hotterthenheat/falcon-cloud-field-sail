@@ -1,46 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A DEFAULT THAT CHANGED UNDER
-  STORED STATE (core/storedDefaults.ts)
-
-  Some hosts write a chart's overlays to storage the
-  first time they save, so a changed default reaches
-  only a browser that has never opened the page. When
-  a default changes and the change is meant for
-  everyone, it is carried into storage here — ONCE,
-  behind a flag, before the app reads anything. After
-  that the reader's own switch is theirs again.
-
-  KEY LEVELS OPEN OFF (Noah, 2026-09-19: "every chart
-  should have key levels off to begin with for the
-  overlays, even the landing page one"). The default
-  itself is StrikeChart's DEFAULT_OVERLAYS; this turns
-  the stored copies off to match:
-    · Terrain's panes, its per-symbol setups, and the
-      old flat shape        (slayer_terrain_v1)
-    · the four-chart board  (slayer_pulse_board)
-  NOT touched: Terrain's SAVED LAYOUTS — an
-  arrangement the reader named and kept is their
-  choice, not a default that was written for them.
-  The Pulse chart tile and the Weigher's chart hold
-  their overlays in memory, so the default alone
-  reaches them — and the landing's window, which is
-  the Pulse tile.
-
-  A TERRAIN PANE FOLLOWS THE STORE UNTIL IT IS GIVEN A
-  THEME (Noah, 2026-09-19: "the chart backgrounds
-  should be the 'stone' one on default for the light
-  theme"). Every pane used to be written with a theme
-  the day it was made — 'glacier', the default — so a
-  stored 'glacier' is a default that was written for
-  the reader, not a choice. It is let go once, here,
-  and the pane wears the page's default (Glacier on
-  the dark terminal, Stone on paper — never the
-  store's pick, so the dark terminal does not move). Any other stored theme is
-  a pick and stays on both pages. Saved layouts are
-  left alone, as above.
-==================================================
-*/
+/* Carries a changed default into stored state once, behind a flag, before the app reads anything: key levels off on stored Terrain panes
+   and the Pulse board, and a stored 'glacier' pane theme let go to the page default. Saved layouts are never touched. */
 
 const LEVELS_OFF_FLAG = 'slayer_levels_off_v1';
 const PANE_THEME_FOLLOWS_FLAG = 'slayer_pane_theme_follows_v1';

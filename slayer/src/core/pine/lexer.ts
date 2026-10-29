@@ -1,19 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PINE READER (core/pine/lexer.ts)
-
-  Text into tokens, one logical line at a time. Pine
-  is laid out by indentation (a block is the lines
-  indented under `if`, `for`, `while`, `switch` and a
-  function's `=>`), and a long statement may wrap
-  onto the next line inside open brackets or with an
-  indent that is not a multiple of four. The reader
-  settles both before the parser sees anything: it
-  hands over lines, each with its indent and its
-  tokens, and the physical line every token came
-  from, so an error can name it.
-==================================================
-*/
+/* Text into logical lines of tokens: blocks by indentation, and long statements wrapping inside brackets or on a non-multiple-of-four
+   indent are joined here. Every token keeps its physical line for errors. */
 
 import { PineError } from './types';
 

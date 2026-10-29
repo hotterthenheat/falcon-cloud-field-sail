@@ -1,34 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE READ (components/gex/BookRead.tsx)
-
-  The book's read, beside the book (Noah, 2026-09-12,
-  from his partner's "info" card: "lets the user open
-  up a translucent card within the page and see the
-  entire spy gex for multiple different days... i
-  wanted to incorporate this into our ladder view
-  with our own type design. i like the translucent
-  look"). A glass card over the right of the ladder
-  or the calendar, four short sections that scroll
-  under a rail of their names:
-
-    THE BOOK      the net, the verdict in a sentence,
-                  the four levels
-    HEAVIEST      today's heaviest strikes and what
-                  each did over a window (1m … open)
-    THE STRIKE    the one under the pointer, or kept:
-                  its legs, its five greeks, its
-                  change over every window
-    TO THE CLOSE  the expected move from here, and
-                  the strikes the moves land on
-    RECENT        the strikes pointed at lately
-
-  One card, whichever greek the ladder is showing —
-  never five. The windows read TODAY'S contracts
-  off the replay's minute grid (data/replay.ts);
-  live history is a seam behind the same calls.
-==================================================
-*/
+/* The book's read: a glass card beside the ladder or calendar with five sections (the book, heaviest strikes, the strike under
+   the pointer, to the close, recent). One card whatever greek is shown; windows read today's contracts off the replay grid. */
 
 import { levelRoles, type LevelRole } from '../../core/walls';
 import { expirySpan, todayScopeLabel } from '../../data/bookWindow';
@@ -56,8 +27,7 @@ import { fmtStrike } from '../../core/format';
 const SILVER = 'rgb(var(--silver))';
 const MUTED = 'rgb(var(--text-muted))';
 
-/** The windows a strike's change is read over — today's contracts, off the minute grid (ChangeMark.tsx, shared with
-    Compare's Head to head since 2026-10-17) */
+/** The windows a strike's change is read over, shared with Compare (ChangeMark.tsx). */
 const WINDOWS = READ_WINDOWS;
 const SECTIONS = [
   { id: 'book', label: 'The book' },
@@ -73,7 +43,7 @@ interface BookReadProps {
   snapshot: MarketSnapshot;
   /** The greek the ladder leads with */
   greek: Greek;
-  /** The ladder's ramp — the Colours card (house or thermal): every net figure here wears it, as the ladder's net column and foot do (Noah, 2026-09-12: "shouldn't the book's net be the heat or cooled colour?") */
+  /** The ladder's ramp (house or thermal): every net figure here wears it. */
   mode?: HeatMode;
   /** How far along the calendar the ladder reads, and whether today's column is out */
   /** The expiry columns the host draws, as surface indices — the read sums the same book the views show */
@@ -107,7 +77,6 @@ export const ReadDoor = ({ open, onClick, compact = false, name, testId = 'data-
     aria-pressed={open}
     aria-label={open ? `Close ${name ? `${name}'s` : 'the'} read` : `${name ? `${name}'s` : 'The'} read`}
     title={open ? `Close ${name ? `${name}'s` : 'the'} read (Esc)` : `${name ? `${name}'s` : "The book's"} read — the net, the levels, the heaviest strikes and what they did, the strike under the pointer, the move to the close`}
-    /* sentence case, the cards' grammar (the audit's M3, 2026-10-13) */
     className={
       flat
         ? `${FLAT_DOOR} ${compact ? 'w-7 justify-center px-0' : ''} ${open ? FLAT_ON : ''}`
@@ -143,7 +112,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     return () => window.removeEventListener('keydown', onKey, { capture: true });
   }, [onClose]);
 
-  /* THE EXPIRIES SHOWN — the ladder's own rule (today's column out after the bell) */
+  /* The expiries shown, by the ladder's own rule (today's column out after the bell). */
   const shownIdx = useMemo(() => {
     const all = surface.expiries.map((_, i) => i);
     const todayIdx = todayColumn(surface);
@@ -154,18 +123,14 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   const at = (g: Greek, s: number, side: 'put' | 'call' | 'net') => shownIdx.reduce((a, e) => a + (surface[side][g][e]?.[s] ?? 0), 0);
   const idxOf = (strike: number) => surface.strikes.indexOf(strike);
 
-  /* THE BOOK — THE LEVELS SCOPE'S FACTS, AS COMPARE PRINTS THEM (the fourth audit, 2026-10-23: "THE BOOK −$9.0B net GEX ·
-     the 61 strikes near spot" over the matrix's Oct 23 → Nov 3 rows beside the Levels card's −$3.1B). The net GEX and
-     each level's figure are the Levels card's contracts (data/levelsFor.ts — the one source); a figure summed over the
-     matrix's own rows says it is the matrix's */
+  /* Net GEX and each level's figure are the Levels card's contracts (data/levelsFor.ts, the one source);
+     a figure summed over the matrix's own rows says so. */
   const scope = useNameLevels(snapshot.ticker);
   const lv = useLevelsFor(snapshot.ticker, scope);
   const lvReady = !!lv && lv.complete;
   const windowWords = `matrix rows ${expirySpan(shownIdx.map(i => surface.expiries[i]?.date).filter(Boolean) as string[]) ?? ''}`;
   const net = surface.strikes.reduce((a, _, s) => a + at(greek, s, 'net'), 0);
-  /* THE NET'S INK IS THE RAMP — the ladder's own: a figure against the heaviest
-     net among the strikes for its greek (the rows' scale), a total against
-     itself (the foot's) */
+  /* The net's ink is the ladder's ramp: a strike against the heaviest net for its greek, a total against itself. */
   const scale = useMemo(() => {
     const m = {} as Record<Greek, number>;
     for (const g of GREEKS) m[g] = Math.max(1, ...surface.strikes.map((_, s) => Math.abs(at(g, s, 'net'))));
@@ -178,8 +143,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
   const { levels } = surface;
   const verdict = readRegime(levels, k => (lv ? lv.netAt(k) : null));
   const pinStrike = surface.front.strikes.find(r => r.pin)?.strike;
-  /* EVERY ROLE, IN THE ONE ORDER (core/walls.ts LEVEL_ORDER — the sixth audit: "769 SUPREME" dropped its put wall):
-     "supreme · put wall", in the first role's ink */
+  /* Every role a strike holds, in LEVEL_ORDER (core/walls.ts), inked by the first. */
   const roleOf = (strike: number): { word: string; ink: string } | null => {
     const roles = levelRoles(strike, { supreme: levels.supreme, callWall: levels.callWall, putWall: levels.putWall, flip: levels.flipFound === false ? null : levels.flip });
     if (roles.length) return { word: roles.join(' · '), ink: ROLE_INKS[roles[0]] };
@@ -195,7 +159,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     ...(levels.flipFound === false ? [] : [{ word: 'flip', strike: levels.flip, ink: FLIP }]),
   ];
 
-  /* TODAY'S CONTRACTS OVER EACH WINDOW — the minute grid, seven books back */
+  /* Today's contracts over each window, off the minute grid, seven books back. */
   const history = useMemo<(ExposureProfileData | null)[] | null>(() => {
     const range = replayRange(snapshot.ticker);
     if (!range) return null;
@@ -237,19 +201,16 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     return () => window.clearTimeout(id);
   }, [pointed]);
 
-  /* TO THE CLOSE — ONE EXPECTED MOVE ON EVERY PAGE (the fourth audit, 2026-10-23: this card said ±7.32 off the matrix's
-     front vol over a session while Compare and the reach odds said the ±$4.74): the own implied move
-     into the Levels scope's expiry (uwBook peekDaySigma), scaled to the minutes left while the session runs */
+  /* One expected move on every page: the implied move into the Levels scope's expiry (uwBook peekDaySigma),
+     scaled to the minutes left while the session runs. */
   const clock = readSessionClock();
   const minLeft = clock.secondsToClose / 60;
   const shut = minLeft <= 0;
   const sigmaDay = peekDaySigma(snapshot.ticker, lv?.date ?? null);
-  /* A LATER EXPIRY'S MOVE IS ITS OWN, OVER ITS WHOLE HORIZON (the fifth audit, 2026-10-23: CROX's Today scope is Nov 20 —
-     the card read $4.95, the ATM vol over one session, against the $14.98 into Nov 20): uwBook peekScopeMove,
-     the same move the reach odds read (data/wall.ts scopeSigma), and the card says which number it is */
+  /* A later expiry's move covers its whole horizon (uwBook peekScopeMove, as the reach odds read it); the card says which it is. */
   const scopeMove = peekScopeMove(snapshot.ticker, lv?.date ?? null);
   const multi = !!scopeMove?.multi;
-  /* scaled to the minutes left exactly once (uwBook peekMoveToClose — the tenth audit's B2) */
+  /* Scaled to the minutes left exactly once (uwBook peekMoveToClose). */
   const w1 = multi ? scopeMove!.move : sigmaDay != null ? (shut ? sigmaDay : peekMoveToClose(snapshot.ticker, lv?.date ?? null, minLeft) ?? sigmaDay * Math.sqrt(Math.min(390, minLeft) / 390)) : null;
   const moveDate = lv?.date ?? null;
   const moveWords = scopeMove?.words ?? (moveDate ? `the implied move into ${expirySpan([moveDate])}` : 'the implied move');
@@ -273,9 +234,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
 
   const unit = GREEK_UNIT[greek];
   const label = GREEK_LABEL[greek];
-  /* THE WHOLE COLUMN WHEN THE COLUMN IS NARROW (the owner's walk, 2026-10-14): beside the day box the book's column is
-     ~374px, and a panel over 62% of it cut "SUPRE…", "$1.2" and ran VANNA into CHARM — under 620px the read takes the
-     column, as it does with names side by side */
+  /* Under 620 px the read takes the whole column; a 62% panel there cut the level names. */
   const asideRef = useRef<HTMLElement | null>(null);
   const [narrow, setNarrow] = useState(false);
   useLayoutEffect(() => {
@@ -293,8 +252,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
     <aside
       ref={asideRef}
       className={`absolute inset-y-0 right-0 z-20 flex flex-col bg-card/[0.97] backdrop-blur-md backdrop-saturate-150 animate-soft-in transition-opacity duration-200 motion-reduce:transition-none ${
-        /* 460, the guide cards' width: at 400 the rail's five names wrapped inside their buttons and the head cut its
-           own words (the audit's H6, 2026-10-13) */
+        /* 460 px, the guide cards' width: narrower wraps the rail's names inside their buttons. */
         whole ? 'w-full' : 'w-[460px] max-w-[62%] border-l border-borderMuted shadow-[-16px_0_48px_rgba(0,0,0,0.45)]'
       } ${closing ? 'opacity-0 pointer-events-none' : ''}`}
       aria-label={`${surface.ticker}'s read`}
@@ -302,8 +260,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
       data-read-fill={whole || undefined}
     >
       {/* THE HEAD — whose read, in which greek, over which window */}
-      {/* THE HEAD WRAPS, NEVER CUTS (the seventh audit's retail finding: "SPY GEX · 8 EXPI…", the rows showing through the
-          glass under it): the window's words go to a second line when the buttons need the room, and the panel is opaque */}
+      {/* The head wraps rather than cuts, and the panel is opaque so rows do not show through. */}
       <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 py-2 min-h-10 border-b border-borderSubtle/70 min-w-0 bg-card">
         <span className="font-mono text-t11 font-bold text-textPrimary">{surface.ticker}</span>
         <span className="font-mono text-t11 uppercase tracking-widest text-textMuted min-w-0" data-read-head-window>{label} · {shownIdx.length === 1 ? surface.expiries[shownIdx[0]]?.date : `${shownIdx.length} expiries`}</span>
@@ -359,7 +316,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
             ) : (
               <>
                 <span className="text-t17 font-semibold" style={{ color: rampInk(greek, net, Math.max(1, Math.abs(net))) }}>{fmtUsd(shownGreek(greek, net))}</span>
-                {/* the strikes near spot, not the whole book — say which this is (the ship pass, 2026-10-22) */}
+                {/* The strikes near spot, not the whole book; the line says so. */}
                 <span className="text-t11 text-textMuted">net {label} · {windowWords} · the {surface.strikes.length} strikes near spot</span>
               </>
             )}
@@ -369,8 +326,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
             {levelRows.map(l => {
               const i = idxOf(l.strike);
               /* GEX: the level's own figure on the Levels card's contracts (Compare's); another greek: the matrix rows' */
-              /* A WALL BY ITS OWN LEG, LABELLED (the sixth audit's m7: CALL WALL 770 "$32.7M" — the strike's net — here,
-                 "CALLS +$222.7M" on Compare): the call wall prints its calls, the put wall its puts, the supreme its net */
+              /* A wall prints its own leg: the call wall its calls, the put wall its puts, the supreme its net. */
               const leg: 'call' | 'put' | 'net' = l.word === 'call wall' ? 'call' : l.word === 'put wall' ? 'put' : 'net';
               const legs = greek === 'gex' ? (lvReady ? lv!.legsAt(l.strike) : undefined) : undefined;
               const scoped = legs === undefined ? undefined : legs == null ? null : legs[leg];
@@ -450,8 +406,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
                   <span className="text-t11 uppercase tracking-wider text-textMuted cursor-help" title={GREEK_EXPLAIN[g]}>{GREEK_LABEL[g]}</span>
                   {(() => {
                     const v = at(g, sIdx, 'net');
-                    /* NEVER A FALSE $0 (the sixth audit's m9: "VEX $0" before vega lands): vega comes off the contract rows
-                       alone, so a zero while the drawn dates' rows are still out reads "…", and once they are in, "—" */
+                    /* Never a false $0: vega comes off the contract rows alone, so "…" while those rows are out and "—" once they are in. */
                     if (g === 'vex' && v === 0) {
                       const facts = peekEntry(snapshot.ticker)?.factsDates;
                       const waiting = shownIdx.some(i => { const d = surface.expiries[i]?.date; return !!d && !facts?.has(d); });
@@ -485,7 +440,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
               one expected move · {multi && moveDate ? `by ${expirySpan([moveDate])}, the expiry the levels read` : shut ? (todayScopeLabel() === 'Today' ? "today's session" : 'the next session') : `${Math.round(minLeft)} min left`} · {multi ? moveWords : scopeMove?.source === 'vendor' || !scopeMove ? moveWords : `one session of ${moveWords}`}
             </span>
           </div>
-          {/* one column: "one move down · 512.34 · 512 put wall" wrapped to two lines in half the card (the audit's H6) */}
+          {/* One column: the reach lines wrapped in half the card. */}
           <div className="grid grid-cols-1 gap-y-1 text-t11">
             {w1 != null && [
               { word: 'one move up', price: surface.spot + w1, ink: CALL_WALL },
@@ -537,8 +492,7 @@ const BookRead = ({ surface, snapshot, greek, mode = HEAT_MODE, expiries, afterB
 
       {/* THE FOOT */}
       <div className="shrink-0 flex items-center gap-3 px-3.5 h-7 border-t border-borderSubtle/60 font-mono text-t11 uppercase tracking-widest text-textMuted">
-        {/* the strikes the grid beside it draws, not the whole book under it (the paying-user audit's L4: "60 strikes" under
-            a 40-row grid) */}
+        {/* The strikes the grid beside it draws, not the whole book. */}
         <span>{drawnStrikes} strikes · {shownIdx.length} {shownIdx.length === 1 ? 'expiry' : 'expiries'}</span>
         <span className="ml-auto inline-flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${clock.phase === 'OPEN' || clock.phase === 'AUCTION' ? 'bg-select' : 'bg-textMuted'}`} aria-hidden />

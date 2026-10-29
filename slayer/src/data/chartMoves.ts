@@ -1,8 +1,4 @@
-/*
-  The biggest moves on the price chart, up to the minute on screen.
-  A swing is one run of bars that keep the same direction. The three
-  largest, in dollars, are the ones the book keeps sharp.
-*/
+/* The biggest moves on the price chart up to the minute on screen: a swing is a run of bars in one direction; the three largest in dollars stay sharp. */
 
 import { useSyncExternalStore } from 'react';
 

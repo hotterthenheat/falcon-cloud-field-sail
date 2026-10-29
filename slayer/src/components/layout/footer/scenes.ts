@@ -67,8 +67,7 @@ const trace: SceneMaker = () => {
   });
 };
 
-/* THE DOSSIER — THE FILE ON A NAME: the world as dots, the stories breaking and reaching; the story's card; the
-   earnings to come, day by day */
+/* Dossier: the world as dots with stories breaking, the story's card, the earnings to come. */
 const dossier: SceneMaker = () =>
   compose([crumb('terminal  /  dossier  /  news'), worldMap(), story(), strip(), wire()], s => {
     const b = s.box;

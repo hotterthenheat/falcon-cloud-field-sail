@@ -1,8 +1,5 @@
-/*
-  The wordmark ">slayer_terminal": ">" and "terminal" muted, "slayer_" in the still foil (silver on dark, galaxy
-  ink on paper); `prompt` adds "slayer:~ $" above. Outlines, not a font (wordmarkPaths.ts). `typing` types it in at
-  28 ms a character; the cursor blinks on the shared brand clock (brandClock.ts).
-*/
+/* The wordmark ">slayer_terminal", drawn as outlines (wordmarkPaths.ts); `typing` types it in at 28 ms a character,
+   the cursor on the shared brand clock. */
 
 import { useId, useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { WORDMARK } from './wordmarkPaths';

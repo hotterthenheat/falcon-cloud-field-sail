@@ -1,39 +1,13 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE BUILDING PAGE'S SKELETONS
-  (components/gex/buildingSkeletons.tsx)
-
-  Noah, 2026-09-08: "the loading skeleton doesn't
-  seem to take the shape of its container when the
-  actual container loads. it just seems to be a
-  generic loading skeleton and that's a design
-  flaw." It was: the route's Suspense fallback was
-  the one page skeleton every page shares (a chart
-  box over two half boxes), and the deferred mounts
-  stood in as a stock six-column table.
-
-  These are the two boxes in their own shape, and
-  they live in a file of their own that imports
-  NOTHING but Skeleton — so the shell can show them
-  while the page's code is still travelling, without
-  pulling the page's chunk to do it. The surfaces
-  import their geometry FROM here (the grid's column
-  template, the drawing's margins and lanes), so a
-  skeleton and its surface cannot drift apart.
-
-  Measured (fake-clock probe, skeleton standing vs
-  the real boxes landed): every landmark of the
-  ledger +0 top / +0 height; the drawing within 1px.
-==================================================
-*/
+/* The Building page's skeletons in their own shape. Imports nothing but Skeleton so the shell can show them before the page chunk lands;
+   the surfaces import their geometry from here, so the two cannot drift. */
 
 import { Skeleton } from '../ui/Skeleton';
 
 /* ---- the ledger's geometry, shared with BuildingLedger.tsx ---------------------- */
 
-/** The grid's one column template (2026-09-13, the rows redrawn): strike · the wall now · change · calls · puts · the day · what's happening */
+/** The grid's column template: strike · the wall now · change · calls · puts · the day · what's happening. */
 export const LEDGER_COLUMNS = '150px minmax(260px,1fr) 112px 78px 78px 110px 230px';
-/** A pane beside others (2026-10-14): the strike, the wall, the change, the word's chip */
+/** A pane beside others: the strike, the wall, the change, the word's chip. */
 export const LEDGER_COMPACT_COLUMNS = '84px minmax(84px,1fr) 64px 80px';
 /** A row is two lines tall: the figure line and the words under it */
 export const LEDGER_ROW_H = 44;
@@ -58,15 +32,9 @@ const wallOf = (r: number): { base: number; lit: number; gone: boolean } => ({
   gone: r % 4 === 2,
 });
 
-/** What's being built, standing (redrawn 2026-09-13 on the rows): the head
-    with its four facts, the line of controls, the read line, the grid on the
-    SAME column template — the movers as two-line rows with the wall bar, the
-    steady strikes folded into one line each side and one between, the spot
-    rule after the middle mover — the sentence. The rows are the book's own
-    (the movers change by the minute); a window of `rows` strikes stands in
-    as two fifths movers. */
-/** `bare`: a pane's body alone — the box's head and controls are drawn once by the page (2026-10-14).
-    `folded`: Show · What moved — the steady runs as folds; the page opens on every strike now, every row drawn */
+/** What's being built, standing: the head and facts, controls, read line, and the grid on the same template,
+    about two fifths of `rows` as movers with the steady runs folded. */
+/** `bare`: a pane's body alone (the page draws the head and controls once). `folded`: the steady runs as folds. */
 export const BuildingLedgerSkeleton = ({ rows = 41, bare = false, folded = false }: { rows?: number; bare?: boolean; folded?: boolean }) => {
   /* folded, the movers seen tonight ran 7 to 16 of 31 — two fifths stand in, with a fold above, one between and one below */
   const movers = folded ? Math.max(6, Math.round(rows * 0.42)) : rows;
@@ -109,7 +77,6 @@ export const BuildingLedgerSkeleton = ({ rows = 41, bare = false, folded = false
         </dl>
       </div>
 
-      {/* THE ONE LINE OF CONTROLS */}
       <div className="px-5 pb-2 flex items-center gap-2 flex-wrap">
         <Skeleton className="h-7 w-[122px]" />
         <Skeleton className="h-7 w-[104px]" />
@@ -128,7 +95,6 @@ export const BuildingLedgerSkeleton = ({ rows = 41, bare = false, folded = false
         </>
       )}
 
-      {/* THE READ LINE */}
       <div className="mx-5 px-3 py-2 border-y border-borderSubtle/60 min-h-[34px] flex items-center gap-2">
         <Skeleton className="h-3 w-8" line />
         <Skeleton className="h-2.5 w-[62%]" line />
@@ -192,8 +158,7 @@ export const BuildingLedgerSkeleton = ({ rows = 41, bare = false, folded = false
   );
 };
 
-/* (box 2, the heading drawing's skeleton, went with the box on 2026-10-14 — the drawing lives on as the Pulse tile, which
-   stands in as a figure; the HEADING_* geometry above is still the drawing's own) */
+/* The HEADING_* geometry above is the Pulse tile's drawing. */
 
 /* ---- the page ------------------------------------------------------------------- */
 

@@ -1,23 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - PINE'S BUILT-INS (core/pine/builtins.ts)
-
-  Every function and constant a script may name:
-  the `ta.*` streams (ta.ts) fed by the bar, `math.*`,
-  `str.*`, `color.*`, the `input.*` readers, the
-  outputs (`plot`, `plotshape`, `plotchar`, `hline`,
-  `fill`, `bgcolor`, `barcolor`, `alertcondition`,
-  `alert`) and the casts. A name outside the subset
-  stops the run with a plain sentence naming it —
-  drawings, arrays, `request.security` and
-  strategies are "not in this version yet", never a
-  silent nothing.
-
-  Named arguments resolve through SIGNATURES, so
-  `plot(close, color = color.red, title = "Close")`
-  reads the same as the positional form.
-==================================================
-*/
+/* Every function and constant a script may name (`ta.*`, `math.*`, `str.*`, `color.*`, `input.*`, the outputs, the casts).
+   Anything outside the subset stops the run with a sentence naming it; named arguments resolve through SIGNATURES. */
 
 import type { ScriptInputKind, ScriptInputValue } from '../../types/scripts';
 import { fromHex, gradient, isColor, named, rgb, toCss, withTransp } from './colors';
@@ -290,11 +272,7 @@ const str = (a: Record<string, Value>, key: string, dflt: string): string => (ke
 
 /* ---- the call ---------------------------------------------------------------------- */
 
-/**
- * Run one built-in. `state` is the call site's own memory (a `ta.*` stream lives
- * in it); `nodeId` names the call for the outputs. Returns the value, or throws
- * a PineError the reader can act on.
- */
+/** Run one built-in. `state` is the call site's own memory; `nodeId` names the call for outputs. Throws a PineError the reader can act on. */
 export function callBuiltin(ctx: Ctx, callee: string, args: CallArg[], state: State, nodeId: number, line: number): Value {
   const a = bind(callee, args, line);
   const ns = callee.includes('.') ? callee.split('.')[0] : '';

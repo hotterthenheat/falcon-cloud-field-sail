@@ -1,12 +1,7 @@
 import { DISTANCE_UNITS } from '../../data/atr';
 import { setDistanceUnit, useDistanceUnit } from '../../data/distanceUnits';
 
-/*
-  T-19's toggle — four chips, one desk-wide store. Every surface that prints
-  a distance (the flip strip, the measure box) reads the same unit, so the
-  desk cannot show a wall 0.4 ATR away on one line and $14 away on the next
-  without the reader having chosen both.
-*/
+/* One desk-wide distance unit, four chips: every surface that prints a distance reads the same one. */
 
 const UNIT_WORDS: Record<string, string> = {
   $: 'dollars',

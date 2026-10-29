@@ -1,10 +1,5 @@
-/*
-  The house tip. Same job as the shadcn tooltip: a short line on hover
-  and keyboard focus, portaled, placed so it stays on screen.
-  Sized to the desk, not the library default. 10px, the chip's type.
-  8px by 4px of padding. 6px off the control, the same gap as a dropdown.
-  No arrow. The cards on this desk do not wear one.
-*/
+/* The house tip (Radix): a short line on hover and focus, portalled and kept on screen; 10 px type, 8×4 px padding,
+   6 px off the control, no arrow. */
 
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { ReactElement } from 'react';

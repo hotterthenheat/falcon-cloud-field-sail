@@ -1,54 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - YOUR PICTURE
-  (pages/settings/PictureDrop.tsx)
-
-  The Account page's picture, as a place to DROP one
-  (Noah, 2026-09-20, with a reference of an upload
-  card: "can we take insipration from this on the 'add
-  a picture' section… i like the look but i also like
-  the look of our current layout of 'account'"). It was
-  a row with one button, "Add a picture".
-
-  WHAT IS TAKEN from the reference is its GRAMMAR:
-    · a dashed zone that says what to do ("Drop your
-      picture here"), one round button in its middle,
-      one line of guidance under it;
-    · the file you picked as a ROW of its own — what
-      it is, how big, where it stands, a bar, an × ;
-    · two buttons: Cancel, and the one that commits.
-  WHAT STAYS OURS is the look: the Account page's row
-  (the avatar and its words at the left, the control at
-  the right), hairlines and tokens, mono captions, and
-  the house's colours — SILVER for "armed" (a file over
-  the zone) and for the commit, never the reference's
-  blue; red only for a file we cannot use.
-
-  NOTHING IS APPLIED UNTIL YOU SAY SO. Picking a file
-  stages it: it is read and cropped square exactly as it
-  will be kept (data/profile.ts readAvatar), and the row
-  shows THAT crop, round, the way the terminal will draw
-  it. "Use this picture" commits; Cancel, the ×, or
-  picking another lets it go.
-
-  THE TWO SIDES ARE THE SAME HEIGHT (Noah, the same
-  day, on the first cut: "this now throws off the
-  proportions of the left section"). The first zone was
-  the reference's — a centred stack, 146px tall — beside
-  a 56px avatar and two lines of words: a small thing
-  floating in the corner of a tall one. So the zone lies
-  DOWN (the button at its left, the words beside it,
-  96px) and the picture stands UP: 64px (80 was "just a
-  bit enlarged" — his word, the same hour), centred on the
-  zone, and it is the PREVIEW — a staged crop shows there
-  at once, tagged, before anything is kept.
-
-  THE BAR IS REAL. It fills when the read-and-crop is
-  done — today that is a moment; at launch the same
-  promise is the upload, and the bar is its progress
-  (`onProgress`). No wait is invented for it.
-==================================================
-*/
+/* The Account page's picture as a drop zone: a dashed zone with one button, the picked file as a row (size, a bar, an ×), Cancel
+   and Use this picture. Nothing applies until committed; the 64 px avatar previews the exact square crop (profile.ts readAvatar). */
 
 import { useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Upload, X } from 'lucide-react';

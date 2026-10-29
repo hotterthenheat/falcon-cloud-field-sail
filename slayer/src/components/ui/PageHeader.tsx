@@ -18,10 +18,7 @@ const PageHeader = ({ breadcrumb, title, subtitle, actions }: PageHeaderProps) =
 
   return (
     <div className="flex items-end justify-between gap-4 flex-wrap">
-      {/* Keyed on the title so pages that swap views in place (Compass modes)
-          fade their wording instead of hard-cutting it. Actions are OUTSIDE
-          this block on purpose — re-mounting them would kill the FilterTabs
-          pill glide on the very control you just clicked. */}
+      {/* Keyed on the title so pages swapping views in place fade their words; actions stay outside so their pill glide survives. */}
       <div key={title} className="min-w-0 animate-soft-in">
         <div className="flex items-center gap-1.5 font-mono text-t10 text-textMuted uppercase tracking-widest mb-1.5">
           {breadcrumb.map((part, i) => (

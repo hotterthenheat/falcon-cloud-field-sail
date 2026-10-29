@@ -53,10 +53,8 @@ const useHostWidth = () => {
       if (!held) read();
     });
     ro.observe(el);
-    /* The sidebar's glide: the frame says where it is going, the desk lays the tiles out for THAT width at once,
-       and they travel there on the sidebar's own clock and curve (index.css [data-glide='frame']) — the column and
-       the cards move as one, and what is inside sizes for the destination off the tile's promise
-       (data-tile-width). */
+    /* The sidebar glide: the desk lays tiles out for the destination width at once and they travel there on the sidebar's clock
+       (index.css [data-glide='frame']), sizing off the tile's promise (data-tile-width). */
     const off = onGlide(
       () => {
         if (document.documentElement.getAttribute('data-glide') !== 'frame') return;

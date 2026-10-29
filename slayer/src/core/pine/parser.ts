@@ -1,26 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PINE PARSER (core/pine/parser.ts)
-
-  Logical lines into the tree. Blocks by indent;
-  expressions by precedence, Pine's own order:
-
-    1  ?:                     (lowest, right to left)
-    2  or
-    3  and
-    4  ==  !=
-    5  <  >  <=  >=
-    6  +  -
-    7  *  /  %
-    8  unary + - not
-    9  [ ]  .  ( )           (highest)
-
-  What it refuses, it refuses in plain words with the
-  line: `strategy()` and `library()` (not in this
-  version yet), `import` / `export` / `method` /
-  `type`, arrays and drawings.
-==================================================
-*/
+/* Logical lines into the tree: blocks by indent, expressions by Pine's precedence (lowest ?: right to left, then or, and, ==/!=,
+   comparisons, + -, * / %, unary, [ ] . ( )). Refusals name themselves with the line. */
 
 import type { Arg, Expr, Program, Stmt } from './ast';
 import { readLines, TYPE_WORDS, type LogicalLine, type Token } from './lexer';

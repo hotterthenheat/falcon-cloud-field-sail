@@ -1,22 +1,11 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ COMPARE
-  (components/gex/CompareGuide.tsx)
-
-  The card behind the Compare page's "How to read"
-  door: the ruler drawn in the box's own hand — two
-  names on one column of distances — and a sentence
-  or two for each of the three boxes, with today's
-  two names in the words.
-==================================================
-*/
+/* The card behind Compare's "How to read": the ruler drawn in the box's own hand and a sentence for each box, with today's names. */
 
 import type { Compare } from '../../data/compare';
 
 const INK = 'rgb(var(--text-primary))';
 const INK_2 = 'rgb(var(--text-secondary))';
 const INK_3 = 'rgb(var(--text-muted))';
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const GRID = 'rgba(255,255,255,0.07)';
 const COOL_1 = '#A6D96A';
 const COOL_2 = '#66BD63';

@@ -1,59 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - TARGETS, THE AGENDA
-  (pages/pinpoint/RankedTargets.tsx)
-
-  A FACE OF THE AGENDA since 2026-10-14 (Noah:
-  Building and Targets "on the same page put
-  interchangable" — pages/pinpoint/Agenda.tsx,
-  /pinpoint/agenda, the face it opens on). ONE BOX
-  since the same day (Noah, with its picture:
-  "remove both of these from their designated
-  sections and add more strikes to fill their
-  positions"): the strike axis is gone, and the
-  list opens on twenty strikes each side instead
-  of fifteen.
-
-  ONE TO FOUR NAMES, EACH ON ITS OWN EXPIRY (Noah,
-  2026-10-15: "can we add exp and different tickers
-  to the targets page as well?") — Building's
-  grammar, the same box: its head is the Agenda's
-  switch, the guide door and the line; under it ONE
-  line of cards for every pane — Ranked by · Strikes
-  · the NAMES door — and then THE PANES SIDE BY
-  SIDE, one a name: the first follows the frame's
-  name (its chip is linked, the Map's grammar) and
-  each added one holds its own; every pane carries
-  its EXPIRY card (the house's expiries as dates,
-  ladderControls), its watch menu, its four facts,
-  its sentence, its podium and its list. Beside
-  other panes a pane goes COMPACT — beside one it
-  keeps the figures and drops the words, beside two
-  or three it keeps the strike, the odds and the
-  actions (TargetsBoard's densities) — and alone it
-  is the whole board as it was. The panes are kept
-  on this machine (slayer_targets_panes, data/panes).
-  The expiry is the agenda's: the hedging a pane
-  ranks is that expiry's (data/exposure
-  EXPIRY_DECAY in the simulator; each expiry's own
-  open interest on the feed).
-
-  Rebuilt 2026-09-08 on the numbers the other pages
-  now produce. The page that answers "so what do I
-  watch today, in what order?": every strike in the
-  order it matters — how likely price gets there ×
-  how much happens if it does; the first three side
-  by side, the rest as one list, two actions per
-  strike (chart · alert).
-
-  A COMPOSITION: reach and holds are At the wall's,
-  built or drained is Building's, "closes here" is
-  Ahead's, the roles are the Map's, the positions
-  the overlay's, the alerts the chart's own store.
-  data/agenda.ts holds the order, and the Pulse
-  Targets panel reads the same one.
-==================================================
-*/
+/* Targets, a face of the Agenda: every strike in the order it matters (data/agenda.ts, which the Pulse panel also reads), the first three
+   side by side. One to four panes, each a name and expiry (data/panes, slayer_targets_panes); beside others a pane goes compact. */
 
 import { nyClock } from '../../core/nyTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -102,7 +48,7 @@ const ORDERS = new Set<string>(['matters', 'nearest', 'reached', 'weakest', 'big
 const paneWindow = (p: Pane, fallback: StrikeWindow): StrikeWindow => (WINDOWS.has(p.strikes ?? -1) ? (p.strikes as StrikeWindow) : fallback);
 const paneOrder = (p: Pane, fallback: AgendaOrder): AgendaOrder => (ORDERS.has(p.order ?? '') ? (p.order as AgendaOrder) : fallback);
 
-/* New York's clock with its zone — the machine's own zone printed 18:xx on a 14:xx market (the retail test, 2026-10-22) */
+/* New York's clock with its zone. */
 const hhmmss = (d: Date) => nyClock(d, { seconds: true, zone: true });
 
 /* ---- one pane --------------------------------------------------------------------------- */
@@ -172,9 +118,7 @@ const TargetsPane = ({ pane, index, ticker, agenda, snap, clock, density, count,
       <X className="w-3 h-3" />
     </button>
   );
-  /* a quarter of the screen holds the line in two rows by design — the name with its door off beside it, then the expiry
-     and the watch — rather than wrapping the door off alone under the rest. THE DOOR OFF STAYS BY THE NAME (Noah,
-     2026-10-15: pushed to the row's far end it stood "in the middle of the screen" between panes) */
+  /* A quarter of the screen holds the head in two rows; the door off stays by the name. */
   const head =
     density === 'tight' ? (
       <div className="w-full flex flex-col gap-2">
@@ -236,7 +180,7 @@ const RankedTargets = () => {
     setWindowState(w);
   };
   const [guideOpen, setGuideOpen] = useState(false);
-  /* THE EXPIRIES AS DATES — one list for every pane's card (ladderControls, the Map's own) */
+  /* The expiries as dates, one list for every pane's card (ladderControls). */
   /* each pane's Expiry card names the listing its own name reads (ladderExpiryOptions with a ticker) — re-read as the
      book lands (bookRev re-renders the page) */
   const expiryOptionsFor = (t: string): ExpiryChoice<ExposureExpiry>[] => ladderExpiryOptions(t);
@@ -256,10 +200,7 @@ const RankedTargets = () => {
   useEffect(() => {
     if (!marketData) return;
     const now = Date.now();
-    /* the full book (every expiry's own chain) lands a few seconds after the board read — inside the sweep's window,
-       so it was dropped and the page sat on the whole-book-only read until the next refresh (the UI sweep, 2026-10-22:
-       the Map crowned the whole book's supreme while the other pages read today's) — a book that changes SHAPE is taken
-       at once */
+    /* A book that changes shape (its per-expiry chains landed) is taken at once, not at the next scan. */
     const shape = (s: MarketSnapshot | null) => Object.keys(s?.uwChains ?? {}).length;
     /* a book whose dates or contract facts landed (a new uwByDate — uwBook never edits a chain in place) is taken at once */
     const due = !scanRef.current || now - scanAtRef.current >= SCAN_INTERVAL_MS || scanRef.current.ticker !== marketData.ticker || shape(scanRef.current) !== shape(marketData) || scanRef.current.uwByDate !== marketData.uwByDate;
@@ -302,8 +243,7 @@ const RankedTargets = () => {
     for (const p of panes) {
       const snap = snapFor(p);
       if (!snap) continue;
-      /* THE DESK'S ONE AGENDA (data/board.ts deskAgenda) — the Board's and Compare's watch-first is this page's; the
-         Strikes card only trims the list */
+      /* The desk's one agenda (board.ts deskAgenda): the Board's and Compare's watch-first is this page's; the Strikes card only trims the list. */
       const surface = buildExposureSurface(snap, 30, CALENDAR_DTES);
       const agenda = deskAgenda(snap, p.expiry, clock, paneOrder(p, order), surface);
       if (agenda) out.set(p.key, trimAgenda(agenda, paneWindow(p, window)));
@@ -327,8 +267,7 @@ const RankedTargets = () => {
   const first = agendas.get(panes[0].key);
   if (!scan || !first) return <BookOrSkeleton tickers={[activeTicker]}><TargetsPageSkeleton rows={window * 2 - 2} /></BookOrSkeleton>;
 
-  /* a phone is one narrow pane: the tight columns (strike · reached · holds · actions) fit its 360px, the full list ran
-     off the right edge at "Reached next" (the phone sweep, 2026-10-22) */
+  /* A phone is one narrow pane: the tight columns fit 360 px. */
   const density = phone ? 'tight' : densityFor(panes.length);
   let strikes = 0;
   for (const a of agendas.values()) strikes += a.targets.length;
@@ -338,7 +277,7 @@ const RankedTargets = () => {
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the agenda" testId="targets-guide" viewport>
         <TargetsGuide agenda={first} clock={clock} />
       </GuideFocus>
-      {/* THE BOX'S HEAD — the Agenda's switch as the title, the guide, the line */}
+      {/* The box's head: the Agenda's switch as the title, the guide, the line. */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center gap-3 flex-wrap">
           <AgendaSwitch />
@@ -359,11 +298,7 @@ const RankedTargets = () => {
         strikes={strikes}
       />
 
-      {/* THE PANES — side by side at desk width, a hairline between; stacked on a phone. ON SHARED ROWS (Noah, 2026-10-15,
-          with three panes: "do you notice the alignment issues here esp with the #1 card" — one pane's sentence ran to three
-          lines, the others' to two, and its card and list sat lower): every pane is a subgrid of five rows — the head,
-          the sentence, the podium, the list, the foot — so each row is as tall as the tallest pane needs and the cards and
-          the lists line up across the box */}
+      {/* The panes side by side (stacked on a phone), each a subgrid of five shared rows so the cards and lists line up across panes. */}
       <div className={`border-t border-borderSubtle grid grid-cols-1 ${PANE_COLS[panes.length] ?? ''} gap-x-px gap-y-0 bg-borderSubtle/60`} data-targets-grid>
         {panes.map((p, i) => {
           const agenda = agendas.get(p.key);

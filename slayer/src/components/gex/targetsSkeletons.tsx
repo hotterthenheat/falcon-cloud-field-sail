@@ -1,28 +1,12 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE TARGETS PAGE'S SKELETONS
-  (components/gex/targetsSkeletons.tsx)
-
-  The two boxes standing in their own shape: the
-  agenda (head with its four facts, the line of
-  controls, the sentence, three cards, the list on
-  the SAME column template) and the strike axis at
-  the drawing's exact aspect. Imports nothing but
-  Skeleton; the surfaces import their geometry from
-  here, so the two cannot drift.
-==================================================
-*/
+/* The Targets page's skeletons in their own shape. Imports only Skeleton; the surfaces import their geometry from here. */
 
 import { Skeleton } from '../ui/Skeleton';
 
 /* ---- geometry shared with TargetsBoard.tsx ---------------------------------------- */
 
 /** # · strike · from spot · reached · today · net gamma · if it breaks · built · at stake · why · actions */
-/* The words columns WRAP to two lines and share the room (the UI sweep, 2026-10-22): at 1200px the list ran past a
-   laptop's card and "changed sides −$4M last session" sat cut in a 112px column — the narrow columns gave up what they
-   did not use, and the floor now fits a 1440 screen beside the rail */
-/* THE SESSION'S OWN TESTS IN A COLUMN OF THEIR OWN (the tenth audit's retail finding: the Reached column mixed "today"
-   with "<1%"): Reached is always a chance, Today what the session has already done at the strike */
+/* The words columns wrap to two lines and share the room, so the list fits a 1440 screen beside the rail. */
+/* Today has its own column: Reached is always a chance, Today what the session has already done at the strike. */
 export const AGENDA_COLUMNS = '32px 140px 64px 84px 64px 96px minmax(112px,1fr) minmax(112px,1fr) 100px minmax(80px,1fr) 124px';
 /** The columns' floor plus ten 12px gaps */
 export const AGENDA_MIN_W = 1128;
@@ -95,7 +79,7 @@ export const TargetsInner = ({ rows = 38, bare = false }: { rows?: number; bare?
       </dl>
     </div>
 
-    {/* THE ONE LINE OF CONTROLS — the box's, not a pane's */}
+    {/* The box's one line of controls, not a pane's. */}
     {!bare && (
       <div className="px-5 pb-2 flex items-center gap-2 flex-wrap">
         <Skeleton className="h-7 w-[168px]" />
@@ -180,8 +164,6 @@ export const TargetsInner = ({ rows = 38, bare = false }: { rows?: number; bare?
     </div>
   </section>
 );
-
-/* (box 2, the strike axis, went with its box on 2026-10-14) */
 
 /* ---- the page ------------------------------------------------------------------- */
 

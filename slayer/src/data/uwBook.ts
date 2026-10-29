@@ -1765,11 +1765,8 @@ function termDteOf(rows: UwTerm[]): Record<string, number> | null {
   }
   return Object.keys(out).length ? out : null;
 }
-/*
-  The expected move, as ONE STANDARD MOVE (1σ, dollars). The vendor's implied move is its ATM straddle, so 1σ is
-  straddle·√(π/2) (data/expectedMove.ts); a date with no implied move takes the straddle off its ATM vol on the vendor's
-  own scale, k·S·σ·√(dte/365) (k fitted off its rows, √(2/π) without them). Every odd and the cone read these.
-*/
+/* The expected move as one standard move (1σ, dollars): the vendor's implied move is its ATM straddle, so 1σ = straddle·√(π/2);
+   a date with no implied move uses k·S·σ·√(dte/365) on the vendor's own scale (k fitted, else √(2/π)). Every odd and the cone read these. */
 interface ScopeMove {
   /** Dollars, one standard move (1σ) over the horizon */
   move: number;
@@ -1808,11 +1805,8 @@ export function peekScopeMove(ticker: string, date?: string | null): ScopeMove |
   return null;
 }
 
-/*
-  One full session's 1σ, dollars, for the expiry the levels read. The vendor's straddle into the coming session while
-  that session has not opened; once a same-day expiry's session runs its straddle is only what is LEFT, so a full
-  session is the 1-day vol on the vendor's scale. A later expiry: its ATM vol over one session. Null without a move.
-*/
+/* One full session's 1σ for the levels' expiry: the straddle into the coming session before it opens; once a same-day session runs
+   its straddle is only what is left, so a full session is the 1-day vol. A later expiry: its ATM vol over one session. */
 const sameDayRunning = (d: string | null): boolean => !!d && d === nyIsoDate() && nySessionPhase() !== 'before';
 export function peekDaySigma(ticker: string, date?: string | null): number | null {
   const e = peekEntry(ticker);
@@ -2316,9 +2310,8 @@ async function loadCore(ticker: string, mode: BookMode, token: number): Promise<
   const [ty, tm, td] = nyIsoDate().split('-').map(Number);
   const sessionOpen = isTradingDay(new Date(ty, tm - 1, td)) && nySessionPhase() === 'open';
   const stateStalled = sessionOpen && state.market_time === 'regular' && !!newest && Number.isFinite(tapeMs) && newest.time * 1000 + 60_000 - tapeMs > 120_000;
-  /* OUTSIDE THE SESSION A STATE STILL SAYING "REGULAR" IS NOT BELIEVED: the price is the last regular session's close — its
-     last regular one-minute bar (market_time "r"), the vendor's daily close for that date where it is in hand — and the
-     newest after-hours or pre-market bar is kept apart as the extended print (data/liveQuote.ts's convention) */
+  /* Outside the session a "regular" state is not believed: the price is the last regular close (the last 'r' minute bar or the daily close),
+     the newest extended bar kept apart (liveQuote.ts's convention). */
   const offRegular = tapeKind === 'vendor' && !sessionOpen && state.market_time === 'regular' ? regularCloseOf(ticker, Array.isArray(bars) ? bars : []) : null;
   const barOrState = stateStalled ? newest!.close : offRegular ? offRegular.last : num(state.close);
   const readAt = stateStalled ? newest!.time * 1000 + 60_000 : offRegular ? offRegular.at : Number.isFinite(tapeMs) ? tapeMs : Date.now();
@@ -2508,8 +2501,7 @@ async function loadFront(entry: Entry, token: number): Promise<void> {
       emit();
     }
   }
-  /* AFTER THE CLOSE, TODAY'S OWN CONTRACTS (names with a same-day expiry): the book the session ran on, for "Flip crossed
-     today" — the vendor still serves this morning's rows for them (one call, once) */
+  /* After the close, today's own contracts (names with a same-day expiry) are the book the session ran on; the vendor still serves this morning's rows. */
   /* …and before today's open, the last session's own contracts (the session on record): "How the levels held" and "Flip
      crossed" grade that session against its own book */
   const ny = recordIso();

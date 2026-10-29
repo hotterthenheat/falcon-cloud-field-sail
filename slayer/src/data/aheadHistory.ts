@@ -1,22 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHAT THE LAST SESSIONS DID
-  (data/aheadHistory.ts)
-
-  The Ahead page's sentences used to restate the
-  numbers on its charts ("the call wall at 468 is
-  the lid") — the partner's review called them
-  generic. A sentence should say what the chart
-  cannot: how today's range, clock and odds compare
-  with what price actually did in the sessions on
-  hand. The simulator keeps ~22 sessions of minute
-  bars and a couple of sessions of the book, and
-  these are the reads off them — session by
-  session, in the session's own minutes (bar i of a
-  session is the open's minute + i; the simulator's
-  clock is its own, not the wall's).
-==================================================
-*/
+/* How today's range, clock and odds compare with what price did in the sessions on hand (the book's minute bars and history
+   from uwBook), session by session in each session's own minutes. */
 
 import { bookCandles, bookHistory } from './uwBook';
 import type { Candle } from '../types/market';

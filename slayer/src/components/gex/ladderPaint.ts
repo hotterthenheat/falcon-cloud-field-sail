@@ -1,26 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE LADDER'S PEN
-  (components/gex/ladderPaint.ts)
-
-  One way of drawing a level at the tape's right
-  edge, shared by the two charts that do it: the
-  Compass setup's marks (compass/setupMarksPrimitive)
-  and the house chart's key levels (keyLevelsPrimitive).
-  Noah, 2026-10-04: "have the green and red thing we
-  have on the compass chart be the call and put wall
-  for the other charts like terrain". Lifted here so
-  the two cannot drift apart later.
-
-  The grammar: a thin RULE in the level's ink, ending
-  at the right edge; its FIGURE a small mono number
-  right-aligned at the edge, just above (or below)
-  the rule. No full-width line, no capsule on the
-  axis, no words over the candles — the host draws
-  the pointer card, and the hit test is here too so
-  both hosts agree on what "on the rule" means.
-==================================================
-*/
+/* One pen for a level at the tape's right edge, shared by Compass's setup marks and the house chart's key levels:
+   a thin rule in the level's ink ending at the edge, its figure just above it. The hit test is here too so both hosts agree. */
 
 /** The bitmap scope lightweight-charts hands a primitive's renderer */
 export interface BitmapScope {
@@ -52,10 +31,7 @@ interface LadderPen {
   H: number;
   /** The right edge the rules end at, bitmap px */
   right: number;
-  /**
-   * A rule from x0 to x1 at y (bitmap px). With `trace`, a faint dotted trace runs from the plot's left edge to x0, so a
-   * level still reads across the tape when x0 is the newest candle. `dash` draws the solid part dashed (media px, dash then gap).
-   */
+  /** A rule from x0 to x1 at y (bitmap px). `trace` adds a faint dotted run from the plot's left edge to x0; `dash` dashes the solid part (media px). */
   rule(x0: number | null, y: number, x1: number, rgb: string, alpha: number, opts?: { trace?: boolean; dash?: number[]; width?: number }): void;
   /** A small mono figure right-aligned at the edge, above the rule by default; returns the box it took (bitmap px) */
   figure(text: string, y: number, rgb: string, above?: boolean, alpha?: number, at?: number): { top: number; bottom: number };

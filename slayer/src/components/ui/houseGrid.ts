@@ -1,8 +1,5 @@
-/*
-  The one AG Grid setup for every grid: the modules the grids use, and a Quartz theme whose values are the house
-  CSS variables, so a theme flip re-inks every grid without a re-theme call. Pair with the `slayer-board` class.
-  A grid feature outside GRID_MODULES needs its module added here; the dev build's ValidationModule names it.
-*/
+/* The one AG Grid setup: the modules the grids use and a Quartz theme whose values are the house CSS variables,
+   so a theme flip re-inks every grid. A feature outside GRID_MODULES needs its module added here (dev's ValidationModule names it). */
 
 import {
   CellStyleModule,

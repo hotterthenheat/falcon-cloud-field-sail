@@ -1,11 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - DETERMINISTIC RNG (rng.ts)
-  One hash family shared by every research module so
-  the same seed always paints the same tape. Swaps
-  for real feeds without touching page code.
-==================================================
-*/
+/* One deterministic hash family, so the same seed always paints the same tape. */
 
 import { now } from './clock';
 

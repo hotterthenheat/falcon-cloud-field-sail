@@ -1,21 +1,6 @@
 import type { CSSProperties } from 'react';
 
-/*
-  Heatmap cell coloring for the GEX matrix + ladders.
-
-  Diverging ramp palettes (positive = stabilizing GEX, negative = accelerating):
-    'thermal'     — cool steel/ice-blue (+) ↔ warm amber/orange (−). Reads as a
-                    pressure map: hot = dealers accelerate, cool = they stabilize.
-    'teal-violet' — teal (+) ↔ violet (−). Modern, distinctive.
-    'gold-slate'  — gold (+) ↔ slate-blue (−). Premium, restrained.
-
-  Legacy modes:
-    'hybrid'      — mono base, extreme cells pick up a whisper of emerald/rose.
-    'mono'        — black↔white spectrum, gray neutral.
-    'diverging'   — emerald (+) / rose (−) washes.
-
-  Flip HEAT_MODE to switch instantly.
-*/
+/* Heat ramps for the matrix and ladders: signed, diverging, a quiet zero; ink chosen by measured contrast. HEAT_MODE is the terminal default. */
 export type HeatMode =
   | 'ember-glacier'
   | 'thermal-yellow'
@@ -54,19 +39,8 @@ const RAMPS: Record<
   'ember-glacier' | 'thermal-yellow' | 'steel-gold' | 'ice-plasma' | 'terminal' | 'pastel' | 'spectrum' | 'amber' | 'redwood' | 'thermal' | 'teal-violet' | 'gold-slate',
   RampPalette
 > = {
-  /* THE THERMAL, a try (Noah, 2026-09-05: "can we try the thermal design
-     just for a try", after ruling the same mapping for the wheel: "the
-     thermal heatmap colors to be the ranges for amplifying and absorbing
-     with the neon/yellow as the mid point"). Observable Plot's BuYlRd —
-     ColorBrewer's RdYlBu reversed — so the two poles match the hexbin and
-     honeycomb tries Noah saw: BALANCED is pale yellow (not the house's dark
-     zero — on a dark panel every quiet cell wears ink), AMPLIFY climbs
-     orange to a deep red, ABSORB falls sky to a deep blue. Read on a
-     square-root curve rather than the house 0.4: measured on the honeycomb,
-     at 0.4 the whole surface saturated and the walls stopped standing out.
-     Ink is chosen by measured contrast as everywhere — black on the yellow
-     middle, white at both deep ends. Reachable per surface (HeatPill's
-     `mode`), never the terminal-wide HEAT_MODE. */
+  /* Thermal: Observable Plot's BuYlRd (pale yellow balanced, orange to deep red amplifying), read on a square-root curve
+     (at the house 0.4 the surface saturated). Chosen per surface (HeatPill `mode`), never terminal-wide. */
   'thermal-yellow': {
     // positive = put-dominant = dealers short gamma = AMPLIFY (warm)
     pos: [
@@ -77,9 +51,7 @@ const RAMPS: Record<
       [0.8, [215, 48, 39]], //   #D73027
       [1, [165, 0, 38]], //      #A50026
     ],
-    /* ABSORB IS GREEN, AS IT IS ON EVERY OTHER PAGE (the third audit, 2026-10-23: the Map's ladder and Compare's ruler
-       said "absorbs" in blue while the Board, the gamma line and every net figure said it in green). The cool half is
-       ColorBrewer's RdYlGn green side — the same yellow middle, so the ramp is still the thermal Noah picked */
+    /* Absorb is green, as everywhere else: the cool half is ColorBrewer RdYlGn's green side, with the same yellow middle. */
     // negative = call-dominant = dealers long gamma = ABSORB (green)
     neg: [
       [0, [255, 255, 191]], //   #FFFFBF
@@ -93,23 +65,10 @@ const RAMPS: Record<
       'linear-gradient(to bottom, #A50026 0%, #D73027 10%, #F46D43 20%, #FDAE61 30%, #FEE090 40%, #FFFFBF 50%, #D9EF8B 60%, #A6D96A 70%, #66BD63 80%, #1A9850 90%, #006837 100%)',
     gamma: 0.5,
   },
-  /* THE HOUSE HEAT, round 4 (Noah, 2026-08-29 — shown Skylit's viridis:
-     "theres is a subtle and smooth transition when ours is one color ->
-     black -> next color"): the diagnosis was RIGHT about richness and wrong
-     about the middle. The dark centre stays — it is the ZERO, and on a dark
-     terminal nothing must wear no ink — but each side now TRAVELS hues the
-     way viridis does instead of fading one color out. AMPLIFY climbs EMBER:
-     oxblood → rust → fire → the established honey gold, fuel getting
-     hotter. ABSORB falls GLACIER: navy → azure → cyan → ice, structure
-     getting harder. The poles keep the house vocabulary (gold amplifies;
-     the absorb pole trades platinum for ice — same luminance class, so the
-     colorblind-safe pole gap survives). Signed, quiet zero, one JOURNEY per
-     side; arc-length-even stops in OKLab (spread 1.11x/1.10x, regenerated
-     by scripts/ramp-ember-glacier.mjs if the anchors ever change). */
+  /* The house heat: a dark zero, each side travelling hues — amplify through ember (oxblood → gold), absorb through glacier (navy → ice).
+     Arc-length-even stops in OKLab (scripts/ramp-ember-glacier.mjs regenerates them). */
   'ember-glacier': {
-    /* THE CURVE (the partner, 2026-10-14, "a softer calendar colour range"): on the house curve of 0.4 a cell at a tenth
-       of the board's heaviest already wore deep red or navy, so thirty columns were a wall of saturated capsules; at
-       0.6 the middling cells sit darker and only the heavy ones reach the ember and the ice */
+    /* Curve 0.6, not the house 0.4: at 0.4 a cell at a tenth of the heaviest was already deep red or navy. */
     gamma: 0.6,
     // positive = put-dominant = dealers short gamma = AMPLIFY (ember)
     pos: [
@@ -139,18 +98,8 @@ const RAMPS: Record<
     gradient:
       'linear-gradient(to bottom, #F5C542 0%, #EFA334 6%, #E67F27 13%, #D45E1D 19%, #B84119 25%, #9A2715 31%, #751D14 38%, #521D19 44%, #2A2A2A 50%, #173856 56%, #175177 63%, #196C95 69%, #2589AE 75%, #44A5C5 81%, #7ABDD7 88%, #A9D5E7 94%, #D6EDF8 100%)',
   },
-  /* THE HOUSE HEAT, round 3 (Noah, 2026-08-18 — ice-plasma kept on the
-     shelf below, "try something else"): a metallic duotone no charting
-     product runs. ABSORB (neg, call-dominant = dealers long gamma) climbs
-     STEEL — slate to glowing platinum, structure rendered as the house
-     hardware metal. AMPLIFY (pos, put-dominant = dealers short gamma)
-     climbs GOLD — bronze to molten honey, fuel rendered as heat. The
-     accessibility ace: one side is ACHROMATIC, so no hue discrimination is
-     needed at all — gray vs colored separates for every vision type, with
-     a pole luminance gap (platinum L=0.82 vs gold L=0.60) on top. Honey
-     gold #F5C542 is yellower than warn orange #FF9500 and nowhere near
-     lime's acid green-yellow. One hue per side, luminance walk, ARC-LENGTH
-     EVEN stops (OKLab, spread 1.03x/1.05x — scratchpad regenerates). */
+  /* Steel-gold: absorb climbs achromatic steel, amplify climbs gold, so the sides separate for every vision type
+     (pole luminance platinum 0.82 vs gold 0.60). Arc-length-even OKLab stops. */
   'steel-gold': {
     // positive = put-dominant = dealers short gamma = AMPLIFY (gold)
     pos: [
@@ -180,24 +129,8 @@ const RAMPS: Record<
     gradient:
       'linear-gradient(to bottom, #F5C542 0%, #DAAE33 6%, #BF9825 13%, #A5831F 19%, #8B6E1C 25%, #725B1A 31%, #594817 38%, #423514 44%, #2A2A2A 50%, #383F49 56%, #4B5562 63%, #616C7B 69%, #788494 75%, #919DAD 81%, #AAB6C6 88%, #C6D0DD 94%, #E2EAF4 100%)',
   },
-  /* THE HOUSE HEAT (Noah, 2026-08-18 — the heatmap revamp, palette round 2:
-     blue/amber read as "seen elsewhere"): sign speaks DEALER GAMMA, not
-     option side. Under the standard street convention a call-dominant
-     strike is dealers LONG gamma (they absorb — sell rallies, buy dips) and
-     a put-dominant strike is dealers SHORT gamma (they amplify). Our sim's
-     netGex is an option-side code with calls NEGATIVE, so: neg = absorb =
-     ICE (glacial cyan — structure that holds price), pos = amplify =
-     PLASMA (hot rose — fuel that accelerates it). Values print unchanged.
-
-     Deliberately none of the usual heatmap axes: not Skylit's teal-purple,
-     not their schematic yellow-purple, not the fintech-default blue/orange.
-     Ice pole #3DD6E8 is bluer than darkpool teal #2DD4BF and far more
-     saturated than the old flip's pale sky #7DD3FC; plasma pole #FF5EA8 is pink —
-     not bear red, not supreme purple. Colorblindness is covered by a built-in
-     POLE LUMINANCE OFFSET (ice L=0.55 vs plasma L=0.32) so brightness
-     separates the sides even where hue can't. One hue per side, luminance
-     walk, ARC-LENGTH EVEN stops (OKLab, generated — delta spread
-     1.10x/1.07x, scratchpad ramp-azure-ember.mjs regenerates them). */
+  /* Ice-plasma: sign is dealer gamma (call-dominant = dealers long = absorb). netGex codes calls negative, so neg = ice, pos = plasma.
+     Pole luminance offset (ice 0.55 vs plasma 0.32) separates the sides where hue cannot; arc-length-even OKLab stops. */
   'ice-plasma': {
     // positive = put-dominant = dealers short gamma = AMPLIFY (plasma)
     pos: [
@@ -227,26 +160,8 @@ const RAMPS: Record<
     gradient:
       'linear-gradient(to bottom, #FF5EA8 0%, #E44E95 6%, #C93F81 13%, #AE336F 19%, #922B5E 25%, #76244E 31%, #5B1F3D 38%, #411C2C 44%, #2A2A2A 50%, #163A47 56%, #154E5E 63%, #156375 69%, #18798C 75%, #1B8FA3 81%, #26A6BA 88%, #31BED1 94%, #3DD6E8 100%)',
   },
-  // House red/green — the industrial one. The pastel ramps read as bubblegum
-  // because they travel across HUES (powder blue → periwinkle, lavender →
-  // cream); every stop is a different colour, so the grid looks decorative.
-  // This one holds ONE hue per side and walks only luminance, the way a
-  // phosphor readout does: near-zero sinks into the panel, and intensity is
-  // the single thing your eye tracks. Poles are the real `bull` / `bear`
-  // tokens, so the matrix finally agrees with the walls, chips and badges
-  // around it.
-  // NOTE the sign mapping, it is not arbitrary. The sim writes dealers net
-  // SHORT calls (dealerCallDirection -0.55) and flips the put leg, so a
-  // call-dominant strike lands NEGATIVE and a put-dominant one POSITIVE —
-  // netGex is effectively an option-side code here. Green therefore belongs on
-  // `neg`. Measured on SPY: the call wall row prints −$149.1M and the put wall
-  // row +$507.8M, so pairing green with `pos` would put a green CW label on a
-  // red row and a red PW label on a green row. It also lines up the chart's own
-  // trails legend, which already calls heatPoles.neg "call walls".
-  // Stops are ARC-LENGTH EVEN, not hand-placed — see the note above. The old
-  // four hand-picked anchors survive as waypoints on the same path (oxblood
-  // ~#601612, deep pine ~#14542B); all that changed is how fast the eye
-  // travels between them.
+  // Terminal red/green: one hue per side walking luminance only, poles the real bull/bear tokens.
+  // netGex is option-side coded (calls negative), so green belongs on `neg`: the call wall prints negative, the put wall positive.
   terminal: {
     // positive = put-dominant
     pos: [
@@ -394,25 +309,8 @@ const RAMPS: Record<
   },
 };
 
-/*
-  Magnitude → ramp position.
-
-  Linear |value|/maxAbs looks obviously right and renders a black grid. GEX is
-  violently heavy-tailed: one strike carries the book. Measured on a live SPY
-  matrix — max $543.6M, MEDIAN $27.4M, i.e. the middle cell sits at t=0.05, and
-  70 of 102 cells fell under t=0.1. Result: 90% of cells within 25 RGB of the
-  neutral, only 2 of 84 carrying real colour. A perceptually even ramp is worth
-  nothing when the data never travels along it.
-
-  A power curve fixes it without touching what the colours MEAN. Gamma expands
-  the crowded low end and compresses the sparse high end, so the same numbers
-  spread across the whole ramp:
-
-    gamma 0.4:  median 0.05 -> 0.30,  p90 0.24 -> 0.56,  max 1 -> 1
-
-  Ordering, sign and the neutral zero all survive; only the spacing changes.
-  Tune with the distribution in front of you, never by eye.
-*/
+/* Magnitude → ramp position on a power curve: GEX is heavy-tailed (live SPY: max $543.6M, median $27.4M), so linear |v|/max
+   leaves most cells black. Gamma 0.4 maps median 0.05 → 0.30, p90 0.24 → 0.56; order, sign and zero survive. */
 const HEAT_GAMMA = 0.4;
 function heatT(value: number, maxAbs: number, gamma: number = HEAT_GAMMA): number {
   const linear = Math.min(1, Math.abs(value) / (maxAbs || 1));
@@ -435,18 +333,8 @@ function rampColor(stops: Stops, t: number): RGB {
   return stops[stops.length - 1][1];
 }
 
-/*
-  Cell ink. The old rule compared a *perceived* luminance to a hand-tuned
-  threshold per ramp, which is not the quantity WCAG contrast is built on — it
-  picked the worse of the two inks near the flip and bottomed out at 3.74:1.
-
-  Contrast against light ink falls as the cell brightens while contrast against
-  dark ink rises, so the best possible flip point is exactly where the two
-  curves cross. Solving ratio(L, DARK) = ratio(LIGHT, L) gives
-  L = sqrt((Ll + 0.05)(Ld + 0.05)) − 0.05 ≈ 0.168, and picking the better ink
-  either side of it guarantees ≥4.11:1 — the ceiling for this ink pair. Any
-  other threshold is strictly worse, so this is not a knob to tune.
-*/
+/* Cell ink: the best flip point is where contrast against both inks is equal, L = sqrt((Ll + 0.05)(Ld + 0.05)) − 0.05 ≈ 0.168,
+   which guarantees ≥4.11:1 for this pair. Not a knob. */
 const INK_LIGHT = '#ededed';
 const INK_DARK = '#0a0a0a';
 function relativeLuminance([r, g, b]: RGB): number {
@@ -459,30 +347,16 @@ function relativeLuminance([r, g, b]: RGB): number {
 const INK_CROSSOVER = Math.sqrt((relativeLuminance([237, 237, 237]) + 0.05) * (relativeLuminance([10, 10, 10]) + 0.05)) - 0.05;
 const inkFor = (rgb: RGB): string => (relativeLuminance(rgb) > INK_CROSSOVER ? INK_DARK : INK_LIGHT);
 
-/* ══ PAPER ═══════════════════════════════════════════════════
-   Every ramp above is cut for a DARK ground: its zero is the panel's own dark and its journey climbs toward light.
-   On paper that journey runs the wrong way — a pale gold or an ice blue is no colour at all on a soft grey, and a
-   figure printed in it fails. THE LIGHT SWEEP (2026-09-19) made a drawn figure part of the page on paper — one soft
-   grey, the page's inks — and the Map's island joined it on 2026-09-22 (Noah, with the light Map: "can we make this
-   look more appealing on light theme with the soft gray look"). So on paper the same JOURNEY BY AMOUNT runs between
-   two inks that both read on the page:
-     · a BAR or a FIGURE goes from the page's muted ink at zero to a DEEP pole — grey is small, the colour is heavy;
-       the poles are the light set's own tokens as numbers (tokens.css: ember 146 86 4, glacier 3 105 161; the
-       thermal's deep red and deep blue are dark enough as they stand);
-     · a CAPSULE, which carries its own figure, goes from a faint TINT of the pole on the page's inset grey to the
-       pole itself, and the figure's ink is chosen by measured contrast as it always was.
-   The dark ramps are untouched — a light-theme change never moves the dark theme. */
+/* Paper: the dark ramps climb toward light, which vanishes on grey, so on paper a bar or figure runs from the muted ink to a deep pole
+   (the light tokens), and a capsule from a faint tint of the pole to the pole. The dark ramps are untouched. */
 const PAPER_MUTED: RGB = [75, 78, 86]; /* --text-muted on paper */
 const PAPER_INSET: RGB = [245, 244, 240]; /* --inset on paper, the island's ground */
 const PAPER_POLES: Record<'ember-glacier' | 'thermal-yellow', { pos: RGB; neg: RGB }> = {
   'ember-glacier': { pos: [146, 86, 4], neg: [3, 105, 161] },
   'thermal-yellow': { pos: [165, 0, 38], neg: [49, 54, 149] },
 };
-/* ONE PAIR ON PAPER (2026-10-04 — Noah, with the light Map in ember and glacier: "the color pallete should not even be a
-   thing for light theme because its practically invisible", then, when the other pair went: "this image above is the
-   color i wanted you to remove"): the tan-and-blue pair is gone from paper; every light surface walks the THERMAL pair,
-   deep red and navy, whatever palette a reader chose on a dark page — the Colours cards are hidden there, so two readers
-   on paper see the same page. `mode` stays in the signature for the day a paper palette is wanted. */
+/* One pair on paper: every light surface walks the thermal pair (deep red and navy) whatever the palette; the Colours cards are hidden there.
+   `mode` stays in the signature for a future paper palette. */
 const paperPole = (sign: 1 | -1, _mode: HeatMode): RGB => {
   const p = PAPER_POLES['thermal-yellow'];
   return sign >= 0 ? p.pos : p.neg;
@@ -493,17 +367,12 @@ const paperInk = (sign: 1 | -1, t: number, mode: HeatMode): RGB => mixRgb(PAPER_
 /** A capsule's fill on paper: a faint tint of the pole at zero (never the bare ground — a quiet cell is still a cell), the pole at one */
 const paperTint = (sign: 1 | -1, t: number, mode: HeatMode): RGB => mixRgb(PAPER_INSET, paperPole(sign, mode), 0.16 + 0.84 * Math.max(0, Math.min(1, t)));
 
-/** THE LADDER'S LEG ON PAPER (2026-10-04 — Noah, with the light rail beside the dark one: "on light theme i cant really see any
-    changes in gradient, its either dark red or dark blue"): the legs read the paper INK ramp through its deep window, so a
-    quiet strike and a wall were a shade apart. A leg is a shape with its figure beside it, not a figure, so it may start
-    light: a soft tint of the pole on the island's grey at zero (35%, enough to read as a capsule) to the deep pole at one,
-    the whole journey — the same tint-to-pole walk the matrix's cells take, begun a little further in. The figures and
-    the bars keep the ink ramp; the dark ramps are untouched. */
+/** The ladder's leg on paper: from a 35% tint of the pole on the island's grey to the deep pole, so quiet strikes and walls separate. */
 export function heatPaperLeg(sign: 1 | -1, t: number, mode: HeatMode): RGB {
   return mixRgb(PAPER_INSET, paperPole(sign, mode), 0.35 + 0.65 * Math.max(0, Math.min(1, t)));
 }
 
-/** The same journey on any ramp — the ladder's Colours card picks the mode (2026-09-08); `paper` reads the paper ink ramp */
+/** The same journey on any ramp; `paper` reads the paper ink ramp. */
 export function heatRampColorFor(sign: 1 | -1, t: number, mode: HeatMode, paper = false): RGB {
   if (paper) return paperInk(sign, t, mode);
   const r = RAMPS[mode as keyof typeof RAMPS];
@@ -567,11 +436,7 @@ export function heatCellStyle(value: number, maxAbs: number, mode: HeatMode = HE
   };
 }
 
-/** One lane's colour ON THE RAMP ITSELF — the bar wears the heat its size
-    earns, the same colour a capsule of that value would (Noah, 2026-09-07:
-    "shouldn't the call/put chart match if we switch the heatmap to
-    thermal?"). `floor` keeps a small lane visible: the house zero is the
-    panel's own dark, so a lane at t=0 would vanish. */
+/** One lane's colour on the ramp itself, as a capsule of that value would wear; `floor` keeps a small lane off the panel's dark zero. */
 export function heatLaneColor(value: number, maxAbs: number, mode: HeatMode = HEAT_MODE, floor = 0.3, paper = false): string {
   const pal = RAMPS[mode as keyof typeof RAMPS];
   if (paper) {
@@ -587,25 +452,15 @@ export function heatLaneColor(value: number, maxAbs: number, mode: HeatMode = HE
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-/* ══ THE LADDER'S WINDOW ON EACH RAMP ═══════════════════════
-   (2026-09-22, Noah, with the Map on both themes: "almost every color on this page reads ashy and muted… all the red
-   and greens from the put and call and the magenta"). The inks were not the problem — the pair and the magenta are the
-   pure tokens. THE SCALE WAS: a bar's length is cut at the heaviest ordinary strike, but its colour still ran to the
-   wall, so a strike at a fifth of the wall sat two thirds up the ramp — and that stretch of the house ramp is rust and
-   teal, the journey through dark a capsule with its own figure carries and a flat 9px bar cannot. And the pale end:
-   ice is white on black. So the ladder reads each side of a ramp through a WINDOW — the saturated stretch, deep to
-   bright — and reads AMOUNT AGAINST THE CUT, the same scale its lengths use: ordinary strikes span the window, the
-   walls sit at its end. On paper the window is the upper part of the paper ink ramp, quiet colour to the deep pole,
-   never the grey. The capsules, Terrain's rail and every other heat surface keep the full journey. */
+/* The ladder reads each side through a window (the saturated stretch, deep to bright) and against the length cut,
+   so ordinary strikes span the window and walls sit at its end. On paper the window is the paper ink ramp's upper part. Other surfaces keep the full journey. */
 const LADDER_WINDOWS: Record<'ember-glacier' | 'thermal-yellow', { pos: [number, number]; neg: [number, number] }> = {
   /* ember from fire to gold; glacier from azure to the sky the house glacier token is (0.75), short of the ice. The
      window's START is set by the FIGURE: a net figure at a small amount wears the same ink as its bar and must read
      on black at 4.5:1 — measured, fire (0.6) is 5.0:1 and azure (0.5) 4.9:1, while rust (0.5) was 3.6 and navy 3.1 */
   'ember-glacier': { pos: [0.6, 1], neg: [0.5, 0.75] },
-  /* thermal from orange to a bright red; the cool side from a light blue to a mid blue — that ramp is ColorBrewer's
-     RdYlBu, drawn for paper, so its cool side is pastel until 0.6 and navy past 0.8, and on black only the stretch
-     between stands (measured: sky at 0.4 is 27% saturated). Both ENDS stop short of the deep poles, which are darker
-     than 4.5:1 on black (the deep red 2.4:1, the navy 2.8:1); the walls wear the bright end */
+  /* Thermal's window: RdYlBu's cool side is pastel until 0.6 and navy past 0.8, and both deep poles fall under 4.5:1 on black,
+     so the ends stop short of them; the walls wear the bright end. */
   'thermal-yellow': { pos: [0.4, 0.75], neg: [0.6, 0.78] },
 };
 const PAPER_WINDOW: [number, number] = [0.55, 1];

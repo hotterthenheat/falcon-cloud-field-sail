@@ -1,17 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - A STRIKE'S CHANGE OVER A WINDOW
-  (components/gex/ChangeMark.tsx)
-
-  The one mark the book's read (BookRead) and the
-  Compare page's Head to head share (2026-10-17):
-  what a strike's net did over a window — a
-  percent with its arrow, dollars when the strike
-  was next to nothing, "steady" when nothing moved
-  — and the windows themselves, today's contracts
-  read off the minute grid (data/replay.ts).
-==================================================
-*/
+/* What a strike's net did over a window (a percent with its arrow, dollars from near zero, "steady"), shared by BookRead
+   and Compare's Head to head; the windows read today's contracts off the minute grid (data/replay.ts). */
 
 import { useEffect, useRef, useState } from 'react';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
@@ -31,8 +19,7 @@ export const READ_WINDOWS: { key: string; min: number }[] = [
   { key: 'open', min: Infinity },
 ];
 
-/* THE FIGURE GLIDES to its new value over a third of a second (the house's readouts) — a window change or a new
-   scan lands as a slide, not a jump */
+/* The figure glides to its new value over 360 ms, so a window change lands as a slide. */
 const GLIDE_MS = 360;
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 const useGlide = (target: number | null): number | null => {
@@ -61,8 +48,7 @@ const useGlide = (target: number | null): number | null => {
   return shown;
 };
 
-/** What a strike's net did over the window: ▲ 358% grew, ▼ 51% shrank, dollars when it was next to nothing then.
-    `quiet`: the glyph alone takes the direction's ink, the figure keeps the ink around it (the Compare sheet, 2026-10-18) */
+/** ▲ 358% grew, ▼ 51% shrank, dollars when it was next to nothing then. `quiet`: only the glyph takes the direction's ink. */
 export const Change = ({ now, then, quiet = false }: { now: number; then: number | null; quiet?: boolean }) => {
   /* the figure and its kind, then the figure glides */
   const kind: 'none' | 'steady' | 'dollars' | 'pct' =

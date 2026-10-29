@@ -1,54 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE AGENDA
-  (pages/pinpoint/Agenda.tsx)
-
-  Targets and Building on ONE page, switched at the
-  head (Noah, 2026-10-14: "i want the building page
-  and the target page to have the same function as
-  the simulated returns and our read. so they should
-  be on the same page put interchangable" — the
-  Weigher card's two faces; the name is mine at his
-  word, "choose a name for the overhead section
-  name"): THE AGENDA — what to watch today, in what
-  order, and what today built. Two faces:
-
-    TARGETS    every strike in the order it matters
-               (pages/pinpoint/RankedTargets.tsx)
-    BUILDING   what today added to every strike, and
-               where the walls are heading
-               (pages/pinpoint/Building.tsx)
-
-  THE FACE IS THE ADDRESS: /pinpoint/agenda opens on
-  Targets, ?view=building on Building — so a link
-  carries its face, Back walks between them, and the
-  old addresses (/pinpoint/targets, /pinpoint/building)
-  land on the face they named. THE SWITCH STANDS
-  WHERE THE BOX'S NAME STANDS (Noah, with the box
-  head circled: "i want the targetes and building
-  buttons to be there"): the first box of either
-  face wears AgendaSwitch as its title — Targets ·
-  Building at the title's own size — and the shell's
-  head keeps the page's name with the face's line
-  under it.
-
-  BOTH FACES STAND, ONE IN HAND (Noah, 2026-10-14:
-  "the targets to building change should be a smooth
-  transition right now it seems like its opening up
-  two totally different pages so its slow"): a face
-  seen once stays mounted — its scan, its read and
-  its choices warm — folded to no height and unseen
-  while the other is in hand, the two in one grid
-  cell so the box heads share a spot. The other face
-  is mounted on its own, a beat after the first has
-  landed, so the first press never waits on a build.
-  The switch is then a fade between two standing
-  trees — never a skeleton, never a reload. Before
-  this the faces swapped under a wait-mode presence:
-  the old one faded out, the new one mounted cold
-  (its page skeleton, a deferred frame, the board's
-  own fade) — two pages, by the look of it.
-*/
+/* The Agenda: Targets and Building on one page. The face is the address (?view=building), and the switch is the first box's title.
+   A face seen once stays mounted (folded, unseen) so switching is a fade between two standing trees, never a reload. */
 
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
@@ -66,7 +17,7 @@ export const AGENDA_FACES = [
 /** The face an address names — Targets unless it asks for Building */
 export const agendaFaceOf = (search: string): AgendaFace => (new URLSearchParams(search).get('view') === 'building' ? 'building' : 'targets');
 /** What the shell's line says under the name, a face at a time */
-/* "today" only while today's session is ahead or running — after the close it is the next session's (the fourth audit's m7) */
+/* "today" only while today's session is ahead or running; after the close it is the next session's. */
 export const AGENDA_LINES: Record<AgendaFace, string> = {
   get targets() {
     return `Every strike, in the order it matters ${todayScopeLabel() === 'Today' ? 'today' : 'next session'}`;

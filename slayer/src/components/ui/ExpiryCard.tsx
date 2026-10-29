@@ -1,8 +1,5 @@
-/*
-  Every expiry choice opens the calendar. The trigger is the dropdown card's; the card is ExpiryPicker's calendar.
-  A desk with a fixed set of expiries lights only those days; a desk that prices any day lights every trading day in
-  reach. A choice without a date ("Every expiry") is a pill. Named tenors (Compass) are dropdown rows, not days.
-*/
+/* Every expiry choice opens the calendar (ExpiryPicker's): fixed-expiry desks light only those days, any-day desks every trading day in reach.
+   A dateless choice ("Every expiry") is a pill; named tenors (Compass) are dropdown rows. */
 
 import { useState, type CSSProperties } from 'react';
 import * as Popover from '@radix-ui/react-popover';

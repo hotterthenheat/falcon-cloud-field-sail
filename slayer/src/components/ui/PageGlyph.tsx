@@ -1,8 +1,5 @@
-/*
-  A page's icon (outlines in glyphPaths.ts), bare and at text size (14-18px). The body wears the house foil
-  (--glyph-1..5: silver on dark, galaxy ink on paper) and its one coloured part the room's ink (layout/nav.ts
-  NAV_INK). Gaps are cut with a mask, not painted, so it is right on any ground. Nothing moves.
-*/
+/* A page's icon (glyphPaths.ts) at text size: the body in the house foil, its one coloured part the room's ink (nav.ts NAV_INK).
+   Gaps are cut with a mask so it is right on any ground. */
 
 import { useId, type ReactNode } from 'react';
 import { NAV_INK } from '../layout/nav';

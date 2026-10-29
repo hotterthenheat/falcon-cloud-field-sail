@@ -1,14 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW TO READ WHAT'S BEING BUILT
-  (components/gex/BuildingGuide.tsx)
-
-  The guide for the Building page, in the house
-  pattern (a focus-and-blur card, figures drawn in
-  the surface's own grammar, one or two sentences
-  each, "Today" from the numbers on screen).
-==================================================
-*/
+/* The Building page's guide: a focus-and-blur card, figures in the surface's own grammar, "Today" from the numbers on screen. */
 
 import { aheadWord } from '../../data/bookWindow';
 import { oiWhen } from '../../data/building';
@@ -17,7 +7,7 @@ import { BULL, CALL_WALL, FLIP, PUT_WALL, SUPREME, alpha } from './paletteInk';
 import { fmtDollars, fmtStrike, type AheadClock } from '../../data/ahead';
 import type { Building } from '../../data/building';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const MONO = 'ui-monospace, Menlo, monospace';
 const SANS = 'ui-sans-serif, system-ui, sans-serif';
 
@@ -36,11 +26,7 @@ const Figure = ({ children, label, h = 110 }: { children: ReactNode; label: stri
   </figure>
 );
 
-/* THE ROWS, DRAWN SMALL (redrawn 2026-09-13 with the box): three movers the
-   way the box draws them — the strike with its tag and its distance from
-   spot, the wall bar with today's part lit, the change, the day's line, the
-   verdict chip with its words — a folded line of steady strikes and the spot
-   rule between. Every part is one the reader can find behind the card. */
+/* The rows drawn small, the way the box draws them: three movers, a folded run of steady strikes and the spot rule. */
 const LedgerFigure = () => {
   const COL = { strike: 10, bar: 84, barW: 120, change: 262, day: 272, dayW: 44, word: 326 };
   type Row = { y: number; strike: string; dist: string; tag?: { text: string; ink: string }; base: number; lit: number; gone: boolean; now: string; was?: string; change: string; chip: string; tone: string; words: string; day: 'up' | 'down' };
@@ -137,7 +123,7 @@ const LedgerFigure = () => {
       {/* the spot rule */}
       <line x1={10} x2={318} y1={74} y2={74} stroke="#ededed" strokeOpacity={0.35} />
       <text x={374} y={76.5} fontSize={6.5} textAnchor="end" fill="#a3a3a3" fontFamily={MONO} letterSpacing={0.6}>
-        {/* a made-up name and prices (the third audit, 2026-10-23: "SPY 486.40" read as a real, stale quote) */}
+        {/* A made-up name and prices, so the example never reads as a stale quote. */}
         XYZ · example
       </text>
       <rect x={378} y={69} width={34} height={10} rx={2} fill="#ededed" />
@@ -273,14 +259,8 @@ const FloorFigure = () => {
   );
 };
 
-/* THE DRAWING ITSELF, SMALL (Noah, 2026-09-08: "i dont find anything on the
-   building page that even remotely looks like 'the pace'… wouldn't this be
-   considered misrepresentation?" — the old figure showed three bar groups
-   from the box's table days; the box is a drawing now, so the guide draws
-   the drawing): four rows on the strike axis, one per level in its ink,
-   spot dotted through them; a hollow dot where it opened, a filled dot where
-   it is now, a dashed ring with an arrow where today's pace puts it, a
-   diamond for the strike growing fastest on that side, tied to the wall. */
+/* The drawing itself, small: one row per level on the strike axis, spot dotted through; hollow dot at the open, filled now,
+   a dashed ring where today's pace puts it, a diamond for the fastest-growing strike on that side. */
 const HeadingFigure = () => {
   const L = 64;
   const R = 408;

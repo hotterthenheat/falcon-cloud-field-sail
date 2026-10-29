@@ -1,14 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PINE TREE (core/pine/ast.ts)
-
-  What the parser builds and the interpreter walks.
-  Every node carries the line it came from and an id
-  of its own: a call's id is the key its `ta.*` state
-  lives under, and a subscripted expression's id is
-  the key its history is kept under.
-==================================================
-*/
+/* The tree the parser builds and the interpreter walks. Every node has its line and an id: a call's id keys its `ta.*` state,
+   a subscripted expression's id keys its history. */
 
 export interface Arg {
   name?: string;

@@ -113,7 +113,7 @@ export function positionLines(h: Hands, name: string): BarLine[] {
 }
 
 /* ================================================================== */
-/*  THE RIGHT-CLICK                                                     */
+/* The right-click */
 /* ================================================================== */
 
 /** The card's head: the price it is at, and the quick size with its − and + */

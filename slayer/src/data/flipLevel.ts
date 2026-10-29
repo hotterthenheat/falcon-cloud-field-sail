@@ -461,7 +461,7 @@ export function readRegime(levels: { spot: number; flip: number; flipFound?: boo
   const px = fmtK;
   const long = levels.net != null ? levels.net < 0 : flip != null && spot >= flip;
   /* the walls are the most call and the most put gamma either side of price, so each is placed by where it is */
-  /* ONE TOLERANCE FOR "AT PRICE" (core/walls.ts wallPlace, 0.05%): the clause and the wall's words beside it agree */
+  /* One tolerance for "at price" (core/walls.ts wallPlace, 0.05%). */
   const side = (k: number) => {
     const p = wallPlace(k, spot);
     return p === 'at' ? 'right at price' : p;

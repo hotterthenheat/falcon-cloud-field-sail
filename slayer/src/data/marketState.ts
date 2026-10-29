@@ -1,26 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - WHERE THE MARKET IS (data/marketState.ts)
-
-  One reading the brand prints everywhere: the mark's state
-  (brand/markState.ts), the signature's word ("slayer:~ $ ● live"),
-  the rail's foot and the footer's status line. Live while the
-  market is open, closed otherwise — and one plain sentence a
-  page can say about it:
-
-    Pre-market     "Pre-market. The market opens at 8:30 AM CT."
-    Open           "The market is open."
-    After hours    "After hours. The market opens tomorrow at 8:30 AM CT."
-    Closed         "The market is closed. It opens Monday at 8:30 AM CT."
-    Early close    "Early close today at 12:00 PM CT."
-    Holiday        "Closed for Thanksgiving. The market opens Friday at 8:30 AM CT and closes early at 12:00 PM CT."
-
-  The New York clock is data/moc.ts's session clock; the holidays
-  are core/calendar.ts's. The early closes are the exchange's
-  published ones (the day after Thanksgiving, Christmas Eve, the
-  day before Independence Day when it falls on a weekday).
-==================================================
-*/
+/* Where the market is, one reading for the mark, the signature, the rail and the footer, plus a plain sentence per state
+   (pre-market, open, after hours, closed, early close, holiday). Clock: data/moc.ts; holidays: core/calendar.ts; early closes: the exchange's. */
 
 import { MARKET_HOLIDAYS, isTradingDay, isoDate } from '../core/calendar';
 import { readSessionClock } from './moc';

@@ -1,15 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - ONE NAME'S LEVELS, ONE FUNCTION
-  (data/levelsFor.ts)
-
-  The retail test (2026-10-22): the Dossier stock page read the whole book's levels while Pinpoint defaults to today's
-  contracts — SPY read put wall 760 / supreme 769 / flip 770.96 / call wall 780 on Pinpoint and 760 / 760 / 774.65 /
-  800 on the Dossier, with nothing saying which was which. This is the one source: the same book, the same profile
-  (data/exposure.ts buildExposureProfile — the Map's, the Board's, the Agenda's and Compare's), for either scope, named.
-  Any page that prints a name's supreme, walls, flip, net GEX or regime reads it here and says the scope it read.
-==================================================
-*/
+/* One name's levels, one function: the same book and profile (exposure.ts buildExposureProfile) for either scope, named.
+   Any page printing a supreme, walls, flip, net GEX or regime reads it here and says the scope. */
 import { useEffect, useMemo } from 'react';
 import { buildExposureProfile } from './exposure';
 import { levelFlip, regimeOfNet } from './flipLevel';
@@ -47,8 +37,7 @@ export interface TickerLevels {
   moves: LevelMove[];
   /** One strike's net GEX on these contracts, RETAIL sign — null when the strike is not on them */
   netAt: (strike: number) => number | null;
-  /** One strike's call leg, put leg and net on these contracts, RETAIL sign — a wall is printed by the leg that makes
-      it (calls for the call wall, puts for the put wall), the supreme by its net (the sixth audit's m7) */
+  /** One strike's call leg, put leg and net on these contracts, retail sign; a wall is printed by its own leg, the supreme by its net. */
   legsAt: (strike: number) => { call: number; put: number; net: number } | null;
 }
 
@@ -60,12 +49,8 @@ export interface LevelMove {
   at: number;
 }
 
-/*
-  A LEVEL THAT CHANGES STRIKE TODAY SAYS SO (the ninth audit's retail finding: the call wall read 765 at 12:55 and 762 at
-  13:08 with no note). Each final reading of a name's levels in a scope is compared with the last one this page saw today;
-  a level on a new strike is kept as a move (the flip's own moves come from flipLevel's hysteresis). Kept for the New York
-  day, in this page.
-*/
+/* A level that changes strike today says so: each final reading per scope is compared with the last one this page saw today,
+   and a level on a new strike is kept as a move (the flip's own moves come from flipLevel's hysteresis). */
 /** Two flip prices within this print alike (the pages print the flip to the cent) */
 const FLIP_SAME = 0.006;
 const lastSeen = new Map<string, { callWall: number | null; putWall: number | null; supreme: number; flip: number | null; moves: LevelMove[] }>();
@@ -83,10 +68,7 @@ function trackMoves(key: string, lv: { callWall: number | null; putWall: number 
     note('put wall', prev.putWall, lv.putWall);
     note('supreme', prev.supreme, lv.supreme);
   }
-  /* ONE NOTE PER FLIP MOVE (the tenth audit's M2: the re-priced flip drifts ~2e-4 a read, so the same move was logged twice
-     — QQQ, AMZN, META, AMD, NFLX — and RegimeLine printed both): a move is the hold's own event (its `from` and the minute
-     it was seen); a later read of the same event updates where it went, and two notes that would print the same at the
-     page's precision are one */
+  /* One note per flip move: a move is the hold's own event (its `from` and the minute seen); later reads of it update where it went. */
   if (flipMoved && lv.flip != null) {
     const same = moves.findIndex(m => m.level === 'flip' && m.at === flipMoved.at && Math.abs(m.from - flipMoved.from) < FLIP_SAME);
     const twin = moves.some(m => m.level === 'flip' && Math.abs(m.from - flipMoved.from) < FLIP_SAME && Math.abs(m.to - lv.flip!) < FLIP_SAME);
@@ -160,11 +142,37 @@ function levelsOf(t: string, scope: LevelsScope, snap: NonNullable<ReturnType<ty
   };
 }
 
-/** The hook: both scopes' levels for a name, kept fresh as its book lands */
-export function useLevelsFor(ticker: string | null | undefined, scope: LevelsScope): TickerLevels | null {
+/** One name's levels on a single expiry (YYYY-MM-DD), read off that date's rows the book already holds: no new call.
+    The date's chain stands in for the "Today" chain, so `scope` reads '0DTE' and `date` names the expiry. Null until
+    the book is live or while the date holds no strikes. */
+export function levelsForDate(ticker: string, date: string): TickerLevels | null {
+  const t = ticker.trim().toUpperCase();
+  if (!t || !date) return null;
+  const front = snapshotFor(t, '0DTE');
+  const rows = front?.uwByDate?.[date];
+  if (!front || !rows?.length) return null;
+  if (front.uwChains?.['0DTE'] === rows) return levelsFor(t, '0DTE');
+  let byDate = dateSnaps.get(front);
+  if (!byDate) dateSnaps.set(front, (byDate = new Map()));
+  let snap = byDate.get(date);
+  if (!snap || snap.chain !== rows) {
+    snap = { ...front, chain: rows, uwChains: { ...front.uwChains, '0DTE': rows } };
+    byDate.set(date, snap);
+  }
+  const memo = levelsMemo.get(snap);
+  if (memo) return memo.out;
+  const out = levelsOf(t, '0DTE', snap);
+  levelsMemo.set(snap, { scope: '0DTE', pending: false, out });
+  return out;
+}
+/* One derived snapshot per (front snapshot, date), so the memo above holds while the book stands still */
+const dateSnaps = new WeakMap<object, Map<string, NonNullable<ReturnType<typeof snapshotFor>>>>();
+
+/** The hook: both scopes' levels for a name, kept fresh as its book lands. A `date` reads that one expiry instead. */
+export function useLevelsFor(ticker: string | null | undefined, scope: LevelsScope, date?: string | null): TickerLevels | null {
   const rev = useBookRev();
   useEffect(() => {
-    if (ticker && scope === 'ALL') ensureScopeDates(ticker.toUpperCase(), 'ALL');
-  }, [ticker, scope]);
-  return useMemo(() => (ticker ? levelsFor(ticker, scope) : null), [ticker, scope, rev]);
+    if (ticker && scope === 'ALL' && !date) ensureScopeDates(ticker.toUpperCase(), 'ALL');
+  }, [ticker, scope, date]);
+  return useMemo(() => (!ticker ? null : date ? levelsForDate(ticker, date) : levelsFor(ticker, scope)), [ticker, scope, date, rev]);
 }

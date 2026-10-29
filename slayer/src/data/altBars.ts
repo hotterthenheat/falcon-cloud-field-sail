@@ -1,42 +1,6 @@
 
-/*
-==================================================
-  SLAYER TERMINAL - NON-TIME BARS (data/altBars.ts)
-
-  Range and volume bars, built from the live
-  seconds tape — T-15.
-==================================================
-
-  A time bar closes because a clock said so; these close because the MARKET
-  did something — moved a dollar, traded ten thousand shares. In a 0DTE
-  session the interesting information arrives in bursts and time bars smear
-  it; a burst here is simply more bars.
-
-  BUILT FROM THE 15-SECOND QUARTERS, AND THEREFORE LIVE-ONLY. The seconds
-  tape starts at connect (T-14's rule: no backfill, resampled minutes are a
-  different instrument wearing the same label), so these inherit that
-  honesty and the pane wears the same `live only · from HH:MM` chip. The
-  quarter is also the CUT GRANULARITY: a bar closes on the first quarter
-  that satisfies its rule, so a violent quarter can overshoot the range or
-  the volume floor. That is what building from aggregates means, and it is
-  said here rather than smoothed over.
-
-  WHERE ARE TICK BARS? A tick is a trade, and nothing upstream carries
-  trades — the simulator walks aggregates, and the real feed's history is
-  aggregates too. Inventing a tick count per quarter would be a number the
-  app cannot source, so tick bars are deliberately absent until a per-trade
-  feed exists — the same decision that kept 1s/5s off the timeframe picker.
-
-  A BAR NEVER SPANS THE OVERNIGHT GAP. Range and volume rules do not care
-  about the clock, but letting one bar absorb a session roll would hand it
-  the overnight price gap as "range" and print a bar that never traded.
-  The forming bar is finalized at the gap, undersized, and says nothing
-  false by existing — it is simply where the session ended.
-
-  THE LAST BAR IS STILL FORMING, exactly like the minute tape's newest bar.
-  It has not met its rule yet; a chart shows it growing and the next quarter
-  may complete it.
-*/
+/* Range and volume bars from the live 15-second tape, so live-only (no backfill). A bar closes on the first quarter meeting its rule
+   (it may overshoot), never spans the overnight gap, and the last one is still forming. No tick bars: nothing upstream carries trades. */
 
 export type AltBarKind = 'range' | 'volume';
 
@@ -46,12 +10,7 @@ export interface AltBarSpec {
   size: number;
 }
 
-/**
- * The pane's bar-clock choices, keyed for persistence. One table, so the
- * pane validator, the menu and the chart can never disagree about what a
- * stored key means (the T-0 lesson: a list copied inline drops entries).
- * `'time'` is the absence of a spec — the ordinary timeframe clock.
- */
+/** The pane's bar-clock choices, keyed for persistence, in one table read by the validator, the menu and the chart. `'time'` is the plain timeframe clock. */
 export const BAR_CLOCKS: readonly {
   key: string;
   spec: AltBarSpec | null;

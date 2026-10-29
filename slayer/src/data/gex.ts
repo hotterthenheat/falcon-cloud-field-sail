@@ -1,7 +1,4 @@
-/*
-  Dealer-gamma helpers: money formatting, the heat pattern's read, a name's key levels and the book as an alert
-  reads it, both from the live vendor book (uwBook).
-*/
+/* Dealer-gamma helpers off the live vendor book (uwBook): money formatting, the heat pattern's read, a name's key levels, the book as an alert reads it. */
 
 import { pickFlip, pickWalls } from '../core/walls';
 import { bookHistory, ensureBook, peekChange, peekSpot } from './uwBook';
@@ -12,7 +9,7 @@ import type { DarkPoolPrint, KeyLevels } from '../types/gex';
 export function fmtUsd(v: number): string {
   if (!Number.isFinite(v)) return '—';
   const a = Math.abs(v);
-  /* a figure that rounds to nothing is nothing — never "-$0" (the matrix's near-zero vannas, 2026-10-18) */
+  /* A figure that rounds to nothing is nothing, never "-$0". */
   const sign = v < 0 && a >= 0.5 ? '-' : '';
   if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(1)}B`;
   if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
@@ -20,8 +17,7 @@ export function fmtUsd(v: number): string {
   return `${sign}$${a.toFixed(0)}`;
 }
 
-/** fmtUsd with the true minus (U+2212) — Pinpoint's figures print "−$595.1M" everywhere, never a hyphen beside a minus
-    (the fifth audit, 2026-10-23: the Map's "-$595.1M" beside the Agenda's "−$175M") */
+/** fmtUsd with the true minus (U+2212), as Pinpoint prints everywhere. */
 export const fmtGexUsd = (v: number): string => {
   const s = fmtUsd(v);
   return s.startsWith('-') ? `−${s.slice(1)}` : s;
@@ -83,20 +79,8 @@ export function spotChangePct(ticker: string): number {
   return peekChange(ticker) ?? 0;
 }
 
-/*
-  ══ THE BOOK AS AN ALERT SEES IT ════════════════════════════════════════════
-
-  `buildLevelsFor` is for the RAIL, and the rail's fallbacks are wrong for an
-  alert: an unnamed wall parked at `spot` moves every tick, so an exposure
-  alert reading it would fire on the fallback's motion, not the wall's. This
-  reader keeps core/walls.ts's real nulls — "no call wall qualifies" is a
-  state, and an alert waits on it.
-
-  `readExposureNow` is pure over a handed-in chain so a proof can stage a
-  book; `exposureNowFor` is the one-line wrapper over the simulator's latest
-  snapshot. Null from the wrapper means the book is unreadable, which every
-  alert also waits on. (Ported with the alert system, 2026-08-28.)
-*/
+/* The book as an alert reads it: core/walls.ts's real nulls, not the rail's fallbacks (a wall parked at spot would move every tick).
+   `readExposureNow` is pure over a chain; `exposureNowFor` wraps the live vendor book, null while it is unreadable. */
 export interface ExposureNow {
   /** Signed total of the chain's net GEX. */
   netGex: number;

@@ -1,7 +1,4 @@
-/*
-  Below 768px the side rail is replaced by this sheet from the left: the same groups, products and pages (nav.ts,
-  navTree.ts), plus the bell with its count. It closes on a pick, on the backdrop, on Escape, and on navigation.
-*/
+/* Below 768 px the rail becomes this sheet: the same groups and pages (nav.ts, navTree.ts) plus the bell. Closes on pick, backdrop, Escape and navigation. */
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';

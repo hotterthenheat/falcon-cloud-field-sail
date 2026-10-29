@@ -1,7 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 
-/** The fold on a box's head: "Fold" with the chevron down while open, "Unfold" with it turned while shut (the tape's,
-    2026-10-13, now every box's) */
+/** The fold on a box's head: "Fold" with the chevron down while open, "Unfold" with it turned while shut. */
 const FoldDoor = ({ open, onToggle, what, testId }: { open: boolean; onToggle: () => void; what: string; testId: string }) => (
   <button
     type="button"

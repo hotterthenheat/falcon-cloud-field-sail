@@ -1,45 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE CHECKOUT, OURS (pages/checkout/Checkout.tsx)
-
-  Noah, of Stripe's hosted page (2026-10-10): "the
-  shapes and spaces are off." Its spaces were
-  Stripe's; every knob the hosted page offered was
-  turned and the form column stayed white. So the
-  checkout is our own page now, in the sign-in
-  page's clothes and the landing's type:
-
-    THE ORDER on the left — the plan, its price in
-    the landing's big light numerals, the period
-    and the door to the other one, a promotion
-    code, the session's own figures as dot-leader
-    rows (subtotal · promotion · due today).
-
-    THE PAYMENT on the right — Stripe's framed
-    fields dressed in our tokens, as tabs: Card
-    first, then the wallets this browser can pay
-    with (Google Pay, Apple Pay), then the rest;
-    the Pay door in the house's foil, and the fine
-    print.
-
-  The card is typed into Stripe's frames and never
-  reaches us: the session is made by the project's
-  stripe-checkout function in Stripe's "elements"
-  mode, which hands back a client secret; the page
-  mounts Stripe's fields with it. A card completes
-  in place and the person lands on Settings ›
-  Billing, where Stripe's word arrives a breath
-  later; a redirect-based method comes back to the
-  same place by the session's return address.
-
-  `/checkout?plan=book|tape|desk&period=month|year`
-  Signed out → the sign-in page, then back here.
-  Someone already on a plan is sent to the portal.
-  In development only, `?cs=<client secret>` mounts
-  a session made by hand, so the page can be looked
-  at without an account.
-==================================================
-*/
+/* Our own checkout: the order (plan, price, period, promotion, totals) and Stripe's fields in our tokens as tabs. The card never reaches us:
+   `stripe-checkout` makes an elements-mode session and returns a client secret. `/checkout?plan=book|tape|desk&period=month|year`; dev-only `?cs=`. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -58,9 +18,7 @@ import { readToken, useResolvedTheme, type Theme } from '../../theme/theme';
 const SOLD = new Set<PlanKey>(['book', 'tape', 'desk']);
 type Upgrade = Extract<CheckoutMade, { kind: 'upgrade' }>;
 
-/** STRIPE'S FRAMES IN OUR TOKENS: the frames cannot read var(), so every colour is read off the document at mount —
-    the chip ground and the quiet border of the house's fields, Inter, 10px corners, the silver for the focus and the
-    chosen tab, the house's orange for a complaint. Night under dark, Stripe's plain theme under paper. */
+/** Stripe's frames cannot read var(), so every colour is read off the document at mount; Night on dark, Stripe's plain theme on paper. */
 const appearanceFor = (theme: Theme): Appearance => ({
   theme: theme === 'dark' ? 'night' : 'stripe',
   labels: 'above',
@@ -110,10 +68,7 @@ const money = (a: { minorUnitsAmount: number; amount: string }): string => (a.mi
 /** cents from the function, the same way */
 const fmtCents = (cents: number): string => (cents % 100 === 0 ? fmtDollars(cents / 100) : `$${(cents / 100).toFixed(2)}`);
 
-/* ── THE UPGRADE ─────────────────────────────────────────────────────────────────────────────────────────────────────
-   Someone already on a plan, asking for a higher one (or the same by the year): no card fields — the card on file pays
-   the difference today and the plan moves now (Noah, 2026-10-10: the walls "tease the user so they can upgrade their
-   plan to the highest one"). One door, the figures beside it in the order column. */
+/* ── The upgrade: someone on a plan asking for a higher one pays the difference on the card on file, no card fields ── */
 const UpgradeFace = ({ planKey, period, upgrade }: { planKey: PlanKey; period: Period; upgrade: Upgrade }) => {
   const theme = useResolvedTheme();
   const navigate = useNavigate();
@@ -270,12 +225,7 @@ const Order = ({ planKey, period, checkout, upgrade = null }: { planKey: PlanKey
   );
 };
 
-/* ── THE PAYMENT'S SHAPE ─────────────────────────────────────────────────────────────────────────────────────────────
-   What stands in the payment column until Stripe's fields are drawn: the column in its own shape — the four ways, the
-   card number, the date and the code side by side, the country, the ZIP, the mandate's two lines, the door, the fine
-   print — at their real sizes, so Stripe's fields land where the shape stood and the change is one crossfade (Noah,
-   2026-10-10: "the dropdown animation when stripe loads the payment info placeholders is glitchy"). Stripe's own
-   loading skeleton is switched off; this is the one that shows. */
+/* ── The payment column's shape at real sizes until Stripe's fields draw, so they land in place with one crossfade; Stripe's own skeleton is off ── */
 const FieldShape = ({ label, className = '' }: { label: number; className?: string }) => (
   <div className={className}>
     <Skeleton line className="h-[10px] mb-[9px]" style={{ width: label }} />
@@ -327,8 +277,7 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
     const t = window.setTimeout(() => setShapeGone(true), 400);
     return () => window.clearTimeout(t);
   }, [ready]);
-  /* PAID: the start page — every room a card, pick where to begin (Noah, 2026-10-10: "it should be the 8 page layout
-     where the user can choose where they want to go"); the row is read again behind it until Stripe's word lands */
+  /* Paid: the start page, the row re-read behind it until Stripe's word lands. */
   const done = (r: StripeCheckoutConfirmResult) => {
     if (r.type === 'error') return setProblem(r.error.message);
     settleAfterPurchase();
@@ -352,11 +301,7 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
         </div>
       )}
       <div className={`transition-opacity duration-300 ease-out ${ready ? 'opacity-100' : 'absolute inset-x-0 top-0 opacity-0 pointer-events-none'}`} data-checkout-fields-host>
-      {/* APPLE PAY, ON EVERY DESKTOP (Noah, 2026-10-12, with a competitor's Stripe page showing Apple Pay on his Windows
-          Chrome): on Chrome, Edge and Firefox Apple Pay exists only as this one-click button, asked for with `always`, and
-          it hands the payment to the phone by a code to scan (iOS 18 or later); as a tab in the form below it never
-          draws outside Safari. So Apple Pay lives HERE, on every browser, and nowhere else; Google Pay stays a tab in the
-          form, where Noah put it. The row opens only when Stripe says the button can draw — never on localhost. */}
+      {/* Apple Pay as the one-click button on every browser (as a tab it only draws in Safari); it opens only when Stripe says it can draw. */}
       <div className="grid transition-[grid-template-rows] duration-300 ease-out" style={{ gridTemplateRows: wallets ? '1fr' : '0fr' }} data-checkout-wallets={wallets || undefined}>
         <div className="min-h-0 overflow-hidden">
           <ExpressCheckoutElement
@@ -385,12 +330,8 @@ const Pay = ({ checkout, period }: { checkout: StripeCheckoutElementsValue; peri
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" spellCheck={false} className={field} data-checkout-email />
         </label>
       )}
-      {/* STRIPE'S FRAMES — the card and the other ways, dressed in our tokens, as TABS. GOOGLE PAY IS A TAB (Noah,
-          2026-10-11: "i want google pay to be in the position where amazon pay is"): it stands right after Card when the
-          browser can pay with it — Chrome with a real card saved in Google Pay — on HTTPS, on an address registered with
-          Stripe (Settings → Payment method domains); never on localhost. Apple Pay is NOT a tab: it is the button above,
-          on every browser, so a wallet has one place. Link's own sign-up block (an email, a phone, a checkbox) stays out
-          of the card form. */}
+      {/* Stripe's fields as tabs: Google Pay after Card when the browser can pay with it (HTTPS, a domain registered with Stripe);
+   Apple Pay is the button above, and Link's sign-up block stays out. */}
       <div data-checkout-fields>
         <PaymentElement
           options={{

@@ -1,14 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - COMPARE SYMBOLS
-  TradingView's "+" next to the symbol capsule
-  (Noah, 2026-08-23): opens a compact search over
-  the full universe; HOVERING a symbol row reveals
-  the three ways to lay it on the chart — Same %
-  scale / New price scale / New pane. Added symbols
-  list at the top with their line ink and an ✕.
-==================================================
-*/
+/* Compare symbols, TradingView's "+": a search over the universe; hovering a row shows the three ways onto the chart
+   (same % scale, new price scale, new pane). Added symbols list at the top with their ink and an ✕. */
 
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
@@ -61,24 +52,8 @@ const CompareControl = ({
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
   const full = compares.length >= max;
 
-  /*
-    IT IS A COMBOBOX, WITH ONE TAB STOP.
-
-    Adding a comparison was flatly impossible from a keyboard. Measured on the
-    running build: the three scale buttons compute `display: none` on every row
-    with a real desktop pointer, so they cannot be reached; there was no Enter
-    handler in this file at all, so typing QQQ and pressing Enter added
-    nothing; and the first Tab out of the search box landed on a control BEHIND
-    the still-open menu. On a coarse pointer the same markup went the other way
-    — the buttons show, and the menu became 28 tab stops named from three
-    repeated strings.
-
-    So the row is chosen with Up/Down and the way it joins the chart with
-    Left/Right, both driven from the search box. Focus never leaves the input,
-    because it has to keep filtering while you steer. The scale buttons stay
-    exactly as they are for the pointer, and are taken out of the tab order
-    rather than out of the DOM — which leaves the touch path untouched.
-  */
+  /* A combobox with one tab stop: Up/Down choose the row and Left/Right the scale, both from the search box, which keeps focus
+     to keep filtering. The scale buttons stay for the pointer but leave the tab order. */
   const [highlight, setHighlight] = useState(0);
   const [modeIdx, setModeIdx] = useState(0);
   const uid = useId();
@@ -89,14 +64,8 @@ const CompareControl = ({
     const onDown = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
-    /* CAPTURE, and it stops the key going any further.
-
-       Escape is not owned by one component: the desk behind this menu closes
-       an expanded pane on the same key, and both listeners are on `window`.
-       Bubble-phase, both fire — measured: one Escape with this open inside an
-       expanded pane closed the menu AND collapsed the pane. Window-capture
-       runs before window-bubble, so the innermost thing open gets the key and
-       nothing else sees it. Same pattern as the date picker. */
+    /* Capture phase, and the key stops here: the desk behind also closes on Escape at window level,
+       so the innermost open thing takes the key first (as the date picker does). */
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
@@ -259,18 +228,10 @@ const CompareControl = ({
                         return (
                           <button
                             key={mode}
-                            /* Out of the TAB ORDER, not out of the DOM: the
-                               pointer and touch paths are unchanged, and a
-                               keyboard user steers these from the search box
-                               instead of walking three of them per row. */
+                            /* Out of the tab order, not the DOM: pointer and touch are unchanged; a keyboard steers these from the search box. */
                             tabIndex={-1}
                             onClick={() => add(t.symbol, mode)}
-                            /* The ring FOLLOWS the pointer (Noah, 2026-08-26:
-                               "hard set on the first choice but it should be
-                               on whichever one is hovered") — hover moves the
-                               same modeIdx the arrow keys steer, so mouse and
-                               keyboard share one visible state and Enter
-                               always adds exactly what the ring marks. */
+                            /* The ring follows the pointer: hover moves the same modeIdx the arrows steer, so Enter always adds what the ring marks. */
                             onMouseEnter={() => setModeIdx(mi)}
                             aria-label={`Add ${t.symbol} — ${MODE_LABEL[mode]}`}
                             className={`relative px-1.5 py-0.5 rounded border bg-inset font-mono text-t9 whitespace-nowrap transition-colors duration-150 ${

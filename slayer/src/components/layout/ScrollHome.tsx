@@ -1,9 +1,5 @@
-/*
-  The terminal's scroller is <main>, which the browser does not restore, so this does. One instance sits in each keyed
-  transition wrapper and acts on mount, when the new page lands. A forward navigation opens at the top; history
-  navigation (POP) restores the position kept per location key, re-applied for up to two seconds while the page
-  fills in, and dropped as soon as the reader scrolls.
-*/
+/* <main> is the scroller and browsers do not restore it, so this does: forward navigation opens at the top; history navigation
+   restores the position per location key for up to 2 s while the page fills, dropped once the reader scrolls. */
 
 import { useLayoutEffect } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';

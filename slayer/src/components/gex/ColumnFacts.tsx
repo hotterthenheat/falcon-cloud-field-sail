@@ -36,7 +36,7 @@ interface Props {
 }
 
 const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) => {
-  /* ONE PRICE ON THE PAGE: the same live reading the matrix's spot pill prints; the replayed snapshot's in the replay */
+  /* One price on the page: the live reading the matrix's spot pill prints; the replayed snapshot's in a replay. */
   const live = useRoomSpot(ticker, !fresh);
   const spot = live ?? snapshot.spot;
   const change = snapshot.changePercent ?? 0;
@@ -47,7 +47,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
   /* nothing provisional: until the levels' contracts are all in, "…" */
   const pending = !!snapshot.liveBook && levels?.complete === false;
   const flip = levels && levels.flipFound !== false && levels.flip != null && Number.isFinite(levels.flip) ? levels.flip : null;
-  /* THE REGIME IS THE SIGN OF NET GAMMA AT SPOT (data/flipLevel.ts) — never the side of the flip */
+  /* The regime is the sign of net gamma at spot (data/flipLevel.ts), never the side of the flip. */
   const absorb = levels?.net != null ? levels.net < 0 : flip != null && spot >= flip;
   const hasRegime = !!levels && (levels.net != null || flip != null);
   /* a hair either side of the flip is neither regime (data/gex.ts readHeatPattern's AT_FLIP, 0.05%) */
@@ -63,7 +63,7 @@ const ColumnFacts = ({ ticker, snapshot, scope, width, fresh = false }: Props) =
       : unit === '%'
         ? `${Math.abs((away / spot) * 100).toFixed(2)}%`
         : fmtDistance(away, spot, unit, { atr, sigma: unit === 'σ' ? peekDaySigma(ticker) ?? daySigmaOfIv(spot, iv) : null }).replace(/^[+−]/, '');
-  /* HOW THE FLIP HELD TODAY — the report's own count (data/levelRecord.ts), the head's before it */
+  /* How the flip held today: the report's own count (data/levelRecord.ts). */
   const bars = (bookCandles(ticker) ?? dayBars(ticker))?.length ?? 0;
   const side: 'call' | 'put' = flip != null && flip >= spot ? 'call' : 'put';
   const held = useMemo(() => {

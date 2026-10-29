@@ -1,10 +1,6 @@
 import AnimatedNumber from '../ui/AnimatedNumber';
 
-/** Live spot readout with the house change stamp (Noah, 2026-08-17: red on
-    a drop, green on a rise — and "back to white after the change"): the
-    flash inks the move for a beat, then eases back to white while the
-    number rolls. Exactly AnimatedNumber's Robinhood grammar, named for the
-    chart strips that carry it. */
+/** Live spot with the house change stamp: red on a drop, green on a rise, easing back to white while the number rolls (AnimatedNumber). */
 const SpotPrice = ({
   value,
   className = 'font-mono text-t11 font-semibold tnum text-textPrimary',

@@ -1,38 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - HOW THE LEVELS HELD TODAY
-  (components/gex/WallReportCard.tsx)
-
-  Levels earn trust in front of the reader (the
-  Pinpoint roadmap, 2026-09-05). Every named level
-  of today's map — the call wall, the flip, the put
-  wall, the gamma pin, the supreme — with its record
-  for the session: how many times price tested it,
-  how many of those it held, how many it broke, when
-  it was last touched, and whether the gamma behind
-  it has grown or shrunk since the open.
-
-  REDONE 2026-09-05 in the approved grammar (the
-  positions cards): a row per level, hairlines and
-  air instead of a table, labels over values, and
-  the record drawn as a STRIP OF THE SESSION — one
-  tick per test along the day, green where the
-  level held, red where it broke — with a hover
-  card that names the minute and the close. The
-  strip is the picture the seven numbers used to
-  stand in for.
-
-  THE RECORD COMES OFF THE SAME BARS the chart
-  draws, with the same rule the focus chip uses: a
-  bar's range reaching the level is a test; a close
-  beyond it after a test is a break. Nothing is
-  judged by opinion.
-
-  A ROW IS A STRIKE. Click one and it is the
-  terminal's strike, on the rail above and the chip
-  in the shell.
-==================================================
-*/
+/* How the levels held today: each named level's session record (tests, holds, breaks, last touch, OI change) and a strip
+   of the session, one tick per test. A test is a bar reaching the level; a close beyond it after a test is a break. A row click keeps the strike. */
 
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { roomLevels } from '../../data/roomLevels';
@@ -54,14 +21,13 @@ import ReportGuide from './ReportGuide';
 import type { Candle, MarketSnapshot } from '../../types/market';
 import { fmtStrike } from '../../core/format';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const GREEN = 'rgb(var(--bull))';
 const RED = 'rgb(var(--bear))';
-/* NEW YORK'S CLOCK, like "Last touched" beside it (the audit's H2, 2026-10-13): the browser's zone put 05:43 and 01:36 on one row for the same minute */
+/* New York's clock, as "Last touched" beside it. */
 const hhmm = (unix: number) => nyClock(unix * 1000);
 
-/* THE RULE FOR A TEST AND A BREAK lives in data/levelRecord.ts (`levelTicks`) since 2026-10-13, where the sessions before
-   today are graded by the same rule — the base rates under the subtitle */
+/* The rule for a test and a break lives in data/levelRecord.ts (`levelTicks`), which grades earlier sessions the same way. */
 
 /** Each level in one plain line — the row's hover */
 const LEVEL_TIPS: Record<string, string> = {
@@ -102,8 +68,7 @@ const RATE_OF: Record<string, RecordLevel | undefined> = { call: 'callWall', put
 // ---- the strip ----------------------------------------------------------------
 
 const SW = 600;
-/* 28px since the report became one table (2026-10-14): a 40px row holds it, with price's path around the level still
-   readable (the paying-user audit's H4) */
+/* 28 px strip in a 40 px row. */
 const SH = 28;
 
 const SessionStrip = ({ row, bars }: { row: Row; bars: readonly Candle[] }) => {
@@ -125,13 +90,10 @@ const SessionStrip = ({ row, bars }: { row: Row; bars: readonly Candle[] }) => {
   return (
     <div className="relative" onPointerLeave={() => setHover(null)}>
       <svg ref={ref} viewBox={`0 0 ${SW} ${SH}`} width="100%" height={SH} preserveAspectRatio="none" data-session-strip onPointerMove={onMove} style={{ display: 'block', cursor: row.ticks.length ? 'crosshair' : 'default' }} role="img" aria-label={`${row.label}: ${row.tests} tests along the session`}>
-        {/* the session, as a hairline from the first bar to the newest — THE LEVEL, with price's path around it (the
-            paying-user audit's H4, 2026-10-13: a bare hairline with three ticks said nothing between the tests; the path
-            says how close price came and from which side) */}
-        {/* the ink token, not white: on paper a white hairline was no hairline (the audit's H1) */}
+        {/* The session as a hairline from the first bar to the newest. */}
+        {/* The ink token, not white, so the hairline shows on paper. */}
         <line x1={8} x2={SW - 8} y1={SH / 2} y2={SH / 2} stroke="rgb(var(--ink))" strokeOpacity={0.18} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        {/* no path of price round the level (Noah, 2026-10-14, with the picture: "remove the little charting looking thing … i like it as
-            it was before") — the hairline and the ticks, as the report always drew them */}
+
         {/* one tick per test */}
         {row.ticks.map(t => (
           <line
@@ -164,14 +126,13 @@ const SessionStrip = ({ row, bars }: { row: Row; bars: readonly Candle[] }) => {
   );
 };
 
-/* THE TABLE'S COLUMNS — the head row and every level row share them. On a phone: the level (its strike beside it), the
-   three counts and the last touch; the strip, the trend and the base rate are the desk's. */
+/* The table's columns, shared by the head and every row. On a phone: the level, three counts and the last touch. */
 const GRID = 'grid gap-x-4 px-5 grid-cols-[minmax(0,1fr)_36px_36px_40px_48px] lg:grid-cols-[minmax(150px,1.1fr)_64px_minmax(180px,2fr)_40px_40px_44px_48px_minmax(120px,1fr)_92px]';
 
 // ---- the section ----------------------------------------------------------------
 
 /** `scope`: the host's chip saying which name's levels these are */
-const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false, unavailable: unavailableIn = null }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** Plain words when the book today's session ran on is no longer available (after the close) — said instead of a table of zeros */ unavailable?: string | null; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in — the Map's replay reads the bars up to its position (2026-09-08) */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
+const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, tight = false, unavailable: unavailableIn = null }: { snapshot: MarketSnapshot; focus: number | null; onPick: (price: number) => void; scope?: ReactNode; /** Plain words when the book today's session ran on is no longer available (after the close) — said instead of a table of zeros */ unavailable?: string | null; /** The expiry window the levels are read from ("Oct 21 → Oct 30") — the Map's book is wider than the Agenda's next session, so its walls can differ and the head says which window */ span?: string | null; /** The day so far, handed in; the Map's replay reads the bars up to its position. */ bars?: readonly Candle[]; /** A name beside others — the phone's columns, so a third of the page still reads */ tight?: boolean }) => {
   const read = useResolvedSession(snapshot.ticker);
   const session = barsProp?.length ? sessionOfMinute(nyMinutes(barsProp[0].time * 1000)) : read.session;
   const bars = useMemo(() => {
@@ -182,9 +143,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
   const grid = tight ? 'grid gap-x-3 px-3 grid-cols-[minmax(0,1fr)_32px_32px_36px_44px]' : GRID;
   const desk = tight ? 'hidden' : 'max-lg:hidden';
   const phone = tight ? '' : 'lg:hidden';
-  /* THE BOOK HANDED IN IS ALREADY THE MAP'S WINDOW (bookForDates) — read as it stands, the band's own rule
-     (ExposureField: a dated book is read '0DTE'). The desk's Levels card lives on the Board; read here it re-cut the
-     window to the whole book under a head that still named the window (the ship pass, 2026-10-22). */
+  /* The book handed in is already the Map's window (bookForDates), read as a dated book ('0DTE') like the band does. */
   const levelsScope = '0DTE' as const;
   /* the overnight open-interest change on these contracts, strike by strike (data/building.ts valueOiChange) */
   const bookRev = useBookRev();
@@ -199,12 +158,11 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     return ch && ch.rows.length ? valueOiChange(snapshot, snapshot.chain, ch, recordDay().date) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, bookRev]);
-  /* NOTHING PROVISIONAL (the fourth audit's M1: "SUPREME 760" — the whole book's — for seconds before today's landed) */
+  /* Nothing provisional: no levels until today's contracts land. */
   const pendingLevels = !!snapshot.liveBook && roomLevels(snapshot, '0DTE')?.complete === false;
   const unavailable = unavailableIn ?? (pendingLevels ? 'Loading the levels’ contracts…' : null);
   const rows = useMemo<Row[]>(() => {
-    /* the room's one reading of the levels (data/roomLevels.ts): the band's window and scope, so the pin here is the pin
-       the band tags (the re-audit's H6) */
+    /* The room's one reading of the levels (data/roomLevels.ts), so the pin here is the pin the band tags. */
     const levels = roomLevels(snapshot, levelsScope);
     if (!levels) return [];
     const mk = (key: string, label: string, ink: string, price: number, side: 'call' | 'put'): Row => {
@@ -212,20 +170,16 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       const broke = ticks.filter(t => t.kind === 'broke').length;
       const tests = ticks.length;
       const held = tests - broke;
-      /* THE OVERNIGHT OPEN-INTEREST CHANGE AT THE LEVEL, NOT "GAMMA SINCE OPEN" (the Pinpoint audit, 2026-10-22: SPY 760
-         read "39× growing", 764 "new today" and the flip — not a strike — "new today", off a history that walked today's
-         volume onto the open interest; volume is not open interest). The feed's count, contract by contract, on the
-         Levels card's contracts only (Building's valueOiChange), as the change in the hedging's size at the strike. */
+      /* The overnight open-interest change at the level (Building's valueOiChange, on the Levels card's contracts), not "gamma since
+         the open": volume is not open interest. */
       let trend = 'not a strike';
       let trendFig = '';
       let trendWord = key === 'flip' ? 'not a strike' : '…';
       const v = key === 'flip' ? null : oiAt?.get(price);
       const node = snapshot.chain.find(n => Math.abs(n.strike - price) < 1e-9);
       if (key !== 'flip' && oiAt && node) {
-        /* A WALL IS GRADED BY ITS OWN LEG (the eighth audit's M2: the 765 call wall "shrank $353M" off its net while 8,499
-           calls were added to it): the call wall is the most call gamma, so its size is its call gamma; the put wall's its
-           put gamma; the supreme (the most net) and the pin by the net — Building's rule (data/building.ts basis), decided
-           by the strike so the levels sharing a row share one figure */
+        /* A wall is graded by its own leg: the call wall by its call gamma, the put wall by its put gamma, the supreme and pin by the net
+           (data/building.ts basis), decided by strike so levels sharing a row share a figure. */
         const basis = price === levels.supreme ? 'net' : price === levels.callWall && price !== levels.putWall ? 'calls' : price === levels.putWall && price !== levels.callWall ? 'puts' : price === levels.callWall && price === levels.putWall ? 'both' : 'net';
         const now = basis === 'calls' ? node.callGex : basis === 'puts' ? node.putGex : node.netGex;
         const added = basis === 'calls' ? v?.call ?? 0 : basis === 'puts' ? v?.put ?? 0 : (v?.call ?? 0) + (v?.put ?? 0);
@@ -233,8 +187,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         const legWord = basis === 'net' ? '' : `${basis} `;
         const switched = basis === 'net' && Math.sign(now) !== Math.sign(now - added) && Math.abs(now - added) > 0.05 * Math.max(1, Math.abs(now));
         if (basis === 'both') {
-          /* BOTH WALLS ON ONE STRIKE, EACH BY ITS OWN LEG (the ninth audit's M3): the call wall's calls and the put wall's
-             puts, both said — never the net (NVDA 212.50 "shrank $14M" while both legs grew) */
+          /* Both walls on one strike: each by its own leg, never the net. */
           const leg = (g: number, a: number) => Math.abs(g) - Math.abs(g - a);
           const cs = leg(node.callGex, v?.call ?? 0);
           const ps = leg(node.putGex, v?.put ?? 0);
@@ -252,9 +205,9 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
           trendWord = 'steady';
           trend = `about where it was before ${oiWords?.trade ?? 'the overnight count'}`;
         } else {
-          /* the wall's size in words, no sign beside a signed net (the seventh audit: "−$171M" read as the net falling) */
+          /* The wall's size in words, no sign beside a signed net. */
           trendFig = `${legWord}${size > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(size))}`;
-          /* the supreme that is also a wall: its net, then each wall's own leg (the ninth audit's M3) */
+          /* The supreme that is also a wall: its net, then each wall's own leg. */
           if (basis === 'net' && price === levels.supreme && (price === levels.callWall || price === levels.putWall)) {
             const leg = (g: number, a: number) => Math.abs(g) - Math.abs(g - a);
             const w = (x: number) => (Math.abs(x) < 0.5 ? 'held' : `${x > 0 ? 'grew' : 'shrank'} ${fmtUsdShort(Math.abs(x))}`);
@@ -266,8 +219,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         }
       }
       if (key === 'flip' && bars.length >= 2) {
-        /* THE BOARD'S COUNT, THE BOARD'S WORD (the ninth audit's M2): the flip is a price, not a strike — its row carries how
-           many times price crossed it (one-minute closes changing side, data/flipGauge.ts flipCrossings) beside its tests */
+        /* The flip is a price, not a strike: its row counts crossings (one-minute closes changing side, flipGauge flipCrossings). */
         const n = flipCrossings(bars, price);
         trendFig = `crossed ${n}×`;
         trendWord = 'not a strike';
@@ -279,9 +231,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       return { key, label, ink, labels: [{ label, ink }], price, side, ticks, tests, held, broke, last: lastTouch, trend, trendFig, trendWord, grade, rate: RATE_OF[key] ?? null };
     };
     const spot = levels.spot;
-    /* ONE COUNT PER STRIKE (the third audit, 2026-10-23: QQQ 708 read PUT WALL 32/23/9 and SUPREME 32/24/8 — the put wall
-       was always tested from above, the supreme from its side of price, so one strike had two counts and two rows). Every
-       level is tested from the side of price it sits on, so levels on one strike share one count and one row. */
+    /* One count per strike: every level is tested from the side of price it sits on, so levels on one strike share a count and a row. */
     const sideOf = (k: number): 'call' | 'put' => (k >= spot ? 'call' : 'put');
     const out: Row[] = [
       mk('call', 'Call wall', CALL_WALL, levels.callWall, sideOf(levels.callWall)),
@@ -294,9 +244,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     ];
     // Highest price first — the section reads like the ladder above it
     const sorted = out.sort((a, b) => b.price - a.price || a.key.localeCompare(b.key));
-    /* ONE ROW WHERE LEVELS COINCIDE (the audit's M5, 2026-10-13): the pin, the put wall and the supreme on one strike
-       printed three rows with the same price, strip, chip and facts. Levels that share a strike and a side share a row,
-       their names stacked in their own inks — the levels are the levels, only the presentation merges. */
+    /* One row where levels coincide on a strike and side, their names stacked in their own inks. */
     const merged: Row[] = [];
     for (const r of sorted) {
       const last = merged[merged.length - 1];
@@ -307,15 +255,13 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
         last.label = `${last.label} · ${r.label}`;
       } else merged.push(r);
     }
-    /* the names on a shared strike in the one order everywhere (core/walls.ts levelRoles): supreme · call wall · put wall,
-       then the flip and the pin (the fourth audit's m1) */
+    /* Names on a shared strike in the one order (core/walls.ts levelRoles), then the flip and the pin. */
     const ORDER = ['Supreme', 'Call wall', 'Put wall', 'Gamma flip', 'Gamma pin'];
     for (const r of merged) {
       r.labels.sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
       r.label = r.labels.map(l => l.label).join(' · ');
     }
-    /* THE ROWS IN THE ONE ORDER TOO (the sixth audit, 2026-10-23: Compare, the Dossier and this card listed the levels
-       three ways) — supreme · call wall · put wall · flip, then the pin; a shared strike sits where its first name does */
+    /* Rows in the same order; a shared strike sits where its first name does. */
     merged.sort((a, b) => ORDER.indexOf(a.labels[0]?.label ?? '') - ORDER.indexOf(b.labels[0]?.label ?? ''));
     return merged;
   }, [snapshot, bars, levelsScope, session, oiAt]);
@@ -324,13 +270,12 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
     const lv = roomLevels(snapshot, levelsScope);
     return lv && lv.flipFound !== false && lv.net != null ? flipSidesWords(lv.flip, lv.spot, lv.net) : null;
   }, [snapshot, levelsScope]);
-  /* THE BASE RATES (data/levelRecord.ts): the sessions on hand before today, each level as it stood at its open, graded
-     by the report's own rule — read, not stored; a machine on the feed's two years grades two years */
+  /* Base rates (data/levelRecord.ts): earlier sessions on hand, each level as it stood at that open, graded by the same rule. */
   const rates = useMemo(() => baseRates(sessionRecords(snapshot.ticker, peekIv(snapshot.ticker))), [snapshot.ticker]);
 
   const first = bars[0]?.time;
   const last = bars[bars.length - 1]?.time;
-  /* The guide as a focus over the whole box (the house pattern, 2026-09-06) */
+  /* The guide as a focus over the whole box. */
   const [guideOpen, setGuideOpen] = useState(false);
   /* the box folds to its head, remembered (data/boxFold.ts) */
   const [open, toggleOpen] = useBoxFold('report');
@@ -340,16 +285,10 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
       <GuideFocus open={guideOpen} onClose={() => setGuideOpen(false)} title="How to read the report" testId="report-guide" viewport>
         <ReportGuide rows={rows.map(r => ({ label: r.label, price: r.price, tests: r.tests, held: r.held, broke: r.broke, grade: r.grade.words, trend: r.trend }))} bars={bars.length} from={first != null ? hhmm(first) : null} />
       </GuideFocus>
-      {/* THE HEAD: the name, its scope, its doors, and the one base rate that is not a row's (2026-10-14, the owner: the
-          report was "AI slop" — a subtitle, a sentence over four labelled figures, a pill restating every row's counts, and
-          five labels printed over again on each row). What a test and a break are, and how the rates are graded, is the
-          guide's. */}
+      {/* The head: the name, its scope, its doors, and the one base rate that is not a row's; definitions are the guide's. */}
       <div className="px-5 pt-4 pb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
-        {/* THE SESSION ON RECORD, NAMED (the fifth audit, 2026-10-23: "How the levels held today" over Thursday's bars at
-            01:00 Friday) — "today" only while it is today's session */}
-        {/* …AND ITS BOOK, ONCE THE SESSION HAS CLOSED (the eleventh audit's retail finding: the head read "Supreme · next
-            session 755" over this table's "SUPREME · PUT WALL 760" — two books, read as a contradiction): a finished
-            session is graded against its own book, said by its date beside the table */}
+        {/* The session on record, named: "today" only while it is today's session. */}
+        {/* …and its book once the session has closed: a finished session is graded against its own book, dated beside the table. */}
         <h3 className="text-t16 font-semibold leading-tight text-textPrimary" data-report-day={rec.date}>How the levels held {rec.isToday && !rec.done ? 'today' : `· ${longDay(rec.date)}`}</h3>
         {scope}
         {rec.done && (
@@ -402,7 +341,7 @@ const WallReportCard = ({ snapshot, focus, onPick, scope, span, bars: barsProp, 
             const rate = r.rate && rates.levels[r.rate].tested > 0 ? rates.levels[r.rate] : null;
             return (
               <div key={r.key} role="row" className={`border-t border-borderSubtle/40 ${isFocus ? 'bg-silver/[0.05]' : ''}`} data-level={r.key}>
-                {/* THE WHOLE ROW KEEPS THE STRIKE (the audit: only the name did, and the row read as the target) */}
+                {/* The whole row keeps the strike. */}
                 <button
                   type="button"
                   onClick={() => onPick(r.price)}

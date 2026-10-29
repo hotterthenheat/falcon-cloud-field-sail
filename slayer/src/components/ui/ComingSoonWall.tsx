@@ -1,9 +1,5 @@
-/*
-  A coming-soon wall over a page that opens after launch: the page reads through the glass, a flickering silver lamp
-  at the top of the viewport, the holo wordmark, a countdown, a notify field and an optional foot. A host wraps its
-  body in a `relative` box, disables its pointer events while walled and renders this after it. `useWalled` reads
-  the URL: `?wall` shows the wall, `?open` hides it, otherwise the page's default.
-*/
+/* A coming-soon wall over a page (it reads through the glass): lamp, wordmark, countdown, notify field. The host wraps its body
+   in a `relative` box and renders this after it; `useWalled` reads `?wall` / `?open` from the URL. */
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';

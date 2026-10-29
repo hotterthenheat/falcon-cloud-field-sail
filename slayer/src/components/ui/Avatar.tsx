@@ -1,7 +1,5 @@
-/*
-  The reader's picture, or their initials on the holo disc. A picture URL that fails to load (a provider's) falls back
-  to the initials, never a bare ring; the request sends no referrer, which some picture hosts refuse.
-*/
+/* The reader's picture, or initials on the holo disc. A picture that fails to load falls back to the initials;
+   no referrer is sent, which some picture hosts require. */
 
 import { useEffect, useState } from 'react';
 import { initials, type Profile } from '../../data/profile';

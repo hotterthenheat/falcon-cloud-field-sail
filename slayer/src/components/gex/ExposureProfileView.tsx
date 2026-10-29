@@ -1,33 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PROFILE (components/gex/ExposureProfileView.tsx)
-
-  The book's third view (the competitive audit,
-  2026-10-13): dealer gamma AS A FUNCTION OF SPOT —
-  the curve every desk draws under the name "gamma
-  profile" (data/exposureCurve.ts). One line per
-  drawn expiry, quiet; the total, loud; the ground
-  tinted where hedging amplifies (above zero) and
-  where it absorbs (below); spot, the zero crossing,
-  the walls and the supreme as rules across it, in
-  the house's inks. Hover a spot for the figures;
-  click to keep the nearest strike; the arrow keys
-  walk the curve.
-
-  DRAWN BY THE CHART LIBRARY, the day box's way (the
-  owner, 2026-10-14: the hand-drawn monospace SVG
-  stood between two library charts — "two chart
-  languages on one page"): the library's options
-  chart, price along the foot, the total as its
-  baseline series at zero, the dates its quiet
-  lines, its scale and crosshair (dayChart.ts for the
-  surface). The rules, their tags and the dates'
-  names are the one thing the library has no idea
-  of — a vertical line at a price along the foot —
-  and stand over the plot, placed off the chart's
-  own coordinates after every draw.
-==================================================
-*/
+/* Dealer gamma as a function of spot (data/exposureCurve.ts): one quiet line per drawn expiry, the total as a baseline at zero,
+   drawn by lightweight-charts; the vertical rules (spot, zero, walls) are placed over the plot off the chart's own coordinates. */
 
 import { shownGamma } from './retailSign';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
@@ -72,7 +44,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
   const paper = useResolvedTheme() === 'light' || !!paperProp;
   const curve = useMemo(() => buildExposureCurve(surface, expiries), [surface, expiries]);
   const { points } = curve;
-  /* the room's price (one price on the page, 2026-10-14) */
+  /* The room's price (one price on the page). */
   const roomSpot = useRoomSpot(surface.ticker, live);
   const spot = roomSpot ?? liveSpot ?? surface.spot;
   const x0 = points[0]?.spot ?? spot;
@@ -106,7 +78,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
       localization: { precision: cents ? 2 : 0 },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
       /* room over the top tick for the rules' tags; whole figures only on the scale */
-      /* the axis as wide as its figures (2026-10-18) */
+      /* The axis as wide as its figures. */
       rightPriceScale: { borderColor: s.line, minimumWidth: 0, entireTextOnly: true, scaleMargins: { top: 0.2, bottom: 0.08 } },
       timeScale: { borderColor: s.line, rightOffset: 0, fixLeftEdge: true, fixRightEdge: true, lockVisibleTimeRangeOnResize: true },
       crosshair: {
@@ -118,9 +90,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
     });
     const amp = resolveInk(AMPLIFY, host);
     const abs = resolveInk(ABSORB, host);
-    /* THE TOTAL AS A BASELINE AT ZERO — the book chart's own two-sided line, in the READER'S sign (the ship pass,
-       2026-10-22, retailSign.ts): glacier and its ground above zero (dealers long gamma, hedging absorbs), ember and its
-       ground below (it amplifies) — the Board's net GEX convention */
+    /* The total as a baseline at zero in the reader's sign (retailSign.ts): glacier above (dealers long gamma, absorbs), ember below (amplifies). */
     const total = chart.addSeries(BaselineSeries, {
       baseValue: { type: 'price', price: 0 },
       topLineColor: abs,
@@ -179,8 +149,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
     chart.timeScale().fitContent();
   }, [totalData, points, paper, cents]);
 
-  /* THE GEOMETRY, READ OFF THE DRAWN CHART after every render: the rules, their tags and the dates' names are placed by
-     it — a vertical line at a price along the foot is the one thing the library has no idea of */
+  /* Geometry read off the drawn chart after every render: the library has no vertical line at a price, so the rules and tags are placed by it. */
   useEffect(() => {
     const chart = chartRef.current;
     const total = totalRef.current;
@@ -214,12 +183,11 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
   if (inBand(levels.putWall)) rules.push({ key: 'pw', x: levels.putWall, ink: PUT_WALL, word: `PUT WALL ${fmtStrike(levels.putWall)}` });
   if (inBand(levels.callWall)) rules.push({ key: 'cw', x: levels.callWall, ink: CALL_WALL, word: `CALL WALL ${fmtStrike(levels.callWall)}` });
   if (inBand(levels.supreme)) rules.push({ key: 'sup', x: levels.supreme, ink: SUPREME, word: `SUPREME ${fmtStrike(levels.supreme)}` });
-  if (curve.flip != null && inBand(curve.flip)) rules.push({ key: 'flip', x: curve.flip, ink: FLIP, word: `ZERO GAMMA ${curve.flip.toFixed(2)}`, dash: true }); /* not "FLIP": the band's flip is a strike, this is the curve's zero (the paying-user audit's M5) */
+  if (curve.flip != null && inBand(curve.flip)) rules.push({ key: 'flip', x: curve.flip, ink: FLIP, word: `ZERO GAMMA ${curve.flip.toFixed(2)}`, dash: true }); /* Not "flip": the band's flip is a strike, this is the curve's zero. */
   if (inBand(spot)) rules.push({ key: 'spot', x: spot, ink: SILVER, word: `SPOT ${spot.toFixed(2)}` });
   if (selectedStrike != null && inBand(selectedStrike)) rules.push({ key: 'kept', x: selectedStrike, ink: SILVER, word: `KEPT ${fmtStrike(selectedStrike)}`, dash: true });
   rules.sort((a, b) => a.x - b.x);
-  /* the tags on as many rows as they need (2026-10-13: five levels within a strike or two of spot ran out of the rows
-     and printed over each other): each takes the first row whose last tag ends before this one begins */
+  /* Tags on as many rows as they need: each takes the first row whose last tag ends before it begins. */
   const placed = rules.map(r => ({ ...r, px: xOf(r.x) }));
   const rowEnds: number[] = [];
   const rowOf = placed.map(r => {
@@ -261,7 +229,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
   };
   useEffect(() => setHover(h => (h && h.i < points.length ? h : null)), [points]);
 
-  /* the two heaviest dates named at their right ends (the re-audit's L4) — the thin lines were nameless off the card */
+  /* The two heaviest dates named at their right ends. */
   const dateTags = (() => {
     const out: { e: number; y: number; word: string }[] = [];
     if (!geo || !points.length || curve.expiries.length < 2) return out;
@@ -280,9 +248,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
   const W = geo?.w ?? 0;
   const H = geo?.h ?? 0;
   const tagRows = rowEnds.length;
-  /* THE CARD BESIDE ITS POINT, the day box's way (besideDot.ts) — but this card is a date a line tall, so it stands over
-     the point only where the plot's head holds it, under it otherwise (2026-10-14: near the curve's crown it ran off
-     the top) */
+  /* The card beside its point (besideDot.ts): over it where the plot's head holds the card, under it otherwise. */
   const cardH = 78 + 16 * curve.expiries.length;
   const cardStyle = hover
     ? {
@@ -306,8 +272,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
         data-profile-plot
       >
         <div ref={hostRef} className="absolute inset-0" data-profile-chart />
-        {/* THE RULES AND THEIR TAGS, over the plot, placed by the chart's own coordinates — over the library's canvases
-            (they stand at z 1 and 2), under the glass */}
+        {/* The rules and tags over the library's canvases (z 1 and 2), under the glass. */}
         {geo && W > 0 && (
           <div className="pointer-events-none absolute left-0 top-0 z-[5] overflow-hidden" style={{ width: W, height: H }} aria-hidden data-profile-rules>
             {placed.map((r, i) =>
@@ -368,7 +333,7 @@ const ExposureProfileView = ({ surface, expiries, liveSpot, selectedStrike, onSe
         )}
         {points.length < 2 && <div className="absolute inset-0 grid place-items-center font-mono text-t11 uppercase tracking-widest text-textMuted">No curve for this book yet</div>}
       </div>
-      {/* what this is, in one line — short enough to stand whole (the paying-user audit's M5) */}
+      {/* What this is, in one line short enough to stand whole. */}
       <p className="shrink-0 truncate px-3 py-1 text-t11 text-textMuted border-t border-borderSubtle/60">
         {W >= 760 ? 'Dealer gamma re-priced across spot · above zero hedging amplifies a move, below it absorbs · zero gamma is where it crosses — the flip in the head is read off the strikes, so the two differ' : W >= 420 ? 'Gamma across spot · above zero amplifies, below absorbs' : 'Gamma across spot'}
       </p>

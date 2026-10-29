@@ -1,7 +1,4 @@
-/*
-  Loads the factual SPX book once. Terrain is the only desk that reads it.
-  Other names are not invented from the simulator.
-*/
+/* Loads the factual SPX book once; Terrain is the only desk that reads it. */
 
 import { type SpxRead } from './spxFacts';
 

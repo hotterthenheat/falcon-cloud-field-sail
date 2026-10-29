@@ -1,15 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE DAY'S CHANGE, ONE WAY
-  (components/gex/DayMoveText.tsx)
-
-  The second re-audit (2026-10-22): after the close the feed's stock-state is the post-market bar and its prev_close
-  is today's regular close, so the Map head, the sidebar chip, the Board and Compare printed the after-hours move as
-  the day's (SPY −0.00% on a −1.18% day, AAPL −0.06% on +1.23%). This prints the regular session's change, the move
-  outside the session beside it in its own words ("after hours +0.05%", "pre-market −0.4%"), and a zero change in the
-  neutral ink — never green (the retail test: "+0.00%" in green).
-==================================================
-*/
+/* The day's change, one way: after the close the feed's prev_close is today's close, so the after-hours move read as the day's.
+   This prints the regular session's change, the extended move beside it in words, and a zero in the neutral ink. */
 import { changeInk, dayMoveWords, peekDayMove, useBookRev, type DayMove } from '../../data/uwBook';
 import type { MarketSnapshot } from '../../types/market';
 

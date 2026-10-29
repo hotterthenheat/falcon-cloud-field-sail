@@ -1,46 +1,7 @@
 import type { StrikeExposure, ZoneBand } from '../types/gex';
 
-/*
-==================================================
-  SLAYER TERMINAL - AIR POCKETS (data/airPockets.ts)
-
-  Where price does NOT stop — P-5.
-==================================================
-
-  A WALL TELLS YOU WHERE PRICE STOPS. An air pocket tells you where it
-  doesn't: a contiguous run of strikes carrying almost no dealer gamma,
-  sitting between two shelves that carry plenty. There is no hedging flow in
-  there to slow anything down, which is the mechanical explanation for the
-  moves that look like nothing happened — price crosses the range in seconds
-  because nothing was mechanically obliged to lean against it.
-
-  THE DEFINITION, and every threshold in it argued rather than tuned:
-
-    NEAR-ZERO is relative to the book, not absolute. A strike carrying under
-    QUIET_SHARE of the window's HEAVIEST strike is quiet — on a $600 index
-    and a $12 name alike, because both are read against their own book. An
-    absolute dollar floor would call every strike on a small name an air
-    pocket.
-
-    A RUN IS AT LEAST MIN_STRIKES wide. Two quiet strikes between two shelves
-    is the ordinary texture of any book; the read only means something when
-    the gap is wide enough that price crossing it has real distance to
-    travel unopposed.
-
-    IT MUST BE BETWEEN SHELVES. A quiet run at the END of the window is not a
-    pocket — it is the edge of the book, where gamma thins out because there
-    are no strikes left, not because the strikes there are empty. Requiring a
-    heavy strike on BOTH sides is what separates "nothing here" from "nothing
-    listed here".
-
-    A SHELF IS SHELF_SHARE of the heaviest. Deliberately lower than a wall's
-    bar: the pocket's claim is about what BOUNDS the emptiness, and a shelf
-    that would lose a wall contest can still be the thing price stops at on
-    the way through.
-
-  MODELLED LIKE EVERY OTHER READ off this chain, and the provenance chip on
-  the surface says so.
-*/
+/* Air pockets: a run of at least MIN_STRIKES strikes each under QUIET_SHARE of the window's heaviest, bounded on both sides
+   by a shelf (SHELF_SHARE). Relative to the book, so it reads the same on a $600 index and a $12 name; the window's edge is not a pocket. */
 
 /** A strike under this share of the window's heaviest is "quiet". */
 const QUIET_SHARE = 0.12;
@@ -63,11 +24,7 @@ export interface AirPocket {
   peakShare: number;
 }
 
-/**
- * The pockets in a strike window.
- *
- * @param strikes the profile's own rows, DESCENDING (highest strike first)
- */
+/** The pockets in a strike window; `strikes` are the profile's rows, highest first. */
 export function findAirPockets(strikes: readonly StrikeExposure[]): AirPocket[] {
   if (strikes.length < MIN_STRIKES + 2) return [];
   const mag = strikes.map(s => Math.abs(s.gex.net));

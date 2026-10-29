@@ -1,8 +1,5 @@
-/*
-  The inside half of the terminal in the landing's window (embed.ts). Renders nothing; outside a window does nothing.
-  Inside, it takes "open this page" and "wear this theme" and reports ready, route changes and Escape, same origin
-  and from its own parent only.
-*/
+/* The inside half of the landing's embedded window (embed.ts): takes "open this page" and "wear this theme", reports ready, routes and Escape;
+   same origin, own parent only. */
 
 import { useEffect } from 'react';
 import { flushSync } from 'react-dom';

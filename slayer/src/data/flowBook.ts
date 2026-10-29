@@ -47,7 +47,7 @@ export const FLOW_SCREENS: FlowScreen[] = [
 
 /** Call flow bought at the ask reads bullish, put flow bearish, only where the day has a side (dayLean). */
 function leansBull(r: BookContract): boolean {
-  if (notABet(r)) return false; // a floor package or a day of spread legs leans nowhere (audit round 8)
+  if (notABet(r)) return false; // a floor package or a day of spread legs leans nowhere
   const l = dayLean(r).lean;
   return r.right === 'C' ? l === 'ASK' : l === 'BID';
 }

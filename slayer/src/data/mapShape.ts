@@ -1,46 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE MAP'S SHAPE (data/mapShape.ts)
-
-  The Map rebuilt (2026-09-26 — Noah: "start with the
-  map delete everything on that page … i feel as if
-  there is a lack of quality on this page"; my read:
-  five ladders of measurements and no claim). What the
-  page says about the book is worked out here, pure:
-
-    THE ROWS      a strike a row, the five greeks' legs
-                  summed over the expiries drawn, the
-                  greek being DRAWN as the row's net
-    THE SHAPE     a word a row earns from the drawn
-                  greek's |net| against the rows shown —
-                  WALL (the heaviest hedging, a local
-                  peak, or the book's named wall), CLIFF
-                  (the strike right past a wall on the
-                  far side from price, where the hedging
-                  drops away), SHELF (a run of strikes of
-                  steady, middling hedging), VOID (next
-                  to nothing) — Building's grammar of a
-                  verdict per row, for shape
-    THE FOLDS     three or more voids in a row fold to
-                  one line, so the movers are the page
-                  (Building's steady fold); no fold
-                  crosses price
-    THE CUT       the heaviest ORDINARY strike — the
-                  90th percentile of |net| — every bar
-                  and colour reads against it, so one
-                  monster strike never flattens the rest
-                  (the ladder's own rule, kept)
-    THE READ      one paragraph: where price stands
-                  against the walls, which way the book
-                  leans above and below it, how
-                  concentrated it is, and where the
-                  heaviest strike moved since the open
-
-  Words, never a digit of ours, for the shape and the
-  concentration (the house rule); the dollars are the
-  book's own.
-==================================================
-*/
+/* What the Map says about the book, pure: rows (a strike, the drawn greek's net), a shape word per row (wall, cliff, shelf, void),
+   folds (3+ voids, never across price), the cut (90th percentile of |net|, every bar reads against it) and one paragraph read. Words, not our digits. */
 
 import { type Greek } from './exposureSurface';
 

@@ -1,8 +1,5 @@
-/*
-  The theme choice (dark, light, system) applied as one `data-theme` attribute on <html>; tokens.css does the rest.
-  index.html sets it from the same key before first paint. 'system' follows prefers-color-scheme live.
-  readToken() serves canvas and chart code that cannot read var(); useColourVision() sets `data-cvd`.
-*/
+/* The theme (dark, light, system) as one `data-theme` on <html>, set before first paint by index.html from the same key;
+   'system' follows prefers-color-scheme live. readToken() serves canvas and chart code; useColourVision() sets `data-cvd`. */
 
 import { useSyncExternalStore } from 'react';
 import { EMBEDDED, EMBED_THEME } from '../embed';

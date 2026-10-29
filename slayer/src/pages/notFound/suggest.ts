@@ -1,32 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - "DID YOU MEAN"
-  (pages/notFound/suggest.ts)
-
-  A wrong address is nearly always one of three things,
-  and each has its own answer:
-
-    A SLIP OF THE HAND   /pinpont/map · /trace/darkpool
-        → the nearest real address, by edit distance —
-          on the whole address, and on its last part
-          against every page's own last part and name
-    A PAGE BY ITS NAME   /agenda · /insiders · /billing
-        → the page that carries that name, wherever it
-          lives (/pinpoint/agenda, /record/insiders…)
-    A GUESS FROM OUTSIDE /pricing · /login · /charts
-        → the words people type by hand, mapped by hand
-          (ALIASES). /login is the honest one: there is
-          no sign-in yet, and it says so.
-
-  Everything it can suggest is READ FROM THE NAV'S OWN
-  LISTS (nav.ts, the three subnavs, the settings'
-  sections), so a page added to the terminal can be
-  suggested the day it ships. It never suggests an
-  address it has not been given, and it says nothing
-  rather than guess wildly (a score bar, tighter for
-  short words).
-==================================================
-*/
+/* "Did you mean": a slip of the hand (nearest address by edit distance), a page by its name (wherever it lives), or a guess from outside
+   (ALIASES). Read from the nav's own lists; says nothing rather than guess wildly. */
 
 import { NAV_ITEMS } from '../../components/layout/nav';
 import { GEX_SUBPAGES } from '../pinpoint/subnav';
@@ -65,16 +38,17 @@ const KNOWN: Suggestion[] = [
   { path: '/#tools', label: 'The tools', where: 'Front page' },
   { path: '/#pricing', label: 'Pricing', where: 'Front page' },
   { path: '/#faq', label: 'Questions', where: 'Front page' },
+  { path: '/signin', label: 'Sign in', where: 'Your account' },
+  { path: '/signin?face=up', label: 'Create an account', where: 'Your account' },
 ];
 const byPath = (path: string): Suggestion => KNOWN.find(k => k.path === path) ?? { path, label: path };
 
-const NO_SIGN_IN = 'There is no sign-up yet. The terminal opens without one.';
 /** The words people type by hand → where they meant. Keys are already squashed (see `squash`). */
 const ALIASES: Record<string, { path: string; note?: string }> = {
   pricing: { path: '/#pricing' }, prices: { path: '/#pricing' }, price: { path: '/#pricing' }, plans: { path: '/#pricing' }, plan: { path: '/#pricing' }, subscribe: { path: '/#pricing' }, buy: { path: '/#pricing' }, upgrade: { path: '/#pricing' },
   faq: { path: '/#faq' }, faqs: { path: '/#faq' }, questions: { path: '/#faq' }, help: { path: '/#faq' }, support: { path: '/#faq' },
   tools: { path: '/#tools' }, features: { path: '/#tools' }, products: { path: '/#tools' }, tour: { path: '/#tools' },
-  login: { path: '/pulse', note: NO_SIGN_IN }, signin: { path: '/pulse', note: NO_SIGN_IN }, signup: { path: '/pulse', note: NO_SIGN_IN }, register: { path: '/pulse', note: NO_SIGN_IN }, join: { path: '/pulse', note: NO_SIGN_IN }, auth: { path: '/pulse', note: NO_SIGN_IN },
+  login: { path: '/signin' }, signin: { path: '/signin' }, auth: { path: '/signin' }, signup: { path: '/signin?face=up' }, register: { path: '/signin?face=up' }, join: { path: '/signin?face=up' },
   app: { path: '/pulse' }, terminal: { path: '/pulse' }, dashboard: { path: '/pulse' }, launch: { path: '/pulse' }, desk: { path: '/pulse' }, start: { path: '/pulse' },
   chart: { path: '/terrain' }, charts: { path: '/terrain' }, charting: { path: '/terrain' },
   flow: { path: '/trace/live-tape' }, tape: { path: '/trace/live-tape' }, optionsflow: { path: '/trace/live-tape' },

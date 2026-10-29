@@ -354,7 +354,7 @@ async function pullInstitutions() {
       const name = (house.name || house.short_name || '').trim();
       if (!name) return;
       const filed = house.filing_date || house.date || '';
-      /* by the filer's CIK when it has one: a few long names ("UBS AM, A DISTINCT BUSINESS UNIT OF …") 404 by name */
+      /* By the filer's CIK when it has one: some long names 404 by name. */
       const got = await whalesHoldings(house.cik?.trim() || name, HOUSE_LINES).catch(() => [] as UwHolding[]);
       for (const h of Array.isArray(got) ? got : []) {
         const row = rowFromHolding(name, filed, h);
@@ -609,8 +609,7 @@ const flow5 = (rows: UwEtfFlow[], days?: Set<string>): { flow5dM: number; flows:
 };
 
 /* a bond fund's lines carry no symbol: they keep their name and face amount, keyed by position */
-/* an issue name in title case, with the short capitals that are names kept ("1261229 BC LTD SR SECURED 144A" →
-   "1261229 BC Ltd Sr Secured 144A" — 1261229 B.C. Ltd. is a real issuer, Bausch Health's) */
+/* An issue name in title case, keeping the short capitals that are names ("1261229 BC Ltd Sr Secured 144A"). */
 const KEEP_CAPS = new Set(['BC', 'US', 'USA', 'LP', 'LLC', 'PLC', 'NV', 'SA', 'AG', 'SE', 'AB', 'ASA', 'REIT', 'II', 'III', 'IV', 'UK', 'MLP', 'CO2']);
 const titleIssue = (raw: string) =>
   raw

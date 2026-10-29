@@ -1,24 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE STREAMING MATHS (core/pine/ta.ts)
-
-  Pine's `ta.*` functions, each one fed one value a
-  bar and keeping its own state — the way Pine runs
-  them: every CALL SITE is its own stream, so
-  `ta.ema(close, 9)` on line 12 and `ta.ema(close, 9)`
-  on line 20 never share a memory, and a call inside
-  an `if` that did not run this bar simply does not
-  advance. The seeds and edge cases follow Pine's
-  reference implementations (an EMA seeds from the
-  first full SMA; RSI is 100 when the down average
-  is 0; crossover is greater now and not greater the
-  bar before).
-
-  `na` is NaN throughout. A window that holds any NaN
-  answers NaN, and a window that is not full yet
-  answers NaN.
-==================================================
-*/
+/* Pine's `ta.*` as streams fed one value a bar; every call site is its own stream, and a call in an `if` that did not run does not advance.
+   Seeds follow Pine (EMA seeds from the first full SMA; RSI 100 with a zero down average). `na` is NaN; a window holding NaN or not yet full answers NaN. */
 
 /* ---- a window over the last N values ------------------------------------------ */
 

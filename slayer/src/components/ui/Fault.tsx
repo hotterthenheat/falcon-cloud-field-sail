@@ -1,9 +1,5 @@
-/*
-  What a reader sees when a page or the app stops. A stale chunk after a deploy reloads itself once (a second time
-  within half a minute asks instead); offline says a reload will not help; a real error offers reload, the way back
-  and the line to send us. Two boundaries: AppShell's RouteBoundary (the rail stays) and AppBoundary around
-  everything (main.tsx), which uses plain links because the router may be what broke.
-*/
+/* What a reader sees when a page or the app stops: a stale chunk reloads once (a second time within 30 s asks), offline says so,
+   an error offers reload and the way back. RouteBoundary keeps the rail; AppBoundary (main.tsx) uses plain links. */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RotateCcw } from 'lucide-react';

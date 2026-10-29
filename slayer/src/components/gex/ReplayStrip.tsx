@@ -1,78 +1,15 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE REPLAY BAR
-  (components/gex/ReplayStrip.tsx)
-
-  The transport a rewound screen wears. Two phases,
-  the TradingView way in:
-
-    PICK   "Select a bar on the chart" — the chart's
-           cursor is a silver line, a click on a bar
-           starts the replay from that minute
-    PLAY   the session as a track you scrub, the
-           moment in hand, the pace, the transport,
-           and the one door back to live
-
-  A CARD THAT FLOATS OVER THE FOOT OF THE PLOT (Noah,
-  2026-09-20, with a picture of another terminal's
-  replay bar: "our replay bars can take some
-  inspiration from the likes of the image"). It was
-  one full-width line glued to the chart's floor, on
-  top of the time axis: a play button, a pace card, a
-  fat track and "Back to live", all in a row.
-
-  WHAT IS TAKEN from the reference is its GRAMMAR:
-    · a rounded card that floats above the time axis
-      (the axis stays readable under it), not a band
-      across the chart;
-    · TWO ROWS — the scrubber on top: the moment at
-      its left, a thin track with one dot, the count
-      ("124 / 367") at its right; the controls
-      beneath: the pace at the left, THE TRANSPORT IN
-      THE MIDDLE (to the start · a step back · play ·
-      a step on · to the end), the way out at the
-      right;
-    · stepping — one bar at a time, either way (the
-      old bar could only play or be dragged);
-    · it folds to a pill, so the plot under it can
-      be seen.
-  WHAT STAYS OURS is the look and the rules:
-    · SILVER, never the reference's lime dot. A
-      rewound screen is not live, so it never
-      breathes; silver is "where you are" — the played
-      part, the dot, the moment, the play button
-      while it runs;
-    · the pace is the house's labelled card
-      (DropdownSelect), the door says "Back to live"
-      and not "Exit" — it says where it goes;
-    · the marks under the track (the hours, or a
-      chart's days) stay: the reference's track is
-      bare.
-  Inside a chart it is stamped `data-chart-chrome`, so
-  its ground and its words both come from the chart's
-  OWN token set — a dark card on a dark tape, a light
-  one on Stone (chart-theme-per-pane's rule).
-
-  `compact` is the same transport in one short line
-  for a box's head (the Map's calendar): steps, play,
-  the track, the moment — and since 2026-09-20 a way
-  out, which it never had (Escape was the only door).
-==================================================
-*/
+/* The replay bar: pick (a click on a bar starts there) then play, as a card floating over the foot of the plot.
+   Two rows: the scrubber, then pace, transport and "Back to live"; silver, never live ink. `compact` is one line for a box's head. */
 
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Crosshair, Pause, Play, SkipBack, SkipForward, StepBack, StepForward, X } from 'lucide-react';
 import DropdownSelect, { type DropdownOption } from '../ui/DropdownSelect';
 import { OPEN_MIN, hhmm } from '../../data/ahead';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const SILVER_FILL = 'rgb(var(--silver-fill))'; /* the silver as a SURFACE — the dark glyph sits on it, on either ground */
-/* THE PACE IS A MULTIPLE, AND SAYS WHAT IT MOVES (Noah, 2026-09-20, with a picture of the card reading "A minute a second":
-   "i dont like the look of the pace dropdown shouldnt it be more like 1x, 2x, 4x? with a few words stating how many candles
-   move"). The card's face is the multiple every replay tool speaks — 1× · 2× · 4× — and the words are beside it and on
-   every row of its menu, IN THE CANDLES THE CHART IS DRAWING: 1× is a minute of the tape a second, which is a candle a
-   second on a 1m chart and a candle every five seconds on a 5m one. A host says how long its candle is (`candleMin`); a
-   chart that plays by its own bars says so (`paceUnit="bars"`), and its multiple IS candles a second. */
+/* The pace as a multiple (1×, 2×, 4×) with the candles it moves beside it: 1× is a tape minute a second.
+   A host gives its candle length (`candleMin`); a bar-driven chart says `paceUnit="bars"`. */
 /** A session clock's paces: session seconds a real second. 1× = a minute of the tape a second. */
 const CLOCK_PACES: { value: number; label: string }[] = [
   { value: 1, label: 'Real time' },
@@ -145,13 +82,11 @@ interface Props {
   exitWords?: string;
   /** The word after the moment — "replaying" unless the host says otherwise */
   stateWord?: string;
-  /** THE FLOOR the position cannot go behind, in its own units (a backtest's clock only moves forward: where it stands) —
-      the back doors are shut at it, and say why in `minTitle` (the audit's PR-11, 2026-10-10) */
+  /** The floor the position cannot go behind (a backtest's clock only moves forward); the back doors shut there and say why in `minTitle`. */
   minPos?: number;
   minTitle?: string;
   className?: string;
-  /** The compact line as a bar of its own across a box (the Map, 2026-10-13): the track takes the room, the moment under
-      the pointer is said beside it */
+  /** The compact line as a bar of its own across a box: the track takes the room, the moment under the pointer beside it. */
   wide?: boolean;
 }
 
@@ -189,7 +124,7 @@ const ReplayStrip = ({ phase, pos, length, day, startMin, playing, onPlay, pace,
     dragging.current = false;
   };
 
-  /* THE CARD KNOWS ITS ROOM: a pane of a four-up desk is ~480px wide, and the full second row is ~520 */
+  /* The card knows its room: a four-up pane is ~480 px wide and the full second row ~520. */
   const roomRef = useRef<HTMLDivElement | null>(null);
   const [narrow, setNarrow] = useState(false);
   useLayoutEffect(() => {
@@ -245,7 +180,7 @@ const ReplayStrip = ({ phase, pos, length, day, startMin, playing, onPlay, pace,
       onPointerUp={onUp}
       onPointerCancel={onUp}
       onPointerLeave={() => setOver(null)}
-      /* THE KEYS REACH IT (the paying-user audit's H7): a slider — the arrows a step, Shift a ten, Home and End the ends */
+      /* Keyboard: a slider, arrows a step, Shift ten, Home and End the ends. */
       tabIndex={0}
       role="slider"
       aria-label="The replay's position"
@@ -352,9 +287,7 @@ const ReplayStrip = ({ phase, pos, length, day, startMin, playing, onPlay, pace,
           <span className="shrink-0 font-mono text-t11 font-semibold tnum whitespace-nowrap" style={{ color: SILVER }} data-replay-time title={`${when} · ${stateWord}`}>
             {sayAt(pos)}
           </span>
-          {/* THE PACE ON THE BAR TOO (the owner, 2026-10-14, the replay in fullscreen: "i cant even control it"): the bar
-              across a box had the transport and the moment, and the speed only on the card — in the Map's fullscreen
-              there is no card, so the replay ran at one pace with nothing to turn */}
+          {/* The pace on the bar too: in fullscreen there is no card. */}
           <DropdownSelect label="Pace" value={pace} options={paceOptions} onChange={onPace} title="How fast it plays back" testId="replay-pace" size="sm" flat />
           {exitDoor(false)}
         </div>
@@ -377,8 +310,7 @@ const ReplayStrip = ({ phase, pos, length, day, startMin, playing, onPlay, pace,
   const shell = (body: ReactNode, state: string) => (
     <div ref={roomRef} className={`w-full flex justify-center pointer-events-none select-none ${className}`}>
       <div
-        /* 600, not 760 (Noah, 2026-09-20: "needs to become a bit shorter in width") — the least that still holds the pace card,
-           the five transport buttons in the true middle and the way out on one line, with an hour mark every ~45px */
+        /* 600 px: the least that holds the pace card, the five transport buttons centred and the way out on one line. */
         className={`pointer-events-auto ${state === 'folded' ? '' : 'w-full max-w-[600px]'} rounded-xl border border-borderMuted bg-panel shadow-[0_14px_40px_rgba(0,0,0,0.5)] animate-soft-in`}
         data-chart-chrome
         data-replay-strip={state}

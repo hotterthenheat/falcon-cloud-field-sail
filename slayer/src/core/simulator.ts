@@ -40,8 +40,7 @@ const Simulator = (() => {
   /** Core watchlist that always populates the opportunity feed. */
   const WATCHLIST = ['SPY', 'QQQ', 'AAPL', 'NVDA'];
 
-  /* The scan roster: famous optionable names the Compass board sweeps WITHOUT seeding them into the tick loop
-     (registration costs ~0.6s of forward-simmed candles per name — twenty at once is a frozen terminal). */
+  /* Names the scan sweeps without seeding them into the tick loop (seeding costs ~0.6 s of forward-simulated candles per name). */
   const SCAN_ROSTER: { ticker: string; px: number; iv: number }[] = [
     { ticker: 'TSLA', px: 248, iv: 0.48 },
     { ticker: 'META', px: 512, iv: 0.3 },
@@ -265,10 +264,7 @@ const Simulator = (() => {
 
   /** The instant a new history should END at: the newest bar of any name already seeded, else the wall clock */
   function historyAnchor(): number {
-    /* Late-seeded names join the clock already running, not the wall clock: bar time advances ~15× wall speed (one
-       60s bar per 4 real ticks), so a name ensured mid-session and anchored to Date.now would land its whole
-       history deep in the veterans' past — its compare line ends a fifth of the way into the chart and never
-       catches up. Anchor to the newest bar of any ticker already seeded; wall clock only for the very first. */
+    /* Late-seeded names anchor to the newest bar already seeded (bar time runs ~15× wall speed), else their history lands in the past. */
     const ref = Object.values(candleHistory).find(b => b && b.length > 0);
     return ref ? ref[ref.length - 1].time : seedAnchorSec(Date.now());
   }
@@ -400,10 +396,7 @@ const Simulator = (() => {
     delete seedJobs[sym];
   }
 
-  // Forward-simulate a multi-session OHLC buffer from basePrice: price walks
-  // THROUGH the evolving OI book (pins, tests, breaks), and every bar's GEX
-  // snapshot is taken from the book as it stood at that moment. Sessions are
-  // one calendar day apart so daily/weekly aggregation produces sensible bars.
+  // Forward-simulates a multi-session OHLC buffer through the evolving OI book, a GEX snapshot per bar; sessions a calendar day apart.
   // Synchronous: resumes a job in flight and runs it to the end.
   function seedCandles(sym: string): void {
     const job = seedJobs[sym] ?? beginSeed(sym);
@@ -649,10 +642,7 @@ const Simulator = (() => {
 
     const strikes: StrikeNode[] = [];
     const baseStrike = Math.round(spot / step) * step;
-    // 30 each side — the whole maintained book (BOOK_RANGE), so a ±30 window
-    // 
-    // far strikes are where the tail hedges sit). The real feed carries the
-    // full chain; this only costs the sim's seeding ~2× per name.
+    // 30 strikes each side, the whole maintained book (BOOK_RANGE).
     const strikeRange = 30;
     if (!bookOverride && !oiBook[tickerKey]) evolveBook(tickerKey, spot); // lazy seed for stray callers
     const book = bookOverride ?? oiBook[tickerKey];
@@ -669,11 +659,7 @@ const Simulator = (() => {
       const t = 0.003; // 0DTE
       const greeks = calculateGreeks(spot, strike, t, iv);
 
-      // Weights chosen so net GEX comes out two-sided with comparable
-      // magnitudes: call-dominated shelves above spot ≈ −0.4·base, put
-      // shelves below ≈ +0.4·base. The old −0.4/−0.6 split let the put side
-      // outweigh calls ~4.5× everywhere, so negative walls never registered
-      // anywhere in the terminal (heatmap, trails, positioning).
+      // Weights keep net GEX two-sided with comparable magnitudes (call shelves above ≈ −0.4·base, put shelves below ≈ +0.4·base).
       const dealerCallDirection = -0.55; // Net short calls
       const dealerPutDirection = -0.53;  // Net short puts
 
@@ -748,10 +734,7 @@ const Simulator = (() => {
       }
     });
 
-    // The crossing NEAREST SPOT, not the first one walking up the chain: a
-    // noisy book can carry a jitter crossing deep in a tail, and breaking on
-    // the first hit labeled THAT as the regime border while the structural
-    // flip sat at spot. Matches data/gex.ts buildLevelsFor.
+    // The crossing nearest spot (core/walls.ts pickFlip's rule), not the first walking up the chain.
     let flipStrike = spot;
     let flipDist = Infinity;
     for (let i = 1; i < chain.length; i++) {

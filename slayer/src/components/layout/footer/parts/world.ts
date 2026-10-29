@@ -144,7 +144,7 @@ export const worldMap = (o: { band?: boolean; seed?: number; faint?: number } = 
           if (sharp) c.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
           else c.fillRect(x - 1, y - 1, 2, 2);
         }
-      /* NEW YORK'S HOURS: the open market's band over the Americas */
+      /* New York's hours: the open market's band over the Americas. */
       if (o.band !== false) {
         const l = xy(-128, 0).x;
         const r = xy(-58, 0).x;
@@ -212,7 +212,7 @@ export const worldMap = (o: { band?: boolean; seed?: number; faint?: number } = 
   };
 };
 
-/* ---- THE STORY'S CARD: its name, its lean and its kind, its words, the odds of the next session, where it lands ---- */
+/* ---- The story's card: name, lean, kind, words, the next session's odds, where it lands ---- */
 
 export const story = (): Part => {
   let at: Box = box(0, 0, 0, 0);

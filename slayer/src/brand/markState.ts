@@ -1,9 +1,5 @@
-/*
-  What the mark reports: the system, never the price. One value read by the rail, launch gate, landing and tab.
-  idle, loading (a load past 450 ms: faster pan), live / closed (market open / shut: slow and slower pan),
-  alert (the cursor flashes warning ink twice), offline (S still, cursor hidden).
-  Precedence: offline, alert, loading, then live/closed (data/marketState.ts, which the signature also reads).
-*/
+/* What the mark reports (the system, never the price). Precedence: offline, alert, loading (a load past 450 ms),
+   then live/closed from data/marketState.ts. */
 
 import { useSyncExternalStore } from 'react';
 import { readMarketState } from '../data/marketState';

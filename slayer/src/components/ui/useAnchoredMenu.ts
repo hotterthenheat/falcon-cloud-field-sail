@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { placeMenu, type MenuBox, type MenuSide } from './menuPlacement';
 
-/*
-  The React half of menuPlacement.ts: a ref on the trigger, and a fixed-position box kept current while the menu is
-  open. Shared by every portalled menu so the placement rule exists once.
-*/
+/* The React half of menuPlacement.ts: a trigger ref and a fixed box kept current while open, shared by every portalled menu. */
 
 /** A fixed box for a menu anchored to `anchorRef`, recomputed while open. `placed` is null until measured, so
     nothing paints at the origin for a frame. */

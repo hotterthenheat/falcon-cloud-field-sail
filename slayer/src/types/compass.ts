@@ -61,25 +61,8 @@ export const SCANNERS: ScannerDef[] = [
   { key: 'all', label: 'All setups', blurb: 'Every setup, whatever found it' },
 ];
 
-/*
-  Which kind runs on which sleeve: on, limited (stricter bar, fewer candidates) or off. A fully crossed grid would sell
-  nonsense trades. This map is the backtest's candidate-eligibility gate, so the journal and the harness never
-  evaluate a combination the product does not sell.
-
-                      0DTE     Weekly   Swing    Position  Long-dated
-    Top ranked         on       on       on       on        on
-    Quick scalp        on       limited  off      off       off
-    Discounted         off      on       on       on        limited
-    Rebounds           on       on       on       limited   off
-    Breakouts          limited  on       on       on        off
-    Trend continuation limited  on       on       on        on
-    Volatility exp.    limited  on       on       on        off
-    Mean reversion     on       on       on       limited   off
-    Unusual activity   limited  on       on       off       off
-    Overpriced         limited  on       on       on        off
-    Earnings           limited  on       limited  off       off
-    All setups         on       on       on       on        on
-*/
+/* Which kind runs on which sleeve: on, limited (stricter bar, fewer candidates) or off. This map is also the backtest's
+   candidate-eligibility gate, so the journal never evaluates a combination the product does not sell. */
 type Eligibility = 'on' | 'limited' | 'off';
 const SLEEVE_ORDER: SleeveKey[] = ['odte', 'weekly', 'swing', 'position', 'leaps'];
 const row = (cells: string): Record<SleeveKey, Eligibility> =>

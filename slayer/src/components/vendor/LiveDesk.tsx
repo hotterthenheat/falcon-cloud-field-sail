@@ -14,26 +14,8 @@ import { useResolvedTheme } from '../../theme/theme';
 import { useVendor, type VendorBook, type VendorRow } from '../../data/vendorFeed';
 import { PageBar } from '../ui/PageBar';
 
-/*
-  Live readings, only where the page is already about them.
-  Nothing is mounted on a route that does not ask the question.
-
-    Map        under the book: max pain, the minute delta and vega,
-               NOPE, volume by expiry. One name spans the page.
-               Two or more, one column a name.
-    Building   the contracts whose open interest changed today, under
-               the ledger. FLEX only when a contract actually moved.
-    Earnings   implied against realized, and the term — once it has
-               arrived. Never a box that says it is still reading.
-    Stocks     the last income figures, inside The numbers. Not a
-               second head, not the street, not a seasonality chart.
-    News       nothing drawn. FDA, the schedule and the posts are
-               written onto the month.
-    Shorts     interest across the reports, under the short file
-    Houses     where the book sits by sector, weights from the values
-
-  A chart, when one is earned, is the day's own library.
-*/
+/* Live readings only where the page is already about them: Map (max pain, delta and vega, NOPE, volume by expiry), Building (OI changes),
+   Earnings (implied vs realised, term), Stocks (income), News (written onto the month), Shorts, Houses. */
 
 const num = (v: unknown): number | null => {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -157,8 +139,7 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         return best;
       };
       opts.localization = { timeFormatter: fmt };
-      /* the chart spaces its ticks for its own short clock labels — a categorical label ("2021-06-15") is wider, so the
-         first ticks ran into each other ("2021-06-152021-10-29"); tell it how wide ours are */
+      /* Categorical labels are wider than the chart's clock labels; tell it how wide so ticks do not collide. */
       const widest = Math.max(...[...labels.values()].map(v => v.length));
       opts.timeScale = { ...opts.timeScale, tickMarkFormatter: fmt, tickMarkMaxCharacterLength: widest + 1 };
     }
@@ -171,9 +152,7 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
         color: resolveInk(l.ink, host),
         lineWidth: 2,
         priceLineVisible: false,
-        /* ONE LINE: its last value on the axis. SEVERAL: their names and last values in a legend over the chart (the
-           second re-audit, 2026-10-22: the axis tags stacked — "Vega" sat over the 0.000 tick, and "Puts" had a name and
-           no value) */
+        /* One line: its last value on the axis. Several: names and last values in a legend (stacked axis tags overlapped). */
         lastValueVisible: drawn.length === 1,
         crosshairMarkerRadius: 3,
         title: '',
@@ -225,9 +204,8 @@ function HouseChart({ lines, height = 180, format = 'compact' }: { lines: LineSp
           <span key={l.name} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <span aria-hidden className="inline-block w-2.5 h-[2px] rounded-full self-center" style={{ background: l.ink }} />
             <span className="text-textMuted">{l.name}</span>
-            {/* a series by expiry is a set of dates, not a clock. A dollar or count series is summed across them; a rate (an
-                IV, a percent) is never summed (the third audit, 2026-10-23: "IV 446.8% total") — its front expiry is shown,
-                named by its date. A series in time: its last print. */}
+            {/* A series by expiry is a set of dates: dollars and counts are summed across them, a rate never is (its front expiry is shown, dated);
+   a time series shows its last print. */}
             {l.pts[0].label && format !== 'compact' ? (
               <>
                 <span style={{ color: l.ink }}>{fmtLast(l.pts[0].v)}</span>
@@ -306,10 +284,7 @@ function stamps(rows: Record<string, unknown>[], timeKey: string, fields: Field[
     }
     pts.push({ t, label, vals });
   }
-  /* Time series sort onto the clock. An expiry list sorts by date too, then
-     each expiry takes one equal slot — a calendar axis crushes the dailies
-     on the left and throws the far months across the plot, so the ticks
-     look like a random sample of dates. */
+  /* Time series sort onto the clock; an expiry list sorts by date and gives each expiry one equal slot (a calendar axis crushes the dailies). */
   pts.sort((a, b) => a.t - b.t);
   const listed = pts.length > 0 && pts.every(p => p.label);
   if (listed) {
@@ -462,49 +437,6 @@ function useWindowFlow(ticker: string, key: string): Record<string, unknown>[] |
   );
 }
 
-/** The book's NOPE, given to the expiries in the window by their share of the
-    option volume. The feed publishes one NOPE for the whole book — net delta
-    over the stock's volume — and does not split it. Delta flow cancels across
-    expiries, so the share is the volume, which stays inside the book. The whole
-    listed set is the published series unchanged. */
-function nopeForWindow(rows: Record<string, unknown>[], bookFlow: Record<string, unknown>[], windowFlow: Record<string, unknown>[]): Record<string, unknown>[] {
-  const add = (into: Map<string, number>, list: Record<string, unknown>[]) => {
-    for (const r of list) {
-      const ts = String(r.timestamp ?? '');
-      const v = num(r.volume);
-      if (!ts || v == null) continue;
-      into.set(ts, (into.get(ts) ?? 0) + v);
-    }
-  };
-  const book = new Map<string, number>();
-  const win = new Map<string, number>();
-  add(book, bookFlow);
-  add(win, windowFlow);
-  const times = [...new Set([...book.keys(), ...win.keys()])].sort();
-  let cumB = 0;
-  let cumW = 0;
-  const share = new Map<string, number>();
-  for (const ts of times) {
-    cumB += book.get(ts) ?? 0;
-    cumW += win.get(ts) ?? 0;
-    if (cumB > 0) share.set(ts, cumW / cumB);
-  }
-  const flowTimes = [...share.keys()];
-  let i = 0;
-  let last = 0;
-  return [...rows]
-    .sort((a, b) => String(a.timestamp ?? '').localeCompare(String(b.timestamp ?? '')))
-    .map(r => {
-      const ts = String(r.timestamp ?? '');
-      while (i < flowTimes.length && flowTimes[i] <= ts) {
-        last = share.get(flowTimes[i]) ?? last;
-        i += 1;
-      }
-      const n = num(r.nope);
-      return n == null ? { ...r } : { ...r, nope: n * last };
-    });
-}
-
 /** The session the matrix does not draw. One column, the book's width. Every name on the map gets its own.
     `dates` is the book's expiry window — max pain, volume, NOPE and the minute's delta and vega read those dates. */
 export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: readonly string[] | null; at?: number | null }) {
@@ -521,11 +453,7 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const painRows = still(series(taken(book, 'max-pain'))).sort((a, b) => dayOf(a).localeCompare(dayOf(b)));
   const pain = painRows[0];
   const painLine = stamps(painRows, 'expiry', [{ key: 'max_pain', name: 'Max pain', ink: SILVER_FILL }]);
-  /* THE VENDOR'S NOPE, AS PRINTED (the retail test, 2026-10-22: the Map read "NOPE −2.81" against the vendor's last
-     −3.00 — it was scaled by the window's share of the volume, a figure the vendor never printed). NOPE is the whole
-     name's; the head says so rather than deriving a per-window one. */
-  void nopeForWindow;
-  const nopeWaiting = false;
+  /* The vendor's NOPE as printed: it is the whole name's, and the head says so rather than deriving a per-window one. */
   const nopeSrc = series(taken(book, 'nope'));
   const nopeLine = stamps(thin(cutAt(nopeSrc, at)), 'timestamp', [{ key: 'nope', name: 'NOPE', ink: BULL }]);
   const nopePts = nopeLine[0]?.pts ?? [];
@@ -546,26 +474,25 @@ export function MapReadings({ ticker, dates, at }: { ticker: string; dates?: rea
   const chartable = (ls: LineSpec[]) => ls.some(l => l.pts.length >= 2);
   const flowRow = taken(book, 'greek-flow');
   const waiting = !flowRow || flowRow.state === 'loading';
-  if (!pain && lastNope == null && !chartable(flow) && !chartable(nopeLine) && !chartable(byExpiry) && expiryFlow.length !== 1 && !chartable(painLine) && !waiting && !flowWaiting && !nopeWaiting) return null;
+  if (!pain && lastNope == null && !chartable(flow) && !chartable(nopeLine) && !chartable(byExpiry) && expiryFlow.length !== 1 && !chartable(painLine) && !waiting && !flowWaiting) return null;
   return (
     <div className="min-w-0 border border-borderSubtle rounded-md bg-panel overflow-hidden" data-reading="session" data-scope-ticker={ticker} data-reading-window={span ?? 'all'}>
       <div className="px-4 min-h-9 py-1 flex items-center gap-x-4 gap-y-1 flex-wrap">
         <h3 className="text-t16 font-semibold leading-tight text-textPrimary">{ticker}</h3>
-        {/* MAX PAIN IS ONE EXPIRY'S — named for the date it is (it read "Window Oct 22" as if it were the window's) */}
+        {/* Max pain is one expiry's, named for its date. */}
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`${pain ? `Max pain for the ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry — the nearest one in the window; each expiry has its own (the chart below). ` : ''}${GLOSSARY.maxPain}`}>
           <span className="text-t11 uppercase tracking-wider text-textMuted">Max pain{pain ? ` · ${shortDay(String(pain.expiry ?? '').slice(0, 10))} expiry` : ''}</span>
           <span className="text-t12 font-semibold tnum text-textPrimary">{pain ? String(pain.max_pain ?? '—') : waiting ? '…' : '—'}</span>
         </span>
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono" title={`The vendor's NOPE for the whole name (every expiry), as printed — not split by the window. ${GLOSSARY.nope}`}>
           <span className="text-t11 uppercase tracking-wider text-textMuted">NOPE · whole name</span>
-          <span className="text-t12 font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : nopeWaiting || waiting ? '…' : '—'}</span>
+          <span className="text-t12 font-semibold tnum" style={{ color: lastNope != null && lastNope < 0 ? PUT_WALL : lastNope != null ? BULL : undefined }}>{lastNope != null ? compact(lastNope) : waiting ? '…' : '—'}</span>
         </span>
       </div>
       {flowWaiting ? <Quiet>Reading this window.</Quiet> : chartable(flow) ? (
         <>
-          {/* THE CLOCK IT STARTS AT, SAID (the second re-audit, 2026-10-22: the axis began at 08:02 with no word that the
-              first ninety minutes are pre-market) */}
-          {/* no window in hand yet is not "All expiries" (the ninth audit's m4: one frame of it under Today) */}
+          {/* The clock it starts at, said (the first ninety minutes can be pre-market). */}
+          {/* No window yet is "…", not "All expiries". */}
           <Head title="Delta and vega" rest={`${span ? contractsWords(windowed ? wantList : null, span) : dates == null ? '…' : 'All expiries'} · ${flowSpanWords(flow)}`} />
           <HouseChart lines={flow} />
         </>
@@ -607,15 +534,12 @@ function flowSpanWords(lines: LineSpec[]): string {
   const b = nyMinutes(pts[pts.length - 1].t * 1000);
   const from = a < 9 * 60 + 30 ? `pre-market ${hhmm(a)}` : hhmm(a);
   const to = b >= 16 * 60 ? `${hhmm(b)} after hours` : hhmm(b);
-  /* DATED WHEN IT IS NOT TODAY'S (the seventh audit's m6: "pre-market 07:30 → 16:14 after hours" read at 07:17 was
-     Thursday's series, said as if it were the day in progress) */
-  /* A SPAN THAT RUNS INTO THE SESSION SAYS SO (the ninth audit's m4: "pre-market 07:30 → 13:24" read as if 13:24 were
-     pre-market): the clocks, then which parts of the day they cover */
+  /* Dated when it is not today's. */
+  /* A span into the session names which parts of the day it covers. */
   const parts = [a < 9 * 60 + 30 ? 'pre-market' : null, a < 16 * 60 && b >= 9 * 60 + 30 ? 'session' : null, b >= 16 * 60 ? 'after hours' : null].filter(Boolean) as string[];
   const joined = parts.length > 1 ? `${hhmm(a)} → ${hhmm(b)}, ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : `${from} → ${to}`;
   const day = nyIsoDate(pts[pts.length - 1].t * 1000);
-  /* THE DAY THE FLOW TRADED, SAID AS SUCH (the eleventh audit's m3: "Oct 26 · Fri Oct 23 · 07:30 → 16:14" read as two
-     dates for one thing) — "traded today" / "traded Fri Oct 23" */
+  /* The day the flow traded, said as such: "traded today" / "traded Fri Oct 23". */
   return `traded ${day === nyIsoDate() ? 'today' : longDay(day)} ${joined}`;
 }
 
@@ -700,8 +624,7 @@ function ContractBoard({ title, rest, rows, testId, volume }: { title: string; r
 export function BuildingArrived({ ticker }: { ticker: string }) {
   const book = useVendor('pinpoint', ticker, '/pinpoint/agenda');
   if (!ticker) return null;
-  /* NOT THE CONTRACTS THAT HAVE EXPIRED, AND NOT "TODAY" (the second re-audit, 2026-10-22: "the contracts that changed
-     today" listed SPY 776 Call · 10/22 after it settled, and the change is the overnight count, 10/21 → 10/22) */
+  /* Not expired contracts, and not "today": the change is the overnight count. */
   const floor = isoDate(bookToday());
   const rawOi = series(taken(book, 'oi-change'));
   const dates = rawOi.reduce<{ from: string; to: string }>((d, r) => ({ from: String(r.last_date ?? '') > d.from ? String(r.last_date) : d.from, to: String(r.curr_date ?? '') > d.to ? String(r.curr_date) : d.to }), { from: '', to: '' });
@@ -742,8 +665,7 @@ function medianSpan(rows: Record<string, unknown>[]): string {
   if (!n.length) return "Against each expiry's own median";
   const lo = Math.min(...n);
   const hi = Math.max(...n);
-  /* SAID IN FULL (the fourth audit, 2026-10-23): "1–251 daily samples since 10-23" dropped the year and did not say
-     what was counted — each expiry's median is over its own daily readings, a new expiry's few, an old one's a year */
+  /* Said in full: each expiry's median is over its own daily readings, so the count is a range. */
   const day = firsts[0] ? new Date(`${firsts[0].slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
   const counts = lo === hi ? `${lo} daily ${lo === 1 ? 'reading' : 'readings'}` : `${lo} to ${hi} daily readings`;
   return `Against each expiry's own median — ${counts} per expiry${day ? `, the oldest from ${day}` : ''}`;
@@ -788,8 +710,7 @@ export function EarningsVol({ ticker }: { ticker: string }) {
       ) : null}
       {chart ? (
         <>
-          {/* NOT A ONE-YEAR MEDIAN (the re-audit, 2026-10-22): each expiry's median is over the samples the vendor has for
-              it — 9 since 10-12 on one, 35 since 09-03 on another. The label says the real span */}
+          {/* Not a one-year median: each expiry's is over the samples the vendor has for it, and the label says the span. */}
           <Head title="Term structure" rest={medianSpan(termRows)} />
           <HouseChart lines={term} format="pct" />
         </>
@@ -881,7 +802,7 @@ export function ShortHistory({ ticker }: { ticker: string }) {
             max={body.length}
             rows={body}
             cols={[
-              /* the date keeps its width — on a phone the share columns took it and every row read "2026…" (the Dossier sweep, 2026-10-22) */
+              /* The date keeps its width so a phone does not cut it. */
               { key: 'market_date', label: 'Report', w: '86px' },
               { key: 'si', label: '% of float', right: true, w: 'minmax(0,1fr)' },
               { key: 'days', label: 'Days to cover', right: true, w: 'minmax(0,96px)' },
@@ -919,7 +840,7 @@ export function HouseSectors() {
   const total = valued.reduce((a, r) => a + r.value, 0);
   const rows = valued.map(r => ({
     sector: r.sector,
-    /* dollars, said as dollars (round 9: "1.16T", "401.00B") */
+    /* Dollars, said as dollars. */
     value: `$${compact(r.value)}`,
     weight: total > 0 ? `${((r.value / total) * 100).toFixed(1)}%` : '',
     positions: r.positions != null ? Math.round(r.positions).toLocaleString('en-US') : '',

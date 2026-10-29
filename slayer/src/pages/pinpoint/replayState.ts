@@ -1,18 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE REPLAY, SAID IN THE HEAD
-  (pages/pinpoint/replayState.ts)
-
-  The Map's replay rewinds the boxes under the band,
-  not the shell head over them (the Pinpoint audit's
-  M8, 2026-10-13: a reader scrolled past the band
-  could not tell the boxes were historical and the
-  facts up top were not). The desk says which moment
-  it is replaying; the shell wears it as a tag and
-  marks its own facts live. One word, no re-render of
-  anything but the head.
-==================================================
-*/
+/* The Map's replay rewinds the boxes, not the shell head: the desk says which moment it replays and the head wears it as a tag.
+   One word, re-rendering only the head. */
 
 import { useSyncExternalStore } from 'react';
 

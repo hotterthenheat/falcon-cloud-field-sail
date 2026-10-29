@@ -1,43 +1,5 @@
-/*
-==================================================
-  SLAYER TERMINAL - THE PAIR
-  (components/gex/ComparePair.tsx)
-
-  WHICH OF THE TWO HAS BEEN STRONGER — and is today's
-  gap between them normal, or stretched? One name's
-  price divided by the other's, one point a day.
-
-  REBUILT 2026-09-20 (Noah: "it has no interactivity
-  at all and i dont know what it does") onto the
-  house's small chart; REDRAWN 2026-09-29 (the
-  partner: "hard to read") as one silver line in a
-  soft band; THE LIBRARY DIRECT since 2026-10-15
-  (Noah: "the pair should be a trading view chart").
-
-  SAID BY THE DRAWING (Noah, the same day, on that
-  cut: "still looks so bland and like plain html …
-  i dont even know whats its suppose to showcase
-  cause when i hover over the dots i see nothing
-  informative"). The line is a BASELINE at the
-  average: above it the ratio is in the first
-  name's territory and wears its ink with its ground
-  under it, below it the second name's in the
-  second's — the two inks the page gives the names
-  everywhere — so "SPY ahead" and "QQQ ahead" are
-  the two halves of the plot, said at its right
-  edge. The usual range is a soft band whose edges
-  and average are named on the plot at the left,
-  the average's figure on the scale as the library's
-  own dashed line. A day that closed outside the
-  range is a warm mark ON the line, today a silver
-  one. THE CARD: the house's pointer card on any day
-  under the crosshair, the marks included — the two
-  closes in their inks, the ratio, where that day
-  sat and which name was further ahead than usual.
-  The legend at the plot's top left reads the same
-  day; today at rest.
-==================================================
-*/
+/* The pair: one name's price over the other's, a point a day, as a baseline at the average (the first name's ink above,
+   the second's below). The usual range is a soft band; a close outside it is a warm mark, today a silver one. */
 
 import { longDay } from '../../data/bookWindow';
 import { nyIsoDate } from '../../core/nyTime';
@@ -56,7 +18,7 @@ import { useResolvedTheme } from '../../theme/theme';
 import { THERMAL_WARM, alpha, resolveInk } from './paletteInk';
 import { PAIR_H, PAIR_READ_H } from './compareSkeletons';
 
-const SILVER = 'rgb(var(--silver))'; /* the silver token — deep steel on the light terminal (2026-09-12) */
+const SILVER = 'rgb(var(--silver))';
 const fmtRatio = (v: number) => v.toFixed(v >= 10 ? 2 : 3);
 const fmtClose = (v: number) => v.toFixed(2);
 const dayWords = (t: number) => new Date(t * 1000).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -145,7 +107,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
       localization: { timeFormatter: (t: Time) => fmtDayLocal(t, 'ny') },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
       /* whole figures only on the scale, three places: two names a cent apart read as the same figure at two */
-      /* the axis as wide as its figures (2026-10-18) */
+      /* The axis as wide as its figures. */
       rightPriceScale: { borderColor: s.line, minimumWidth: 0, entireTextOnly: true, scaleMargins: { top: 0.14, bottom: 0.1 } },
       timeScale: { borderColor: s.line, timeVisible: false, secondsVisible: false, rightOffset: 2, fixLeftEdge: true, fixRightEdge: true, lockVisibleTimeRangeOnResize: true, tickMarkFormatter: nyTickMarks },
       crosshair: {
@@ -157,8 +119,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
     });
     const inkA = resolveInk(aInk, host);
     const inkB = resolveInk(bInk, host);
-    /* THE LINE IS A BASELINE AT THE AVERAGE: the first name's territory above it in its ink with its ground under it, the
-       second's below in the second's — the book's own two-sided line, in the names' inks */
+    /* A baseline at the average: the first name's territory above in its ink, the second's below in its own. */
     const series = chart.addSeries(BaselineSeries, {
       baseValue: { type: 'price', price: base },
       topLineColor: inkA,
@@ -235,10 +196,10 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [points, byTime, top, bottom, pair.mean, base, paper, made]);
 
-  /* THE DAY IN HAND: the crosshair's, today at rest */
+  /* The day in hand: the crosshair's, today at rest. */
   const hovering = hover != null && byTime.has(hover);
   const shownTime = hovering ? hover : (todayAt?.time ?? null);
-  /* THE LAST POINT NAMED BY ITS OWN DAY (the fifth audit, 2026-10-23: "Today" on Thursday's close at 01:00 Friday) */
+  /* The last point is named by its own day ("Today" only when it is today in New York). */
   const lastDay = todayAt ? nyIsoDate(todayAt.time * 1000) : null;
   const lastWord = !lastDay || lastDay === nyIsoDate() ? 'Today' : longDay(lastDay);
   const shown = shownTime != null ? byTime.get(shownTime) : null;
@@ -318,7 +279,7 @@ const ComparePair = ({ a, b, aInk, bInk, nonce, guideOpen = false, onGuide }: Pr
         )}
       </div>
 
-      {/* THE READ LINE — where today stands, at rest: the ratio, the usual range, where today sits, the days outside */}
+      {/* The read line at rest: the ratio, the usual range, where today sits, the days outside. */}
       <div className="px-5 border-t border-ink/[0.06] flex items-center gap-3 whitespace-nowrap overflow-hidden text-t105 text-textSecondary" style={{ height: PAIR_READ_H }} data-pair-read>
         {pair.now != null ? (
           <>

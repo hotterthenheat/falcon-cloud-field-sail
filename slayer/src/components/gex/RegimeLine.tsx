@@ -1,14 +1,4 @@
-/*
-==================================================
-  SLAYER TERMINAL - THIS NAME'S STRIP
-  (components/gex/RegimeLine.tsx)
-
-  Under the Pinpoint head, for the name on the desk.
-  Short regime, that name's levels, that name's ruler.
-  Another name keeps its own. The long sentence stays
-  on the hover, not in the row.
-==================================================
-*/
+/* Under the Pinpoint head for the name on the desk: short regime, its levels, its ruler. The long sentence is on hover. */
 
 import { useEffect, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
