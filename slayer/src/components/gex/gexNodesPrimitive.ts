@@ -197,6 +197,7 @@ class TrailsPaneRenderer {
   private rYa = 0;
   private rYb = 0;
   private settle = 0;
+  private rebuildNext = false;
   private movedAt = 0;
   private labelsOf: { snap: GexSnapshot; greek: TrailGreek; total: number; top: { strike: number; value: number }[] } | null = null;
 
@@ -211,6 +212,9 @@ class TrailsPaneRenderer {
       }
       this.settle = 0;
       this.cacheKey = '';
+      /* the resting frame must re-raster, not map the old raster again (which re-armed this, a repaint every few
+         frames for as long as the chart sat still) */
+      this.rebuildNext = true;
       src.requestUpdate?.();
     };
     this.settle = requestAnimationFrame(wait);
@@ -337,10 +341,8 @@ class TrailsPaneRenderer {
          heights keep the raster's scale until the rebuild). The rebuild runs once the gesture rests (SETTLE_MS), or
          now when the view leaves the raster or the scale drifts too far. A resting view re-rasters, so it is exact. */
       let scrolled = false;
-      const __st = ((window as unknown as { __tr?: Record<string, number> }).__tr ??= {}); // TEMP-PERF
-      __st[cached ? 'cached' : 'drawn'] = (__st[cached ? 'cached' : 'drawn'] ?? 0) + 1; // TEMP-PERF
       const bmp0 = this.bmp;
-      if (!cached && bmp0 && this.rRev === src.rev && this.rHr === hr && this.rVr === vr && this.rBar > 0 && this.rYb !== this.rYa) {
+      if (!cached && !this.rebuildNext && bmp0 && this.rRev === src.rev && this.rHr === hr && this.rVr === vr && this.rBar > 0 && this.rYb !== this.rYa) {
         const xRef = ts.logicalToCoordinate(this.rRefLogical as Logical);
         const yA = series.priceToCoordinate(this.rPrice);
         const yB = series.priceToCoordinate(this.rPrice + 1);
@@ -352,11 +354,9 @@ class TrailsPaneRenderer {
           const dW = bmp0.width * sx;
           const dH = bmp0.height * sy;
           const covers = dX <= 0.5 && dX + dW >= scope.bitmapSize.width - 0.5 && dY <= 0.5 && dY + dH >= scope.bitmapSize.height - 0.5;
-          if (!(covers && sx > 0.5 && sx < 2.5 && sy > 0.5 && sy < 2)) { const k = !covers ? `nocover dX${Math.round(dX)} dY${Math.round(dY)} r${Math.round(dX + dW - scope.bitmapSize.width)} b${Math.round(dY + dH - scope.bitmapSize.height)}` : `scale sx${sx.toFixed(2)} sy${sy.toFixed(2)}`; __st[k.slice(0, 12)] = (__st[k.slice(0, 12)] ?? 0) + 1; } // TEMP-PERF
           if (covers && sx > 0.5 && sx < 2.5 && sy > 0.5 && sy < 2) {
             ctx.drawImage(bmp0, dX, dY, dW, dH);
             scrolled = true;
-            __st.blit = (__st.blit ?? 0) + 1; // TEMP-PERF
             this.armSettle(src);
           }
         }
@@ -574,7 +574,6 @@ class TrailsPaneRenderer {
         }
       };
       if (!cached && !scrolled) {
-        __st.rebuild = (__st.rebuild ?? 0) + 1; // TEMP-PERF
         const mxPx = Math.round(scope.bitmapSize.width * RASTER_MX);
         const myPx = Math.round(scope.bitmapSize.height * RASTER_MY);
         const bw = rasterW;
@@ -626,6 +625,7 @@ class TrailsPaneRenderer {
           bctx.setTransform(1, 0, 0, 1, 0, 0);
           this.bmp = bmp;
           this.cacheKey = key;
+          this.rebuildNext = false;
           this.rMx = mxPx;
           this.rMy = myPx;
           this.rRev = src.rev;
