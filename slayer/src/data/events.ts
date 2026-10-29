@@ -1,6 +1,7 @@
 import { RTH_MINUTES, isTradingDay } from '../core/calendar';
 import { sessionStarts } from './indicators';
-import { buildEarningsCalendar, type EarningsEvent } from './earnings';
+import type { EarningsEvent } from './earnings';
+import { peekNextReport } from './earningsFeed';
 import type { Candle } from '../types/market';
 import type { FlowPrint } from '../types/trace';
 
@@ -220,7 +221,7 @@ export function tapeEventsFor(
   return buildTapeEvents({
     bars,
     prints,
-    earnings: buildEarningsCalendar().find(e => e.ticker === ticker.toUpperCase()) ?? null,
+    earnings: peekNextReport(ticker),
     macro: macroWindow(now),
     todayIso: isoOf(now),
   });

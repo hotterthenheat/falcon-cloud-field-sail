@@ -57,7 +57,6 @@ export interface CongressTrade {
   /** Past the STOCK Act's 45-day outer bound */
   late: boolean;
   /** The committee of the member's with jurisdiction over this sector, if any */
-  committeeOverlap: string | null;
   /** The trade and filing days as the vendor wrote them (New York days, "YYYY-MM-DD") */
   tradedOn?: string;
   filedOn?: string;
@@ -75,7 +74,6 @@ export interface CongressFeed {
   purchases: number;
   sales: number;
   lateFilings: number;
-  overlaps: number;
   medianLag: number;
   windowDays: number;
   /** Rows whose type could not be read, counted rather than dropped */

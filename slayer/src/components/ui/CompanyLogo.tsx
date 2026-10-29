@@ -14,7 +14,27 @@ interface CompanyLogoProps {
   faces never shifts the row's baseline.
 */
 /* names without a file are remembered for the session, so the letters draw at once and the request is not repeated */
-const NO_LOGO = new Set<string>();
+/* symbols the remote logo source has no mark for, remembered across visits so a miss costs one request, not one per page */
+const MISS_KEY = 'slayer_logo_miss_v1';
+const NO_LOGO = new Set<string>(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem(MISS_KEY) ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  })(),
+);
+const rememberMiss = (sym: string) => {
+  NO_LOGO.add(sym);
+  try {
+    localStorage.setItem(MISS_KEY, JSON.stringify([...NO_LOGO].slice(-2000)));
+  } catch {
+    /* storage full or blocked: the in-memory set still holds it for this visit */
+  }
+};
+/* class shares, warrants and units (BRK.B, MOG.A, AACT.WS) have no remote mark */
+const remoteable = (sym: string) => /^[A-Z]{1,5}$/.test(sym);
 
 /* Marks that must answer to the ground are drawn as a CSS mask (the file gives the shape, the page the colour):
    ink marks (black brands) take --text-primary; deep marks (navies that sink on black) take their brand colour on
@@ -112,7 +132,7 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
   const local = HAS_LOGO.has(sym);
   /* A fund's mark is the ticker. A file we curated stays. Everything else asks the public mark once; a 404 is the letter tile, remembered so the row does not ask again. */
   const fund = CORE_FUNDS.has(sym) || (FUND_EXTRA.has(sym) && !local);
-  const remoteOff = fund || local || NO_LOGO.has(sym) || remoteMiss === sym;
+  const remoteOff = fund || local || !remoteable(sym) || NO_LOGO.has(sym) || remoteMiss === sym;
   const photo = PHOTO_LOGOS.has(sym);
   const [probe, setProbe] = useState<Probe | undefined>(() => PROBED.get(sym));
   useEffect(() => {
@@ -156,7 +176,7 @@ const CompanyLogo = ({ ticker, size = 20, className = '' }: CompanyLogoProps) =>
           alt=""
           draggable={false}
           onError={() => {
-            NO_LOGO.add(sym);
+            rememberMiss(sym);
             setRemoteMiss(sym);
           }}
           className="block h-full w-full rounded-[4px] object-contain"

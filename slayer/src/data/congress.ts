@@ -31,7 +31,7 @@ export const bracketShort = (i: number | null): string => {
   return b.high == null ? `Over ${kShort(b.low - 1)}` : `${kShort(b.low - 1)} – ${kShort(b.high)}`;
 };
 
-export const EMPTY_CONGRESS: CongressFeed = { trades: [], totalLow: 0, totalHigh: 0, unknownAmounts: 0, purchases: 0, sales: 0, lateFilings: 0, overlaps: 0, medianLag: 0, windowDays: 0 };
+export const EMPTY_CONGRESS: CongressFeed = { trades: [], totalLow: 0, totalHigh: 0, unknownAmounts: 0, purchases: 0, sales: 0, lateFilings: 0, medianLag: 0, windowDays: 0 };
 
 /** A Treasury bill report: parked cash, not an equity bet. The pages hide them by default and count them. */
 export const isTreasuryBill = (t: CongressTrade): boolean => {
@@ -71,7 +71,7 @@ export function summariseCongress(trades: CongressTrade[], windowDays: number): 
   }
   const lags = trades.map(t => t.lagDays).sort((a, b) => a - b);
   const medianLag = lags.length === 0 ? 0 : lags[Math.floor(lags.length / 2)];
-  return { trades, totalLow, totalHigh, unknownAmounts, purchases, sales, lateFilings, overlaps: 0, medianLag, windowDays };
+  return { trades, totalLow, totalHigh, unknownAmounts, purchases, sales, lateFilings, medianLag, windowDays };
 }
 
 const fmtMoney = (v: number) => `$${v.toLocaleString('en-US')}`;

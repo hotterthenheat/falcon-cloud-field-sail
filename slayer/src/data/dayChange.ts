@@ -10,7 +10,7 @@
   apart. In the session and before it, the quote's own prev_close is the prior close and nothing changes.
 ==================================================
 */
-import { whalesDaily, type UwDaily } from './whales';
+import { whalesDailyRecent, type UwDaily } from './whales';
 import { nyIsoDate, nySessionPhase } from '../core/nyTime';
 import { isTradingDay, today as nyToday } from '../core/calendar';
 
@@ -150,7 +150,7 @@ export function loadRegularCloses(ticker: string): Promise<{ date: string; close
   if (hit) return Promise.resolve(hit);
   const running = closesInflight.get(t);
   if (running) return running;
-  const p = whalesDaily(t)
+  const p = whalesDailyRecent(t)
     .then(rows => {
       const closes = regularCloses(Array.isArray(rows) ? rows : []).slice(0, 5);
       /* an empty daily is not a close — caching it blocked the tape's own closes for the rest of the day */

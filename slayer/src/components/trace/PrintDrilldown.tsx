@@ -27,7 +27,7 @@ import type { Tone } from '../ui/tones';
 import SlayerMark from '../../brand/SlayerMark';
 import Wordmark from '../../brand/Wordmark';
 
-// recharts is heavy — it only loads when a print is actually opened
+/* the card's charts load only when a print is opened */
 const FlowPanels = lazy(() => import('./ContractFlowChart').then(m => ({ default: m.FlowPanel })));
 const NetPanels = lazy(() => import('./ContractFlowChart').then(m => ({ default: m.NetPanel })));
 

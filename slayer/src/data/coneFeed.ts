@@ -17,6 +17,7 @@ import { RTH_MINUTES } from '../core/calendar';
 import { nyIsoDate, nyMinutes, nySessionPhase, SESSION_CLOSE_MIN } from '../core/nyTime';
 import { YEAR_MINUTES } from './measure';
 import { thetaCall } from './theta';
+import { uwOnlyDesk } from './spotGexBook';
 import { uwCall } from './whales';
 
 export type ConeHorizon = 'session' | 'week' | 'next';
@@ -211,7 +212,8 @@ export function ensureCone(ticker: string): void {
   inflight.add(name);
   void (async () => {
     try {
-      const surface = (await fromUw(name)) ?? (await fromTheta(name));
+      /* Pinpoint and the Dossier read Unusual Whales only (docs/DATA_SOURCES.md) */
+      const surface = (await fromUw(name)) ?? (uwOnlyDesk() ? null : await fromTheta(name));
       if (surface) {
         cache.set(name, surface);
         emit();

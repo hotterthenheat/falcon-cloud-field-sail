@@ -645,7 +645,6 @@ export function congressFromWhales(rows: UwCongress[], people: UwPolitician[] = 
       tradedDaysAgo: traded,
       filedDaysAgo: filed,
       late: lag > 45,
-      committeeOverlap: null,
       tradedOn: tradedDay ?? undefined,
       filedOn: filedDay ?? undefined,
     });
