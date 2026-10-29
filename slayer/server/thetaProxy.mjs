@@ -40,7 +40,50 @@ function sendSoftly(req, res, status, body, type) {
   else send(res, statusFor(req, status, body), body, type);
 }
 
+/* The terminal answers at most eight requests at once (its log says "Max concurrent requests: 8"); past that it
+   refuses with 429. However many viewers ask, this process sends at most that many, and a live snapshot goes ahead of
+   history so prices never wait behind a long replay. History never holds more than six of the eight. */
+const TERMINAL_SLOTS = Number(process.env.THETA_MAX_CONCURRENT) || 8;
+const HISTORY_SLOTS = Math.max(1, TERMINAL_SLOTS - 2);
+let busy = 0;
+let busyHistory = 0;
+const quick = [];
+const slow = [];
+const isHistory = (p) => /\/(history|at_time)\//.test(p);
+function wake() {
+  while (busy < TERMINAL_SLOTS && quick.length) {
+    busy += 1;
+    quick.shift()();
+  }
+  while (busy < TERMINAL_SLOTS && busyHistory < HISTORY_SLOTS && slow.length) {
+    busy += 1;
+    busyHistory += 1;
+    slow.shift()();
+  }
+}
+async function slot(p, fn) {
+  const hist = isHistory(p);
+  if (busy < TERMINAL_SLOTS && (!hist || busyHistory < HISTORY_SLOTS) && !(hist ? slow : quick).length) {
+    busy += 1;
+    if (hist) busyHistory += 1;
+  } else {
+    /* the slot is counted for us when we are woken */
+    await new Promise((r) => (hist ? slow : quick).push(r));
+  }
+  try {
+    return await fn();
+  } finally {
+    busy -= 1;
+    if (hist) busyHistory -= 1;
+    wake();
+  }
+}
+
 async function load(reqPath) {
+  return slot(reqPath, () => loadNow(reqPath));
+}
+
+async function loadNow(reqPath) {
   const upstream = await fetch(`${BASE}/v3${reqPath}`, {
     headers: { Accept: 'application/json, text/csv', ...(RELAY ? { 'x-relay-secret': RELAY_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),

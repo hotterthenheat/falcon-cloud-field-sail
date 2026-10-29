@@ -22,7 +22,7 @@ interface DeskPrefs {
 }
 
 const KEY = 'slayer_desk_prefs';
-const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'local' };
+const DEFAULT_DESK_PREFS: DeskPrefs = { opensOn: { ticker: null, timeframe: null, page: null }, alertsSound: true, clock: 'ny' };
 
 let prefs: DeskPrefs = (() => {
   try {
@@ -32,7 +32,8 @@ let prefs: DeskPrefs = (() => {
     return {
       opensOn: { ticker: p.opensOn?.ticker ?? null, timeframe: p.opensOn?.timeframe ?? null, page: typeof p.opensOn?.page === 'string' ? p.opensOn.page : null },
       alertsSound: p.alertsSound ?? true,
-      clock: p.clock === 'ny' ? 'ny' : 'local',
+      /* New York's clock unless the reader chose the machine's (every time in the app is ET) */
+      clock: p.clock === 'local' ? 'local' : 'ny',
     };
   } catch {
     return DEFAULT_DESK_PREFS;
