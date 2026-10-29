@@ -104,11 +104,15 @@ export async function thetaCall(path: string, jump = false): Promise<{ status: n
       parsed = rows.length ? rows : text;
     }
     const data = unwrap(parsed);
-    /* an outage the proxy answered 200 (x-theta-soft) still carries its code */
+    /* an outage or a no-data answer the proxy sent as 200 (x-theta-soft) still carries its code */
     const outage = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as { code?: unknown }).code : undefined;
     if (outage === 'terminal_down' || outage === 'session_lost' || outage === 'terminal_unavailable') {
       noteDown();
       return { status: 503, data: null, error: 'terminal_down' };
+    }
+    if (outage === 'no_data') {
+      noteUp();
+      return { status: 472, data: null, error: 'no_data' };
     }
     if (!res.ok) {
       const error = faultText(res.status, parsed, text);

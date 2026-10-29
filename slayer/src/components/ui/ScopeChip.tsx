@@ -51,11 +51,13 @@ interface ScopeChipProps {
   /** The following chip dressed as the own-name chip (mark, name, quote) with the link at its end, for surfaces where
       two chips stand side by side. */
   full?: boolean;
+  /** Show the spinner while the name's Pinpoint book loads (which starts that load). Off for surfaces that never read it. */
+  arrive?: boolean;
 }
 
-const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false }: ScopeChipProps) => {
+const ScopeChip = ({ ticker, linked, onToggleLink, onPick, quote, closeOutside = true, open: openProp, onOpenChange, title, full = false, arrive = true }: ScopeChipProps) => {
   const [selfOpen, setSelfOpen] = useState(false);
-  const arriving = useWorking(useNameArriving(ticker));
+  const arriving = useWorking(useNameArriving(arrive ? ticker : null));
   const open = openProp ?? selfOpen;
   const setOpen = (next: boolean) => {
     onOpenChange?.(next);
