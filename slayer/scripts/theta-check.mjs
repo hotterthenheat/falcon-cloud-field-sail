@@ -91,6 +91,8 @@ const CHECKS = [
   [`dates quoted for ${exp}`, `/option/list/dates/quote?symbol=SPY&expiration=${exp}&format=json`],
   [`index 1m bars (date=)`, `/index/history/ohlc?symbol=SPX&date=${lastDay}&interval=1m&format=json`],
   [`stock 1m bars (date=)`, `/stock/history/ohlc?symbol=SPY&date=${lastDay}&interval=1m&format=json`],
+  [`contract NBBO today (paper catch-up)`, `/option/history/quote?symbol=SPY&expiration=${exp}&strike=${strike}&right=call&date=${today}&interval=1m&format=json`],
+  [`daily closes (Pinpoint day change)`, `/stock/history/eod?symbol=SPY&start_date=${lastDay}&end_date=${lastDay}&format=json`],
 ];
 
 console.log(`ThetaData terminal at ${BASE} · SPY ${spot ? spot.toFixed(2) : '?'} · nearest expiry ${exp}\n`);

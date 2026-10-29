@@ -94,8 +94,8 @@ export const thetaUseHere = (): ThetaUse => {
 };
 /** The page in view reads Unusual Whales only (Trace, the Dossier): no ThetaData request leaves it, whatever asks. */
 export const uwOnlyRoute = (): boolean => thetaUseHere() === 'none';
-/* a live price or a chart candle: a stock's or an index's snapshot, or its bars */
-const PRICE_PATH = /^\/(stock|index)\/(snapshot\/(quote|trade|price|ohlc)|history\/ohlc)(\?|$)/;
+/* a live price or a chart candle: a stock's or an index's snapshot, its bars, or its daily closes (the day's change) */
+const PRICE_PATH = /^\/(stock|index)\/(snapshot\/(quote|trade|price|ohlc)|history\/(ohlc|eod))(\?|$)/;
 /** May this ThetaData request be made on the page in view? */
 export const thetaAllowedHere = (path: string): boolean => {
   const use = thetaUseHere();
