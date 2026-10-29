@@ -15,7 +15,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 import { sessionLost, thetaAllowed, thetaTtl } from '../shared/thetaPaths.mjs';
-import { superviseTheta } from './supervisor.mjs';
+import { WARM, superviseTheta, warmPath as quotePath } from './supervisor.mjs';
 
 const TERMINAL = process.env.THETA_REST_BASE || 'http://127.0.0.1:25503';
 const PORT = Number(process.env.THETA_RELAY_PORT) || 25510;
@@ -147,9 +147,6 @@ function send(req, res, got) {
 /* Keeps the terminal's market-data connection and the JVM hot, and keeps the slow lists (expirations, the calendar)
    loaded for the names people open first, so the first page view never waits on them. It never invents a price:
    every answer it holds is the terminal's own, and quotes are only kept for the burst window like any other. */
-const WARM = (process.env.THETA_WARM || 'SPY,QQQ,IWM,SPX,NDX,RUT,VIX').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
-const INDEXES = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP', 'DJX']);
-const quotePath = (s) => (INDEXES.has(s) ? `/index/snapshot/price?symbol=${s}&format=json` : `/stock/snapshot/quote?symbol=${s}&format=json`);
 async function warmQuotes() {
   await Promise.all(WARM.map((s) => answer(quotePath(s))));
 }
@@ -163,7 +160,7 @@ export function startRelay() {
     log('THETA_RELAY_SECRET is not set: refusing to start (the relay would be open to anyone)');
     return null;
   }
-  const stopTerminal = superviseTheta({ log: (m) => log(`terminal: ${m}`) });
+  const stopTerminal = superviseTheta({ log: (m) => log(`terminal: ${m}`), warm: false });
   const server = http.createServer(async (req, res) => {
     const url = req.url || '/';
     if (url === '/health') {

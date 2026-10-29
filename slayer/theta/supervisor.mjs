@@ -24,6 +24,10 @@ const BASE = process.env.THETA_REST_BASE || 'http://127.0.0.1:25503';
 /* a real market-data answer, so a terminal whose session was taken over reads as unhealthy, not as up */
 const PROBE = `${BASE}/v3/stock/snapshot/quote?symbol=SPY&format=json`;
 const CHECK_MS = 15_000;
+/* the names the warmer keeps hot (THETA_WARM to change them); indexes are asked for their price */
+export const WARM = (process.env.THETA_WARM || 'SPY,QQQ,IWM,SPX,NDX,RUT,VIX').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+const INDEXES = new Set(['SPX', 'NDX', 'RUT', 'VIX', 'XSP', 'DJX']);
+export const warmPath = (s) => (INDEXES.has(s) ? `/index/snapshot/price?symbol=${s}&format=json` : `/stock/snapshot/quote?symbol=${s}&format=json`);
 const BOOT_GRACE_MS = 60_000;
 const MAX_BACKOFF_MS = 5 * 60_000;
 
@@ -125,7 +129,7 @@ function lock() {
  * Start supervising. Returns a stop function, or null when another supervisor holds the lock
  * or the machine cannot run the terminal (the reason is logged once).
  */
-export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`) } = {}) {
+export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`), warm = true } = {}) {
   if (process.env.VERCEL) return null;
   const jar = findJar();
   if (!jar) {
@@ -178,11 +182,13 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`) } = {}
     });
   };
 
+  let lastState = 'down';
   let lostTicks = 0;
   let lostRestarts = 0;
   const tick = async () => {
     if (stopped) return;
     const state = await health();
+    lastState = state;
     if (state === 'up') {
       misses = 0;
       lostTicks = 0;
@@ -220,11 +226,22 @@ export function superviseTheta({ log = (m) => console.log(`[theta] ${m}`) } = {}
   const timer = setInterval(() => void tick(), CHECK_MS);
   timer.unref?.();
   void tick();
+  /* the warmer: a quote for each hot name every 15 s keeps the market-data connection and the JVM hot, so the first
+     request after a quiet spell is as fast as the rest. It warms a terminal started by hand too; the relay warms
+     through its own cache and turns this off. */
+  const warmTimer = warm
+    ? setInterval(() => {
+        if (lastState !== 'up') return;
+        for (const s of WARM) void fetch(`${BASE}/v3${warmPath(s)}`, { signal: AbortSignal.timeout(8_000) }).then((r) => r.arrayBuffer(), () => null);
+      }, CHECK_MS)
+    : null;
+  warmTimer?.unref?.();
 
   const stop = () => {
     if (stopped) return;
     stopped = true;
     clearInterval(timer);
+    if (warmTimer) clearInterval(warmTimer);
     if (child) child.kill();
     if (readPid(SUPERVISOR_PID) === process.pid) fs.rmSync(SUPERVISOR_PID, { force: true });
   };

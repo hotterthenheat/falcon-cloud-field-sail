@@ -24,6 +24,7 @@
     "review:proof": "tsx scripts/review-engine-proof.ts && tsx scripts/review-futures-proof.ts && tsx scripts/review-journal-proof.ts && tsx scripts/paper-proof.ts",
     "theta": "node theta/supervisor.mjs",
     "theta:relay": "node theta/relay.mjs",
+    "theta:check": "node scripts/theta-check.mjs",
     "proxy:proof": "node scripts/proxy-auth-proof.mjs"
   },
   "dependencies": {
