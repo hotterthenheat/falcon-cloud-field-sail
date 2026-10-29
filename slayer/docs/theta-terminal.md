@@ -19,10 +19,13 @@ The app is hosted locally for now, so the terminal runs on the same PC as the de
 ever run one with this account.
 
 1. Put `THETADATA_API_KEY=td1_...` in `slayer/.env.local` (git-ignored).
-2. **Keep it running across reboots** (Windows): from the `slayer` folder run
-   `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1` once. It registers a task that starts the
-   supervised terminal (`npm run theta`) at every log-in and restarts it within a minute if it ever stops. Add
-   `THETA_AUTOSTART=0` to `slayer/.env.local` so `npm run dev` leaves the terminal to that task.
+2. **Keep it running 24/7** (Windows): from the `slayer` folder run
+   `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1` once. It registers two tasks that start at
+   every log-in and restart within a minute if they ever stop: `SlayerTheta` (the supervised terminal, `npm run theta`)
+   and `SlayerSite` (the built site with the Unusual Whales and ThetaData proxies, the shared data hub and the Compass
+   engine, `npm run serve` on http://localhost:8080). It builds the site once if it was never built, and adds
+   `THETA_AUTOSTART=0` to `slayer/.env.local` so nothing starts a second terminal. After pulling new code:
+   `npm run build`, then `Stop-ScheduledTask SlayerSite; Start-ScheduledTask SlayerSite`.
 3. **Keep the PC awake**: Settings → System → Power → put the device to sleep: Never (when plugged in).
 4. **Check it**: `npm run theta:check` asks the terminal for every kind of data the pages read, twice each, and
    prints status, rows and the cold and warm time. A line naming "another ThetaData terminal" means a second terminal

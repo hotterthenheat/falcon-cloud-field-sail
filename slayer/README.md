@@ -43,6 +43,13 @@ record is `slayer/.cache/compass/YYYY-MM-DD.json`. Start the server before the s
 while it was off or while ThetaData was down are scored afterwards from recorded quotes and marked "late". How it
 works and what it needs: `docs/compass-engine.md`.
 
+## Keep it running 24/7 on your PC
+
+From the `slayer` folder, once: `powershell -ExecutionPolicy Bypass -File theta\install-autostart.ps1`. It registers
+two Windows tasks that start at every log-in and restart within a minute if they stop: **SlayerTheta** (the ThetaData
+terminal) and **SlayerSite** (the built site, the data proxies and the Compass engine on http://localhost:8080). Keep
+the PC from sleeping. Don't also run `npm run dev` while SlayerSite runs. Details: `docs/theta-terminal.md`.
+
 ## Serve it to other people
 
 For more than a few viewers, run the production build instead of the dev server:
