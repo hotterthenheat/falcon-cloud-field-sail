@@ -3,6 +3,7 @@ import { ascendingSpotIndex, barGap, labelStride, layoutBand, spotX } from './st
 /* Token inks (paletteInk), not hex: the hex pair printed dark-theme green/red on paper at 2:1. */
 import { BULL, CALL_WALL, SUPREME, PUT_WALL, SPOT } from './paletteInk';
 import { fmtGexUsd as fmtUsd } from '../../data/gex';
+import { shownGreek } from './retailSign';
 import type { ExposureProfileData } from '../../types/gex';
 
 /* Exposure by strike as a band docked under the chart: its axis is the strike, which no lightweight-charts pane can carry
@@ -75,7 +76,8 @@ const StrikeExposureBand = ({
   /* Proportional air (see barGap), then the width cap: slots still place labels and hover; only the drawn ink narrows, centred. */
   const bars = layoutBand(
     rows,
-    r => (r as (typeof rows)[number])[metric].net,
+    /* the profile carries the book's house sign: drawn and printed in the dealer sign (retailSign.ts) */
+    r => shownGreek(metric, (r as (typeof rows)[number])[metric].net),
     data.maxAbs[metric],
     width,
     plotHeight,
@@ -86,7 +88,7 @@ const StrikeExposureBand = ({
   });
   const stride = labelStride(rows.length, width, LABEL_MIN_PX);
   const rule = spotX(spotIndex, rows.length, width);
-  const net = data[NET_KEY[metric]];
+  const net = shownGreek(metric, data[NET_KEY[metric]]);
   const meta = BAND_METRICS.find(m => m.key === metric) ?? BAND_METRICS[0];
   const maxAbs = data.maxAbs[metric];
   const mid = plotHeight / 2;

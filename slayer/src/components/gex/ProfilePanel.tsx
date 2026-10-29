@@ -76,6 +76,7 @@ import FilterTabs from '../ui/FilterTabs';
 import type { KeyLevels } from '../../types/gex';
 import { FONT_SANS } from '../../theme/fonts';
 import { readToken, useResolvedTheme } from '../../theme/theme';
+import { shownGreek } from './retailSign';
 
 export type ProfileLane = 'both' | 'size' | 'flow';
 export const LANE_OPTIONS: DropdownOption<ProfileLane>[] = [
@@ -1916,7 +1917,8 @@ const ProfilePanel = ({
                 ['netCharm', 'Charm $'],
               ] as const).map(([key, label]) => {
                 const chain = gexSnap?.chain ?? [];
-                const sum = chain.reduce((a, n) => a + (Number(n[key]) || 0), 0);
+                /* the book keeps every greek in the house sign: printed in the dealer sign, as Pinpoint prints it */
+                const sum = shownGreek(key, chain.reduce((a, n) => a + (Number(n[key]) || 0), 0));
                 return <p key={key}>{label}: {chain.length ? fmtUsd(sum) : 'unavailable'}</p>;
               })}
               {(() => {

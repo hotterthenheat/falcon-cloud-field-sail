@@ -17,7 +17,6 @@ engine/.venv/Scripts/python -m pip install numpy pytest tzdata pyarrow
 # whenever the TypeScript engines change: regenerate the references
 npx tsx scripts/greeks-ref.ts      # src/core/greeks.ts
 npx tsx scripts/calendar-ref.ts    # src/core/calendar.ts
-npx tsx scripts/exposure-ref.ts    # the chain builder, data/exposure.ts, data/exposureSurface.ts, core/walls.ts, data/airPockets.ts
 npx tsx scripts/journal-ref.ts     # types/journal.ts + core/journal.ts — type-check it first (the command is in its header):
 npx tsc --noEmit --ignoreConfig --strict --skipLibCheck --target ES2020 --module ESNext --moduleResolution bundler --types node,vite/client scripts/journal-ref.ts
 npx tsx scripts/indicators-ref.ts  # the simulator's getIndicators
@@ -34,8 +33,8 @@ cd engine && .venv/Scripts/python -m pytest -q
 | `slayer_core/greeks.py` | `src/core/greeks.ts` | `tests/fixtures/greeks_ref.json`, 1e-12 relative; the vectorised forms held to the scalar forms |
 | `slayer_core/clock.py` | `src/core/clock.ts` | the engine clock: wall clock live, pinned by the replay (`engine_clock(at)`) |
 | `slayer_core/calendar.py` | `src/core/calendar.ts` | `tests/fixtures/calendar_ref.json`, exact: every day 2016–2027, 1,008 session spans, 1,311 expiries, the futures clock over a week; the holiday table is the same list in both copies, extended back to 2016 on 2026-09-17 |
-| `slayer_core/walls.py` | `src/core/walls.ts`, `src/data/airPockets.ts` | `tests/fixtures/exposure_ref.json`, exact: the wall and flip rules on eleven books drawn to their edges (one-sided books answer None, never spot), the air pockets on nine windows |
-| `slayer_core/exposure.py` | the chain builder in `src/core/simulator.ts`, `src/data/exposure.ts`, `src/data/exposureSurface.ts` | the same fixture, 1e-12 relative: five seeded books into exposures (the dealer prior −0.55 / −0.53), 17 profiles (three lenses, the levels, the zones, the bias), 7 strike × expiry surfaces (the desk's calendar and the ledger's) |
+| `slayer_core/walls.py` | `src/core/walls.ts`, `src/data/airPockets.ts` | no parity reference: the TypeScript rules it was ported from (the simulator book's walls and flip) were replaced by `pickLegWalls` and the re-priced flip (`data/flipLevel.ts`); it waits to be ported again |
+| `slayer_core/exposure.py` | the chain builder in `src/core/simulator.ts`, `src/data/exposure.ts`, `src/data/exposureSurface.ts` | no parity reference: the TypeScript book is now the vendor's rows in the house sign (`core/dealerSign.ts`) and the surface reads the vendor's per-date rows, not a modelled desk chain; it waits to be ported again |
 | `slayer_core/journal.py` | `src/types/journal.ts`, `src/core/journal.ts` | `tests/fixtures/journal_ref.json`, exact: the OCC symbol and the contract, source and decision identities; the literal sets enumerated through the TypeScript types; one typed sample of every record shape, round-tripped through the wire (camelCase, the seam's own names) unchanged |
 | `slayer_core/indicators.py` | `getIndicators` in `src/core/simulator.ts` | `tests/fixtures/indicators_ref.json`, 1e-12: the seeded histories and series drawn to hit every branch (no losses reads 100, no gains reads 50, under 50 points is neutral) |
 | `slayer_core/tape.py` | new (2026-09-17) | `tests/test_tape.py`: Parquet written once and refused twice, a frame read as a filter (the last interval at or before the instant, the session's open interest, the last bar), the expiry grouping with sides aligned, the manifest, the append-only daily series |
@@ -64,12 +63,9 @@ error at the door. The additive fields the spec's gap-check names (ev / pop /
 utility, no-trade records, availability timestamps, assignment, the raw level
 and buffer) land in both copies at once, never here first.
 
-What the exposure port takes as INPUT rather than reproducing: the simulator's
-leg jitter and volume hash (arrays the fixture supplies; the live book passes
-none), and each expiry's contracts (`DeskExpiry`: the desk's modelled chain in
-the fixture, ThetaData's rows in the loop). The rules are what is ported. With
-one source for the front and the calendar, the surface's anchor reduces to the
-dealer prior on each leg, and a test says so.
+What the exposure port takes as INPUT rather than reproducing: each expiry's
+contracts (`DeskExpiry`, ThetaData's rows in the loop). The rules are what is
+ported.
 
 ## The order the port lands
 

@@ -56,7 +56,7 @@ function scaleSplit(put: number, call: number, factor: number, jitter: number): 
 export type StrikeWindow = 10 | 15 | 20 | 25 | 30;
 export const STRIKE_WINDOWS: StrikeWindow[] = [10, 15, 20, 30];
 
-/** The leg texture's seed per strike and lens, exported so scripts/exposure-ref.ts hands the Python port the same jitter. */
+/** The simulator's leg texture seed per strike and lens. */
 export function legJitter(ticker: string, strike: number, expiry: ExposureExpiry): number {
   return h01(`${ticker}-${strike}-${expiry}-exp`);
 }

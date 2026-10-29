@@ -190,20 +190,35 @@ async function readCloseRows(sym: string): Promise<{ date: string; close: number
   return closes;
 }
 
+/* A read that failed for a reason other than a down terminal (that is the breaker's, data/theta.ts) waits before the next:
+   15 s, doubling to a minute, cleared by an answer. */
+const failed = new Map<string, { until: number; gap: number }>();
+const failWait = (key: string): boolean => (failed.get(key)?.until ?? 0) > Date.now();
+const noteFail = (key: string) => {
+  const gap = Math.min(60_000, (failed.get(key)?.gap ?? 7_500) * 2);
+  failed.set(key, { until: Date.now() + gap, gap });
+};
+
 function readPrice(sym: string): Promise<void> {
   const key = `S:${sym}`;
   const running = inflight.get(key);
   if (running) return running;
+  if (failWait(key)) return Promise.resolve();
   const root = INDEX.has(sym) ? 'index' : 'stock';
   const path = root === 'index' ? `/index/snapshot/price?symbol=${encodeURIComponent(sym)}&format=json` : `/stock/snapshot/trade?symbol=${encodeURIComponent(sym)}&format=json`;
   const job = (async () => {
     const got = await thetaCall(path, true);
     if (got.error) {
       if (got.error === 'terminal_down') setStatus('down');
+      else noteFail(key);
       return;
     }
     const print = readPrint(got.data);
-    if (!print) return;
+    if (!print) {
+      noteFail(key);
+      return;
+    }
+    failed.delete(key);
     const closes = await readCloseRows(sym);
     const today = nyIsoDate();
     const prior = closes ? [...closes].reverse().find(c => c.date < today) : undefined;
@@ -224,6 +239,7 @@ function readMark(ticker: string, expiry: string, strike: number, right: OptionR
   const key = markKey(ticker, expiry, strike, right);
   const running = inflight.get(key);
   if (running) return running;
+  if (failWait(key)) return Promise.resolve();
   const name = ticker.trim().toUpperCase();
   const roots = WEEKLY_ROOT[name] ? [WEEKLY_ROOT[name], name] : [name];
   const job = (async () => {
@@ -238,6 +254,7 @@ function readMark(ticker: string, expiry: string, strike: number, right: OptionR
       }
       const q = readNbbo(got.data);
       if (!q) continue;
+      failed.delete(key);
       const next: ThetaMark = { ...q, read: Date.now() };
       live.set(key, next);
       keep(key, next);
@@ -245,6 +262,7 @@ function readMark(ticker: string, expiry: string, strike: number, right: OptionR
       emit();
       return;
     }
+    noteFail(key);
   })().finally(() => inflight.delete(key));
   inflight.set(key, job);
   return job;

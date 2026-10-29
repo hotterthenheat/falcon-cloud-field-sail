@@ -112,7 +112,7 @@ const TapeBox = ({ snapshot, bars: barsProp, focus, onPick, scope, at, part = fa
   };
   /* the room's price (useRoomSpot): one price on the page, the line ending on the head's figure; a replay's bars stand */
   const roomSpot = useRoomSpot(snapshot.ticker);
-  const bookRev = useBookRev();
+  useBookRev();
   const markMoves = useChartFocus(snapshot.ticker);
   const read = useResolvedSession(snapshot.ticker);
   /* the price drawn is ThetaData's one-minute tape (data/thetaTape.ts), never the book's bars; a replay cuts it to the

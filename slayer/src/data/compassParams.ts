@@ -88,8 +88,8 @@ export function printOf(root: string): string {
   return PRINT_OF[root] ?? root;
 }
 
-/** The minutes after 09:30 the trees were trained on (column 0 spans 15 to 330 in both models): Book A and Book B
-    score 09:45 to 15:00 ET and nothing outside it. */
+/** The minutes after 09:30 the trees were trained on: column 0 spans 15 to 330 in both models. The scan scores every
+    session mark regardless; outside these minutes the row goes into the trees as it is, and the board says so. */
 export const MODEL_T_MIN = 15;
 export const MODEL_T_MAX = 330;
 

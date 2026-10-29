@@ -28,7 +28,6 @@ import { paneLevels } from '../terrain/paneLevels';
 import { useLevelsScope } from '../../data/levelsScope';
 import { etClock, keepTheta, keptTheta, offlineWords, useThetaDown } from '../../data/thetaFeed';
 import { thetaUseHere } from '../../data/theta';
-import { wantSpotGex } from '../../data/spotGexBook';
 import {
   blankChain,
   dteForDate,
@@ -545,9 +544,6 @@ const WeigherDesk = ({ incoming }: { incoming?: WeighRequest | null }) => {
   }, [desk]);
 
   const { ticker, dte, optRoot, lens, right, preset, depth, cols } = desk;
-  useEffect(() => {
-    wantSpotGex(ticker);
-  }, [ticker]);
   const patch = (p: Partial<DeskState>) => setDesk(d => ({ ...d, ...p }));
 
   /* The market's own session now: closed on a weekend or holiday, else the clock's window */

@@ -249,7 +249,7 @@ const Board = () => {
       : 'No scan has run today.';
   const offline = live.theta === 'down';
   const inWindow = inModelWindow(nyMinutes() - (9 * 60 + 30));
-  const windowLine = 'Books A and B score 09:45 to 15:00 ET, the minutes the models were trained on.';
+  const windowLine = inWindow ? '' : ' Outside 09:45–15:00 ET the model’s minute input is outside the minutes it was trained on.';
   const sentence = (
     <RichRead text={
       offline
@@ -260,13 +260,11 @@ const Board = () => {
             ? `${clock.line} ${asOf}`
             : !called && !near && lockReason()
               ? lockReason()
-              : !inWindow
-                ? `${windowLine} ${asOf}`
-                : scanBusy() && !called && !near
-                  ? reading
-                  : called || near
-                    ? `${calledLine} ${asOf}`
-                    : bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')
+              : `${scanBusy() && !called && !near
+                ? reading
+                : called || near
+                  ? `${calledLine} ${asOf}`
+                  : `${bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.')} ${asOf}`}${windowLine}`
     } />
   );
   const names = scanNames(offered === 'weekly' ? 'weekly' : 'odte');
@@ -275,9 +273,7 @@ const Board = () => {
   const seats = seatsNow().seats;
   const emptyLabel = offline
     ? `ThetaData offline — reconnecting. ${asOf}`
-    : !inWindow
-      ? `${windowLine} ${asOf}`
-      : bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.');
+    : bestLine || (offered === 'odte' ? 'Nothing cleared Book A, Book B, or Book C.' : 'Nothing cleared Book A or Book B.');
 
   return (
     <>

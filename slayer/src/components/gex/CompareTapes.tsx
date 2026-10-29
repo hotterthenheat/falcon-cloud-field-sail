@@ -3,8 +3,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BaselineSeries, createChart, LineSeries, LineStyle, LineType, type IChartApi, type ISeriesApi, type LineData, type Time, type UTCTimestamp } from 'lightweight-charts';
-import { sessionBars } from '../../data/levelview';
-import { deskBars, useResolvedSession } from '../../data/uwBook';
+import { useResolvedSession } from '../../data/uwBook';
+import type { DeskSession } from '../../data/deskSession';
+import { thetaChartBars, thetaChartNote, wantChartTape } from '../../data/thetaCandles';
+import { usePrintRev, useTapeRev } from '../../data/thetaTape';
 import { DayRef } from '../../data/bookWindow';
 import { nyIsoDate } from '../../core/nyTime';
 import { DARK_FIGURE_SURFACE } from './candleTheme';
@@ -33,9 +35,17 @@ interface Point {
   cb: number | null;
 }
 
+/** A name's ThetaData one-minute bars on the newest day its tape holds, in one session */
+const lastDayBars = (t: string, session: DeskSession) => {
+  const all = thetaChartBars(t, 1, session);
+  if (!all.length) return all;
+  const day = nyIsoDate(all[all.length - 1].time * 1000);
+  return all.filter(bar => nyIsoDate(bar.time * 1000) === day);
+};
+
 /** Both sessions as percent from each name's own open, on the union of their minutes */
-function buildToday(a: string, b: string, offCash: boolean): { points: Point[]; lastA: number | null; lastB: number | null; gap: { min: number; max: number } | null } {
-  const take = (t: string) => (offCash ? deskBars(t) ?? [] : sessionBars(t) ?? []);
+function buildToday(a: string, b: string, session: DeskSession): { points: Point[]; lastA: number | null; lastB: number | null; gap: { min: number; max: number } | null } {
+  const take = (t: string) => lastDayBars(t, session);
   const ba = take(a);
   const bb = take(b);
   const pct = (bars: typeof ba) => {
@@ -77,7 +87,15 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
   const aRead = useResolvedSession(a);
   const bRead = useResolvedSession(b);
   const session = aRead.session !== 'rth' && aRead.session === bRead.session ? aRead.session : 'rth';
-  const today = useMemo(() => buildToday(a, b, session !== 'rth'), [a, b, revision, session]);
+  /* the lines are ThetaData's bars (data/thetaTape.ts); with the terminal down they hold, stamped */
+  useEffect(() => {
+    const offs = [...wantChartTape(a, '1m', session), ...wantChartTape(b, '1m', session)];
+    return () => offs.forEach(off => off());
+  }, [a, b, session]);
+  const tapeRev = useTapeRev();
+  const printRev = usePrintRev();
+  const today = useMemo(() => buildToday(a, b, session), [a, b, revision, session, tapeRev, printRev]);
+  const tapeNote = thetaChartNote(a, 1, session) ?? thetaChartNote(b, 1, session);
   /* The bars' own day ("Today" only when the session is today's). */
   const lastT = today.points[today.points.length - 1]?.time;
   const barDay = lastT != null ? nyIsoDate(lastT * 1000) : null;
@@ -311,10 +329,10 @@ const CompareTapes = ({ a, b, aInk, bInk, revision }: Props) => {
                 )}
               </span>
             )}
-            <span className="ml-auto text-textMuted">hover the chart for any minute</span>
+            {tapeNote ? <span className={`ml-auto ${/offline/i.test(tapeNote) ? 'text-warn' : 'text-textMuted'}`} data-tape-note>{tapeNote}</span> : <span className="ml-auto text-textMuted">hover the chart for any minute</span>}
           </>
         ) : (
-          <span className="text-textMuted">no session on the tape yet</span>
+          <span className="text-textMuted">{tapeNote ?? 'no session on the tape yet'}</span>
         )}
       </div>
     </section>

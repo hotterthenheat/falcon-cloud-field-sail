@@ -2,7 +2,7 @@
 THE EXPOSURE BOOK (ported from the chain builder in src/core/simulator.ts,
 src/data/exposure.ts and src/data/exposureSurface.ts, 2026-09-17).
 
-Three layers, each held to the TypeScript by tests/test_exposure_parity.py:
+Three layers (no parity reference now: the TypeScript book they mirror was replaced, engine/README.md):
 
   chain_exposures          one expiry's contracts -> the five exposures per
                            leg (GEX, DEX, VEX, vanna, charm) with the dealers'
